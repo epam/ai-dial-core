@@ -13,11 +13,12 @@ import com.epam.aidial.core.server.data.AdminValidateResponse;
 import com.epam.aidial.core.server.data.ValidationResult;
 import com.epam.aidial.core.server.data.ValidationStatus;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
+import com.epam.aidial.core.server.service.ConfigManifestSupport;
+import com.epam.aidial.core.server.service.ConfigValidateService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.vertx.core.Future;
@@ -25,34 +26,34 @@ import io.vertx.core.buffer.Buffer;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 /**
  * Admin-only configuration-validation endpoint at {@code POST /v1/admin/validate}.
  * Phase 4 scope (design 03 §6) is multi-entity, batch-aware with {@code precheck} semantics —
  * predicts the outcome of the matching {@code POST /v1/admin/apply} payload without mutation.
- * Shares the validation engine with {@link AdminApplyController} (promoted statics) so
- * {@code precheck=true} guarantees apply-parity: if validate returns 200, apply would not
- * unit-reject; if validate returns 422, apply with {@code precheck=true} would also 422.
+ * Shares the validation engine with {@code /v1/admin/apply}'s {@code precheck=true} phase via
+ * {@link ConfigValidateService} so {@code precheck=true} guarantees apply-parity: if validate
+ * returns 200, apply would not unit-reject; if validate returns 422, apply with
+ * {@code precheck=true} would also 422.
  */
 public class AdminValidateController implements Controller {
 
     private final ProxyContext context;
     private final ConfigAuthorizationService authorizationService;
     private final MergedConfigStore mergedConfigStore;
-    private final ResourceService resourceService;
+    private final ConfigValidateService validateService;
     private final AsyncTaskExecutor taskExecutor;
 
     public AdminValidateController(ProxyContext context,
                                    ConfigAuthorizationService authorizationService,
                                    MergedConfigStore mergedConfigStore,
-                                   ResourceService resourceService,
+                                   ConfigValidateService validateService,
                                    AsyncTaskExecutor taskExecutor) {
         this.context = context;
         this.authorizationService = authorizationService;
         this.mergedConfigStore = mergedConfigStore;
-        this.resourceService = resourceService;
+        this.validateService = validateService;
         this.taskExecutor = taskExecutor;
     }
 
@@ -133,11 +134,9 @@ public class AdminValidateController implements Controller {
     private ValidateResponse validateBatch(boolean precheck,
                                            List<AdminManifest> rawEntries) {
         List<AdminManifest> entries = new ArrayList<>(rawEntries);
-        entries.sort(Comparator.comparingInt(
-                e -> AdminApplyController.DEPENDENCY_ORDER.getOrDefault(e.kind(), 99)));
+        entries.sort(ConfigManifestSupport.DEPENDENCY_ORDER_COMPARATOR);
 
-        boolean softValidation = mergedConfigStore.isSoftValidation();
-        Config scratch = AdminApplyController.newScratch(mergedConfigStore);
+        Config scratch = ConfigManifestSupport.newScratch(mergedConfigStore);
         List<ValidationResult> results = new ArrayList<>();
         boolean anyFailure = false;
 
@@ -147,17 +146,16 @@ public class AdminValidateController implements Controller {
             // Unknown kinds FAIL on both surfaces: validateOnly returns FAILED (apply precheck
             // rejects the batch with 422), so this explicit branch is redundant but kept as a
             // defensive guard. Bundle is already rejected at the envelope-parse level (per 4S.0).
-            if (!AdminApplyController.KIND_URL_SEGMENT.containsKey(entry.kind())) {
+            if (!ConfigManifestSupport.KIND_URL_SEGMENT.containsKey(entry.kind())) {
                 error = "Unknown kind: " + entry.kind();
             } else {
-                ValidationResult validation =
-                        AdminApplyController.validateOnly(entry, scratch, softValidation, resourceService);
+                ValidationResult validation = validateService.validateOnly(entry, scratch);
                 if (!ValidationStatus.VALID.equals(validation.status())) {
                     error = validation.error();
                 }
             }
             if (error == null) {
-                AdminApplyController.mutateScratch(scratch, entry);
+                ConfigManifestSupport.mutateScratch(scratch, entry);
                 results.add(new ValidationResult(entityId, ValidationStatus.VALID, null));
             } else {
                 anyFailure = true;

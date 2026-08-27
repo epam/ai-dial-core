@@ -19,6 +19,10 @@ import com.epam.aidial.core.server.data.ConfigFileMigrateStatus;
 import com.epam.aidial.core.server.data.ValidationResult;
 import com.epam.aidial.core.server.data.ValidationStatus;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
+import com.epam.aidial.core.server.service.ConfigApplyService;
+import com.epam.aidial.core.server.service.ConfigManifestSupport;
+import com.epam.aidial.core.server.service.ConfigValidateService;
+import com.epam.aidial.core.server.util.ConfigEntityCodec;
 import com.epam.aidial.core.server.util.HashUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -53,7 +57,9 @@ import java.util.function.Function;
 /**
  * Admin-triggered, on-demand copy of file-defined config entities into the {@code platform} blob
  * bucket. Migration is never automatic on startup — that would resurrect an API-deleted entity on
- * restart. Reuses {@link AdminApplyController}'s per-kind write pipeline.
+ * restart. Reuses {@link ConfigApplyService}'s per-kind write pipeline for the real run and
+ * {@link ConfigValidateService} for the dry-run precheck, plus manifest-shape helpers (parsing,
+ * scratch, dependency ordering) from {@link ConfigManifestSupport}.
  */
 public class ConfigFileMigrateController {
 
@@ -80,7 +86,8 @@ public class ConfigFileMigrateController {
     private final MergedConfigStore mergedConfigStore;
     private final AsyncTaskExecutor taskExecutor;
     private final LockService lockService;
-    private final AdminApplyController applier;
+    private final ConfigApplyService applyService;
+    private final ConfigValidateService validateService;
     private final ResourceService resourceService;
 
     public ConfigFileMigrateController(ProxyContext context,
@@ -88,14 +95,16 @@ public class ConfigFileMigrateController {
                                        MergedConfigStore mergedConfigStore,
                                        AsyncTaskExecutor taskExecutor,
                                        LockService lockService,
-                                       AdminApplyController applier,
+                                       ConfigApplyService applyService,
+                                       ConfigValidateService validateService,
                                        ResourceService resourceService) {
         this.context = context;
         this.authorizationService = authorizationService;
         this.mergedConfigStore = mergedConfigStore;
         this.taskExecutor = taskExecutor;
         this.lockService = lockService;
-        this.applier = applier;
+        this.applyService = applyService;
+        this.validateService = validateService;
         this.resourceService = resourceService;
     }
 
@@ -178,10 +187,10 @@ public class ConfigFileMigrateController {
             return new ConfigFileMigrateResponse(List.of());
         }
         Config live = mergedConfigStore.get();
-        Config scratch = AdminApplyController.newScratch(mergedConfigStore);
+        Config scratch = ConfigManifestSupport.newScratch(mergedConfigStore);
         List<ConfigFileMigrateResult> results = new ArrayList<>();
         // Real (non-dry) run: candidates accumulate here instead of being written immediately, so
-        // AdminApplyController.applyEntries can apply and flush them as a single partial-update swap.
+        // ConfigApplyService.applyEntries can apply and flush them as a single partial-update swap.
         List<AdminManifest> toApply = new ArrayList<>();
 
         if (requestedTypes.contains("settings")) {
@@ -203,17 +212,17 @@ public class ConfigFileMigrateController {
 
         if (!toApply.isEmpty()) {
             // A referencing kind (e.g. Model) must apply after a kind it can reference (e.g.
-            // Interceptor) — see AdminApplyController.DEPENDENCY_ORDER_COMPARATOR.
-            toApply.sort(AdminApplyController.DEPENDENCY_ORDER_COMPARATOR);
-            List<AdminApplyController.EntityResult> appliedEntriesResults = applier.applyEntries(toApply, scratch);
-            for (AdminApplyController.EntityResult result : appliedEntriesResults) {
+            // Interceptor) — see ConfigManifestSupport.DEPENDENCY_ORDER_COMPARATOR.
+            toApply.sort(ConfigManifestSupport.DEPENDENCY_ORDER_COMPARATOR);
+            List<ConfigApplyService.EntityResult> appliedEntriesResults = applyService.applyEntries(toApply, scratch);
+            for (ConfigApplyService.EntityResult result : appliedEntriesResults) {
                 results.add(toMigrateResult(result));
             }
         }
         return new ConfigFileMigrateResponse(results);
     }
 
-    private static ConfigFileMigrateResult toMigrateResult(AdminApplyController.EntityResult result) {
+    private static ConfigFileMigrateResult toMigrateResult(ConfigApplyService.EntityResult result) {
         boolean migrated = AdminApplyStatus.APPLIED.equals(result.status())
                 || AdminApplyStatus.APPLIED_INVALID.equals(result.status());
         ConfigFileMigrateStatus status = migrated ? ConfigFileMigrateStatus.MIGRATED : ConfigFileMigrateStatus.FAILED;
@@ -292,7 +301,7 @@ public class ConfigFileMigrateController {
 
     private BlobKeySecrets listBlobKeySecrets() {
         NamedValues values = listBlobValues(ResourceTypes.PROJECT_KEY, (body, name) -> {
-            Key key = ConfigResourceController.treeToEntity(ProxyUtil.BLOB_MAPPER.readTree(body), Key.class);
+            Key key = ConfigEntityCodec.treeToEntity(ProxyUtil.BLOB_MAPPER.readTree(body), Key.class);
             ResourceDescriptor descriptor = platformDescriptor(ResourceTypes.PROJECT_KEY, name);
             mergedConfigStore.getSecretFieldProcessor().decryptFields(key, descriptor);
             return StringUtils.isNotBlank(key.getKey()) ? key.getKey() : null;
@@ -389,9 +398,9 @@ public class ConfigFileMigrateController {
     }
 
     /**
-     * dry-run: validates immediately (no write) via {@link AdminApplyController#validateOnly} and
+     * dry-run: validates immediately (no write) via {@link ConfigValidateService#validateOnly} and
      * reports the outcome right away. Real run: defers to {@code toApply}, applied and flushed once
-     * for the whole batch by {@link AdminApplyController#applyEntries} at the end of {@link
+     * for the whole batch by {@link ConfigApplyService#applyEntries} at the end of {@link
      * #runMigration}.
      */
     private void collect(AdminManifest manifest, Config scratch, boolean dryRun,
@@ -400,11 +409,10 @@ public class ConfigFileMigrateController {
             toApply.add(manifest);
             return;
         }
-        ValidationResult validation = AdminApplyController.validateOnly(manifest, scratch,
-                mergedConfigStore.isSoftValidation(), resourceService);
+        ValidationResult validation = validateService.validateOnly(manifest, scratch);
         if (ValidationStatus.VALID.equals(validation.status())) {
             results.add(new ConfigFileMigrateResult(manifest.name(), ConfigFileMigrateStatus.WOULD_MIGRATE, null));
-            AdminApplyController.mutateScratch(scratch, manifest);
+            ConfigManifestSupport.mutateScratch(scratch, manifest);
         } else {
             results.add(new ConfigFileMigrateResult(manifest.name(), ConfigFileMigrateStatus.WOULD_FAIL, validation.error()));
         }

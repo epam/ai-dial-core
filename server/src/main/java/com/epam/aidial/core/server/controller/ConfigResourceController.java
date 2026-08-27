@@ -34,6 +34,7 @@ import com.epam.aidial.core.server.security.Operation;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ToolSetService;
+import com.epam.aidial.core.server.util.ConfigEntityCodec;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
@@ -1177,7 +1178,7 @@ public class ConfigResourceController implements Controller {
             }
             default -> {
                 try {
-                    yield treeToEntity(ProxyUtil.BLOB_MAPPER.readTree(body), entityClassFor(entityType));
+                    yield ConfigEntityCodec.treeToEntity(ProxyUtil.BLOB_MAPPER.readTree(body), entityClassFor(entityType));
                 } catch (JsonProcessingException e) {
                     throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
                             "Stored entity is malformed at " + locationOf(e));
@@ -1310,8 +1311,8 @@ public class ConfigResourceController implements Controller {
             }
             // Deserialize through the typed GlobalSettings POJO so unknown fields are dropped and types
             // are validated; re-serialize so the blob is canonical (locked field set, no extras).
-            GlobalSettings settings = treeToEntity(requestNode, GlobalSettings.class);
-            String blobBody = serializeForBlob(settings);
+            GlobalSettings settings = ConfigEntityCodec.treeToEntity(requestNode, GlobalSettings.class);
+            String blobBody = ConfigEntityCodec.serializeForBlob(settings);
             String author = context.getUserDisplayName();
             return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
                 // RFC 7232 conditional headers must be honored on the singleton too: read prior
@@ -1386,12 +1387,12 @@ public class ConfigResourceController implements Controller {
                 // this path is always admin context and may preserve forwardAuthToken.
                 Object decrypted = switch (type) {
                     case APPLICATION -> {
-                        Application application = treeToEntity(requestNode, Application.class);
+                        Application application = ConfigEntityCodec.treeToEntity(requestNode, Application.class);
                         applicationService.putApplication(descriptor, etag, author, application, true, AdminManagedFieldsWriteMode.AUTHORITATIVE);
                         yield applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
                     }
                     case TOOL_SET  -> {
-                        ToolSet toolSet = treeToEntity(requestNode, ToolSet.class);
+                        ToolSet toolSet = ConfigEntityCodec.treeToEntity(requestNode, ToolSet.class);
                         toolSetService.putToolSet(descriptor, etag, author, toolSet, true);
                         yield toolSetService.getToolSetWithDecryptedAuthSettings(descriptor).getValue();
                     }
@@ -1523,7 +1524,7 @@ public class ConfigResourceController implements Controller {
                         // any plaintext secrets.
                         source = requestNode;
                     }
-                    entity = treeToEntity(source, spec.entityClass());
+                    entity = ConfigEntityCodec.treeToEntity(source, spec.entityClass());
                     if (entity instanceof Model m) {
                         checkCrossReferences(m);
                     }
@@ -1541,7 +1542,7 @@ public class ConfigResourceController implements Controller {
                     if (spec.hasEncryptedFields()) {
                         secretFieldProcessor.encryptFields(entity, descriptor);
                     }
-                    blobBody = serializeForBlob(entity);
+                    blobBody = ConfigEntityCodec.serializeForBlob(entity);
                 }
                 // Conditional headers were already validated above; persist with ANY so the
                 // blob layer doesn't re-validate against a stale snapshot.
@@ -1784,17 +1785,6 @@ public class ConfigResourceController implements Controller {
         }
     }
 
-    static <T> T treeToEntity(JsonNode node, Class<T> cls) {
-        try {
-            return ProxyUtil.BLOB_MAPPER.treeToValue(node, cls);
-        } catch (JsonProcessingException e) {
-            // Same rationale as parseJsonBody — the mapping error can embed the offending
-            // field value, including secrets in a partially-typed request body.
-            throw new HttpException(HttpStatus.BAD_REQUEST,
-                    "Failed to parse entity at " + locationOf(e));
-        }
-    }
-
     private void handleWriteError(Throwable error) {
         if (error instanceof HttpException exception) {
             context.respond(exception);
@@ -1836,17 +1826,6 @@ public class ConfigResourceController implements Controller {
             w.put("message", warning.getMessage());
         }
         throw new HttpException(HttpStatus.UNPROCESSABLE_ENTITY, body.toString());
-    }
-
-    static String serializeForBlob(Object entity) {
-        try {
-            return ProxyUtil.BLOB_MAPPER.writeValueAsString(entity);
-        } catch (JsonProcessingException e) {
-            // writeValueAsString failures don't carry a useful JsonLocation and the message
-            // can echo entity field values — surface only the entity class to keep the trail.
-            throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to serialize entity of type " + entity.getClass().getSimpleName());
-        }
     }
 
     private static String locationOf(JsonProcessingException e) {

@@ -12,6 +12,8 @@ import com.epam.aidial.core.server.controller.route.GlobalRouteController;
 import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
+import com.epam.aidial.core.server.service.ConfigApplyService;
+import com.epam.aidial.core.server.service.ConfigValidateService;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.UrlUtil;
@@ -476,44 +478,44 @@ public class ControllerSelector {
         post(RouteTemplate.CONFIG_VALIDATE, (proxy, context, pathMatcher) -> {
             ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
             MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
+            ConfigValidateService validateService = new ConfigValidateService(
+                    proxy.getResourceService(), mergedConfigStore.isSoftValidation());
             AdminValidateController controller = new AdminValidateController(
-                    context, authService, mergedConfigStore,
-                    proxy.getResourceService(), proxy.getTaskExecutor());
+                    context, authService, mergedConfigStore, validateService, proxy.getTaskExecutor());
             return controller::handle;
         });
         post(RouteTemplate.CONFIG_APPLY, (proxy, context, pathMatcher) -> {
             ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
             MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
-            AdminApplyController controller = new AdminApplyController(
-                    context, authService, mergedConfigStore,
-                    proxy.getResourceService(), proxy.getTaskExecutor(),
+            ConfigApplyService applyService = new ConfigApplyService(
+                    mergedConfigStore, proxy.getResourceService(),
                     mergedConfigStore.getSecretFieldProcessor(),
                     mergedConfigStore.isSoftValidation(),
                     proxy.getApiKeyStore(),
                     proxy.getApplicationService(),
-                    proxy.getToolSetService(),
-                    proxy.getLockService());
+                    proxy.getToolSetService());
+            ConfigValidateService validateService = new ConfigValidateService(
+                    proxy.getResourceService(), mergedConfigStore.isSoftValidation());
+            AdminApplyController controller = new AdminApplyController(
+                    context, authService, proxy.getTaskExecutor(), proxy.getLockService(),
+                    mergedConfigStore, applyService, validateService);
             return controller::handle;
         });
         post(RouteTemplate.CONFIG_FILE_MIGRATE, (proxy, context, pathMatcher) -> {
             ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
             MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
-            // Reuses AdminApplyController's per-kind write pipeline (applySingle/validateOnly/
-            // mutateScratch/newScratch) rather than re-implementing per-type writes; `context` here
-            // is only ever used by AdminApplyController.handle()/process(), neither of which this
-            // controller calls, so sharing an instance across the two controllers is safe.
-            AdminApplyController applier = new AdminApplyController(
-                    context, authService, mergedConfigStore,
-                    proxy.getResourceService(), proxy.getTaskExecutor(),
+            ConfigApplyService applyService = new ConfigApplyService(
+                    mergedConfigStore, proxy.getResourceService(),
                     mergedConfigStore.getSecretFieldProcessor(),
                     mergedConfigStore.isSoftValidation(),
                     proxy.getApiKeyStore(),
                     proxy.getApplicationService(),
-                    proxy.getToolSetService(),
-                    proxy.getLockService());
+                    proxy.getToolSetService());
+            ConfigValidateService validateService = new ConfigValidateService(
+                    proxy.getResourceService(), mergedConfigStore.isSoftValidation());
             ConfigFileMigrateController controller = new ConfigFileMigrateController(
                     context, authService, mergedConfigStore, proxy.getTaskExecutor(),
-                    proxy.getLockService(), applier, proxy.getResourceService());
+                    proxy.getLockService(), applyService, validateService, proxy.getResourceService());
             return controller::handle;
         });
         get(RouteTemplate.CONFIG_HEALTH, (proxy, context, pathMatcher) -> {
