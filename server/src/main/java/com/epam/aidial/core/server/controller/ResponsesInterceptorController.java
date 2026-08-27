@@ -63,4 +63,9 @@ public class ResponsesInterceptorController extends BaseInterceptorController {
     protected BufferingReadStream.BaseEventListener createListener(Proxy proxy, ProxyContext context) {
         return new ResponsesSseListener(List.of(new CollectResponsesApiOutputAttachmentsFn(proxy, context)));
     }
+
+    @Override
+    protected InterfaceType interfaceType() {
+        return InterfaceType.OPENAI_RESPONSES;
+    }
 }

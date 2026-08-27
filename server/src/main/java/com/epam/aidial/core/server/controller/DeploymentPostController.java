@@ -297,6 +297,11 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                 : InterfaceType.OPENAI_CHAT_COMPLETIONS;
     }
 
+    @Override
+    protected InterfaceType interfaceType() {
+        return requestedInterface();
+    }
+
     @SneakyThrows
     private void sendRequest() {
         if (nextUpstream()) {

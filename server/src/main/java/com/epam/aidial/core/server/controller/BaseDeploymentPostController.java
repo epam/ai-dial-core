@@ -258,7 +258,10 @@ public class BaseDeploymentPostController {
     /**
      * Which upstream interface shape this controller's response is in, for pricing decision-tree
      * evaluation. Overridable so provider-specific controllers (Anthropic Messages, OpenAI Responses)
-     * can report their own shape; the default covers the OpenAI Chat Completions path.
+     * can report their own shape; the default covers the OpenAI Chat Completions path. A controller
+     * that serves more than one shape from the same class (e.g. {@code DeploymentPostController}
+     * also handling {@code /embeddings}) must override this to report the actual per-request shape -
+     * otherwise a non-chat-completions response silently gets evaluated against the wrong alias table.
      */
     protected InterfaceType interfaceType() {
         return InterfaceType.OPENAI_CHAT_COMPLETIONS;
