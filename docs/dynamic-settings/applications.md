@@ -48,7 +48,7 @@ An object containing parameters for each [application](#applications).
 * `viewerUrl`: A string with URL of the application's [custom viewer UI](https://github.com/epam/ai-dial-chat/tree/development/docs). A custom UI, if enabled, will override the standard DIAL Chat UI.
 * `editorUrl`: A string with URL of the application's custom builder UI. Application builder allows DIAL Chat end-users to create instances of apps using a [UI wizards](https://docs.dialx.ai/tutorials/user-guide#application-builder).
 * `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call.         
-* `defaultHeaders`: HTTP headers applied to a request that doesn't already carry them — the header counterpart of `defaults`. Works exactly as for models, including the per-interface overlay: refer to [models.<model_name>.defaultHeaders](./models.md#modelsmodel_namedefaultheaders).
+* `defaultHeaders`: HTTP headers DIAL Core adds to a request that doesn't already carry them. Refer to [applications.<application_name>.defaultHeaders](#applicationsapplication_namedefaultheaders).
 * `interceptors`: A list of local interceptors to be triggered for the given application. Refer to [Interceptors](./interceptors.md) to learn more.
 * `mcp`: MCP configuration. Refer to [MCP](#applicationsapplication_namemcp) to learn more.
 * `features`: A list of features supported by the application. Refer to [Features](#applicationsapplication_namefeatures) for more details.
@@ -155,7 +155,7 @@ Applications support only one interface type:
 Each value is an object with the following fields:
 
 * `base_url`: The application adapter root that the matching ingress path is appended to.
-* `defaultHeaders`: Headers applied to requests for this interface only, laid over the application-level `defaultHeaders`.
+* `defaultHeaders`: Headers applied to requests for this interface only, laid over the application-level `defaultHeaders`. Refer to [applications.<application_name>.defaultHeaders](#applicationsapplication_namedefaultheaders).
 
 **Example**
 
@@ -164,6 +164,30 @@ Each value is an object with the following fields:
     "app-via-interfaces": {
         "interfaces": {
             "openaiChatCompletions": { "base_url": "http://localhost:7005" }
+        }
+    }
+}
+```
+
+#### applications.<application_name>.defaultHeaders
+
+An object of HTTP header names and values DIAL Core adds to a request that does not already carry a header of that name. A header sent by the client always wins, and so does one DIAL Core sets itself (`Api-Key`, `X-DIAL-DEPLOYMENT-ID`, ...). Names are matched case-insensitively.
+
+A default header behaves exactly as if the client had sent it: DIAL Core reads it as part of the incoming request and forwards it to the application under the same rules as a client header. Headers DIAL Core never forwards are not forwarded here either: hop-by-hop headers, `Api-Key`/`x-api-key`, and `Authorization` unless `forwardAuthToken` is set.
+
+The application-level `defaultHeaders` apply to every interface the application serves. `interfaces.openaiChatCompletions.defaultHeaders` is laid over them for that interface only: a name it repeats is overridden, a new name is added, and every other application-level header still applies.
+
+They are applied once per request, when it enters the application: with `interceptors` configured that is the hop to the first interceptor, from where they travel down the chain. An interceptor's own `defaultHeaders` are applied on the hop that calls it and take precedence over the application's.
+
+**Example**
+
+```json
+"applications": {
+    "app-with-default-headers": {
+        "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+        "defaultHeaders": {
+            "x-dial-cache-policy": "cache-priority",
+            "x-dial-custom-header": "foo-bar"
         }
     }
 }

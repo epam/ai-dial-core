@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static com.epam.aidial.core.config.InterfaceType.ANTHROPIC_MESSAGES;
+import static com.epam.aidial.core.config.InterfaceType.OPENAI_CHAT_COMPLETIONS;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_RESPONSES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -164,7 +165,8 @@ public class DeploymentTest {
     void applicationCopyConstructorPreservesDefaultHeaders() {
         Application source = new Application();
         source.setName("app1");
-        source.setEndpoint("http://host/chat/completions");
+        source.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://adapter")));
         source.setDefaultHeaders(Map.of("x-dial-cache-policy", "cache-priority"));
 
         Application copy = new Application(source);

@@ -50,7 +50,7 @@ An object containing parameters for each [model](#models).
 
   DIAL Core rewrites upstream response IDs to stable `resp_dial_*` identifiers and uses sticky routing to ensure follow-up requests are forwarded to the same upstream instance that handled the original request. `previous_response_id`, conversations, prompts, and files are not supported.
 * `responsesDefaults`: Default parameters applied if a request doesn't contain them in an OpenAI Responses API call. Works the same way as `defaults` for the chat completions API.
-* `defaultHeaders`: HTTP headers applied to a request that doesn't already carry them, for every interface the model serves — the header counterpart of `defaults`. Refer to [models.<model_name>.defaultHeaders](#modelsmodel_namedefaultheaders).
+* `defaultHeaders`: HTTP headers DIAL Core adds to a request that doesn't already carry them, for every interface the model serves. Refer to [models.<model_name>.defaultHeaders](#modelsmodel_namedefaultheaders).
 * `interfaces`: An alternative to the flat `endpoint`/`responsesEndpoint` fields for declaring routing targets, keyed by interface type. Both shapes are first-class — pick whichever you prefer per model. Refer to [models.<model_name>.interfaces](#modelsmodel_nameinterfaces).
 * `interceptors`: A list of interceptors to be triggered for the given model. Refer to [Interceptors](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/6.interceptors.md) to learn more.
 * `fieldsHashingOrder`: **Deprecated, no longer has any effect.** It used to let `POST /openai/deployments/{deployment_name}/chat/completions` customize the order in which request components are hashed for upstream-cache pinning. DIAL Core now always uses a built-in, non-configurable order per interface, fixed by that API's wire format — the same mechanism `POST /anthropic/v1/messages` and `POST /openai/v1/responses` use:
@@ -193,13 +193,13 @@ Each value is an object with the following fields:
 
 #### models.<model_name>.defaultHeaders
 
-An object of HTTP header names and values applied to a request that does not already carry a header of that name, the way `defaults` applies to body parameters. A header sent by the client always wins, and so does one DIAL Core sets itself (`Api-Key`, `X-UPSTREAM-*`, `X-DIAL-DEPLOYMENT-ID`, ...). Names are matched case-insensitively.
+An object of HTTP header names and values DIAL Core adds to a request that does not already carry a header of that name. A header sent by the client always wins, and so does one DIAL Core sets itself (`Api-Key`, `X-UPSTREAM-*`, `X-DIAL-DEPLOYMENT-ID`, ...). Names are matched case-insensitively.
 
 A default header behaves exactly as if the client had sent it: DIAL Core reads it as part of the incoming request — so `X-DIAL-CACHE-POLICY` set this way drives upstream cache pinning, not just what the adapter receives — and forwards it under the same rules as a client header. Headers DIAL Core never forwards are not forwarded here either: hop-by-hop headers, `Api-Key`/`x-api-key`, and `Authorization` unless `forwardAuthToken` is set.
 
 The model-level `defaultHeaders` apply to every interface the model serves. `interfaces.<type>.defaultHeaders` is laid over them for that interface only: a name it repeats is overridden, a new name is added, and every other model-level header still applies.
 
-Defaults are applied once per request, when it enters the model: with `interceptors` configured that is the hop to the first interceptor, from where they travel down the chain. An interceptor's own `defaultHeaders` are applied on the hop that calls it and take precedence over the model's.
+They are applied once per request, when it enters the model: with `interceptors` configured that is the hop to the first interceptor, from where they travel down the chain. An interceptor's own `defaultHeaders` are applied on the hop that calls it and take precedence over the model's.
 
 **Example**
 
