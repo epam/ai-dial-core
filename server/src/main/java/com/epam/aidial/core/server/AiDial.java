@@ -291,7 +291,7 @@ public class AiDial {
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,
                     accessService, encryptionService, operatorService, generator, settings("codeInterpreter"));
 
-            ConfigAuthorizationService configAuthService = new AdminRoleAuthorizationService(proxy.getAccessService());
+            ConfigAuthorizationService configAuthService = new AdminRoleAuthorizationService(accessService);
 
             ConfigApplyService configApplyService = new ConfigApplyService(
                     mergedConfigStore, resourceService, secretFieldProcessor, mergedConfigStore.isSoftValidation(),
