@@ -36,7 +36,7 @@ public class ResponsesInterceptorController extends BaseInterceptorController {
 
     private static List<BaseRequestFunction<RequestObject>> defaultEnhancementFunctions(Proxy proxy, ProxyContext context) {
         return List.of(
-                new ApplyDefaultDeploymentSettingsFn(proxy, context),
+                new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.OPENAI_RESPONSES),
                 new CollectRequestStandardAttachmentsFn(proxy, context),
                 new AutoShareDeploymentFn(proxy, context));
     }
