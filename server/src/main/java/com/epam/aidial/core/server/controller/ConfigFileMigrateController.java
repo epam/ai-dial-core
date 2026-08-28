@@ -7,6 +7,7 @@ import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.SchemaMigrationNameResolver;
@@ -90,22 +91,15 @@ public class ConfigFileMigrateController {
     private final ConfigValidationService validationService;
     private final ResourceService resourceService;
 
-    public ConfigFileMigrateController(ProxyContext context,
-                                       ConfigAuthorizationService authorizationService,
-                                       MergedConfigStore mergedConfigStore,
-                                       AsyncTaskExecutor taskExecutor,
-                                       LockService lockService,
-                                       ConfigApplyService applyService,
-                                       ConfigValidationService validationService,
-                                       ResourceService resourceService) {
+    public ConfigFileMigrateController(Proxy proxy, ProxyContext context) {
         this.context = context;
-        this.authorizationService = authorizationService;
-        this.mergedConfigStore = mergedConfigStore;
-        this.taskExecutor = taskExecutor;
-        this.lockService = lockService;
-        this.applyService = applyService;
-        this.validationService = validationService;
-        this.resourceService = resourceService;
+        this.authorizationService = proxy.getConfigAuthService();
+        this.mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
+        this.taskExecutor = proxy.getTaskExecutor();
+        this.lockService = proxy.getLockService();
+        this.applyService = proxy.getConfigApplyService();
+        this.validationService = proxy.getConfigValidationService();
+        this.resourceService = proxy.getResourceService();
     }
 
     @ApiOperation(

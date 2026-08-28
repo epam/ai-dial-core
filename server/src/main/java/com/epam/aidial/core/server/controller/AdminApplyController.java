@@ -5,6 +5,7 @@ import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.data.AdminApplyRequest;
@@ -42,20 +43,14 @@ public class AdminApplyController {
     private final ConfigApplyService applyService;
     private final ConfigValidationService validationService;
 
-    public AdminApplyController(ProxyContext context,
-                                ConfigAuthorizationService authorizationService,
-                                AsyncTaskExecutor taskExecutor,
-                                LockService lockService,
-                                MergedConfigStore mergedConfigStore,
-                                ConfigApplyService applyService,
-                                ConfigValidationService validationService) {
+    public AdminApplyController(Proxy proxy, ProxyContext context) {
         this.context = context;
-        this.authorizationService = authorizationService;
-        this.taskExecutor = taskExecutor;
-        this.lockService = lockService;
-        this.mergedConfigStore = mergedConfigStore;
-        this.applyService = applyService;
-        this.validationService = validationService;
+        this.authorizationService = proxy.getConfigAuthService();
+        this.taskExecutor = proxy.getTaskExecutor();
+        this.lockService = proxy.getLockService();
+        this.mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
+        this.applyService = proxy.getConfigApplyService();
+        this.validationService = proxy.getConfigValidationService();
     }
 
     @ApiOperation(

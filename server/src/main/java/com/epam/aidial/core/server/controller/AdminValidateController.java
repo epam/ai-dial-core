@@ -5,6 +5,7 @@ import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.data.AdminApplyRequest;
@@ -45,16 +46,12 @@ public class AdminValidateController implements Controller {
     private final ConfigValidationService validationService;
     private final AsyncTaskExecutor taskExecutor;
 
-    public AdminValidateController(ProxyContext context,
-                                   ConfigAuthorizationService authorizationService,
-                                   MergedConfigStore mergedConfigStore,
-                                   ConfigValidationService validationService,
-                                   AsyncTaskExecutor taskExecutor) {
+    public AdminValidateController(Proxy proxy, ProxyContext context) {
         this.context = context;
-        this.authorizationService = authorizationService;
-        this.mergedConfigStore = mergedConfigStore;
-        this.validationService = validationService;
-        this.taskExecutor = taskExecutor;
+        this.authorizationService = proxy.getConfigAuthService();
+        this.mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
+        this.validationService = proxy.getConfigValidationService();
+        this.taskExecutor = proxy.getTaskExecutor();
     }
 
     @Override
