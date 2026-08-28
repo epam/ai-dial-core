@@ -16,7 +16,6 @@ import com.epam.aidial.core.server.data.ValidationResult;
 import com.epam.aidial.core.server.data.ValidationStatus;
 import com.epam.aidial.core.server.service.config.ConfigManifestSupport.ParsedName;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
-import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -128,7 +127,7 @@ public class ConfigValidationService {
                     return new ValidationResult(id, ValidationStatus.FAILED, "Unknown kind: " + entry.kind());
                 }
             }
-        } catch (HttpException ex) {
+        } catch (IllegalArgumentException ex) {
             return new ValidationResult(id, ValidationStatus.FAILED, ex.getMessage());
         }
         return new ValidationResult(id, ValidationStatus.VALID, null);

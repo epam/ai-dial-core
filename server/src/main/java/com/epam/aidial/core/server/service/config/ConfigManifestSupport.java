@@ -14,8 +14,6 @@ import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.data.AdminManifest;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
-import com.epam.aidial.core.storage.http.HttpException;
-import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -156,7 +154,7 @@ public class ConfigManifestSupport {
                 }
                 default -> { /* unknown kinds never reach this code path */ }
             }
-        } catch (HttpException ignored) {
+        } catch (IllegalArgumentException ignored) {
             // Already accounted for in apply path; scratch update is best-effort.
         }
     }
@@ -208,8 +206,7 @@ public class ConfigManifestSupport {
         } catch (Exception e) {
             // A genuinely missing resource surfaces as null, not an exception — any exception here
             // is a real read failure, so fail closed rather than silently treating it as "no prior $id".
-            throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to read existing resource: " + descriptor.getUrl());
+            throw new RuntimeException("Failed to read existing resource: " + descriptor.getUrl());
         }
         if (existingBody == null) {
             return null;
@@ -217,8 +214,7 @@ public class ConfigManifestSupport {
         try {
             return MergedConfigStore.extractSchemaId(BLOB_MAPPER.readTree(existingBody));
         } catch (Exception e) {
-            throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to parse existing resource: " + descriptor.getUrl());
+            throw new RuntimeException("Failed to parse existing resource: " + descriptor.getUrl());
         }
     }
 
