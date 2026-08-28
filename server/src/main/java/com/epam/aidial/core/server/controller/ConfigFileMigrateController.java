@@ -55,6 +55,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
+import static com.epam.aidial.core.server.service.config.ConfigEntityCodec.BLOB_MAPPER;
+
 /**
  * Admin-triggered, on-demand copy of file-defined config entities into the {@code platform} blob
  * bucket. Migration is never automatic on startup — that would resurrect an API-deleted entity on
@@ -295,7 +297,7 @@ public class ConfigFileMigrateController {
 
     private BlobKeySecrets listBlobKeySecrets() {
         NamedValues values = listBlobValues(ResourceTypes.PROJECT_KEY, (body, name) -> {
-            Key key = ConfigEntityCodec.treeToEntity(ProxyUtil.BLOB_MAPPER.readTree(body), Key.class);
+            Key key = ConfigEntityCodec.treeToEntity(BLOB_MAPPER.readTree(body), Key.class);
             ResourceDescriptor descriptor = platformDescriptor(ResourceTypes.PROJECT_KEY, name);
             mergedConfigStore.getSecretFieldProcessor().decryptFields(key, descriptor);
             return StringUtils.isNotBlank(key.getKey()) ? key.getKey() : null;
@@ -349,7 +351,7 @@ public class ConfigFileMigrateController {
 
     private BlobSchemas listBlobSchemas(ResourceTypes type) {
         NamedValues values = listBlobValues(type,
-                (body, name) -> MergedConfigStore.extractSchemaId(ProxyUtil.BLOB_MAPPER.readTree(body)));
+                (body, name) -> MergedConfigStore.extractSchemaId(BLOB_MAPPER.readTree(body)));
         return new BlobSchemas(values.values(), values.valuesByName());
     }
 

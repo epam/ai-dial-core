@@ -14,7 +14,6 @@ import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionSe
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceService;
-import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceEvent;
@@ -48,6 +47,8 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import javax.annotation.Nullable;
+
+import static com.epam.aidial.core.server.service.config.ConfigEntityCodec.BLOB_MAPPER;
 
 /**
  * {@link ConfigStore} implementation that builds the runtime {@link Config} as the
@@ -354,7 +355,7 @@ public final class MergedConfigStore implements ConfigStore {
                 applyReplicaEventDelete(type, descriptor, isSchema, eventMetadata);
                 return;
             }
-            JsonNode node = ProxyUtil.BLOB_MAPPER.readTree(body);
+            JsonNode node = BLOB_MAPPER.readTree(body);
             // Blob fetch + readTree above stay OUTSIDE the lock (IO). Everything that reads or
             // mutates shared in-memory state — the GLOBAL_SETTINGS dispatch, entity deserialization,
             // the prior-secret snapshot, and the ApiKeyStore/Config mutations — runs under a single
@@ -364,7 +365,7 @@ public final class MergedConfigStore implements ConfigStore {
             rebuildLock.lock();
             try {
                 if (type == ResourceTypes.GLOBAL_SETTINGS) {
-                    GlobalSettings settings = ProxyUtil.BLOB_MAPPER.treeToValue(node, GlobalSettings.class);
+                    GlobalSettings settings = BLOB_MAPPER.treeToValue(node, GlobalSettings.class);
                     applySettingsWrite(settings);
                     return;
                 }
@@ -454,13 +455,13 @@ public final class MergedConfigStore implements ConfigStore {
     private static Object deserializeReplicaEntity(ResourceTypes type, JsonNode node)
             throws com.fasterxml.jackson.core.JsonProcessingException {
         return switch (type) {
-            case MODEL -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Model.class);
-            case INTERCEPTOR -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Interceptor.class);
-            case ROLE -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Role.class);
-            case PROJECT_KEY -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Key.class);
-            case ROUTE -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Route.class);
-            case APPLICATION -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Application.class);
-            case TOOL_SET -> ProxyUtil.BLOB_MAPPER.treeToValue(node, ToolSet.class);
+            case MODEL -> BLOB_MAPPER.treeToValue(node, Model.class);
+            case INTERCEPTOR -> BLOB_MAPPER.treeToValue(node, Interceptor.class);
+            case ROLE -> BLOB_MAPPER.treeToValue(node, Role.class);
+            case PROJECT_KEY -> BLOB_MAPPER.treeToValue(node, Key.class);
+            case ROUTE -> BLOB_MAPPER.treeToValue(node, Route.class);
+            case APPLICATION -> BLOB_MAPPER.treeToValue(node, Application.class);
+            case TOOL_SET -> BLOB_MAPPER.treeToValue(node, ToolSet.class);
             case APP_TYPE_SCHEMA, CATALOG_SCHEMA -> node.toString();
             default -> throw new IllegalArgumentException("Unsupported replica type: " + type);
         };
@@ -890,7 +891,7 @@ public final class MergedConfigStore implements ConfigStore {
                 continue; // parse-error case — body unavailable for resurrection
             }
             try {
-                Model candidate = ProxyUtil.BLOB_MAPPER.treeToValue(payload, Model.class);
+                Model candidate = BLOB_MAPPER.treeToValue(payload, Model.class);
                 ResourceDescriptor descriptor = descriptorFromCanonicalId(ResourceTypes.MODEL, canonicalId);
                 secretFieldProcessor.decryptFields(candidate, descriptor);
                 List<ValidationWarning> warnings = new ArrayList<>();
@@ -1153,7 +1154,7 @@ public final class MergedConfigStore implements ConfigStore {
                     try {
                         // Parse once into JsonNode; reused below for typed deserialization and as the
                         // payload echoed back through the invalid-entity sibling store on semantic failures.
-                        node = ProxyUtil.BLOB_MAPPER.readTree(body);
+                        node = BLOB_MAPPER.readTree(body);
                     } catch (Exception parseError) {
                         recordInvalid(pendingInvalid, type, canonicalId, name,
                                 "JSON parse failure: " + parseError.getMessage(),
@@ -1272,7 +1273,7 @@ public final class MergedConfigStore implements ConfigStore {
         String canonicalId = canonicalId(ResourceTypes.GLOBAL_SETTINGS, ResourceDescriptor.PLATFORM_BUCKET, "global");
         JsonNode payload;
         try {
-            payload = ProxyUtil.BLOB_MAPPER.readTree(body);
+            payload = BLOB_MAPPER.readTree(body);
         } catch (Exception parseError) {
             log.warn("Failed to parse settings singleton blob as JSON", parseError);
             recordInvalid(pendingInvalid, ResourceTypes.GLOBAL_SETTINGS, canonicalId, "global",
@@ -1282,7 +1283,7 @@ public final class MergedConfigStore implements ConfigStore {
             return false;
         }
         try {
-            GlobalSettings settings = ProxyUtil.BLOB_MAPPER.treeToValue(payload, GlobalSettings.class);
+            GlobalSettings settings = BLOB_MAPPER.treeToValue(payload, GlobalSettings.class);
             merged.setGlobalInterceptors(
                     settings.getGlobalInterceptors() == null ? List.of() : settings.getGlobalInterceptors());
             merged.setRetriableErrorCodes(
@@ -1431,31 +1432,31 @@ public final class MergedConfigStore implements ConfigStore {
             throws JsonProcessingException {
         switch (type) {
             case MODEL -> {
-                Model entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Model.class);
+                Model entity = BLOB_MAPPER.treeToValue(node, Model.class);
                 Object previous = config.getModels().put(mapKey, entity);
                 warnIfReplaced(type, mapKey, previous);
                 return new BlobPutResult(entity, previous);
             }
             case INTERCEPTOR -> {
-                Interceptor entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Interceptor.class);
+                Interceptor entity = BLOB_MAPPER.treeToValue(node, Interceptor.class);
                 Object previous = config.getInterceptors().put(mapKey, entity);
                 warnIfReplaced(type, mapKey, previous);
                 return new BlobPutResult(entity, previous);
             }
             case ROLE -> {
-                Role entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Role.class);
+                Role entity = BLOB_MAPPER.treeToValue(node, Role.class);
                 Object previous = config.getRoles().put(mapKey, entity);
                 warnIfReplaced(type, mapKey, previous);
                 return new BlobPutResult(entity, previous);
             }
             case PROJECT_KEY -> {
-                Key entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Key.class);
+                Key entity = BLOB_MAPPER.treeToValue(node, Key.class);
                 Object previous = config.getKeys().put(mapKey, entity);
                 warnIfReplaced(type, mapKey, previous);
                 return new BlobPutResult(entity, previous);
             }
             case ROUTE -> {
-                Route entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Route.class);
+                Route entity = BLOB_MAPPER.treeToValue(node, Route.class);
                 Object previous = config.getRoutes().put(mapKey, entity);
                 warnIfReplaced(type, mapKey, previous);
                 return new BlobPutResult(entity, previous);
@@ -1471,13 +1472,13 @@ public final class MergedConfigStore implements ConfigStore {
                 return new BlobPutResult(null, previous);
             }
             case APPLICATION -> {
-                Application entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Application.class);
+                Application entity = BLOB_MAPPER.treeToValue(node, Application.class);
                 Object previous = config.getApplications().put(mapKey, entity);
                 warnIfReplaced(type, mapKey, previous);
                 return new BlobPutResult(entity, previous);
             }
             case TOOL_SET -> {
-                ToolSet entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, ToolSet.class);
+                ToolSet entity = BLOB_MAPPER.treeToValue(node, ToolSet.class);
                 Object previous = config.getToolsets().put(mapKey, entity);
                 warnIfReplaced(type, mapKey, previous);
                 return new BlobPutResult(entity, previous);

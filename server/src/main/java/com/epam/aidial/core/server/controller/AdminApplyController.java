@@ -121,6 +121,8 @@ public class AdminApplyController {
                 .onFailure(error -> {
                     if (error instanceof HttpException ex) {
                         context.respond(ex);
+                    } else if (error instanceof IllegalArgumentException ex) {
+                        context.respond(HttpStatus.BAD_REQUEST, ex.getMessage());
                     } else {
                         context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
                     }

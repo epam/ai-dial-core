@@ -1,10 +1,12 @@
 package com.epam.aidial.core.server.service.config;
 
-import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.storage.http.HttpException;
-import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.server.util.EncryptedFieldAnnotationIntrospector;
+import com.epam.aidial.core.server.util.EncryptedFieldBlobModifier;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 
 /**
  * Pure JSON (de)serialization helpers for admin config entities, shared by
@@ -13,28 +15,28 @@ import com.fasterxml.jackson.databind.JsonNode;
  */
 public final class ConfigEntityCodec {
 
+    public static final JsonMapper BLOB_MAPPER = JsonMapper.builder()
+            .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
+            .annotationIntrospector(new EncryptedFieldAnnotationIntrospector())
+            .addModule(new SimpleModule().setSerializerModifier(new EncryptedFieldBlobModifier()))
+            .build();
+
     private ConfigEntityCodec() {
     }
 
     public static <T> T treeToEntity(JsonNode node, Class<T> cls) {
         try {
-            return ProxyUtil.BLOB_MAPPER.treeToValue(node, cls);
+            return BLOB_MAPPER.treeToValue(node, cls);
         } catch (JsonProcessingException e) {
-            // Same rationale as parseJsonBody — the mapping error can embed the offending
-            // field value, including secrets in a partially-typed request body.
-            throw new HttpException(HttpStatus.BAD_REQUEST,
-                    "Failed to parse entity at " + locationOf(e));
+            throw new IllegalArgumentException("Failed to parse entity at " + locationOf(e));
         }
     }
 
     public static String serializeForBlob(Object entity) {
         try {
-            return ProxyUtil.BLOB_MAPPER.writeValueAsString(entity);
+            return BLOB_MAPPER.writeValueAsString(entity);
         } catch (JsonProcessingException e) {
-            // writeValueAsString failures don't carry a useful JsonLocation and the message
-            // can echo entity field values — surface only the entity class to keep the trail.
-            throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to serialize entity of type " + entity.getClass().getSimpleName());
+            throw new RuntimeException("Failed to serialize entity of type " + entity.getClass().getSimpleName());
         }
     }
 

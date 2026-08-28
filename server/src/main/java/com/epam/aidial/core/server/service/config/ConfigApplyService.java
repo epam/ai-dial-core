@@ -22,7 +22,6 @@ import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.config.ConfigManifestSupport.ParsedName;
-import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -37,6 +36,8 @@ import org.apache.commons.lang3.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
+import static com.epam.aidial.core.server.service.config.ConfigEntityCodec.BLOB_MAPPER;
 
 /**
  * Real-apply engine behind the write phase of {@code /v1/admin/apply} and
@@ -165,7 +166,7 @@ public class ConfigApplyService {
                 type, parsed.bucket(), parsed.location(), parsed.name());
         String blobBody;
         try {
-            blobBody = ProxyUtil.BLOB_MAPPER.writeValueAsString(spec);
+            blobBody = BLOB_MAPPER.writeValueAsString(spec);
         } catch (JsonProcessingException e) {
             // Drop e.getOriginalMessage() — it can echo verbatim schema content (potentially
             // submitted secrets). Surface a generic failure tied to the entity id.
@@ -220,7 +221,7 @@ public class ConfigApplyService {
         if (existingBody != null) {
             try {
                 Key prior = ConfigEntityCodec.treeToEntity(
-                        ProxyUtil.BLOB_MAPPER.readTree(existingBody), Key.class);
+                        BLOB_MAPPER.readTree(existingBody), Key.class);
                 secretFieldProcessor.decryptFields(prior, descriptor);
                 oldSecret = prior.getKey();
             } catch (Exception e) {

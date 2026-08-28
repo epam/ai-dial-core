@@ -67,6 +67,8 @@ import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.regex.Pattern;
 
+import static com.epam.aidial.core.server.service.config.ConfigEntityCodec.BLOB_MAPPER;
+
 /**
  * Controller for the {@code /v1/{type}/{bucket}/{path}} CONFIG_RESOURCE route — gates on
  * the {@link EntityBucketBinding} allowlist and {@link ConfigAuthorizationService}, then
@@ -1170,7 +1172,7 @@ public class ConfigResourceController implements Controller {
         return switch (type) {
             case APP_TYPE_SCHEMA, CATALOG_SCHEMA -> {
                 try {
-                    yield ProxyUtil.BLOB_MAPPER.readTree(body);
+                    yield BLOB_MAPPER.readTree(body);
                 } catch (JsonProcessingException e) {
                     throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
                             "Stored schema is malformed at " + locationOf(e));
@@ -1178,7 +1180,7 @@ public class ConfigResourceController implements Controller {
             }
             default -> {
                 try {
-                    yield ConfigEntityCodec.treeToEntity(ProxyUtil.BLOB_MAPPER.readTree(body), entityClassFor(entityType));
+                    yield ConfigEntityCodec.treeToEntity(BLOB_MAPPER.readTree(body), entityClassFor(entityType));
                 } catch (JsonProcessingException e) {
                     throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
                             "Stored entity is malformed at " + locationOf(e));
@@ -1495,7 +1497,7 @@ public class ConfigResourceController implements Controller {
                         // ciphertext from the prior blob (see SecretFieldProcessor).
                         JsonNode existingBlobNode;
                         try {
-                            existingBlobNode = ProxyUtil.BLOB_MAPPER.readTree(existingBody);
+                            existingBlobNode = BLOB_MAPPER.readTree(existingBody);
                         } catch (JsonProcessingException e) {
                             // Don't echo getOriginalMessage() — the stored blob can carry
                             // ciphertext or other content we don't want to surface verbatim.
@@ -1508,7 +1510,7 @@ public class ConfigResourceController implements Controller {
                             // must NOT abort the rotation — the new secret is authoritative and any
                             // stale entry is cleaned at the next full rebuild.
                             try {
-                                Key prior = ProxyUtil.BLOB_MAPPER.treeToValue(existingBlobNode, Key.class);
+                                Key prior = BLOB_MAPPER.treeToValue(existingBlobNode, Key.class);
                                 secretFieldProcessor.decryptFields(prior, descriptor);
                                 oldSecret = prior.getKey();
                             } catch (Exception e) {
@@ -1591,7 +1593,7 @@ public class ConfigResourceController implements Controller {
         if (existingBody != null) {
             try {
                 oldSchemaId = MergedConfigStore.extractSchemaId(
-                        ProxyUtil.BLOB_MAPPER.readTree(existingBody));
+                        BLOB_MAPPER.readTree(existingBody));
             } catch (Exception e) {
                 // Leave oldSchemaId null — the immutability check below fails closed on the mismatch.
             }
@@ -1627,8 +1629,8 @@ public class ConfigResourceController implements Controller {
                 String existing = resourceService.getResource(descriptor, EtagHeader.ANY, false);
                 if (existing != null) {
                     try {
-                        JsonNode node = ProxyUtil.BLOB_MAPPER.readTree(existing);
-                        Key key = ProxyUtil.BLOB_MAPPER.treeToValue(node, Key.class);
+                        JsonNode node = BLOB_MAPPER.readTree(existing);
+                        Key key = BLOB_MAPPER.treeToValue(node, Key.class);
                         secretFieldProcessor.decryptFields(key, descriptor);
                         deletedSecret = key.getKey();
                     } catch (Exception e) {
@@ -1658,7 +1660,7 @@ public class ConfigResourceController implements Controller {
                 if (existing != null) {
                     try {
                         deletedSchemaId = MergedConfigStore.extractSchemaId(
-                                ProxyUtil.BLOB_MAPPER.readTree(existing));
+                                BLOB_MAPPER.readTree(existing));
                     } catch (Exception e) {
                         // Treat as no $id — applyEntityDelete will be skipped and the next
                         // rebuild will clean up any stale entry.
@@ -1777,7 +1779,7 @@ public class ConfigResourceController implements Controller {
             throw new HttpException(HttpStatus.BAD_REQUEST, "Request body must not be empty");
         }
         try {
-            return ProxyUtil.BLOB_MAPPER.readTree(text);
+            return BLOB_MAPPER.readTree(text);
         } catch (JsonProcessingException e) {
             // getOriginalMessage() echoes the offending token verbatim, which can include
             // submitted credentials (Key.key, Upstream.key, etc.). Surface only the location.
@@ -1792,6 +1794,8 @@ public class ConfigResourceController implements Controller {
             // ApplicationService/ToolSetService signal a missing entity via this unchecked exception
             // rather than HttpException (unlike the raw-blob path this controller otherwise uses).
             context.respond(HttpStatus.NOT_FOUND, notFound.getMessage());
+        } else if (error instanceof IllegalArgumentException ex) {
+            context.respond(HttpStatus.BAD_REQUEST, ex.getMessage());
         } else {
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
         }

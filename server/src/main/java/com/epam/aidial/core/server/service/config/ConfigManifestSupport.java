@@ -13,7 +13,6 @@ import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.data.AdminManifest;
-import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -28,6 +27,8 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import static com.epam.aidial.core.server.service.config.ConfigEntityCodec.BLOB_MAPPER;
 
 /**
  * Manifest-shape helpers shared by {@link ConfigApplyService} (real-apply) and
@@ -137,7 +138,7 @@ public class ConfigManifestSupport {
                     String schemaId = MergedConfigStore.extractSchemaId(entry.spec());
                     if (schemaId != null && !schemaId.isBlank()) {
                         try {
-                            scratch.getApplicationTypeSchemas().put(schemaId, ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec()));
+                            scratch.getApplicationTypeSchemas().put(schemaId, BLOB_MAPPER.writeValueAsString(entry.spec()));
                         } catch (JsonProcessingException e) {
                             return;
                         }
@@ -147,7 +148,7 @@ public class ConfigManifestSupport {
                     String schemaId = MergedConfigStore.extractSchemaId(entry.spec());
                     if (schemaId != null && !schemaId.isBlank()) {
                         try {
-                            scratch.getCatalogSchemas().put(schemaId, ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec()));
+                            scratch.getCatalogSchemas().put(schemaId, BLOB_MAPPER.writeValueAsString(entry.spec()));
                         } catch (JsonProcessingException e) {
                             return;
                         }
@@ -214,7 +215,7 @@ public class ConfigManifestSupport {
             return null;
         }
         try {
-            return MergedConfigStore.extractSchemaId(ProxyUtil.BLOB_MAPPER.readTree(existingBody));
+            return MergedConfigStore.extractSchemaId(BLOB_MAPPER.readTree(existingBody));
         } catch (Exception e) {
             throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "Failed to parse existing resource: " + descriptor.getUrl());

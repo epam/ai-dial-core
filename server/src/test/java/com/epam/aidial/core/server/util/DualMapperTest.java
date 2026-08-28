@@ -8,13 +8,14 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static com.epam.aidial.core.server.service.config.ConfigEntityCodec.BLOB_MAPPER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
  * Verifies the dual-mapper invariants after slice U.4 retired the {@code "***"} masking sentinel:
  * {@link ProxyUtil#MAPPER} drops {@code @EncryptedField} fields on serialization (via
- * {@code @JsonProperty(WRITE_ONLY)}), and {@link ProxyUtil#BLOB_MAPPER} emits the raw value
+ * {@code @JsonProperty(WRITE_ONLY)}), and {@link com.epam.aidial.core.server.service.config.ConfigEntityCodec#BLOB_MAPPER} emits the raw value
  * verbatim — including {@code ENC[...]} envelopes round-tripped through blob storage.
  */
 class DualMapperTest {
@@ -70,8 +71,8 @@ class DualMapperTest {
         up.setExtraData("plain-extra");
         up.setSecretExtraData("ENC[efgh]");
 
-        String json = ProxyUtil.BLOB_MAPPER.writeValueAsString(up);
-        JsonNode node = ProxyUtil.BLOB_MAPPER.readTree(json);
+        String json = BLOB_MAPPER.writeValueAsString(up);
+        JsonNode node = BLOB_MAPPER.readTree(json);
 
         assertEquals("ENC[abcd]", node.get("key").asText());
         assertEquals("plain-extra", node.get("extraData").asText());
@@ -86,8 +87,8 @@ class DualMapperTest {
         up.setExtraData("plain-extra");
         up.setSecretExtraData("ENC[xd]");
 
-        String json = ProxyUtil.BLOB_MAPPER.writeValueAsString(up);
-        Upstream restored = ProxyUtil.BLOB_MAPPER.readValue(json, Upstream.class);
+        String json = BLOB_MAPPER.writeValueAsString(up);
+        Upstream restored = BLOB_MAPPER.readValue(json, Upstream.class);
 
         assertEquals("ENC[k]", restored.getKey());
         assertEquals("plain-extra", restored.getExtraData());
