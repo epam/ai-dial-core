@@ -15,9 +15,9 @@ import com.epam.aidial.core.server.data.AdminManifest;
 import com.epam.aidial.core.server.data.ValidationResult;
 import com.epam.aidial.core.server.data.ValidationStatus;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
-import com.epam.aidial.core.server.service.ConfigApplyService;
-import com.epam.aidial.core.server.service.ConfigManifestSupport;
-import com.epam.aidial.core.server.service.ConfigValidateService;
+import com.epam.aidial.core.server.service.config.ConfigApplyService;
+import com.epam.aidial.core.server.service.config.ConfigManifestSupport;
+import com.epam.aidial.core.server.service.config.ConfigValidationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -40,7 +40,7 @@ public class AdminApplyController {
     private final LockService lockService;
     private final MergedConfigStore mergedConfigStore;
     private final ConfigApplyService applyService;
-    private final ConfigValidateService validateService;
+    private final ConfigValidationService validateService;
 
     public AdminApplyController(ProxyContext context,
                                 ConfigAuthorizationService authorizationService,
@@ -48,7 +48,7 @@ public class AdminApplyController {
                                 LockService lockService,
                                 MergedConfigStore mergedConfigStore,
                                 ConfigApplyService applyService,
-                                ConfigValidateService validateService) {
+                                ConfigValidationService validateService) {
         this.context = context;
         this.authorizationService = authorizationService;
         this.taskExecutor = taskExecutor;

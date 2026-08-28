@@ -12,17 +12,17 @@ import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.SchemaMigrationNameResolver;
 import com.epam.aidial.core.server.data.AdminApplyStatus;
 import com.epam.aidial.core.server.data.AdminManifest;
-import com.epam.aidial.core.server.data.ConfigFileMigrateRequest;
-import com.epam.aidial.core.server.data.ConfigFileMigrateResponse;
-import com.epam.aidial.core.server.data.ConfigFileMigrateResult;
-import com.epam.aidial.core.server.data.ConfigFileMigrateStatus;
+import com.epam.aidial.core.server.data.config.migration.ConfigFileMigrateRequest;
+import com.epam.aidial.core.server.data.config.migration.ConfigFileMigrateResponse;
+import com.epam.aidial.core.server.data.config.migration.ConfigFileMigrateResult;
+import com.epam.aidial.core.server.data.config.migration.ConfigFileMigrateStatus;
 import com.epam.aidial.core.server.data.ValidationResult;
 import com.epam.aidial.core.server.data.ValidationStatus;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
-import com.epam.aidial.core.server.service.ConfigApplyService;
-import com.epam.aidial.core.server.service.ConfigManifestSupport;
-import com.epam.aidial.core.server.service.ConfigValidateService;
-import com.epam.aidial.core.server.util.ConfigEntityCodec;
+import com.epam.aidial.core.server.service.config.ConfigApplyService;
+import com.epam.aidial.core.server.service.config.ConfigManifestSupport;
+import com.epam.aidial.core.server.service.config.ConfigValidationService;
+import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
 import com.epam.aidial.core.server.util.HashUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -58,7 +58,7 @@ import java.util.function.Function;
  * Admin-triggered, on-demand copy of file-defined config entities into the {@code platform} blob
  * bucket. Migration is never automatic on startup — that would resurrect an API-deleted entity on
  * restart. Reuses {@link ConfigApplyService}'s per-kind write pipeline for the real run and
- * {@link ConfigValidateService} for the dry-run precheck, plus manifest-shape helpers (parsing,
+ * {@link ConfigValidationService} for the dry-run precheck, plus manifest-shape helpers (parsing,
  * scratch, dependency ordering) from {@link ConfigManifestSupport}.
  */
 public class ConfigFileMigrateController {
@@ -87,7 +87,7 @@ public class ConfigFileMigrateController {
     private final AsyncTaskExecutor taskExecutor;
     private final LockService lockService;
     private final ConfigApplyService applyService;
-    private final ConfigValidateService validateService;
+    private final ConfigValidationService validateService;
     private final ResourceService resourceService;
 
     public ConfigFileMigrateController(ProxyContext context,
@@ -96,7 +96,7 @@ public class ConfigFileMigrateController {
                                        AsyncTaskExecutor taskExecutor,
                                        LockService lockService,
                                        ConfigApplyService applyService,
-                                       ConfigValidateService validateService,
+                                       ConfigValidationService validateService,
                                        ResourceService resourceService) {
         this.context = context;
         this.authorizationService = authorizationService;
@@ -398,7 +398,7 @@ public class ConfigFileMigrateController {
     }
 
     /**
-     * dry-run: validates immediately (no write) via {@link ConfigValidateService#validateOnly} and
+     * dry-run: validates immediately (no write) via {@link ConfigValidationService#validateOnly} and
      * reports the outcome right away. Real run: defers to {@code toApply}, applied and flushed once
      * for the whole batch by {@link ConfigApplyService#applyEntries} at the end of {@link
      * #runMigration}.

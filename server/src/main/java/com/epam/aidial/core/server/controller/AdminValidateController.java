@@ -13,8 +13,8 @@ import com.epam.aidial.core.server.data.AdminValidateResponse;
 import com.epam.aidial.core.server.data.ValidationResult;
 import com.epam.aidial.core.server.data.ValidationStatus;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
-import com.epam.aidial.core.server.service.ConfigManifestSupport;
-import com.epam.aidial.core.server.service.ConfigValidateService;
+import com.epam.aidial.core.server.service.config.ConfigManifestSupport;
+import com.epam.aidial.core.server.service.config.ConfigValidationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -33,7 +33,7 @@ import java.util.List;
  * Phase 4 scope (design 03 §6) is multi-entity, batch-aware with {@code precheck} semantics —
  * predicts the outcome of the matching {@code POST /v1/admin/apply} payload without mutation.
  * Shares the validation engine with {@code /v1/admin/apply}'s {@code precheck=true} phase via
- * {@link ConfigValidateService} so {@code precheck=true} guarantees apply-parity: if validate
+ * {@link ConfigValidationService} so {@code precheck=true} guarantees apply-parity: if validate
  * returns 200, apply would not unit-reject; if validate returns 422, apply with
  * {@code precheck=true} would also 422.
  */
@@ -42,13 +42,13 @@ public class AdminValidateController implements Controller {
     private final ProxyContext context;
     private final ConfigAuthorizationService authorizationService;
     private final MergedConfigStore mergedConfigStore;
-    private final ConfigValidateService validateService;
+    private final ConfigValidationService validateService;
     private final AsyncTaskExecutor taskExecutor;
 
     public AdminValidateController(ProxyContext context,
                                    ConfigAuthorizationService authorizationService,
                                    MergedConfigStore mergedConfigStore,
-                                   ConfigValidateService validateService,
+                                   ConfigValidationService validateService,
                                    AsyncTaskExecutor taskExecutor) {
         this.context = context;
         this.authorizationService = authorizationService;

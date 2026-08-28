@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.service;
+package com.epam.aidial.core.server.service.config;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
@@ -13,7 +13,6 @@ import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.data.AdminManifest;
-import com.epam.aidial.core.server.util.ConfigEntityCodec;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -22,6 +21,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import lombok.experimental.UtilityClass;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.Comparator;
@@ -31,10 +31,11 @@ import java.util.Map;
 
 /**
  * Manifest-shape helpers shared by {@link ConfigApplyService} (real-apply) and
- * {@link ConfigValidateService} (precheck) — parsing/naming rules, dependency ordering, scratch
+ * {@link ConfigValidationService} (precheck) — parsing/naming rules, dependency ordering, scratch
  * construction/mutation, and cross-entity validation that neither side owns exclusively.
  */
-public final class ConfigManifestSupport {
+@UtilityClass
+public class ConfigManifestSupport {
 
     static final String SETTINGS_SINGLETON_NAME = "global";
 
@@ -70,9 +71,6 @@ public final class ConfigManifestSupport {
             "Model", "models",
             "ToolSet", "toolsets",
             "Application", "applications");
-
-    private ConfigManifestSupport() {
-    }
 
     public static Config newScratch(MergedConfigStore mergedConfigStore) {
         Config live = mergedConfigStore.get();
@@ -163,7 +161,7 @@ public final class ConfigManifestSupport {
     }
 
     /**
-     * Shared by {@link ConfigValidateService#validateOnly} (precheck) and the real-apply
+     * Shared by {@link ConfigValidationService#validateOnly} (precheck) and the real-apply
      * {@code applyX} methods on {@link ConfigApplyService}: non-null iff {@code parsed}'s short
      * name is already claimed by a different model/application/interceptor/toolset in
      * {@code scratch}. See {@link ConfigPostProcessor#isDeploymentIdTakenByAnotherDeploymentType}.
@@ -176,7 +174,7 @@ public final class ConfigManifestSupport {
     }
 
     /**
-     * Shared by {@link ConfigValidateService#validateOnly} (precheck) and
+     * Shared by {@link ConfigValidationService#validateOnly} (precheck) and
      * {@link ConfigApplyService#applySchema} (real-apply): validates a Schema/CatalogSchema spec
      * and, if it's well-formed, checks its {@code $id} for an in-place change or a collision
      * against a different blob via {@link MergedConfigStore#validateSchemaId}.

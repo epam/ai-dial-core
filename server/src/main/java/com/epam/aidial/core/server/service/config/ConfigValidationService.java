@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.service;
+package com.epam.aidial.core.server.service.config;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
@@ -14,8 +14,7 @@ import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.data.AdminManifest;
 import com.epam.aidial.core.server.data.ValidationResult;
 import com.epam.aidial.core.server.data.ValidationStatus;
-import com.epam.aidial.core.server.service.ConfigManifestSupport.ParsedName;
-import com.epam.aidial.core.server.util.ConfigEntityCodec;
+import com.epam.aidial.core.server.service.config.ConfigManifestSupport.ParsedName;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -31,12 +30,12 @@ import java.util.List;
  * {@code /v1/admin/apply}: validates a manifest against {@code scratch} without writing anything.
  * Shares manifest-shape helpers with {@link ConfigApplyService} via {@link ConfigManifestSupport}.
  */
-public class ConfigValidateService {
+public class ConfigValidationService {
 
     private final ResourceService resourceService;
     private final boolean softValidation;
 
-    public ConfigValidateService(ResourceService resourceService, boolean softValidation) {
+    public ConfigValidationService(ResourceService resourceService, boolean softValidation) {
         this.resourceService = resourceService;
         this.softValidation = softValidation;
     }

@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.service;
+package com.epam.aidial.core.server.service.config;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
@@ -18,8 +18,10 @@ import com.epam.aidial.core.server.data.AdminApplyStatus;
 import com.epam.aidial.core.server.data.AdminManifest;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.ApiKeyStore;
-import com.epam.aidial.core.server.service.ConfigManifestSupport.ParsedName;
-import com.epam.aidial.core.server.util.ConfigEntityCodec;
+import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
+import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.ToolSetService;
+import com.epam.aidial.core.server.service.config.ConfigManifestSupport.ParsedName;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
@@ -40,7 +42,7 @@ import java.util.Map;
  * Real-apply engine behind the write phase of {@code /v1/admin/apply} and
  * {@code /v1/admin/config/file/migrate} — writes each config entity to blob storage directly or
  * via {@link ApplicationService}/{@link ToolSetService}. Shares its precheck validation with
- * {@link ConfigValidateService} and manifest-shape helpers (parsing, scratch, dependency
+ * {@link ConfigValidationService} and manifest-shape helpers (parsing, scratch, dependency
  * ordering) with {@link ConfigManifestSupport}.
  */
 @Slf4j
@@ -79,7 +81,7 @@ public class ConfigApplyService {
      */
     public List<EntityResult> applyEntries(List<AdminManifest> entries, Config scratch) {
         List<EntityResult> results = new ArrayList<>();
-        // Slice 4S.4: collect partial-update changes per applied entity; flush as one applyBatch
+        // Collect partial-update changes per applied entity; flush as one applyBatch
         // after the apply loop so the merged Config swap happens once, after all blobs are written.
         List<EntityChange> pendingChanges = new ArrayList<>();
         GlobalSettings pendingSettings = null;

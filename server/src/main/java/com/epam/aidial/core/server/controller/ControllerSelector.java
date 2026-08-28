@@ -12,8 +12,8 @@ import com.epam.aidial.core.server.controller.route.GlobalRouteController;
 import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
-import com.epam.aidial.core.server.service.ConfigApplyService;
-import com.epam.aidial.core.server.service.ConfigValidateService;
+import com.epam.aidial.core.server.service.config.ConfigApplyService;
+import com.epam.aidial.core.server.service.config.ConfigValidationService;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.UrlUtil;
@@ -478,7 +478,7 @@ public class ControllerSelector {
         post(RouteTemplate.CONFIG_VALIDATE, (proxy, context, pathMatcher) -> {
             ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
             MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
-            ConfigValidateService validateService = new ConfigValidateService(
+            ConfigValidationService validateService = new ConfigValidationService(
                     proxy.getResourceService(), mergedConfigStore.isSoftValidation());
             AdminValidateController controller = new AdminValidateController(
                     context, authService, mergedConfigStore, validateService, proxy.getTaskExecutor());
@@ -494,7 +494,7 @@ public class ControllerSelector {
                     proxy.getApiKeyStore(),
                     proxy.getApplicationService(),
                     proxy.getToolSetService());
-            ConfigValidateService validateService = new ConfigValidateService(
+            ConfigValidationService validateService = new ConfigValidationService(
                     proxy.getResourceService(), mergedConfigStore.isSoftValidation());
             AdminApplyController controller = new AdminApplyController(
                     context, authService, proxy.getTaskExecutor(), proxy.getLockService(),
@@ -511,7 +511,7 @@ public class ControllerSelector {
                     proxy.getApiKeyStore(),
                     proxy.getApplicationService(),
                     proxy.getToolSetService());
-            ConfigValidateService validateService = new ConfigValidateService(
+            ConfigValidationService validateService = new ConfigValidationService(
                     proxy.getResourceService(), mergedConfigStore.isSoftValidation());
             ConfigFileMigrateController controller = new ConfigFileMigrateController(
                     context, authService, mergedConfigStore, proxy.getTaskExecutor(),

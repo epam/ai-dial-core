@@ -1,5 +1,6 @@
-package com.epam.aidial.core.server.util;
+package com.epam.aidial.core.server.service.config;
 
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.core.JsonProcessingException;
