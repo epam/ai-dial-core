@@ -40,7 +40,7 @@ public class AdminApplyController {
     private final LockService lockService;
     private final MergedConfigStore mergedConfigStore;
     private final ConfigApplyService applyService;
-    private final ConfigValidationService validateService;
+    private final ConfigValidationService validationService;
 
     public AdminApplyController(ProxyContext context,
                                 ConfigAuthorizationService authorizationService,
@@ -48,14 +48,14 @@ public class AdminApplyController {
                                 LockService lockService,
                                 MergedConfigStore mergedConfigStore,
                                 ConfigApplyService applyService,
-                                ConfigValidationService validateService) {
+                                ConfigValidationService validationService) {
         this.context = context;
         this.authorizationService = authorizationService;
         this.taskExecutor = taskExecutor;
         this.lockService = lockService;
         this.mergedConfigStore = mergedConfigStore;
         this.applyService = applyService;
-        this.validateService = validateService;
+        this.validationService = validationService;
     }
 
     @ApiOperation(
@@ -142,7 +142,7 @@ public class AdminApplyController {
             List<ConfigApplyService.EntityResult> precheckResults = new ArrayList<>();
             boolean anyFailure = false;
             for (AdminManifest entry : entries) {
-                ValidationResult result = validateService.validateOnly(entry, scratch);
+                ValidationResult result = validationService.validateOnly(entry, scratch);
                 if (!ValidationStatus.VALID.equals(result.status())) {
                     anyFailure = true;
                     // Mirror /v1/admin/validate: the offending entry stays FAILED (carrying its

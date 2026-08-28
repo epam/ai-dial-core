@@ -45,7 +45,9 @@ import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
+import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
@@ -76,6 +78,8 @@ import com.epam.aidial.core.server.service.VertxTimerService;
 import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.service.clientchannel.ClientChannelService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
+import com.epam.aidial.core.server.service.config.ConfigApplyService;
+import com.epam.aidial.core.server.service.config.ConfigValidationService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceSweepService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
@@ -287,6 +291,14 @@ public class AiDial {
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,
                     accessService, encryptionService, operatorService, generator, settings("codeInterpreter"));
 
+            ConfigAuthorizationService configAuthService = new AdminRoleAuthorizationService(proxy.getAccessService());
+
+            ConfigApplyService configApplyService = new ConfigApplyService(
+                    mergedConfigStore, resourceService, secretFieldProcessor, mergedConfigStore.isSoftValidation(),
+                    apiKeyStore, applicationService, toolSetService);
+            ConfigValidationService configValidationService = new ConfigValidationService(
+                    resourceService, mergedConfigStore.isSoftValidation());
+
             TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, resourceService);
 
             HeartbeatService heartbeatService = new HeartbeatService(
@@ -354,7 +366,8 @@ public class AiDial {
                     resourceAuthSettingsService, resourceCredentialsService,
                     perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
                     printAuthorizationHeader,
-                    responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator);
+                    responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
+                    configAuthService, configApplyService, configValidationService);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

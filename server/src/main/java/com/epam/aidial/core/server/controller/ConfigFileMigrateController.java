@@ -87,7 +87,7 @@ public class ConfigFileMigrateController {
     private final AsyncTaskExecutor taskExecutor;
     private final LockService lockService;
     private final ConfigApplyService applyService;
-    private final ConfigValidationService validateService;
+    private final ConfigValidationService validationService;
     private final ResourceService resourceService;
 
     public ConfigFileMigrateController(ProxyContext context,
@@ -96,7 +96,7 @@ public class ConfigFileMigrateController {
                                        AsyncTaskExecutor taskExecutor,
                                        LockService lockService,
                                        ConfigApplyService applyService,
-                                       ConfigValidationService validateService,
+                                       ConfigValidationService validationService,
                                        ResourceService resourceService) {
         this.context = context;
         this.authorizationService = authorizationService;
@@ -104,7 +104,7 @@ public class ConfigFileMigrateController {
         this.taskExecutor = taskExecutor;
         this.lockService = lockService;
         this.applyService = applyService;
-        this.validateService = validateService;
+        this.validationService = validationService;
         this.resourceService = resourceService;
     }
 
@@ -409,7 +409,7 @@ public class ConfigFileMigrateController {
             toApply.add(manifest);
             return;
         }
-        ValidationResult validation = validateService.validateOnly(manifest, scratch);
+        ValidationResult validation = validationService.validateOnly(manifest, scratch);
         if (ValidationStatus.VALID.equals(validation.status())) {
             results.add(new ConfigFileMigrateResult(manifest.name(), ConfigFileMigrateStatus.WOULD_MIGRATE, null));
             ConfigManifestSupport.mutateScratch(scratch, manifest);

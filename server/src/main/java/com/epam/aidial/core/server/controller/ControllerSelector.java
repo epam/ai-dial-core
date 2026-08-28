@@ -476,43 +476,27 @@ public class ControllerSelector {
             };
         });
         post(RouteTemplate.CONFIG_VALIDATE, (proxy, context, pathMatcher) -> {
-            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+            ConfigAuthorizationService authService = proxy.getConfigAuthService();
             MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
-            ConfigValidationService validateService = new ConfigValidationService(
-                    proxy.getResourceService(), mergedConfigStore.isSoftValidation());
-            AdminValidateController controller = new AdminValidateController(
-                    context, authService, mergedConfigStore, validateService, proxy.getTaskExecutor());
-            return controller::handle;
+            ConfigValidationService validationService = proxy.getConfigValidationService();
+            return new AdminValidateController(
+                    context, authService, mergedConfigStore, validationService, proxy.getTaskExecutor());
         });
         post(RouteTemplate.CONFIG_APPLY, (proxy, context, pathMatcher) -> {
-            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+            ConfigAuthorizationService authService = proxy.getConfigAuthService();
             MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
-            ConfigApplyService applyService = new ConfigApplyService(
-                    mergedConfigStore, proxy.getResourceService(),
-                    mergedConfigStore.getSecretFieldProcessor(),
-                    mergedConfigStore.isSoftValidation(),
-                    proxy.getApiKeyStore(),
-                    proxy.getApplicationService(),
-                    proxy.getToolSetService());
-            ConfigValidationService validateService = new ConfigValidationService(
-                    proxy.getResourceService(), mergedConfigStore.isSoftValidation());
+            ConfigApplyService applyService = proxy.getConfigApplyService();
+            ConfigValidationService validationService = proxy.getConfigValidationService();
             AdminApplyController controller = new AdminApplyController(
                     context, authService, proxy.getTaskExecutor(), proxy.getLockService(),
-                    mergedConfigStore, applyService, validateService);
+                    mergedConfigStore, applyService, validationService);
             return controller::handle;
         });
         post(RouteTemplate.CONFIG_FILE_MIGRATE, (proxy, context, pathMatcher) -> {
-            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+            ConfigAuthorizationService authService = proxy.getConfigAuthService();
             MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
-            ConfigApplyService applyService = new ConfigApplyService(
-                    mergedConfigStore, proxy.getResourceService(),
-                    mergedConfigStore.getSecretFieldProcessor(),
-                    mergedConfigStore.isSoftValidation(),
-                    proxy.getApiKeyStore(),
-                    proxy.getApplicationService(),
-                    proxy.getToolSetService());
-            ConfigValidationService validateService = new ConfigValidationService(
-                    proxy.getResourceService(), mergedConfigStore.isSoftValidation());
+            ConfigApplyService applyService = proxy.getConfigApplyService();
+            ConfigValidationService validateService = proxy.getConfigValidationService();
             ConfigFileMigrateController controller = new ConfigFileMigrateController(
                     context, authService, mergedConfigStore, proxy.getTaskExecutor(),
                     proxy.getLockService(), applyService, validateService, proxy.getResourceService());

@@ -42,18 +42,18 @@ public class AdminValidateController implements Controller {
     private final ProxyContext context;
     private final ConfigAuthorizationService authorizationService;
     private final MergedConfigStore mergedConfigStore;
-    private final ConfigValidationService validateService;
+    private final ConfigValidationService validationService;
     private final AsyncTaskExecutor taskExecutor;
 
     public AdminValidateController(ProxyContext context,
                                    ConfigAuthorizationService authorizationService,
                                    MergedConfigStore mergedConfigStore,
-                                   ConfigValidationService validateService,
+                                   ConfigValidationService validationService,
                                    AsyncTaskExecutor taskExecutor) {
         this.context = context;
         this.authorizationService = authorizationService;
         this.mergedConfigStore = mergedConfigStore;
-        this.validateService = validateService;
+        this.validationService = validationService;
         this.taskExecutor = taskExecutor;
     }
 
@@ -149,7 +149,7 @@ public class AdminValidateController implements Controller {
             if (!ConfigManifestSupport.KIND_URL_SEGMENT.containsKey(entry.kind())) {
                 error = "Unknown kind: " + entry.kind();
             } else {
-                ValidationResult validation = validateService.validateOnly(entry, scratch);
+                ValidationResult validation = validationService.validateOnly(entry, scratch);
                 if (!ValidationStatus.VALID.equals(validation.status())) {
                     error = validation.error();
                 }
