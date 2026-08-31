@@ -384,6 +384,7 @@ public class DeploymentPostControllerTest {
         Buffer requestBody = Buffer.buffer();
         when(context.getRequestBody()).thenReturn(requestBody);
 
+        when(request.path()).thenReturn("/openai/deployments/app1/chat/completions");
         controller.handleProxyRequest(proxyRequest);
 
         assertNull(proxyHeaders.get(AUTHORIZATION));
@@ -394,7 +395,7 @@ public class DeploymentPostControllerTest {
     public void testHandleRequestBody_OverrideModelName() throws IOException {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, null, 0, 0, null));
+        when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, null, 0, 0, null, null, null));
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
@@ -437,7 +438,7 @@ public class DeploymentPostControllerTest {
     public void testHandleRequestBody_NotOverrideModelName() throws IOException {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, null, 0, 0, null));
+        when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, null, 0, 0, null, null, null));
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
@@ -479,7 +480,7 @@ public class DeploymentPostControllerTest {
     public void testHandleRequestBody_OverrideModelName_Application() throws IOException {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, null, 0, 0, null));
+        when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, null, 0, 0, null, null, null));
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
@@ -671,6 +672,7 @@ public class DeploymentPostControllerTest {
         proxyApiKeyData.setPerRequestKey("key1");
         when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
 
+        when(request.path()).thenReturn("/openai/deployments/app1/chat/completions");
         controller.handleProxyRequest(proxyRequest);
 
         assertEquals("key1", proxyHeaders.get(HEADER_API_KEY));
@@ -692,22 +694,56 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
         when(request.uri()).thenReturn("/test");
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
         when(request.headers()).thenReturn(new HeadersMultiMap());
         when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);
 
-        verify(rateLimiter).increase(eq(model), any(), any(), any(), any());
+        ArgumentCaptor<InterfaceType> interfaceTypeCaptor = ArgumentCaptor.forClass(InterfaceType.class);
+        verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), interfaceTypeCaptor.capture(), any());
+        assertEquals(InterfaceType.OPENAI_CHAT_COMPLETIONS, interfaceTypeCaptor.getValue());
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(any(AnalyticsLogContext.class));
         verify(tokenStatsTracker).endSpan(eq(context));
         verify(bufferingReadStream).end(response);
+    }
+
+    @Test
+    public void testHandleResponse_Model_Embeddings() {
+        Model model = new Model();
+        when(context.getDeployment()).thenReturn(model);
+        when(context.getUserId()).thenReturn("test-user");
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(proxy.getLogStore()).thenReturn(logStore);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        when(context.getResponseBody()).thenReturn(Buffer.buffer());
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(context.getRequest()).thenReturn(request);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.uri()).thenReturn("/test");
+        when(request.path()).thenReturn("/openai/deployments/name/embeddings");
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
+
+        controller.handleResponse(bufferingReadStream);
+
+        ArgumentCaptor<InterfaceType> interfaceTypeCaptor = ArgumentCaptor.forClass(InterfaceType.class);
+        verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), interfaceTypeCaptor.capture(), any());
+        assertEquals(InterfaceType.OPENAI_EMBEDDINGS, interfaceTypeCaptor.getValue());
     }
 
     @Test
@@ -735,7 +771,7 @@ public class DeploymentPostControllerTest {
 
         controller.handleResponse(bufferingReadStream);
 
-        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any());
         verify(tokenStatsTracker).getUsageStats(eq(context));
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(context).setUsagePerModel(any());
@@ -805,6 +841,7 @@ public class DeploymentPostControllerTest {
             return null;
         }).when(applicationSchemaService).consumeMetadataProperties(eq(application), any(ApplicationSchemaService.MetadataPropertiesConsumer.class));
 
+        when(request.path()).thenReturn("/openai/deployments/app1/chat/completions");
         controller.handleProxyRequest(proxyRequest);
 
         verify(proxyRequest).putHeader(eq(HEADER_APPLICATION_ID), eq("customApp"));
@@ -834,6 +871,7 @@ public class DeploymentPostControllerTest {
         Buffer requestBody = Buffer.buffer("{}");
         when(context.getRequestBody()).thenReturn(requestBody);
 
+        when(request.path()).thenReturn("/openai/deployments/app1/chat/completions");
         controller.handleProxyRequest(proxyRequest);
 
         verify(proxyRequest, never()).putHeader(eq(HEADER_APPLICATION_ID), anyString());
@@ -875,6 +913,7 @@ public class DeploymentPostControllerTest {
             return null;
         }).when(applicationSchemaService).consumeMetadataProperties(eq(application), any(ApplicationSchemaService.MetadataPropertiesConsumer.class));
 
+        when(request.path()).thenReturn("/openai/deployments/app1/chat/completions");
         controller.handleProxyRequest(proxyRequest);
 
         verify(proxyRequest).putHeader(eq(HEADER_APPLICATION_ID), eq("customApp"));
@@ -912,6 +951,7 @@ public class DeploymentPostControllerTest {
         Buffer requestBody = Buffer.buffer("{}");
         when(context.getRequestBody()).thenReturn(requestBody);
 
+        when(request.path()).thenReturn("/openai/deployments/app1/chat/completions");
         controller.handleProxyRequest(proxyRequest);
 
         verify(proxyRequest).putHeader(eq(HEADER_APPLICATION_ID), eq("customApp"));

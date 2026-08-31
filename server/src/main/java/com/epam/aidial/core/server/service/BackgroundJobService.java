@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
@@ -234,8 +235,11 @@ public class BackgroundJobService {
                     Future<Void> limitFuture = Future.succeededFuture();
                     if (deployment instanceof Model && hasUsage) {
                         Buffer requestBody = Buffer.buffer(jobRecord.requestBody());
+                        // null liveUsageNode: this poller never streams, result.body() is a single
+                        // buffered document, so ModelCostCalculator parses it directly.
                         limitFuture = rateLimiter.increase(
-                                deployment, responseMapping.getInitiatorBucket(), usage, requestBody, result.body())
+                                deployment, responseMapping.getInitiatorBucket(), usage, requestBody, result.body(),
+                                InterfaceType.OPENAI_RESPONSES, null)
                                 .transform(limitResult -> {
                                     if (limitResult.failed()) {
                                         log.warn("Failed to increase limit", limitResult.cause());

@@ -25,6 +25,7 @@ public class ExtractTerminalResponseFn extends BaseResponseFunction {
             JsonNode responseNode = tree.get("response");
             if (responseNode != null) {
                 assembledStreamingResponse = ProxyUtil.convertToString(responseNode);
+                context.setPricingUsageNode(responseNode);
             }
         }
         return Future.succeededFuture(tree);

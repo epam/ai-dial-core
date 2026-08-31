@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -94,6 +95,14 @@ public class SecretFieldProcessor {
                     }
                 }
             }
+            Class<?> valueType = valueClassWithEncryptedField(field);
+            if (valueType != null && target.get(name) instanceof ObjectNode entries) {
+                for (JsonNode entry : entries) {
+                    if (entry instanceof ObjectNode entryObj) {
+                        applyStrip(entryObj, valueType);
+                    }
+                }
+            }
         }
     }
 
@@ -134,6 +143,24 @@ public class SecretFieldProcessor {
                 if (targetArr instanceof ArrayNode targets && sourceArr instanceof ArrayNode sources) {
                     mergeArray(targets, sources, nestedType);
                 }
+            }
+            Class<?> valueType = valueClassWithEncryptedField(field);
+            if (valueType != null
+                    && target.get(name) instanceof ObjectNode targetEntries
+                    && source.get(name) instanceof ObjectNode sourceEntries) {
+                mergeMap(targetEntries, sourceEntries, valueType);
+            }
+        }
+    }
+
+    // A map keys itself, so entries pair by name rather than by the arrays' endpoint/index matching.
+    private void mergeMap(ObjectNode targets, ObjectNode sources, Class<?> valueType) {
+        Iterator<String> names = targets.fieldNames();
+        while (names.hasNext()) {
+            String name = names.next();
+            if (targets.get(name) instanceof ObjectNode targetEntry
+                    && sources.get(name) instanceof ObjectNode sourceEntry) {
+                mergeInto(targetEntry, sourceEntry, valueType);
             }
         }
     }
@@ -336,6 +363,29 @@ public class SecretFieldProcessor {
         }
         if (args[0] instanceof Class<?> elementClass && classHasEncryptedField(elementClass)) {
             return elementClass;
+        }
+        return null;
+    }
+
+    /**
+     * The value type of a {@code Map}-valued field carrying encrypted members, e.g.
+     * {@code Upstream.interfaces}. Its JSON shape is an object keyed by name, so the JsonNode-level
+     * passes have to descend into it the same way they descend into arrays.
+     */
+    private static Class<?> valueClassWithEncryptedField(Field field) {
+        java.lang.reflect.Type generic = field.getGenericType();
+        if (!(generic instanceof java.lang.reflect.ParameterizedType pt)) {
+            return null;
+        }
+        if (!Map.class.isAssignableFrom(field.getType())) {
+            return null;
+        }
+        java.lang.reflect.Type[] args = pt.getActualTypeArguments();
+        if (args.length != 2) {
+            return null;
+        }
+        if (args[1] instanceof Class<?> valueClass && classHasEncryptedField(valueClass)) {
+            return valueClass;
         }
         return null;
     }

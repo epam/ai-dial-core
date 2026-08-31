@@ -193,7 +193,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        sendProxyRequest(proxyRequest, Upstream::getEndpoint)
+        sendProxyRequest(proxyRequest, InterfaceType.ANTHROPIC_MESSAGES)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyResponseError);
     }

@@ -13,6 +13,8 @@ import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.RoleBasedEntity;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
@@ -132,6 +134,7 @@ public final class ConfigPostProcessor {
         model.setName(mapKey);
         List<ValidationWarning> warnings = new ArrayList<>();
         validatePricing(model, warnings);
+        validateUpstreamInterfaces(model, warnings);
         if (onSkip != null) {
             validateCrossReferences(model, config, warnings);
         }
@@ -228,6 +231,7 @@ public final class ConfigPostProcessor {
             log.debug("Loading {}", model);
             List<ValidationWarning> warnings = new ArrayList<>();
             validatePricing(model, warnings);
+            validateUpstreamInterfaces(model, warnings);
             // Cross-ref check is skip-mode-only — file-loaded abort-mode path (onSkip == null)
             // preserves design 02 §4.2's allowance for pre-existing file-side inconsistency.
             // Strict-mode 422 is enforced at the write controller, not here. Pricing validation
@@ -283,6 +287,40 @@ public final class ConfigPostProcessor {
         if (hasCacheRate && !"token".equals(pricing.getUnit())) {
             warnings.add(new ValidationWarning("pricing",
                     "cacheRead/cacheWrite pricing requires pricing.unit = \"token\""));
+        }
+    }
+
+    /**
+     * Validates an upstream declaring {@code interfaces}. Every entry must resolve to a provider url —
+     * an entry with no {@code endpoint} of its own needs the upstream's {@code baseUrl} to complete it,
+     * or it declares an interface the upstream cannot serve and silently sends no
+     * {@code X-UPSTREAM-ENDPOINT}. The upstream must also carry an {@code id}: {@code endpoint} is what
+     * identifies an upstream to {@code X-UPSTREAM-ID} routing and to prompt-cache pinning, and this
+     * shape does not have one.
+     */
+    public static void validateUpstreamInterfaces(Model model, List<ValidationWarning> warnings) {
+        List<Upstream> upstreams = model.getUpstreams();
+        for (int i = 0; i < upstreams.size(); i++) {
+            Upstream upstream = upstreams.get(i);
+            Map<String, UpstreamInterface> interfaces = upstream.getInterfaces();
+            if (interfaces == null || interfaces.isEmpty()) {
+                continue;
+            }
+            if (upstream.getId() == null || upstream.getId().isBlank()) {
+                warnings.add(new ValidationWarning("upstreams[" + i + "].id",
+                        "An upstream declaring interfaces requires an id"));
+            }
+            if (upstream.getBaseUrl() != null) {
+                continue;
+            }
+            for (Map.Entry<String, UpstreamInterface> entry : interfaces.entrySet()) {
+                if (entry.getValue().getEndpoint() == null) {
+                    warnings.add(new ValidationWarning("upstreams[" + i + "].interfaces." + entry.getKey(),
+                            "Interface '" + entry.getKey() + "' declares no endpoint and the upstream "
+                                    + "declares no baseUrl")
+                    );
+                }
+            }
         }
     }
 

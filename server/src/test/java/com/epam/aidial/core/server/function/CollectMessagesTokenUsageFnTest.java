@@ -63,6 +63,46 @@ class CollectMessagesTokenUsageFnTest {
         assertEquals(6, usage.getCompletionTokensDetails().getReasoningTokens());
     }
 
+    @Test
+    public void testMergesPricingUsageNodeAcrossEvents() throws JsonProcessingException {
+        doCallRealMethod().when(context).setTokenUsage(any());
+        doCallRealMethod().when(context).setPricingUsageNode(any());
+        doCallRealMethod().when(context).getPricingUsageNode();
+
+        CollectMessagesTokenUsageFn fn = new CollectMessagesTokenUsageFn(null, context);
+
+        fn.apply(tree("""
+                {
+                  "type": "message_start",
+                  "message": {
+                    "usage": {
+                      "input_tokens": 249500,
+                      "cache_read_input_tokens": 400,
+                      "cache_creation_input_tokens": 100,
+                      "cache_creation": { "ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 100 },
+                      "service_tier": "standard"
+                    }
+                  }
+                }
+                """));
+        fn.apply(tree("""
+                {
+                  "type": "message_delta",
+                  "usage": { "output_tokens": 8 }
+                }
+                """));
+
+        JsonNode pricingUsageNode = context.getPricingUsageNode();
+        assertNotNull(pricingUsageNode);
+        JsonNode usage = pricingUsageNode.path("usage");
+        assertEquals(249500, usage.path("input_tokens").asLong());
+        assertEquals(400, usage.path("cache_read_input_tokens").asLong());
+        assertEquals(100, usage.path("cache_creation_input_tokens").asLong());
+        assertEquals(100, usage.path("cache_creation").path("ephemeral_1h_input_tokens").asLong());
+        assertEquals("standard", usage.path("service_tier").asText());
+        assertEquals(8, usage.path("output_tokens").asLong());
+    }
+
     private static JsonNode tree(String json) throws JsonProcessingException {
         return ProxyUtil.MAPPER.readTree(json);
     }

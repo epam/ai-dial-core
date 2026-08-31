@@ -3,6 +3,8 @@ package com.epam.aidial.core.server.function;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
+import com.epam.aidial.core.server.util.MergeChunks;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 
@@ -22,6 +24,9 @@ public class CollectMessagesTokenUsageFn extends BaseResponseFunction {
     private long cacheReadTokens;
     private long cacheCreationTokens;
     private long thinkingTokens;
+    // Merged verbatim, unlike the scalars above, so pricing-relevant fields the scalars don't
+    // capture (service_tier, the cache_creation TTL-bucket breakdown) survive for cost evaluation.
+    private JsonNode mergedUsage;
 
     public CollectMessagesTokenUsageFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
@@ -43,6 +48,8 @@ public class CollectMessagesTokenUsageFn extends BaseResponseFunction {
             thinkingTokens = usage.path("output_tokens_details").path("thinking_tokens").asLong(thinkingTokens);
             context.setTokenUsage(MessagesTokenUsageParser.build(
                     inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, thinkingTokens));
+            mergedUsage = MergeChunks.merge(mergedUsage, usage);
+            context.setPricingUsageNode(ProxyUtil.MAPPER.createObjectNode().set("usage", mergedUsage));
         }
         return Future.succeededFuture(tree);
     }

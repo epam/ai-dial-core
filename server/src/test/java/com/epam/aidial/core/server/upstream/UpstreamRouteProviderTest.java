@@ -1,8 +1,10 @@
 package com.epam.aidial.core.server.upstream;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
@@ -169,6 +171,27 @@ public class UpstreamRouteProviderTest {
         HttpException ex = assertThrows(HttpException.class, () -> provider.get(model, null, "missing"));
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
         assertEquals("Unknown upstream id missing", ex.getMessage());
+    }
+
+    @Test
+    public void testGet_UpstreamId_MatchesInterfacesConfiguredUpstreamById() {
+        // an upstream configured through interfaces carries no endpoint, so its id is what addresses it
+        Model model = new Model();
+        model.setName("model");
+        Upstream legacy = new Upstream();
+        legacy.setId("alpha");
+        legacy.setEndpoint("ep1");
+        Upstream interfaced = new Upstream();
+        interfaced.setId("fireworks");
+        interfaced.setBaseUrl("https://provider");
+        interfaced.setInterfaces(Map.of(
+                InterfaceType.ANTHROPIC_MESSAGES.getValue(), new UpstreamInterface()));
+        model.setUpstreams(List.of(legacy, interfaced));
+
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
+
+        assertEquals(interfaced, provider.get(model, null, "fireworks").next());
+        assertEquals(legacy, provider.get(model, null, "alpha").next());
     }
 
     @Test

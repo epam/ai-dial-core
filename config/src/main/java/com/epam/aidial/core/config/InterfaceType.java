@@ -14,17 +14,40 @@ import java.util.List;
 public enum InterfaceType {
 
     @JsonAlias({"openai_chat_completions"})
-    OPENAI_CHAT_COMPLETIONS("openaiChatCompletions", List.of("prefix.body.tools", "prefix.body.messages")),
+    OPENAI_CHAT_COMPLETIONS(
+            "openaiChatCompletions",
+            "/v1/chat/completions",
+            List.of("prefix.body.tools", "prefix.body.messages")
+    ),
     // an embeddings request carries no prompt prefix to cache, so it contributes no cache keys
     @JsonAlias({"openai_embeddings"})
-    OPENAI_EMBEDDINGS("openaiEmbeddings", List.of()),
+    OPENAI_EMBEDDINGS(
+            "openaiEmbeddings",
+            "/v1/embeddings",
+            List.of()
+    ),
     @JsonAlias({"openai_responses"})
-    OPENAI_RESPONSES("openaiResponses", List.of("prefix.body.tools", "prefix.body.instructions", "prefix.body.input")),
+    OPENAI_RESPONSES(
+            "openaiResponses",
+            "/v1/responses",
+            List.of("prefix.body.tools", "prefix.body.instructions", "prefix.body.input")
+    ),
     @JsonAlias({"anthropic_messages"})
-    ANTHROPIC_MESSAGES("anthropicMessages", List.of("prefix.body.tools", "prefix.body.system", "prefix.body.messages"));
+    ANTHROPIC_MESSAGES(
+            "anthropicMessages",
+            "/v1/messages",
+            List.of("prefix.body.tools", "prefix.body.system", "prefix.body.messages")
+    );
 
     @JsonValue
     private final String value;
+
+    /**
+     * The path this interface's own API spec serves it at, with no DIAL ingress keyword
+     * ({@code /openai}, {@code /anthropic}) in front of it. Appended to {@code Upstream#baseUrl}
+     * to address a provider that hosts the API where its spec says it should be.
+     */
+    private final String apiPath;
 
     /**
      * The node order used to build upstream cache keys, hardcoded per the wire format of this
@@ -33,8 +56,9 @@ public enum InterfaceType {
      */
     private final List<String> fieldsHashingOrder;
 
-    InterfaceType(String value, List<String> fieldsHashingOrder) {
+    InterfaceType(String value, String apiPath, List<String> fieldsHashingOrder) {
         this.value = value;
+        this.apiPath = apiPath;
         this.fieldsHashingOrder = fieldsHashingOrder;
     }
 

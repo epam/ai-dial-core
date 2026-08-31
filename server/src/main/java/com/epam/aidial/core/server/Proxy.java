@@ -19,6 +19,7 @@ import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
@@ -46,6 +47,8 @@ import com.epam.aidial.core.server.service.UserExternalServiceService;
 import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.service.clientchannel.ClientChannelService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
+import com.epam.aidial.core.server.service.config.ConfigApplyService;
+import com.epam.aidial.core.server.service.config.ConfigValidationService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -186,6 +189,9 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ResponsesApiClient responsesApiClient;
     // Generates the unique portion of a DIAL response ID
     private final Supplier<String> generator;
+    private final ConfigAuthorizationService configAuthService;
+    private final ConfigApplyService configApplyService;
+    private final ConfigValidationService configValidationService;
 
     @Override
     public void handle(HttpServerRequest request) {

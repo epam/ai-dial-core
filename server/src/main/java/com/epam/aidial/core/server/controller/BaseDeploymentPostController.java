@@ -23,6 +23,7 @@ import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
+import com.epam.aidial.core.server.util.UpstreamInterfaceUtil;
 import com.epam.aidial.core.server.util.UsagePerModelInjector;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -190,7 +191,8 @@ public class BaseDeploymentPostController {
             String bucket = BucketBuilder.buildInitiatorBucket(context);
             TokenUsage usage = context.getTokenUsage();
             return proxy.getRateLimiter().increase(
-                    context.getDeployment(), bucket, usage, context.getRequestBody(), context.getResponseBody())
+                    context.getDeployment(), bucket, usage, context.getRequestBody(), context.getResponseBody(),
+                    interfaceType(), context.getPricingUsageNode())
                     .transform(result -> {
                         if (result.failed()) {
                             log.warn("Failed to increase limit", result.cause());
@@ -255,6 +257,18 @@ public class BaseDeploymentPostController {
     }
 
     /**
+     * Which upstream interface shape this controller's response is in, for pricing decision-tree
+     * evaluation. Overridable so provider-specific controllers (Anthropic Messages, OpenAI Responses)
+     * can report their own shape; the default covers the OpenAI Chat Completions path. A controller
+     * that serves more than one shape from the same class (e.g. {@code DeploymentPostController}
+     * also handling {@code /embeddings}) must override this to report the actual per-request shape -
+     * otherwise a non-chat-completions response silently gets evaluated against the wrong alias table.
+     */
+    protected InterfaceType interfaceType() {
+        return InterfaceType.OPENAI_CHAT_COMPLETIONS;
+    }
+
+    /**
      * Rewrites {@code body}'s {@code statistics.usage_per_model} to Core's own value, or strips it
      * entirely when Core has nothing to report - a deployment's own response is never trusted to
      * carry this field through untouched, the same guarantee {@code StripUsagePerModelFn} gives the
@@ -302,8 +316,7 @@ public class BaseDeploymentPostController {
         );
     }
 
-    protected Future<HttpClientResponse> sendProxyRequest(
-            HttpClientRequest proxyRequest, Function<Upstream, String> upstreamSelector) {
+    protected Future<HttpClientResponse> sendProxyRequest(HttpClientRequest proxyRequest, InterfaceType type) {
         log.info("Connected to origin. Deployment: {}. Address: {}",
                 context.getDeployment().getName(),
                 proxyRequest.connection().remoteAddress());
@@ -325,9 +338,9 @@ public class BaseDeploymentPostController {
 
         if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
             Upstream upstream = Objects.requireNonNull(context.getUpstreamRoute().get());
-            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstreamSelector.apply(upstream))
-                    .putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey())
-                    .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, UpstreamExtraDataMerger.merge(upstream))
+            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, UpstreamInterfaceUtil.resolveEndpoint(upstream, type))
+                    .putHeader(Proxy.HEADER_UPSTREAM_KEY, UpstreamInterfaceUtil.resolveKey(upstream, type))
+                    .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, UpstreamExtraDataMerger.merge(upstream, type))
                     .putHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH, context.getUpstreamRoute().getBreakpointPath())
                     .putHeader(Proxy.HEADER_CACHE_EXTRA_METADATA, context.getUpstreamRoute().getExtraMetadata());
         }

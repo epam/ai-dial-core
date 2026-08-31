@@ -473,26 +473,13 @@ public class ControllerSelector {
                 default -> null;
             };
         });
-        post(RouteTemplate.CONFIG_VALIDATE, (proxy, context, pathMatcher) -> {
-            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
-            MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
-            AdminValidateController controller = new AdminValidateController(
-                    context, authService, mergedConfigStore,
-                    proxy.getResourceService(), proxy.getTaskExecutor());
+        post(RouteTemplate.CONFIG_VALIDATE, (proxy, context, pathMatcher) -> new AdminValidateController(proxy, context));
+        post(RouteTemplate.CONFIG_APPLY, (proxy, context, pathMatcher) -> {
+            AdminApplyController controller = new AdminApplyController(proxy, context);
             return controller::handle;
         });
-        post(RouteTemplate.CONFIG_APPLY, (proxy, context, pathMatcher) -> {
-            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
-            MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
-            AdminApplyController controller = new AdminApplyController(
-                    context, authService, mergedConfigStore,
-                    proxy.getResourceService(), proxy.getTaskExecutor(),
-                    mergedConfigStore.getSecretFieldProcessor(),
-                    mergedConfigStore.isSoftValidation(),
-                    proxy.getApiKeyStore(),
-                    proxy.getApplicationService(),
-                    proxy.getToolSetService(),
-                    proxy.getLockService());
+        post(RouteTemplate.CONFIG_FILE_MIGRATE, (proxy, context, pathMatcher) -> {
+            ConfigFileMigrateController controller = new ConfigFileMigrateController(proxy, context);
             return controller::handle;
         });
         get(RouteTemplate.CONFIG_HEALTH, (proxy, context, pathMatcher) -> {

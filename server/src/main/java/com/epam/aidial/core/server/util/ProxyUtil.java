@@ -11,7 +11,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.MultiMap;
@@ -44,12 +43,6 @@ public class ProxyUtil {
     // overrides to READ_WRITE so the blob-write path can persist the ciphertext.
     public static final JsonMapper MAPPER = JsonMapper.builder()
             .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
-            .build();
-
-    public static final JsonMapper BLOB_MAPPER = JsonMapper.builder()
-            .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
-            .annotationIntrospector(new EncryptedFieldAnnotationIntrospector())
-            .addModule(new SimpleModule().setSerializerModifier(new EncryptedFieldBlobModifier()))
             .build();
 
     private static final MultiMap TRACE_HEADERS = MultiMap.caseInsensitiveMultiMap()

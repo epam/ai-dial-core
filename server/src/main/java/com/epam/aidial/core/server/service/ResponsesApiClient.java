@@ -1,10 +1,12 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
+import com.epam.aidial.core.server.util.UpstreamInterfaceUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -32,10 +34,14 @@ public class ResponsesApiClient {
                 .setIdleTimeout(clientOptions.getIdleTimeout());
         return httpClient.request(options)
                 .compose(request -> request
-                        .putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey())
-                        .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getResponsesEndpoint())
-                        .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, UpstreamExtraDataMerger.merge(upstream))
-                        .send());
+                        .putHeader(Proxy.HEADER_UPSTREAM_KEY,
+                                UpstreamInterfaceUtil.resolveKey(upstream, InterfaceType.OPENAI_RESPONSES))
+                        .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT,
+                                UpstreamInterfaceUtil.resolveEndpoint(upstream, InterfaceType.OPENAI_RESPONSES))
+                        .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA,
+                                UpstreamExtraDataMerger.merge(upstream, InterfaceType.OPENAI_RESPONSES))
+                        .send()
+                );
     }
 
     private static boolean isTerminal(String status) {

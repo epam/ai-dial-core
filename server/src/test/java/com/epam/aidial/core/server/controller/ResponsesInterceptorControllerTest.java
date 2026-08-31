@@ -199,6 +199,13 @@ public class ResponsesInterceptorControllerTest {
     }
 
     @Test
+    void interfaceType_reportsOpenAiResponses() {
+        ResponsesInterceptorController controller = new ResponsesInterceptorController(proxy, context, 0);
+
+        assertEquals(InterfaceType.OPENAI_RESPONSES, controller.interfaceType());
+    }
+
+    @Test
     void handleRequestBody_doesNotOverrideModelName() throws IOException {
         Interceptor interceptor = new Interceptor();
         interceptor.setName("interceptor1");

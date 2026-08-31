@@ -2104,6 +2104,44 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/admin/config/file/migrate:
+    post:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/migrate
+      operationId: migrateFileConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigFileMigrateRequest"
+        required: true
+      responses:
+        "200":
+          description: Migration report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigFileMigrateResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/models:
     get:
       tags:
@@ -14655,6 +14693,14 @@ components:
       type: array
       items:
         $ref: "#/components/schemas/MetadataBase"
+    Condition:
+      type: object
+      properties:
+        field:
+          type: string
+        operator:
+          $ref: "#/components/schemas/Operator"
+        value: {}
     Config:
       type: object
       properties:
@@ -14686,6 +14732,40 @@ components:
           $ref: "#/components/schemas/MapStringString"
         defaultLocale:
           type: string
+    ConfigFileMigrateRequest:
+      type: object
+      properties:
+        dryRun:
+          type: boolean
+        types:
+          type: array
+          items:
+            type: string
+    ConfigFileMigrateResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConfigFileMigrateResult"
+    ConfigFileMigrateResult:
+      type: object
+      properties:
+        id:
+          type: string
+        reason:
+          type: string
+        status:
+          $ref: "#/components/schemas/ConfigFileMigrateStatus"
+    ConfigFileMigrateStatus:
+      type: string
+      enum:
+      - migrated
+      - would_migrate
+      - skipped
+      - would_skip
+      - failed
+      - would_fail
     ConfigResourceControllerConfigWriteResponse:
       type: object
       properties:
@@ -15719,6 +15799,10 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/ToolSet"
+    MapStringUpstreamInterface:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/UpstreamInterface"
     McpMcpApps:
       type: object
       properties:
@@ -16001,6 +16085,15 @@ components:
           type: array
           items:
             type: string
+    Operator:
+      type: string
+      enum:
+      - EQ
+      - NE
+      - GT
+      - LT
+      - GE
+      - LE
     ParallelToolCalls:
       type: boolean
       description: Whether to enable parallel `function` calling during the `tool` use.
@@ -16033,9 +16126,9 @@ components:
         unit:
           type: string
         cacheRead:
-          type: string
+          $ref: "#/components/schemas/PricingRate"
         cacheWrite:
-          type: string
+          $ref: "#/components/schemas/PricingRate"
     PricingData:
       type: object
       properties:
@@ -16046,9 +16139,20 @@ components:
         unit:
           type: string
         cache_read:
-          type: string
+          $ref: "#/components/schemas/PricingRate"
         cache_write:
+          $ref: "#/components/schemas/PricingRate"
+    PricingRate:
+      type: object
+      properties:
+        ifFalse:
+          $ref: "#/components/schemas/PricingRate"
+        ifTrue:
+          $ref: "#/components/schemas/PricingRate"
+        rate:
           type: string
+        test:
+          $ref: "#/components/schemas/Condition"
     Prompt:
       type: object
       properties:
@@ -17076,6 +17180,23 @@ components:
           type: integer
         weight:
           type: integer
+        baseUrl:
+          type: string
+        interfaces:
+          $ref: "#/components/schemas/MapStringUpstreamInterface"
+    UpstreamInterface:
+      type: object
+      properties:
+        endpoint:
+          type: string
+        extraData:
+          type: string
+        key:
+          type: string
+          writeOnly: true
+        secretExtraData:
+          type: string
+          writeOnly: true
     UserInfoResponse:
       type: object
       properties:

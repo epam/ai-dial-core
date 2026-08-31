@@ -178,4 +178,9 @@ public class MessagesController extends MessagesBaseController {
         }
         return MessagesTokenUsageParser.parse(responseBody);
     }
+
+    @Override
+    protected InterfaceType interfaceType() {
+        return InterfaceType.ANTHROPIC_MESSAGES;
+    }
 }

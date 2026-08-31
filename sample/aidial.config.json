@@ -200,6 +200,35 @@
                 }
             },
             "userRoles": ["role3"]
+        },
+        "gpt-5.4-mini-multi-api-upstream": {
+            "type": "chat",
+            "overrideName": "gpt-5.4-mini",
+            "displayName": "GPT-5.4 mini (multi-API upstream)",
+            "interfaces": {
+                "openaiChatCompletions": {
+                    "base_url": "http://localhost:7005"
+                },
+                "anthropicMessages": {
+                    "base_url": "http://localhost:7005"
+                }
+            },
+            "upstreams": [
+                {
+                    "id": "fireworks",
+                    "key": "modelKey5",
+                    "extraData": {"region": "us-east-1"},
+                    "baseUrl": "https://api.fireworks.ai/inference",
+                    "interfaces": {
+                        "openaiChatCompletions": {},
+                        "anthropicMessages": {
+                            "endpoint": "https://api.fireworks.ai/inference/something-else/v1/messages",
+                            "key": "modelKey6"
+                        }
+                    }
+                }
+            ],
+            "userRoles": ["role1"]
         }
     },
     "toolsets": {
