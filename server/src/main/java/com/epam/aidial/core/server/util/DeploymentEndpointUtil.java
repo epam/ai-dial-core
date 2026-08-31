@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.DeploymentInterface;
+import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
@@ -18,6 +19,9 @@ import javax.annotation.Nullable;
  * advertises. A deployment carries two configuration shapes: the typed {@code interfaces} map, whose
  * {@code base_url} is a root the ingress path is appended to, and the pre-{@code interfaces} {@code endpoint}
  * and {@code responsesEndpoint} fields, which hold a complete url that already carries the route.
+ *
+ * <p>Within the map, the interface's own {@code base_url} wins over the deployment-level one, and the
+ * pre-{@code interfaces} fields are read only for a type the map does not declare.
  */
 @UtilityClass
 public class DeploymentEndpointUtil {
@@ -88,18 +92,44 @@ public class DeploymentEndpointUtil {
     }
 
     /**
-     * The {@code base_url} declared for the type, trailing slash stripped, or null when the type is not in
-     * the {@code interfaces} map.
+     * How the deployment serves the type. Both an interface declaring no {@code mode} and a type served by
+     * a pre-{@code interfaces} endpoint are {@link InterfaceMode#PASSTHROUGH}.
+     */
+    public InterfaceMode resolveMode(Deployment deployment, InterfaceType type) {
+        DeploymentInterface deploymentInterface = findInterface(deployment, type);
+        InterfaceMode mode = deploymentInterface == null ? null : deploymentInterface.getMode();
+        return mode == null ? InterfaceMode.PASSTHROUGH : mode;
+    }
+
+    /**
+     * The base url serving the type, trailing slash stripped: the interface's own {@code base_url}, the
+     * deployment-level {@code baseUrl} it falls back to, or null when the type is not in the
+     * {@code interfaces} map or neither declares one. A deployment-level {@code baseUrl} on its own serves
+     * nothing — an interface has to be declared to claim it.
      */
     @Nullable
     private String resolveInterfaceBaseUrl(Deployment deployment, InterfaceType type) {
-        Map<String, DeploymentInterface> interfaces = deployment.getInterfaces();
-        DeploymentInterface deploymentInterface = interfaces == null ? null : interfaces.get(type.getValue());
+        DeploymentInterface deploymentInterface = findInterface(deployment, type);
         if (deploymentInterface == null) {
             return null;
         }
-        String baseUrl = deploymentInterface.getBaseUrl();
+        String baseUrl = deploymentInterface.getBaseUrl() != null
+                ? deploymentInterface.getBaseUrl()
+                : deployment.getBaseUrl();
+        if (baseUrl == null) {
+            return null;
+        }
         return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+    }
+
+    /**
+     * The {@code interfaces} entry for the type, or null when the map has none — an interface mapped to an
+     * explicit {@code null} reads the same as an absent one.
+     */
+    @Nullable
+    private DeploymentInterface findInterface(Deployment deployment, InterfaceType type) {
+        Map<String, DeploymentInterface> interfaces = deployment.getInterfaces();
+        return interfaces == null ? null : interfaces.get(type.getValue());
     }
 
     /**

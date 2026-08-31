@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
@@ -188,11 +189,8 @@ public class BaseDeploymentPostController {
                 tokenUsage = new TokenUsage();
             }
             context.setTokenUsage(tokenUsage);
-            String bucket = BucketBuilder.buildInitiatorBucket(context);
             TokenUsage usage = context.getTokenUsage();
-            return proxy.getRateLimiter().increase(
-                    context.getDeployment(), bucket, usage, context.getRequestBody(), context.getResponseBody(),
-                    interfaceType(), context.getPricingUsageNode())
+            return increaseLimits(usage)
                     .transform(result -> {
                         if (result.failed()) {
                             log.warn("Failed to increase limit", result.cause());
@@ -210,6 +208,23 @@ public class BaseDeploymentPostController {
         // capture it alongside whatever its descendant Model spans already reported.
         TokenUsage ownUsage = parseTokenUsage(responseBody);
         return trackDeploymentStats(context.getDeployment().getName(), ownUsage, true);
+    }
+
+    /**
+     * Charges the request's usage to the initiator's token and cost limits, unless the interface it arrived
+     * on is served by a translator: the translator calls Core back to have the completion served, and that
+     * inner request is what carries the usage to the limits. Charging here as well would count it twice.
+     */
+    private Future<Void> increaseLimits(TokenUsage usage) {
+        Deployment deployment = context.getDeployment();
+        InterfaceType type = interfaceType();
+        if (DeploymentEndpointUtil.resolveMode(deployment, type) == InterfaceMode.TRANSLATOR) {
+            return Future.succeededFuture();
+        }
+        return proxy.getRateLimiter().increase(
+                deployment, BucketBuilder.buildInitiatorBucket(context), usage,
+                context.getRequestBody(), context.getResponseBody(), type, context.getPricingUsageNode()
+        );
     }
 
     /**

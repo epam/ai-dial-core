@@ -11,7 +11,6 @@ import static com.epam.aidial.core.config.InterfaceType.OPENAI_RESPONSES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -23,9 +22,73 @@ public class DeploymentTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Test
-    void baseUrlIsRequired() {
-        assertThrows(IllegalArgumentException.class, () -> new DeploymentInterface(null));
-        assertThrows(IllegalArgumentException.class, () -> new DeploymentInterface(""));
+    void interfaceParsesWithoutBaseUrl() throws Exception {
+        String json = """
+                {
+                    "baseUrl": "http://adapter",
+                    "interfaces": {
+                        "openaiChatCompletions": {"mode": "passthrough"},
+                        "anthropicMessages": {"mode": "translator", "base_url": "http://translator"}
+                    }
+                }
+                """;
+        Model model = MAPPER.readValue(json, Model.class);
+
+        assertEquals("http://adapter", model.getBaseUrl());
+        // the deployment-level base url is not copied into the entry: it is resolved per request
+        assertNull(model.getInterfaces().get(OPENAI_CHAT_COMPLETIONS.getValue()).getBaseUrl());
+        assertEquals(InterfaceMode.PASSTHROUGH, model.getInterfaces().get(OPENAI_CHAT_COMPLETIONS.getValue()).getMode());
+        assertEquals("http://translator", model.getInterfaces().get(ANTHROPIC_MESSAGES.getValue()).getBaseUrl());
+        assertEquals(InterfaceMode.TRANSLATOR, model.getInterfaces().get(ANTHROPIC_MESSAGES.getValue()).getMode());
+    }
+
+    @Test
+    void interfaceMappedToNullParses() throws Exception {
+        String json = """
+                {
+                    "baseUrl": "http://adapter",
+                    "interfaces": {
+                        "openaiChatCompletions": {},
+                        "openaiResponses": null
+                    }
+                }
+                """;
+        Model model = MAPPER.readValue(json, Model.class);
+
+        // an explicit null declares the interface unsupported, exactly as leaving it out does
+        assertTrue(model.getInterfaces().containsKey(OPENAI_RESPONSES.getValue()));
+        assertNull(model.getInterfaces().get(OPENAI_RESPONSES.getValue()));
+        assertNull(model.getInterfaces().get(OPENAI_CHAT_COMPLETIONS.getValue()).getMode());
+    }
+
+    @Test
+    void modeIsOmittedWhenAbsentAndBaseUrlKeepsItsSnakeCaseName() throws Exception {
+        Model model = new Model();
+        model.setBaseUrl("http://adapter");
+        model.setInterfaces(Map.of(OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://responses-adapter")));
+
+        String json = MAPPER.writeValueAsString(model);
+
+        assertTrue(json.contains("\"base_url\":\"http://responses-adapter\""), json);
+        assertTrue(json.contains("\"baseUrl\":\"http://adapter\""), json);
+        assertFalse(json.contains("\"mode\""), json);
+    }
+
+    @Test
+    void baseUrlIsOmittedWhenUnset() throws Exception {
+        Model model = new Model();
+        model.setEndpoint("http://host/chat/completions");
+
+        assertFalse(MAPPER.writeValueAsString(model).contains("baseUrl"));
+    }
+
+    @Test
+    void applicationCopyConstructorPreservesBaseUrl() {
+        Application source = new Application();
+        source.setName("app1");
+        source.setBaseUrl("http://adapter");
+
+        assertEquals("http://adapter", new Application(source).getBaseUrl());
     }
 
     @Test
