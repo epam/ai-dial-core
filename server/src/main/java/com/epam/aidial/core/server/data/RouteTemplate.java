@@ -149,6 +149,11 @@ public enum RouteTemplate {
             "/v1/admin/config/file/{type}/{name}"
     ),
 
+    CONFIG_FILE_MIGRATE(
+            "^/v1/admin/config/file/migrate$",
+            "/v1/admin/config/file/migrate"
+    ),
+
     CONFIG_VALIDATE(
             "^/v1/admin/validate$",
             "/v1/admin/validate"
