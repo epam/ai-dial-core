@@ -14691,6 +14691,14 @@ components:
       type: array
       items:
         $ref: "#/components/schemas/MetadataBase"
+    Condition:
+      type: object
+      properties:
+        field:
+          type: string
+        operator:
+          $ref: "#/components/schemas/Operator"
+        value: {}
     Config:
       type: object
       properties:
@@ -16075,6 +16083,15 @@ components:
           type: array
           items:
             type: string
+    Operator:
+      type: string
+      enum:
+      - EQ
+      - NE
+      - GT
+      - LT
+      - GE
+      - LE
     ParallelToolCalls:
       type: boolean
       description: Whether to enable parallel `function` calling during the `tool` use.
@@ -16107,9 +16124,9 @@ components:
         unit:
           type: string
         cacheRead:
-          type: string
+          $ref: "#/components/schemas/PricingRate"
         cacheWrite:
-          type: string
+          $ref: "#/components/schemas/PricingRate"
     PricingData:
       type: object
       properties:
@@ -16120,9 +16137,20 @@ components:
         unit:
           type: string
         cache_read:
-          type: string
+          $ref: "#/components/schemas/PricingRate"
         cache_write:
+          $ref: "#/components/schemas/PricingRate"
+    PricingRate:
+      type: object
+      properties:
+        ifFalse:
+          $ref: "#/components/schemas/PricingRate"
+        ifTrue:
+          $ref: "#/components/schemas/PricingRate"
+        rate:
           type: string
+        test:
+          $ref: "#/components/schemas/Condition"
     Prompt:
       type: object
       properties:
