@@ -23,6 +23,11 @@ public class ResourceDescriptor {
     public static final String PLATFORM_BUCKET = "platform";
     public static final String PLATFORM_LOCATION = PLATFORM_BUCKET + PATH_SEPARATOR;
 
+    /**
+     * Layout in force for physical paths. Swapped once the tenant-rooted layout is enabled.
+     */
+    private static final StorageLayout LAYOUT = LegacyStorageLayout.INSTANCE;
+
     ResourceType type;
     /**
      *  Resource's name or empty if the resource is a folder
@@ -106,9 +111,7 @@ public class ResourceDescriptor {
      */
     public String getAbsoluteFilePath() {
         StringBuilder builder = new StringBuilder();
-        builder.append(bucketLocation)
-                .append(type.group())
-                .append(PATH_SEPARATOR);
+        builder.append(getStoragePrefix());
 
         if (!parentFolders.isEmpty()) {
             builder.append(getParentPath())
@@ -124,6 +127,14 @@ public class ResourceDescriptor {
         }
 
         return builder.toString();
+    }
+
+    /**
+     * Returns the layout-dependent prefix every physical path of this resource starts with: the bucket
+     * location followed by the resource-type folder.
+     */
+    private String getStoragePrefix() {
+        return LAYOUT.resolveLocationPrefix(bucketLocation) + LAYOUT.resolveTypeFolder(type.group()) + PATH_SEPARATOR;
     }
 
     /**
@@ -210,7 +221,7 @@ public class ResourceDescriptor {
      * @param path - to the resource with decrypted bucket
      */
     public ResourceDescriptor resolveByPath(String path) {
-        String prefix = bucketLocation + type.group() + PATH_SEPARATOR;
+        String prefix = getStoragePrefix();
         if (!isFolder) {
             throw new IllegalStateException("Resource must be a folder");
         }
