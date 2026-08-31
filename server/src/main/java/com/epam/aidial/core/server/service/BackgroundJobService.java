@@ -16,6 +16,7 @@ import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.security.ResourceSecretAad;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
@@ -274,14 +275,14 @@ public class BackgroundJobService {
 
     private String encryptKey(ResourceDescriptor descriptor, String key) {
         BucketInfo bucketInfo = new BucketInfo(descriptor.getBucketName(), descriptor.getBucketLocation());
-        byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
+        byte[] aad = ResourceSecretAad.deriveFor(descriptor);
         byte[] cipher = encryptionService.encrypt(bucketInfo, key.getBytes(StandardCharsets.UTF_8), aad);
         return Base64.getEncoder().encodeToString(cipher);
     }
 
     private String decryptKey(ResourceDescriptor descriptor, String key) {
         BucketInfo bucketInfo = new BucketInfo(descriptor.getBucketName(), descriptor.getBucketLocation());
-        byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
+        byte[] aad = ResourceSecretAad.deriveFor(descriptor);
         byte[] raw = Base64.getDecoder().decode(key);
         return new String(encryptionService.decrypt(bucketInfo, raw, aad), StandardCharsets.UTF_8);
     }

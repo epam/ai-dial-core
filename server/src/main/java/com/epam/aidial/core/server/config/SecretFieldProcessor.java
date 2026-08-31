@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.config;
 import com.epam.aidial.core.config.annotation.EncryptedField;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
+import com.epam.aidial.core.server.security.ResourceSecretAad;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -40,7 +41,7 @@ public class SecretFieldProcessor {
         if (entity == null) {
             return;
         }
-        byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
+        byte[] aad = ResourceSecretAad.deriveFor(descriptor);
         walk(entity, aad, true);
     }
 
@@ -48,7 +49,7 @@ public class SecretFieldProcessor {
         if (entity == null) {
             return;
         }
-        byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
+        byte[] aad = ResourceSecretAad.deriveFor(descriptor);
         walk(entity, aad, false);
     }
 
@@ -57,7 +58,7 @@ public class SecretFieldProcessor {
             return null;
         }
         if (value.startsWith(ENC_PREFIX) && value.endsWith(ENC_SUFFIX)) {
-            byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
+            byte[] aad = ResourceSecretAad.deriveFor(descriptor);
             return decryptEnvelope(value, aad, "value");
         }
         return value;
