@@ -243,6 +243,51 @@
         {"endpoint": "http://messages-upstream/v1/messages", "key": "modelKey", "id": "messages-upstream"}
       ]
     },
+    "claude-upstream-interfaces": {
+      "type": "chat",
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} },
+      "upstreams": [
+        {
+          "id": "messages-upstream-interfaces",
+          "baseUrl": "http://messages-upstream/inference",
+          "key": "modelKey",
+          "interfaces": { "openaiChatCompletions": {}, "anthropicMessages": {} }
+        }
+      ]
+    },
+    "claude-upstream-interface-endpoint": {
+      "type": "chat",
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} },
+      "upstreams": [
+        {
+          "id": "messages-upstream-endpoint",
+          "baseUrl": "http://messages-upstream/inference",
+          "key": "modelKey",
+          "interfaces": {
+            "anthropicMessages": {"endpoint": "http://messages-upstream/something-else/v1/messages"}
+          }
+        }
+      ]
+    },
+    "claude-upstream-overrides": {
+      "type": "chat",
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} },
+      "upstreams": [
+        {
+          "id": "messages-upstream-overrides",
+          "baseUrl": "http://messages-upstream/inference",
+          "key": "shared-key",
+          "extraData": {"region": "us-east-1"},
+          "interfaces": {
+            "openaiChatCompletions": {},
+            "anthropicMessages": {
+              "key": "anthropic-only-key",
+              "secretExtraData": {"region": "us-east-3"}
+            }
+          }
+        }
+      ]
+    },
     "claude-cache": {
       "type": "chat",
       "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} },
@@ -379,6 +424,9 @@
         "claude-xapikey": {"minute": "100000", "day": "10000000"},
         "claude-limited": {"minute": "10", "day": "10"},
         "claude-upstream": {"minute": "100000", "day": "10000000"},
+        "claude-upstream-interfaces": {"minute": "100000", "day": "10000000"},
+        "claude-upstream-interface-endpoint": {"minute": "100000", "day": "10000000"},
+        "claude-upstream-overrides": {"minute": "100000", "day": "10000000"},
         "claude-override": {"minute": "100000", "day": "10000000"},
         "claude-header-spoof": {"minute": "100000", "day": "10000000"},
         "claude-no-iface": {"minute": "100000", "day": "10000000"},

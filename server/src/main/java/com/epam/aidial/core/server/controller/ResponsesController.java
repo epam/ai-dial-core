@@ -278,7 +278,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        sendProxyRequest(proxyRequest, Upstream::getResponsesEndpoint)
+        sendProxyRequest(proxyRequest, InterfaceType.OPENAI_RESPONSES)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyResponseError);
     }
