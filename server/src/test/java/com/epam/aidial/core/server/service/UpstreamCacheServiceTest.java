@@ -90,6 +90,41 @@ public class UpstreamCacheServiceTest {
     }
 
     @Test
+    public void testUpdateEntryWithoutEndpointPinsById() throws JsonProcessingException {
+        // an upstream configured through interfaces carries no legacy endpoint; Redis rejects a null value,
+        // so the field is omitted and the id alone identifies the pinned upstream
+        service = new UpstreamCacheService(redissonClient, lockService, System::currentTimeMillis, null);
+        String body = """
+                {
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": "hello",
+                            "custom_fields": {
+                                "cache_breakpoint": {}
+                            }
+                        }
+                    ]
+                }
+                """;
+        RequestObject request = new ChatCompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
+        Model model = new Model();
+        model.setName("interfaces-model");
+
+        CacheBreakpointContext context = service.buildCacheBreakpointContext(
+                request, CachePolicy.AVAILABILITY_PRIORITY, model, InterfaceType.OPENAI_CHAT_COMPLETIONS);
+        String breakpoint = context.breakpoints().get(context.breakpoints().size() - 1);
+
+        service.updateEntry(context.prefixToHash().get(breakpoint),
+                new CachedUpstreamEntry(null, "up-1", breakpoint, null), model, null);
+
+        CachedUpstreamEntry entry = service.getCacheEntry(context, model);
+        assertNotNull(entry);
+        assertNull(entry.endpoint());
+        assertEquals("up-1", entry.id());
+    }
+
+    @Test
     public void testBuildCacheBreakpointContext_withBreakpoints() throws JsonProcessingException {
         service = new UpstreamCacheService(redissonClient, lockService, System::currentTimeMillis, null);
         String body = """

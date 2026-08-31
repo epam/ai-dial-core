@@ -224,6 +224,62 @@ public class MessagesApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testUpstreamBaseUrlFormsTheEndpointHeaderFromTheApiPath() throws IOException {
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> {
+                captured.set(request);
+                return TestWebServer.createResponse(200, NON_STREAM_RESPONSE, "Content-Type", "application/json");
+            });
+
+            Response response = post(client, MESSAGES_PATH, requestBody("claude-upstream-interfaces", false), "api-key", "proxyKey1");
+
+            assertEquals(200, response.status());
+            // the upstream declares anthropicMessages with no endpoint, so baseUrl + the API's own path serves it
+            assertEquals("http://messages-upstream/inference/v1/messages", captured.get().getHeader("X-UPSTREAM-ENDPOINT"));
+            assertEquals("modelKey", captured.get().getHeader("X-UPSTREAM-KEY"));
+        }
+    }
+
+    @Test
+    public void testUpstreamInterfaceEndpointOverridesTheBaseUrl() throws IOException {
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> {
+                captured.set(request);
+                return TestWebServer.createResponse(200, NON_STREAM_RESPONSE, "Content-Type", "application/json");
+            });
+
+            Response response = post(client, MESSAGES_PATH,
+                    requestBody("claude-upstream-interface-endpoint", false), "api-key", "proxyKey1");
+
+            assertEquals(200, response.status());
+            assertEquals("http://messages-upstream/something-else/v1/messages", captured.get().getHeader("X-UPSTREAM-ENDPOINT"));
+        }
+    }
+
+    @Test
+    public void testUpstreamInterfaceOverridesKeyAndExtraDataHeaders() throws IOException {
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> {
+                captured.set(request);
+                return TestWebServer.createResponse(200, NON_STREAM_RESPONSE, "Content-Type", "application/json");
+            });
+
+            Response response = post(client, MESSAGES_PATH,
+                    requestBody("claude-upstream-overrides", false), "api-key", "proxyKey1");
+
+            assertEquals(200, response.status());
+            // the interface's own key wins over the upstream's shared one ...
+            assertEquals("anthropic-only-key", captured.get().getHeader("X-UPSTREAM-KEY"));
+            // ... while extraData, which the interface does not override, is still inherited and
+            // merged with the interface's own secretExtraData
+            assertEquals("{\"region\":\"us-east-3\"}", captured.get().getHeader("X-UPSTREAM-EXTRA-DATA"));
+        }
+    }
+
+    @Test
     public void testDeploymentIdHeaderCarriesRequestedModel() throws IOException {
         AtomicReference<RecordedRequest> captured = new AtomicReference<>();
         try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {

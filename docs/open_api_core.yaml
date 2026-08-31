@@ -15789,6 +15789,10 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/ToolSet"
+    MapStringUpstreamInterface:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/UpstreamInterface"
     McpMcpApps:
       type: object
       properties:
@@ -17146,6 +17150,23 @@ components:
           type: integer
         weight:
           type: integer
+        baseUrl:
+          type: string
+        interfaces:
+          $ref: "#/components/schemas/MapStringUpstreamInterface"
+    UpstreamInterface:
+      type: object
+      properties:
+        endpoint:
+          type: string
+        extraData:
+          type: string
+        key:
+          type: string
+          writeOnly: true
+        secretExtraData:
+          type: string
+          writeOnly: true
     UserInfoResponse:
       type: object
       properties:

@@ -59,6 +59,7 @@ public class ConfigValidationService {
                     Model model = ConfigEntityCodec.treeToEntity(entry.spec(), Model.class);
                     List<ValidationWarning> warnings = new ArrayList<>();
                     ConfigPostProcessor.validatePricing(model, warnings);
+                    ConfigPostProcessor.validateUpstreamInterfaces(model, warnings);
                     ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
                     UpstreamExtraDataMerger.validateNoOverlap(model);
                     if (!warnings.isEmpty() && !softValidation) {

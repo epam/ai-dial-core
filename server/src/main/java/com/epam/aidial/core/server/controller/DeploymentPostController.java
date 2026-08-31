@@ -360,7 +360,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        sendProxyRequest(proxyRequest, Upstream::getEndpoint)
+        sendProxyRequest(proxyRequest, requestedInterface())
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyResponseError);
     }

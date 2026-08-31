@@ -1,7 +1,9 @@
 package com.epam.aidial.core.server.util;
 
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -10,15 +12,28 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.experimental.UtilityClass;
 
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
 @UtilityClass
 public class UpstreamExtraDataMerger {
 
+    /**
+     * The extra data an upstream serves the interface type with. Each half is resolved independently
+     * against the interface's overrides, so an interface supplying only {@code secretExtraData} still
+     * merges over the upstream's {@code extraData}.
+     */
+    public static String merge(Upstream upstream, InterfaceType type) {
+        return merge(UpstreamInterfaceUtil.resolveExtraData(upstream, type),
+                UpstreamInterfaceUtil.resolveSecretExtraData(upstream, type));
+    }
+
     public static String merge(Upstream upstream) {
-        String extraData = upstream.getExtraData();
-        String secretExtraData = upstream.getSecretExtraData();
+        return merge(upstream.getExtraData(), upstream.getSecretExtraData());
+    }
+
+    private static String merge(String extraData, String secretExtraData) {
         if (extraData == null && secretExtraData == null) {
             return null;
         }
@@ -40,9 +55,22 @@ public class UpstreamExtraDataMerger {
         }
     }
 
+    /**
+     * Checks the upstream's own pair and each interface's own pair. Overlap across the two levels is
+     * legal and is the point of an override — only a single level declaring the same key twice is
+     * ambiguous.
+     */
     public static void validateNoOverlap(Upstream upstream) {
-        String extraData = upstream.getExtraData();
-        String secretExtraData = upstream.getSecretExtraData();
+        validateNoOverlap(upstream.getExtraData(), upstream.getSecretExtraData());
+        Map<String, UpstreamInterface> interfaces = upstream.getInterfaces();
+        if (interfaces != null) {
+            for (UpstreamInterface upstreamInterface : interfaces.values()) {
+                validateNoOverlap(upstreamInterface.getExtraData(), upstreamInterface.getSecretExtraData());
+            }
+        }
+    }
+
+    private static void validateNoOverlap(String extraData, String secretExtraData) {
         if (extraData == null || secretExtraData == null) {
             return;
         }
