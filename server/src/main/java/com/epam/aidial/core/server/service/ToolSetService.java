@@ -104,6 +104,51 @@ public class ToolSetService {
         return Pair.of(meta, toolSet);
     }
 
+    /**
+     * Strips secret material for a response, exposing {@code clientSecretHint} when {@code canManage}. Stored
+     * secrets are ciphertext, so the hint costs a decrypt; a value that fails to decrypt (legacy plaintext,
+     * rotated key) yields no hint instead of failing the read or hinting at ciphertext.
+     */
+    public void redactAuthSettings(ResourceDescriptor resource, ToolSet toolSet, boolean canManage) {
+        ResourceAuthSettings authSettings = toolSet.getAuthSettings();
+        if (authSettings == null) {
+            return;
+        }
+        // Deliberately not limited to OAUTH: a blob of any type may carry a hand-seeded clientSecret.
+        if (canManage && authSettings.getClientSecret() != null && decryptForHint(resource, authSettings)) {
+            authSettings.redactSecretsKeepingHint();
+        } else {
+            authSettings.redactSecrets();
+        }
+    }
+
+    /**
+     * Decrypts in place for a caller that redacts the settings itself afterwards — the config API, which strips
+     * secrets from a JSON projection rather than from this object. A value that fails to decrypt is dropped, so
+     * it yields no hint rather than one describing ciphertext.
+     */
+    public void decryptAuthSettingsForResponse(ResourceDescriptor resource, ToolSet toolSet) {
+        ResourceAuthSettings authSettings = toolSet == null ? null : toolSet.getAuthSettings();
+        if (authSettings == null || authSettings.getClientSecret() == null) {
+            return;
+        }
+        if (!decryptForHint(resource, authSettings)) {
+            authSettings.setClientSecret(null);
+        }
+    }
+
+    private boolean decryptForHint(ResourceDescriptor resource, ResourceAuthSettings authSettings) {
+        try {
+            resourceAuthSettingsEncryptionService.decrypt(resource.getUrl(),
+                    new BucketInfo(resource.getBucketName(), resource.getBucketLocation()), authSettings);
+            return true;
+        } catch (RuntimeException e) {
+            log.warn("Can't decrypt auth settings of toolset {}, omitting client secret hint: {}",
+                    resource.getUrl(), e.getMessage());
+            return false;
+        }
+    }
+
     public ToolSet extractFrom(String content, ResourceItemMetadata meta) {
         ToolSet toolSet = ProxyUtil.convertToObject(content, ToolSet.class);
 

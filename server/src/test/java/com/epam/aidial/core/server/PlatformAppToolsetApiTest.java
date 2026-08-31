@@ -190,6 +190,11 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
                 () -> "Plaintext client_secret must never appear on GET: " + get.body());
         assertFalse(get.body().contains("\"client_secret\""),
                 () -> "client_secret field must be absent from GET response: " + get.body());
+        // Pin the value, not just the absence of the secret: this read is blob-sourced and deserializeBlob does
+        // not decrypt, so without decryptExternalServiceSecretsForResponse the hint would be the tail of the
+        // base64 ciphertext — present and plausible, and invisible to an absence-only assertion.
+        assertTrue(get.body().contains("\"client_secret_hint\":\"cret\""),
+                () -> "hint must be derived from the plaintext secret: " + get.body());
     }
 
     @Test
@@ -207,7 +212,7 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
                       "auth_settings": {
                         "authentication_type": "OAUTH",
                         "client_id": "cid",
-                        "client_secret": "csecret",
+                        "client_secret": "csecret-value",
                         "redirect_uri": "http://localhost:3000/auth/signin",
                         "authorization_endpoint": "http://localhost:9876/authorize",
                         "token_endpoint": "http://localhost:9876"
@@ -250,7 +255,7 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
                       "auth_settings": {
                         "authentication_type": "OAUTH",
                         "client_id": "cid",
-                        "client_secret": "csecret",
+                        "client_secret": "csecret-value",
                         "redirect_uri": "http://localhost:3000/auth/signin",
                         "authorization_endpoint": "http://localhost:9876/authorize",
                         "token_endpoint": "http://localhost:9876"
@@ -327,6 +332,76 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
         verify(metadata, 200);
         assertTrue(metadata.body().contains("listed-toolset"),
                 () -> "Expected listed-toolset in platform toolsets listing: " + metadata.body());
+    }
+
+    /**
+     * The hint on the config API's own read path, which redacts a JSON projection of the merged config rather
+     * than a {@link com.epam.aidial.core.config.ResourceAuthSettings} object. Also covers the GET → PUT round
+     * trip: a client that echoes the response back, hint included, must not displace the stored secret.
+     *
+     * <p>Note this cannot observe {@code @JsonProperty(READ_ONLY)} itself. {@code redactSecretFields} strips
+     * {@code client_secret_hint} from the projection and re-derives it from the stored secret, so a hint that
+     * did get bound and persisted would still never surface here — that binding is covered by
+     * {@code ResourceAuthSettingsTest.testHintIsSerializedButNeverAcceptedFromClients}.</p>
+     */
+    @Test
+    void testPlatformToolsetHintOnReadAndRoundTrip() {
+        String secret = "platform-toolset-secret-9c4f";
+        String body = """
+                {
+                  "endpoint": "http://localhost:9876/mcp",
+                  "transport": "HTTP",
+                  "display_name": "Hint Toolset",
+                  "auth_settings": {
+                    "authentication_type": "OAUTH",
+                    "client_id": "cid",
+                    "client_secret": "%s",
+                    "redirect_uri": "http://localhost:3000/auth/signin",
+                    "authorization_endpoint": "http://localhost:9876/authorize",
+                    "token_endpoint": "http://localhost:9876"
+                  }
+                }
+                """.formatted(secret);
+        // Echo of the GET response: client_secret absent (meaning "keep"), hint echoed back as a client would.
+        String echoed = """
+                {
+                  "endpoint": "http://localhost:9876/mcp",
+                  "transport": "HTTP",
+                  "display_name": "Hint Toolset",
+                  "auth_settings": {
+                    "authentication_type": "OAUTH",
+                    "client_id": "cid",
+                    "client_secret_hint": "beef",
+                    "redirect_uri": "http://localhost:3000/auth/signin",
+                    "authorization_endpoint": "http://localhost:9876/authorize",
+                    "token_endpoint": "http://localhost:9876"
+                  }
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+
+            verify(send(HttpMethod.PUT, "/v1/toolsets/platform/hint-toolset", null, body,
+                    "authorization", "admin", "If-None-Match", "*"), 200);
+
+            Response get = send(HttpMethod.GET, "/v1/toolsets/platform/hint-toolset", null, "", "authorization", "admin");
+            verify(get, 200);
+            assertTrue(get.body().contains("\"client_secret_hint\":\"9c4f\""),
+                    () -> "admin must see the hint: " + get.body());
+            assertFalse(get.body().contains(secret), () -> "secret leaked: " + get.body());
+
+            verify(send(HttpMethod.PUT, "/v1/toolsets/platform/hint-toolset", null, echoed, "authorization", "admin"), 200);
+
+            // The stored secret is untouched, so the hint is still derived from it and never from "beef".
+            Response reread = send(HttpMethod.GET, "/v1/toolsets/platform/hint-toolset", null, "", "authorization", "admin");
+            verify(reread, 200);
+            assertTrue(reread.body().contains("\"client_secret_hint\":\"9c4f\""),
+                    () -> "round-tripped PUT must not overwrite the stored secret: " + reread.body());
+            assertFalse(reread.body().contains("beef"),
+                    () -> "hint must be re-derived from the stored secret, not echoed: " + reread.body());
+            assertFalse(reread.body().contains(secret), () -> "secret leaked: " + reread.body());
+        }
     }
 
     @Test

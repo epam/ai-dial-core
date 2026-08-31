@@ -69,7 +69,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     protected List<BaseRequestFunction<RequestObject>> buildEnhancementFunctions() {
         return List.of(
                 new CollectRequestStandardAttachmentsFn(proxy, context),
-                new ApplyDefaultDeploymentSettingsFn(proxy, context),
+                new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
                 new CollectDeploymentsFn(proxy, context));
