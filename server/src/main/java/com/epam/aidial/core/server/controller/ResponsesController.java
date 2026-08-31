@@ -75,6 +75,11 @@ public class ResponsesController extends BaseDeploymentPostController {
                 new CollectDeploymentsFn(proxy, context));
     }
 
+    @Override
+    protected InterfaceType interfaceType() {
+        return InterfaceType.OPENAI_RESPONSES;
+    }
+
     @ApiOperation(
             method = "POST",
             path = "/openai/v1/responses",
@@ -273,7 +278,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        sendProxyRequest(proxyRequest, Upstream::getResponsesEndpoint)
+        sendProxyRequest(proxyRequest, InterfaceType.OPENAI_RESPONSES)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyResponseError);
     }

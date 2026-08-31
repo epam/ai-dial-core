@@ -6,9 +6,12 @@ import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
+import com.epam.aidial.core.config.PricingRate;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import org.junit.jupiter.api.Test;
 
@@ -121,7 +124,7 @@ public class ConfigPostProcessorTest {
         Model model = new Model();
         Pricing pricing = new Pricing();
         pricing.setUnit("char_without_whitespace");
-        pricing.setCacheRead("0.01");
+        pricing.setCacheRead(flatRate("0.01"));
         model.setPricing(pricing);
         config.getModels().put("model", model);
 
@@ -135,7 +138,7 @@ public class ConfigPostProcessorTest {
         Model model = new Model();
         Pricing pricing = new Pricing();
         pricing.setUnit("char_without_whitespace");
-        pricing.setCacheWrite("0.02");
+        pricing.setCacheWrite(flatRate("0.02"));
         model.setPricing(pricing);
         config.getModels().put("model", model);
 
@@ -158,9 +161,72 @@ public class ConfigPostProcessorTest {
         Model model = new Model();
         Pricing pricing = new Pricing();
         pricing.setUnit("token");
-        pricing.setCacheRead("0.01");
-        pricing.setCacheWrite("0.02");
+        pricing.setCacheRead(flatRate("0.01"));
+        pricing.setCacheWrite(flatRate("0.02"));
         model.setPricing(pricing);
+        config.getModels().put("model", model);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getModels().containsKey("model"));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnUpstreamInterfaceWithNothingToResolveTo() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        Upstream upstream = new Upstream();
+        upstream.setId("no-base-url");
+        upstream.setInterfaces(Map.of("openaiChatCompletions", new UpstreamInterface()));
+        model.setUpstreams(List.of(upstream));
+        config.getModels().put("model", model);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAllowsUpstreamInterfaceCompletedByEndpointOrBaseUrl() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        Upstream explicit = new Upstream();
+        explicit.setId("explicit");
+        explicit.setInterfaces(Map.of("anthropicMessages", new UpstreamInterface("https://provider/v1/messages")));
+        Upstream derived = new Upstream();
+        derived.setId("derived");
+        derived.setBaseUrl("https://provider");
+        derived.setInterfaces(Map.of("openaiResponses", new UpstreamInterface()));
+        model.setUpstreams(List.of(explicit, derived));
+        config.getModels().put("model", model);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getModels().containsKey("model"));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnUpstreamInterfacesWithoutId() {
+        // endpoint is what identifies an upstream when id is absent, and this shape has none
+        Config config = newMutableConfig();
+        Model model = new Model();
+        Upstream upstream = new Upstream();
+        upstream.setBaseUrl("https://provider");
+        upstream.setInterfaces(Map.of("anthropicMessages", new UpstreamInterface()));
+        model.setUpstreams(List.of(upstream));
+        config.getModels().put("model", model);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAllowsLegacyUpstreamWithoutId() {
+        // the id requirement is scoped to the interfaces shape; legacy upstreams are identified by endpoint
+        Config config = newMutableConfig();
+        Model model = new Model();
+        Upstream upstream = new Upstream();
+        upstream.setEndpoint("https://provider/v1/chat/completions");
+        model.setUpstreams(List.of(upstream));
         config.getModels().put("model", model);
 
         ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
@@ -194,6 +260,12 @@ public class ConfigPostProcessorTest {
         config.setInterceptors(new HashMap<>());
         config.setToolsets(new LinkedHashMap<>());
         return config;
+    }
+
+    private static PricingRate flatRate(String rate) {
+        PricingRate pricingRate = new PricingRate();
+        pricingRate.setRate(rate);
+        return pricingRate;
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.limiter;
 
 import com.epam.aidial.core.config.CostLimit;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.RoleBasedEntity;
@@ -21,6 +22,7 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import lombok.RequiredArgsConstructor;
@@ -47,14 +49,16 @@ public class RateLimiter {
     private final ResourceService resourceService;
 
     public Future<Void> increase(
-            RoleBasedEntity roleBasedEntity, String bucket, TokenUsage usage, Buffer requestBody, Buffer responseBody) {
+            RoleBasedEntity roleBasedEntity, String bucket, TokenUsage usage, Buffer requestBody, Buffer responseBody,
+            InterfaceType interfaceType, JsonNode liveUsageNode) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {
                 return Future.succeededFuture();
             }
 
-            BigDecimal cost = ModelCostCalculator.calculate(roleBasedEntity, usage, requestBody, responseBody);
+            BigDecimal cost = ModelCostCalculator.calculate(
+                    roleBasedEntity, usage, requestBody, responseBody, interfaceType, liveUsageNode);
             Future<Void> costFuture;
             if (cost != null && cost.compareTo(BigDecimal.ZERO) > 0) {
                 if (usage != null) {

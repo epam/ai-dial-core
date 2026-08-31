@@ -260,6 +260,12 @@ Parameters defining the pricing for the model. Use to enables real-time cost est
     * `none`: disables all cost tracking for this model.
 * `prompt`: Cost per unit for prompt tokens.
 * `completion`: Cost per unit for completion tokens (chat responses).
+* `cacheRead` / `cacheWrite` (optional, `unit: "token"` only): Cost per cache-read/cache-write
+  token. Each is either a flat rate string (same convention as `prompt`/`completion`) or a
+  decision-tree object that picks a rate based on the call's own usage data — the field is
+  either a standard name (`cachedReadTokens`, `cachedWriteTokens`, `promptTokens`, `serviceTier`,
+  `ttl`) or a `$`-prefixed JSON Path expression. Left unset, cache tokens are billed at the
+  `prompt` rate, exactly as if caching weren't split out at all.
 
 **Example**
 
@@ -270,6 +276,19 @@ Parameters defining the pricing for the model. Use to enables real-time cost est
                 "unit": "token",
                 "prompt": "0.56",
                 "completion": "0.67"
+            },
+        },
+        "claude-sonnet-4-5": {
+            "pricing": {
+                "unit": "token",
+                "prompt": "0.000003",
+                "completion": "0.000015",
+                "cacheRead": "0.0000003",
+                "cacheWrite": {
+                    "test": { "field": "ttl", "operator": "==", "value": "1h" },
+                    "ifTrue": "0.000006",
+                    "ifFalse": "0.00000375"
+                }
             },
         }
 }
@@ -329,13 +348,79 @@ Some models adapters expose specialized HTTP endpoints for tokenization, rate es
 }
 ```
 
+#### models.<model_name>.upstreams.interfaces
+
+A typed alternative to the flat `endpoint`/`responsesEndpoint` fields, declaring the upstream backend URL per LLM API rather than per field. Both shapes are first-class and fully supported — choose whichever you prefer per upstream. Use `interfaces` when a provider serves several APIs for the same model (for example, Fireworks exposes both the OpenAI and the Anthropic API), so that one model deployment can front all of them instead of one deployment per API.
+
+The interface types are the same as on the [model level](#modelsmodel_nameinterfaces) — `openaiChatCompletions`, `openaiEmbeddings`, `openaiResponses`, `anthropicMessages` — but each value carries a complete `endpoint` rather than a `base_url`, because an upstream is the provider itself and no ingress path is routed into it.
+
+Each value is an object with the following fields, every one of which overrides its upstream-level namesake for that interface alone:
+
+* `endpoint`: The complete upstream backend URL for this interface. Optional when the upstream declares a `baseUrl`.
+* `key`: API key, token, or credential for this interface. Falls back to the upstream's `key`.
+* `extraData`: Additional metadata for this interface. Falls back to the upstream's `extraData`.
+* `secretExtraData`: Secret additional metadata for this interface. Falls back to the upstream's `secretExtraData`.
+
+Each field falls back independently, so an interface overriding only `key` still inherits `extraData`. `extraData` and `secretExtraData` are then merged into the single `X-UPSTREAM-EXTRA-DATA` header exactly as at the upstream level, with `secretExtraData` winning on shared keys. Declaring the same key in *both* halves of one level is rejected as ambiguous, but an interface's half overriding the upstream's is the point of the feature and is allowed.
+
+An entry with no `endpoint` is completed from the upstream's `baseUrl` plus the path the interface's own API spec serves it at, ignoring the `/openai` and `/anthropic` ingress keywords:
+
+| Interface type          | Path appended to `baseUrl` |
+|-------------------------|----------------------------|
+| `openaiChatCompletions` | `/v1/chat/completions`     |
+| `openaiEmbeddings`      | `/v1/embeddings`           |
+| `openaiResponses`       | `/v1/responses`            |
+| `anthropicMessages`     | `/v1/messages`             |
+
+This is the one difference from `interfaces.<interface_type>.base_url` on the model level, which is instead concatenated with the ingress path the request reached DIAL Core on (`/openai/v1/responses`, `/openai/deployments/{name}/chat/completions`, `/anthropic/v1/messages`, ...).
+
+`baseUrl` applies only to the interface types the upstream declares: `interfaces` is a whitelist, not a default. An interface type absent from the map falls back to the legacy field serving it — `responsesEndpoint` for `openaiResponses`, `endpoint` for every other type — so upstreams configured before the split keep working unchanged.
+
+Two rules are enforced on load, and a model violating either is rejected:
+
+* Every declared interface must resolve to a URL — its own `endpoint`, or the upstream's `baseUrl`.
+* The upstream must declare an `id`. Without `interfaces`, an upstream falls back to its `endpoint` as its identifier for `X-UPSTREAM-ID` routing and prompt-cache pinning; this shape has no `endpoint`, so the `id` has to be explicit.
+
+**Example**
+
+```json
+"models": {
+        "openai-gpt-5.4-mini": {
+            "overrideName": "gpt-5.4-mini",
+            "type": "chat",
+            "upstreams": [
+                {
+                    "id": "fireworks",
+                    "key": "modelKey1",
+                    "extraData": {"region": "us-east-1"},
+                    "baseUrl": "https://api.fireworks.ai/inference",
+                    "interfaces": {
+                        "openaiChatCompletions": {},
+                        "openaiResponses": {},
+                        "anthropicMessages": {
+                            "endpoint": "https://api.fireworks.ai/inference/something-else/v1/messages",
+                            "key": "anthropicKey1"
+                        }
+                    }
+                }
+            ]
+        }
+}
+```
+
+Here `openaiChatCompletions` resolves to `https://api.fireworks.ai/inference/v1/chat/completions`, `openaiResponses` to `https://api.fireworks.ai/inference/v1/responses`, and `anthropicMessages` to the explicit URL, which wins over `baseUrl`. All three send `{"region": "us-east-1"}` as extra data, inherited from the upstream; the first two authenticate with `modelKey1` and `anthropicMessages` with `anthropicKey1`.
+
+The legacy fields coexist with the map, yielding only for the types it declares. Given an upstream that sets `endpoint`, `responsesEndpoint` and `interfaces: {"openaiChatCompletions": {}, "anthropicMessages": {}}`, chat completions and Anthropic Messages are served by the map (from `baseUrl`), while the Responses API — which the map does not declare — still uses `responsesEndpoint`.
+
 #### models.<model_name>.upstreams
 
 Upstreams configurations. Use to configure [load balancing](https://docs.dialx.ai/platform/core/load-balancer).
 
-* `endpoint`: The upstream backend URL for the chat completions API. Passed to the model adapter in the `X-UPSTREAM-ENDPOINT` header.
+* `endpoint`: The upstream backend URL for the chat completions API. Passed to the model adapter in the `X-UPSTREAM-ENDPOINT` header. It also backs the embeddings and Anthropic Messages APIs — prefer `interfaces` to configure those explicitly.
 * `responsesEndpoint`: The upstream backend URL for the Responses API. Passed to the model adapter in the `X-UPSTREAM-ENDPOINT` header when routing Responses API requests.
-* `id`: A stable identifier for this upstream. Clients can set the `X-UPSTREAM-ID` request header to this value to pin a request to a specific upstream (supported in chat completions and Responses API). When the Responses API is enabled (via the model-level `responsesEndpoint`), `id` is required — it is used to route Responses API follow-up requests (retrieve, cancel, delete) back to the same upstream that handled the initial request.
+* `interfaces`: A typed alternative to `endpoint`/`responsesEndpoint`, declaring one upstream backend URL per LLM API. Refer to [models.<model_name>.upstreams.interfaces](#modelsmodel_nameupstreamsinterfaces).
+* `baseUrl`: The provider root that completes every `interfaces` entry declaring no `endpoint` of its own. Refer to [models.<model_name>.upstreams.interfaces](#modelsmodel_nameupstreamsinterfaces).
+* `id`: A stable identifier for this upstream. Clients can set the `X-UPSTREAM-ID` request header to this value to pin a request to a specific upstream (supported in chat completions and Responses API). When the Responses API is enabled (via the model-level `responsesEndpoint`), `id` is required — it is used to route Responses API follow-up requests (retrieve, cancel, delete) back to the same upstream that handled the initial request. `id` is also required on any upstream declaring `interfaces`, because that shape has no `endpoint` to fall back on as an identifier.
 * `key`: API key, token, or credential passed to the upstream.
 * `weight`: Weight for upstream endpoint; positive number represents an endpoint capacity, zero or negative disables this endpoint from routing. Higher = more traffic share. Default value: 1.
 * `tier`: Specifies tier group for the endpoint. Only positive numbers allowed. All requests will be routed to the endpoints with the highest tier (the lowest tier value), other endpoints (with lower tier/higher tier value) may be used only if the highest tier endpoints are unavailable. Default value: 0 - highest tier. Refer to [load balancing](https://docs.dialx.ai/platform/core/load-balancer) to learn more.

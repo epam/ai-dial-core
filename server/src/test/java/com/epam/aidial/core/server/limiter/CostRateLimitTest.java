@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.limiter;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.CostLimit;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
@@ -198,11 +199,11 @@ public class CostRateLimitTest {
         // Mock ModelCostCalculator to return a cost
         try (MockedStatic<ModelCostCalculator> mockedCalculator = Mockito.mockStatic(ModelCostCalculator.class)) {
             // The first call returns $0.05 (below the limit)
-            mockedCalculator.when(() -> ModelCostCalculator.calculate(any(), any(), any(), any()))
+            mockedCalculator.when(() -> ModelCostCalculator.calculate(any(), any(), any(), any(), any(), any()))
                     .thenReturn(new BigDecimal("0.05"));
 
             // First increase and limit check should succeed
-            Future<Void> increaseLimitFuture = rateLimiter.increase(model, bucketLocation, proxyContext.getTokenUsage(), null, null);
+            Future<Void> increaseLimitFuture = rateLimiter.increase(model, bucketLocation, proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
             assertNotNull(increaseLimitFuture);
             assertNull(increaseLimitFuture.cause());
 
@@ -212,11 +213,11 @@ public class CostRateLimitTest {
             assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
 
             // The second call returns $0.15 (above the limit)
-            mockedCalculator.when(() -> ModelCostCalculator.calculate(any(), any(), any(), any()))
+            mockedCalculator.when(() -> ModelCostCalculator.calculate(any(), any(), any(), any(), any(), any()))
                     .thenReturn(new BigDecimal("0.15"));
 
             // Second increase and limit check should fail due to cost limit
-            increaseLimitFuture = rateLimiter.increase(model, bucketLocation, proxyContext.getTokenUsage(), null, null);
+            increaseLimitFuture = rateLimiter.increase(model, bucketLocation, proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
             assertNotNull(increaseLimitFuture);
             assertNull(increaseLimitFuture.cause());
 
@@ -293,11 +294,11 @@ public class CostRateLimitTest {
 
         // Mock ModelCostCalculator to return a cost
         try (MockedStatic<ModelCostCalculator> mockedCalculator = Mockito.mockStatic(ModelCostCalculator.class)) {
-            mockedCalculator.when(() -> ModelCostCalculator.calculate(any(), any(), any(), any()))
+            mockedCalculator.when(() -> ModelCostCalculator.calculate(any(), any(), any(), any(), any(), any()))
                     .thenReturn(new BigDecimal("0.05"));
 
             // Increase limit to record usage
-            Future<Void> increaseLimitFuture = rateLimiter.increase(model, bucketLocation, proxyContext.getTokenUsage(), null, null);
+            Future<Void> increaseLimitFuture = rateLimiter.increase(model, bucketLocation, proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
             assertNotNull(increaseLimitFuture);
             assertNull(increaseLimitFuture.cause());
 
@@ -396,20 +397,20 @@ public class CostRateLimitTest {
         // Mock ModelCostCalculator to return costs
         try (MockedStatic<ModelCostCalculator> mockedCalculator = Mockito.mockStatic(ModelCostCalculator.class)) {
             // The first user gets $0.05 cost
-            mockedCalculator.when(() -> ModelCostCalculator.calculate(any(), same(tokenUsage1), any(), any()))
+            mockedCalculator.when(() -> ModelCostCalculator.calculate(any(), same(tokenUsage1), any(), any(), any(), any()))
                     .thenReturn(new BigDecimal("0.05"));
 
             // The second user gets $0.08 cost
-            mockedCalculator.when(() -> ModelCostCalculator.calculate(any(), same(tokenUsage2), any(), any()))
+            mockedCalculator.when(() -> ModelCostCalculator.calculate(any(), same(tokenUsage2), any(), any(), any(), any()))
                     .thenReturn(new BigDecimal("0.08"));
 
             // First user increases limit
-            Future<Void> increaseLimitFuture1 = rateLimiter.increase(model, bucketLocation1, tokenUsage1, null, null);
+            Future<Void> increaseLimitFuture1 = rateLimiter.increase(model, bucketLocation1, tokenUsage1, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
             assertNotNull(increaseLimitFuture1);
             assertNull(increaseLimitFuture1.cause());
 
             // Second user increases limit
-            Future<Void> increaseLimitFuture2 = rateLimiter.increase(model, bucketLocation2, tokenUsage2, null, null);
+            Future<Void> increaseLimitFuture2 = rateLimiter.increase(model, bucketLocation2, tokenUsage2, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
             assertNotNull(increaseLimitFuture2);
             assertNull(increaseLimitFuture2.cause());
 
@@ -442,11 +443,11 @@ public class CostRateLimitTest {
             assertEquals(new BigDecimal("0.08"), limitStats2.getMinuteCostStats().getUsed());
 
             // Now make first user exceed their limit
-            mockedCalculator.when(() -> ModelCostCalculator.calculate(any(), eq(tokenUsage1), any(), any()))
+            mockedCalculator.when(() -> ModelCostCalculator.calculate(any(), eq(tokenUsage1), any(), any(), any(), any()))
                     .thenReturn(new BigDecimal("0.06"));
 
             // First user increases limit again
-            increaseLimitFuture1 = rateLimiter.increase(model, bucketLocation1, tokenUsage1, null, null);
+            increaseLimitFuture1 = rateLimiter.increase(model, bucketLocation1, tokenUsage1, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
             assertNotNull(increaseLimitFuture1);
             assertNull(increaseLimitFuture1.cause());
 
