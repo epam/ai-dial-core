@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.net.URLEncoder;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
@@ -19,6 +20,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Slf4j
 class ResourceApiTest extends ResourceBaseTest {
+
+    @Test
+    void testEncodedDecodedNextToken() {
+        for (int i = 0; i < 100; i++) {
+            Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation%20" + i, CONVERSATION_BODY_1);
+            assertEquals(response.status(), 200);
+        }
+
+        String token = URLEncoder.encode("test-2/Keys/EPM-RTC-GPT/conversations/folder/conversation%2017");
+        System.err.println(token);
+        Response response = send(HttpMethod.GET, "/v1/metadata/conversations/" + bucket + "/folder/", "limit=10&token=" + token, "");
+        System.err.println(response.body());
+        verify(response, 200);
+    }
 
     @Test
     void testWorkflow() {

@@ -280,7 +280,8 @@ public class ResourceService implements AutoCloseable {
 
     public ResourceFolderMetadata getFolderMetadata(ResourceDescriptor descriptor, String token, int limit, boolean recursive) {
         String blobKey = blobKey(descriptor);
-        PageSet<? extends StorageMetadata> set = blobStore.list(blobKey, token, limit, recursive);
+        // the token is a percent encoded marker (see nextMarker below), decode it back before passing to the blob store
+        PageSet<? extends StorageMetadata> set = blobStore.list(blobKey, UrlUtil.tryDecodePath(token), limit, recursive);
 
         if (set.isEmpty() && !descriptor.isRootFolder()) {
             return null;
