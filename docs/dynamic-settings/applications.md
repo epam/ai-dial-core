@@ -259,6 +259,8 @@ Supported configuration parameters:
 }
 ```
 
+> **Note**: For a schema-rich application (`applicationTypeSchemaId` is set), `endpoint`, `transport`, `configDelivery`, and `forwardPerRequestKey` are always taken from the application type's `dial:applicationTypeMcp` schema, per the Effective Parameter Rule above. `allowedTools` is the one exception: if the application instance also specifies its own `mcp.allowedTools`, the effective allowed tools are the **intersection** of the instance's list and the application type's list — an instance can only narrow the type's allowed tools, never widen them. If the type's `allowedTools` is empty (unrestricted), the instance's list is used as-is. A no-overlap override is meaningless and is never applied: requests through the applications API are rejected with `400`, and for an application defined in the static config file the override is ignored with a warning so that the application type's own (restricting) list stays in effect.
+
 #### applications.<application_name>.routes
 
 > **Effective Parameter Rule**: When `applicationTypeSchemaId` and `applicationProperties` are specified, parameters defined in the corresponding schema will take precedence and will override the corresponding parameters specified in the `application` object.

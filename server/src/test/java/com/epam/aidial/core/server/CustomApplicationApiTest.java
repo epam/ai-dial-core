@@ -10,7 +10,9 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import okhttp3.mockwebserver.MockResponse;
@@ -1771,6 +1773,179 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
             assertEquals(200, resp.status());
             assertEquals(mcpResponse, resp.body());
         }
+    }
+
+    @Test
+    void testMcpCall_InstanceAllowedToolsNarrowsTypeAllowedTools() throws JsonProcessingException {
+        // "specific_toolset_type" application type has dial:allowedTools: ["classify_text", "extract_text"].
+        // The instance below narrows to just "classify_text" (a genuine subset), so the effective
+        // allowed tools must be ["classify_text"], excluding "extract_text" even though the type allows it.
+        var response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app", null, """
+                {
+                "display_name": "My App",
+                "display_version": "1.0",
+                "icon_url": "http://apprunner/icon.svg",
+                "description": "My app Description",
+                "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_toolset_type",
+                "applicationProperties": {
+                  "property1": "foo",
+                  "property2": "bar"
+                  },
+                "mcp": {
+                  "allowedTools": ["classify_text"]
+                  }
+                }
+                """);
+        verify(response, 200);
+
+        String mcpRequest = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 1,
+                   "method": "tools/list",
+                   "params": {}
+                 }
+                """;
+        String mcpResponse = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 1,
+                   "result": {
+                     "tools": [
+                       {
+                         "name": "classify_text",
+                         "title": "Classify text"
+                       },
+                       {
+                         "name": "extract_text",
+                         "title": "Extract text"
+                       }
+                     ]
+                   }
+                 }
+                """;
+        TestWebServer.Handler handler = request ->
+                new MockResponse().setBody(mcpResponse).setHeader("Content-Type", "application/json");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response resp = send(HttpMethod.POST, "/v1/deployments/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app/mcp",
+                    null, mcpRequest, "Content-type", "application/json");
+
+            assertEquals(200, resp.status());
+            JsonNode json = ProxyUtil.MAPPER.readTree(resp.body());
+            ArrayNode tools = (ArrayNode) json.get("result").get("tools");
+            assertEquals(1, tools.size());
+            assertEquals("classify_text", tools.get(0).get("name").asText());
+        }
+
+        String toolCallRequest = """
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "extract_text",
+                        "arguments": {}
+                    }
+                }
+                """;
+        try (TestWebServer ignore = new TestWebServer(9876,
+                request -> new MockResponse().setBody(mcpResponse).setHeader("Content-Type", "application/json"))) {
+            Response resp = send(HttpMethod.POST, "/v1/deployments/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app/mcp",
+                    null, toolCallRequest, "Content-type", "application/json");
+
+            // "extract_text" is allowed by the type schema but excluded by the instance-level narrowing
+            assertEquals(403, resp.status());
+        }
+    }
+
+    @Test
+    void testCreateSchemaRichApplication_McpAllowedToolsDisjointFromType_IsRejected() {
+        // The type's allowedTools is ["classify_text", "extract_text"]; an instance-level allowedTools
+        // with no overlap at all must be rejected at write time, since downstream MCP tool filtering
+        // treats an empty allowedTools list as "unrestricted" and could otherwise silently expose every tool.
+        var response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app", null, """
+                {
+                "display_name": "My App",
+                "display_version": "1.0",
+                "icon_url": "http://apprunner/icon.svg",
+                "description": "My app Description",
+                "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_toolset_type",
+                "applicationProperties": {
+                  "property1": "foo",
+                  "property2": "bar"
+                  },
+                "mcp": {
+                  "allowedTools": ["other_tool"]
+                  }
+                }
+                """);
+        assertEquals(400, response.status());
+    }
+
+    @Test
+    void testCreateSchemaRichApplication_McpAllowedToolsOnly_IsAccepted() {
+        var response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app", null, """
+                {
+                "display_name": "My App",
+                "display_version": "1.0",
+                "icon_url": "http://apprunner/icon.svg",
+                "description": "My app Description",
+                "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_toolset_type",
+                "applicationProperties": {
+                  "property1": "foo",
+                  "property2": "bar"
+                  },
+                "mcp": {
+                  "allowedTools": ["classify_text"]
+                  }
+                }
+                """);
+        verify(response, 200);
+    }
+
+    @Test
+    void testCreateSchemaRichApplication_EmptyMcpAllowedTools_IsAccepted() {
+        // an empty allowedTools list means "no instance-level restriction" and must be accepted;
+        // the application type's own allowedTools then applies unchanged
+        var response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app", null, """
+                {
+                "display_name": "My App",
+                "display_version": "1.0",
+                "icon_url": "http://apprunner/icon.svg",
+                "description": "My app Description",
+                "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_toolset_type",
+                "applicationProperties": {
+                  "property1": "foo",
+                  "property2": "bar"
+                  },
+                "mcp": {
+                  "allowedTools": []
+                  }
+                }
+                """);
+        verify(response, 200);
+    }
+
+    @Test
+    void testCreateSchemaRichApplication_McpEndpoint_IsRejected() {
+        var response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app", null, """
+                {
+                "display_name": "My App",
+                "display_version": "1.0",
+                "icon_url": "http://apprunner/icon.svg",
+                "description": "My app Description",
+                "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_toolset_type",
+                "applicationProperties": {
+                  "property1": "foo",
+                  "property2": "bar"
+                  },
+                "mcp": {
+                  "endpoint": "http://localhost:9999/mcp",
+                  "allowedTools": ["classify_text"]
+                  }
+                }
+                """);
+        assertEquals(400, response.status());
     }
 
 

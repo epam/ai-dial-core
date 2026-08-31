@@ -492,11 +492,31 @@ public class ApplicationSchemaService {
             return null;
         }
         JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
-        JsonNode mcp = schemaNode.get(DIAL_APPLICATION_TYPE_MCP);
-        if (mcp == null) {
+        JsonNode mcpNode = schemaNode.get(DIAL_APPLICATION_TYPE_MCP);
+        if (mcpNode == null) {
             return null;
         }
-        return ProxyUtil.MAPPER.treeToValue(mcp, APP_MCP_TYPE_REF);
+        Application.Mcp mcp = ProxyUtil.MAPPER.treeToValue(mcpNode, APP_MCP_TYPE_REF);
+
+        // an instance-level allowedTools can only narrow the application type's allowedTools, never widen it
+        Application.Mcp instanceMcp = application.getMcp();
+        if (instanceMcp != null && !instanceMcp.getAllowedTools().isEmpty()) {
+            List<String> typeAllowedTools = mcp.getAllowedTools();
+            List<String> effectiveAllowedTools = typeAllowedTools.isEmpty()
+                    ? instanceMcp.getAllowedTools()
+                    : instanceMcp.getAllowedTools().stream()
+                            .filter(typeAllowedTools::contains)
+                            .toList();
+            // an empty list means "unrestricted" downstream, so a no-overlap override must not be applied:
+            // keeping the application type's list restricts the app instead of exposing every tool
+            if (effectiveAllowedTools.isEmpty()) {
+                log.warn("Ignoring mcp.allowedTools of application {}: no overlap with the application type's allowedTools",
+                        application.getName());
+            } else {
+                mcp.setAllowedTools(effectiveAllowedTools);
+            }
+        }
+        return mcp;
     }
 
     @SneakyThrows

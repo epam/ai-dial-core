@@ -585,11 +585,25 @@ public class ApplicationService {
         }
         URI applicationSchemaId = application.getApplicationTypeSchemaId();
         if (applicationSchemaId != null) {
-            if (application.getEndpoint() != null || application.getFunction() != null || application.getMcp() != null) {
-                throw new IllegalArgumentException("Neither application endpoint, MCP or function must be set for schema based application");
+            if (application.getEndpoint() != null || application.getFunction() != null
+                    || (application.getMcp() != null && application.getMcp().getEndpoint() != null)) {
+                throw new IllegalArgumentException(
+                        "Neither application endpoint, MCP endpoint or function must be set for schema based application");
             }
             if (configStore.get().getCustomApplicationSchema(applicationSchemaId) == null) {
                 throw new IllegalArgumentException("Application schema is not found by schema id: " + applicationSchemaId);
+            }
+            // an instance-level allowedTools may only narrow the application type's allowedTools, so a
+            // no-overlap override is meaningless: getMcp ignores it and keeps the type's list, which
+            // would silently apply a wider set of tools than asked for. Reject it up front instead.
+            Application.Mcp instanceMcp = application.getMcp();
+            if (instanceMcp != null && !instanceMcp.getAllowedTools().isEmpty()) {
+                Application.Mcp effectiveMcp = applicationSchemaService.getMcp(application);
+                if (effectiveMcp != null
+                        && effectiveMcp.getAllowedTools().stream().noneMatch(instanceMcp.getAllowedTools()::contains)) {
+                    throw new IllegalArgumentException(
+                            "mcp.allowedTools has no overlap with the application type's allowed tools");
+                }
             }
         } else if (application.getEndpoint() == null && application.getFunction() == null
                 && (application.getMcp() == null || application.getMcp().getEndpoint() == null)) {
@@ -663,7 +677,9 @@ public class ApplicationService {
         }
 
         Application.Mcp mcp = application.getMcp();
-        if (mcp != null) {
+        // a schema-rich application takes its MCP endpoint from the application type schema, so its own
+        // mcp block may legitimately carry only allowedTools to narrow the type's allowed tools
+        if (mcp != null && applicationSchemaId == null) {
             if (mcp.getEndpoint() == null) {
                 throw new IllegalArgumentException("MCP endpoint must be provided");
             }

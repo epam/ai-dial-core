@@ -216,7 +216,7 @@
               "items": {
                 "type": "string"
               },
-              "description": "Optional. Metadata for DIAL Core that defines the allowed tool names. When specified, DIAL Core filters the tools/list response from the MCP server to only include tools whose names match this list. When omitted, DIAL Core proxies the tools/list response from the MCP server without filtering."
+              "description": "Optional. Metadata for DIAL Core that defines the allowed tool names. When specified, DIAL Core filters the tools/list response from the MCP server to only include tools whose names match this list. When omitted, DIAL Core proxies the tools/list response from the MCP server without filtering. If an application instance using this type also specifies its own mcp.allowedTools, the effective allowed tools are the intersection of the two lists (the instance can only narrow this list, never widen it). A no-overlap override is meaningless and is never applied: it is rejected when the application is written through the applications API, and ignored with a warning for an application defined in the static config file, so that this list stays in effect."
             },
             "dial:mcpConfigDelivery": {
               "type": "string",
