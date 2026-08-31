@@ -18,8 +18,8 @@ import java.util.Map;
 public class DeploymentInterface {
 
     /**
-     * Source (adapter) root the matching ingress path is appended to at request time. Optional: an entry
-     * declaring none is served by the deployment-level {@link Deployment#getBaseUrl()}.
+     * Root url the matching ingress path is appended to at request time. Optional: an entry declaring
+     * none is served by the deployment-level {@link Deployment#getBaseUrl()}.
      */
     @JsonProperty("base_url")
     @JsonAlias({"baseUrl", "base_url"})

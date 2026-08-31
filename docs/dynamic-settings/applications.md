@@ -28,7 +28,7 @@ An object containing parameters for each [application](#applications).
 * `applications.<application_name>.applicationTypeSchemaId`: The identifier of a JSON schema that application is based upon. The shema ID must exist in the DIAL Core config property `applicationTypeSchemas`. Refer to [DIAL Documentation](https://docs.dialx.ai/platform/core/apps#application-types) to learn more about schema-rich apps.
 * `applications.<application_name>.applicationProperties`: Properties of a schema-rich application. Specified properties must conform to the JSON schema referenced by `applicationTypeSchemaId`. Refer to [DIAL Documentation](https://docs.dialx.ai/platform/core/apps#application-types) to learn more about schema-rich apps.
 * `endpoint`: The application's API endpoint for chat completion requests.
-* `baseUrl`: The application adapter root shared by every `interfaces` entry that declares no `base_url` of its own.
+* `baseUrl`: The root URL shared by every `interfaces` entry that declares no `base_url` of its own.
 * `interfaces`: A typed alternative to the flat `endpoint` field for declaring the routing target. For applications, only the `openaiChatCompletions` interface is supported; the Responses API and other interfaces are not. Refer to [applications.<application_name>.interfaces](#applicationsapplication_nameinterfaces).
 * `overrideName`: If set, the application is called under this name: the outgoing chat completion request body's `model` field (and the `X-DIAL-OVERRIDE-NAME` header) are rewritten to this value before the request reaches the application's endpoint. Doesn't change routing — only the value the endpoint receives.
 * `iconUrl`: A string with URL of the icon to display for the app in the UI.
@@ -155,7 +155,7 @@ Applications support only one interface type:
 
 Each value is an object with the following fields:
 
-* `base_url`: The application adapter root that the matching ingress path is appended to. Optional — the application-level `baseUrl` serves an entry that omits it.
+* `base_url`: The root URL that the matching ingress path is appended to. Optional — the application-level `baseUrl` serves an entry that omits it.
 * `defaultHeaders`: Headers applied to requests for this interface only, laid over the application-level `defaultHeaders`. Refer to [applications.<application_name>.defaultHeaders](#applicationsapplication_namedefaultheaders).
 
 **Example**
