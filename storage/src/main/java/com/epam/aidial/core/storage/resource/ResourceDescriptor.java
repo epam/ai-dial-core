@@ -23,10 +23,6 @@ public class ResourceDescriptor {
     public static final String PLATFORM_BUCKET = "platform";
     public static final String PLATFORM_LOCATION = PLATFORM_BUCKET + PATH_SEPARATOR;
 
-    /**
-     * Layout in force for physical paths. Swapped once the tenant-rooted layout is enabled.
-     */
-    private static final StorageLayout LAYOUT = LegacyStorageLayout.INSTANCE;
 
     ResourceType type;
     /**
@@ -134,7 +130,8 @@ public class ResourceDescriptor {
      * location followed by the resource-type folder.
      */
     private String getStoragePrefix() {
-        return LAYOUT.resolveLocationPrefix(bucketLocation) + LAYOUT.resolveTypeFolder(type.group()) + PATH_SEPARATOR;
+        StorageLayout layout = StorageLayouts.resolveActive();
+        return layout.resolveLocationPrefix(bucketLocation) + layout.resolveTypeFolder(type.group()) + PATH_SEPARATOR;
     }
 
     /**
