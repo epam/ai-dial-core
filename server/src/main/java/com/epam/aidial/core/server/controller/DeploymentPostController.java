@@ -19,6 +19,7 @@ import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BaseResponseFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
+import com.epam.aidial.core.server.function.CollectChatCompletionUsageFn;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
@@ -302,6 +303,11 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                 : InterfaceType.OPENAI_CHAT_COMPLETIONS;
     }
 
+    @Override
+    protected InterfaceType interfaceType() {
+        return requestedInterface();
+    }
+
     @SneakyThrows
     private void sendRequest() {
         if (nextUpstream()) {
@@ -407,7 +413,8 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
         Supplier<BufferingReadStream.BaseEventListener> eventListenerSupplier = () ->
                 new ChatCompletionSseListener(isChatCompletionsPath()
-                        ? List.of(new StripUsagePerModelFn(proxy, context), new CollectResponseChatCompletionAttachmentsFn(proxy, context))
+                        ? List.of(new StripUsagePerModelFn(proxy, context), new CollectResponseChatCompletionAttachmentsFn(proxy, context),
+                                new CollectChatCompletionUsageFn(proxy, context))
                         : List.of(new CollectResponseChatCompletionAttachmentsFn(proxy, context)));
         BufferingReadStream responseStream = createResponseStream(proxyResponse, eventListenerSupplier);
 

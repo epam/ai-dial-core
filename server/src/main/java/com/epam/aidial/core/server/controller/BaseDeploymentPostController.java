@@ -190,7 +190,8 @@ public class BaseDeploymentPostController {
             String bucket = BucketBuilder.buildInitiatorBucket(context);
             TokenUsage usage = context.getTokenUsage();
             return proxy.getRateLimiter().increase(
-                    context.getDeployment(), bucket, usage, context.getRequestBody(), context.getResponseBody())
+                    context.getDeployment(), bucket, usage, context.getRequestBody(), context.getResponseBody(),
+                    interfaceType(), context.getPricingUsageNode())
                     .transform(result -> {
                         if (result.failed()) {
                             log.warn("Failed to increase limit", result.cause());
@@ -252,6 +253,18 @@ public class BaseDeploymentPostController {
      */
     protected TokenUsage parseTokenUsage(Buffer responseBody) {
         return TokenUsageParser.parse(responseBody);
+    }
+
+    /**
+     * Which upstream interface shape this controller's response is in, for pricing decision-tree
+     * evaluation. Overridable so provider-specific controllers (Anthropic Messages, OpenAI Responses)
+     * can report their own shape; the default covers the OpenAI Chat Completions path. A controller
+     * that serves more than one shape from the same class (e.g. {@code DeploymentPostController}
+     * also handling {@code /embeddings}) must override this to report the actual per-request shape -
+     * otherwise a non-chat-completions response silently gets evaluated against the wrong alias table.
+     */
+    protected InterfaceType interfaceType() {
+        return InterfaceType.OPENAI_CHAT_COMPLETIONS;
     }
 
     /**

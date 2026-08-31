@@ -260,6 +260,12 @@ Parameters defining the pricing for the model. Use to enables real-time cost est
     * `none`: disables all cost tracking for this model.
 * `prompt`: Cost per unit for prompt tokens.
 * `completion`: Cost per unit for completion tokens (chat responses).
+* `cacheRead` / `cacheWrite` (optional, `unit: "token"` only): Cost per cache-read/cache-write
+  token. Each is either a flat rate string (same convention as `prompt`/`completion`) or a
+  decision-tree object that picks a rate based on the call's own usage data — the field is
+  either a standard name (`cachedReadTokens`, `cachedWriteTokens`, `promptTokens`, `serviceTier`,
+  `ttl`) or a `$`-prefixed JSON Path expression. Left unset, cache tokens are billed at the
+  `prompt` rate, exactly as if caching weren't split out at all.
 
 **Example**
 
@@ -270,6 +276,19 @@ Parameters defining the pricing for the model. Use to enables real-time cost est
                 "unit": "token",
                 "prompt": "0.56",
                 "completion": "0.67"
+            },
+        },
+        "claude-sonnet-4-5": {
+            "pricing": {
+                "unit": "token",
+                "prompt": "0.000003",
+                "completion": "0.000015",
+                "cacheRead": "0.0000003",
+                "cacheWrite": {
+                    "test": { "field": "ttl", "operator": "==", "value": "1h" },
+                    "ifTrue": "0.000006",
+                    "ifFalse": "0.00000375"
+                }
             },
         }
 }

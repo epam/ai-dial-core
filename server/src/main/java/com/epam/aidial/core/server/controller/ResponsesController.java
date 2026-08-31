@@ -75,6 +75,11 @@ public class ResponsesController extends BaseDeploymentPostController {
                 new CollectDeploymentsFn(proxy, context));
     }
 
+    @Override
+    protected InterfaceType interfaceType() {
+        return InterfaceType.OPENAI_RESPONSES;
+    }
+
     @ApiOperation(
             method = "POST",
             path = "/openai/v1/responses",
