@@ -276,9 +276,9 @@ public class ResourceService implements AutoCloseable {
                 : getResourceMetadata(descriptor);
     }
 
-    public ResourceFolderMetadata getFolderMetadata(ResourceDescriptor descriptor, String token, int limit, boolean recursive) {
+    public ResourceFolderMetadata getFolderMetadata(ResourceDescriptor descriptor, String afterMarker, int limit, boolean recursive) {
         String blobKey = blobKey(descriptor);
-        PageSet<? extends StorageMetadata> set = blobStore.list(blobKey, decodeToken(token), limit, recursive);
+        PageSet<? extends StorageMetadata> set = blobStore.list(blobKey, decodeNextMarker(afterMarker), limit, recursive);
 
         if (set.isEmpty() && !descriptor.isRootFolder()) {
             return null;
@@ -288,7 +288,7 @@ public class ResourceService implements AutoCloseable {
                 // blob store never returns folder however local FS provider may return
                 .filter(meta -> !recursive || meta.getType() == StorageType.BLOB)
                 .map(meta -> storageToResourceMetadata(meta, descriptor)).toList();
-        String nextMarker = encodeToken(set.getNextMarker());
+        String nextMarker = encodeNextMarker(set.getNextMarker());
         return new ResourceFolderMetadata(descriptor, resources, nextMarker);
     }
 
@@ -297,11 +297,11 @@ public class ResourceService implements AutoCloseable {
      * Percent-encoding it is not enough to make it safely reusable as an opaque query parameter: some
      * callers re-encode the value before resending it, others resend it exactly as received, and the two
      * expectations conflict for a percent-encoded value ("+" is read back as a space by the query
-     * parser, "%" sequences get decoded again). Encoding the marker with a URL-safe Base64 alphabet
+     * parser, "%" sequences get decoded again). Encoding the marker with a URL-safe Base58 alphabet
      * avoids both "+" and "%" entirely, so the token round-trips correctly either way.
      */
     @Nullable
-    private static String encodeToken(@Nullable String marker) {
+    private static String encodeNextMarker(@Nullable String marker) {
         if (marker == null) {
             return null;
         }
@@ -309,11 +309,11 @@ public class ResourceService implements AutoCloseable {
     }
 
     @Nullable
-    private static String decodeToken(@Nullable String token) {
-        if (token == null) {
+    private static String decodeNextMarker(@Nullable String marker) {
+        if (marker == null) {
             return null;
         }
-        return new String(Base58.decode(token), StandardCharsets.UTF_8);
+        return new String(Base58.decode(marker), StandardCharsets.UTF_8);
     }
 
     @SneakyThrows
