@@ -12,7 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-import java.net.URLEncoder;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
@@ -25,16 +26,30 @@ class ResourceApiTest extends ResourceBaseTest {
 
     @Test
     void testEncodedDecodedNextToken() {
-        for (int i = 0; i < 100; i++) {
+        int total = 100;
+        Set<String> expected = new HashSet<>();
+        for (int i = 0; i < total; i++) {
             Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation%20" + i, CONVERSATION_BODY_1);
             assertEquals(response.status(), 200);
+            expected.add("conversation " + i);
         }
 
-        String token = URLEncoder.encode("test-2/Keys/EPM-RTC-GPT/conversations/folder/conversation%2017");
-        System.err.println(token);
-        Response response = send(HttpMethod.GET, "/v1/metadata/conversations/" + bucket + "/folder/", "limit=10&token=" + token, "");
-        System.err.println(response.body());
-        verify(response, 200);
+        String path = "/v1/metadata/conversations/" + bucket + "/folder/";
+        Set<String> actual = new HashSet<>();
+        String token = null;
+        do {
+            String queryParams = token == null ? "limit=10" : "limit=10&token=" + token;
+            Response response = send(HttpMethod.GET, path, queryParams, "");
+            verify(response, 200);
+
+            JsonObject body = new JsonObject(response.body());
+            for (Object item : body.getJsonArray("items")) {
+                actual.add(((JsonObject) item).getString("name"));
+            }
+            token = body.getString("nextToken");
+        } while (token != null);
+
+        assertEquals(expected, actual);
     }
 
     @Test
