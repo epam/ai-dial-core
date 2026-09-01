@@ -103,6 +103,7 @@ public final class ConfigPostProcessor {
                                        @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
         Set<String> deploymentIds = new HashSet<>();
         sortRoutes(config);
+        validateTranslators(config);
         linkTranslators(config);
         processModels(config, deploymentIds, onSkip);
         processApplications(config, deploymentIds, onSkip);
@@ -337,6 +338,23 @@ public final class ConfigPostProcessor {
     }
 
     /**
+     * A {@code translators} entry has to say what it converts from: unlike a definition written inline it is
+     * declared under no interface, so {@code in} is the only thing tying it to one. {@code out} and
+     * {@code baseUrl} need no check here — {@link Translator} rejects an entry missing either as it is read.
+     */
+    private static void validateTranslators(Config config) {
+        for (Map.Entry<String, Translator> entry : config.getTranslators().entrySet()) {
+            Translator translator = entry.getValue();
+            if (translator == null) {
+                throw new IllegalStateException("Translator '" + entry.getKey() + "' is empty");
+            }
+            if (translator.getIn() == null) {
+                throw new IllegalStateException("Translator '" + entry.getKey() + "' declares no in");
+            }
+        }
+    }
+
+    /**
      * Points every named {@code interfaces.<type>.translator} at its {@link Config#getTranslators()} entry.
      * Runs on every load, so an edit to the registry reaches the deployments referencing it; a name with no
      * entry stays unlinked and its interface serves nothing, the same as one with no base url.
@@ -412,12 +430,12 @@ public final class ConfigPostProcessor {
             warnings.add(new ValidationWarning(field, "Mode 'translator' requires a translator"));
             return;
         }
-        // a reference resolving to no url — an unknown name, or an entry declaring no baseUrl — leaves the
-        // interface unserved rather than the model invalid: the request path answers 503 for it, exactly as
-        // it does for an application or interceptor, and a later reload can link it. Only config that
-        // contradicts itself is rejected here, because no reload will fix that.
+        // a name with no entry to link it to leaves the interface unserved rather than the model invalid:
+        // the request path answers 503 for it, exactly as it does for an application or interceptor, and a
+        // later reload can link it. A registry entry that exists is always complete — Translator sees to
+        // that — so what is rejected here is only config contradicting itself, which no reload will fix.
         Translator definition = translator.getDefinition();
-        if (definition == null || definition.getBaseUrl() == null) {
+        if (definition == null) {
             return;
         }
         if (definition.getIn() != null && !definition.getIn().equals(type)) {
@@ -440,8 +458,8 @@ public final class ConfigPostProcessor {
      */
     private static void validateTranslatorOutput(Model model, Translator definition,
                                                  String field, List<ValidationWarning> warnings) {
-        // no out, or one this Core does not know: nothing to check the model against
-        InterfaceType out = definition.getOut() == null ? null : InterfaceType.find(definition.getOut());
+        // an out only a newer Core knows: nothing to check the model against
+        InterfaceType out = InterfaceType.find(definition.getOut());
         if (out == null) {
             return;
         }

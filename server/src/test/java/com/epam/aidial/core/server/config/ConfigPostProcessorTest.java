@@ -258,6 +258,17 @@ public class ConfigPostProcessorTest {
     }
 
     @Test
+    void testSemanticThrowsOnRegistryTranslatorWithoutIn() {
+        // a registry entry is declared under no interface, so in is the only thing tying it to one
+        Config config = newMutableConfig();
+        config.setTranslators(Map.of("anthropicMessagesToOpenaiChatCompletions",
+                new Translator(null, "openaiChatCompletions", "http://translator/to-chat-completions")));
+
+        assertThrows(IllegalStateException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
     void testSemanticLinksNamedTranslatorToItsRegistryEntry() {
         Config config = newMutableConfig();
         config.setTranslators(Map.of("anthropicMessagesToOpenaiChatCompletions",

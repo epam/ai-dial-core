@@ -1,6 +1,8 @@
 package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
+import com.fasterxml.jackson.databind.exc.ValueInstantiationException;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -9,6 +11,7 @@ import static com.epam.aidial.core.config.InterfaceType.ANTHROPIC_MESSAGES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -19,6 +22,52 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class TranslatorTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    @Test
+    void translatorCannotBeBuiltWithoutOutOrBaseUrl() {
+        // out and baseUrl are what make it a translator: one missing either converts nothing, or converts it
+        // nowhere, so the shape is rejected as it is read rather than left to serve 503s
+        assertThrows(IllegalArgumentException.class, () -> new Translator("anthropicMessages", null, "http://translator"));
+        assertThrows(IllegalArgumentException.class, () -> new Translator("anthropicMessages", "openaiChatCompletions", null));
+        assertThrows(IllegalArgumentException.class, () -> new Translator("anthropicMessages", "openaiChatCompletions", ""));
+    }
+
+    @Test
+    void registryEntryMissingBaseUrlIsRejectedOnRead() throws Exception {
+        String json = """
+                {
+                    "translators": {
+                        "anthropicMessagesToOpenaiResponses": {
+                            "in": "anthropicMessages",
+                            "out": "openaiResponses"
+                        }
+                    }
+                }
+                """;
+
+        // absent, so Jackson refuses the creator property
+        assertThrows(MismatchedInputException.class, () -> MAPPER.readValue(json, Config.class));
+
+        // present but null, so the constructor refuses it
+        String explicitNull = json.replace("\"out\": \"openaiResponses\"", "\"out\": \"openaiResponses\", \"baseUrl\": null");
+        assertThrows(ValueInstantiationException.class, () -> MAPPER.readValue(explicitNull, Config.class));
+    }
+
+    @Test
+    void inlineDefinitionMissingOutIsRejectedOnRead() {
+        String json = """
+                {
+                    "interfaces": {
+                        "anthropicMessages": {
+                            "mode": "translator",
+                            "translator": {"baseUrl": "http://translator"}
+                        }
+                    }
+                }
+                """;
+
+        assertThrows(MismatchedInputException.class, () -> MAPPER.readValue(json, Model.class));
+    }
 
     @Test
     void registryKeepsInterfaceNamesThisCoreDoesNotKnow() throws Exception {
