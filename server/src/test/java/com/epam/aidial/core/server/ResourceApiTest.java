@@ -5,11 +5,17 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
@@ -19,6 +25,64 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Slf4j
 class ResourceApiTest extends ResourceBaseTest {
+
+    @Test
+    void testEncodedDecodedNextToken() {
+        int total = 100;
+        Set<String> expected = new HashSet<>();
+        for (int i = 0; i < total; i++) {
+            Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation%20" + i, CONVERSATION_BODY_1);
+            assertEquals(response.status(), 200);
+            expected.add("conversation " + i);
+        }
+
+        String path = "/v1/metadata/conversations/" + bucket + "/folder/";
+        Set<String> actual = new HashSet<>();
+        String token = null;
+        do {
+            String queryParams = token == null ? "limit=10" : "limit=10&token=" + token;
+            Response response = send(HttpMethod.GET, path, queryParams, "");
+            verify(response, 200);
+
+            JsonObject body = new JsonObject(response.body());
+            for (Object item : body.getJsonArray("items")) {
+                actual.add(((JsonObject) item).getString("name"));
+            }
+            // nextToken is an opaque value - the caller must percent-encode it like any other query parameter
+            String nextToken = body.getString("nextToken");
+            token = nextToken == null ? null : URLEncoder.encode(nextToken, StandardCharsets.UTF_8);
+        } while (token != null);
+
+        assertEquals(expected, actual);
+    }
+
+    @Test
+    void testEncodedDecodedNextToken2() {
+        // "+" is a legal path character, so path encoding leaves it as is,
+        // but the query parser rewrites it into a space when the token comes back
+        verifySecondPage("plus", "a+1", "a+2");
+        // "%" is escaped by path encoding, so decoding the token twice (as a query param and as a path) loses it
+        verifySecondPage("percent", "b%2520x", "b%2520y");
+    }
+
+    private void verifySecondPage(String folder, String first, String second) {
+        verify(resourceRequest(HttpMethod.PUT, "/" + folder + "/" + first, CONVERSATION_BODY_1), 200);
+        verify(resourceRequest(HttpMethod.PUT, "/" + folder + "/" + second, CONVERSATION_BODY_1), 200);
+
+        String path = "/v1/metadata/conversations/" + bucket + "/" + folder + "/";
+        Response page1 = send(HttpMethod.GET, path, "limit=1", "");
+        verify(page1, 200);
+
+        String token = new JsonObject(page1.body()).getString("nextToken");
+        assertNotNull(token);
+
+        // the client sends the token back exactly as it was given, as an opaque value
+        Response page2 = send(HttpMethod.GET, path, "limit=1&token=" + token, "");
+        verify(page2, 200);
+
+        JsonObject item = new JsonObject(page2.body()).getJsonArray("items").getJsonObject(0);
+        assertEquals(UrlUtil.decodePath(second), item.getString("name"));
+    }
 
     @Test
     void testWorkflow() {
