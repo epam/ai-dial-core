@@ -14842,6 +14842,8 @@ components:
           $ref: "#/components/schemas/MapStringString"
         defaultLocale:
           type: string
+        translators:
+          $ref: "#/components/schemas/MapStringTranslator"
     ConfigFileMigrateRequest:
       type: object
       properties:
@@ -15139,6 +15141,8 @@ components:
           $ref: "#/components/schemas/MapStringString"
         mode:
           $ref: "#/components/schemas/InterfaceMode"
+        translator:
+          $ref: "#/components/schemas/TranslatorRef"
     EmbeddingResponse:
       required:
       - data
@@ -15918,6 +15922,10 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/ToolSet"
+    MapStringTranslator:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/Translator"
     MapStringUpstreamInterface:
       type: object
       additionalProperties:
@@ -17234,6 +17242,22 @@ components:
       enum:
       - HTTP
       - SSE
+    Translator:
+      type: object
+      properties:
+        baseUrl:
+          type: string
+        in:
+          type: string
+        out:
+          type: string
+    TranslatorRef:
+      type: object
+      properties:
+        definition:
+          $ref: "#/components/schemas/Translator"
+        name:
+          type: string
     TruncatePromptError:
       required:
       - error
