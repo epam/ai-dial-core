@@ -280,10 +280,14 @@ public class ResourceService implements AutoCloseable {
 
     public ResourceFolderMetadata getFolderMetadata(ResourceDescriptor descriptor, String token, int limit, boolean recursive) {
         String blobKey = blobKey(descriptor);
-        // the token is a percent encoded marker (see nextMarker below), decode it back before passing to the blob store
-        PageSet<? extends StorageMetadata> set = blobStore.list(blobKey, UrlUtil.tryDecodePath(token), limit, recursive);
+        // the query parameter decoder already undoes the percent-encoding applied to nextMarker below,
+        // so the token must be passed to the blob store as-is - decoding it again would corrupt values
+        // that legitimately contain a percent-encoded sequence (e.g. a name with a literal "%")
+        PageSet<? extends StorageMetadata> set = blobStore.list(blobKey, token, limit, recursive);
 
-        if (set.isEmpty() && !descriptor.isRootFolder()) {
+        // an empty page is only a sign of a missing folder on the first request (token == null);
+        // for a continuation request it just means there are no more items left
+        if (set.isEmpty() && token == null && !descriptor.isRootFolder()) {
             return null;
         }
 
@@ -292,8 +296,13 @@ public class ResourceService implements AutoCloseable {
                 .filter(meta -> !recursive || meta.getType() == StorageType.BLOB)
                 .map(meta -> storageToResourceMetadata(meta, descriptor)).toList();
         // marker can be a percent encoded or decoded string
-        // we should encode the marker any way to get back the original string from a query parameter
+        // we should encode the marker any way to get back the original string from a query parameter.
+        // "+" is left untouched by path encoding but the query parameter decoder treats a literal "+"
+        // as a space, so it must be escaped explicitly to round-trip correctly as a token
         String nextMarker = UrlUtil.encodePath(set.getNextMarker());
+        if (nextMarker != null) {
+            nextMarker = nextMarker.replace("+", "%2B");
+        }
         return new ResourceFolderMetadata(descriptor, resources, nextMarker);
     }
 
