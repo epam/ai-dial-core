@@ -46,6 +46,7 @@ import org.redisson.client.codec.Codec;
 import org.redisson.client.codec.StringCodec;
 import org.redisson.codec.CompositeCodec;
 
+import javax.annotation.Nullable;
 import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.IOException;
@@ -56,10 +57,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
-import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -73,7 +72,6 @@ import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import javax.annotation.Nullable;
 
 import static java.util.concurrent.Executors.newThreadPerTaskExecutor;
 
@@ -307,7 +305,7 @@ public class ResourceService implements AutoCloseable {
         if (marker == null) {
             return null;
         }
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(marker.getBytes(StandardCharsets.UTF_8));
+        return Base58.encode(marker.getBytes(StandardCharsets.UTF_8));
     }
 
     @Nullable
@@ -315,7 +313,7 @@ public class ResourceService implements AutoCloseable {
         if (token == null) {
             return null;
         }
-        return new String(Base64.getUrlDecoder().decode(token), StandardCharsets.UTF_8);
+        return new String(Base58.decode(token), StandardCharsets.UTF_8);
     }
 
     @SneakyThrows
