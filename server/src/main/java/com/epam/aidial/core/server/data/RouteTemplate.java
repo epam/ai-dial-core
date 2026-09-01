@@ -19,6 +19,14 @@ public enum RouteTemplate {
             "^/+anthropic/v1/messages$",
             "/anthropic/v1/messages"
     ),
+    LLM_ANTHROPIC_MODEL(
+            "^/+anthropic/v1/models/(?<id>.+?)$",
+            "/anthropic/v1/models/{id}"
+    ),
+    LLM_ANTHROPIC_MODELS(
+            "^/+anthropic/v1/models$",
+            "/anthropic/v1/models"
+    ),
 
     // OpenAI API routes
     LLM_RESPONSES_API(

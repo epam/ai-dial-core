@@ -267,6 +267,88 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /anthropic/v1/models:
+    get:
+      tags:
+      - Deployment listing
+      summary: /anthropic/v1/models
+      operationId: getAnthropicModels
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnthropicModelListData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      parameters:
+      - name: after_id
+        in: query
+        description: ID of the model to use as a cursor; returns the page immediately after it.
+        required: false
+        schema:
+          type: string
+      - name: before_id
+        in: query
+        description: ID of the model to use as a cursor; returns the page immediately before it.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Number of items to return per page. Defaults to 20. Ranges from 1 to 1000.
+        required: false
+        schema:
+          type: integer
+      - name: anthropic-beta
+        in: header
+        description: Optional beta feature opt-in header(s); DIAL accepts and ignores it for this endpoint.
+        required: false
+        schema:
+          type: string
+  /anthropic/v1/models/{model_name}:
+    get:
+      tags:
+      - Deployment listing
+      summary: "/anthropic/v1/models/{model_name}"
+      operationId: getAnthropicModel
+      parameters:
+      - name: model_name
+        in: path
+        description: The name of the model.
+        required: true
+        schema:
+          type: string
+      - name: anthropic-beta
+        in: header
+        description: Optional beta feature opt-in header(s); DIAL accepts and ignores it for this endpoint.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnthropicModelData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /openai/applications:
     get:
       tags:
@@ -13477,6 +13559,34 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/McpTool"
+    AnthropicModelData:
+      type: object
+      properties:
+        created_at:
+          type: string
+        display_name:
+          type: string
+        id:
+          type: string
+        type:
+          type: string
+        max_input_tokens:
+          type: integer
+        max_tokens:
+          type: integer
+    AnthropicModelListData:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnthropicModelData"
+        first_id:
+          type: string
+        has_more:
+          type: boolean
+        last_id:
+          type: string
     Application:
       type: object
       properties:
