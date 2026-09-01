@@ -390,8 +390,11 @@ public final class ConfigPostProcessor {
             Role role = entry.getValue();
             role.setName(name);
             log.debug("Start loading role `{}`", role.getName());
-            for (Map.Entry<String, Limit> limitEntry : role.getLimits().entrySet()) {
-                log.debug("Loading {} for deployment `{}`", limitEntry.getValue(), limitEntry.getKey());
+            Map<String, Limit> roleLimits = role.getLimits();
+            if (roleLimits != null && !roleLimits.isEmpty()) {
+                for (Map.Entry<String, Limit> limitEntry : roleLimits.entrySet()) {
+                    log.debug("Loading {} for deployment `{}`", limitEntry.getValue(), limitEntry.getKey());
+                }
             }
             log.debug("End loading role `{}`", role.getName());
         }
