@@ -34,6 +34,7 @@ An object containing deployed DIAL Interceptors and their [parameters](#intercep
 An object containing parameters for each [interceptor](#interceptors).
 
 * `endpoint`: The URL of the interceptor service. This URL is used to handle requests and responses for the interceptor. **Required** unless `interfaces` is used instead.
+* `baseUrl`: The interceptor service root shared by every `interfaces` entry that declares no `base_url` of its own.
 * `interfaces`: A typed alternative to the flat `endpoint` field for declaring the interceptor service target. For interceptors, only the `openaiChatCompletions` interface is supported; the Responses API and other interfaces are not. Refer to [interceptors.<interceptor_name>.interfaces](#interceptorsinterceptor_nameinterfaces).
 * `overrideName`: If set, the interceptor is called under this name: the outgoing chat completion request body's `model` field (and the `X-DIAL-OVERRIDE-NAME` header) are rewritten to this value before the request reaches the interceptor's endpoint. Only applied when the interceptor is invoked as part of a chat-completions request; interceptors are also invoked when processing Responses API requests, but that flow ignores `overrideName`. Doesn't change routing — only the value the endpoint receives.
 * `iconUrl`: A string with the URL with the icon location to display for the interceptor on UI.
@@ -62,7 +63,7 @@ Interceptors support only one interface type:
 
 Each value is an object with the following fields:
 
-* `base_url`: The interceptor service root that the matching ingress path is appended to.
+* `base_url`: The interceptor service root that the matching ingress path is appended to. Optional — the interceptor-level `baseUrl` serves an entry that omits it.
 * `defaultHeaders`: Headers applied to requests for this interface only, laid over the interceptor-level `defaultHeaders`. Refer to [interceptors.<interceptor_name>.defaultHeaders](#interceptorsinterceptor_namedefaultheaders).
 
 **Example**

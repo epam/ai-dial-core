@@ -13571,6 +13571,8 @@ components:
           type: string
         defaultHeaders:
           $ref: "#/components/schemas/MapStringString"
+        baseUrl:
+          type: string
     ApplicationData:
       type: object
       properties:
@@ -15025,6 +15027,8 @@ components:
           type: string
         defaultHeaders:
           $ref: "#/components/schemas/MapStringString"
+        mode:
+          $ref: "#/components/schemas/InterfaceMode"
     EmbeddingResponse:
       required:
       - data
@@ -15519,6 +15523,13 @@ components:
           type: string
         defaultHeaders:
           $ref: "#/components/schemas/MapStringString"
+        baseUrl:
+          type: string
+    InterfaceMode:
+      type: string
+      enum:
+      - PASSTHROUGH
+      - TRANSLATOR
     Invitation:
       type: object
       properties:
@@ -15929,6 +15940,8 @@ components:
           format: uri
         defaultHeaders:
           $ref: "#/components/schemas/MapStringString"
+        baseUrl:
+          type: string
     ModelData:
       type: object
       properties:
@@ -17013,6 +17026,8 @@ components:
           type: string
         defaultHeaders:
           $ref: "#/components/schemas/MapStringString"
+        baseUrl:
+          type: string
     ToolSetData:
       type: object
       properties:
