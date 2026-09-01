@@ -234,7 +234,11 @@
     },
     "claude-limited": {
       "type": "chat",
-      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} }
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} },
+      "limits": {
+        "maxPromptTokens": 100000,
+        "maxCompletionTokens": 8192
+      }
     },
     "claude-upstream": {
       "type": "chat",

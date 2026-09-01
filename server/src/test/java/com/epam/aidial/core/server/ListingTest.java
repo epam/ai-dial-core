@@ -9,9 +9,12 @@ import io.vertx.junit5.VertxTestContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import java.time.Instant;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith(VertxExtension.class)
 public class ListingTest extends ResourceBaseTest {
@@ -169,6 +172,145 @@ public class ListingTest extends ResourceBaseTest {
                     "custom_temperature_supported": true, "reasoning_efforts": []
                     }
                 """));
+    }
+
+    @Test
+    void testAnthropicModelsListing_includesOnlyAnthropicServableModels(Vertx vertx, VertxTestContext context) {
+        Consumer<String> checker = (str) -> {
+            JsonObject json = new JsonObject(str);
+            boolean foundClaude = false;
+            for (Object item : json.getJsonArray("data")) {
+                JsonObject elem = (JsonObject) item;
+                String id = elem.getString("id");
+                assertEquals("model", elem.getString("type"));
+                assertEquals(id, elem.getString("display_name"));
+                assertEquals(1672534800, Instant.parse(elem.getString("created_at")).getEpochSecond());
+                if (id.equals("claude-ns")) {
+                    foundClaude = true;
+                }
+                // an openai-only model must not be advertised under the anthropic listing
+                assertFalse(id.equals("test-model-v1"));
+            }
+            assertTrue(foundClaude);
+        };
+        checkResponse(vertx, context, "/anthropic/v1/models", checker);
+    }
+
+    @Test
+    void testAnthropicModel_notFoundForOpenAiOnlyModel(Vertx vertx, VertxTestContext context) {
+        WebClient client = WebClient.create(vertx);
+        client.get(serverPort, "localhost", "/anthropic/v1/models/test-model-v1")
+                .putHeader("Api-key", "proxyKey2")
+                .send(context.succeeding(response -> context.verify(() -> {
+                    assertEquals(404, response.statusCode());
+                    context.completeNow();
+                })));
+    }
+
+    @Test
+    void testAnthropicModel_okForAnthropicModel(Vertx vertx, VertxTestContext context) {
+        WebClient client = WebClient.create(vertx);
+        client.get(serverPort, "localhost", "/anthropic/v1/models/claude-ns")
+                .putHeader("Api-key", "proxyKey2")
+                .as(BodyCodec.jsonObject())
+                .send(context.succeeding(response -> context.verify(() -> {
+                    assertEquals(200, response.statusCode());
+                    assertEquals("claude-ns", response.body().getString("id"));
+                    assertEquals("model", response.body().getString("type"));
+                    context.completeNow();
+                })));
+    }
+
+    @Test
+    void testAnthropicModelsListing_limitTruncatesAndSetsHasMore(Vertx vertx, VertxTestContext context) {
+        Consumer<String> checker = (str) -> {
+            JsonObject json = new JsonObject(str);
+            assertEquals(1, json.getJsonArray("data").size());
+            String id = json.getJsonArray("data").getJsonObject(0).getString("id");
+            assertEquals("default-headers-model", id);
+            assertEquals(id, json.getString("first_id"));
+            assertEquals(id, json.getString("last_id"));
+            assertTrue(json.getBoolean("has_more"));
+        };
+        checkResponse(vertx, context, "/anthropic/v1/models?limit=1", checker);
+    }
+
+    @Test
+    void testAnthropicModelsListing_afterIdPaginatesForward(Vertx vertx, VertxTestContext context) {
+        Consumer<String> checker = (str) -> {
+            JsonObject json = new JsonObject(str);
+            assertEquals(2, json.getJsonArray("data").size());
+            assertEquals("claude-ns", json.getJsonArray("data").getJsonObject(0).getString("id"));
+            assertEquals("claude-stream", json.getJsonArray("data").getJsonObject(1).getString("id"));
+            assertEquals("claude-ns", json.getString("first_id"));
+            assertEquals("claude-stream", json.getString("last_id"));
+            assertTrue(json.getBoolean("has_more"));
+        };
+        checkResponse(vertx, context, "/anthropic/v1/models?after_id=default-headers-model&limit=2", checker);
+    }
+
+    @Test
+    void testAnthropicModelsListing_beforeIdPaginatesBackward(Vertx vertx, VertxTestContext context) {
+        Consumer<String> checker = (str) -> {
+            JsonObject json = new JsonObject(str);
+            assertEquals(2, json.getJsonArray("data").size());
+            assertEquals("default-headers-model", json.getJsonArray("data").getJsonObject(0).getString("id"));
+            assertEquals("claude-ns", json.getJsonArray("data").getJsonObject(1).getString("id"));
+            assertFalse(json.getBoolean("has_more"));
+        };
+        checkResponse(vertx, context, "/anthropic/v1/models?before_id=claude-stream&limit=2", checker);
+    }
+
+    @Test
+    void testAnthropicModelsListing_invalidLimitReturns400(Vertx vertx, VertxTestContext context) {
+        checkBadRequest(vertx, context, "/anthropic/v1/models?limit=abc");
+    }
+
+    @Test
+    void testAnthropicModelsListing_limitOutOfRangeReturns400(Vertx vertx, VertxTestContext context) {
+        checkBadRequest(vertx, context, "/anthropic/v1/models?limit=0");
+    }
+
+    @Test
+    void testAnthropicModelsListing_bothCursorsReturns400(Vertx vertx, VertxTestContext context) {
+        checkBadRequest(vertx, context, "/anthropic/v1/models?after_id=claude-ns&before_id=claude-stream");
+    }
+
+    @Test
+    void testAnthropicModelsListing_unknownCursorReturns400(Vertx vertx, VertxTestContext context) {
+        checkBadRequest(vertx, context, "/anthropic/v1/models?after_id=does-not-exist");
+    }
+
+    @Test
+    void testAnthropicModelsListing_mapsMaxInputTokensAndMaxTokens(Vertx vertx, VertxTestContext context) {
+        Consumer<String> checker = (str) -> {
+            JsonObject json = new JsonObject(str);
+            JsonObject limited = null;
+            JsonObject unlimited = null;
+            for (Object item : json.getJsonArray("data")) {
+                JsonObject elem = (JsonObject) item;
+                if (elem.getString("id").equals("claude-limited")) {
+                    limited = elem;
+                } else if (elem.getString("id").equals("claude-ns")) {
+                    unlimited = elem;
+                }
+            }
+            assertEquals(100000, limited.getInteger("max_input_tokens"));
+            assertEquals(8192, limited.getInteger("max_tokens"));
+            assertFalse(unlimited.containsKey("max_input_tokens"));
+            assertFalse(unlimited.containsKey("max_tokens"));
+        };
+        checkResponse(vertx, context, "/anthropic/v1/models", checker);
+    }
+
+    void checkBadRequest(Vertx vertx, VertxTestContext context, String uri) {
+        WebClient client = WebClient.create(vertx);
+        client.get(serverPort, "localhost", uri)
+                .putHeader("Api-key", "proxyKey2")
+                .send(context.succeeding(response -> context.verify(() -> {
+                    assertEquals(400, response.statusCode());
+                    context.completeNow();
+                })));
     }
 
     void checkResponse(Vertx vertx, VertxTestContext context, String uri, Consumer<String> checker) {
