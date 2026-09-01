@@ -16,7 +16,6 @@ import com.epam.aidial.core.storage.util.Compression;
 import com.epam.aidial.core.storage.util.EtagBuilder;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.epam.aidial.core.storage.util.RedisUtil;
-import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
@@ -60,6 +59,7 @@ import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -280,14 +280,9 @@ public class ResourceService implements AutoCloseable {
 
     public ResourceFolderMetadata getFolderMetadata(ResourceDescriptor descriptor, String token, int limit, boolean recursive) {
         String blobKey = blobKey(descriptor);
-        // the query parameter decoder already undoes the percent-encoding applied to nextMarker below,
-        // so the token must be passed to the blob store as-is - decoding it again would corrupt values
-        // that legitimately contain a percent-encoded sequence (e.g. a name with a literal "%")
-        PageSet<? extends StorageMetadata> set = blobStore.list(blobKey, token, limit, recursive);
+        PageSet<? extends StorageMetadata> set = blobStore.list(blobKey, decodeToken(token), limit, recursive);
 
-        // an empty page is only a sign of a missing folder on the first request (token == null);
-        // for a continuation request it just means there are no more items left
-        if (set.isEmpty() && token == null && !descriptor.isRootFolder()) {
+        if (set.isEmpty() && !descriptor.isRootFolder()) {
             return null;
         }
 
@@ -295,15 +290,32 @@ public class ResourceService implements AutoCloseable {
                 // blob store never returns folder however local FS provider may return
                 .filter(meta -> !recursive || meta.getType() == StorageType.BLOB)
                 .map(meta -> storageToResourceMetadata(meta, descriptor)).toList();
-        // marker can be a percent encoded or decoded string
-        // we should encode the marker any way to get back the original string from a query parameter.
-        // "+" is left untouched by path encoding but the query parameter decoder treats a literal "+"
-        // as a space, so it must be escaped explicitly to round-trip correctly as a token
-        String nextMarker = UrlUtil.encodePath(set.getNextMarker());
-        if (nextMarker != null) {
-            nextMarker = nextMarker.replace("+", "%2B");
-        }
+        String nextMarker = encodeToken(set.getNextMarker());
         return new ResourceFolderMetadata(descriptor, resources, nextMarker);
+    }
+
+    /**
+     * The marker returned by the blob store can contain arbitrary characters (spaces, "+", "%", ...).
+     * Percent-encoding it is not enough to make it safely reusable as an opaque query parameter: some
+     * callers re-encode the value before resending it, others resend it exactly as received, and the two
+     * expectations conflict for a percent-encoded value ("+" is read back as a space by the query
+     * parser, "%" sequences get decoded again). Encoding the marker with a URL-safe Base64 alphabet
+     * avoids both "+" and "%" entirely, so the token round-trips correctly either way.
+     */
+    @Nullable
+    private static String encodeToken(@Nullable String marker) {
+        if (marker == null) {
+            return null;
+        }
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(marker.getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Nullable
+    private static String decodeToken(@Nullable String token) {
+        if (token == null) {
+            return null;
+        }
+        return new String(Base64.getUrlDecoder().decode(token), StandardCharsets.UTF_8);
     }
 
     @SneakyThrows

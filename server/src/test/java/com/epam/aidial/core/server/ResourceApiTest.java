@@ -12,6 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
@@ -46,7 +48,9 @@ class ResourceApiTest extends ResourceBaseTest {
             for (Object item : body.getJsonArray("items")) {
                 actual.add(((JsonObject) item).getString("name"));
             }
-            token = body.getString("nextToken");
+            // nextToken is an opaque value - the caller must percent-encode it like any other query parameter
+            String nextToken = body.getString("nextToken");
+            token = nextToken == null ? null : URLEncoder.encode(nextToken, StandardCharsets.UTF_8);
         } while (token != null);
 
         assertEquals(expected, actual);
