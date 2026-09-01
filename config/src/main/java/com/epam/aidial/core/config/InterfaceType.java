@@ -68,11 +68,23 @@ public enum InterfaceType {
      * @throws IllegalArgumentException if the value does not match any known interface type.
      */
     public static InterfaceType fromValue(String value) {
+        InterfaceType type = find(value);
+        if (type == null) {
+            throw new IllegalArgumentException("Unknown interface type: " + value);
+        }
+        return type;
+    }
+
+    /**
+     * The type with this value, or null for one this Core does not know — a config may name an interface
+     * that only a newer Core, or another component, understands.
+     */
+    public static InterfaceType find(String value) {
         for (InterfaceType type : values()) {
             if (type.value.equals(value)) {
                 return type;
             }
         }
-        throw new IllegalArgumentException("Unknown interface type: " + value);
+        return null;
     }
 }

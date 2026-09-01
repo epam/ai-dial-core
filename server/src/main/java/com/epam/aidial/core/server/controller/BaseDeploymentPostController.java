@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
+import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -211,6 +212,16 @@ public class BaseDeploymentPostController {
     }
 
     /**
+     * Checks the initiator's limits before the request is forwarded. A translated request is checked against
+     * every one of them, but counts towards none: the call the translator makes back to Core is what carries
+     * both the usage and the request slot, so counting here as well would charge one client call twice.
+     */
+    protected Future<RateLimitResult> checkLimits(Deployment deployment) {
+        boolean translated = DeploymentEndpointUtil.resolveMode(deployment, interfaceType()) == InterfaceMode.TRANSLATOR;
+        return proxy.getRateLimiter().limit(context, deployment, !translated);
+    }
+
+    /**
      * Charges the request's usage to the initiator's token and cost limits, unless the interface it arrived
      * on is served by a translator: the translator calls Core back to have the completion served, and that
      * inner request is what carries the usage to the limits. Charging here as well would count it twice.
@@ -369,6 +380,13 @@ public class BaseDeploymentPostController {
                     proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, propsString);
                 }
             });
+        }
+
+        // a translator has to know which deployment to call Core back for, and by the time it reads the body
+        // the model may already have been rewritten to overrideName. MessagesBaseController carries the id
+        // the client itself wrote and overrides this below; every other interface has only the deployment.
+        if (DeploymentEndpointUtil.resolveMode(context.getDeployment(), type) == InterfaceMode.TRANSLATOR) {
+            proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, context.getDeployment().getName());
         }
 
         enrichProxyRequestHeaders(proxyRequest);

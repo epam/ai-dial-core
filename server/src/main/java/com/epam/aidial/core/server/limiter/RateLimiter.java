@@ -88,6 +88,16 @@ public class RateLimiter {
     }
 
     public Future<RateLimitResult> limit(ProxyContext context, RoleBasedEntity roleBasedEntity) {
+        return limit(context, roleBasedEntity, true);
+    }
+
+    /**
+     * @param countRequest whether the call consumes a slot of the caller's {@code requestHour}/{@code requestDay}
+     *                     quota. False for a call another one accounts for: a translated request is checked
+     *                     against every limit, but the call the translator makes back to Core is the one
+     *                     counted, so a single client call never spends two slots.
+     */
+    public Future<RateLimitResult> limit(ProxyContext context, RoleBasedEntity roleBasedEntity, boolean countRequest) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {
@@ -105,7 +115,7 @@ public class RateLimiter {
                 return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied", "Access denied", -1));
             }
 
-            return taskExecutor.submit(() -> checkLimit(context, limit, roleBasedEntity));
+            return taskExecutor.submit(() -> checkLimit(context, limit, roleBasedEntity, countRequest));
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
@@ -388,7 +398,7 @@ public class RateLimiter {
         return ResourceDescriptorFactory.fromEntityPath(ResourceTypes.LIMIT, bucketLocation, bucketLocation, path);
     }
 
-    private RateLimitResult checkLimit(ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity) {
+    private RateLimitResult checkLimit(ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity, boolean countRequest) {
         long timestamp = System.currentTimeMillis();
 
         // Check token limits
@@ -398,7 +408,7 @@ public class RateLimiter {
         }
 
         // Check request limits
-        RateLimitResult requestResult = checkRequestLimit(context, limit, timestamp, roleBasedEntity);
+        RateLimitResult requestResult = checkRequestLimit(context, limit, timestamp, roleBasedEntity, countRequest);
         if (requestResult.status() != HttpStatus.OK) {
             return requestResult;
         }
@@ -430,21 +440,23 @@ public class RateLimiter {
         return rateLimit.update(timestamp, limit);
     }
 
-    private RateLimitResult checkRequestLimit(ProxyContext context, Limit limit, long timestamp, RoleBasedEntity roleBasedEntity) {
+    private RateLimitResult checkRequestLimit(ProxyContext context, Limit limit, long timestamp,
+                                              RoleBasedEntity roleBasedEntity, boolean countRequest) {
         String tokensPath = getPathToRequests(roleBasedEntity.getName());
         ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
         // pass array to hold rate limit result returned by the function to compute the resource
         RateLimitResult[] result = new RateLimitResult[1];
-        resourceService.computeResource(resourceDescription, json -> updateRequestLimit(json, timestamp, limit, result));
+        resourceService.computeResource(resourceDescription, json -> updateRequestLimit(json, timestamp, limit, result, countRequest));
         return result[0];
     }
 
-    private String updateRequestLimit(String json, long timestamp, Limit limit, RateLimitResult[] result) {
+    private String updateRequestLimit(String json, long timestamp, Limit limit, RateLimitResult[] result, boolean countRequest) {
         RequestRateLimit rateLimit = ProxyUtil.convertToObject(json, RequestRateLimit.class);
         if (rateLimit == null) {
             rateLimit = new RequestRateLimit();
         }
-        result[0] = rateLimit.check(timestamp, limit, 1);
+        // the quota is compared against the totals as they stand, so a count of 0 checks it without spending a slot
+        result[0] = rateLimit.check(timestamp, limit, countRequest ? 1 : 0);
         return ProxyUtil.convertToString(rateLimit);
     }
 

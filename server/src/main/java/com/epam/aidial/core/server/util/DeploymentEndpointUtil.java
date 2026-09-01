@@ -6,6 +6,8 @@ import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
+import com.epam.aidial.core.config.Translator;
+import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.experimental.UtilityClass;
 
@@ -51,6 +53,10 @@ public class DeploymentEndpointUtil {
     public boolean isInterfaceDeclared(Deployment deployment, InterfaceType type) {
         if (resolveInterfaceBaseUrl(deployment, type) != null) {
             return true;
+        }
+        // a translated interface is served by its translator alone, so one with none linked serves nothing
+        if (resolveMode(deployment, type) == InterfaceMode.TRANSLATOR) {
+            return false;
         }
         return switch (type) {
             case OPENAI_CHAT_COMPLETIONS -> deployment.getEndpoint() != null && !isEmbeddingModel(deployment);
@@ -102,10 +108,9 @@ public class DeploymentEndpointUtil {
     }
 
     /**
-     * The base url serving the type, trailing slash stripped: the interface's own {@code base_url}, the
-     * deployment-level {@code baseUrl} it falls back to, or null when the type is not in the
-     * {@code interfaces} map or neither declares one. A deployment-level {@code baseUrl} on its own serves
-     * nothing — an interface has to be declared to claim it.
+     * The base url serving the type, trailing slash stripped, or null when the type is not in the
+     * {@code interfaces} map or nothing declares a url for it. A deployment-level {@code baseUrl} on its
+     * own serves nothing — an interface has to be declared to claim it.
      */
     @Nullable
     private String resolveInterfaceBaseUrl(Deployment deployment, InterfaceType type) {
@@ -113,13 +118,27 @@ public class DeploymentEndpointUtil {
         if (deploymentInterface == null) {
             return null;
         }
-        String baseUrl = deploymentInterface.getBaseUrl() != null
-                ? deploymentInterface.getBaseUrl()
-                : deployment.getBaseUrl();
+        String baseUrl = resolveBaseUrl(deployment, deploymentInterface);
         if (baseUrl == null) {
             return null;
         }
         return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+    }
+
+    /**
+     * The url the entry is served by. A translated interface is served by its translator and by nothing
+     * else — {@code mode} decides this, so that what a request is routed to and what it is charged for can
+     * never disagree — while a pass-through one takes its own {@code base_url}, or the deployment-level
+     * {@code baseUrl} when it declares none.
+     */
+    @Nullable
+    private String resolveBaseUrl(Deployment deployment, DeploymentInterface deploymentInterface) {
+        if (deploymentInterface.getMode() == InterfaceMode.TRANSLATOR) {
+            TranslatorRef translator = deploymentInterface.getTranslator();
+            Translator definition = translator == null ? null : translator.getDefinition();
+            return definition == null ? null : definition.getBaseUrl();
+        }
+        return deploymentInterface.getBaseUrl() != null ? deploymentInterface.getBaseUrl() : deployment.getBaseUrl();
     }
 
     /**
@@ -135,9 +154,15 @@ public class DeploymentEndpointUtil {
     /**
      * The pre-{@code interfaces} field serving the type. {@code endpoint} predates the split into typed
      * interfaces, so it serves the whole deployments-POST family, {@code /embeddings} included.
+     *
+     * <p>A translated interface never falls back here: routing it to the deployment itself would send the
+     * request pass-through while {@code mode} still exempted it from limits.
      */
     @Nullable
     private String resolveLegacyEndpoint(Deployment deployment, InterfaceType type) {
+        if (resolveMode(deployment, type) == InterfaceMode.TRANSLATOR) {
+            return null;
+        }
         return switch (type) {
             case OPENAI_CHAT_COMPLETIONS, OPENAI_EMBEDDINGS -> deployment.getEndpoint();
             case OPENAI_RESPONSES -> deployment.getResponsesEndpoint();

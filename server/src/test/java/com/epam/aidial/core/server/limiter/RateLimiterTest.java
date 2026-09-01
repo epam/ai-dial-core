@@ -473,6 +473,42 @@ public class RateLimiterTest {
     }
 
     @Test
+    public void testLimit_User_RequestLimit_TranslatedRequestIsCheckedButNotCounted() {
+        Config config = new Config();
+
+        Role role = new Role();
+        Limit limit = new Limit();
+        limit.setRequestDay(10);
+        limit.setRequestHour(1);
+        role.setLimits(Map.of("model", limit));
+        config.getRoles().put("role1", role);
+
+        ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, new ApiKeyData(),
+                new ExtractedClaims("sub", List.of("role1"), "user-hash",
+                        ProxyUtil.MAPPER.createObjectNode(), null, null),
+                "trace-id", "span-id", "01");
+        Model model = new Model();
+        model.setName("model");
+        proxyContext.setDeployment(model);
+
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        // an uncounted request spends none of the hourly quota, however many of them arrive
+        assertEquals(HttpStatus.OK, rateLimiter.limit(proxyContext, model, false).result().status());
+        assertEquals(HttpStatus.OK, rateLimiter.limit(proxyContext, model, false).result().status());
+
+        // the single slot is still there for the call that does count, and is spent by it
+        assertEquals(HttpStatus.OK, rateLimiter.limit(proxyContext, model).result().status());
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, rateLimiter.limit(proxyContext, model).result().status());
+
+        // and an exhausted quota still blocks an uncounted request: not counting is not a way around it
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, rateLimiter.limit(proxyContext, model, false).result().status());
+    }
+
+    @Test
     public void testLimit_User_RequestLimit() {
         Config config = new Config();
 

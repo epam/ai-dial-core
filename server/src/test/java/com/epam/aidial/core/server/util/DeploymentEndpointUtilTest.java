@@ -6,6 +6,8 @@ import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
+import com.epam.aidial.core.config.Translator;
+import com.epam.aidial.core.config.TranslatorRef;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -105,6 +107,64 @@ public class DeploymentEndpointUtilTest {
 
         assertNull(resolveServingEndpoint(model, ANTHROPIC_MESSAGES));
         assertFalse(isInterfaceDeclared(model, ANTHROPIC_MESSAGES));
+    }
+
+    @Test
+    void translatedInterfaceIsServedByItsTranslator() {
+        Model model = new Model();
+        model.setName("gpt-5.5");
+        model.setBaseUrl("http://openai-service");
+        model.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface(),
+                ANTHROPIC_MESSAGES.getValue(), translated(TranslatorRef.inline(
+                        new Translator("anthropicMessages", "openaiChatCompletions", "http://translator/to-chat-completions/")))));
+
+        // the deployment base url serves the pass-through interface, the translator serves the translated one
+        assertEquals("http://openai-service", resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS));
+        assertEquals("http://translator/to-chat-completions", resolveServingEndpoint(model, ANTHROPIC_MESSAGES));
+        assertTrue(isInterfaceDeclared(model, ANTHROPIC_MESSAGES));
+        assertEquals("http://translator/to-chat-completions/anthropic/v1/messages",
+                resolveRequestUri(model, ANTHROPIC_MESSAGES, "/anthropic/v1/messages", null));
+    }
+
+    @Test
+    void translatedInterfaceIsServedByNoBaseUrl() {
+        // mode alone decides, so what a request is routed to and what it is charged for cannot disagree
+        Model model = new Model();
+        model.setBaseUrl("http://openai-service");
+        DeploymentInterface anthropic = translated(TranslatorRef.inline(
+                new Translator(null, "openaiChatCompletions", "http://translator")));
+        anthropic.setBaseUrl("http://ignored");
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), anthropic));
+
+        assertEquals("http://translator", resolveServingEndpoint(model, ANTHROPIC_MESSAGES));
+    }
+
+    @Test
+    void namedTranslatorServesTheInterfaceOnceLinked() {
+        TranslatorRef unlinked = TranslatorRef.named("anthropicMessagesToOpenaiChatCompletions");
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), translated(unlinked)));
+
+        // a name with no registry entry to link it to serves nothing, and is not advertised
+        assertNull(resolveServingEndpoint(model, ANTHROPIC_MESSAGES));
+        assertFalse(isInterfaceDeclared(model, ANTHROPIC_MESSAGES));
+
+        unlinked.setDefinition(new Translator("anthropicMessages", "openaiChatCompletions", "http://translator"));
+
+        assertEquals("http://translator", resolveServingEndpoint(model, ANTHROPIC_MESSAGES));
+        assertTrue(isInterfaceDeclared(model, ANTHROPIC_MESSAGES));
+    }
+
+    @Test
+    void translatedInterfaceDoesNotFallBackToTheLegacyEndpoint() {
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), translated(TranslatorRef.named("missing"))));
+
+        assertNull(resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS));
     }
 
     @Test
@@ -348,6 +408,13 @@ public class DeploymentEndpointUtilTest {
         assertEquals("http://localhost:6001/openai/deployments/gpt-5.4-mini/chat/completions?api-version=2025-01-01-preview",
                 resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS,
                         "/openai/deployments/openai-gpt-5.4-mini/chat/completions", "api-version=2025-01-01-preview"));
+    }
+
+    private static DeploymentInterface translated(TranslatorRef translator) {
+        DeploymentInterface declared = new DeploymentInterface();
+        declared.setMode(InterfaceMode.TRANSLATOR);
+        declared.setTranslator(translator);
+        return declared;
     }
 
     @Test

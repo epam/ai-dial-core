@@ -32,6 +32,13 @@ public class DeploymentInterface {
     private InterfaceMode mode;
 
     /**
+     * The translator serving this interface, named or defined inline, when {@link #mode} is
+     * {@link InterfaceMode#TRANSLATOR}. An interface is served either by a base url or by a translator,
+     * never by both.
+     */
+    private TranslatorRef translator;
+
+    /**
      * Headers added to a request for this interface that carries none under that name, laid over the
      * deployment-level {@code defaultHeaders}. Resolved by {@link Deployment#resolveDefaultHeaders}.
      */

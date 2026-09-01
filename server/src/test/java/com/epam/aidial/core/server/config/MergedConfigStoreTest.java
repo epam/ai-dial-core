@@ -2,11 +2,18 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.DeploymentInterface;
+import com.epam.aidial.core.config.InterfaceMode;
+import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.Translator;
+import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceService;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceEvent;
@@ -25,7 +32,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -73,6 +82,40 @@ public class MergedConfigStoreTest {
                 .thenAnswer(inv -> ((Supplier<?>) inv.getArgument(1)).get());
         // MergedConfigStore adopts ApiKeyStore's mutation lock; mock must supply a real one.
         lenient().when(apiKeyStore.getMutationLock()).thenReturn(new ReentrantLock());
+    }
+
+    @Test
+    public void testRebuildKeepsTranslatorsSoNamedReferencesResolve() {
+        // the merged Config is assembled field by field, and a translators map dropped there leaves every
+        // deployment referencing one by name serving nothing on that interface
+        Config fileConfig = new Config();
+        fileConfig.setTranslators(Map.of("anthropicMessagesToOpenaiChatCompletions",
+                new Translator("anthropicMessages", "openaiChatCompletions", "http://localhost:5002/to-chat-completions")));
+        DeploymentInterface anthropic = new DeploymentInterface();
+        anthropic.setMode(InterfaceMode.TRANSLATOR);
+        anthropic.setTranslator(TranslatorRef.named("anthropicMessagesToOpenaiChatCompletions"));
+        Model model = new Model();
+        model.setBaseUrl("http://localhost:6001");
+        model.setInterfaces(Map.of(
+                "openaiChatCompletions", new DeploymentInterface(),
+                "anthropicMessages", anthropic));
+        fileConfig.setModels(new LinkedHashMap<>(Map.of("openai-gpt-5.4-mini", model)));
+        when(fileConfigStore.get()).thenReturn(fileConfig);
+
+        MergedConfigStore store = new MergedConfigStore(
+                vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
+                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
+                externalServiceService, resourceAuthSettingsEncryptionService);
+        store.init(fileConfigStore);
+
+        Config config = store.get();
+
+        assertEquals(1, config.getTranslators().size());
+        Model merged = config.getModels().get("openai-gpt-5.4-mini");
+        assertEquals("http://localhost:5002/to-chat-completions",
+                DeploymentEndpointUtil.resolveServingEndpoint(merged, InterfaceType.ANTHROPIC_MESSAGES));
+        assertEquals("http://localhost:6001",
+                DeploymentEndpointUtil.resolveServingEndpoint(merged, InterfaceType.OPENAI_CHAT_COMPLETIONS));
     }
 
     @Test
