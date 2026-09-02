@@ -140,7 +140,7 @@ public class ConsentController {
     )
     public Future<?> withdrawAdminConsent(String deploymentId) {
         return adminConsentOperation(deploymentId, "WITHDRAW",
-                () -> proxy.getConsentService().withdrawAdminConsent(deploymentId));
+                () -> proxy.getConsentService().withdrawAdminConsent(context, deploymentId));
     }
 
     /**
@@ -172,7 +172,10 @@ public class ConsentController {
     }
 
     private void requireAdmin() {
-        if (!proxy.getAccessService().hasAdminAccess(context)) {
+        // Fail-closed, unlike ResourceController's hasAdminAccess: this endpoint mints an app-level
+        // consent that reaches every user, the same class of power the platform-bucket admin API
+        // gates with hasExplicitAdminAccess (empty/unconfigured admin rules deny, not allow-all).
+        if (!proxy.getAccessService().hasExplicitAdminAccess(context)) {
             throw new PermissionDeniedException("Only administrators may consent to application resource dependencies");
         }
     }
@@ -185,7 +188,8 @@ public class ConsentController {
             log.warn("Deployment not found {}", deploymentId, error);
             context.respond(HttpStatus.NOT_FOUND, error.getMessage());
         } else if (error instanceof HttpException httpException) {
-            context.respond(httpException.getStatus(), httpException.getMessage());
+            log.warn("Admin consent rejected for deployment {} status={}", deploymentId, httpException.getStatus());
+            context.respond(httpException);
         } else {
             log.error("Failed to process user consent", error);
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR,

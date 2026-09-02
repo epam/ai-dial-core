@@ -649,14 +649,32 @@ public class ConsentServiceTest {
 
     @Test
     public void testWithdrawAdminConsent_ReturnsTheWithdrawnRecordForTheAudit() {
+        when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(declaringApplication());
         when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn("""
                 {"resources": [{"url": "current-user/skills/", "access": ["WRITE"]}]}
                 """);
 
-        Consent withdrawn = service.withdrawAdminConsent("app");
+        Consent withdrawn = service.withdrawAdminConsent(context, "app");
 
         assertEquals(List.of(resourceEntry("current-user/skills/")), withdrawn.getResources());
         verify(resourceService).deleteResource(any(ResourceDescriptor.class), eq(EtagHeader.ANY));
+    }
+
+    @Test
+    public void testAdminConsentRecordIsKeyedByTheResolvedApplicationsCanonicalName() {
+        // The resolver reads the record by the resolved application's name; the grant must write it
+        // under the same identity — never the raw request id, or names with percent-sequences could
+        // land one app's approval on another app's record.
+        Application application = declaringApplication();
+        application.setName("applications/public/gpt-helpe%2572");
+        when(deploymentService.findDeployment(eq(context), eq("applications/public/gpt-helpe%2572")))
+                .thenReturn(application);
+
+        service.grantAdminConsent(context, "applications/public/gpt-helpe%2572");
+
+        ArgumentCaptor<ResourceDescriptor> captor = ArgumentCaptor.forClass(ResourceDescriptor.class);
+        verify(resourceService).putResource(captor.capture(), anyString(), eq(EtagHeader.ANY));
+        assertEquals("gpt-helpe%72", captor.getValue().getName());
     }
 
     private static Application declaringApplication() {
