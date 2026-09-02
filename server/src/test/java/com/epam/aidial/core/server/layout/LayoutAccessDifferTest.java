@@ -74,13 +74,20 @@ public class LayoutAccessDifferTest {
 
     /**
      * A cell that grants less than it declares is not exercising its rule. Without this the suite would
-     * happily compare "denied" to "denied" across every cell and report the layouts identical.
+     * happily compare "denied" to "denied" across every cell and report the layouts identical. The dual
+     * holds for denial cells: empty {@code expects} asserts that nothing is granted, not that nothing is
+     * expected — otherwise both layouts granting the stranger READ would compare equal and pass, and
+     * lookupPermissions is a union over the whole chain, so denial means no rule granted anywhere.
      */
     private static List<String> vacuousCells(AccessMatrix.Definition matrix,
                                              Map<String, AccessMatrix.Decision> decisions) {
         List<String> problems = new ArrayList<>();
         for (AccessMatrix.Cell cell : matrix.cells()) {
             AccessMatrix.Decision decision = decisions.get(cell.name());
+            if (cell.expects().isEmpty() && !decision.permissions().isEmpty()) {
+                problems.add("Cell '" + cell.name() + "' (" + cell.rule() + ") expects denial but got "
+                        + decision.describe() + ".");
+            }
             if (!decision.permissions().containsAll(cell.expects())) {
                 problems.add("Cell '" + cell.name() + "' (" + cell.rule() + ") expected at least "
                         + cell.expects() + " but got " + decision.describe()
