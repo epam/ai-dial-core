@@ -180,7 +180,32 @@ public class ResourceDependencyValidatorTest {
                 .toList();
         Application application = new Application().setResourceDependencies(section);
 
-        assertTrue(validatorShapeMessage(validator, application).contains("exceeds"));
+        // Over the cap the section is rejected on the cap alone — only the first MAX entries are
+        // inspected, so a huge body cannot turn validation into unbounded allocation.
+        List<String> issues = ResourceDependencyValidator.shapeIssues(application);
+        assertTrue(issues.contains("resourceDependencies: the section exceeds "
+                + ResourceDependencyValidator.MAX_DECLARED_DEPENDENCIES + " entries"));
+        assertTrue(issues.size() <= ResourceDependencyValidator.MAX_DECLARED_DEPENDENCIES * 5);
+    }
+
+    @Test
+    void rejectsBareTypeRootAsTooBroad() {
+        // "files" alone addresses the whole global view of that type — as over-broad as the personal
+        // root the governance ceiling bans. Declarations must be folder- or file-scoped.
+        ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
+
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("files"))).contains("not the type root"));
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("public/"))).contains("not the type root"));
+    }
+
+    @Test
+    void rejectsSlashOnlyTargetPath() {
+        // A path of slashes only splits to zero segments — a shape error, not a crash.
+        ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
+        ResourceDependencyValidator flagOnValidator = new ResourceDependencyValidator(true);
+
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("//"))).contains("target.path is required"));
+        assertDoesNotThrow(() -> flagOnValidator.validateUserAuthored(appWith(dependency("//"))));
     }
 
     @Test

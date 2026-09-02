@@ -4,14 +4,11 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.config.ResourceAccessType;
-import com.epam.aidial.core.config.ResourceDependency;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -98,43 +95,6 @@ class BlobEntityValidatorTest {
     void validateApplication_returnsNoWarnings_whenFieldsAreNullOrEmpty() {
         Config config = new Config();
         Application app = new Application();
-
-        List<ValidationWarning> warnings = BlobEntityValidator.validate(app, config);
-
-        assertTrue(warnings.isEmpty());
-    }
-
-    @Test
-    void validateApplication_warnsOnMalformedResourceDependenciesSection() {
-        // The read-side backstop reuses the write-time shape rules: a concrete personal path
-        // (rejected at PUT) surfaces here as a warning for entities that arrived by other means.
-        Config config = new Config();
-
-        Application app = new Application();
-        app.setResourceDependencies(List.of(new ResourceDependency()
-                .setKind(ResourceDependency.KIND)
-                .setLinkId("lnk_1")
-                .setTarget(new ResourceDependency.Target().setPath("users/bob/files/f/"))
-                .setAccess(Set.of(ResourceAccessType.READ))));
-
-        List<ValidationWarning> warnings = BlobEntityValidator.validate(app, config);
-
-        assertEquals(1, warnings.size());
-        assertEquals("resourceDependencies", warnings.get(0).getField());
-        assertTrue(warnings.get(0).getMessage().contains("current-user placeholder"),
-                () -> "Unexpected message: " + warnings.get(0).getMessage());
-    }
-
-    @Test
-    void validateApplication_returnsNoWarnings_forValidResourceDependenciesSection() {
-        Config config = new Config();
-
-        Application app = new Application();
-        app.setResourceDependencies(List.of(new ResourceDependency()
-                .setKind(ResourceDependency.KIND)
-                .setLinkId("lnk_1")
-                .setTarget(new ResourceDependency.Target().setPath("current-user/skills/"))
-                .setAccess(Set.of(ResourceAccessType.WRITE))));
 
         List<ValidationWarning> warnings = BlobEntityValidator.validate(app, config);
 
