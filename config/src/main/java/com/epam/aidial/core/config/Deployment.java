@@ -18,6 +18,14 @@ public abstract class Deployment extends RoleBasedEntity {
     private String endpoint;
     private String responsesEndpoint;
     /**
+     * Root url shared by every {@link #interfaces} entry declaring no {@code base_url} of its own — in the
+     * common case a single root serves all of them and only the ingress path differs. It stands for no
+     * interface by itself: {@code interfaces} alone says which ones the deployment serves.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonAlias({"baseUrl", "base_url"})
+    private String baseUrl;
+    /**
      * Supported LLM API interfaces keyed by interface-type value. Peer of endpoint/responsesEndpoint.
      */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)

@@ -579,7 +579,8 @@ public class RateLimiter {
 
     private static Limit getLimit(Map<String, Role> roles, String userRole, String name, Limit defaultLimit) {
         return Optional.ofNullable(roles.get(userRole))
-                .map(role -> role.getLimits().get(name))
+                .map(Role::getLimits)
+                .map(limits -> limits.get(name))
                 .orElse(defaultLimit);
     }
 
