@@ -19,12 +19,9 @@ ENV LOG_DIR=/app/log
 
 WORKDIR /app
 
-RUN adduser -u 1001 --disabled-password --gecos "" appuser
+COPY --from=builder /build/ .
 
-COPY --from=builder --chown=appuser:appuser /build/ .
-RUN chown -R appuser:appuser /app
-
-COPY --chown=appuser:appuser docker-entrypoint.sh /usr/local/bin/
+COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # upgrade/install packages
@@ -36,9 +33,8 @@ HEALTHCHECK --start-period=30s --interval=1m --timeout=3s \
 
 EXPOSE 8080 9464
 
-RUN mkdir -p "$LOG_DIR" && \
-    chown -R appuser:appuser "$LOG_DIR" && \
-    mkdir -p "$STORAGE_DIR" && \
-    chown -R appuser:appuser "$STORAGE_DIR"
+RUN mkdir -p "$LOG_DIR" && mkdir -p "$STORAGE_DIR"
+
+USER root
 
 ENTRYPOINT ["docker-entrypoint.sh"]
