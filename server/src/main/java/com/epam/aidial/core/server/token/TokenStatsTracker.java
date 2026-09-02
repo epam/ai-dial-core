@@ -21,13 +21,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.epam.aidial.core.storage.resource.ResourceDescriptor.PATH_SEPARATOR;
 
 @Slf4j
 @RequiredArgsConstructor
 public class TokenStatsTracker {
-    public static final String DEPLOYMENT_COST_STATS_BUCKET = "deployment_cost_stats";
-    public static final String DEPLOYMENT_COST_STATS_LOCATION = DEPLOYMENT_COST_STATS_BUCKET + PATH_SEPARATOR;
+    // Declared in ResourceDescriptor so a storage layout can enumerate the system buckets; a second literal
+    // here is how the tenant-rooted layout came to reject this location in the first place.
+    public static final String DEPLOYMENT_COST_STATS_BUCKET = ResourceDescriptor.DEPLOYMENT_COST_STATS_BUCKET;
+    public static final String DEPLOYMENT_COST_STATS_LOCATION = ResourceDescriptor.DEPLOYMENT_COST_STATS_LOCATION;
 
     private final AsyncTaskExecutor taskExecutor;
     private final ResourceService resourceService;

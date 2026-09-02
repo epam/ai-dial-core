@@ -30,11 +30,27 @@ public class TenantLayoutTransform {
      */
     private static final String PLATFORM_LOCATION = "";
 
+    /**
+     * Where the system buckets of {@link ResourceDescriptor#SYSTEM_LOCATIONS} land — at the root, above any
+     * tenant, keeping the bucket name so the mapping stays reversible.
+     *
+     * <p>Above rather than inside a tenant because that is what preserves today's behaviour: the background
+     * job scheduler scans its bucket whole, and cost stats and response mappings are keyed by globally unique
+     * trace, job and response ids. Whether this state should become tenant-scoped is a real question — per
+     * tenant billing would want it to be — but it is a design decision for the phase that turns multi-tenancy
+     * on, not something to settle silently inside a path transform.
+     */
+    private static final String SYSTEM_SEGMENT = ".system/";
+
     private static final char TYPE_FOLDER_MARKER = '.';
 
     public String toTenantLocation(String legacyLocation, String tenantId) {
         if (ResourceDescriptor.PLATFORM_LOCATION.equals(legacyLocation)) {
             return PLATFORM_LOCATION;
+        }
+
+        if (ResourceDescriptor.SYSTEM_LOCATIONS.contains(legacyLocation)) {
+            return SYSTEM_SEGMENT + legacyLocation;
         }
 
         String tenantRoot = tenantRoot(tenantId);
@@ -58,6 +74,14 @@ public class TenantLayoutTransform {
     public String toLegacyLocation(String tenantLocation, String tenantId) {
         if (PLATFORM_LOCATION.equals(tenantLocation)) {
             return ResourceDescriptor.PLATFORM_LOCATION;
+        }
+
+        if (tenantLocation.startsWith(SYSTEM_SEGMENT)) {
+            String system = tenantLocation.substring(SYSTEM_SEGMENT.length());
+            if (!ResourceDescriptor.SYSTEM_LOCATIONS.contains(system)) {
+                throw new IllegalArgumentException("Unknown system bucket location: " + tenantLocation);
+            }
+            return system;
         }
 
         String tenantRoot = tenantRoot(tenantId);

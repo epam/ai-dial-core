@@ -40,8 +40,9 @@ import static com.epam.aidial.core.storage.resource.ResourceDescriptor.PATH_SEPA
 @Slf4j
 public class ApiKeyStore {
 
-    public static final String API_KEY_DATA_BUCKET = "api_key_data";
-    public static final String API_KEY_DATA_LOCATION = API_KEY_DATA_BUCKET + PATH_SEPARATOR;
+    // Declared in ResourceDescriptor so a storage layout can enumerate the system buckets.
+    public static final String API_KEY_DATA_BUCKET = ResourceDescriptor.API_KEY_DATA_BUCKET;
+    public static final String API_KEY_DATA_LOCATION = ResourceDescriptor.API_KEY_DATA_LOCATION;
 
     private final AsyncTaskExecutor taskExecutor;
     private final RedissonClient redis;

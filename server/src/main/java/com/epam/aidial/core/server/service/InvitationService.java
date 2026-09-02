@@ -269,7 +269,10 @@ public class InvitationService {
         return ResourceDescriptorFactory.fromDecoded(resourceType, bucket, location, INVITATION_RESOURCE_FILENAME);
     }
 
+    // The id is handed out as a link and stored inside the invitations map, and getInvitationResource parses
+    // the location back out of it. It must therefore not carry the physical path, which the storage layout is
+    // free to change: an invitation issued before a layout change has to keep resolving after it.
     private String generateInvitationId(ResourceDescriptor resource) {
-        return encryptionService.encrypt(resource.getAbsoluteFilePath() + ResourceDescriptor.PATH_SEPARATOR + ApiKeyGenerator.generateKey());
+        return encryptionService.encrypt(resource.getStableFilePath() + ResourceDescriptor.PATH_SEPARATOR + ApiKeyGenerator.generateKey());
     }
 }

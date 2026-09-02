@@ -51,6 +51,42 @@ public class TenantLayoutTransformTest {
     }
 
     @Test
+    public void testSystemLocations() {
+        assertEquals(".system/background_jobs/", TenantLayoutTransform.toTenantLocation("background_jobs/", TENANT));
+        assertEquals("background_jobs/", TenantLayoutTransform.toLegacyLocation(".system/background_jobs/", TENANT));
+    }
+
+    /**
+     * Every system bucket has to be mapped, not just the ones a test happened to name: an unmapped one throws
+     * at the point a path is composed, which takes out whatever subsystem owns it — that is how the background
+     * job scheduler and per-request cost accounting were found broken under this layout.
+     */
+    @Test
+    public void testEverySystemLocationRoundTrips() {
+        for (String legacy : ResourceDescriptor.SYSTEM_LOCATIONS) {
+            String tenant = TenantLayoutTransform.toTenantLocation(legacy, TENANT);
+            assertEquals(legacy, TenantLayoutTransform.toLegacyLocation(tenant, TENANT));
+        }
+    }
+
+    /**
+     * System buckets sit above the tenant, so they must not move when the tenant does.
+     */
+    @Test
+    public void testSystemLocationsAreTenantIndependent() {
+        for (String legacy : ResourceDescriptor.SYSTEM_LOCATIONS) {
+            assertEquals(TenantLayoutTransform.toTenantLocation(legacy, TENANT),
+                    TenantLayoutTransform.toTenantLocation(legacy, "another-tenant"));
+        }
+    }
+
+    @Test
+    public void testUnknownSystemLocationRejected() {
+        assertThrows(IllegalArgumentException.class,
+                () -> TenantLayoutTransform.toLegacyLocation(".system/not_a_system_bucket/", TENANT));
+    }
+
+    @Test
     public void testUnsupportedLegacyLocation() {
         assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("Unknown/u1/", TENANT));
         assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("", TENANT));

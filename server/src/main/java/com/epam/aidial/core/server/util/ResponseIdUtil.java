@@ -6,10 +6,12 @@ import lombok.experimental.UtilityClass;
 
 @UtilityClass
 public class ResponseIdUtil {
-    public static final String RESPONSE_MAPPINGS_BUCKET = "response_mappings";
-    public static final String RESPONSE_MAPPINGS_BUCKET_LOCATION = RESPONSE_MAPPINGS_BUCKET + "/";
-    public static final String BACKGROUND_JOB_BUCKET = "background_jobs";
-    public static final String BACKGROUND_JOB_BUCKET_LOCATION = BACKGROUND_JOB_BUCKET + "/";
+    // Declared in ResourceDescriptor so a storage layout can enumerate the system buckets; a second literal
+    // here is how the tenant-rooted layout came to reject these locations in the first place.
+    public static final String RESPONSE_MAPPINGS_BUCKET = ResourceDescriptor.RESPONSE_MAPPINGS_BUCKET;
+    public static final String RESPONSE_MAPPINGS_BUCKET_LOCATION = ResourceDescriptor.RESPONSE_MAPPINGS_LOCATION;
+    public static final String BACKGROUND_JOB_BUCKET = ResourceDescriptor.BACKGROUND_JOB_BUCKET;
+    public static final String BACKGROUND_JOB_BUCKET_LOCATION = ResourceDescriptor.BACKGROUND_JOB_LOCATION;
     public static final String RESPONSE_ID_PREFIX = "dial_";
 
     public String createResponseId(String deploymentName, String uuid) {

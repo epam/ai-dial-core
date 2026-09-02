@@ -24,6 +24,32 @@ public class TenantRootedStorageLayoutTest {
     }
 
     @Test
+    public void testSystemLocationsResolve() {
+        assertEquals(".system/deployment_cost_stats/", layout.resolveLocationPrefix("deployment_cost_stats/"));
+        assertEquals(".system/background_jobs/", layout.resolveLocationPrefix("background_jobs/"));
+        assertEquals(".system/response_mappings/", layout.resolveLocationPrefix("response_mappings/"));
+    }
+
+    /**
+     * The composed path for a system bucket, end to end. These buckets name themselves twice — the location
+     * and the resource type carry the same word — which the layout has to preserve rather than tidy up.
+     */
+    @Test
+    public void testSystemBucketPath() {
+        StorageLayouts.useLayout(layout);
+        try {
+            ResourceDescriptor job = new ResourceDescriptor(ResourceTypes.BACKGROUND_JOB, "job-1",
+                    java.util.List.of(), ResourceDescriptor.BACKGROUND_JOB_BUCKET,
+                    ResourceDescriptor.BACKGROUND_JOB_LOCATION, false);
+
+            assertEquals(".system/background_jobs/.background_jobs/job-1", job.getAbsoluteFilePath());
+            assertEquals("background_jobs/background_jobs/job-1", job.getStableFilePath());
+        } finally {
+            StorageLayouts.useLayout(LegacyStorageLayout.INSTANCE);
+        }
+    }
+
+    @Test
     public void testUnsupportedLocationRejected() {
         assertThrows(IllegalArgumentException.class, () -> layout.resolveLocationPrefix("Unknown/u1/"));
     }

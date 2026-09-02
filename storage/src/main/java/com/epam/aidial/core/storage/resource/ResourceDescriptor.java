@@ -23,6 +23,27 @@ public class ResourceDescriptor {
     public static final String PLATFORM_BUCKET = "platform";
     public static final String PLATFORM_LOCATION = PLATFORM_BUCKET + PATH_SEPARATOR;
 
+    public static final String DEPLOYMENT_COST_STATS_BUCKET = "deployment_cost_stats";
+    public static final String DEPLOYMENT_COST_STATS_LOCATION = DEPLOYMENT_COST_STATS_BUCKET + PATH_SEPARATOR;
+    public static final String BACKGROUND_JOB_BUCKET = "background_jobs";
+    public static final String BACKGROUND_JOB_LOCATION = BACKGROUND_JOB_BUCKET + PATH_SEPARATOR;
+    public static final String RESPONSE_MAPPINGS_BUCKET = "response_mappings";
+    public static final String RESPONSE_MAPPINGS_LOCATION = RESPONSE_MAPPINGS_BUCKET + PATH_SEPARATOR;
+    public static final String API_KEY_DATA_BUCKET = "api_key_data";
+    public static final String API_KEY_DATA_LOCATION = API_KEY_DATA_BUCKET + PATH_SEPARATOR;
+
+    /**
+     * Buckets holding platform-internal runtime state rather than anyone's content. They belong to no
+     * principal, so a layout has to place them somewhere other than the branches it uses for users and
+     * projects, and they are listed here so a layout can enumerate them.
+     *
+     * <p>A location that is not a principal, not public, not the platform and not in this set is rejected
+     * rather than passed through: a silent fallback would let the next such bucket reach production unmapped.
+     */
+    public static final List<String> SYSTEM_LOCATIONS = List.of(
+            DEPLOYMENT_COST_STATS_LOCATION, BACKGROUND_JOB_LOCATION, RESPONSE_MAPPINGS_LOCATION,
+            API_KEY_DATA_LOCATION);
+
 
     ResourceType type;
     /**
@@ -106,8 +127,32 @@ public class ResourceDescriptor {
      * Returns an absolute path to the resource in a persistent storage.
      */
     public String getAbsoluteFilePath() {
+        return getStoragePrefix() + getPathWithinType();
+    }
+
+    /**
+     * Returns the same path as {@link #getAbsoluteFilePath()} would under the legacy layout, whichever layout
+     * is active.
+     *
+     * <p>Callers that bake a resource path into something durable — an identifier handed to a user, an
+     * encryption AAD — must use this rather than the physical path. A physical path is free to change when the
+     * layout changes; anything derived from one and then stored is not, or the stored thing stops resolving.
+     */
+    public String getStableFilePath() {
+        return bucketLocation + type.group() + PATH_SEPARATOR + getPathWithinType();
+    }
+
+    /**
+     * Returns the layout-dependent prefix every physical path of this resource starts with: the bucket
+     * location followed by the resource-type folder.
+     */
+    private String getStoragePrefix() {
+        StorageLayout layout = StorageLayouts.resolveActive();
+        return layout.resolveLocationPrefix(bucketLocation) + layout.resolveTypeFolder(type.group()) + PATH_SEPARATOR;
+    }
+
+    private String getPathWithinType() {
         StringBuilder builder = new StringBuilder();
-        builder.append(getStoragePrefix());
 
         if (!parentFolders.isEmpty()) {
             builder.append(getParentPath())
@@ -123,15 +168,6 @@ public class ResourceDescriptor {
         }
 
         return builder.toString();
-    }
-
-    /**
-     * Returns the layout-dependent prefix every physical path of this resource starts with: the bucket
-     * location followed by the resource-type folder.
-     */
-    private String getStoragePrefix() {
-        StorageLayout layout = StorageLayouts.resolveActive();
-        return layout.resolveLocationPrefix(bucketLocation) + layout.resolveTypeFolder(type.group()) + PATH_SEPARATOR;
     }
 
     /**
