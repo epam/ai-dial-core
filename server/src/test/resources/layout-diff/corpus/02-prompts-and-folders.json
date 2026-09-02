@@ -1,0 +1,57 @@
+{
+  "name": "prompts-and-folders",
+  "description": "A second resource type, nested folders and non-ascii names. The tenant-rooted layout moves the type into a reserved folder and re-roots the bucket, so a type other than conversations is what shows the transform is generic rather than special-cased.",
+  "steps": [
+    {
+      "name": "create-top-level",
+      "method": "PUT",
+      "path": "/v1/prompts/${bucket1}/promptsdiff/prompt",
+      "body": {"id": "prompt_id", "name": "prompt", "folderId": "promptsdiff", "content": "content"}
+    },
+    {
+      "name": "create-nested",
+      "method": "PUT",
+      "path": "/v1/prompts/${bucket1}/promptsdiff/nested/deeper/prompt2",
+      "body": {"id": "prompt_id2", "name": "prompt2", "folderId": "deeper", "content": "content2"}
+    },
+    {
+      "name": "create-escaped-name",
+      "method": "PUT",
+      "path": "/v1/prompts/${bucket1}/promptsdiff/prompt%201%40",
+      "body": {"id": "prompt_id3", "name": "prompt 1@", "folderId": "promptsdiff", "content": "content3"}
+    },
+    {
+      "name": "read-escaped-name",
+      "method": "GET",
+      "path": "/v1/prompts/${bucket1}/promptsdiff/prompt%201%40"
+    },
+    {
+      "name": "list-folder",
+      "method": "GET",
+      "path": "/v1/metadata/prompts/${bucket1}/promptsdiff/"
+    },
+    {
+      "name": "list-recursive",
+      "method": "GET",
+      "path": "/v1/metadata/prompts/${bucket1}/promptsdiff/",
+      "query": "recursive=true"
+    },
+    {
+      "name": "list-paged",
+      "method": "GET",
+      "path": "/v1/metadata/prompts/${bucket1}/promptsdiff/",
+      "query": "recursive=true&limit=2"
+    },
+    {
+      "name": "delete-nested",
+      "method": "DELETE",
+      "path": "/v1/prompts/${bucket1}/promptsdiff/nested/deeper/prompt2"
+    },
+    {
+      "name": "list-after-delete",
+      "method": "GET",
+      "path": "/v1/metadata/prompts/${bucket1}/promptsdiff/",
+      "query": "recursive=true"
+    }
+  ]
+}

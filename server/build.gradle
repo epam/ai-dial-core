@@ -84,5 +84,23 @@ test {
         events "passed", "skipped", "failed", "standardOut", "standardError"
         exceptionFormat = "full"
     }
-    useJUnitPlatform()
+    // The storage layout is process-wide static state; a suite whose job is flipping it does not share a JVM
+    // with the rest of the tests. See server/src/test/resources/layout-diff/README.md.
+    useJUnitPlatform {
+        excludeTags "layout-diff"
+    }
+}
+
+tasks.register("layoutDiffTest", Test) {
+    description = "Replays the layout-diff corpus against both storage layouts and fails on any divergence."
+    group = "verification"
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    testLogging {
+        events "passed", "skipped", "failed", "standardOut", "standardError"
+        exceptionFormat = "full"
+    }
+    useJUnitPlatform {
+        includeTags "layout-diff"
+    }
 }
