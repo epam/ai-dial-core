@@ -29,6 +29,7 @@ public class CollectRequestApplicationFilesFn extends BaseRequestFunction<Reques
             }
             shareApplicationFiles(application);
             shareApplicationPrompts(application);
+            shareApplicationSkills(application);
             return false;
         } catch (HttpException ex) {
             throw ex;

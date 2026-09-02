@@ -387,6 +387,11 @@ public class ApplicationSchemaService {
                 ListCollector.ResourceCollectorType.ALL_RESOURCES, false);
     }
 
+    public List<ResourceDescriptor> getSkills(Application application) {
+        return getApplicationResources(application, Set.of(ResourceTypes.SKILL),
+                ListCollector.ResourceCollectorType.ALL_RESOURCES, false);
+    }
+
     public List<ResourceDescriptor> getDeployments(Application application) {
         return getApplicationResources(application, Set.of(ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET),
                 ListCollector.ResourceCollectorType.ALL_RESOURCES, false);
