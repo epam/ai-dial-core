@@ -38,8 +38,10 @@ public class ResourceDependencyValidator {
     /**
      * Resource-type folders a {@code current-user/…} path must be rooted in for user-authored apps —
      * a root-level {@code current-user/} declaration ("write everything personal") is not declarable.
+     * Also enforced by the resolver on the read side: ResourceTypes.of() maps internal engine types
+     * (credentials, keys, models, …) that must never be declarable as personal targets.
      */
-    private static final Set<String> PERSONAL_TYPED_ROOTS =
+    public static final Set<String> PERSONAL_TYPED_ROOTS =
             Set.of("files", "prompts", "conversations", "applications", "toolsets", "skills");
 
     private final boolean allowUserResourceDependencies;

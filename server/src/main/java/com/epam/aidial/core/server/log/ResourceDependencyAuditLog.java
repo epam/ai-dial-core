@@ -87,6 +87,7 @@ public final class ResourceDependencyAuditLog {
     private static String accessTypesOf(List<Consent.ResourceEntry> entries) {
         return entries.stream()
                 .flatMap(entry -> entry.getAccess().stream())
+                .filter(java.util.Objects::nonNull)
                 .map(Enum::name)
                 .distinct()
                 .collect(Collectors.joining(","));

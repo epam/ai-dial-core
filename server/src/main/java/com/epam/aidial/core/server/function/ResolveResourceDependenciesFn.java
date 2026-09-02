@@ -24,19 +24,28 @@ import com.epam.aidial.core.storage.util.UrlUtil;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 /**
- * Request-start resolution of the application's declared resource dependencies (design §7.1):
- * resolve each declared target, verify it fresh against the originating user's reach, intersect
- * with the admin-consented set, and bake the passing grants into the per-request key the
- * application will hold — the app never asks for a credential; the key it already holds gets
- * richer. A record is a request, not a grant: nothing here widens anything the user cannot
- * already reach.
+ * Request-start resolution of the called application's declared resource dependencies (design
+ * §7.1): resolve each declared target, verify it fresh against the originating user's reach,
+ * intersect with the content-bound admin-consent record, and bake the passing grants into the
+ * per-request key the application will hold — the app never asks for a credential; the key it
+ * already holds gets richer. A record is a request, not a grant: nothing here widens anything
+ * the user cannot already reach.
+ *
+ * <p><b>Root-call only.</b> Resolution runs when the context still carries the originating user
+ * (no per-request key) — that is the only state in which the user's reach is directly
+ * evaluable; under a per-request key the same checks would silently evaluate a deployment's own
+ * key instead. Hops that arrive with a per-request key present — an interceptor's final call
+ * back to the app, or a chained app-to-app call — are skipped: their declarations do not
+ * resolve and their grants do not propagate in v1 (documented limitation; chained composition
+ * needs originating-user evaluation under key contexts, which is phase-2 machinery).
  */
 public class ResolveResourceDependenciesFn extends BaseRequestFunction<RequestObject> {
 
@@ -55,13 +64,10 @@ public class ResolveResourceDependenciesFn extends BaseRequestFunction<RequestOb
         if (declaration == null || declaration.isEmpty()) {
             return false;
         }
-        // Load-bearing timing: this function runs in the enhancement chain BEFORE the per-request key
-        // is assigned, so the reach checks below evaluate the originating user's permissions. After
-        // assignment the same calls would silently evaluate the app's own key instead — make that
-        // drift loud instead of silent.
         if (context.getApiKeyData().getPerRequestKey() != null) {
-            throw new IllegalStateException(
-                    "Resource dependencies must be resolved before the per-request key is assigned");
+            // Not the root user call — see the class javadoc. Skip, never throw: a declaring app
+            // behind an interceptor or in a chain must stay callable, just without grants.
+            return false;
         }
         resolve(application, declaration);
         return false;
@@ -70,48 +76,47 @@ public class ResolveResourceDependenciesFn extends BaseRequestFunction<RequestOb
     private void resolve(Application application, List<ResourceDependency> declaration) {
         String applicationId = application.getName();
         // The consent record is content-bound to the whole declaration: any change since the grant
-        // re-requires it, and until then nothing resolves.
+        // re-requires it, and until then nothing resolves. Checked before any resolution work.
         boolean consented = proxy.getConsentService().isAdminConsented(applicationId, declaration);
-        AccessService accessService = proxy.getAccessService();
-        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         AuthBucket userBucket = BucketBuilder.buildBucket(context);
 
-        List<Consent.ResourceEntry> granted = new ArrayList<>();
-        List<Consent.ResourceEntry> unresolved = new ArrayList<>();
+        List<Resolved> resolvedTargets = new ArrayList<>();
+        List<ResourceDependency> unresolvedDeps = new ArrayList<>();
         List<String> requiredFailures = new ArrayList<>();
 
         for (ResourceDependency dependency : declaration) {
-            Set<ResourceAccessType> requestedAccess = requestedAccessOf(dependency);
+            Set<ResourceAccessType> requestedAccess = consented ? requestedAccessOf(dependency) : null;
             ResourceDescriptor target = requestedAccess == null ? null : resolveTarget(dependency, userBucket);
-            if (!consented || target == null) {
-                // Fail closed per record: unconsented, malformed (config-file apps bypass write-time
-                // validation) — no grant, no failure, unless required.
-                trackUnresolved(dependency, target, unresolved, requiredFailures);
-                continue;
-            }
-            Set<ResourceAccessType> userAccess =
-                    accessService.lookupPermissions(Set.of(target), context).getOrDefault(target, Set.of());
-            if (userAccess.containsAll(requestedAccess)) {
-                // Both halves of the delivery: perRequestSharedResources serves the application's own
-                // direct calls with this key (the access rule reads the presented key's shared map);
-                // perRequestReceivers[app] carries the grants to every descendant mint down a chained
-                // call — ApiKeyData.initFromContext always shares the initial deployment's receiver
-                // entry into each child key.
-                proxyApiKeyData.getPerRequestSharedResources()
-                        .put(target.getUrl(), new PerRequestSharedData(requestedAccess));
-                proxyApiKeyData.getPerRequestReceivers()
-                        .computeIfAbsent(applicationId, key -> new HashMap<>())
-                        .put(target.getUrl(), new PerRequestSharedData(requestedAccess));
-                granted.add(entryOf(dependency));
+            if (target == null) {
+                // Fail closed per record: malformed (config-file apps bypass write-time validation)
+                // or unconsented — no grant, no failure, unless required.
+                trackUnresolved(dependency, unresolvedDeps, requiredFailures);
             } else {
-                // The user cannot reach the target with the declared rights — the record simply does
-                // not grant; it does not fail the call unless required.
-                trackUnresolved(dependency, target, unresolved, requiredFailures);
+                resolvedTargets.add(new Resolved(dependency, target, requestedAccess));
+            }
+        }
+
+        List<Consent.ResourceEntry> granted = new ArrayList<>();
+        if (!resolvedTargets.isEmpty()) {
+            // One batched walk of the permission chain for all resolved targets.
+            Set<ResourceDescriptor> targets = resolvedTargets.stream().map(Resolved::target).collect(Collectors.toSet());
+            Map<ResourceDescriptor, Set<ResourceAccessType>> userAccessByTarget =
+                    proxy.getAccessService().lookupPermissions(targets, context);
+            for (Resolved resolved : resolvedTargets) {
+                Set<ResourceAccessType> userAccess = userAccessByTarget.getOrDefault(resolved.target(), Set.of());
+                if (userAccess.containsAll(resolved.access())) {
+                    bakeGrant(resolved.target(), resolved.access());
+                    granted.add(entryOf(resolved.dependency()));
+                } else {
+                    // The user cannot reach the target with the declared rights — the record simply
+                    // does not grant; it does not fail the call unless required.
+                    trackUnresolved(resolved.dependency(), unresolvedDeps, requiredFailures);
+                }
             }
         }
 
         ResourceDependencyAuditLog.grant(context, applicationId, granted);
-        ResourceDependencyAuditLog.denial(context, applicationId, unresolved);
+        ResourceDependencyAuditLog.denial(context, applicationId, entriesOf(unresolvedDeps));
         if (!requiredFailures.isEmpty()) {
             // A required dependency is unresolvable — the application never half-works silently.
             ResourceDependencyAuditLog.runtimeFail(context, applicationId, requiredFailures);
@@ -120,21 +125,44 @@ public class ResolveResourceDependenciesFn extends BaseRequestFunction<RequestOb
         }
     }
 
-    private static void trackUnresolved(ResourceDependency dependency, @Nullable ResourceDescriptor target,
-                                         List<Consent.ResourceEntry> unresolved, List<String> requiredFailures) {
-        String path = dependency == null || dependency.getTarget() == null ? null : dependency.getTarget().getPath();
-        if (dependency != null && dependency.isRequired()) {
-            requiredFailures.add(path == null ? "<missing target.path>" : path);
-        }
-        unresolved.add(entryOf(dependency));
+    private record Resolved(ResourceDependency dependency, ResourceDescriptor target, Set<ResourceAccessType> access) {
     }
 
-    private static Consent.ResourceEntry entryOf(@Nullable ResourceDependency dependency) {
+    private void bakeGrant(ResourceDescriptor target, Set<ResourceAccessType> requestedAccess) {
+        // Union semantics, like every other grant writer: two records targeting the same URL
+        // with different rights must combine, not overwrite each other.
+        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
+        proxyApiKeyData.getPerRequestSharedResources()
+                .computeIfAbsent(target.getUrl(), key -> new PerRequestSharedData(new HashSet<>()))
+                .permissions().addAll(requestedAccess);
+    }
+
+    private static void trackUnresolved(@Nullable ResourceDependency dependency,
+                                        List<ResourceDependency> unresolvedDeps, List<String> requiredFailures) {
+        if (dependency == null) {
+            return;
+        }
+        String path = dependency.getTarget() == null ? null : dependency.getTarget().getPath();
+        if (dependency.isRequired()) {
+            requiredFailures.add(path == null ? "<missing target.path>" : path);
+        }
+        unresolvedDeps.add(dependency);
+    }
+
+    private static List<Consent.ResourceEntry> entriesOf(List<ResourceDependency> dependencies) {
+        List<Consent.ResourceEntry> entries = new ArrayList<>(dependencies.size());
+        for (ResourceDependency dependency : dependencies) {
+            entries.add(entryOf(dependency));
+        }
+        return entries;
+    }
+
+    private static Consent.ResourceEntry entryOf(ResourceDependency dependency) {
         Consent.ResourceEntry entry = new Consent.ResourceEntry();
-        if (dependency != null && dependency.getTarget() != null) {
+        if (dependency.getTarget() != null) {
             entry.setUrl(dependency.getTarget().getPath());
         }
-        if (dependency != null && dependency.getAccess() != null) {
+        if (dependency.getAccess() != null) {
             entry.setAccess(new HashSet<>(dependency.getAccess()));
         }
         return entry;
@@ -162,9 +190,9 @@ public class ResolveResourceDependenciesFn extends BaseRequestFunction<RequestOb
     }
 
     /**
-     * Resolves a declared target path to a descriptor: a {@code current-user/…} path against the
-     * originating user's own bucket, a concrete global-view path as-is. Null when the record is
-     * malformed — an unresolvable record, never a crash.
+     * Resolves a declared target path to a descriptor: a {@code current-user/<type>/<path…>}
+     * path against the originating user's own bucket, a concrete global-view path as-is. Null
+     * when the record is malformed — an unresolvable record, never a crash.
      */
     @Nullable
     private ResourceDescriptor resolveTarget(ResourceDependency dependency, AuthBucket userBucket) {
@@ -182,10 +210,12 @@ public class ResolveResourceDependenciesFn extends BaseRequestFunction<RequestOb
                 return null;
             }
             if (ResourceDependencyValidator.CURRENT_USER_PLACEHOLDER.equals(segments[0])) {
-                // current-user/<type-segment>/<path…> — the type segment names the target's resource
-                // type, the rest is the path inside the user's bucket. Two segments (e.g.
-                // current-user/skills/) target the type's root folder in the user's bucket.
-                if (segments.length < 2) {
+                // current-user/<type-segment>/<path…>. Two segments (current-user/skills/) target the
+                // type's root folder in the user's bucket — the skill-creator shape. The type segment
+                // is restricted to the personal typed-root vocabulary: ResourceTypes.of() also maps
+                // internal engine types (credentials, keys, models, …), and a declaration like
+                // current-user/credentials/ must never resolve into the user's secret-bearing blobs.
+                if (segments.length < 2 || !ResourceDependencyValidator.PERSONAL_TYPED_ROOTS.contains(segments[1])) {
                     return null;
                 }
                 ResourceType type = ResourceTypes.of(segments[1]);
@@ -198,7 +228,9 @@ public class ResolveResourceDependenciesFn extends BaseRequestFunction<RequestOb
                         type, userBucket.getUserBucket(), userBucket.getUserBucketLocation(), relativePath);
             }
             return ResourceDescriptorFactory.fromAnyUrl(path, proxy.getEncryptionService());
-        } catch (IllegalArgumentException e) {
+        } catch (RuntimeException e) {
+            // fromAnyUrl wraps URISyntaxException in a plain RuntimeException — malformed means
+            // unresolvable, whatever the exception shape.
             return null;
         }
     }

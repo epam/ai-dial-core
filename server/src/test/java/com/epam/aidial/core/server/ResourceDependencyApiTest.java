@@ -3,6 +3,7 @@ package com.epam.aidial.core.server;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
@@ -164,6 +165,45 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
 
         assertEquals(userDirect, viaApp.get(),
                 "the app's key must see exactly what the originating user sees — no more, no less");
+    }
+
+    @Test
+    void testChainedCallIntoDeclaringAppStaysCallableWithoutGrants() {
+        // Root-call-only resolution (design §7.1's chained composition is phase-2 machinery): a
+        // chained hop presenting a per-request key must stay callable — never the hard failure the
+        // first revision threw — and must not bake grants it cannot evaluate the originating
+        // user's reach for.
+        verify(putDeclaringApp("""
+                {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"path": "current-user/prompts/dep-smoke/"}, "access": ["write"], "required": true}
+                """), 200);
+        verify(grantConsent(), 200);
+        String bucket = userBucket();
+
+        // The key an orchestrator would hold when delegating to the declaring app.
+        ApiKeyData appKey = createAppKey("user", java.util.Map.of());
+        appKey.setExecutionPath(List.of("orchestrator"));
+        apiKeyStore.assignPerRequestApiKey(appKey);
+
+        AtomicReference<Integer> targetStatus = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4849)) {
+            server.map(HttpMethod.POST, "/chat/completions", request -> {
+                targetStatus.set(send(HttpMethod.PUT,
+                        "/v1/prompts/%s/dep-smoke/prompt-by-app".formatted(bucket), null, PROMPT_BODY,
+                        "api-key", request.getHeader("Api-Key")).status());
+                return TestWebServer.createResponse(200,
+                        "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"choices\":[]}",
+                        "Content-Type", "application/json");
+            });
+            Response completion = send(HttpMethod.POST,
+                    "/openai/deployments/applications/public/dep-e2e-app/chat/completions", null, """
+                    {"messages":[{"role":"user","content":"how are you?"}]}
+                    """, "api-key", appKey.getPerRequestKey(), "Content-Type", "application/json");
+            assertEquals(200, completion.status(), () -> "Body: " + completion.body());
+        }
+
+        // Callable, but the dependency did not resolve on this hop: no grant, target off-limits.
+        assertEquals(403, targetStatus.get(),
+                "a chained hop must not receive grants — the originating user's reach is not evaluable there");
     }
 
     @Test

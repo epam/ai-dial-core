@@ -7,7 +7,6 @@ import com.epam.aidial.core.config.ResourceDependency;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.security.AccessService;
@@ -120,16 +119,20 @@ public class ResolveResourceDependenciesFnTest {
     }
 
     @Test
-    void apply_throwsWhenRunAfterKeyAssignment() {
-        // Load-bearing timing: after assignment the reach checks would silently evaluate the app's
-        // own key instead of the user — that drift must be loud, not silent.
+    void apply_skipsWhenNotTheRootUserCall() {
+        // Load-bearing timing: under a per-request key the reach checks would evaluate a
+        // deployment's own key instead of the originating user — so hops that arrive with one
+        // (an interceptor's final call back, a chained app-to-app call) are skipped, never run
+        // and never thrown: a declaring app behind an interceptor must stay callable.
         when(context.getDeployment()).thenReturn(application);
         application.setResourceDependencies(List.of(dependency("current-user/skills/", false)));
         ApiKeyData assigned = new ApiKeyData();
         assigned.setPerRequestKey("prk");
         when(context.getApiKeyData()).thenReturn(assigned);
 
-        assertThrows(IllegalStateException.class, () -> fn.apply(request));
+        assertFalse(fn.apply(request));
+        verify(consentService, never()).isAdminConsented(anyString(), any());
+        assertTrue(proxyApiKeyData.getPerRequestSharedResources().isEmpty());
     }
 
     @Test
@@ -142,14 +145,50 @@ public class ResolveResourceDependenciesFnTest {
 
         assertFalse(fn.apply(request));
 
-        // The target lands in the app's own shared map (its direct calls with this key) and in the
-        // receivers entry (descendant mints down a chained call); the target is the user's skills
-        // ROOT folder, so the grant prefix-matches everything under it (findFolderPermissions).
+        // The grant lands in the key's own shared map — the app's direct calls with this key are
+        // served by it; the target is the user's skills ROOT folder, so the grant prefix-matches
+        // everything under it (findFolderPermissions).
         assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE),
                 proxyApiKeyData.getPerRequestSharedResources().get(userSkillsFolder().getUrl()).permissions());
-        Map<String, PerRequestSharedData> receiverGrants = proxyApiKeyData.getPerRequestReceivers().get("app");
+    }
+
+    @Test
+    void apply_combinesGrantsForRecordsWithTheSameTarget() {
+        // Two records targeting the same URL with different rights combine, never overwrite.
+        when(context.getDeployment()).thenReturn(application);
+        application.setResourceDependencies(List.of(
+                new ResourceDependency().setKind(ResourceDependency.KIND).setLinkId("lnk_w")
+                        .setTarget(new ResourceDependency.Target().setPath("files/public/p/"))
+                        .setAccess(Set.of(ResourceAccessType.WRITE)),
+                new ResourceDependency().setKind(ResourceDependency.KIND).setLinkId("lnk_r")
+                        .setTarget(new ResourceDependency.Target().setPath("files/public/p/"))
+                        .setAccess(Set.of(ResourceAccessType.READ))));
+        when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
+        ResourceDescriptor target = com.epam.aidial.core.server.util.ResourceDescriptorFactory
+                .fromAnyUrl("files/public/p/", encryptionService);
+        when(accessService.lookupPermissions(any(), eq(context)))
+                .thenReturn(Map.of(target, Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE)));
+
+        assertFalse(fn.apply(request));
+
         assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE),
-                receiverGrants.get(userSkillsFolder().getUrl()).permissions());
+                proxyApiKeyData.getPerRequestSharedResources().get("files/public/p/").permissions());
+    }
+
+    @Test
+    void apply_neverResolvesInternalEngineTypesAsPersonalTargets() {
+        // ResourceTypes.of() maps internal engine types (credentials, keys, models…) — a
+        // current-user/credentials/ declaration must never reach the user's secret-bearing blobs,
+        // whoever authored the app (config-file apps bypass the write-time ceiling).
+        when(context.getDeployment()).thenReturn(application);
+        application.setResourceDependencies(List.of(
+                dependency("current-user/credentials/", false),
+                dependency("current-user/keys/", false)));
+        when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
+
+        assertFalse(fn.apply(request));
+        verify(accessService, never()).lookupPermissions(any(), any());
+        assertTrue(proxyApiKeyData.getPerRequestSharedResources().isEmpty());
     }
 
     @Test
@@ -165,7 +204,7 @@ public class ResolveResourceDependenciesFnTest {
         assertFalse(fn.apply(request));
 
         assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE),
-                proxyApiKeyData.getPerRequestReceivers().get("app").get("files/public/policies/").permissions());
+                proxyApiKeyData.getPerRequestSharedResources().get("files/public/policies/").permissions());
     }
 
     @Test
