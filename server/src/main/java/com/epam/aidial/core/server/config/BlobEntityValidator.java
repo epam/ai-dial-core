@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -28,7 +29,20 @@ public final class BlobEntityValidator {
         appendInterceptorWarnings(application.getInterceptors(), config, warnings);
         appendSchemaWarning(application.getApplicationTypeSchemaId(), config, warnings);
         appendDependencyWarnings(application.getDependencies(), config, warnings);
+        appendResourceDependencyWarnings(application, warnings);
         return warnings;
+    }
+
+    /**
+     * Read-side backstop for the {@code resourceDependencies} section: the same rules the
+     * write-time validator enforces, as warnings — blob entities written before a rule existed,
+     * or arriving by copy/publication, surface here instead of failing a listing. The exact
+     * location travels inside the message ("resourceDependencies[i]: …").
+     */
+    private static void appendResourceDependencyWarnings(Application application, List<ValidationWarning> warnings) {
+        for (String issue : ResourceDependencyValidator.shapeIssues(application)) {
+            warnings.add(new ValidationWarning("resourceDependencies", issue));
+        }
     }
 
     private static void appendInterceptorWarnings(List<String> refs, Config config, List<ValidationWarning> warnings) {

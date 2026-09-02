@@ -1390,6 +1390,9 @@ public class ConfigResourceController implements Controller {
                 Object decrypted = switch (type) {
                     case APPLICATION -> {
                         Application application = ConfigEntityCodec.treeToEntity(requestNode, Application.class);
+                        // Always an admin context on this surface (see AdminRoleAuthorizationService), so the
+                        // user-authored governance ceiling does not apply — shape only.
+                        context.getProxy().getResourceDependencyValidator().validateShape(application);
                         applicationService.putApplication(descriptor, etag, author, application, true, AdminManagedFieldsWriteMode.AUTHORITATIVE);
                         yield applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
                     }
