@@ -1,0 +1,9 @@
+[
+  {
+    "scenario": "prompts-and-folders",
+    "step": "list-paged",
+    "field": "body",
+    "reason": "nextToken is the blob store's own continuation marker, passed through verbatim, so it carries the physical path and changes shape with the layout. Accepted: the token is opaque to clients and short-lived \u2014 it is handed straight back within one listing, and each layout accepts its own. The only case it bites is a token minted before a cutover and replayed after it, which fails one 'next page' click and succeeds on retry; that belongs to P2 migration, not to this change. Scope note: that this token exposes the storage prefix and the decrypted bucket location to callers is a separate, pre-existing defect on development \u2014 ResourceService is untouched by this stack and the legacy run leaks it identically. Tracked privately, not here.",
+    "issue": "https://github.com/epam/ai-dial-core/issues/1863"
+  }
+]
