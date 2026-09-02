@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.util;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
+import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import static com.epam.aidial.core.config.InterfaceType.OPENAI_CHAT_COMPLETIONS;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_EMBEDDINGS;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_RESPONSES;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.isInterfaceDeclared;
+import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveMode;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveRequestUri;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveResponsesBaseUri;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveServingEndpoint;
@@ -54,6 +56,71 @@ public class DeploymentEndpointUtilTest {
 
         assertEquals("http://adapter:5000", resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS));
         assertTrue(isInterfaceDeclared(model, OPENAI_CHAT_COMPLETIONS));
+    }
+
+    @Test
+    void interfacesFallBackToTheDeploymentBaseUrl() {
+        Model model = new Model();
+        model.setBaseUrl("http://adapter:5000/");
+        model.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface(),
+                OPENAI_RESPONSES.getValue(), new DeploymentInterface()));
+
+        assertEquals("http://adapter:5000", resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS));
+        assertEquals("http://adapter:5000", resolveServingEndpoint(model, OPENAI_RESPONSES));
+        assertTrue(isInterfaceDeclared(model, OPENAI_CHAT_COMPLETIONS));
+        assertTrue(isInterfaceDeclared(model, OPENAI_RESPONSES));
+    }
+
+    @Test
+    void interfaceBaseUrlOverridesTheDeploymentOne() {
+        Model model = new Model();
+        model.setBaseUrl("http://openai-adapter");
+        model.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface(),
+                ANTHROPIC_MESSAGES.getValue(), new DeploymentInterface("http://bedrock-adapter/")));
+
+        assertEquals("http://openai-adapter", resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS));
+        assertEquals("http://bedrock-adapter", resolveServingEndpoint(model, ANTHROPIC_MESSAGES));
+    }
+
+    @Test
+    void deploymentBaseUrlServesOnlyDeclaredInterfaces() {
+        Model model = new Model();
+        model.setBaseUrl("http://adapter");
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), new DeploymentInterface()));
+
+        // interfaces is the whitelist; a base url alone declares nothing
+        assertNull(resolveServingEndpoint(model, OPENAI_RESPONSES));
+        assertFalse(isInterfaceDeclared(model, OPENAI_RESPONSES));
+        // an undeclared type still reads the legacy field, which the base url never stands in for
+        assertEquals("http://legacy/chat/completions", resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS));
+    }
+
+    @Test
+    void interfaceWithoutAnyBaseUrlIsNotServed() {
+        Model model = new Model();
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), new DeploymentInterface()));
+
+        assertNull(resolveServingEndpoint(model, ANTHROPIC_MESSAGES));
+        assertFalse(isInterfaceDeclared(model, ANTHROPIC_MESSAGES));
+    }
+
+    @Test
+    void modeDefaultsToPassthrough() {
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        DeploymentInterface translated = new DeploymentInterface("http://translator");
+        translated.setMode(InterfaceMode.TRANSLATOR);
+        model.setInterfaces(Map.of(
+                OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://adapter"),
+                ANTHROPIC_MESSAGES.getValue(), translated));
+
+        assertEquals(InterfaceMode.TRANSLATOR, resolveMode(model, ANTHROPIC_MESSAGES));
+        // declared without a mode, and served by the legacy endpoint, are both pass-through
+        assertEquals(InterfaceMode.PASSTHROUGH, resolveMode(model, OPENAI_RESPONSES));
+        assertEquals(InterfaceMode.PASSTHROUGH, resolveMode(model, OPENAI_CHAT_COMPLETIONS));
     }
 
     @Test

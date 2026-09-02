@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.controller.anthropic.AnthropicModelController;
 import com.epam.aidial.core.server.controller.anthropic.MessagesController;
 import com.epam.aidial.core.server.controller.anthropic.MessagesCountTokensController;
 import com.epam.aidial.core.server.controller.route.ApplicationRouteController;
@@ -104,6 +105,15 @@ public class ControllerSelector {
         });
         get(RouteTemplate.MODELS, (proxy, context, pathMatcher) -> {
             ModelController controller = new ModelController(context);
+            return controller::getModels;
+        });
+        get(RouteTemplate.LLM_ANTHROPIC_MODEL, (proxy, context, pathMatcher) -> {
+            AnthropicModelController controller = new AnthropicModelController(context);
+            String modelId = UrlUtil.decodePath(pathMatcher.group(1));
+            return () -> controller.getModel(modelId);
+        });
+        get(RouteTemplate.LLM_ANTHROPIC_MODELS, (proxy, context, pathMatcher) -> {
+            AnthropicModelController controller = new AnthropicModelController(context);
             return controller::getModels;
         });
         get(RouteTemplate.APPLICATION, (proxy, context, pathMatcher) -> {
