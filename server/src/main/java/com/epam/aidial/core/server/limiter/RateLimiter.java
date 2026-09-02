@@ -87,25 +87,12 @@ public class RateLimiter {
         }
     }
 
-    public Future<RateLimitResult> limit(ProxyContext context, RoleBasedEntity roleBasedEntity) {
-        return limit(context, roleBasedEntity, true);
-    }
-
     /**
-     * Checks every one of the caller's limits, and spends a request slot while doing so.
-     *
-     * <p>Only requests take a parameter because only requests are counted here: a request is spent the
-     * moment it is admitted, while tokens and cost are not known until the response is read and are added
-     * by {@link #increase} instead. So a call another one accounts for opts out of the token and cost
-     * charge by not calling {@code increase}, and out of the request charge by passing {@code false} here.
-     * Neither opts out of being checked.
-     *
-     * @param countRequest whether the call consumes a slot of the caller's {@code requestHour}/{@code requestDay}
-     *                     quota. False for a call another one accounts for: a translated request is checked
-     *                     against every limit, but the call the translator makes back to Core is the one
-     *                     counted, so a single client call never spends two slots.
+     * Checks every one of the caller's limits, and spends a request slot while doing so. Called for a
+     * request the caller is accountable for; one served by a mode that is not
+     * {@link com.epam.aidial.core.config.InterfaceMode#isSubjectToLimits()} never reaches here.
      */
-    public Future<RateLimitResult> limit(ProxyContext context, RoleBasedEntity roleBasedEntity, boolean countRequest) {
+    public Future<RateLimitResult> limit(ProxyContext context, RoleBasedEntity roleBasedEntity) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {
@@ -123,7 +110,7 @@ public class RateLimiter {
                 return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied", "Access denied", -1));
             }
 
-            return taskExecutor.submit(() -> checkLimit(context, limit, roleBasedEntity, countRequest));
+            return taskExecutor.submit(() -> checkLimit(context, limit, roleBasedEntity));
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
@@ -406,7 +393,7 @@ public class RateLimiter {
         return ResourceDescriptorFactory.fromEntityPath(ResourceTypes.LIMIT, bucketLocation, bucketLocation, path);
     }
 
-    private RateLimitResult checkLimit(ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity, boolean countRequest) {
+    private RateLimitResult checkLimit(ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity) {
         long timestamp = System.currentTimeMillis();
 
         // Check token limits
@@ -416,7 +403,7 @@ public class RateLimiter {
         }
 
         // Check request limits
-        RateLimitResult requestResult = checkRequestLimit(context, limit, timestamp, roleBasedEntity, countRequest);
+        RateLimitResult requestResult = checkRequestLimit(context, limit, timestamp, roleBasedEntity);
         if (requestResult.status() != HttpStatus.OK) {
             return requestResult;
         }
@@ -448,23 +435,21 @@ public class RateLimiter {
         return rateLimit.update(timestamp, limit);
     }
 
-    private RateLimitResult checkRequestLimit(ProxyContext context, Limit limit, long timestamp,
-                                              RoleBasedEntity roleBasedEntity, boolean countRequest) {
+    private RateLimitResult checkRequestLimit(ProxyContext context, Limit limit, long timestamp, RoleBasedEntity roleBasedEntity) {
         String tokensPath = getPathToRequests(roleBasedEntity.getName());
         ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
         // pass array to hold rate limit result returned by the function to compute the resource
         RateLimitResult[] result = new RateLimitResult[1];
-        resourceService.computeResource(resourceDescription, json -> updateRequestLimit(json, timestamp, limit, result, countRequest));
+        resourceService.computeResource(resourceDescription, json -> updateRequestLimit(json, timestamp, limit, result));
         return result[0];
     }
 
-    private String updateRequestLimit(String json, long timestamp, Limit limit, RateLimitResult[] result, boolean countRequest) {
+    private String updateRequestLimit(String json, long timestamp, Limit limit, RateLimitResult[] result) {
         RequestRateLimit rateLimit = ProxyUtil.convertToObject(json, RequestRateLimit.class);
         if (rateLimit == null) {
             rateLimit = new RequestRateLimit();
         }
-        // the quota is compared against the totals as they stand, so a count of 0 checks it without spending a slot
-        result[0] = rateLimit.check(timestamp, limit, countRequest ? 1 : 0);
+        result[0] = rateLimit.check(timestamp, limit, 1);
         return ProxyUtil.convertToString(rateLimit);
     }
 

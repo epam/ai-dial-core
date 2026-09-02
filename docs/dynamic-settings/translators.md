@@ -80,19 +80,19 @@ An interface that needs a translator no other deployment uses can define one in 
 * A translator converts between two **different** interfaces. One whose `out` equals its `in` — or, for an inline definition, equals the interface it is declared under — is rejected: its own output arrives back on the interface it came from, so DIAL Core hands it straight back to the translator. Nothing bounds that at runtime, which is why it is a config error rather than a request-time failure.
 * The deployment must serve `out` itself, pass-through. A translator converting to an API the deployment does not serve leaves the callback with nowhere to land, and one converting to another translated interface is refused because the callback would be handed to a translator again.
 * Together with the rule above, that is what keeps a **cycle of translators** out of a config rather than out of a running request: a cycle of two or more interfaces needs a translator whose `out` lands on a second translated interface, and no such pair is accepted. A model where `anthropicMessages` converts to `openaiResponses` while `openaiResponses` converts back to `anthropicMessages` is rejected on load, at both ends. The one-interface cycle is the rule above it.
-* **A translated request is not charged to the caller's token or cost limits** — the translator's callback is charged instead, so the usage is counted exactly once. Refer to [Limits and a translated request](#limits-and-a-translated-request).
+* **A translated request touches the caller's limits not at all** — neither checked nor charged. The translator's callback is the real request, and it carries the tokens, the cost and the request slot, so a client call is counted exactly once. Refer to [Limits and a translated request](#limits-and-a-translated-request).
 * Editing a `translators` entry takes effect on the next config reload for every deployment referencing it by name — references are resolved on each load, not frozen when the deployment is written.
 
 ## Limits and a translated request
 
-A client call served through a translator reaches DIAL Core twice: once from the client, on the translated interface, and once from the translator, on the interface named by `out`. Only the second call is charged to the caller's quotas, so one client call is counted once and not twice — in tokens, in cost, and in requests alike:
+A client call served through a translator reaches DIAL Core twice: once from the client, on the translated interface, and once from the translator, on the interface named by `out`. Only the second call is a real request against the caller's quotas — the first is a routing hop to the translator service. So one client call is counted once and not twice, in tokens, in cost, and in requests alike:
 
 | [Role limit](roles.md#rolesrole_namelimits) | The client's translated call | The translator's callback |
 |---|---|---|
-| `minute` / `day` / `week` / `month` (tokens) | checked, not added to | checked and added to |
-| [`costLimit`](roles.md#rolesrole_namecostlimit) | checked, not added to | checked and added to |
-| `requestHour` / `requestDay` | checked, not counted | checked and counted |
+| `minute` / `day` / `week` / `month` (tokens) | not read, not added to | checked and added to |
+| [`costLimit`](roles.md#rolesrole_namecostlimit) | not read, not added to | checked and added to |
+| `requestHour` / `requestDay` | not read, not counted | checked and counted |
 
-**A translated interface is not a way around a quota.** Every limit is still checked before the translated call is forwarded, so a caller who has exhausted their token, cost or request limit is rejected on it exactly as on any other interface. Not being counted is not the same as not being checked.
+**A translated interface is not a way around a quota**, but it is enforced one hop later. A caller who has exhausted their token, cost or request limit is not rejected on the translated call itself — that call is let through to the translator — and is then rejected on the callback, which is an ordinary pass-through request checked like any other. So the quota still holds; the `429` reaches the client through the translator rather than straight from DIAL Core, and the translator pays a round-trip for a request that was going to be refused.
 
 Usage is attributed to the initiator, not to the translator, as long as the translator calls back with the per-request key DIAL Core issued it — the same contract an interceptor follows. Note also that **both** hops are written to the request log, each with the usage it saw: it is the limits that count once, not the log, so summing usage across log entries double counts a translated request.

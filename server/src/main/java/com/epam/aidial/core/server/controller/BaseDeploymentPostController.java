@@ -212,33 +212,35 @@ public class BaseDeploymentPostController {
     }
 
     /**
-     * Whether this request is the one the initiator's limits are charged for, or a second request the mode
-     * serving the interface makes accounts for it — see {@link InterfaceMode#isChargedToInitiator()}. Read
-     * by both the pre-flight check and the post-response charge, so the two can never disagree about which
-     * of them a mode exempts.
+     * Whether the initiator is accountable for this request, or a second request the mode serving the
+     * interface makes is the real one — see {@link InterfaceMode#isSubjectToLimits()}. Read by both the
+     * pre-flight check and the post-response charge, so the two can never disagree about what a mode exempts.
      */
-    private boolean chargedToInitiator(Deployment deployment) {
-        return DeploymentEndpointUtil.resolveMode(deployment, interfaceType()).isChargedToInitiator();
+    private boolean subjectToLimits(Deployment deployment) {
+        return DeploymentEndpointUtil.resolveMode(deployment, interfaceType()).isSubjectToLimits();
     }
 
     /**
-     * Checks the initiator's limits before the request is forwarded. A request a mode does not charge to the
-     * initiator is checked against every one of them all the same, and only spends no request slot: not
-     * being counted is not the same as not being checked.
+     * Checks the initiator's limits before the request is forwarded, for a request the initiator is
+     * accountable for. A translated one is not: the translator calls Core back to have the completion
+     * served, and that inner request is the real one — it is what the limits are checked and charged
+     * against, so a caller over quota is rejected there rather than here.
      */
     protected Future<RateLimitResult> checkLimits(Deployment deployment) {
-        return proxy.getRateLimiter().limit(context, deployment, chargedToInitiator(deployment));
+        if (!subjectToLimits(deployment)) {
+            return Future.succeededFuture(RateLimitResult.SUCCESS);
+        }
+        return proxy.getRateLimiter().limit(context, deployment);
     }
 
     /**
-     * Charges the request's usage to the initiator's token and cost limits, unless the mode serving the
-     * interface it arrived on has a second request account for it: a translator calls Core back to have the
-     * completion served, and that inner request is what carries the usage. Charging here as well would count
-     * it twice.
+     * Charges the request's usage to the initiator's token and cost limits, for a request the initiator is
+     * accountable for. Skipped on the same terms {@link #checkLimits} is, and for the same reason: the
+     * inner request the mode makes is what carries the usage, so charging here as well would count it twice.
      */
     private Future<Void> increaseLimits(TokenUsage usage) {
         Deployment deployment = context.getDeployment();
-        if (!chargedToInitiator(deployment)) {
+        if (!subjectToLimits(deployment)) {
             return Future.succeededFuture();
         }
         return proxy.getRateLimiter().increase(

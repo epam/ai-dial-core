@@ -76,13 +76,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -824,7 +824,7 @@ public class DeploymentPostControllerTest {
     @ParameterizedTest
     @NullSource
     @EnumSource(value = InterfaceMode.class, names = {"PASSTHROUGH", "TRANSLATOR"})
-    public void testCheckLimits_DoesNotCountTranslatedRequests(InterfaceMode mode) {
+    public void testCheckLimits_LeavesTranslatedRequestsToTheCallback(InterfaceMode mode) {
         Model model = new Model();
         DeploymentInterface chatCompletions = new DeploymentInterface("http://adapter");
         chatCompletions.setMode(mode);
@@ -832,13 +832,18 @@ public class DeploymentPostControllerTest {
         when(proxy.getRateLimiter()).thenReturn(rateLimiter);
         when(context.getRequest()).thenReturn(request);
         when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
-        when(rateLimiter.limit(any(), any(), anyBoolean())).thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
+        lenient().when(rateLimiter.limit(any(), any())).thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
 
-        controller.checkLimits(model);
+        Future<RateLimitResult> result = controller.checkLimits(model);
 
-        // a translated request is checked against every limit, but the translator's callback is what
-        // spends the request slot, so one client call never spends two
-        verify(rateLimiter).limit(eq(context), eq(model), eq(mode != InterfaceMode.TRANSLATOR));
+        if (mode == InterfaceMode.TRANSLATOR) {
+            // the call the translator makes back to Core is the real request: it is what the limits are
+            // checked and charged against, so a caller over quota is rejected there rather than here
+            verify(rateLimiter, never()).limit(any(), any());
+            assertEquals(HttpStatus.OK, result.result().status());
+        } else {
+            verify(rateLimiter).limit(eq(context), eq(model));
+        }
     }
 
     @Test
