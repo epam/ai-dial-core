@@ -13683,6 +13683,10 @@ components:
           $ref: "#/components/schemas/MapStringString"
         baseUrl:
           type: string
+        resource_dependencies:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceDependency"
     ApplicationData:
       type: object
       properties:
@@ -16474,6 +16478,26 @@ components:
       - SIGNED_IN
       - SIGNED_OUT
       - FAILED
+    ResourceDependency:
+      type: object
+      properties:
+        access:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceAccessType"
+        kind:
+          type: string
+        link_id:
+          type: string
+        required:
+          type: boolean
+        target:
+          $ref: "#/components/schemas/ResourceDependencyTarget"
+    ResourceDependencyTarget:
+      type: object
+      properties:
+        path:
+          type: string
     ResourceEvent:
       type: object
       properties:
