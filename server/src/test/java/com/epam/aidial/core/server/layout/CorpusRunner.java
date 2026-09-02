@@ -6,6 +6,8 @@ import lombok.SneakyThrows;
 
 import java.io.InputStream;
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -65,9 +67,13 @@ public class CorpusRunner {
     /**
      * One instance's side of the comparison. {@code buckets} is carried alongside the responses because the two
      * runs must agree on it before any response comparison means anything — buckets thread through nearly every
-     * url in the corpus, so a difference there would make every other difference unreadable.
+     * url in the corpus, so a difference there would make every other difference unreadable. {@code captures}
+     * holds what each scenario captured, by scenario name: normalisation replaces a captured value with its
+     * role name wherever it appears, so the values themselves are only comparable here.
      */
-    public record Run(Map<String, String> buckets, Map<StepKey, RecordedResponse> responses) {
+    public record Run(Map<String, String> buckets,
+                      Map<String, Map<String, String>> captures,
+                      Map<StepKey, RecordedResponse> responses) {
     }
 
     /**
@@ -81,6 +87,7 @@ public class CorpusRunner {
                 "bucket2", instance.bucket(API_KEY_2));
 
         Map<StepKey, RecordedResponse> recorded = new LinkedHashMap<>();
+        Map<String, Map<String, String>> captures = new LinkedHashMap<>();
         for (Scenario scenario : scenarios) {
             Map<String, String> variables = new HashMap<>(buckets);
             Map<StepKey, RecordedResponse> raw = new LinkedHashMap<>();
@@ -89,7 +96,7 @@ public class CorpusRunner {
                 RecordedResponse response = instance.send(
                         step.method(),
                         substitute(step.path(), variables),
-                        substitute(step.query(), variables),
+                        substituteQuery(step.query(), variables),
                         substitute(bodyText(step.body()), variables),
                         substituteValues(step.headersOrEmpty(), variables),
                         step.multipart());
@@ -105,8 +112,12 @@ public class CorpusRunner {
             // Normalisation waits for the end of the scenario: a value is only known to be a generated
             // identifier once some step has captured it, and the step that produced it ran before that.
             raw.forEach((key, response) -> recorded.put(key, ResponseNormalizer.normalize(response, variables)));
+
+            Map<String, String> captured = new LinkedHashMap<>(variables);
+            captured.keySet().removeAll(buckets.keySet());
+            captures.put(scenario.name(), captured);
         }
-        return new Run(buckets, recorded);
+        return new Run(buckets, captures, recorded);
     }
 
     private static void capture(Scenario.Step step, RecordedResponse response, Map<String, String> variables) {
@@ -159,6 +170,20 @@ public class CorpusRunner {
         Map<String, String> resolved = new LinkedHashMap<>();
         values.forEach((name, value) -> resolved.put(name, substitute(value, variables)));
         return resolved;
+    }
+
+    /**
+     * Query values ride in a URI, so substituted values are percent-encoded first — a page token is a raw
+     * storage marker and can carry any character the blob store's keys can.
+     */
+    private static String substituteQuery(String template, Map<String, String> variables) {
+        if (template == null) {
+            return null;
+        }
+
+        Map<String, String> encoded = new LinkedHashMap<>();
+        variables.forEach((name, value) -> encoded.put(name, URLEncoder.encode(value, StandardCharsets.UTF_8)));
+        return substitute(template, encoded);
     }
 
     private static String substitute(String template, Map<String, String> variables) {
