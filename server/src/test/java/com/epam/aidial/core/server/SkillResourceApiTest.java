@@ -374,6 +374,24 @@ public class SkillResourceApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testMetadataOfSkillItselfIsItem() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/cat/skill-a", files), 200);
+        verify(createFolder("/cat/sub/"), 200);
+
+        // requesting the skill's own path (not its parent) must report the skill itself as an ITEM,
+        // not an (empty) FOLDER
+        Response skillMetadata = listMetadata("cat/skill-a");
+        verify(skillMetadata, 200);
+        assertEquals("ITEM", nodeType(skillMetadata));
+
+        // a grouping folder's own path must still report itself as a FOLDER
+        Response folderMetadata = listMetadata("cat/sub");
+        verify(folderMetadata, 200);
+        assertEquals("FOLDER", nodeType(folderMetadata));
+    }
+
+    @Test
     void testMetadataListingRecursive() {
         Map<String, byte[]> files = new LinkedHashMap<>();
         files.put("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
@@ -637,6 +655,11 @@ public class SkillResourceApiTest extends ResourceBaseTest {
 
     private Response deleteFolder(String folderPath, String... headers) {
         return send(HttpMethod.DELETE, "/v2/skills/" + bucket + folderPath, null, "", headers);
+    }
+
+    @SneakyThrows
+    private static String nodeType(Response metadata) {
+        return ProxyUtil.MAPPER.readTree(metadata.body()).get("nodeType").asText();
     }
 
     @SneakyThrows

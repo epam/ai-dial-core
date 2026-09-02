@@ -546,6 +546,28 @@ public class ComplexResourceService {
     }
 
     /**
+     * Resolves metadata for the v2 metadata route's target path. If the path is itself an active DIAL
+     * resource (a skill), returns its metadata as a single {@code ITEM}; otherwise treats it as a grouping
+     * level and lists its children via {@link #listChildren}.
+     */
+    public MetadataBase getMetadata(ResourceDescriptor resource, String token, int limit, boolean recursive) {
+        FolderResourceMarker marker = getMarker(resource);
+        if (marker != null) {
+            return itemMetadata(resource, marker);
+        }
+        return listChildren(resource, token, limit, recursive);
+    }
+
+    private static ResourceItemMetadata itemMetadata(ResourceDescriptor resource, FolderResourceMarker marker) {
+        ResourceItemMetadata metadata = new ResourceItemMetadata(resource);
+        metadata.setCreatedAt(marker.getCreatedAt());
+        metadata.setUpdatedAt(marker.getUpdatedAt());
+        metadata.setEtag(marker.getEtag());
+        metadata.setAuthor(marker.getAuthor());
+        return metadata;
+    }
+
+    /**
      * Lists DIAL resources and grouping folders at a grouping level. A node is classified by the presence
      * of its marker file ({@code .dial-resource} → {@code ITEM}, {@code .dial-folder} → {@code FOLDER}).
      * A {@code .dial-resource} marker is additionally read to exclude a tombstoned ({@code deleting})
