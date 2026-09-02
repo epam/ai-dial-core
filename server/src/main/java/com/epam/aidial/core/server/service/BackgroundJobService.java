@@ -272,16 +272,18 @@ public class BackgroundJobService {
         return Future.succeededFuture();
     }
 
+    // Stable rather than physical path for the AAD: a job record outlives restarts, so its ciphertext
+    // must survive a storage-layout change.
     private String encryptKey(ResourceDescriptor descriptor, String key) {
         BucketInfo bucketInfo = new BucketInfo(descriptor.getBucketName(), descriptor.getBucketLocation());
-        byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
+        byte[] aad = descriptor.getStableFilePath().getBytes(StandardCharsets.UTF_8);
         byte[] cipher = encryptionService.encrypt(bucketInfo, key.getBytes(StandardCharsets.UTF_8), aad);
         return Base64.getEncoder().encodeToString(cipher);
     }
 
     private String decryptKey(ResourceDescriptor descriptor, String key) {
         BucketInfo bucketInfo = new BucketInfo(descriptor.getBucketName(), descriptor.getBucketLocation());
-        byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
+        byte[] aad = descriptor.getStableFilePath().getBytes(StandardCharsets.UTF_8);
         byte[] raw = Base64.getDecoder().decode(key);
         return new String(encryptionService.decrypt(bucketInfo, raw, aad), StandardCharsets.UTF_8);
     }

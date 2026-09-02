@@ -78,7 +78,9 @@ public class UserExternalServiceService {
     public ExternalService put(String ownerUserId, String appPart, String serviceId, ExternalService service, String author) {
         ResourceDescriptor resource = descriptor(ownerUserId, appPart, serviceId);
         BucketInfo bucket = new BucketInfo(resource.getBucketName(), resource.getBucketLocation());
-        String aad = resource.getAbsoluteFilePath();
+        // Stable rather than physical path: the AAD is baked into the stored ciphertext and must
+        // survive a storage-layout change.
+        String aad = resource.getStableFilePath();
         MutableObject<ExternalService> result = new MutableObject<>();
         PersistedSecret persisted = new PersistedSecret();
         resourceService.computeResource(resource, EtagHeader.ANY, author, json -> {
@@ -104,7 +106,7 @@ public class UserExternalServiceService {
             return null;
         }
         ExternalService service = ProxyUtil.convertToObject(stored.getValue(), ExternalService.class);
-        decryptSecret(resource.getAbsoluteFilePath(), new BucketInfo(resource.getBucketName(), resource.getBucketLocation()), service);
+        decryptSecret(resource.getStableFilePath(), new BucketInfo(resource.getBucketName(), resource.getBucketLocation()), service);
         return service;
     }
 
