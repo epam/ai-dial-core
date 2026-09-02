@@ -41,6 +41,7 @@
     "files": [],
     "reload": 60000,
     "onInvalidEntity": "abort",
+    "allowUserResourceDependencies": false,
     "write": {
       "softValidation": false
     }
