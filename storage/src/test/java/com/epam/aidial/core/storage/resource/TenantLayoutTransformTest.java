@@ -42,9 +42,34 @@ public class TenantLayoutTransformTest {
         assertEquals(legacy, TenantLayoutTransform.toLegacyLocation(tenant, TENANT));
     }
 
+    /**
+     * The platform synthesizes sub-buckets of {@code public/}: a public function app's source and target
+     * folder is keyed as {@code public/deployments/<id>/}. The suffix keeps its legacy shape under the
+     * tenant root — it stays parseable because reserved names there are dotted and the suffix may not be.
+     */
+    @Test
+    public void testPublicDeploymentsLocation() {
+        assertEquals(".org/default-tenant/deployments/abc123/",
+                TenantLayoutTransform.toTenantLocation("public/deployments/abc123/", TENANT));
+        assertEquals("public/deployments/abc123/",
+                TenantLayoutTransform.toLegacyLocation(".org/default-tenant/deployments/abc123/", TENANT));
+    }
+
+    @Test
+    public void testDottedOrUnterminatedPublicScopeRejected() {
+        assertThrows(IllegalArgumentException.class,
+                () -> TenantLayoutTransform.toTenantLocation("public/.deployments/abc123/", TENANT));
+        assertThrows(IllegalArgumentException.class,
+                () -> TenantLayoutTransform.toTenantLocation("public/deployments/.abc123/", TENANT));
+        assertThrows(IllegalArgumentException.class,
+                () -> TenantLayoutTransform.toTenantLocation("public/deployments/abc123", TENANT));
+        assertThrows(IllegalArgumentException.class,
+                () -> TenantLayoutTransform.toLegacyLocation(".org/default-tenant/deployments/abc123", TENANT));
+    }
+
     @Test
     public void testLocationRoundTrip() {
-        for (String legacy : new String[] {"platform/", "public/", "Users/u1/", "Keys/proj/", "Keys/applications/abc/app/"}) {
+        for (String legacy : new String[] {"platform/", "public/", "public/deployments/abc123/", "Users/u1/", "Keys/proj/", "Keys/applications/abc/app/"}) {
             String tenant = TenantLayoutTransform.toTenantLocation(legacy, TENANT);
             assertEquals(legacy, TenantLayoutTransform.toLegacyLocation(tenant, TENANT));
         }

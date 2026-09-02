@@ -54,8 +54,13 @@ public class TenantLayoutTransform {
         }
 
         String tenantRoot = tenantRoot(tenantId);
-        if (ResourceDescriptor.PUBLIC_LOCATION.equals(legacyLocation)) {
-            return tenantRoot;
+        if (legacyLocation.startsWith(ResourceDescriptor.PUBLIC_LOCATION)) {
+            // Not only "public/" itself: the platform synthesizes sub-buckets under it, e.g. a public
+            // function app's source folder is keyed as "public/deployments/<id>/". The suffix keeps its
+            // legacy shape under the tenant root.
+            String scope = legacyLocation.substring(ResourceDescriptor.PUBLIC_LOCATION.length());
+            requirePublicScope(scope, legacyLocation);
+            return tenantRoot + scope;
         }
 
         String userId = principalId(legacyLocation, LEGACY_USERS_PREFIX);
@@ -104,7 +109,29 @@ public class TenantLayoutTransform {
             return LEGACY_KEYS_PREFIX + project;
         }
 
+        if (scope.charAt(0) != TYPE_FOLDER_MARKER) {
+            requirePublicScope(scope, tenantLocation);
+            return ResourceDescriptor.PUBLIC_LOCATION + scope;
+        }
+
         throw new IllegalArgumentException("Unsupported tenant bucket location: " + tenantLocation);
+    }
+
+    /**
+     * A public sub-bucket suffix must end at a path boundary, and none of its segments may start with
+     * the marker character: dotted names under the tenant root are reserved for principal branches and
+     * resource-type folders, so a dotted segment here would make the mapping irreversible.
+     */
+    private void requirePublicScope(String scope, String location) {
+        if (scope.isEmpty()) {
+            return;
+        }
+
+        if (!scope.endsWith(ResourceDescriptor.PATH_SEPARATOR)
+                || scope.charAt(0) == TYPE_FOLDER_MARKER
+                || scope.contains(ResourceDescriptor.PATH_SEPARATOR + TYPE_FOLDER_MARKER)) {
+            throw new IllegalArgumentException("Unsupported public bucket location: " + location);
+        }
     }
 
     public String toTenantTypeFolder(String legacyTypeFolder) {
