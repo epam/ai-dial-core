@@ -51,6 +51,7 @@ An object containing parameters for each [model](#models).
   DIAL Core rewrites upstream response IDs to stable `resp_dial_*` identifiers and uses sticky routing to ensure follow-up requests are forwarded to the same upstream instance that handled the original request. `previous_response_id`, conversations, prompts, and files are not supported.
 * `responsesDefaults`: Default parameters applied if a request doesn't contain them in an OpenAI Responses API call. Works the same way as `defaults` for the chat completions API.
 * `defaultHeaders`: HTTP headers DIAL Core adds to a request that doesn't already carry them, for every interface the model serves. Refer to [models.<model_name>.defaultHeaders](#modelsmodel_namedefaultheaders).
+* `baseUrl`: The root URL shared by every `interfaces` entry that declares no `base_url` of its own. Refer to [models.<model_name>.interfaces](#modelsmodel_nameinterfaces).
 * `interfaces`: An alternative to the flat `endpoint`/`responsesEndpoint` fields for declaring routing targets, keyed by interface type. Both shapes are first-class — pick whichever you prefer per model. Refer to [models.<model_name>.interfaces](#modelsmodel_nameinterfaces).
 * `interceptors`: A list of interceptors to be triggered for the given model. Refer to [Interceptors](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/6.interceptors.md) to learn more.
 * `fieldsHashingOrder`: **Deprecated, no longer has any effect.** It used to let `POST /openai/deployments/{deployment_name}/chat/completions` customize the order in which request components are hashed for upstream-cache pinning. DIAL Core now always uses a built-in, non-configurable order per interface, fixed by that API's wire format — the same mechanism `POST /anthropic/v1/messages` and `POST /openai/v1/responses` use:
@@ -151,9 +152,17 @@ An optional, typed alternative to the flat `endpoint`/`responsesEndpoint` fields
 The two shapes route differently:
 
 * `endpoint`/`responsesEndpoint` are forwarded **verbatim** — the configured URL is used as-is and the ingress path is not appended.
-* An `interfaces` entry declares a `base_url`, and DIAL Core forwards each request to `base_url` + **the exact ingress path it was received on** (e.g. `POST /openai/v1/responses` is routed to `<base_url>/openai/v1/responses`). A trailing slash on `base_url` is normalized.
+* An `interfaces` entry is served by a base URL, and DIAL Core forwards each request to that base URL + **the exact ingress path it was received on** (e.g. `POST /openai/v1/responses` is routed to `<base_url>/openai/v1/responses`). A trailing slash is normalized.
 
-If both `interfaces` and a legacy field are declared for the same interface type, `interfaces` takes precedence; the legacy field is left untouched in config and ignored for routing.
+The base URL serving an interface is resolved in this order:
+
+1. `interfaces.<interface_type>.base_url`, when the entry declares one.
+2. The model-level `baseUrl`. Usually a single root serves every interface and only the path differs (`/openai/deployments/{name}/chat/completions`, `/openai/v1/responses`, `/anthropic/v1/messages`), so declaring it once at the model level and listing the supported interfaces with no `base_url` of their own is enough; an entry that does declare one overrides it for that interface only.
+3. `endpoint`/`responsesEndpoint`, for interface types the `interfaces` map does not declare at all.
+
+`interfaces` is the whitelist of what the model serves: a model-level `baseUrl` on its own declares no interface, and an interface listed with neither base URL is answered with `503`. If both `interfaces` and a legacy field are declared for the same interface type, `interfaces` takes precedence; the legacy field is left untouched in config and ignored for routing.
+
+An interface mapped to `null` reads exactly as an absent one — `"openaiResponses": null` documents that the model does not serve the Responses API.
 
 Supported interface types for models:
 
@@ -168,7 +177,8 @@ Only the interface types a model declares are reported in the `interfaces` array
 
 Each value is an object with the following fields:
 
-* `base_url`: The model adapter root that the matching ingress path is appended to.
+* `base_url`: The root URL that the matching ingress path is appended to. Optional — the model-level `baseUrl` serves an entry that omits it.
+* `mode`: `passthrough` (default) or `translator`. It declares whether the request is forwarded in the shape it arrived in, or handed to a service that translates it into an API the model does speak. A `translator` interface does not charge its tokens to the model's [limits](#modelsmodel_namelimits): the translator calls DIAL Core back to have the completion served, and that inner request is what carries the usage to the limits, so charging both would count it twice.
 * `defaultHeaders`: Headers applied to requests for this interface only, laid over the model-level `defaultHeaders`. Refer to [models.<model_name>.defaultHeaders](#modelsmodel_namedefaultheaders).
 
 **Example**
@@ -180,6 +190,19 @@ Each value is an object with the following fields:
         "interfaces": {
             "openaiChatCompletions": { "base_url": "http://localhost:7005" },
             "openaiResponses": { "base_url": "http://localhost:7005" }
+        }
+    },
+    "openai-gpt-5.4-mini": {
+        "type": "chat",
+        "overrideName": "gpt-5.4-mini",
+        "baseUrl": "http://dial-openai-adapter",
+        "interfaces": {
+            "openaiChatCompletions": { "mode": "passthrough" },
+            "openaiResponses": null,
+            "anthropicMessages": {
+                "mode": "passthrough",
+                "base_url": "http://dial-bedrock-adapter"
+            }
         }
     },
     "text-embedding-3-small": {
