@@ -1,6 +1,7 @@
 package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import com.fasterxml.jackson.databind.exc.ValueInstantiationException;
 import org.junit.jupiter.api.Test;
@@ -8,6 +9,8 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static com.epam.aidial.core.config.InterfaceType.ANTHROPIC_MESSAGES;
+import static com.epam.aidial.core.config.InterfaceType.OPENAI_CHAT_COMPLETIONS;
+import static com.epam.aidial.core.config.InterfaceType.OPENAI_RESPONSES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -27,9 +30,9 @@ public class TranslatorTest {
     void translatorCannotBeBuiltWithoutOutOrBaseUrl() {
         // out and baseUrl are what make it a translator: one missing either converts nothing, or converts it
         // nowhere, so the shape is rejected as it is read rather than left to serve 503s
-        assertThrows(IllegalArgumentException.class, () -> new Translator("anthropicMessages", null, "http://translator"));
-        assertThrows(IllegalArgumentException.class, () -> new Translator("anthropicMessages", "openaiChatCompletions", null));
-        assertThrows(IllegalArgumentException.class, () -> new Translator("anthropicMessages", "openaiChatCompletions", ""));
+        assertThrows(IllegalArgumentException.class, () -> new Translator(ANTHROPIC_MESSAGES, null, "http://translator"));
+        assertThrows(IllegalArgumentException.class, () -> new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, null));
+        assertThrows(IllegalArgumentException.class, () -> new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, ""));
     }
 
     @Test
@@ -70,7 +73,7 @@ public class TranslatorTest {
     }
 
     @Test
-    void registryKeepsInterfaceNamesThisCoreDoesNotKnow() throws Exception {
+    void registryEntryIsReadAsInterfaceTypes() throws Exception {
         String json = """
                 {
                     "translators": {
@@ -79,10 +82,10 @@ public class TranslatorTest {
                             "out": "openaiResponses",
                             "baseUrl": "http://dial-bedrock-translator/to-responses"
                         },
-                        "geminiInteractionsToOpenaiResponses": {
-                            "in": "geminiInteractions",
-                            "out": "openaiResponses",
-                            "base_url": "http://dial-vertexai-translator/to-responses"
+                        "anthropicMessagesToOpenaiChatCompletions": {
+                            "in": "anthropicMessages",
+                            "out": "openaiChatCompletions",
+                            "base_url": "http://dial-bedrock-translator/to-chat-completions"
                         }
                     }
                 }
@@ -90,14 +93,34 @@ public class TranslatorTest {
 
         Config config = MAPPER.readValue(json, Config.class);
 
-        Translator anthropic = config.getTranslators().get("anthropicMessagesToOpenaiResponses");
-        assertEquals("anthropicMessages", anthropic.getIn());
-        assertEquals("openaiResponses", anthropic.getOut());
-        assertEquals("http://dial-bedrock-translator/to-responses", anthropic.getBaseUrl());
-        // an interface type only a newer Core knows still parses, the same way an interfaces key does
-        assertEquals("geminiInteractions", config.getTranslators().get("geminiInteractionsToOpenaiResponses").getIn());
-        assertEquals("http://dial-vertexai-translator/to-responses",
-                config.getTranslators().get("geminiInteractionsToOpenaiResponses").getBaseUrl());
+        Translator responses = config.getTranslators().get("anthropicMessagesToOpenaiResponses");
+        assertEquals(ANTHROPIC_MESSAGES, responses.getIn());
+        assertEquals(OPENAI_RESPONSES, responses.getOut());
+        assertEquals("http://dial-bedrock-translator/to-responses", responses.getBaseUrl());
+        assertEquals(OPENAI_CHAT_COMPLETIONS, config.getTranslators().get("anthropicMessagesToOpenaiChatCompletions").getOut());
+        assertEquals("http://dial-bedrock-translator/to-chat-completions",
+                config.getTranslators().get("anthropicMessagesToOpenaiChatCompletions").getBaseUrl());
+        // and written back the way they were read, so a round-trip does not rename an interface
+        assertTrue(MAPPER.writeValueAsString(responses).contains("\"out\":\"openaiResponses\""));
+    }
+
+    @Test
+    void registryEntryNamingAnInterfaceThisCoreDoesNotKnowIsRejectedOnRead() {
+        // unlike an interfaces key, which is inert when this Core does not know it, in and out are matched
+        // against the interface the translator is referenced from and the one the deployment serves back
+        String json = """
+                {
+                    "translators": {
+                        "geminiInteractionsToOpenaiResponses": {
+                            "in": "geminiInteractions",
+                            "out": "openaiResponses",
+                            "baseUrl": "http://dial-vertexai-translator/to-responses"
+                        }
+                    }
+                }
+                """;
+
+        assertThrows(InvalidFormatException.class, () -> MAPPER.readValue(json, Config.class));
     }
 
     @Test
@@ -144,7 +167,7 @@ public class TranslatorTest {
 
         TranslatorRef translator = translatorOf(restored);
         assertNull(translator.getName());
-        assertEquals("openaiChatCompletions", translator.getDefinition().getOut());
+        assertEquals(OPENAI_CHAT_COMPLETIONS, translator.getDefinition().getOut());
         assertEquals("http://some-custom-translator/to-chat-completions", translator.getDefinition().getBaseUrl());
         // in is implied by the entry the definition sits under
         assertNull(translator.getDefinition().getIn());

@@ -117,7 +117,7 @@ public class DeploymentEndpointUtilTest {
         model.setInterfaces(Map.of(
                 OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface(),
                 ANTHROPIC_MESSAGES.getValue(), translated(TranslatorRef.inline(
-                        new Translator("anthropicMessages", "openaiChatCompletions", "http://translator/to-chat-completions/")))));
+                        new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://translator/to-chat-completions/")))));
 
         // the deployment base url serves the pass-through interface, the translator serves the translated one
         assertEquals("http://openai-service", resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS));
@@ -133,7 +133,7 @@ public class DeploymentEndpointUtilTest {
         Model model = new Model();
         model.setBaseUrl("http://openai-service");
         DeploymentInterface anthropic = translated(TranslatorRef.inline(
-                new Translator(null, "openaiChatCompletions", "http://translator")));
+                new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://translator")));
         anthropic.setBaseUrl("http://ignored");
         model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), anthropic));
 
@@ -151,7 +151,7 @@ public class DeploymentEndpointUtilTest {
         assertNull(resolveServingEndpoint(model, ANTHROPIC_MESSAGES));
         assertFalse(isInterfaceDeclared(model, ANTHROPIC_MESSAGES));
 
-        unlinked.setDefinition(new Translator("anthropicMessages", "openaiChatCompletions", "http://translator"));
+        unlinked.setDefinition(new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://translator"));
 
         assertEquals("http://translator", resolveServingEndpoint(model, ANTHROPIC_MESSAGES));
         assertTrue(isInterfaceDeclared(model, ANTHROPIC_MESSAGES));

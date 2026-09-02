@@ -24,6 +24,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static com.epam.aidial.core.config.InterfaceType.ANTHROPIC_MESSAGES;
+import static com.epam.aidial.core.config.InterfaceType.OPENAI_CHAT_COMPLETIONS;
+import static com.epam.aidial.core.config.InterfaceType.OPENAI_RESPONSES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -262,7 +265,7 @@ public class ConfigPostProcessorTest {
         // a registry entry is declared under no interface, so in is the only thing tying it to one
         Config config = newMutableConfig();
         config.setTranslators(Map.of("anthropicMessagesToOpenaiChatCompletions",
-                new Translator(null, "openaiChatCompletions", "http://translator/to-chat-completions")));
+                new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://translator/to-chat-completions")));
 
         assertThrows(IllegalStateException.class,
                 () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
@@ -272,7 +275,7 @@ public class ConfigPostProcessorTest {
     void testSemanticLinksNamedTranslatorToItsRegistryEntry() {
         Config config = newMutableConfig();
         config.setTranslators(Map.of("anthropicMessagesToOpenaiChatCompletions",
-                new Translator("anthropicMessages", "openaiChatCompletions", "http://translator/to-chat-completions")));
+                new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://translator/to-chat-completions")));
         Model model = new Model();
         model.setEndpoint("http://legacy/chat/completions");
         model.setInterfaces(Map.of("anthropicMessages",
@@ -311,7 +314,7 @@ public class ConfigPostProcessorTest {
         Model model = new Model();
         model.setEndpoint("http://legacy/chat/completions");
         DeploymentInterface anthropic = translated(TranslatorRef.inline(
-                new Translator(null, "openaiChatCompletions", "http://translator")));
+                new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://translator")));
         anthropic.setBaseUrl("http://anthropic");
         model.setInterfaces(Map.of("anthropicMessages", anthropic));
         config.getModels().put("model", model);
@@ -326,7 +329,7 @@ public class ConfigPostProcessorTest {
         Model model = new Model();
         model.setEndpoint("http://legacy/chat/completions");
         DeploymentInterface anthropic = new DeploymentInterface();
-        anthropic.setTranslator(TranslatorRef.inline(new Translator(null, "openaiChatCompletions", "http://translator")));
+        anthropic.setTranslator(TranslatorRef.inline(new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://translator")));
         model.setInterfaces(Map.of("anthropicMessages", anthropic));
         config.getModels().put("model", model);
 
@@ -353,11 +356,33 @@ public class ConfigPostProcessorTest {
         Model model = new Model();
         model.setEndpoint("http://legacy/chat/completions");
         model.setInterfaces(Map.of("anthropicMessages", translated(TranslatorRef.inline(
-                new Translator("anthropicMessages", "openaiResponses", "http://translator/to-responses")))));
+                new Translator(ANTHROPIC_MESSAGES, OPENAI_RESPONSES, "http://translator/to-responses")))));
         config.getModels().put("model", model);
 
         assertThrows(InvalidEntityException.class,
                 () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAbortThrowsWhenTheTranslatorOutputIsItselfTranslated() {
+        // anthropicMessages converts to openaiResponses, which converts back to anthropicMessages: the
+        // callback would arrive on a translated interface and be handed to a translator again
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setBaseUrl("http://model");
+        model.setInterfaces(Map.of(
+                "anthropicMessages", translated(TranslatorRef.inline(
+                        new Translator(ANTHROPIC_MESSAGES, OPENAI_RESPONSES, "http://translator/to-responses"))),
+                "openaiResponses", translated(TranslatorRef.inline(
+                        new Translator(OPENAI_RESPONSES, ANTHROPIC_MESSAGES, "http://translator/to-messages")))));
+        config.getModels().put("model", model);
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+
+        // both ends of the cycle are reported, each as the translated interface its own output lands on
+        assertEquals(2, error.getWarnings().size());
+        assertTrue(error.getMessage().contains("handed to a translator again"), error.getMessage());
     }
 
     @Test
@@ -368,7 +393,7 @@ public class ConfigPostProcessorTest {
         Model model = new Model();
         model.setEndpoint("http://legacy/chat/completions");
         model.setInterfaces(Map.of("anthropicMessages", translated(TranslatorRef.inline(
-                new Translator("anthropicMessages", "anthropicMessages", "http://translator")))));
+                new Translator(ANTHROPIC_MESSAGES, ANTHROPIC_MESSAGES, "http://translator")))));
         config.getModels().put("model", model);
 
         InvalidEntityException error = assertThrows(InvalidEntityException.class,
@@ -386,7 +411,7 @@ public class ConfigPostProcessorTest {
         Model model = new Model();
         model.setEndpoint("http://legacy/chat/completions");
         model.setInterfaces(Map.of("anthropicMessages", translated(TranslatorRef.inline(
-                new Translator(null, "anthropicMessages", "http://translator")))));
+                new Translator(null, ANTHROPIC_MESSAGES, "http://translator")))));
         config.getModels().put("model", model);
 
         InvalidEntityException error = assertThrows(InvalidEntityException.class,

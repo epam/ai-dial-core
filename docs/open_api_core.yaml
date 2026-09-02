@@ -15644,6 +15644,13 @@ components:
       enum:
       - PASSTHROUGH
       - TRANSLATOR
+    InterfaceType:
+      type: string
+      enum:
+      - OPENAI_CHAT_COMPLETIONS
+      - OPENAI_EMBEDDINGS
+      - OPENAI_RESPONSES
+      - ANTHROPIC_MESSAGES
     Invitation:
       type: object
       properties:
@@ -17248,9 +17255,9 @@ components:
         baseUrl:
           type: string
         in:
-          type: string
+          $ref: "#/components/schemas/InterfaceType"
         out:
-          type: string
+          $ref: "#/components/schemas/InterfaceType"
     TranslatorRef:
       type: object
       properties:

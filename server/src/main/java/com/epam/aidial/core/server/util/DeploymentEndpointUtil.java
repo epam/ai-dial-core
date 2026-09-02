@@ -49,19 +49,22 @@ public class DeploymentEndpointUtil {
      * so {@code endpoint} on a {@code type: embedding} model declares embeddings and chat completions on
      * anything else. Advertising is narrower than serving: {@code endpoint} still serves the whole
      * deployments-POST family whatever it declares.
+     *
+     * <p>Nothing here is special-cased per {@code mode}: a type is declared when something resolves to
+     * serve it, and which of the two shapes may serve a given mode is {@link #resolveInterfaceBaseUrl} and
+     * {@link #resolveLegacyEndpoint}'s to answer.
      */
     public boolean isInterfaceDeclared(Deployment deployment, InterfaceType type) {
         if (resolveInterfaceBaseUrl(deployment, type) != null) {
             return true;
         }
-        // a translated interface is served by its translator alone, so one with none linked serves nothing
-        if (resolveMode(deployment, type) == InterfaceMode.TRANSLATOR) {
+        if (resolveLegacyEndpoint(deployment, type) == null) {
             return false;
         }
         return switch (type) {
-            case OPENAI_CHAT_COMPLETIONS -> deployment.getEndpoint() != null && !isEmbeddingModel(deployment);
-            case OPENAI_EMBEDDINGS -> deployment.getEndpoint() != null && isEmbeddingModel(deployment);
-            case OPENAI_RESPONSES -> deployment.getResponsesEndpoint() != null;
+            case OPENAI_CHAT_COMPLETIONS -> !isEmbeddingModel(deployment);
+            case OPENAI_EMBEDDINGS -> isEmbeddingModel(deployment);
+            case OPENAI_RESPONSES -> true;
             default -> false;
         };
     }
@@ -156,7 +159,9 @@ public class DeploymentEndpointUtil {
      * interfaces, so it serves the whole deployments-POST family, {@code /embeddings} included.
      *
      * <p>A translated interface never falls back here: routing it to the deployment itself would send the
-     * request pass-through while {@code mode} still exempted it from limits.
+     * request pass-through while {@code mode} still exempted it from limits. That is the whole of the rule
+     * that a translated interface is served by its translator or by nothing — one with no translator linked
+     * resolves to no url here either, so it is neither served nor advertised.
      */
     @Nullable
     private String resolveLegacyEndpoint(Deployment deployment, InterfaceType type) {

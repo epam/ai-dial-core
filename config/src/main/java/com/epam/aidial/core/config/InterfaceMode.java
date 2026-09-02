@@ -10,17 +10,29 @@ import lombok.Getter;
 @Getter
 public enum InterfaceMode {
 
-    PASSTHROUGH("passthrough"),
+    PASSTHROUGH("passthrough", true),
     /**
      * The translator calls Core back with the converted request, so the completion is served — and its
-     * tokens counted towards limits — by that inner request rather than this one.
+     * usage charged to the caller's limits — by that inner request rather than this one.
      */
-    TRANSLATOR("translator");
+    TRANSLATOR("translator", false);
 
     @JsonValue
     private final String value;
 
-    InterfaceMode(String value) {
+    /**
+     * Whether a request served this way is the one the caller's limits are charged for. False for a mode
+     * that has a second request serve the completion: that inner request carries both the usage and the
+     * request slot, so charging here as well would count one client call twice. It says nothing about
+     * checking — every limit is checked before a request is forwarded, whatever mode serves it.
+     *
+     * <p>Declared per mode rather than tested for at each call site, so that a mode added later has to
+     * answer the question once, here, instead of wherever limits happen to be read.
+     */
+    private final boolean chargedToInitiator;
+
+    InterfaceMode(String value, boolean chargedToInitiator) {
         this.value = value;
+        this.chargedToInitiator = chargedToInitiator;
     }
 }

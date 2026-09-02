@@ -16,6 +16,8 @@ A map of available translators.
 * `out`: **Required.** The interface type it converts to. The deployment referencing the translator has to serve `out` itself, and serve it pass-through: that is the API the translator calls DIAL Core back on.
 * `baseUrl`: **Required.** The root URL of the translator service. Each request is forwarded to `baseUrl` + **the exact ingress path it was received on**, exactly as a deployment's own base URL is. A trailing slash is normalized.
 
+Both name an interface type this version of DIAL Core knows. Unlike an `interfaces` key, which is simply inert when it names a type Core does not know, these two are matched — `in` against the interface the translator is referenced from, `out` against the one the deployment serves back — so a name Core cannot resolve is rejected as the config is read, and the previous config stays live.
+
 **Example**
 
 ```json
@@ -76,7 +78,8 @@ An interface that needs a translator no other deployment uses can define one in 
 * A translator declaring no `out` or no `baseUrl` is rejected as the config is read: it converts nothing, or converts it nowhere. A registry entry declaring no `in` is rejected on config load for the same reason — it is declared under no interface, so nothing else says what it accepts.
 * A **name no `translators` entry defines** is different, and is **not** a config error: the entry may simply not be registered yet. It leaves that one interface unserved — the deployment answers `503` for it, it is not advertised in `/v1/deployments`, and it never falls back to `endpoint`/`responsesEndpoint` — while everything else the deployment serves keeps working. Registering the translator fixes it on the next reload, with no edit to the deployment.
 * A translator converts between two **different** interfaces. One whose `out` equals its `in` — or, for an inline definition, equals the interface it is declared under — is rejected: its own output arrives back on the interface it came from, so DIAL Core hands it straight back to the translator. Nothing bounds that at runtime, which is why it is a config error rather than a request-time failure.
-* The deployment must serve `out` itself, pass-through. A translator converting to an API the deployment does not serve leaves the callback with nowhere to land, and one converting to another translated interface would loop the same way.
+* The deployment must serve `out` itself, pass-through. A translator converting to an API the deployment does not serve leaves the callback with nowhere to land, and one converting to another translated interface is refused because the callback would be handed to a translator again.
+* Together with the rule above, that is what keeps a **cycle of translators** out of a config rather than out of a running request: a cycle of two or more interfaces needs a translator whose `out` lands on a second translated interface, and no such pair is accepted. A model where `anthropicMessages` converts to `openaiResponses` while `openaiResponses` converts back to `anthropicMessages` is rejected on load, at both ends. The one-interface cycle is the rule above it.
 * **A translated request is not charged to the caller's token or cost limits** — the translator's callback is charged instead, so the usage is counted exactly once. Refer to [Limits and a translated request](#limits-and-a-translated-request).
 * Editing a `translators` entry takes effect on the next config reload for every deployment referencing it by name — references are resolved on each load, not frozen when the deployment is written.
 

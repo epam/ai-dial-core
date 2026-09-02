@@ -2,6 +2,7 @@ package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonValue;
+import jakarta.annotation.Nullable;
 import lombok.Getter;
 
 import java.util.List;
@@ -79,6 +80,7 @@ public enum InterfaceType {
      * The type with this value, or null for one this Core does not know — a config may name an interface
      * that only a newer Core, or another component, understands.
      */
+    @Nullable
     public static InterfaceType find(String value) {
         for (InterfaceType type : values()) {
             if (type.value.equals(value)) {

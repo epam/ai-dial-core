@@ -438,13 +438,13 @@ public final class ConfigPostProcessor {
         if (definition == null) {
             return;
         }
-        if (definition.getIn() != null && !definition.getIn().equals(type)) {
+        if (definition.getIn() != null && definition.getIn() != InterfaceType.find(type)) {
             warnings.add(new ValidationWarning(field,
-                    "Translator converts from '" + definition.getIn() + "', not from '" + type + "'"));
+                    "Translator converts from '" + definition.getIn().getValue() + "', not from '" + type + "'"));
         }
         // a definition written inline names no in: the interface it sits under is what it converts from
-        String in = definition.getIn() != null ? definition.getIn() : type;
-        if (in.equals(definition.getOut())) {
+        String in = definition.getIn() != null ? definition.getIn().getValue() : type;
+        if (in.equals(definition.getOut().getValue())) {
             warnings.add(new ValidationWarning(field,
                     "A translator cannot convert '" + in + "' to itself: its output would arrive back on the interface it came from"));
             return;
@@ -453,20 +453,27 @@ public final class ConfigPostProcessor {
     }
 
     /**
-     * The interface a translator converts to has to be one the model serves itself: the translator calls
-     * Core back on it to have the completion served, and a call landing on another translator would loop.
+     * The interface a translator converts to has to be one the model serves itself, and serves pass-through:
+     * the translator calls Core back on it to have the completion served.
+     *
+     * <p>This is what bounds a chain of translators to the single hop a request already makes. An
+     * {@code out} landing on a second translated interface is rejected here, so no such chain can be
+     * configured, and with none there is no cycle to detect: the interface converting back to the first one
+     * would have to be the second hop of a chain this rule already refuses. Which leaves the one-interface
+     * cycle, a translator converting an interface to itself, rejected by the caller.
      */
     private static void validateTranslatorOutput(Model model, Translator definition,
                                                  String field, List<ValidationWarning> warnings) {
-        // an out only a newer Core knows: nothing to check the model against
-        InterfaceType out = InterfaceType.find(definition.getOut());
-        if (out == null) {
+        InterfaceType out = definition.getOut();
+        if (DeploymentEndpointUtil.resolveMode(model, out) == InterfaceMode.TRANSLATOR) {
+            warnings.add(new ValidationWarning(field,
+                    "The model serves '" + out.getValue() + "' through a translator of its own, which the translator here converts to: "
+                            + "the callback would arrive on a translated interface and be handed to a translator again"));
             return;
         }
-        if (DeploymentEndpointUtil.resolveMode(model, out) == InterfaceMode.TRANSLATOR
-                || DeploymentEndpointUtil.resolveServingEndpoint(model, out) == null) {
+        if (DeploymentEndpointUtil.resolveServingEndpoint(model, out) == null) {
             warnings.add(new ValidationWarning(field,
-                    "The model does not serve '" + definition.getOut() + "', which the translator converts to"));
+                    "The model does not serve '" + out.getValue() + "', which the translator converts to"));
         }
     }
 

@@ -36,6 +36,8 @@ import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
+import static com.epam.aidial.core.config.InterfaceType.ANTHROPIC_MESSAGES;
+import static com.epam.aidial.core.config.InterfaceType.OPENAI_CHAT_COMPLETIONS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -184,7 +186,7 @@ public class MergedConfigStorePartialUpdateTest {
 
         Config seeded = newConfig();
         seeded.setTranslators(Map.of("anthropicMessagesToOpenaiChatCompletions",
-                new Translator("anthropicMessages", "openaiChatCompletions", "http://localhost:5002/to-chat-completions")));
+                new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://localhost:5002/to-chat-completions")));
         MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_SKIP);
         seedInvalidEntities(store, invalidSeed);
 

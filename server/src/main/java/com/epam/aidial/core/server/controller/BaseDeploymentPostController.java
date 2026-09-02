@@ -212,29 +212,38 @@ public class BaseDeploymentPostController {
     }
 
     /**
-     * Checks the initiator's limits before the request is forwarded. A translated request is checked against
-     * every one of them, but counts towards none: the call the translator makes back to Core is what carries
-     * both the usage and the request slot, so counting here as well would charge one client call twice.
+     * Whether this request is the one the initiator's limits are charged for, or a second request the mode
+     * serving the interface makes accounts for it — see {@link InterfaceMode#isChargedToInitiator()}. Read
+     * by both the pre-flight check and the post-response charge, so the two can never disagree about which
+     * of them a mode exempts.
      */
-    protected Future<RateLimitResult> checkLimits(Deployment deployment) {
-        boolean translated = DeploymentEndpointUtil.resolveMode(deployment, interfaceType()) == InterfaceMode.TRANSLATOR;
-        return proxy.getRateLimiter().limit(context, deployment, !translated);
+    private boolean chargedToInitiator(Deployment deployment) {
+        return DeploymentEndpointUtil.resolveMode(deployment, interfaceType()).isChargedToInitiator();
     }
 
     /**
-     * Charges the request's usage to the initiator's token and cost limits, unless the interface it arrived
-     * on is served by a translator: the translator calls Core back to have the completion served, and that
-     * inner request is what carries the usage to the limits. Charging here as well would count it twice.
+     * Checks the initiator's limits before the request is forwarded. A request a mode does not charge to the
+     * initiator is checked against every one of them all the same, and only spends no request slot: not
+     * being counted is not the same as not being checked.
+     */
+    protected Future<RateLimitResult> checkLimits(Deployment deployment) {
+        return proxy.getRateLimiter().limit(context, deployment, chargedToInitiator(deployment));
+    }
+
+    /**
+     * Charges the request's usage to the initiator's token and cost limits, unless the mode serving the
+     * interface it arrived on has a second request account for it: a translator calls Core back to have the
+     * completion served, and that inner request is what carries the usage. Charging here as well would count
+     * it twice.
      */
     private Future<Void> increaseLimits(TokenUsage usage) {
         Deployment deployment = context.getDeployment();
-        InterfaceType type = interfaceType();
-        if (DeploymentEndpointUtil.resolveMode(deployment, type) == InterfaceMode.TRANSLATOR) {
+        if (!chargedToInitiator(deployment)) {
             return Future.succeededFuture();
         }
         return proxy.getRateLimiter().increase(
                 deployment, BucketBuilder.buildInitiatorBucket(context), usage,
-                context.getRequestBody(), context.getResponseBody(), type, context.getPricingUsageNode()
+                context.getRequestBody(), context.getResponseBody(), interfaceType(), context.getPricingUsageNode()
         );
     }
 

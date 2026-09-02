@@ -39,6 +39,8 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+import static com.epam.aidial.core.config.InterfaceType.ANTHROPIC_MESSAGES;
+import static com.epam.aidial.core.config.InterfaceType.OPENAI_CHAT_COMPLETIONS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -90,7 +92,7 @@ public class MergedConfigStoreTest {
         // deployment referencing one by name serving nothing on that interface
         Config fileConfig = new Config();
         fileConfig.setTranslators(Map.of("anthropicMessagesToOpenaiChatCompletions",
-                new Translator("anthropicMessages", "openaiChatCompletions", "http://localhost:5002/to-chat-completions")));
+                new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://localhost:5002/to-chat-completions")));
         DeploymentInterface anthropic = new DeploymentInterface();
         anthropic.setMode(InterfaceMode.TRANSLATOR);
         anthropic.setTranslator(TranslatorRef.named("anthropicMessagesToOpenaiChatCompletions"));

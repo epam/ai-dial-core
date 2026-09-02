@@ -92,6 +92,14 @@ public class RateLimiter {
     }
 
     /**
+     * Checks every one of the caller's limits, and spends a request slot while doing so.
+     *
+     * <p>Only requests take a parameter because only requests are counted here: a request is spent the
+     * moment it is admitted, while tokens and cost are not known until the response is read and are added
+     * by {@link #increase} instead. So a call another one accounts for opts out of the token and cost
+     * charge by not calling {@code increase}, and out of the request charge by passing {@code false} here.
+     * Neither opts out of being checked.
+     *
      * @param countRequest whether the call consumes a slot of the caller's {@code requestHour}/{@code requestDay}
      *                     quota. False for a call another one accounts for: a translated request is checked
      *                     against every limit, but the call the translator makes back to Core is the one
