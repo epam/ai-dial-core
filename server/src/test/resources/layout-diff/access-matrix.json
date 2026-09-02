@@ -1,0 +1,275 @@
+{
+  "chain": [
+    "getOwnResourcesAccess",
+    "getAdminAccess",
+    "getGlobalReaderAccess",
+    "getAutoSharedAccess",
+    "getPerRequestPermissions",
+    "getAppResourceAccess",
+    "getReviewAccess",
+    "getPublicAccess",
+    "getSharedAccess",
+    "getAppSelfAccess",
+    "getOwnResourcesAccessForChainedSchemaRichApplication"
+  ],
+  "uncovered": {
+    "getOwnResourcesAccessForChainedSchemaRichApplication": "Needs context.getDeployment() to be an Application carrying an app type schema id, and only the deployment-routing controllers ever set a deployment \u2014 ResourceController does not, so the rule returns nothing for every request this differ can make. Covering it means driving a request through DeploymentPostController against a deployed schema-rich application, which is a different fixture from anything here."
+  },
+  "subjects": [
+    {
+      "name": "owner",
+      "apiKey": "proxyKey1"
+    },
+    {
+      "name": "other",
+      "apiKey": "proxyKey2"
+    },
+    {
+      "name": "stranger",
+      "apiKey": "proxyKey3"
+    },
+    {
+      "name": "admin",
+      "authorization": "admin"
+    },
+    {
+      "name": "user",
+      "authorization": "user"
+    },
+    {
+      "name": "app",
+      "apiKey": "proxyKey1",
+      "perRequest": {
+        "sourceDeployment": "applications/${bucket1}/access/app"
+      }
+    },
+    {
+      "name": "appWithAttachment",
+      "apiKey": "proxyKey1",
+      "perRequest": {
+        "sourceDeployment": "testapp",
+        "attach": {
+          "conversations/${bucket1}/access/own": [
+            "READ"
+          ]
+        }
+      }
+    },
+    {
+      "name": "globalReader",
+      "authorization": "layout-diff-global-reader"
+    },
+    {
+      "name": "appdataApp",
+      "apiKey": "proxyKey1",
+      "perRequest": {
+        "sourceDeployment": "testapp"
+      }
+    },
+    {
+      "name": "appWithPerRequestShare",
+      "apiKey": "proxyKey1",
+      "perRequest": {
+        "sourceDeployment": "testapp",
+        "share": {
+          "conversations/${bucket2}/access/second": [
+            "READ"
+          ]
+        }
+      }
+    }
+  ],
+  "cells": [
+    {
+      "name": "owner-reads-own",
+      "subject": "owner",
+      "resource": "conversations/${bucket1}/access/own",
+      "rule": "getOwnResourcesAccess",
+      "expects": [
+        "READ",
+        "WRITE"
+      ]
+    },
+    {
+      "name": "stranger-denied-own",
+      "subject": "stranger",
+      "resource": "conversations/${bucket1}/access/own",
+      "rule": "getOwnResourcesAccess",
+      "expects": []
+    },
+    {
+      "name": "admin-writes-public",
+      "subject": "admin",
+      "resource": "conversations/public/access/published",
+      "rule": "getAdminAccess",
+      "expects": [
+        "READ",
+        "WRITE"
+      ]
+    },
+    {
+      "name": "admin-denied-private-resource",
+      "subject": "admin",
+      "resource": "conversations/${bucket1}/access/own",
+      "rule": "getAdminAccess",
+      "expects": []
+    },
+    {
+      "name": "plain-user-only-reads-public",
+      "subject": "user",
+      "resource": "conversations/public/access/published",
+      "rule": "getPublicAccess",
+      "expects": [
+        "READ"
+      ]
+    },
+    {
+      "name": "recipient-reads-shared",
+      "subject": "other",
+      "resource": "conversations/${bucket1}/access/shared",
+      "rule": "getSharedAccess",
+      "expects": [
+        "READ"
+      ],
+      "forbids": [
+        "WRITE"
+      ]
+    },
+    {
+      "name": "stranger-denied-shared",
+      "subject": "stranger",
+      "resource": "conversations/${bucket1}/access/shared",
+      "rule": "getSharedAccess",
+      "expects": []
+    },
+    {
+      "name": "recipient-writes-write-shared",
+      "subject": "other",
+      "resource": "conversations/${bucket1}/access/writable",
+      "rule": "getSharedAccess",
+      "expects": [
+        "READ",
+        "WRITE"
+      ]
+    },
+    {
+      "name": "anyone-reads-published",
+      "subject": "other",
+      "resource": "conversations/public/access/published",
+      "rule": "getPublicAccess",
+      "expects": [
+        "READ"
+      ],
+      "forbids": [
+        "WRITE"
+      ]
+    },
+    {
+      "name": "stranger-reads-published",
+      "subject": "stranger",
+      "resource": "conversations/public/access/published",
+      "rule": "getPublicAccess",
+      "expects": [
+        "READ"
+      ]
+    },
+    {
+      "name": "owner-reads-review-copy",
+      "subject": "owner",
+      "resource": "${reviewedUrl}",
+      "rule": "getReviewAccess",
+      "expects": [
+        "READ"
+      ],
+      "forbids": [
+        "WRITE"
+      ]
+    },
+    {
+      "name": "stranger-denied-review-copy",
+      "subject": "stranger",
+      "resource": "${reviewedUrl}",
+      "rule": "getReviewAccess",
+      "expects": []
+    },
+    {
+      "name": "app-reads-attached-resource",
+      "subject": "appWithAttachment",
+      "resource": "conversations/${bucket1}/access/own",
+      "rule": "getAutoSharedAccess",
+      "expects": [
+        "READ"
+      ]
+    },
+    {
+      "name": "app-denied-unattached-resource",
+      "subject": "appWithAttachment",
+      "resource": "conversations/${bucket1}/access/shared",
+      "rule": "getAutoSharedAccess",
+      "expects": []
+    },
+    {
+      "name": "app-reads-own-configuration",
+      "subject": "app",
+      "resource": "applications/${bucket1}/access/app",
+      "rule": "getAppSelfAccess",
+      "expects": [
+        "READ"
+      ]
+    },
+    {
+      "name": "global-reader-reads-private",
+      "subject": "globalReader",
+      "resource": "conversations/${bucket1}/access/own",
+      "rule": "getGlobalReaderAccess",
+      "expects": [
+        "READ"
+      ]
+    },
+    {
+      "name": "global-reader-cannot-write",
+      "subject": "globalReader",
+      "resource": "conversations/${bucket1}/access/own",
+      "rule": "getGlobalReaderAccess",
+      "expects": [
+        "READ"
+      ],
+      "forbids": [
+        "WRITE"
+      ]
+    },
+    {
+      "name": "app-reads-own-appdata",
+      "subject": "appdataApp",
+      "resource": "files/${bucket1}/appdata/testapp/data.txt",
+      "rule": "getAppResourceAccess",
+      "expects": [
+        "READ",
+        "WRITE"
+      ]
+    },
+    {
+      "name": "app-denied-another-apps-appdata",
+      "subject": "appdataApp",
+      "resource": "files/${bucket1}/appdata/otherapp/data.txt",
+      "rule": "getAppResourceAccess",
+      "expects": []
+    },
+    {
+      "name": "app-reads-per-request-shared",
+      "subject": "appWithPerRequestShare",
+      "resource": "conversations/${bucket2}/access/second",
+      "rule": "getPerRequestPermissions",
+      "expects": [
+        "READ"
+      ]
+    },
+    {
+      "name": "app-denied-without-per-request-share",
+      "subject": "appdataApp",
+      "resource": "conversations/${bucket2}/access/second",
+      "rule": "getPerRequestPermissions",
+      "expects": []
+    }
+  ]
+}
