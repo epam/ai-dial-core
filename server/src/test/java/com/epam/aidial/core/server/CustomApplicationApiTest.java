@@ -1791,6 +1791,14 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "current-user/skills/"}, "access": ["write"]}"""));
         verify(response, 403);
 
+        // The ceiling is keyed on the author, not the destination bucket: an admin prototyping in
+        // their own bucket authors an admin app — the section is accepted even with the flag off.
+        response = send(HttpMethod.PUT, "/v1/applications/" + adminBucket() + "/resource-dependency-app", null,
+                dependencyAppBody("""
+                        {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "current-user/skills/"}, "access": ["write"]}"""),
+                "authorization", "admin");
+        verify(response, 200);
+
         // Shape violations are rejected for every author; admin + public bucket isolates shape from the ceiling.
         String[][] invalidSections = {
                 {"wrong kind", "{\"kind\": \"dial.resource\", \"link_id\": \"lnk_1\", \"target\": {\"path\": \"files/public/f/\"}, \"access\": [\"read\"]}"},
@@ -1827,6 +1835,11 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "resource_dependencies": [%s]
                 }
                 """.formatted(dependenciesJson);
+    }
+
+    private String adminBucket() {
+        Response response = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "admin");
+        return new JsonObject(response.body()).getString("bucket");
     }
 
     /**

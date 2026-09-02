@@ -1381,6 +1381,13 @@ public class ConfigResourceController implements Controller {
             if (!requestNode.isObject()) {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "Request body must be a JSON object");
             }
+            // Shape validation is pure CPU over the decoded body — run it before the bucket locks,
+            // not inside the cluster-wide critical section below.
+            Application application = type == ResourceTypes.APPLICATION
+                    ? ConfigEntityCodec.treeToEntity(requestNode, Application.class) : null;
+            if (application != null) {
+                context.getProxy().getResourceDependencyValidator().validateShape(application);
+            }
             return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
                 rejectDuplicateDeploymentId(type, path);
                 // The platform bucket requires explicit admin access for every operation (see
@@ -1389,10 +1396,6 @@ public class ConfigResourceController implements Controller {
                 // this path is always admin context and may preserve forwardAuthToken.
                 Object decrypted = switch (type) {
                     case APPLICATION -> {
-                        Application application = ConfigEntityCodec.treeToEntity(requestNode, Application.class);
-                        // Always an admin context on this surface (see AdminRoleAuthorizationService), so the
-                        // user-authored governance ceiling does not apply — shape only.
-                        context.getProxy().getResourceDependencyValidator().validateShape(application);
                         applicationService.putApplication(descriptor, etag, author, application, true, AdminManagedFieldsWriteMode.AUTHORITATIVE);
                         yield applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
                     }

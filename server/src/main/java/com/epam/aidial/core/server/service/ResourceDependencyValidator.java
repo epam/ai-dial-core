@@ -72,25 +72,29 @@ public class ResourceDependencyValidator {
                 continue;
             }
             String[] segments = decodedSegments(path);
-            if (CURRENT_USER_PLACEHOLDER.equals(segments[0]) && !isTypedPersonalPath(segments)) {
+            if (segments.length > 0 && CURRENT_USER_PLACEHOLDER.equals(segments[0]) && !isTypedPersonalPath(segments)) {
                 throw new HttpException(FORBIDDEN, "Root-level current-user dependency is not declarable: "
                         + "personal targets must be rooted in a resource-type folder: " + path);
             }
         }
     }
 
-    /** Non-throwing form of {@link #validateShape}, so the lazy read-side validator can reuse the same rules. */
+    /** Non-throwing form of {@link #validateShape}: the same rules, usable from any write surface. */
     public static List<String> shapeIssues(Application application) {
         List<String> issues = new ArrayList<>();
         List<ResourceDependency> section = application.getResourceDependencies();
         if (section == null || section.isEmpty()) {
             return issues;
         }
-        if (section.size() > MAX_DECLARED_DEPENDENCIES) {
+        boolean overCap = section.size() > MAX_DECLARED_DEPENDENCIES;
+        if (overCap) {
             issues.add("resourceDependencies: the section exceeds " + MAX_DECLARED_DEPENDENCIES + " entries");
         }
+        // Once over the cap the section is rejected anyway — inspect only the first MAX entries so a
+        // huge body cannot turn validation itself into unbounded allocation.
+        int inspected = Math.min(section.size(), MAX_DECLARED_DEPENDENCIES);
         Set<String> seenLinkIds = new HashSet<>();
-        for (int i = 0; i < section.size(); i++) {
+        for (int i = 0; i < inspected; i++) {
             ResourceDependency dependency = section.get(i);
             String at = "resourceDependencies[" + i + "]";
             if (dependency == null) {
@@ -128,6 +132,11 @@ public class ResourceDependencyValidator {
         // pass — the platform canonicalizes declared paths through that decode, so validating the raw
         // string would let %2e%2e / %2a / %63urrent-user smuggle banned tokens past the bans.
         String[] segments = decodedSegments(path);
+        // A path of slashes only splits to zero segments; treat it as a missing path, not a crash.
+        if (segments.length == 0) {
+            issues.add(at + ": target.path is required");
+            return issues;
+        }
         String root = segments[0];
         // Token rules on every segment after the root; the root itself is governed by the form checks below.
         for (int i = 1; i < segments.length; i++) {
@@ -155,6 +164,10 @@ public class ResourceDependencyValidator {
             issues.add(at + ": personal targets must use the current-user placeholder, not a concrete users/… path: " + path);
         } else if (!GLOBAL_VIEW_ROOTS.contains(root)) {
             issues.add(at + ": target must be a global-view path or current-user rooted: " + path);
+        } else if (segments.length < 2) {
+            // A bare type root addresses the whole global view of that type — as over-broad as the
+            // personal root the governance ceiling bans. Declarations must be folder- or file-scoped.
+            issues.add(at + ": target must address a folder or resource within " + root + "/, not the type root: " + path);
         }
         return issues;
     }

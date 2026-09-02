@@ -682,14 +682,14 @@ public class ResourceController extends AccessControlBaseController {
         });
     }
 
-    private void validateCustomApplication(Application application, boolean adminPublicWrite) {
+    private void validateCustomApplication(Application application) {
         try {
             checkCreateCodeApp(application);
             validateSchemaBasedApplication(application);
             resourceDependencyValidator.validateShape(application);
-            if (!adminPublicWrite) {
-                // Governance ceiling: user-authored apps may not declare dependencies while the flag is off,
-                // and personal targets must be typed even when it is on.
+            if (!accessService.hasAdminAccess(context)) {
+                // Governance ceiling, keyed on the author rather than the destination bucket: an admin
+                // prototyping in their own bucket authors an admin app, not a user-authored one.
                 resourceDependencyValidator.validateUserAuthored(application);
             }
             if (!application.getInterceptors().isEmpty()) {
@@ -800,7 +800,7 @@ public class ResourceController extends AccessControlBaseController {
                 AdminManagedFieldsWriteMode adminManagedFieldsWriteMode =
                         AdminManagedFieldsWriteMode.of(adminPublicWrite, bodyJson);
                 return taskExecutor.submit(() -> {
-                    validateCustomApplication(application, adminPublicWrite);
+                    validateCustomApplication(application);
                     return applicationService.putApplication(descriptor, etag, author, application, adminPublicWrite,
                             adminManagedFieldsWriteMode, externalServicesWriteMode).getKey();
                 });
