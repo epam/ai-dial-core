@@ -2,6 +2,7 @@ package com.epam.aidial.core.storage.resource;
 
 import lombok.experimental.UtilityClass;
 
+import java.util.Set;
 import javax.annotation.Nullable;
 
 /**
@@ -43,6 +44,14 @@ public class TenantLayoutTransform {
     private static final String SYSTEM_SEGMENT = ".system/";
 
     private static final char TYPE_FOLDER_MARKER = '.';
+
+    /**
+     * The dotted names with a structural meaning in the tenant-rooted tree. A resource type whose group
+     * produced one of these as its type folder would make full paths unparseable — nothing distinguishes
+     * the public {@code .users} type folder from the {@code .users} principal branch — so such a group is
+     * rejected outright. Nothing else keeps a future {@code ResourceTypes} entry off these names.
+     */
+    private static final Set<String> RESERVED_SEGMENTS = Set.of(ORG_PREFIX, USERS_SEGMENT, KEYS_SEGMENT, SYSTEM_SEGMENT);
 
     public String toTenantLocation(String legacyLocation, String tenantId) {
         if (ResourceDescriptor.PLATFORM_LOCATION.equals(legacyLocation)) {
@@ -139,7 +148,9 @@ public class TenantLayoutTransform {
             throw new IllegalArgumentException("Unsupported legacy resource type folder: " + legacyTypeFolder);
         }
 
-        return TYPE_FOLDER_MARKER + legacyTypeFolder;
+        String folder = TYPE_FOLDER_MARKER + legacyTypeFolder;
+        requireUnreserved(folder, legacyTypeFolder);
+        return folder;
     }
 
     public String toLegacyTypeFolder(String tenantTypeFolder) {
@@ -147,7 +158,14 @@ public class TenantLayoutTransform {
             throw new IllegalArgumentException("Unsupported tenant resource type folder: " + tenantTypeFolder);
         }
 
+        requireUnreserved(tenantTypeFolder, tenantTypeFolder);
         return tenantTypeFolder.substring(1);
+    }
+
+    private void requireUnreserved(String dottedFolder, String input) {
+        if (RESERVED_SEGMENTS.contains(dottedFolder + ResourceDescriptor.PATH_SEPARATOR)) {
+            throw new IllegalArgumentException("Resource type folder collides with a reserved name: " + input);
+        }
     }
 
     private String tenantRoot(String tenantId) {

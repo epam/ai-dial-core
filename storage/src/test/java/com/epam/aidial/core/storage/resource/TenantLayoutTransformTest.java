@@ -151,6 +151,18 @@ public class TenantLayoutTransformTest {
         }
     }
 
+    /**
+     * With the guard in place, {@link #testTypeFolderRoundTripsForEveryResourceType} doubles as the
+     * build-time tripwire: a future {@code ResourceTypes} group taking a reserved name fails that test.
+     */
+    @Test
+    public void testReservedTypeFolderNamesRejected() {
+        for (String reserved : new String[] {"org", "system", "users", "keys"}) {
+            assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantTypeFolder(reserved));
+            assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toLegacyTypeFolder("." + reserved));
+        }
+    }
+
     @Test
     public void testUnsupportedTypeFolder() {
         assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantTypeFolder(""));
