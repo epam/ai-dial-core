@@ -102,21 +102,34 @@ public class LayoutBucketVerifierTest {
         }
     }
 
-    private static final List<String> READ_BACK = List.of(
-            "conversations/${bucket1}/access/own",
-            "conversations/${bucket1}/access/shared",
-            "conversations/${bucket1}/access/writable",
-            "conversations/${bucket1}/access/publishable",
-            "applications/${bucket1}/access/app",
-            "files/${bucket1}/appdata/testapp/data.txt",
-            "conversations/public/access/published");
+    /**
+     * The external-service entry authenticates as the user who owns it: user-authored services live in the
+     * caller's own user bucket, which an api key does not have.
+     */
+    private record ReadBack(String url, Map<String, String> headers) {
+        static ReadBack byApiKey(String url) {
+            return new ReadBack(url, Map.of("api-key", "proxyKey1"));
+        }
+    }
+
+    private static final String EXTERNAL_SERVICE_URL = "applications/${svcOwnerBucket}/svcapp/external-services/billing";
+
+    private static final List<ReadBack> READ_BACK = List.of(
+            ReadBack.byApiKey("conversations/${bucket1}/access/own"),
+            ReadBack.byApiKey("conversations/${bucket1}/access/shared"),
+            ReadBack.byApiKey("conversations/${bucket1}/access/writable"),
+            ReadBack.byApiKey("conversations/${bucket1}/access/publishable"),
+            ReadBack.byApiKey("applications/${bucket1}/access/app"),
+            ReadBack.byApiKey("files/${bucket1}/appdata/testapp/data.txt"),
+            ReadBack.byApiKey("conversations/public/access/published"),
+            new ReadBack(EXTERNAL_SERVICE_URL, Map.of("authorization", "svc-owner")));
 
     private static Map<String, String> readAll(DialInstance instance, Map<String, String> variables) {
         Map<String, String> results = new LinkedHashMap<>();
-        for (String url : READ_BACK) {
-            RecordedResponse response = instance.send(HttpMethod.GET.name(), "/v1/" + resolve(url, variables),
-                    null, null, Map.of("api-key", "proxyKey1"), null);
-            results.put(url, response.status() + " " + response.body());
+        for (ReadBack readBack : READ_BACK) {
+            RecordedResponse response = instance.send(HttpMethod.GET.name(),
+                    "/v1/" + resolve(readBack.url(), variables), null, null, readBack.headers(), null);
+            results.put(readBack.url(), response.status() + " " + response.body());
         }
         return results;
     }
@@ -139,6 +152,7 @@ public class LayoutBucketVerifierTest {
                     () -> "nothing at all was readable after migration, so this proves nothing: " + after);
 
             List<String> changed = READ_BACK.stream()
+                    .map(ReadBack::url)
                     .filter(url -> !seeded.readBack().get(url).equals(after.get(url)))
                     .map(url -> "  " + url + "\n    before migration: " + seeded.readBack().get(url)
                             + "\n    after migration:  " + after.get(url))
@@ -161,6 +175,13 @@ public class LayoutBucketVerifierTest {
                     Map.of("api-key", "proxyKey2"), null);
             assertEquals(200, publicRead.status(),
                     () -> "published resource is not readable after migration: " + publicRead.body());
+
+            // Named check, like the rules document: this resource stores an AAD-encrypted client secret, and
+            // serving it requires the migrated ciphertext to decrypt. Before/after equality alone would also
+            // pass if both reads failed identically, which for the one encrypted fixture is not good enough.
+            assertTrue(after.get(EXTERNAL_SERVICE_URL).startsWith("200"),
+                    () -> "the encrypted external service does not decrypt after migration: "
+                            + after.get(EXTERNAL_SERVICE_URL));
         } finally {
             StorageLayouts.useLayout(LegacyStorageLayout.INSTANCE);
         }
