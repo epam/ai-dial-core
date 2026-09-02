@@ -4,9 +4,11 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceDependency;
 import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.RequiredArgsConstructor;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -69,7 +71,7 @@ public class ResourceDependencyValidator {
             if (path == null) {
                 continue;
             }
-            String[] segments = splitPath(path);
+            String[] segments = decodedSegments(path);
             if (CURRENT_USER_PLACEHOLDER.equals(segments[0]) && !isTypedPersonalPath(segments)) {
                 throw new HttpException(FORBIDDEN, "Root-level current-user dependency is not declarable: "
                         + "personal targets must be rooted in a resource-type folder: " + path);
@@ -122,7 +124,10 @@ public class ResourceDependencyValidator {
             issues.add(at + ": target.path is required");
             return issues;
         }
-        String[] segments = splitPath(path);
+        // Token rules run on decoded segments, mirroring ResourceDescriptorFactory's single tryDecodePath
+        // pass — the platform canonicalizes declared paths through that decode, so validating the raw
+        // string would let %2e%2e / %2a / %63urrent-user smuggle banned tokens past the bans.
+        String[] segments = decodedSegments(path);
         String root = segments[0];
         // Token rules on every segment after the root; the root itself is governed by the form checks below.
         for (int i = 1; i < segments.length; i++) {
@@ -170,5 +175,9 @@ public class ResourceDependencyValidator {
     private static String[] splitPath(String path) {
         String trimmed = path.endsWith("/") ? path.substring(0, path.length() - 1) : path;
         return trimmed.split("/");
+    }
+
+    private static String[] decodedSegments(String path) {
+        return Arrays.stream(splitPath(path)).map(UrlUtil::tryDecodePath).toArray(String[]::new);
     }
 }

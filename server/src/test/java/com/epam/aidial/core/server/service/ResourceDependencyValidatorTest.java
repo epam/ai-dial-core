@@ -153,6 +153,26 @@ public class ResourceDependencyValidatorTest {
     }
 
     @Test
+    void rejectsPercentEncodedBannedTokens() {
+        // The platform percent-decodes declared paths when building descriptors (the same single
+        // tryDecodePath pass), so the token bans must run on decoded segments — raw-string checks
+        // would let these smuggles through.
+        ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
+
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("files/public/%2e%2e/x/"))).contains("relative path segments"));
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("files/public/%2a/"))).contains("wildcards"));
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("files/public/%63urrent-user/f/"))).contains("only as the root segment"));
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("%75sers/bob/files/"))).contains("current-user placeholder"));
+    }
+
+    @Test
+    void acceptsLegitimatelyEncodedSegments() {
+        ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
+
+        assertDoesNotThrow(() -> validator.validateShape(appWith(dependency("files/public/my%20folder/"))));
+    }
+
+    @Test
     void rejectsSectionOverTheCap() {
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
         List<ResourceDependency> section = IntStream.rangeClosed(1, ResourceDependencyValidator.MAX_DECLARED_DEPENDENCIES + 1)
