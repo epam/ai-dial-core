@@ -75,7 +75,10 @@ public class DialInstance implements AutoCloseable {
 
         try {
             redis.start();
-            this.client = HttpClientBuilder.create().disableAutomaticRetries().build();
+            // No transparent content decoding: it would decompress a response body and strip the
+            // content-encoding header before the comparison sees either, hiding exactly the class of
+            // divergence a migration that loses blob metadata produces.
+            this.client = HttpClientBuilder.create().disableAutomaticRetries().disableContentCompression().build();
             this.dial = start(layoutSettings, redisPort);
             this.port = dial.getServer().actualPort();
         } catch (Throwable e) {
@@ -181,7 +184,8 @@ public class DialInstance implements AutoCloseable {
         return client.execute(request, response -> {
             Map<String, String> responseHeaders = new LinkedHashMap<>();
             for (Header header : response.getHeaders()) {
-                responseHeaders.put(header.getName().toLowerCase(), header.getValue());
+                // Joined rather than last-wins, or a duplicated header would be invisible to the diff.
+                responseHeaders.merge(header.getName().toLowerCase(), header.getValue(), (left, right) -> left + ", " + right);
             }
             String answer = response.getEntity() == null ? null : EntityUtils.toString(response.getEntity());
             return new RecordedResponse(response.getCode(), answer, responseHeaders);

@@ -13,6 +13,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -35,6 +37,18 @@ public class LayoutReplayDiffTest {
 
     private static final Path REPORT_DIR = Paths.get("build", "reports", "layout-diff");
 
+    /**
+     * Captured values both runs derive from shared inputs — the same content bytes (an etag) or the same
+     * seeded id generator (a publication url) — so the values themselves must be equal across runs. This
+     * closes the hole normalisation opens: a captured value is replaced by its role name wherever it
+     * appears, so its own divergence is invisible in the body diff and only comparable here. Captures that
+     * are random by construction (an invitation id carries a random key, a page token carries the physical
+     * path) stay unlisted.
+     */
+    private static final Map<String, Set<String>> CROSS_RUN_STABLE_CAPTURES = Map.of(
+            "conversations-crud", Set.of("createdEtag"),
+            "publication", Set.of("publicationUrl"));
+
     @AfterEach
     public void restoreLegacyLayout() {
         StorageLayouts.useLayout(LegacyStorageLayout.INSTANCE);
@@ -56,6 +70,11 @@ public class LayoutReplayDiffTest {
 
         assertEquals(legacy.buckets(), tenantRooted.buckets(),
                 "Buckets differ between layouts; every url-bearing comparison below would be meaningless");
+
+        CROSS_RUN_STABLE_CAPTURES.forEach((scenario, names) -> names.forEach(name -> {
+            assertEquals(legacy.captures().get(scenario).get(name), tenantRooted.captures().get(scenario).get(name),
+                    "Captured value '" + name + "' of scenario '" + scenario + "' differs between the layouts");
+        }));
 
         List<Divergence> divergences = ResponseDiffer.diff(legacy.responses(), tenantRooted.responses());
         write("divergences.txt", divergences.stream().map(Divergence::describe).collect(Collectors.joining("\n\n")));
