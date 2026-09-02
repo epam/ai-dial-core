@@ -3,12 +3,17 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.config.ResourceDependency;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.consent.Consent;
 import com.epam.aidial.core.server.data.consent.ReviewConsentResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,13 +29,17 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.TreeMap;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -555,6 +564,123 @@ public class ConsentServiceTest {
         ArgumentCaptor<ResourceDescriptor> captor = ArgumentCaptor.forClass(ResourceDescriptor.class);
         verify(resourceService).putResource(captor.capture(), eq("{\"deployments\":{}}"), eq(EtagHeader.ANY));
         return captor.getValue();
+    }
+
+    // ---- admin consent: the v1 gate ----
+
+    @Test
+    public void testBuildConsent_IncludesDeclaredResourcesRegardlessOfConsentRequiredFlag() {
+        String jsonConfig = """
+                {
+                  "applications": {
+                    "A": {
+                       "resource_dependencies": [
+                         {"kind": "dial.resourceLink", "link_id": "lnk_1", "target": {"path": "current-user/skills/"}, "access": ["WRITE"]}
+                       ]
+                    }
+                  }
+                }
+                """;
+        Config config = buildConfig(jsonConfig);
+        when(context.getConfig()).thenReturn(config);
+        when(context.getUserId()).thenReturn("user-sub");
+        when(deploymentService.findDeployment(eq(context), anyString())).thenCallRealMethod();
+
+        ReviewConsentResponse response = service.buildConsent(context, "A");
+
+        // No deployment sets consentRequired, yet the declaration alone keeps the app off auto-accept (§6.1).
+        verifyJson("""
+                {
+                  "accepted" : false,
+                  "consent" : {
+                    "deployments" : {
+                      "A" : {
+                        "consentRequired" : false
+                      }
+                    },
+                    "resources" : [ {
+                      "access" : [ "WRITE" ],
+                      "url" : "current-user/skills/"
+                    } ]
+                  }
+                }""", response);
+    }
+
+    @Test
+    public void testGrantAdminConsent_StoresTheSnapshotInPublicAdminConsentRecord() {
+        when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(declaringApplication());
+
+        Consent approval = service.grantAdminConsent(context, "app");
+
+        assertEquals(List.of(resourceEntry("current-user/skills/")), approval.getResources());
+        ArgumentCaptor<ResourceDescriptor> captor = ArgumentCaptor.forClass(ResourceDescriptor.class);
+        verify(resourceService).putResource(captor.capture(), anyString(), eq(EtagHeader.ANY));
+        ResourceDescriptor descriptor = captor.getValue();
+        assertEquals(ResourceTypes.ADMIN_CONSENT, descriptor.getType());
+        assertTrue(descriptor.isPublic(), "the admin's yes is one record per app, always in the public bucket");
+    }
+
+    @Test
+    public void testGrantAdminConsent_RejectsApplicationWithoutDeclaration() {
+        when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(new Application());
+
+        HttpException error = assertThrows(HttpException.class, () -> service.grantAdminConsent(context, "app"));
+        assertEquals(HttpStatus.BAD_REQUEST, error.getStatus());
+    }
+
+    @Test
+    public void testIsAdminConsented_IsContentBoundToTheDeclaration() {
+        when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn("""
+                {"resources": [{"url": "current-user/skills/", "access": ["WRITE"]}]}
+                """);
+
+        assertTrue(service.isAdminConsented("app", declaration("current-user/skills/")));
+        // any declaration change re-requires the grant — an extra entry, a reordered section
+        assertFalse(service.isAdminConsented("app", declaration("current-user/skills/", "files/public/p/")));
+        assertFalse(service.isAdminConsented("app", declaration("files/public/p/", "current-user/skills/")));
+    }
+
+    @Test
+    public void testIsAdminConsented_WhenNoRecordWasEverGranted() {
+        when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn(null);
+
+        assertFalse(service.isAdminConsented("app", declaration("current-user/skills/")));
+    }
+
+    @Test
+    public void testWithdrawAdminConsent_ReturnsTheWithdrawnRecordForTheAudit() {
+        when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn("""
+                {"resources": [{"url": "current-user/skills/", "access": ["WRITE"]}]}
+                """);
+
+        Consent withdrawn = service.withdrawAdminConsent("app");
+
+        assertEquals(List.of(resourceEntry("current-user/skills/")), withdrawn.getResources());
+        verify(resourceService).deleteResource(any(ResourceDescriptor.class), eq(EtagHeader.ANY));
+    }
+
+    private static Application declaringApplication() {
+        Application application = new Application();
+        application.setName("app");
+        application.setResourceDependencies(declaration("current-user/skills/"));
+        return application;
+    }
+
+    private static List<ResourceDependency> declaration(String... paths) {
+        return Arrays.stream(paths)
+                .map(path -> new ResourceDependency()
+                        .setKind(ResourceDependency.KIND)
+                        .setLinkId("lnk_" + path.hashCode())
+                        .setTarget(new ResourceDependency.Target().setPath(path))
+                        .setAccess(Set.of(ResourceAccessType.WRITE)))
+                .toList();
+    }
+
+    private static Consent.ResourceEntry resourceEntry(String url) {
+        Consent.ResourceEntry entry = new Consent.ResourceEntry();
+        entry.setUrl(url);
+        entry.setAccess(Set.of(ResourceAccessType.WRITE));
+        return entry;
     }
 
     @SneakyThrows

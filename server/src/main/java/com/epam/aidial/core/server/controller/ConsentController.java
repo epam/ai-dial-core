@@ -9,14 +9,20 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.consent.AcceptConsentRequest;
+import com.epam.aidial.core.server.data.consent.Consent;
 import com.epam.aidial.core.server.data.consent.ReviewConsentResponse;
+import com.epam.aidial.core.server.log.ResourceDependencyAuditLog;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.List;
+import java.util.function.Supplier;
 
 @AllArgsConstructor
 @Slf4j
@@ -94,6 +100,83 @@ public class ConsentController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/consent/{deployment_id}/admin-consent",
+            operationId = "grantApplicationAdminConsent",
+            tags = {"User Consent"},
+            parameters = {
+                    @ApiParameter(name = "deployment_id", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
+    public Future<?> grantAdminConsent(String deploymentId) {
+        return adminConsentOperation(deploymentId, "GRANT",
+                () -> proxy.getConsentService().grantAdminConsent(context, deploymentId));
+    }
+
+    @ApiOperation(
+            method = "DELETE",
+            path = "/v1/consent/{deployment_id}/admin-consent",
+            operationId = "withdrawApplicationAdminConsent",
+            tags = {"User Consent"},
+            parameters = {
+                    @ApiParameter(name = "deployment_id", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
+    public Future<?> withdrawAdminConsent(String deploymentId) {
+        return adminConsentOperation(deploymentId, "WITHDRAW",
+                () -> proxy.getConsentService().withdrawAdminConsent(deploymentId));
+    }
+
+    /**
+     * Both admin-consent operations are the same act with a different verb: admin only (checked
+     * before any resolution, so a refusal leaks nothing), audited either way — the grant line
+     * carries the approved snapshot, the withdraw line what was withdrawn.
+     */
+    private Future<?> adminConsentOperation(String deploymentId, String action, Supplier<Consent> operation) {
+        proxy.getTaskExecutor().submit(() -> {
+            requireAdmin();
+            return operation.get();
+        })
+                .onComplete(result -> ResourceDependencyAuditLog.consent(context, deploymentId, action,
+                        result.succeeded() ? snapshotOf(result.result()) : null, asRuntime(result.cause())))
+                .onSuccess(ignored -> context.respond(HttpStatus.OK))
+                .onFailure(error -> handleRequestError(deploymentId, error));
+        return Future.succeededFuture();
+    }
+
+    private static List<Consent.ResourceEntry> snapshotOf(Consent consent) {
+        return consent == null ? null : consent.getResources();
+    }
+
+    private static RuntimeException asRuntime(Throwable error) {
+        if (error == null) {
+            return null;
+        }
+        return error instanceof RuntimeException runtimeError ? runtimeError : new RuntimeException(error);
+    }
+
+    private void requireAdmin() {
+        if (!proxy.getAccessService().hasAdminAccess(context)) {
+            throw new PermissionDeniedException("Only administrators may consent to application resource dependencies");
+        }
+    }
+
     private void handleRequestError(String deploymentId, Throwable error) {
         if (error instanceof PermissionDeniedException) {
             log.warn("Forbidden deployment {}", deploymentId);
@@ -101,6 +184,8 @@ public class ConsentController {
         } else if (error instanceof ResourceNotFoundException) {
             log.warn("Deployment not found {}", deploymentId, error);
             context.respond(HttpStatus.NOT_FOUND, error.getMessage());
+        } else if (error instanceof HttpException httpException) {
+            context.respond(httpException.getStatus(), httpException.getMessage());
         } else {
             log.error("Failed to process user consent", error);
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
