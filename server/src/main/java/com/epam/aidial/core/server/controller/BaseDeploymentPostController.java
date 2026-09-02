@@ -211,20 +211,14 @@ public class BaseDeploymentPostController {
         return trackDeploymentStats(context.getDeployment().getName(), ownUsage, true);
     }
 
-    /**
-     * Whether the initiator is accountable for this request, or a second request the mode serving the
-     * interface makes is the real one — see {@link InterfaceMode#isSubjectToLimits()}. Read by both the
-     * pre-flight check and the post-response charge, so the two can never disagree about what a mode exempts.
-     */
     private boolean subjectToLimits(Deployment deployment) {
         return DeploymentEndpointUtil.resolveMode(deployment, interfaceType()).isSubjectToLimits();
     }
 
     /**
-     * Checks the initiator's limits before the request is forwarded, for a request the initiator is
-     * accountable for. A translated one is not: the translator calls Core back to have the completion
-     * served, and that inner request is the real one — it is what the limits are checked and charged
-     * against, so a caller over quota is rejected there rather than here.
+     * Checks the initiator's limits before the request is forwarded. A translated request is not one the
+     * initiator is accountable for: the call the translator makes back to Core is, so a caller over quota
+     * is rejected on that one rather than on this.
      */
     protected Future<RateLimitResult> checkLimits(Deployment deployment) {
         if (!subjectToLimits(deployment)) {
@@ -234,9 +228,8 @@ public class BaseDeploymentPostController {
     }
 
     /**
-     * Charges the request's usage to the initiator's token and cost limits, for a request the initiator is
-     * accountable for. Skipped on the same terms {@link #checkLimits} is, and for the same reason: the
-     * inner request the mode makes is what carries the usage, so charging here as well would count it twice.
+     * Charges the request's usage to the initiator's token and cost limits. Skipped on the same terms
+     * {@link #checkLimits} is, so the two can never disagree about what a mode exempts.
      */
     private Future<Void> increaseLimits(TokenUsage usage) {
         Deployment deployment = context.getDeployment();

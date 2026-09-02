@@ -21,14 +21,9 @@ public enum InterfaceMode {
     private final String value;
 
     /**
-     * Whether a request served this way is one the caller is accountable for — the only kind the limits
-     * are read or written for at all. False for a mode that has a second request serve the completion:
-     * that inner request is a real one, and it carries the tokens, the cost and the request slot, so
-     * doing anything here would count one client call twice. A caller who has exhausted a quota is still
-     * rejected, on that inner request rather than on this one.
-     *
-     * <p>Declared per mode rather than tested for at each call site, so that a mode added later has to
-     * answer the question once, here, instead of wherever limits happen to be read.
+     * Whether the caller is accountable for a request served this way — the only kind the limits are read
+     * or written for. False for a mode where a second request serves the completion and carries the
+     * tokens, the cost and the request slot; a caller over quota is rejected on that one instead.
      */
     private final boolean subjectToLimits;
 

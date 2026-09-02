@@ -87,11 +87,6 @@ public class RateLimiter {
         }
     }
 
-    /**
-     * Checks every one of the caller's limits, and spends a request slot while doing so. Called for a
-     * request the caller is accountable for; one served by a mode that is not
-     * {@link com.epam.aidial.core.config.InterfaceMode#isSubjectToLimits()} never reaches here.
-     */
     public Future<RateLimitResult> limit(ProxyContext context, RoleBasedEntity roleBasedEntity) {
         try {
             // skip checking limits if redis is not available
