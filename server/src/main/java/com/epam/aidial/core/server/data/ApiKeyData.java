@@ -51,6 +51,8 @@ public class ApiKeyData {
     private Map<String, AutoSharedData> attachedResourceCredentials = new HashMap<>();
     // list of prompts included into application properties
     private Map<String, AutoSharedData> attachedPrompts = new HashMap<>();
+    // list of skills included into application properties
+    private Map<String, AutoSharedData> attachedSkills = new HashMap<>();
     // deployment name of the source(application/model/interceptor) associated with the current request
     private String sourceDeployment;
     // Execution path of the root request
