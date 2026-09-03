@@ -727,6 +727,24 @@ public class ConsentServiceTest {
     }
 
     @Test
+    public void testDescribeAdminConsent_LegacyBareConsentRecordFailsClosedWithoutThrowing() {
+        // Records written by the pre-envelope commits of this branch store a bare Consent body at
+        // the same key. Lenient reading must turn those into consent==null -> the fail-closed
+        // stale path — never a throw, which would break the resolver (400 on every user call) and
+        // make the record un-withdrawable.
+        when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn("""
+                {"resources": [{"url": "current-user/skills/", "access": ["WRITE"]}]}
+                """);
+
+        AdminConsentStatus status = service.describeAdminConsent("app", declaration("current-user/skills/"));
+
+        assertFalse(status.isConsented(), "a legacy record never reads as consented — fail closed");
+        assertTrue(status.getStale());
+        assertEquals(List.of(), status.getGrantedResources());
+        assertFalse(service.isAdminConsented("app", declaration("current-user/skills/")));
+    }
+
+    @Test
     public void testWithdrawAdminConsent_ReturnsTheWithdrawnGrantForTheAudit() {
         when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(declaringApplication());
         when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn("""
