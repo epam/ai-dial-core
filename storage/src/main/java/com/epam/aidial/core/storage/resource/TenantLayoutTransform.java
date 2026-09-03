@@ -12,15 +12,12 @@ import javax.annotation.Nullable;
  *
  * <p>The conversion is total and reversible in both directions, so a migrated path can always be mapped
  * back to its origin.
- *
- * <p>Legacy locations are produced by the server-side bucket builder; the prefixes are repeated here
- * because this module cannot depend on it.
  */
 @UtilityClass
 public class TenantLayoutTransform {
 
-    private static final String LEGACY_USERS_PREFIX = "Users/";
-    private static final String LEGACY_KEYS_PREFIX = "Keys/";
+    private static final String LEGACY_USERS_PREFIX = ResourceDescriptor.USERS_LOCATION_PREFIX;
+    private static final String LEGACY_KEYS_PREFIX = ResourceDescriptor.KEYS_LOCATION_PREFIX;
 
     private static final String ORG_PREFIX = ".org/";
     private static final String USERS_SEGMENT = ".users/";
@@ -136,9 +133,7 @@ public class TenantLayoutTransform {
             return;
         }
 
-        if (!scope.endsWith(ResourceDescriptor.PATH_SEPARATOR)
-                || scope.charAt(0) == TYPE_FOLDER_MARKER
-                || scope.contains(ResourceDescriptor.PATH_SEPARATOR + TYPE_FOLDER_MARKER)) {
+        if (!scope.endsWith(ResourceDescriptor.PATH_SEPARATOR) || hasDottedSegment(scope)) {
             throw new IllegalArgumentException("Unsupported public bucket location: " + location);
         }
     }
@@ -188,6 +183,20 @@ public class TenantLayoutTransform {
         }
 
         String id = location.substring(prefix.length());
-        return id.length() > 1 && id.endsWith(ResourceDescriptor.PATH_SEPARATOR) ? id : null;
+        if (id.length() <= 1 || !id.endsWith(ResourceDescriptor.PATH_SEPARATOR)) {
+            return null;
+        }
+
+        // A dotted segment would escape the tree ("..") or collide with the dotted names reserved for
+        // type folders and principal branches; no legitimate producer emits one.
+        if (hasDottedSegment(id)) {
+            throw new IllegalArgumentException("Unsupported principal id in location: " + location);
+        }
+        return id;
+    }
+
+    private boolean hasDottedSegment(String path) {
+        return path.charAt(0) == TYPE_FOLDER_MARKER
+                || path.contains(ResourceDescriptor.PATH_SEPARATOR + TYPE_FOLDER_MARKER);
     }
 }

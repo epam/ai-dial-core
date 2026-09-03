@@ -111,6 +111,20 @@ public class TenantLayoutTransformTest {
                 () -> TenantLayoutTransform.toLegacyLocation(".system/not_a_system_bucket/", TENANT));
     }
 
+    /**
+     * A dotted principal-id segment would escape the tree ("..") or collide with the dotted names
+     * reserved for type folders and principal branches. No legitimate producer emits one, so the
+     * transform rejects rather than composes.
+     */
+    @Test
+    public void testDottedPrincipalSegmentsRejected() {
+        assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("Users/../", TENANT));
+        assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("Users/.evil/", TENANT));
+        assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("Keys/applications/../app/", TENANT));
+        assertThrows(IllegalArgumentException.class,
+                () -> TenantLayoutTransform.toLegacyLocation(".org/default-tenant/.users/../", TENANT));
+    }
+
     @Test
     public void testUnsupportedLegacyLocation() {
         assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("Unknown/u1/", TENANT));

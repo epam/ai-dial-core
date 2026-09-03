@@ -8,6 +8,7 @@ import lombok.Getter;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
@@ -22,6 +23,14 @@ public class ResourceDescriptor {
     public static final String PUBLIC_LOCATION = PUBLIC_BUCKET + PATH_SEPARATOR;
     public static final String PLATFORM_BUCKET = "platform";
     public static final String PLATFORM_LOCATION = PLATFORM_BUCKET + PATH_SEPARATOR;
+
+    /**
+     * Prefixes of the two principal bucket-location shapes, {@code Users/<sub>/} and {@code Keys/<project>/}.
+     * The server-side bucket builder formats locations with them, and a storage layout recognizes principal
+     * locations by them — one set of literals for both, or the two drift.
+     */
+    public static final String USERS_LOCATION_PREFIX = "Users" + PATH_SEPARATOR;
+    public static final String KEYS_LOCATION_PREFIX = "Keys" + PATH_SEPARATOR;
 
     public static final String DEPLOYMENT_COST_STATS_BUCKET = "deployment_cost_stats";
     public static final String DEPLOYMENT_COST_STATS_LOCATION = DEPLOYMENT_COST_STATS_BUCKET + PATH_SEPARATOR;
@@ -40,10 +49,9 @@ public class ResourceDescriptor {
      * <p>A location that is not a principal, not public, not the platform and not in this set is rejected
      * rather than passed through: a silent fallback would let the next such bucket reach production unmapped.
      */
-    public static final List<String> SYSTEM_LOCATIONS = List.of(
+    public static final Set<String> SYSTEM_LOCATIONS = Set.of(
             DEPLOYMENT_COST_STATS_LOCATION, BACKGROUND_JOB_LOCATION, RESPONSE_MAPPINGS_LOCATION,
             API_KEY_DATA_LOCATION);
-
 
     ResourceType type;
     /**
@@ -127,11 +135,11 @@ public class ResourceDescriptor {
      * Returns an absolute path to the resource in a persistent storage.
      */
     public String getAbsoluteFilePath() {
-        return getStoragePrefix() + getPathWithinType();
+        return getStoragePrefix(StorageLayouts.resolveActive()) + getPathWithinType();
     }
 
     /**
-     * Returns the same path as {@link #getAbsoluteFilePath()} would under the legacy layout, whichever layout
+     * Returns the path {@link #getAbsoluteFilePath()} produces under the legacy layout, whichever layout
      * is active.
      *
      * <p>Callers that bake a resource path into something durable — an identifier handed to a user, an
@@ -139,15 +147,14 @@ public class ResourceDescriptor {
      * layout changes; anything derived from one and then stored is not, or the stored thing stops resolving.
      */
     public String getStableFilePath() {
-        return bucketLocation + type.group() + PATH_SEPARATOR + getPathWithinType();
+        return getStoragePrefix(LegacyStorageLayout.INSTANCE) + getPathWithinType();
     }
 
     /**
-     * Returns the layout-dependent prefix every physical path of this resource starts with: the bucket
+     * Returns the prefix every path of this resource starts with under the given layout: the bucket
      * location followed by the resource-type folder.
      */
-    private String getStoragePrefix() {
-        StorageLayout layout = StorageLayouts.resolveActive();
+    private String getStoragePrefix(StorageLayout layout) {
         return layout.resolveLocationPrefix(bucketLocation) + layout.resolveTypeFolder(type.group()) + PATH_SEPARATOR;
     }
 
@@ -254,7 +261,7 @@ public class ResourceDescriptor {
      * @param path - to the resource with decrypted bucket
      */
     public ResourceDescriptor resolveByPath(String path) {
-        String prefix = getStoragePrefix();
+        String prefix = getStoragePrefix(StorageLayouts.resolveActive());
         if (!isFolder) {
             throw new IllegalStateException("Resource must be a folder");
         }
