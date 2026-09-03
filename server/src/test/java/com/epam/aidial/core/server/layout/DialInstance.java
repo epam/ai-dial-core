@@ -1,14 +1,19 @@
 package com.epam.aidial.core.server.layout;
 
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.AiDial;
 import com.epam.aidial.core.server.AiDialLifecycle;
 import com.epam.aidial.core.server.FileUtil;
+import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.json.Json;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.Getter;
 import lombok.SneakyThrows;
@@ -31,7 +36,9 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 /**
  * One full DIAL stack — embedded Redis, filesystem blob store, HTTP server — brought up under a chosen
@@ -43,6 +50,12 @@ import java.util.concurrent.atomic.AtomicLong;
  * difference in a response is attributable to the layout rather than to timing or generated identifiers.
  */
 public class DialInstance implements AutoCloseable {
+
+    /**
+     * Role the global-reader rule matches. The rule is off unless {@code access.globalReader} is configured,
+     * so the harness configures it — otherwise the differ would compare a rule that can never fire.
+     */
+    public static final String GLOBAL_READER_ROLE = "layout-diff-global-reader";
 
     private static final String ID_SEED = "0";
     private static final long FIRST_ID = 123;
@@ -127,7 +140,12 @@ public class DialInstance implements AutoCloseable {
 
         JsonObject settings = AiDial.settings()
                 .mergeIn(new JsonObject(overrides), true)
-                .mergeIn(new JsonObject().put("storageLayout", layoutSettings), true);
+                .mergeIn(new JsonObject().put("storageLayout", layoutSettings), true)
+                .mergeIn(new JsonObject().put("access", new JsonObject().put("globalReader", new JsonObject()
+                        .put("rules", new JsonArray().add(new JsonObject()
+                                .put("source", "roles")
+                                .put("function", "EQUAL")
+                                .put("targets", new JsonArray().add(GLOBAL_READER_ROLE)))))), true);
 
         AiDial instance = new AiDial();
         instance.setSettings(settings);
@@ -136,6 +154,10 @@ public class DialInstance implements AutoCloseable {
         instance.setAccessTokenValidator(claimsValidator());
         AiDialLifecycle.start(instance);
         return instance;
+    }
+
+    private static Set<ResourceAccessType> accessTypes(List<String> permissions) {
+        return permissions.stream().map(ResourceAccessType::valueOf).collect(Collectors.toSet());
     }
 
     private static AccessTokenValidator claimsValidator() {
@@ -152,6 +174,38 @@ public class DialInstance implements AutoCloseable {
                     authorization, claims, null, authorization + " user"));
         });
         return validator;
+    }
+
+    /**
+     * Issues the api key an application-shaped caller uses. Four of the eleven permission rules only fire for
+     * a caller that is an application rather than a person, and a per-request key is what makes one; it can
+     * only be minted against a live instance, so the corpus declares the shape and this fills it in.
+     */
+    public String issuePerRequestKey(AccessMatrix.Subject subject) {
+        ApiKeyData original = dial.getProxy().getApiKeyStore().getApiKeyData(subject.apiKey(), null).result();
+
+        ApiKeyData perRequest = new ApiKeyData();
+        perRequest.setOriginalKey(original.getOriginalKey());
+        perRequest.setExtractedClaims(original.getExtractedClaims());
+        perRequest.setSourceDeployment(subject.perRequest().sourceDeployment());
+        perRequest.setTraceId("layout-diff-trace");
+
+        Map<String, List<String>> attach = subject.perRequest().attach();
+        if (attach != null) {
+            Map<String, AutoSharedData> attached = new LinkedHashMap<>();
+            attach.forEach((url, permissions) -> attached.put(url, new AutoSharedData(accessTypes(permissions))));
+            perRequest.setAttachedDeployments(attached);
+        }
+
+        Map<String, List<String>> share = subject.perRequest().share();
+        if (share != null) {
+            Map<String, PerRequestSharedData> shared = new LinkedHashMap<>();
+            share.forEach((url, permissions) -> shared.put(url, new PerRequestSharedData(accessTypes(permissions))));
+            perRequest.setPerRequestSharedResources(shared);
+        }
+
+        dial.getProxy().getApiKeyStore().assignPerRequestApiKey(perRequest);
+        return perRequest.getPerRequestKey();
     }
 
     /**
