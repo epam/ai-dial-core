@@ -64,6 +64,7 @@ import static com.epam.aidial.core.server.service.config.ConfigEntityCodec.BLOB_
  * {@link ConfigValidationService} for the dry-run precheck, plus manifest-shape helpers (parsing,
  * scratch, dependency ordering) from {@link ConfigManifestSupport}.
  */
+// for review env
 public class ConfigFileMigrateController {
 
     public static final int KEY_HASH_LENGTH = 12;
