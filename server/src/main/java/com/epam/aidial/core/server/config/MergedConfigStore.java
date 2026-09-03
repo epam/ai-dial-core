@@ -894,6 +894,9 @@ public final class MergedConfigStore implements ConfigStore {
                 Model candidate = BLOB_MAPPER.treeToValue(payload, Model.class);
                 ResourceDescriptor descriptor = descriptorFromCanonicalId(ResourceTypes.MODEL, canonicalId);
                 secretFieldProcessor.decryptFields(candidate, descriptor);
+                // resurrection rebuilds the model from its stored payload, so its translator references are
+                // as unlinked as a freshly parsed one's
+                ConfigPostProcessor.linkTranslators(candidate, next.getTranslators());
                 List<ValidationWarning> warnings = new ArrayList<>();
                 next.getModels().put(canonicalId, candidate);
                 ConfigPostProcessor.validateCrossReferences(candidate, next, warnings);
@@ -927,6 +930,7 @@ public final class MergedConfigStore implements ConfigStore {
         next.setToolsets(base.getToolsets());
         next.setRetriableErrorCodes(base.getRetriableErrorCodes());
         next.setGlobalInterceptors(base.getGlobalInterceptors());
+        next.setTranslators(base.getTranslators());
         return next;
     }
 
@@ -1103,6 +1107,11 @@ public final class MergedConfigStore implements ConfigStore {
         Map<String, ToolSet> toolsets = new LinkedHashMap<>(base.getToolsets());
         merged.setRetriableErrorCodes(base.getRetriableErrorCodes());
         merged.setGlobalInterceptors(base.getGlobalInterceptors());
+        // file-only, and never mutated here: no resource type contributes translators, so the file map
+        // is shared rather than copied. Deployments reference its entries by name and are linked to them
+        // by the semantic pass below, so a merged config that dropped it would leave every named
+        // reference dangling.
+        merged.setTranslators(base.getTranslators());
         // Wire the (still-being-populated) local maps onto merged now rather than after the blob
         // scan below — same references either way, but it lets addBlobEntity/removeAddedEntity
         // dispatch off a single Config parameter instead of a positional map per type (they used
