@@ -7,7 +7,9 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceDependency;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.consent.AdminConsentStatus;
 import com.epam.aidial.core.server.data.consent.Consent;
+import com.epam.aidial.core.server.data.consent.ConsentGrant;
 import com.epam.aidial.core.server.data.consent.ReviewConsentResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -33,11 +35,13 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.LongSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -69,6 +73,9 @@ public class ConsentServiceTest {
 
     @Mock
     ProxyContext context;
+
+    @Mock
+    private LongSupplier clock;
 
     @InjectMocks
     private ConsentService service;
@@ -607,17 +614,25 @@ public class ConsentServiceTest {
     }
 
     @Test
-    public void testGrantAdminConsent_StoresTheSnapshotInPublicAdminConsentRecord() {
+    public void testGrantAdminConsent_StoresTheEnvelopeWithProvenanceInPublicAdminConsentRecord() {
         when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(declaringApplication());
+        when(context.getUserId()).thenReturn("admin-sub");
+        when(clock.getAsLong()).thenReturn(1788394665564L);
 
-        Consent approval = service.grantAdminConsent(context, "app");
+        ConsentGrant grant = service.grantAdminConsent(context, "app");
 
-        assertEquals(List.of(resourceEntry("current-user/skills/")), approval.getResources());
+        assertEquals(List.of(resourceEntry("current-user/skills/")), grant.getConsent().getResources());
+        assertEquals("admin-sub", grant.getGrantedBy(), "provenance is server-stamped from the authenticated admin");
+        assertEquals(1788394665564L, grant.getGrantedAt());
         ArgumentCaptor<ResourceDescriptor> captor = ArgumentCaptor.forClass(ResourceDescriptor.class);
-        verify(resourceService).putResource(captor.capture(), anyString(), eq(EtagHeader.ANY));
+        ArgumentCaptor<String> bodyCaptor = ArgumentCaptor.forClass(String.class);
+        verify(resourceService).putResource(captor.capture(), bodyCaptor.capture(), eq(EtagHeader.ANY));
         ResourceDescriptor descriptor = captor.getValue();
         assertEquals(ResourceTypes.ADMIN_CONSENT, descriptor.getType());
         assertTrue(descriptor.isPublic(), "the admin's yes is one record per app, always in the public bucket");
+        // The stored body round-trips as the envelope — the snapshot sits inside it, stamps survive.
+        ConsentGrant stored = ProxyUtil.convertToObject(bodyCaptor.getValue(), ConsentGrant.class);
+        assertEquals(grant, stored);
     }
 
     @Test
@@ -631,13 +646,16 @@ public class ConsentServiceTest {
     @Test
     public void testIsAdminConsented_IsContentBoundToTheDeclaration() {
         when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn("""
-                {"resources": [{"url": "current-user/skills/", "access": ["WRITE"]}]}
+                {"consent": {"resources": [{"url": "current-user/skills/", "access": ["WRITE"]}]},
+                 "grantedBy": "admin-sub", "grantedAt": 1788394665564}
                 """);
 
         assertTrue(service.isAdminConsented("app", declaration("current-user/skills/")));
         // any declaration change re-requires the grant — an extra entry, a reordered section
         assertFalse(service.isAdminConsented("app", declaration("current-user/skills/", "files/public/p/")));
         assertFalse(service.isAdminConsented("app", declaration("files/public/p/", "current-user/skills/")));
+        // the grant's own provenance never participates in the binding — vary it, the yes still stands
+        assertTrue(service.isAdminConsented("app", declaration("current-user/skills/")));
     }
 
     @Test
@@ -648,15 +666,78 @@ public class ConsentServiceTest {
     }
 
     @Test
-    public void testWithdrawAdminConsent_ReturnsTheWithdrawnRecordForTheAudit() {
-        when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(declaringApplication());
+    public void testDescribeAdminConsent_NeverGranted() {
+        when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn(null);
+
+        AdminConsentStatus status = service.describeAdminConsent("app", declaration("current-user/skills/"));
+
+        assertFalse(status.isConsented());
+        assertNull(status.getStale(), "stale is meaningless without a record");
+        assertNull(status.getGrantedBy());
+        assertNull(status.getGrantedAt());
+        assertNull(status.getGrantedResources());
+    }
+
+    @Test
+    public void testDescribeAdminConsent_LiveGrant() {
         when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn("""
-                {"resources": [{"url": "current-user/skills/", "access": ["WRITE"]}]}
+                {"consent": {"resources": [{"url": "current-user/skills/", "access": ["WRITE"]}]},
+                 "grantedBy": "admin-sub", "grantedAt": 1788394665564}
                 """);
 
-        Consent withdrawn = service.withdrawAdminConsent(context, "app");
+        AdminConsentStatus status = service.describeAdminConsent("app", declaration("current-user/skills/"));
 
-        assertEquals(List.of(resourceEntry("current-user/skills/")), withdrawn.getResources());
+        assertTrue(status.isConsented(), "consented means live right now — exactly what the resolver enforces");
+        assertFalse(status.getStale());
+        assertEquals("admin-sub", status.getGrantedBy());
+        assertEquals(1788394665564L, status.getGrantedAt());
+        assertEquals(List.of(resourceEntry("current-user/skills/")), status.getGrantedResources());
+    }
+
+    @Test
+    public void testDescribeAdminConsent_StaleGrantKeepsTheLastApproval() {
+        when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn("""
+                {"consent": {"resources": [{"url": "current-user/skills/", "access": ["WRITE"]}]},
+                 "grantedBy": "admin-sub", "grantedAt": 1788394665564}
+                """);
+
+        // the declaration changed since the grant — nothing resolves at runtime, and the status
+        // must not report consented; the last approval stays visible for the panel's re-approve view
+        AdminConsentStatus status = service.describeAdminConsent("app", declaration("files/public/p/"));
+
+        assertFalse(status.isConsented(), "a stale record never reports consented — the runtime resolves nothing");
+        assertTrue(status.getStale());
+        assertEquals("admin-sub", status.getGrantedBy());
+        assertEquals(1788394665564L, status.getGrantedAt());
+        assertEquals(List.of(resourceEntry("current-user/skills/")), status.getGrantedResources());
+    }
+
+    @Test
+    public void testDescribeAdminConsent_ResolvesTheApplicationAndReportsNonDeclarers() {
+        // A non-declaring app is a legitimate "nothing consented" answer, not an error — reads inform.
+        Application plain = new Application();
+        plain.setName("app");
+        when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(plain);
+        when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn(null);
+
+        AdminConsentStatus status = service.describeAdminConsent(context, "app");
+
+        assertFalse(status.isConsented());
+        assertNull(status.getStale());
+    }
+
+    @Test
+    public void testWithdrawAdminConsent_ReturnsTheWithdrawnGrantForTheAudit() {
+        when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(declaringApplication());
+        when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn("""
+                {"consent": {"resources": [{"url": "current-user/skills/", "access": ["WRITE"]}]},
+                 "grantedBy": "admin-sub", "grantedAt": 1788394665564}
+                """);
+
+        ConsentGrant withdrawn = service.withdrawAdminConsent(context, "app");
+
+        assertEquals(List.of(resourceEntry("current-user/skills/")), withdrawn.getConsent().getResources());
+        assertEquals("admin-sub", withdrawn.getGrantedBy());
         verify(resourceService).deleteResource(any(ResourceDescriptor.class), eq(EtagHeader.ANY));
     }
 
@@ -669,6 +750,8 @@ public class ConsentServiceTest {
         application.setName("applications/public/gpt-helpe%2572");
         when(deploymentService.findDeployment(eq(context), eq("applications/public/gpt-helpe%2572")))
                 .thenReturn(application);
+        when(context.getUserId()).thenReturn("admin-sub");
+        when(clock.getAsLong()).thenReturn(1L);
 
         service.grantAdminConsent(context, "applications/public/gpt-helpe%2572");
 

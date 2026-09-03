@@ -9,7 +9,9 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.consent.AcceptConsentRequest;
+import com.epam.aidial.core.server.data.consent.AdminConsentStatus;
 import com.epam.aidial.core.server.data.consent.Consent;
+import com.epam.aidial.core.server.data.consent.ConsentGrant;
 import com.epam.aidial.core.server.data.consent.ReviewConsentResponse;
 import com.epam.aidial.core.server.log.ResourceDependencyAuditLog;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
@@ -101,6 +103,34 @@ public class ConsentController {
     }
 
     @ApiOperation(
+            method = "GET",
+            path = "/v1/consent/{deployment_id}/admin-consent",
+            operationId = "getApplicationAdminConsentStatus",
+            tags = {"User Consent"},
+            parameters = {
+                    @ApiParameter(name = "deployment_id", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success",
+                            body = @ApiSchema(implementation = AdminConsentStatus.class)),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
+    public Future<?> getAdminConsentStatus(String deploymentId) {
+        // Not audited: reads are not consent decisions (no read path in the codebase audits);
+        // the gate runs before any resolution, so a refusal leaks nothing.
+        proxy.getTaskExecutor().submit(() -> {
+            requireAdmin();
+            return proxy.getConsentService().describeAdminConsent(context, deploymentId);
+        }).onSuccess(status -> context.respond(HttpStatus.OK, status))
+                .onFailure(error -> handleRequestError(deploymentId, error));
+        return Future.succeededFuture();
+    }
+
+    @ApiOperation(
             method = "POST",
             path = "/v1/consent/{deployment_id}/admin-consent",
             operationId = "grantApplicationAdminConsent",
@@ -144,11 +174,11 @@ public class ConsentController {
     }
 
     /**
-     * Both admin-consent operations are the same act with a different verb: admin only (checked
+     * Both admin-consent mutations are the same act with a different verb: admin only (checked
      * before any resolution, so a refusal leaks nothing), audited either way — the grant line
      * carries the approved snapshot, the withdraw line what was withdrawn.
      */
-    private Future<?> adminConsentOperation(String deploymentId, String action, Supplier<Consent> operation) {
+    private Future<?> adminConsentOperation(String deploymentId, String action, Supplier<ConsentGrant> operation) {
         proxy.getTaskExecutor().submit(() -> {
             requireAdmin();
             return operation.get();
@@ -160,8 +190,8 @@ public class ConsentController {
         return Future.succeededFuture();
     }
 
-    private static List<Consent.ResourceEntry> snapshotOf(Consent consent) {
-        return consent == null ? null : consent.getResources();
+    private static List<Consent.ResourceEntry> snapshotOf(ConsentGrant grant) {
+        return grant == null || grant.getConsent() == null ? null : grant.getConsent().getResources();
     }
 
     private static RuntimeException asRuntime(Throwable error) {
