@@ -62,7 +62,9 @@ public class DialInstance implements AutoCloseable {
 
     private final AtomicLong nextId = new AtomicLong(FIRST_ID);
 
+    @Getter
     private final Path dataDir;
+    private final boolean keepData;
     private final RedisServer redis;
     private final AiDial dial;
     private final CloseableHttpClient client;
@@ -71,11 +73,22 @@ public class DialInstance implements AutoCloseable {
     private final String name;
     private final int port;
 
-    @SneakyThrows
     public DialInstance(String name, JsonObject layoutSettings, int redisPort) {
+        this(name, layoutSettings, redisPort, null);
+    }
+
+    /**
+     * @param existingData a blob tree to serve rather than start empty from — how the bucket verifier boots a
+     *                     core onto migrated data. It is left in place on close.
+     */
+    @SneakyThrows
+    public DialInstance(String name, JsonObject layoutSettings, int redisPort, Path existingData) {
         this.name = name;
-        this.dataDir = FileUtil.resolveRes("layout-diff-" + name);
-        FileUtil.deleteDir(dataDir);
+        this.keepData = existingData != null;
+        this.dataDir = existingData != null ? existingData : FileUtil.resolveRes("layout-diff-" + name);
+        if (existingData == null) {
+            FileUtil.deleteDir(dataDir);
+        }
         FileUtil.createDir(dataDir.resolve("test"));
 
         this.redis = RedisServer.newRedisServer()
@@ -281,7 +294,9 @@ public class DialInstance implements AutoCloseable {
             } catch (Exception e) {
                 throw new IllegalStateException("Cannot stop redis for the " + name + " instance", e);
             }
-            FileUtil.deleteDir(dataDir);
+            if (!keepData) {
+                FileUtil.deleteDir(dataDir);
+            }
         }
     }
 }
