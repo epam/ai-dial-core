@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.util;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.AuthBucket;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import lombok.experimental.UtilityClass;
 
 import java.util.Objects;
@@ -12,8 +13,10 @@ import javax.annotation.Nullable;
 public class BucketBuilder {
 
     public static final String APPDATA_PATTERN = "appdata/%s";
-    public static final String USER_BUCKET_PATTERN = "Users/%s/";
-    public static final String API_KEY_BUCKET_PATTERN = "Keys/%s/";
+    // Prefixes declared in ResourceDescriptor: a storage layout recognizes principal locations by the
+    // same literals this builder formats them with.
+    public static final String USER_BUCKET_PATTERN = ResourceDescriptor.USERS_LOCATION_PREFIX + "%s" + ResourceDescriptor.PATH_SEPARATOR;
+    public static final String API_KEY_BUCKET_PATTERN = ResourceDescriptor.KEYS_LOCATION_PREFIX + "%s" + ResourceDescriptor.PATH_SEPARATOR;
 
     public String buildUserBucket(ProxyContext context) {
         if (context.getApiKeyData().getPerRequestKey() == null) {

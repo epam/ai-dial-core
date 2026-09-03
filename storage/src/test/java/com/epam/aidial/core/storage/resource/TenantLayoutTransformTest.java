@@ -42,12 +42,90 @@ public class TenantLayoutTransformTest {
         assertEquals(legacy, TenantLayoutTransform.toLegacyLocation(tenant, TENANT));
     }
 
+    /**
+     * The platform synthesizes sub-buckets of {@code public/}: a public function app's source and target
+     * folder is keyed as {@code public/deployments/<id>/}. The suffix keeps its legacy shape under the
+     * tenant root — it stays parseable because reserved names there are dotted and the suffix may not be.
+     */
+    @Test
+    public void testPublicDeploymentsLocation() {
+        assertEquals(".org/default-tenant/deployments/abc123/",
+                TenantLayoutTransform.toTenantLocation("public/deployments/abc123/", TENANT));
+        assertEquals("public/deployments/abc123/",
+                TenantLayoutTransform.toLegacyLocation(".org/default-tenant/deployments/abc123/", TENANT));
+    }
+
+    @Test
+    public void testDottedOrUnterminatedPublicScopeRejected() {
+        assertThrows(IllegalArgumentException.class,
+                () -> TenantLayoutTransform.toTenantLocation("public/.deployments/abc123/", TENANT));
+        assertThrows(IllegalArgumentException.class,
+                () -> TenantLayoutTransform.toTenantLocation("public/deployments/.abc123/", TENANT));
+        assertThrows(IllegalArgumentException.class,
+                () -> TenantLayoutTransform.toTenantLocation("public/deployments/abc123", TENANT));
+        assertThrows(IllegalArgumentException.class,
+                () -> TenantLayoutTransform.toLegacyLocation(".org/default-tenant/deployments/abc123", TENANT));
+        assertThrows(IllegalArgumentException.class,
+                () -> TenantLayoutTransform.toLegacyLocation(".org/default-tenant/deployments/.x/", TENANT));
+    }
+
     @Test
     public void testLocationRoundTrip() {
-        for (String legacy : new String[] {"platform/", "public/", "Users/u1/", "Keys/proj/", "Keys/applications/abc/app/"}) {
+        for (String legacy : new String[] {"platform/", "public/", "public/deployments/abc123/", "Users/u1/", "Keys/proj/", "Keys/applications/abc/app/"}) {
             String tenant = TenantLayoutTransform.toTenantLocation(legacy, TENANT);
             assertEquals(legacy, TenantLayoutTransform.toLegacyLocation(tenant, TENANT));
         }
+    }
+
+    @Test
+    public void testSystemLocations() {
+        assertEquals(".system/background_jobs/", TenantLayoutTransform.toTenantLocation("background_jobs/", TENANT));
+        assertEquals("background_jobs/", TenantLayoutTransform.toLegacyLocation(".system/background_jobs/", TENANT));
+    }
+
+    /**
+     * Every system bucket has to be mapped, not just the ones a test happened to name: an unmapped one throws
+     * at the point a path is composed, which takes out whatever subsystem owns it.
+     */
+    @Test
+    public void testEverySystemLocationRoundTrips() {
+        for (String legacy : ResourceDescriptor.SYSTEM_LOCATIONS) {
+            String tenant = TenantLayoutTransform.toTenantLocation(legacy, TENANT);
+            assertEquals(legacy, TenantLayoutTransform.toLegacyLocation(tenant, TENANT));
+        }
+    }
+
+    /**
+     * System buckets sit above the tenant, so they must not move when the tenant does.
+     */
+    @Test
+    public void testSystemLocationsAreTenantIndependent() {
+        for (String legacy : ResourceDescriptor.SYSTEM_LOCATIONS) {
+            assertEquals(TenantLayoutTransform.toTenantLocation(legacy, TENANT),
+                    TenantLayoutTransform.toTenantLocation(legacy, "another-tenant"));
+        }
+    }
+
+    @Test
+    public void testUnknownSystemLocationRejected() {
+        assertThrows(IllegalArgumentException.class,
+                () -> TenantLayoutTransform.toLegacyLocation(".system/not_a_system_bucket/", TENANT));
+    }
+
+    /**
+     * A dotted principal-id segment would escape the tree ("..") or collide with the dotted names
+     * reserved for type folders and principal branches. No legitimate producer emits one, so the
+     * transform rejects rather than composes.
+     */
+    @Test
+    public void testDottedPrincipalSegmentsRejected() {
+        assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("Users/../", TENANT));
+        assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("Users/.evil/", TENANT));
+        assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("Keys/applications/../app/", TENANT));
+        assertThrows(IllegalArgumentException.class,
+                () -> TenantLayoutTransform.toLegacyLocation(".org/default-tenant/.users/../", TENANT));
+        assertThrows(IllegalArgumentException.class,
+                () -> TenantLayoutTransform.toLegacyLocation(".org/default-tenant/.keys/../", TENANT));
     }
 
     @Test
@@ -55,6 +133,7 @@ public class TenantLayoutTransformTest {
         assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("Unknown/u1/", TENANT));
         assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("", TENANT));
         assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("Users/", TENANT));
+        assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("Users//", TENANT));
         assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("Users/u1", TENANT));
     }
 
@@ -76,6 +155,19 @@ public class TenantLayoutTransformTest {
         assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toLegacyLocation(".org//", ""));
     }
 
+    /**
+     * A separator would let one tenant's root nest inside another's ("acme/.users" collides with tenant
+     * acme's users branch), and a leading marker collides with the reserved dotted names.
+     */
+    @Test
+    public void testInvalidTenantRejected() {
+        assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("public/", "a/b"));
+        assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("public/", "acme/.users"));
+        assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("public/", ".."));
+        assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("public/", ".acme"));
+        assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toLegacyLocation(".org/a/b/", "a/b"));
+    }
+
     @Test
     public void testTypeFolder() {
         assertEquals(".files", TenantLayoutTransform.toTenantTypeFolder("files"));
@@ -87,6 +179,18 @@ public class TenantLayoutTransformTest {
         for (ResourceTypes type : ResourceTypes.values()) {
             String tenantFolder = TenantLayoutTransform.toTenantTypeFolder(type.group());
             assertEquals(type.group(), TenantLayoutTransform.toLegacyTypeFolder(tenantFolder));
+        }
+    }
+
+    /**
+     * With the guard in place, {@link #testTypeFolderRoundTripsForEveryResourceType} doubles as the
+     * build-time tripwire: a future {@code ResourceTypes} group taking a reserved name fails that test.
+     */
+    @Test
+    public void testReservedTypeFolderNamesRejected() {
+        for (String reserved : new String[] {"org", "system", "users", "keys"}) {
+            assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantTypeFolder(reserved));
+            assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toLegacyTypeFolder("." + reserved));
         }
     }
 

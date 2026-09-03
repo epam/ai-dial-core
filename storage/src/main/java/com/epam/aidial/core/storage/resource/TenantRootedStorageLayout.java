@@ -13,6 +13,8 @@ public final class TenantRootedStorageLayout implements StorageLayout {
             throw new IllegalArgumentException("Tenant id must not be blank");
         }
 
+        // Same rule the transform applies on every composition, but failing here fails at start-up.
+        TenantLayoutTransform.requireTenantId(tenantId);
         this.tenantId = tenantId;
     }
 
@@ -22,7 +24,7 @@ public final class TenantRootedStorageLayout implements StorageLayout {
     }
 
     @Override
-    public String resolveTypeFolder(String group) {
-        return TenantLayoutTransform.toTenantTypeFolder(group);
+    public String resolveTypeFolder(String typeGroup) {
+        return TenantLayoutTransform.toTenantTypeFolder(typeGroup);
     }
 }

@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -66,21 +67,19 @@ public class TenantRootedLayoutApiTest extends ResourceBaseTest {
         Response flushed = resourceRequest(HttpMethod.GET, "/folder/conversation");
         assertEquals(200, flushed.status());
 
-        List<Path> storedPaths = findStoredPaths("");
+        List<Path> storedPaths = findStoredPaths();
         List<Path> tenantRootedPaths = storedPaths.stream()
                 .filter(path -> path.toString().contains(".org/" + TENANT))
                 .toList();
-        assertTrue(!tenantRootedPaths.isEmpty(),
+        assertFalse(tenantRootedPaths.isEmpty(),
                 () -> "No blob stored under the tenant root, found: " + storedPaths);
         assertTrue(tenantRootedPaths.stream().anyMatch(path -> path.toString().contains(".conversations")),
                 () -> "Conversations are not stored in a reserved type folder: " + tenantRootedPaths);
     }
 
-    private List<Path> findStoredPaths(String marker) throws IOException {
+    private List<Path> findStoredPaths() throws IOException {
         try (Stream<Path> paths = Files.walk(testDir)) {
-            return paths.filter(Files::isRegularFile)
-                    .filter(path -> path.toString().contains(marker))
-                    .toList();
+            return paths.filter(Files::isRegularFile).toList();
         }
     }
 }

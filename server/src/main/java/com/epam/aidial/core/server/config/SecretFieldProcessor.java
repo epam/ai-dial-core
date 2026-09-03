@@ -40,16 +40,14 @@ public class SecretFieldProcessor {
         if (entity == null) {
             return;
         }
-        byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
-        walk(entity, aad, true);
+        walk(entity, aad(descriptor), true);
     }
 
     public void decryptFields(Object entity, ResourceDescriptor descriptor) {
         if (entity == null) {
             return;
         }
-        byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
-        walk(entity, aad, false);
+        walk(entity, aad(descriptor), false);
     }
 
     public String resolveSecret(String value, ResourceDescriptor descriptor) {
@@ -57,10 +55,13 @@ public class SecretFieldProcessor {
             return null;
         }
         if (value.startsWith(ENC_PREFIX) && value.endsWith(ENC_SUFFIX)) {
-            byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
-            return decryptEnvelope(value, aad, "value");
+            return decryptEnvelope(value, aad(descriptor), "value");
         }
         return value;
+    }
+
+    private static byte[] aad(ResourceDescriptor descriptor) {
+        return descriptor.getStableFilePath().getBytes(StandardCharsets.UTF_8);
     }
 
     /**

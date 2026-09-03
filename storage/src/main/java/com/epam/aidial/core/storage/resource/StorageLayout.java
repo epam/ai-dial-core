@@ -9,5 +9,5 @@ public interface StorageLayout {
 
     String resolveLocationPrefix(String bucketLocation);
 
-    String resolveTypeFolder(String group);
+    String resolveTypeFolder(String typeGroup);
 }

@@ -6,10 +6,6 @@ import lombok.experimental.UtilityClass;
 
 @UtilityClass
 public class ResponseIdUtil {
-    public static final String RESPONSE_MAPPINGS_BUCKET = "response_mappings";
-    public static final String RESPONSE_MAPPINGS_BUCKET_LOCATION = RESPONSE_MAPPINGS_BUCKET + "/";
-    public static final String BACKGROUND_JOB_BUCKET = "background_jobs";
-    public static final String BACKGROUND_JOB_BUCKET_LOCATION = BACKGROUND_JOB_BUCKET + "/";
     public static final String RESPONSE_ID_PREFIX = "dial_";
 
     public String createResponseId(String deploymentName, String uuid) {
@@ -28,11 +24,11 @@ public class ResponseIdUtil {
         String uuid = dialResponseId.substring(underscore + 1);
         String relativePath = deploymentName + "/" + uuid;
         return ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.RESPONSE_MAPPING, RESPONSE_MAPPINGS_BUCKET, RESPONSE_MAPPINGS_BUCKET_LOCATION, relativePath);
+                ResourceTypes.RESPONSE_MAPPING, ResourceDescriptor.RESPONSE_MAPPINGS_BUCKET, ResourceDescriptor.RESPONSE_MAPPINGS_LOCATION, relativePath);
     }
 
     public ResourceDescriptor getBackgroundJobDescriptor(String jobId) {
         return ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.BACKGROUND_JOB, BACKGROUND_JOB_BUCKET, BACKGROUND_JOB_BUCKET_LOCATION, jobId);
+                ResourceTypes.BACKGROUND_JOB, ResourceDescriptor.BACKGROUND_JOB_BUCKET, ResourceDescriptor.BACKGROUND_JOB_LOCATION, jobId);
     }
 }

@@ -274,16 +274,18 @@ public class BackgroundJobService {
 
     private String encryptKey(ResourceDescriptor descriptor, String key) {
         BucketInfo bucketInfo = new BucketInfo(descriptor.getBucketName(), descriptor.getBucketLocation());
-        byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
-        byte[] cipher = encryptionService.encrypt(bucketInfo, key.getBytes(StandardCharsets.UTF_8), aad);
+        byte[] cipher = encryptionService.encrypt(bucketInfo, key.getBytes(StandardCharsets.UTF_8), aad(descriptor));
         return Base64.getEncoder().encodeToString(cipher);
     }
 
     private String decryptKey(ResourceDescriptor descriptor, String key) {
         BucketInfo bucketInfo = new BucketInfo(descriptor.getBucketName(), descriptor.getBucketLocation());
-        byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
         byte[] raw = Base64.getDecoder().decode(key);
-        return new String(encryptionService.decrypt(bucketInfo, raw, aad), StandardCharsets.UTF_8);
+        return new String(encryptionService.decrypt(bucketInfo, raw, aad(descriptor)), StandardCharsets.UTF_8);
+    }
+
+    private static byte[] aad(ResourceDescriptor descriptor) {
+        return descriptor.getStableFilePath().getBytes(StandardCharsets.UTF_8);
     }
 
     private Future<Void> completeAndProcess(
