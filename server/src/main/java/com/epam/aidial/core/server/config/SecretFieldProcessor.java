@@ -60,8 +60,6 @@ public class SecretFieldProcessor {
         return value;
     }
 
-    // The AAD outlives the process inside the stored ciphertext, so it must not depend on the active
-    // storage layout: physical paths move when the layout changes, the stable path never does.
     private static byte[] aad(ResourceDescriptor descriptor) {
         return descriptor.getStableFilePath().getBytes(StandardCharsets.UTF_8);
     }

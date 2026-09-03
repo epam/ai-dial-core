@@ -284,8 +284,6 @@ public class BackgroundJobService {
         return new String(encryptionService.decrypt(bucketInfo, raw, aad(descriptor)), StandardCharsets.UTF_8);
     }
 
-    // Stable rather than physical path for the AAD: a job record outlives restarts, so its ciphertext
-    // must survive a storage-layout change.
     private static byte[] aad(ResourceDescriptor descriptor) {
         return descriptor.getStableFilePath().getBytes(StandardCharsets.UTF_8);
     }

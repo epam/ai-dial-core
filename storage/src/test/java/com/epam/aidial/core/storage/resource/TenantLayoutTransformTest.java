@@ -65,6 +65,8 @@ public class TenantLayoutTransformTest {
                 () -> TenantLayoutTransform.toTenantLocation("public/deployments/abc123", TENANT));
         assertThrows(IllegalArgumentException.class,
                 () -> TenantLayoutTransform.toLegacyLocation(".org/default-tenant/deployments/abc123", TENANT));
+        assertThrows(IllegalArgumentException.class,
+                () -> TenantLayoutTransform.toLegacyLocation(".org/default-tenant/deployments/.x/", TENANT));
     }
 
     @Test
@@ -83,8 +85,7 @@ public class TenantLayoutTransformTest {
 
     /**
      * Every system bucket has to be mapped, not just the ones a test happened to name: an unmapped one throws
-     * at the point a path is composed, which takes out whatever subsystem owns it — that is how the background
-     * job scheduler and per-request cost accounting were found broken under this layout.
+     * at the point a path is composed, which takes out whatever subsystem owns it.
      */
     @Test
     public void testEverySystemLocationRoundTrips() {
@@ -123,6 +124,8 @@ public class TenantLayoutTransformTest {
         assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("Keys/applications/../app/", TENANT));
         assertThrows(IllegalArgumentException.class,
                 () -> TenantLayoutTransform.toLegacyLocation(".org/default-tenant/.users/../", TENANT));
+        assertThrows(IllegalArgumentException.class,
+                () -> TenantLayoutTransform.toLegacyLocation(".org/default-tenant/.keys/../", TENANT));
     }
 
     @Test
@@ -130,6 +133,7 @@ public class TenantLayoutTransformTest {
         assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("Unknown/u1/", TENANT));
         assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("", TENANT));
         assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("Users/", TENANT));
+        assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("Users//", TENANT));
         assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("Users/u1", TENANT));
     }
 
@@ -149,6 +153,19 @@ public class TenantLayoutTransformTest {
     public void testEmptyTenantRejected() {
         assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("public/", ""));
         assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toLegacyLocation(".org//", ""));
+    }
+
+    /**
+     * A separator would let one tenant's root nest inside another's ("acme/.users" collides with tenant
+     * acme's users branch), and a leading marker collides with the reserved dotted names.
+     */
+    @Test
+    public void testInvalidTenantRejected() {
+        assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("public/", "a/b"));
+        assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("public/", "acme/.users"));
+        assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("public/", ".."));
+        assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toTenantLocation("public/", ".acme"));
+        assertThrows(IllegalArgumentException.class, () -> TenantLayoutTransform.toLegacyLocation(".org/a/b/", "a/b"));
     }
 
     @Test

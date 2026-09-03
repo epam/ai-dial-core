@@ -11,32 +11,25 @@ import javax.annotation.Nullable;
  * stays in {@link ResourceDescriptor#getAbsoluteFilePath()}.
  *
  * <p>The conversion is total and reversible in both directions, so a migrated path can always be mapped
- * back to its origin.
+ * back to its origin. Nothing on the request path converts backwards — the legacy direction exists for
+ * migration tooling and the layout verifier.
  */
 @UtilityClass
 public class TenantLayoutTransform {
-
-    private static final String LEGACY_USERS_PREFIX = ResourceDescriptor.USERS_LOCATION_PREFIX;
-    private static final String LEGACY_KEYS_PREFIX = ResourceDescriptor.KEYS_LOCATION_PREFIX;
 
     private static final String ORG_PREFIX = ".org/";
     private static final String USERS_SEGMENT = ".users/";
     private static final String KEYS_SEGMENT = ".keys/";
 
     /**
-     * The platform scope is the root of the tenant-rooted tree, above any tenant, so it has no prefix.
+     * The platform scope maps to the root of the tenant-rooted tree, above any tenant, so it has no prefix.
      */
-    private static final String PLATFORM_LOCATION = "";
+    private static final String TENANT_TREE_ROOT = "";
 
     /**
      * Where the system buckets of {@link ResourceDescriptor#SYSTEM_LOCATIONS} land — at the root, above any
-     * tenant, keeping the bucket name so the mapping stays reversible.
-     *
-     * <p>Above rather than inside a tenant because that is what preserves today's behaviour: the background
-     * job scheduler scans its bucket whole, and cost stats and response mappings are keyed by globally unique
-     * trace, job and response ids. Whether this state should become tenant-scoped is a real question — per
-     * tenant billing would want it to be — but it is a design decision for the phase that turns multi-tenancy
-     * on, not something to settle silently inside a path transform.
+     * tenant, which preserves whole-bucket scans and globally unique keys; the bucket name is kept so the
+     * mapping stays reversible.
      */
     private static final String SYSTEM_SEGMENT = ".system/";
 
@@ -50,9 +43,13 @@ public class TenantLayoutTransform {
      */
     private static final Set<String> RESERVED_SEGMENTS = Set.of(ORG_PREFIX, USERS_SEGMENT, KEYS_SEGMENT, SYSTEM_SEGMENT);
 
+    /**
+     * A location that is not the platform, a system bucket, public or a principal is rejected rather than
+     * passed through: a silent fallback would let the next unmapped bucket reach production unnoticed.
+     */
     public String toTenantLocation(String legacyLocation, String tenantId) {
         if (ResourceDescriptor.PLATFORM_LOCATION.equals(legacyLocation)) {
-            return PLATFORM_LOCATION;
+            return TENANT_TREE_ROOT;
         }
 
         if (ResourceDescriptor.SYSTEM_LOCATIONS.contains(legacyLocation)) {
@@ -69,12 +66,12 @@ public class TenantLayoutTransform {
             return tenantRoot + scope;
         }
 
-        String userId = principalId(legacyLocation, LEGACY_USERS_PREFIX);
+        String userId = principalId(legacyLocation, ResourceDescriptor.USERS_LOCATION_PREFIX);
         if (userId != null) {
             return tenantRoot + USERS_SEGMENT + userId;
         }
 
-        String project = principalId(legacyLocation, LEGACY_KEYS_PREFIX);
+        String project = principalId(legacyLocation, ResourceDescriptor.KEYS_LOCATION_PREFIX);
         if (project != null) {
             return tenantRoot + KEYS_SEGMENT + project;
         }
@@ -83,7 +80,7 @@ public class TenantLayoutTransform {
     }
 
     public String toLegacyLocation(String tenantLocation, String tenantId) {
-        if (PLATFORM_LOCATION.equals(tenantLocation)) {
+        if (TENANT_TREE_ROOT.equals(tenantLocation)) {
             return ResourceDescriptor.PLATFORM_LOCATION;
         }
 
@@ -107,12 +104,12 @@ public class TenantLayoutTransform {
 
         String userId = principalId(scope, USERS_SEGMENT);
         if (userId != null) {
-            return LEGACY_USERS_PREFIX + userId;
+            return ResourceDescriptor.USERS_LOCATION_PREFIX + userId;
         }
 
         String project = principalId(scope, KEYS_SEGMENT);
         if (project != null) {
-            return LEGACY_KEYS_PREFIX + project;
+            return ResourceDescriptor.KEYS_LOCATION_PREFIX + project;
         }
 
         if (scope.charAt(0) != TYPE_FOLDER_MARKER) {
@@ -163,11 +160,20 @@ public class TenantLayoutTransform {
         }
     }
 
-    private String tenantRoot(String tenantId) {
-        if (tenantId.isEmpty()) {
-            throw new IllegalArgumentException("Tenant id must not be empty");
+    /**
+     * A tenant id is a single undotted path segment: a separator would let one tenant's root nest inside
+     * another's, and a leading marker would collide with the reserved dotted names.
+     */
+    void requireTenantId(String tenantId) {
+        if (tenantId.isEmpty()
+                || tenantId.contains(ResourceDescriptor.PATH_SEPARATOR)
+                || tenantId.charAt(0) == TYPE_FOLDER_MARKER) {
+            throw new IllegalArgumentException("Unsupported tenant id: " + tenantId);
         }
+    }
 
+    private String tenantRoot(String tenantId) {
+        requireTenantId(tenantId);
         return ORG_PREFIX + tenantId + ResourceDescriptor.PATH_SEPARATOR;
     }
 

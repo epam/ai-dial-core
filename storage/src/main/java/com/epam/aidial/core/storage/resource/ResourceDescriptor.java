@@ -45,9 +45,6 @@ public class ResourceDescriptor {
      * Buckets holding platform-internal runtime state rather than anyone's content. They belong to no
      * principal, so a layout has to place them somewhere other than the branches it uses for users and
      * projects, and they are listed here so a layout can enumerate them.
-     *
-     * <p>A location that is not a principal, not public, not the platform and not in this set is rejected
-     * rather than passed through: a silent fallback would let the next such bucket reach production unmapped.
      */
     public static final Set<String> SYSTEM_LOCATIONS = Set.of(
             DEPLOYMENT_COST_STATS_LOCATION, BACKGROUND_JOB_LOCATION, RESPONSE_MAPPINGS_LOCATION,
@@ -139,21 +136,14 @@ public class ResourceDescriptor {
     }
 
     /**
-     * Returns the path {@link #getAbsoluteFilePath()} produces under the legacy layout, whichever layout
-     * is active.
-     *
-     * <p>Callers that bake a resource path into something durable — an identifier handed to a user, an
-     * encryption AAD — must use this rather than the physical path. A physical path is free to change when the
-     * layout changes; anything derived from one and then stored is not, or the stored thing stops resolving.
+     * The path {@link #getAbsoluteFilePath()} produces under the legacy layout, whichever layout is active.
+     * Anything durable derived from a path — an identifier handed to a user, an encryption AAD — must use
+     * this: a physical path is free to change when the layout does, and the stored artifact is not.
      */
     public String getStableFilePath() {
         return getStoragePrefix(LegacyStorageLayout.INSTANCE) + getPathWithinType();
     }
 
-    /**
-     * Returns the prefix every path of this resource starts with under the given layout: the bucket
-     * location followed by the resource-type folder.
-     */
     private String getStoragePrefix(StorageLayout layout) {
         return layout.resolveLocationPrefix(bucketLocation) + layout.resolveTypeFolder(type.group()) + PATH_SEPARATOR;
     }

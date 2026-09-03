@@ -24,11 +24,6 @@ import java.util.Map;
 @Slf4j
 @RequiredArgsConstructor
 public class TokenStatsTracker {
-    // Declared in ResourceDescriptor so a storage layout can enumerate the system buckets; a second literal
-    // here is how the tenant-rooted layout came to reject this location in the first place.
-    public static final String DEPLOYMENT_COST_STATS_BUCKET = ResourceDescriptor.DEPLOYMENT_COST_STATS_BUCKET;
-    public static final String DEPLOYMENT_COST_STATS_LOCATION = ResourceDescriptor.DEPLOYMENT_COST_STATS_LOCATION;
-
     private final AsyncTaskExecutor taskExecutor;
     private final ResourceService resourceService;
 
@@ -216,6 +211,6 @@ public class TokenStatsTracker {
 
     private static ResourceDescriptor toResource(String traceId) {
         return ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.DEPLOYMENT_COST_STATS, DEPLOYMENT_COST_STATS_BUCKET, DEPLOYMENT_COST_STATS_LOCATION, traceId);
+                ResourceTypes.DEPLOYMENT_COST_STATS, ResourceDescriptor.DEPLOYMENT_COST_STATS_BUCKET, ResourceDescriptor.DEPLOYMENT_COST_STATS_LOCATION, traceId);
     }
 }

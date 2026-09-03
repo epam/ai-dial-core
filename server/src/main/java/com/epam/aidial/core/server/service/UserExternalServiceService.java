@@ -78,8 +78,6 @@ public class UserExternalServiceService {
     public ExternalService put(String ownerUserId, String appPart, String serviceId, ExternalService service, String author) {
         ResourceDescriptor resource = descriptor(ownerUserId, appPart, serviceId);
         BucketInfo bucket = new BucketInfo(resource.getBucketName(), resource.getBucketLocation());
-        // Stable rather than physical path: the AAD is baked into the stored ciphertext and must
-        // survive a storage-layout change.
         String aad = resource.getStableFilePath();
         MutableObject<ExternalService> result = new MutableObject<>();
         PersistedSecret persisted = new PersistedSecret();
