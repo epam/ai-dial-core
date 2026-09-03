@@ -45,11 +45,11 @@ allprojects {
         resolutionStrategy {
             force 'com.google.code.gson:gson:2.11.0'
             force 'net.minidev:json-smart:2.5.2'
-            force 'io.grpc:grpc-netty-shaded:1.75.0'
-            force 'io.grpc:grpc-core:1.75.0'
-            force 'io.grpc:grpc-api:1.75.0'
-            force 'io.grpc:grpc-context:1.75.0'
-            force 'io.grpc:grpc-util:1.75.0'
+            eachDependency { details ->
+                if (details.requested.group == 'io.grpc') {
+                    details.useVersion('1.75.0')
+                }
+            }
             // Keep the whole netty graph on one patched version; netty-tcnative-* is intentionally
             // absent, it has its own 2.0.x version line.
             force "io.netty:netty-buffer:${netty_version}"
