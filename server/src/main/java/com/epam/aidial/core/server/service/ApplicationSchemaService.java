@@ -117,7 +117,27 @@ public class ApplicationSchemaService {
 
     private final HttpClient httpClient;
 
-    private final ConcurrentHashMap<URI, String> schemaCache = new ConcurrentHashMap<>();
+    private static final class CachedSchema {
+        private final String raw;
+        private final JsonNode parsed;
+        private volatile JsonSchema compiled;
+
+        CachedSchema(String raw, JsonNode parsed) {
+            this.raw = raw;
+            this.parsed = parsed;
+        }
+
+        JsonSchema compiled() {
+            JsonSchema result = compiled;
+            if (result == null) {
+                result = SCHEMA_FACTORY.getSchema(raw);
+                compiled = result;
+            }
+            return result;
+        }
+    }
+
+    private final ConcurrentHashMap<URI, CachedSchema> schemaCache = new ConcurrentHashMap<>();
 
     public ApplicationSchemaService(ResourceService resourceService, ConfigStore configStore,
                                     EncryptionService encryptionService, @Nullable ProxySelector proxySelector) {
@@ -141,46 +161,69 @@ public class ApplicationSchemaService {
         this.httpClient = httpClient;
     }
 
+    @VisibleForTesting
+    int schemaCacheSize() {
+        return schemaCache.size();
+    }
+
     @SneakyThrows
     @Nullable
     public String getSchema(URI schemaId, boolean forceReload) {
+        CachedSchema cached = resolveSchema(schemaId, forceReload);
+        return cached == null ? null : cached.raw;
+    }
+
+    @SneakyThrows
+    @Nullable
+    private CachedSchema resolveSchema(URI schemaId, boolean forceReload) {
+        if (!forceReload) {
+            CachedSchema cached = schemaCache.get(schemaId);
+            if (cached != null) {
+                return cached;
+            }
+        }
         String customApplicationSchema = configStore.get().getCustomApplicationSchema(schemaId);
         if (customApplicationSchema == null) {
+            schemaCache.remove(schemaId);
             return null;
         }
         JsonNode schema = ProxyUtil.MAPPER.readTree(customApplicationSchema);
+        CachedSchema result;
         if (schema.has(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT)) {
             String url = schema.get(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT).textValue();
-            if (forceReload || !schemaCache.containsKey(schemaId)) {
-                try {
-                    ObjectNode appSchema = downloadAppSchema(url);
-                    merge(appSchema, schema);
-                    String result = appSchema.toString();
-                    schemaCache.put(schemaId, result);
-                    return result;
-                } catch (Exception e) {
-                    log.warn("Failed to download application schema: {}", url, e);
-                    throw new ApplicationTypeSchemaProcessingException("Failed to download application schema: " + url, e);
-                }
-            } else {
-                return schemaCache.get(schemaId);
+            try {
+                ObjectNode appSchema = downloadAppSchema(url);
+                merge(appSchema, schema);
+                result = new CachedSchema(appSchema.toString(), appSchema);
+            } catch (Exception e) {
+                log.warn("Failed to download application schema: {}", url, e);
+                throw new ApplicationTypeSchemaProcessingException("Failed to download application schema: " + url, e);
             }
         } else {
-            return customApplicationSchema;
+            result = new CachedSchema(customApplicationSchema, schema);
         }
+        schemaCache.put(schemaId, result);
+        return result;
     }
 
     @SneakyThrows
     String getCustomApplicationSchemaOrThrow(Application application, boolean forceReload) {
+        CachedSchema cached = getCachedSchemaOrThrow(application, forceReload);
+        return cached == null ? null : cached.raw;
+    }
+
+    @SneakyThrows
+    @Nullable
+    private CachedSchema getCachedSchemaOrThrow(Application application, boolean forceReload) {
         URI schemaId = application.getApplicationTypeSchemaId();
         if (schemaId == null) {
             return null;
         }
-        String customApplicationSchema = getSchema(schemaId, forceReload);
-        if (customApplicationSchema == null) {
+        CachedSchema cached = resolveSchema(schemaId, forceReload);
+        if (cached == null) {
             throw new ApplicationTypeSchemaValidationException("Custom application schema not found: " + schemaId);
         }
-        return customApplicationSchema;
+        return cached;
     }
 
     private void merge(ObjectNode appSchema, JsonNode schema) {
@@ -214,9 +257,8 @@ public class ApplicationSchemaService {
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> filterProperties(Map<String, Object> applicationProperties, String schema, ListCollector.MetaDataCollectorType collector) {
+    private static Map<String, Object> filterProperties(Map<String, Object> applicationProperties, JsonSchema appSchema, ListCollector.MetaDataCollectorType collector) {
         try {
-            JsonSchema appSchema = SCHEMA_FACTORY.getSchema(schema);
             CollectorContext collectorContext = new CollectorContext();
             String applicationPropertiesJson = ProxyUtil.MAPPER.writeValueAsString(applicationProperties);
             Set<ValidationMessage> validationResult = appSchema.validate(applicationPropertiesJson, InputFormat.JSON,
@@ -249,17 +291,17 @@ public class ApplicationSchemaService {
         if (application.getApplicationProperties() == null) {
             throw new ApplicationTypeSchemaValidationException("Typed application's properties not set");
         }
-        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application, false);
+        CachedSchema cached = getCachedSchemaOrThrow(application, false);
         try {
-            if (customApplicationSchema == null) {
+            if (cached == null) {
                 consumer.accept(application.getApplicationProperties(), true);
                 return;
             }
-            JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
+            JsonNode schemaNode = cached.parsed;
             boolean appendApplicationPropertiesHeader = !schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_APPEND_APPLICATION_PROPERTIES)
                                                         || schemaNode.get(MetaSchemaHolder.APPLICATION_TYPE_APPEND_APPLICATION_PROPERTIES).asBoolean();
             Map<String, Object> serverProperties = filterProperties(application.getApplicationProperties(),
-                    customApplicationSchema, ListCollector.MetaDataCollectorType.ALL);
+                    cached.compiled(), ListCollector.MetaDataCollectorType.ALL);
             consumer.accept(serverProperties, appendApplicationPropertiesHeader);
         } catch (JsonProcessingException e) {
             throw new ApplicationTypeSchemaProcessingException("Failed to parse custom application schema", e);
@@ -279,8 +321,8 @@ public class ApplicationSchemaService {
 
     private void consumeCustomApplicationEndpoints(Application application, EndpointConsumer consumer) {
         try {
-            String schema = getCustomApplicationSchemaOrThrow(application, false);
-            JsonNode schemaNode = ProxyUtil.MAPPER.readTree(schema);
+            CachedSchema cached = getCachedSchemaOrThrow(application, false);
+            JsonNode schemaNode = cached.parsed;
 
             String completionEndpoint = getEndpoint(schemaNode, APPLICATION_TYPE_COMPLETION_ENDPOINT, false);
             String responsesEndpoint = getEndpoint(schemaNode, APPLICATION_TYPE_RESPONSES_ENDPOINT, false);
@@ -296,16 +338,15 @@ public class ApplicationSchemaService {
                     rateEndpoint,
                     tokenizeEndpoint,
                     truncatePromptEndpoint);
-        } catch (JsonProcessingException | IllegalArgumentException e) {
+        } catch (IllegalArgumentException e) {
             throw new ApplicationTypeSchemaProcessingException("Failed to get custom application endpoints", e);
         }
     }
 
     @SneakyThrows
     public String getChatCompletionEndpoint(Application application) {
-        String schema = getCustomApplicationSchemaOrThrow(application, false);
-        JsonNode schemaNode = ProxyUtil.MAPPER.readTree(schema);
-        return getEndpoint(schemaNode, APPLICATION_TYPE_COMPLETION_ENDPOINT, false);
+        CachedSchema cached = getCachedSchemaOrThrow(application, false);
+        return getEndpoint(cached.parsed, APPLICATION_TYPE_COMPLETION_ENDPOINT, false);
     }
 
     private static String getEndpoint(JsonNode schemaNode, String endpointKey, boolean isRequired) {
@@ -358,8 +399,8 @@ public class ApplicationSchemaService {
     }
 
     public Application filterCustomClientProperties(Application application) {
-        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application, false);
-        if (customApplicationSchema == null) {
+        CachedSchema cached = getCachedSchemaOrThrow(application, false);
+        if (cached == null) {
             return application;
         }
         if (application.getApplicationProperties() == null) {
@@ -367,7 +408,7 @@ public class ApplicationSchemaService {
         }
         Application copy = new Application(application);
         Map<String, Object> appWithClientOptionsOnly = filterProperties(application.getApplicationProperties(),
-                customApplicationSchema, ListCollector.MetaDataCollectorType.CLIENT);
+                cached.compiled(), ListCollector.MetaDataCollectorType.CLIENT);
         copy.setApplicationProperties(appWithClientOptionsOnly);
         return copy;
     }
@@ -431,11 +472,11 @@ public class ApplicationSchemaService {
 
     @Nullable
     private Object getCollector(Application application, String collectorName, boolean forceReload) throws JsonProcessingException {
-        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application, forceReload);
-        if (customApplicationSchema == null) {
+        CachedSchema cached = getCachedSchemaOrThrow(application, forceReload);
+        if (cached == null) {
             return null;
         }
-        JsonSchema appSchema = SCHEMA_FACTORY.getSchema(customApplicationSchema);
+        JsonSchema appSchema = cached.compiled();
         CollectorContext collectorContext = new CollectorContext();
         String customPropsJson = ProxyUtil.MAPPER.writeValueAsString(application.getApplicationProperties());
         Set<ValidationMessage> validationResult = appSchema.validate(customPropsJson, InputFormat.JSON,
@@ -477,11 +518,11 @@ public class ApplicationSchemaService {
     @Nullable
     @SneakyThrows
     public LinkedHashMap<String, Route> getRoutes(Application application) {
-        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application, false);
-        if (customApplicationSchema == null) {
+        CachedSchema cached = getCachedSchemaOrThrow(application, false);
+        if (cached == null) {
             return null;
         }
-        JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
+        JsonNode schemaNode = cached.parsed;
         JsonNode appRoutes = schemaNode.get(APPLICATION_TYPE_ROUTES);
         if (appRoutes == null) {
             return null;
@@ -492,11 +533,11 @@ public class ApplicationSchemaService {
     @Nullable
     @SneakyThrows
     public Application.Mcp getMcp(Application application) {
-        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application, false);
-        if (customApplicationSchema == null) {
+        CachedSchema cached = getCachedSchemaOrThrow(application, false);
+        if (cached == null) {
             return null;
         }
-        JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
+        JsonNode schemaNode = cached.parsed;
         JsonNode mcp = schemaNode.get(DIAL_APPLICATION_TYPE_MCP);
         if (mcp == null) {
             return null;
@@ -506,11 +547,11 @@ public class ApplicationSchemaService {
 
     @SneakyThrows
     public CopyAppBucketOptions getCopyAppBucketOptions(Application application) {
-        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application, false);
-        if (customApplicationSchema == null) {
+        CachedSchema cached = getCachedSchemaOrThrow(application, false);
+        if (cached == null) {
             return CopyAppBucketOptions.DISABLED;
         }
-        JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
+        JsonNode schemaNode = cached.parsed;
         JsonNode options = schemaNode.get(DIAL_APPLICATION_TYPE_BUCKET_COPY);
         if (options == null) {
             return CopyAppBucketOptions.DISABLED;
@@ -520,11 +561,11 @@ public class ApplicationSchemaService {
 
     @SneakyThrows
     public List<String> getInterceptors(Application application) {
-        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application, false);
-        if (customApplicationSchema == null) {
+        CachedSchema cached = getCachedSchemaOrThrow(application, false);
+        if (cached == null) {
             return List.of();
         }
-        JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
+        JsonNode schemaNode = cached.parsed;
         JsonNode interceptors = schemaNode.get(DIAL_APPLICATION_TYPE_INTERCEPTORS);
         if (interceptors == null) {
             return List.of();
@@ -534,24 +575,22 @@ public class ApplicationSchemaService {
 
     @SneakyThrows
     private boolean getBooleanProperty(Application application, String propName) {
-        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application, false);
-        if (customApplicationSchema == null) {
+        CachedSchema cached = getCachedSchemaOrThrow(application, false);
+        if (cached == null) {
             return false;
         }
-        JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
-        return Optional.ofNullable(schemaNode.get(propName))
+        return Optional.ofNullable(cached.parsed.get(propName))
                 .map(JsonNode::asBoolean).orElse(false);
     }
 
     @SneakyThrows
     @Nullable
     public String getStringProperty(Application application, String propName) {
-        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application, false);
-        if (customApplicationSchema == null) {
+        CachedSchema cached = getCachedSchemaOrThrow(application, false);
+        if (cached == null) {
             return null;
         }
-        JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
-        return Optional.ofNullable(schemaNode.get(propName))
+        return Optional.ofNullable(cached.parsed.get(propName))
                 .map(JsonNode::asText).orElse(null);
     }
 
