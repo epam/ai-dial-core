@@ -158,7 +158,8 @@ The base URL serving an interface is resolved in this order:
 
 1. `interfaces.<interface_type>.base_url`, when the entry declares one.
 2. The model-level `baseUrl`. Usually a single root serves every interface and only the path differs (`/openai/deployments/{name}/chat/completions`, `/openai/v1/responses`, `/anthropic/v1/messages`), so declaring it once at the model level and listing the supported interfaces with no `base_url` of their own is enough; an entry that does declare one overrides it for that interface only.
-3. `endpoint`/`responsesEndpoint`, for interface types the `interfaces` map does not declare at all.
+3. The `translator` serving the entry, when `mode` is `translator`. A translated interface is served by its translator and by nothing else — it takes neither base URL above nor the legacy field below. Refer to [translators](translators.md).
+4. `endpoint`/`responsesEndpoint`, for interface types the `interfaces` map does not declare at all.
 
 `interfaces` is the whitelist of what the model serves: a model-level `baseUrl` on its own declares no interface, and an interface listed with neither base URL is answered with `503`. If both `interfaces` and a legacy field are declared for the same interface type, `interfaces` takes precedence; the legacy field is left untouched in config and ignored for routing.
 
@@ -178,7 +179,8 @@ Only the interface types a model declares are reported in the `interfaces` array
 Each value is an object with the following fields:
 
 * `base_url`: The root URL that the matching ingress path is appended to. Optional — the model-level `baseUrl` serves an entry that omits it.
-* `mode`: `passthrough` (default) or `translator`. It declares whether the request is forwarded in the shape it arrived in, or handed to a service that translates it into an API the model does speak. A `translator` interface does not charge its tokens to the model's [limits](#modelsmodel_namelimits): the translator calls DIAL Core back to have the completion served, and that inner request is what carries the usage to the limits, so charging both would count it twice.
+* `mode`: `passthrough` (default) or `translator`. It declares whether the request is forwarded in the shape it arrived in, or handed to a service that translates it into an API the model does speak. A `translator` interface **does not touch the caller's [role limits](roles.md#rolesrole_namelimits)** — neither checks nor charges them. The translator calls DIAL Core back to have the completion served, and that second call is the real request: it carries the tokens, the cost and the `requestHour`/`requestDay` slot, so a client call is counted once rather than twice. An exhausted quota is therefore enforced on the callback rather than on the translated call itself. Refer to [Limits and a translated request](translators.md#limits-and-a-translated-request).
+* `translator`: The translator serving this interface, required by `mode: translator` and rejected without it. Either the name of a [translators](translators.md) entry, or a definition written inline as `{"out": ..., "baseUrl": ...}`. An interface is served either by a base URL or by a translator, never by both — a model declaring both is rejected on config load.
 * `defaultHeaders`: Headers applied to requests for this interface only, laid over the model-level `defaultHeaders`. Refer to [models.<model_name>.defaultHeaders](#modelsmodel_namedefaultheaders).
 
 **Example**
@@ -200,8 +202,8 @@ Each value is an object with the following fields:
             "openaiChatCompletions": { "mode": "passthrough" },
             "openaiResponses": null,
             "anthropicMessages": {
-                "mode": "passthrough",
-                "base_url": "http://dial-bedrock-adapter"
+                "mode": "translator",
+                "translator": "anthropicMessagesToOpenaiChatCompletions"
             }
         }
     },

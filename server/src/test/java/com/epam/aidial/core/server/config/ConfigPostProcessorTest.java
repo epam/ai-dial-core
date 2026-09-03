@@ -4,12 +4,15 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
+import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.PricingRate;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.Translator;
+import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -21,9 +24,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static com.epam.aidial.core.config.InterfaceType.ANTHROPIC_MESSAGES;
+import static com.epam.aidial.core.config.InterfaceType.OPENAI_CHAT_COMPLETIONS;
+import static com.epam.aidial.core.config.InterfaceType.OPENAI_RESPONSES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -251,6 +258,199 @@ public class ConfigPostProcessorTest {
         ConfigPostProcessor.process(config, null);
 
         assertEquals(3, config.getModels().get("model").getInterfaces().size());
+    }
+
+    @Test
+    void testSemanticThrowsOnRegistryTranslatorWithoutIn() {
+        // a registry entry is declared under no interface, so in is the only thing tying it to one
+        Config config = newMutableConfig();
+        config.setTranslators(Map.of("anthropicMessagesToOpenaiChatCompletions",
+                new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://translator/to-chat-completions")));
+
+        assertThrows(IllegalStateException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticLinksNamedTranslatorToItsRegistryEntry() {
+        Config config = newMutableConfig();
+        config.setTranslators(Map.of("anthropicMessagesToOpenaiChatCompletions",
+                new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://translator/to-chat-completions")));
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of("anthropicMessages",
+                translated(TranslatorRef.named("anthropicMessagesToOpenaiChatCompletions"))));
+        config.getModels().put("model", model);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        TranslatorRef translator = config.getModels().get("model").getInterfaces().get("anthropicMessages").getTranslator();
+        assertEquals("http://translator/to-chat-completions", translator.getDefinition().getBaseUrl());
+        // the name is kept alongside what it resolved to, so the reference survives a config round-trip
+        assertEquals("anthropicMessagesToOpenaiChatCompletions", translator.getName());
+    }
+
+    @Test
+    void testSemanticKeepsModelWithAnUnknownTranslator() {
+        // an unresolved reference leaves that one interface unserved, the same as it does for an
+        // application or interceptor; it does not make the model invalid (DeploymentEndpointUtilTest
+        // covers the 503 side of it)
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of("anthropicMessages", translated(TranslatorRef.named("missing"))));
+        config.getModels().put("model", model);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getModels().containsKey("model"));
+        assertNull(model.getInterfaces().get("anthropicMessages").getTranslator().getDefinition());
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnBothTranslatorAndBaseUrl() {
+        // an interface is served by one or the other, so a config declaring both is rejected, not resolved
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        DeploymentInterface anthropic = translated(TranslatorRef.inline(
+                new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://translator")));
+        anthropic.setBaseUrl("http://anthropic");
+        model.setInterfaces(Map.of("anthropicMessages", anthropic));
+        config.getModels().put("model", model);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnTranslatorWithoutTranslatorMode() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        DeploymentInterface anthropic = new DeploymentInterface();
+        anthropic.setTranslator(TranslatorRef.inline(new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://translator")));
+        model.setInterfaces(Map.of("anthropicMessages", anthropic));
+        config.getModels().put("model", model);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnTranslatorModeWithoutTranslator() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setBaseUrl("http://model");
+        model.setInterfaces(Map.of("anthropicMessages", translated(null)));
+        config.getModels().put("model", model);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAbortThrowsWhenTheModelDoesNotServeTheTranslatorOutput() {
+        // the translator calls Core back on openaiResponses, which this model serves nowhere
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of("anthropicMessages", translated(TranslatorRef.inline(
+                new Translator(ANTHROPIC_MESSAGES, OPENAI_RESPONSES, "http://translator/to-responses")))));
+        config.getModels().put("model", model);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAbortThrowsWhenTheTranslatorOutputIsItselfTranslated() {
+        // anthropicMessages converts to openaiResponses, which converts back to anthropicMessages: the
+        // callback would arrive on a translated interface and be handed to a translator again
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setBaseUrl("http://model");
+        model.setInterfaces(Map.of(
+                "anthropicMessages", translated(TranslatorRef.inline(
+                        new Translator(ANTHROPIC_MESSAGES, OPENAI_RESPONSES, "http://translator/to-responses"))),
+                "openaiResponses", translated(TranslatorRef.inline(
+                        new Translator(OPENAI_RESPONSES, ANTHROPIC_MESSAGES, "http://translator/to-messages")))));
+        config.getModels().put("model", model);
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+
+        // both ends of the cycle are reported, each as the translated interface its own output lands on
+        assertEquals(2, error.getWarnings().size());
+        assertTrue(error.getMessage().contains("handed to a translator again"), error.getMessage());
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnTranslatorConvertingAnInterfaceToItself() {
+        // the translator's own output arrives back on the interface it came from, and Core hands it
+        // straight back to the translator: a loop, not a 503
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of("anthropicMessages", translated(TranslatorRef.inline(
+                new Translator(ANTHROPIC_MESSAGES, ANTHROPIC_MESSAGES, "http://translator")))));
+        config.getModels().put("model", model);
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+
+        // and it is reported as what it is, not as an interface the model fails to serve
+        assertEquals(1, error.getWarnings().size());
+        assertTrue(error.getMessage().contains("cannot convert 'anthropicMessages' to itself"), error.getMessage());
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnInlineTranslatorConvertingToItsOwnInterface() {
+        // an inline definition names no in, so the interface it sits under is what it converts from
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of("anthropicMessages", translated(TranslatorRef.inline(
+                new Translator(null, ANTHROPIC_MESSAGES, "http://translator")))));
+        config.getModels().put("model", model);
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+
+        assertTrue(error.getMessage().contains("cannot convert 'anthropicMessages' to itself"), error.getMessage());
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnInterfaceWithNoBaseUrlAnywhere() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setInterfaces(Map.of("openaiChatCompletions", new DeploymentInterface()));
+        config.getModels().put("model", model);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAllowsInterfacesCompletedByTheModelBaseUrl() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setBaseUrl("http://model");
+        model.setInterfaces(Map.of(
+                "openaiChatCompletions", new DeploymentInterface(),
+                "openaiResponses", new DeploymentInterface("http://model-responses")));
+        config.getModels().put("model", model);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getModels().containsKey("model"));
+    }
+
+    private static DeploymentInterface translated(TranslatorRef translator) {
+        DeploymentInterface declared = new DeploymentInterface();
+        declared.setMode(InterfaceMode.TRANSLATOR);
+        declared.setTranslator(translator);
+        return declared;
     }
 
     private static Config newMutableConfig() {

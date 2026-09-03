@@ -210,7 +210,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                 })
                 .compose(dep -> {
                     if (dep instanceof Model && !context.hasNextInterceptor()) {
-                        return proxy.getRateLimiter().limit(context, dep);
+                        return checkLimits(dep);
                     } else {
                         return Future.succeededFuture(RateLimitResult.SUCCESS);
                     }
