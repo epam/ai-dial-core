@@ -654,7 +654,12 @@ public class ConsentServiceTest {
         // any declaration change re-requires the grant — an extra entry, a reordered section
         assertFalse(service.isAdminConsented("app", declaration("current-user/skills/", "files/public/p/")));
         assertFalse(service.isAdminConsented("app", declaration("files/public/p/", "current-user/skills/")));
-        // the grant's own provenance never participates in the binding — vary it, the yes still stands
+        // the grant's own provenance never participates in the binding — the same snapshot under a
+        // different who/when still stands
+        when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn("""
+                {"consent": {"resources": [{"url": "current-user/skills/", "access": ["WRITE"]}]},
+                 "grantedBy": "another-admin", "grantedAt": 9999999999999}
+                """);
         assertTrue(service.isAdminConsented("app", declaration("current-user/skills/")));
     }
 

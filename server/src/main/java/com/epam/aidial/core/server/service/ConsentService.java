@@ -174,10 +174,9 @@ public class ConsentService {
         }
         List<Consent.ResourceEntry> grantedResources =
                 stored.getConsent() == null ? List.of() : stored.getConsent().getResources();
-        // Fail closed on a consent-less envelope (never produced by the grant, tolerated here):
-        // nothing matches, so the record reads as stale rather than consented.
-        boolean matches = stored.getConsent() != null
-                && Objects.equals(grantedResources, resourceEntriesOf(declaration));
+        // The shared predicate: the same comparison the request-time gate runs, so the status
+        // read reports exactly what the gate enforces.
+        boolean matches = matches(stored, declaration);
         return new AdminConsentStatus()
                 .setConsented(matches)
                 .setStale(!matches)
@@ -186,9 +185,21 @@ public class ConsentService {
                 .setGrantedResources(grantedResources);
     }
 
-    /** Content-bound check: the stored snapshot must deep-equal the declaration's current snapshot. */
+    /**
+     * Content-bound check: the stored snapshot must deep-equal the declaration's current snapshot.
+     * Zero-allocation on the request-time hot path — no presentation DTO is built, and the gate
+     * never depends on fields the status read adds.
+     */
     public boolean isAdminConsented(String applicationId, List<ResourceDependency> declaration) {
-        return describeAdminConsent(applicationId, declaration).isConsented();
+        return matches(readAdminConsent(getAdminConsentDescription(applicationId)), declaration);
+    }
+
+    /** The one predicate both the gate and the status read enforce — provenance never participates. */
+    private static boolean matches(ConsentGrant stored, List<ResourceDependency> declaration) {
+        // Fail closed on a consent-less envelope (a legacy bare-Consent body reads as consent==null):
+        // nothing matches, so the record reads as stale rather than consented.
+        return stored != null && stored.getConsent() != null
+                && Objects.equals(stored.getConsent().getResources(), resourceEntriesOf(declaration));
     }
 
     private Application requireDeclaringApplication(ProxyContext context, String deploymentId) {

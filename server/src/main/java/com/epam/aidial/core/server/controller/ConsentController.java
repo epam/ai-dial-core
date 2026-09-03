@@ -112,7 +112,11 @@ public class ConsentController {
                             description = OpenApiDescriptions.DEPLOYMENT_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success",
+                    @ApiResponse(code = 200,
+                            description = "Success — consented (live right now: grant exists AND matches the "
+                                    + "current declaration, exactly what request-time resolution enforces), "
+                                    + "stale, grantedBy, grantedAt, grantedResources (present when a grant exists, "
+                                    + "including the stale case)",
                             body = @ApiSchema(implementation = AdminConsentStatus.class)),
                     @ApiResponse(code = 403),
                     @ApiResponse(code = 404),
