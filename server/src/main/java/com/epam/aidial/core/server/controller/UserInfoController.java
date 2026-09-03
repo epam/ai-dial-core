@@ -45,6 +45,11 @@ public class UserInfoController implements Controller {
             ObjectNode claims = normalize(context.getExtractedClaims().userClaims());
             response.put("userClaims", claims);
         }
+        // Resolved from the identity provider's userDisplayName claim path, or the API key's project name.
+        String userDisplayName = context.getUserDisplayName();
+        if (userDisplayName != null) {
+            response.put("userDisplayName", userDisplayName);
+        }
         context.respond(HttpStatus.OK, response.encode());
         return Future.succeededFuture();
     }
