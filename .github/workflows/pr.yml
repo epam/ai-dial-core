@@ -17,6 +17,27 @@ jobs:
       java-version: 21
       trivy-limit-severities-for-sarif: false
 
+  # Kept out of run_tests: the storage layout is process-wide static state and this suite exists to flip it,
+  # which is what makes unrelated classes fail elsewhere in the same JVM. Its own job also means the ~1 minute
+  # it takes runs alongside the main suite rather than after it.
+  storage_layout_comparison:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: epam/ai-dial-ci/actions/java_prepare@4.10.0
+        with:
+          java-version: 21
+          java-distribution: temurin
+      - name: Compare the legacy and tenant-rooted storage layouts
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: |
+          ./gradlew :server:layoutDiffTest \
+            -Pgpr.user=$GITHUB_ACTOR \
+            -Pgpr.key=$GITHUB_TOKEN
+
   generate_openai_spec:
     runs-on: ubuntu-24.04
     permissions:

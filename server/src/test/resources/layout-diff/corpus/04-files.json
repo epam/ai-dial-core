@@ -1,0 +1,53 @@
+{
+  "name": "files",
+  "description": "File upload, download and listing. Files are the largest thing customers store and the only corpus entry that goes through the multipart path, where content type and content length are carried separately from the resource body.",
+  "steps": [
+    {
+      "name": "upload",
+      "method": "PUT",
+      "path": "/v1/files/${bucket1}/filesdiff/file.txt",
+      "body": "content of the file under test",
+      "multipart": {"filename": "file.txt", "contentType": "text/custom"}
+    },
+    {
+      "name": "download",
+      "method": "GET",
+      "path": "/v1/files/${bucket1}/filesdiff/file.txt"
+    },
+    {
+      "name": "metadata",
+      "method": "GET",
+      "path": "/v1/metadata/files/${bucket1}/filesdiff/",
+      "query": "recursive=true"
+    },
+    {
+      "name": "upload-nested",
+      "method": "PUT",
+      "path": "/v1/files/${bucket1}/filesdiff/nested/file2.txt",
+      "body": "another file",
+      "multipart": {"filename": "file2.txt", "contentType": "text/plain"}
+    },
+    {
+      "name": "download-other-bucket-forbidden",
+      "method": "GET",
+      "path": "/v1/files/${bucket1}/filesdiff/file.txt",
+      "headers": {"api-key": "proxyKey2"}
+    },
+    {
+      "name": "delete",
+      "method": "DELETE",
+      "path": "/v1/files/${bucket1}/filesdiff/file.txt"
+    },
+    {
+      "name": "download-deleted",
+      "method": "GET",
+      "path": "/v1/files/${bucket1}/filesdiff/file.txt"
+    },
+    {
+      "name": "metadata-after-delete",
+      "method": "GET",
+      "path": "/v1/metadata/files/${bucket1}/filesdiff/",
+      "query": "recursive=true"
+    }
+  ]
+}
