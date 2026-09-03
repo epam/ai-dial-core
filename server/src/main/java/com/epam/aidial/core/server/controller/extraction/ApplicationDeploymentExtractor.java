@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.controller.extraction;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.AccessService;
@@ -10,17 +11,33 @@ import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class ApplicationDeploymentExtractor implements DeploymentService.DeploymentExtractor {
     private final AccessService accessService;
     private final ApplicationService applicationService;
     private final ApplicationSchemaService applicationSchemaService;
 
+    // Populated once per folder by prepareBatch() so extract() doesn't have to re-derive
+    // write access (and re-hit Redis for rules/shared-with-me state) for every single item.
+    private Map<ResourceDescriptor, Set<ResourceAccessType>> batchPermissions = Map.of();
+
     public ApplicationDeploymentExtractor(AccessService accessService, ApplicationService applicationService, ApplicationSchemaService applicationSchemaService) {
         this.accessService = accessService;
         this.applicationService = applicationService;
         this.applicationSchemaService = applicationSchemaService;
+    }
+
+    @Override
+    public void prepareBatch(List<ResourceItemMetadata> items, ProxyContext context) {
+        Set<ResourceDescriptor> resources = items.stream()
+                .map(ResourceItemMetadata::getDescriptor)
+                .collect(Collectors.toUnmodifiableSet());
+        batchPermissions = accessService.lookupPermissions(resources, context);
     }
 
     @SuppressWarnings("unchecked")
@@ -30,7 +47,8 @@ public class ApplicationDeploymentExtractor implements DeploymentService.Deploym
         Application application = applicationService.extractFrom(content, metadata);
         boolean applicationRequestInfoAboutItSelf = !Objects.equals(context.getDecodedSourceDeployment(),
                 resource.getDecodedUrl());
-        boolean filterClientProps = applicationRequestInfoAboutItSelf && !accessService.hasWriteAccess(resource, context);
+        boolean hasWriteAccess = batchPermissions.getOrDefault(resource, Set.of()).contains(ResourceAccessType.WRITE);
+        boolean filterClientProps = applicationRequestInfoAboutItSelf && !hasWriteAccess;
         if (application.hasApplicationTypeSchemaId()) {
             application.setMcp(applicationSchemaService.getMcp(application));
             application.setViewerUrl(applicationSchemaService.getStringProperty(application, MetaSchemaHolder.APPLICATION_TYPE_VIEWER_URL));
