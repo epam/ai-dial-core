@@ -135,7 +135,7 @@ public class DeploymentService {
         }
 
         List<Pair<ResourceItemMetadata, String>> items = resourceService.listResources(resource, filter);
-        extractor.prepareBatch(items.stream().map(Pair::getKey).toList(), ctx);
+        extractor.prepareBatch(items, ctx);
 
         return items.stream().map(item -> {
             try {
@@ -163,7 +163,7 @@ public class DeploymentService {
                 .filter(meta -> meta instanceof ResourceItemMetadata).map(meta -> (ResourceItemMetadata) meta).toList();
         List<Pair<ResourceItemMetadata, String>> deploymentContent = new ArrayList<>();
         resourceService.load(deployments, deploymentContent);
-        extractor.prepareBatch(deploymentContent.stream().map(Pair::getKey).toList(), context);
+        extractor.prepareBatch(deploymentContent, context);
         for (Pair<ResourceItemMetadata, String> item : deploymentContent) {
             try {
                 T deployment = extractor.extract(item.getValue(), item.getKey(), context);
@@ -196,7 +196,7 @@ public class DeploymentService {
          * for that folder. Lets an extractor precompute per-item state (e.g. permissions) in bulk instead of
          * once per item.
          */
-        default void prepareBatch(List<ResourceItemMetadata> items, ProxyContext context) {
+        default void prepareBatch(List<Pair<ResourceItemMetadata, String>> items, ProxyContext context) {
         }
     }
 

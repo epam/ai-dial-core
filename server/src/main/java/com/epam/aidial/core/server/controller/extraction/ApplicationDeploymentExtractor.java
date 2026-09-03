@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.HashMap;
 import java.util.List;
@@ -36,9 +37,9 @@ public class ApplicationDeploymentExtractor implements DeploymentService.Deploym
     }
 
     @Override
-    public void prepareBatch(List<ResourceItemMetadata> items, ProxyContext context) {
+    public void prepareBatch(List<Pair<ResourceItemMetadata, String>> items, ProxyContext context) {
         Set<ResourceDescriptor> resources = items.stream()
-                .map(ResourceItemMetadata::getDescriptor)
+                .map(item -> item.getKey().getDescriptor())
                 .collect(Collectors.toUnmodifiableSet());
         batchPermissions.putAll(accessService.lookupPermissions(resources, context));
     }
