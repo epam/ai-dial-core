@@ -4359,7 +4359,7 @@ paths:
           type: string
       responses:
         "200":
-          description: "Success — consented (live right now: a grant exists AND matches the current declaration, exactly what request-time resolution enforces), stale (a grant exists but the declaration changed; the last approval's grantedBy/grantedAt/grantedResources stay present for a re-approve view). Administrator only; a per-request key can never call it."
+          description: Success
           content:
             application/json:
               schema:
