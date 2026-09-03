@@ -23,7 +23,6 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -135,16 +134,7 @@ public class DeploymentService {
         }
 
         List<Pair<ResourceItemMetadata, String>> items = resourceService.listResources(resource, filter);
-        extractor.prepareBatch(items, ctx);
-
-        return items.stream().map(item -> {
-            try {
-                return extractor.<T>extract(item.getValue(), item.getKey(), ctx);
-            } catch (Exception e) {
-                log.warn("Can't extract deployment {} due to the error", item.getKey().getUrl(), e);
-                return null;
-            }
-        }).filter(Objects::nonNull).toList();
+        return extractor.<T>extract(items, ctx);
     }
 
     private <T extends  Deployment> List<T> getSharedDeployments(ProxyContext context, ResourceTypes resourceType, DeploymentExtractor extractor) {
@@ -163,15 +153,7 @@ public class DeploymentService {
                 .filter(meta -> meta instanceof ResourceItemMetadata).map(meta -> (ResourceItemMetadata) meta).toList();
         List<Pair<ResourceItemMetadata, String>> deploymentContent = new ArrayList<>();
         resourceService.load(deployments, deploymentContent);
-        extractor.prepareBatch(deploymentContent, context);
-        for (Pair<ResourceItemMetadata, String> item : deploymentContent) {
-            try {
-                T deployment = extractor.extract(item.getValue(), item.getKey(), context);
-                list.add(deployment);
-            } catch (Exception e) {
-                log.warn("Can't extract deployment {} due to the error", item.getKey().getUrl(), e);
-            }
-        }
+        list.addAll(extractor.<T>extract(deploymentContent, context));
 
         List<MetadataBase> folders = metadata.stream()
                 .filter(meta -> meta instanceof ResourceFolderMetadata).toList();
@@ -189,15 +171,7 @@ public class DeploymentService {
     }
 
     public interface DeploymentExtractor {
-        <T extends  Deployment> T extract(String content, ResourceItemMetadata metadata, ProxyContext context);
-
-        /**
-         * Called once per folder with all items about to be extracted from it, before any {@link #extract} call
-         * for that folder. Lets an extractor precompute per-item state (e.g. permissions) in bulk instead of
-         * once per item.
-         */
-        default void prepareBatch(List<Pair<ResourceItemMetadata, String>> items, ProxyContext context) {
-        }
+        <T extends  Deployment> List<T> extract(List<Pair<ResourceItemMetadata, String>> items, ProxyContext context);
     }
 
     public List<String> getInterceptors(ProxyContext context, Deployment deployment) {
