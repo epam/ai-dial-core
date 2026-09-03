@@ -11,6 +11,7 @@ import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -22,9 +23,11 @@ public class ApplicationDeploymentExtractor implements DeploymentService.Deploym
     private final ApplicationService applicationService;
     private final ApplicationSchemaService applicationSchemaService;
 
-    // Populated once per folder by prepareBatch() so extract() doesn't have to re-derive
-    // write access (and re-hit Redis for rules/shared-with-me state) for every single item.
-    private Map<ResourceDescriptor, Set<ResourceAccessType>> batchPermissions = Map.of();
+    // Accumulated across every prepareBatch() call for this extractor instance (one call per folder:
+    // private, each shared folder, public) so extract() - and any other write-access check for the same
+    // listing request, see getBatchedPermissions() - never has to re-derive write access (and re-hit
+    // Redis for rules/shared-with-me state) for an item that's already been resolved.
+    private final Map<ResourceDescriptor, Set<ResourceAccessType>> batchPermissions = new HashMap<>();
 
     public ApplicationDeploymentExtractor(AccessService accessService, ApplicationService applicationService, ApplicationSchemaService applicationSchemaService) {
         this.accessService = accessService;
@@ -37,7 +40,18 @@ public class ApplicationDeploymentExtractor implements DeploymentService.Deploym
         Set<ResourceDescriptor> resources = items.stream()
                 .map(ResourceItemMetadata::getDescriptor)
                 .collect(Collectors.toUnmodifiableSet());
-        batchPermissions = accessService.lookupPermissions(resources, context);
+        batchPermissions.putAll(accessService.lookupPermissions(resources, context));
+    }
+
+    /**
+     * Permissions accumulated so far by {@link #prepareBatch}, keyed by resource. Read-only view for
+     * callers (e.g. {@code ApplicationController}) that want to reuse a listing request's already-batched
+     * permissions instead of computing their own for a resource that's already in this map - and to know
+     * when a resource ISN'T in it, so they can fall back to a real lookup (e.g. for a single-resource
+     * fetch that never went through {@link #prepareBatch}) instead of silently treating it as "no access".
+     */
+    public Map<ResourceDescriptor, Set<ResourceAccessType>> getBatchedPermissions() {
+        return batchPermissions;
     }
 
     @SuppressWarnings("unchecked")
