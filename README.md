@@ -265,6 +265,7 @@ without putting the raw address in the log.
 | resources.resourceTypesExpiration.PROMPT |      |  5 mins  | Define expiration time for prompts                                                                 |
 | resources.resourceTypesExpiration.APPLICATION |      | 30 days  | Define expiration time for applications                                                            |
 | resources.resourceTypesExpiration.TOOL_SET |      | 30 days  | Define expiration time for toolsets                                                                |
+| resources.resourceTypesExpiration.RULES |      | 30 days  | Define expiration time for public rules                                                            |
 
 </details>
 
