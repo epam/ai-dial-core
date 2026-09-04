@@ -86,6 +86,7 @@ public class ConfigManifestSupport {
             scratch.getRoutes().putAll(live.getRoutes());
             scratch.setGlobalInterceptors(live.getGlobalInterceptors());
             scratch.setRetriableErrorCodes(live.getRetriableErrorCodes());
+            scratch.setTranslators(live.getTranslators());
         }
         return scratch;
     }

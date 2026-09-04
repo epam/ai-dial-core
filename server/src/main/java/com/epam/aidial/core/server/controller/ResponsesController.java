@@ -183,7 +183,7 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private Future<Void> verifyLimit() {
-        return proxy.getRateLimiter().limit(context, context.getDeployment())
+        return checkLimits(context.getDeployment())
                 .map(rateLimit -> {
                     rateLimit.throwIfError();
                     return null;
