@@ -17265,6 +17265,8 @@ components:
           $ref: "#/components/schemas/Translator"
         name:
           type: string
+        inline:
+          $ref: "#/components/schemas/Translator"
     TruncatePromptError:
       required:
       - error
