@@ -195,6 +195,16 @@ public class SkillResourceApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testRecreateAfterDeleteWithIfNoneMatch() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+
+        verify(uploadSkill("/recreate-me", files), 200);
+        verify(deleteSkill("/recreate-me"), 200);
+        // path is free again -> create-only PUT must succeed, not 412
+        verify(uploadSkill("/recreate-me", files, "if-none-match", "*"), 200);
+    }
+
+    @Test
     void testInvisibleToV1FilesApi() {
         Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
         verify(uploadSkill("/hidden", files), 200);
