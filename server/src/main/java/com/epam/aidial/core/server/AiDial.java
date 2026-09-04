@@ -91,8 +91,12 @@ import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.cache.CacheClientFactory;
+import com.epam.aidial.core.storage.resource.LegacyStorageLayout;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.resource.StorageLayout;
+import com.epam.aidial.core.storage.resource.StorageLayouts;
+import com.epam.aidial.core.storage.resource.TenantRootedStorageLayout;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
@@ -205,6 +209,8 @@ public class AiDial {
                 String claimsLogLevel = settings.getString("claimsLogLevel", "DEBUG");
                 accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, taskExecutor, client, clientOptions, claimsLogLevel);
             }
+
+            StorageLayouts.useLayout(createStorageLayout(settings("storageLayout")));
 
             if (storage == null) {
                 Storage storageConfig = Json.decodeValue(settings("storage").toBuffer(), Storage.class);
@@ -500,6 +506,14 @@ public class AiDial {
 
     private JsonObject settings(String key) {
         return settings.getJsonObject(key, new JsonObject());
+    }
+
+    private static StorageLayout createStorageLayout(JsonObject settings) {
+        if (!settings.getBoolean("tenantRooted", false)) {
+            return LegacyStorageLayout.INSTANCE;
+        }
+
+        return new TenantRootedStorageLayout(settings.getString("defaultTenant", "default"));
     }
 
     private List<String> getAllowedRedirectUris() {
