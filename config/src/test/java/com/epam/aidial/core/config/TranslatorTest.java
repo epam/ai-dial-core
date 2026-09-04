@@ -19,8 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The {@code translators} registry and the two shapes an {@code interfaces} entry references one in.
- * Which url a translated interface is served by belongs to {@code DeploymentEndpointUtil}, and linking a
- * name to its registry entry to {@code ConfigPostProcessor}; both are covered by their own tests.
+ * Which url a translated interface is served by belongs to {@code DeploymentEndpointUtil}, and rejecting a
+ * contradictory reference to {@code ConfigPostProcessor}; both are covered by their own tests.
  */
 public class TranslatorTest {
 
@@ -140,11 +140,31 @@ public class TranslatorTest {
 
         TranslatorRef translator = translatorOf(model);
         assertEquals("anthropicMessagesToOpenaiChatCompletions", translator.getName());
-        // a name is linked to its registry entry at config load, not while parsing
-        assertNull(translator.getDefinition());
+        // a name carries no definition of its own: it is resolved against the registry when asked
+        assertNull(translator.getInline());
         // and is written back as a name, so the reference is not frozen into a copy by a round-trip
         assertTrue(MAPPER.writeValueAsString(model)
                 .contains("\"translator\":\"anthropicMessagesToOpenaiChatCompletions\""), json);
+    }
+
+    @Test
+    void namedTranslatorResolvesAgainstTheRegistryItIsAsked() {
+        TranslatorRef named = TranslatorRef.named("anthropicMessagesToOpenaiChatCompletions");
+
+        // nothing registered yet: the reference stands for nothing, not for an error
+        assertNull(named.resolve(Map.of()));
+
+        // registered: the same reference answers with the entry, nothing relinked
+        Translator entry = new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://translator");
+        assertEquals(entry, named.resolve(Map.of("anthropicMessagesToOpenaiChatCompletions", entry)));
+
+        // edited: the reference answers with the current entry, never with a copy of the old one
+        Translator edited = new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://translator-v2");
+        assertEquals(edited, named.resolve(Map.of("anthropicMessagesToOpenaiChatCompletions", edited)));
+
+        // an inline definition is its own registry
+        TranslatorRef inline = TranslatorRef.inline(entry);
+        assertEquals(entry, inline.resolve(Map.of()));
     }
 
     @Test
@@ -167,10 +187,10 @@ public class TranslatorTest {
 
         TranslatorRef translator = translatorOf(restored);
         assertNull(translator.getName());
-        assertEquals(OPENAI_CHAT_COMPLETIONS, translator.getDefinition().getOut());
-        assertEquals("http://some-custom-translator/to-chat-completions", translator.getDefinition().getBaseUrl());
+        assertEquals(OPENAI_CHAT_COMPLETIONS, translator.getInline().getOut());
+        assertEquals("http://some-custom-translator/to-chat-completions", translator.getInline().getBaseUrl());
         // in is implied by the entry the definition sits under
-        assertNull(translator.getDefinition().getIn());
+        assertNull(translator.getInline().getIn());
     }
 
     @Test

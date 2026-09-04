@@ -97,6 +97,12 @@ public class ResponsesControllerTest {
     @Mock
     private ProxyContext context;
 
+    @BeforeEach
+    void stubConfig() {
+        // the controller resolves translator references against the request's config on every routing step
+        lenient().when(context.getConfig()).thenReturn(new Config());
+    }
+
     @Mock(answer = Answers.RETURNS_DEEP_STUBS)
     private Proxy proxy;
 

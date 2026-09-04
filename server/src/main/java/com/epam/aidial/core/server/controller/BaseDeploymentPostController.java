@@ -340,7 +340,8 @@ public class BaseDeploymentPostController {
         return createProxyRequest(
                 DeploymentEndpointUtil.resolveRequestUri(
                         context.getDeployment(),
-                        type, request.path(),
+                        type, context.getConfig().getTranslators(),
+                        request.path(),
                         request.query()
                 )
         );

@@ -115,9 +115,9 @@ public class MergedConfigStoreTest {
         assertEquals(1, config.getTranslators().size());
         Model merged = config.getModels().get("openai-gpt-5.4-mini");
         assertEquals("http://localhost:5002/to-chat-completions",
-                DeploymentEndpointUtil.resolveServingEndpoint(merged, InterfaceType.ANTHROPIC_MESSAGES));
+                DeploymentEndpointUtil.resolveServingEndpoint(merged, InterfaceType.ANTHROPIC_MESSAGES, config.getTranslators()));
         assertEquals("http://localhost:6001",
-                DeploymentEndpointUtil.resolveServingEndpoint(merged, InterfaceType.OPENAI_CHAT_COMPLETIONS));
+                DeploymentEndpointUtil.resolveServingEndpoint(merged, InterfaceType.OPENAI_CHAT_COMPLETIONS, config.getTranslators()));
     }
 
     @Test

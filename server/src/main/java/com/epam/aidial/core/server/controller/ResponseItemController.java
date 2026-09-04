@@ -149,7 +149,8 @@ public class ResponseItemController implements Controller {
 
     private Future<Void> dispatch(ResponseMapping mapping) {
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, mapping.getDeploymentName());
-        if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES) == null) {
+        if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES,
+                context.getConfig().getTranslators()) == null) {
             return context.respond(HttpStatus.SERVICE_UNAVAILABLE, "Deployment for response_id does not support Responses API")
                     .mapEmpty();
         }
@@ -182,12 +183,13 @@ public class ResponseItemController implements Controller {
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
                 .get(deployment,
                         null,
-                        dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES),
+                        dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES,
+                                context.getConfig().getTranslators()),
                         mapping.getUpstreamKey());
         Upstream upstream = upstreamRoute.next();
 
         String query = context.getRequest().query();
-        String targetUrl = DeploymentEndpointUtil.resolveResponsesBaseUri(deployment)
+        String targetUrl = DeploymentEndpointUtil.resolveResponsesBaseUri(deployment, context.getConfig().getTranslators())
                 + "/" + mapping.getUpstreamResponseId() + operation.suffix
                 + (query != null ? "?" + query : "");
 

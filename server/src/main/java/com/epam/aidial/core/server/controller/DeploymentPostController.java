@@ -198,7 +198,8 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                         dep = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(app);
                     }
 
-                    if (DeploymentEndpointUtil.resolveServingEndpoint(dep, requestedInterface()) == null) {
+                    if (DeploymentEndpointUtil.resolveServingEndpoint(dep, requestedInterface(),
+                            context.getConfig().getTranslators()) == null) {
                         throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
                     }
 
@@ -348,7 +349,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         UpstreamRoute upstreamRoute;
         try {
             upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext(),
-                    dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, type), upstreamId);
+                    dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, type, context.getConfig().getTranslators()), upstreamId);
         } catch (HttpException e) {
             respond(e.getStatus(), e.getMessage());
             return;
