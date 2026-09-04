@@ -44,6 +44,7 @@ import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.HttpVersion;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.core.http.impl.headers.HeadersMultiMap;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -117,6 +118,12 @@ public class DeploymentPostControllerTest {
 
     @InjectMocks
     private DeploymentPostController controller;
+
+    @BeforeEach
+    void stubConfig() {
+        // the controller resolves translator references against the request's config on every routing step
+        lenient().when(context.getConfig()).thenReturn(new Config());
+    }
 
     @SuppressWarnings("checkstyle:LineLength")
     @Test

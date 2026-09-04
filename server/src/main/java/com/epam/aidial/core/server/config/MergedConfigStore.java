@@ -894,9 +894,6 @@ public final class MergedConfigStore implements ConfigStore {
                 Model candidate = BLOB_MAPPER.treeToValue(payload, Model.class);
                 ResourceDescriptor descriptor = descriptorFromCanonicalId(ResourceTypes.MODEL, canonicalId);
                 secretFieldProcessor.decryptFields(candidate, descriptor);
-                // resurrection rebuilds the model from its stored payload, so its translator references are
-                // as unlinked as a freshly parsed one's
-                ConfigPostProcessor.linkTranslators(candidate, next.getTranslators());
                 List<ValidationWarning> warnings = new ArrayList<>();
                 next.getModels().put(canonicalId, candidate);
                 ConfigPostProcessor.validateCrossReferences(candidate, next, warnings);

@@ -166,9 +166,9 @@ public class MergedConfigStorePartialUpdateTest {
     }
 
     @Test
-    public void interceptorWriteResurrectsModelWithLinkedTranslator() {
-        // resurrection rebuilds the model from its stored payload, so its named translator references have
-        // to be linked again — an unlinked one leaves the interface answering 503 until the next rebuild
+    public void interceptorWriteResurrectsModelWithNamedTranslator() {
+        // resurrection rebuilds the model from its stored payload; its named translator reference resolves
+        // against the live registry when asked, so nothing has to be relinked on the rebuilt model
         ObjectNode modelPayload = JsonNodeFactory.instance.objectNode();
         modelPayload.set("interceptors", JsonNodeFactory.instance.arrayNode().add(INTERCEPTOR_ID));
         modelPayload.put("endpoint", "http://legacy/chat/completions");
@@ -195,7 +195,7 @@ public class MergedConfigStorePartialUpdateTest {
         Model resurrected = result.getModels().get(MODEL_ID);
         assertNotNull(resurrected, "model resurrected to Config.models");
         assertEquals("http://localhost:5002/to-chat-completions",
-                DeploymentEndpointUtil.resolveServingEndpoint(resurrected, InterfaceType.ANTHROPIC_MESSAGES));
+                DeploymentEndpointUtil.resolveServingEndpoint(resurrected, InterfaceType.ANTHROPIC_MESSAGES, result.getTranslators()));
     }
 
     @Test

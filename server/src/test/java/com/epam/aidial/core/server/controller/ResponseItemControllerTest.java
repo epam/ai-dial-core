@@ -32,6 +32,7 @@ import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import io.vertx.core.json.JsonObject;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
@@ -63,6 +64,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -82,6 +84,12 @@ public class ResponseItemControllerTest {
 
     @Mock
     private HttpServerRequest serverRequest;
+
+    @BeforeEach
+    void stubConfig() {
+        // the controller resolves translator references against the request's config on every routing step
+        lenient().when(context.getConfig()).thenReturn(new Config());
+    }
 
     private ResponseItemController controller(String dialId, ResponseItemController.Operation op) {
         return new ResponseItemController(proxy, context, dialId, op);

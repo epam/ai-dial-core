@@ -272,7 +272,7 @@ public class ConfigPostProcessorTest {
     }
 
     @Test
-    void testSemanticLinksNamedTranslatorToItsRegistryEntry() {
+    void testSemanticKeepsNamedTranslatorAsReference() {
         Config config = newMutableConfig();
         config.setTranslators(Map.of("anthropicMessagesToOpenaiChatCompletions",
                 new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://translator/to-chat-completions")));
@@ -284,10 +284,12 @@ public class ConfigPostProcessorTest {
 
         ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
 
+        // nothing is materialized onto the model: the name stays a name and resolves against the live
+        // registry when asked, so an edit to the registry entry needs no walk over the models naming it
         TranslatorRef translator = config.getModels().get("model").getInterfaces().get("anthropicMessages").getTranslator();
-        assertEquals("http://translator/to-chat-completions", translator.getDefinition().getBaseUrl());
-        // the name is kept alongside what it resolved to, so the reference survives a config round-trip
         assertEquals("anthropicMessagesToOpenaiChatCompletions", translator.getName());
+        assertNull(translator.getInline());
+        assertEquals("http://translator/to-chat-completions", translator.resolve(config.getTranslators()).getBaseUrl());
     }
 
     @Test
@@ -304,7 +306,7 @@ public class ConfigPostProcessorTest {
         ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
 
         assertTrue(config.getModels().containsKey("model"));
-        assertNull(model.getInterfaces().get("anthropicMessages").getTranslator().getDefinition());
+        assertNull(model.getInterfaces().get("anthropicMessages").getTranslator().resolve(config.getTranslators()));
     }
 
     @Test
