@@ -979,7 +979,7 @@ public class ComplexResourceService {
 
     private String readAggregateEtag(ResourceDescriptor marker) {
         FolderResourceMarker document = readMarker(marker, false);
-        return document == null ? null : document.getEtag();
+        return isActive(document) ? document.getEtag() : null;
     }
 
     private FolderResourceMarker readMarker(ResourceDescriptor marker, boolean lock) {
