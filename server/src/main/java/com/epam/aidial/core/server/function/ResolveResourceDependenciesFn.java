@@ -39,13 +39,15 @@ import javax.annotation.Nullable;
  * already holds gets richer. A record is a request, not a grant: nothing here widens anything
  * the user cannot already reach.
  *
- * <p><b>Root-call only.</b> Resolution runs when the context still carries the originating user
- * (no per-request key) — that is the only state in which the user's reach is directly
- * evaluable; under a per-request key the same checks would silently evaluate a deployment's own
- * key instead. Hops that arrive with a per-request key present — an interceptor's final call
- * back to the app, or a chained app-to-app call — are skipped: their declarations do not
- * resolve and their grants do not propagate in v1 (documented limitation; chained composition
- * needs originating-user evaluation under key contexts, which is phase-2 machinery).
+ * <p><b>Every hop, one rule.</b> Resolution runs identically on the root user call and on any
+ * chained or interceptor hop. Identity is not the obstacle it was once thought to be:
+ * {@code ApiKeyData.initFromContext} propagates {@code extractedClaims} and {@code originalKey}
+ * at every depth, so {@code ProxyContext.userId} is always the originating human — which is why
+ * placeholder targets resolve correctly through {@code BucketBuilder.buildInitiatorBucket} at
+ * any depth. Only the reach check needed care: the general permission chain's own-bucket rule
+ * deliberately flips to the per-request key holder's sandbox, so reach is evaluated through
+ * {@code AccessService.lookupOriginatingUserPermissions} — own bucket as the human, shared,
+ * public — and never through rules that read the calling key's own grants (D-24).
  */
 public class ResolveResourceDependenciesFn extends BaseRequestFunction<RequestObject> {
 
@@ -62,11 +64,6 @@ public class ResolveResourceDependenciesFn extends BaseRequestFunction<RequestOb
         }
         List<ResourceDependency> declaration = application.getResourceDependencies();
         if (declaration == null || declaration.isEmpty()) {
-            return false;
-        }
-        if (context.getApiKeyData().getPerRequestKey() != null) {
-            // Not the root user call — see the class javadoc. Skip, never throw: a declaring app
-            // behind an interceptor or in a chain must stay callable, just without grants.
             return false;
         }
         resolve(application, declaration);
@@ -101,7 +98,7 @@ public class ResolveResourceDependenciesFn extends BaseRequestFunction<RequestOb
             // One batched walk of the permission chain for all resolved targets.
             Set<ResourceDescriptor> targets = resolvedTargets.stream().map(Resolved::target).collect(Collectors.toSet());
             Map<ResourceDescriptor, Set<ResourceAccessType>> userAccessByTarget =
-                    proxy.getAccessService().lookupPermissions(targets, context);
+                    proxy.getAccessService().lookupOriginatingUserPermissions(targets, context);
             for (Resolved resolved : resolvedTargets) {
                 Set<ResourceAccessType> userAccess = userAccessByTarget.getOrDefault(resolved.target(), Set.of());
                 if (userAccess.containsAll(resolved.access())) {

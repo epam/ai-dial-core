@@ -26,6 +26,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
@@ -675,5 +676,77 @@ public class AccessServiceTest {
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getGlobalReaderAccess(Set.of(resource), context);
 
         assertTrue(result.isEmpty());
+    }
+
+    // ---- lookupOriginatingUserPermissions (PR4b, D-24) ----
+
+    @Test
+    public void testLookupOriginatingUserPermissions_ResolvesOwnBucketAtAnyChainDepth() {
+        // The regression this PR exists for: a resource in the human's own bucket must grant ALL.
+        // None of the three rules in this list read ApiKeyData/per-request-key state at all — that
+        // is precisely why the answer does not change with chain depth.
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user-sub/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        when(context.getUserId()).thenReturn("user-sub");
+        AccessService accessService = accessService(applicationSchemaService);
+
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result =
+                accessService.lookupOriginatingUserPermissions(Set.of(resource), context);
+
+        assertEquals(ResourceAccessType.ALL, result.get(resource));
+    }
+
+    @Test
+    public void testLookupOriginatingUserPermissions_ExcludesTheCallingAppsOwnSandbox() {
+        // Pins that the general chain's own-bucket rule (Keys/<app>/, via buildUserBucket) is not
+        // in this list — only buildInitiatorBucket (always the human) is.
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Keys/app1/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        when(context.getUserId()).thenReturn("user-sub");
+        AccessService accessService = accessService(applicationSchemaService);
+
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result =
+                accessService.lookupOriginatingUserPermissions(Set.of(resource), context);
+
+        assertTrue(result.get(resource).isEmpty());
+    }
+
+    @Test
+    public void testLookupOriginatingUserPermissions_ExcludesTheCallingKeysOwnGrants() {
+        // The single most important assertion in this PR (D-24): a grant already baked into the
+        // CALLING app's own per-request key must not satisfy the CALLED app's independent reach
+        // check — otherwise app1 could launder its own grants down the chain into app2. The stub
+        // below documents that the grant exists; none of the three rules ever read it.
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "secret.json", List.of(), "bucket", "Users/other-user/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("prk");
+        apiKeyData.setSourceDeployment("app1");
+        apiKeyData.getPerRequestSharedResources().put(resource.getUrl(),
+                new com.epam.aidial.core.server.data.permission.PerRequestSharedData(new java.util.HashSet<>(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE))));
+        lenient().when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(context.getUserId()).thenReturn("user-sub");
+        AccessService accessService = accessService(applicationSchemaService);
+
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result =
+                accessService.lookupOriginatingUserPermissions(Set.of(resource), context);
+
+        assertTrue(result.get(resource).isEmpty());
+    }
+
+    @Test
+    public void testLookupPermissions_UnaffectedByTheNewRuleList() {
+        // Zero-behaviour-change claim (A1): the general chain still grants own-bucket access via
+        // buildUserBucket, unaffected by the new originatingUserPermissionRules list existing.
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user-sub/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getUserId()).thenReturn("user-sub");
+        AccessService accessService = accessService(applicationSchemaService);
+
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result =
+                accessService.lookupPermissions(Set.of(resource), context);
+
+        assertEquals(ResourceAccessType.ALL, result.get(resource));
     }
 }

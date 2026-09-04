@@ -47,9 +47,9 @@ public final class ResourceDependencyAuditLog {
             return;
         }
         AUDIT.info("event=resource_dependency_grant outcome=SUCCESS actor={} user_id={} application_id={} "
-                        + "targets={} access_types={} trace_id={}",
+                        + "source_deployment={} targets={} access_types={} trace_id={}",
                 actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
-                targetsOf(granted), accessTypesOf(granted), context.getTraceId());
+                sourceDeployment(context), targetsOf(granted), accessTypesOf(granted), context.getTraceId());
     }
 
     /**
@@ -62,16 +62,17 @@ public final class ResourceDependencyAuditLog {
             return;
         }
         AUDIT.info("event=resource_dependency_denial outcome=DENIED actor={} user_id={} application_id={} "
-                        + "targets={} trace_id={}",
+                        + "source_deployment={} targets={} trace_id={}",
                 actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
-                targetsOf(unresolved), context.getTraceId());
+                sourceDeployment(context), targetsOf(unresolved), context.getTraceId());
     }
 
     /** One event when a required dependency failed to resolve and the call is rejected. */
     public static void runtimeFail(ProxyContext context, String applicationId, List<String> requiredFailures) {
         AUDIT.info("event=resource_dependency_runtime_fail outcome=RUNTIME_FAIL actor={} user_id={} "
-                        + "application_id={} targets={} trace_id={} reason=\"required dependencies unresolvable\"",
+                        + "application_id={} source_deployment={} targets={} trace_id={} reason=\"required dependencies unresolvable\"",
                 actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
+                sourceDeployment(context),
                 requiredFailures.stream().map(AuditLogSanitizer::sanitizeToken)
                         .collect(Collectors.joining(",")),
                 context.getTraceId());
@@ -100,6 +101,12 @@ public final class ResourceDependencyAuditLog {
             case ResourceNotFoundException ignored -> "NOT_FOUND";
             default -> "ERROR";
         };
+    }
+
+    /** The deployment that made this call — the immediate caller. "root" on the user's own call. */
+    private static String sourceDeployment(ProxyContext context) {
+        String deployment = context.getSourceDeployment();
+        return deployment == null ? "root" : AuditLogSanitizer.sanitizeToken(deployment);
     }
 
     // Non-secret evidence of the calling actor: the DIAL key's project and/or the workload JWT's azp.
