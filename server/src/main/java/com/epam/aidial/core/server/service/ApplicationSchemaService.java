@@ -478,7 +478,7 @@ public class ApplicationSchemaService {
 
     private boolean hasResource(ResourceDescriptor resource) {
         return resource.getType() == ResourceTypes.SKILL
-                ? complexResourceService.getMarker(resource) != null
+                ? complexResourceService.hasResource(resource)
                 : resourceService.hasResource(resource);
     }
 

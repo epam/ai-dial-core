@@ -4,7 +4,6 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.config.ConfigStore;
-import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
@@ -842,7 +841,7 @@ public class ApplicationSchemaServiceTest {
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
         application.setApplicationProperties(customProperties);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
-        when(complexResourceService.getMarker(any())).thenReturn(mock(FolderResourceMarker.class));
+        when(complexResourceService.hasResource(any())).thenReturn(true);
         when(encryptionService.decrypt(anyString())).thenReturn("/Users/123/");
 
         List<ResourceDescriptor> result = service.getSkills(application);
@@ -867,7 +866,7 @@ public class ApplicationSchemaServiceTest {
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
         application.setApplicationProperties(customProperties);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
-        when(complexResourceService.getMarker(any())).thenReturn(null);
+        when(complexResourceService.hasResource(any())).thenReturn(false);
         when(encryptionService.decrypt(anyString())).thenReturn("/Users/123/");
 
         Assertions.assertThrows(ApplicationTypeResourceException.class, () -> service.getSkills(application));

@@ -487,6 +487,15 @@ public class ComplexResourceService {
     }
 
     /**
+     * Checks whether the given complex resource (e.g. a {@code SKILL}) exists, i.e. has an
+     * active {@code .dial-resource} marker. Complex resources have no blob at their bare URL
+     * key, so this must be used instead of a plain blob/Redis existence check.
+     */
+    public boolean hasResource(ResourceDescriptor resource) {
+        return getMarker(resource) != null;
+    }
+
+    /**
      * Resolves the {@code .dial-resource} marker for a whole-resource GET. Returns {@code null} if the path
      * is absent or in the {@code deleting} state (→ 404), or throws {@code 400} if the path is a DIAL folder
      * (clients must use the metadata listing for folders).
