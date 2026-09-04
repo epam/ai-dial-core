@@ -303,6 +303,135 @@ public class ApplicationSchemaServiceTest {
     }
 
     @Test
+    void getMcp_returnsTypeAllowedTools_whenInstanceHasNoOverride() {
+        when(configStore.get()).thenReturn(config);
+        URI schemaId = URI.create("schemaId");
+        application.setApplicationTypeSchemaId(schemaId);
+        when(config.getCustomApplicationSchema(schemaId)).thenReturn("""
+                {
+                  "dial:applicationTypeMcp": {
+                    "dial:endpoint": "http://localhost:9876/mcp",
+                    "dial:transport": "HTTP",
+                    "dial:allowedTools": ["classify_text"]
+                  }
+                }
+                """);
+
+        Application.Mcp mcp = service.getMcp(application);
+
+        Assertions.assertEquals(List.of("classify_text"), mcp.getAllowedTools());
+    }
+
+    @Test
+    void getMcp_narrowsAllowedTools_whenInstanceOverridePartiallyOverlapsType() {
+        when(configStore.get()).thenReturn(config);
+        URI schemaId = URI.create("schemaId");
+        application.setApplicationTypeSchemaId(schemaId);
+        when(config.getCustomApplicationSchema(schemaId)).thenReturn("""
+                {
+                  "dial:applicationTypeMcp": {
+                    "dial:endpoint": "http://localhost:9876/mcp",
+                    "dial:transport": "HTTP",
+                    "dial:allowedTools": ["classify_text", "extract_text"]
+                  }
+                }
+                """);
+        Application.Mcp instanceMcp = new Application.Mcp();
+        instanceMcp.setAllowedTools(List.of("extract_text", "summarize_text"));
+        application.setMcp(instanceMcp);
+
+        Application.Mcp mcp = service.getMcp(application);
+
+        Assertions.assertEquals(List.of("extract_text"), mcp.getAllowedTools());
+    }
+
+    @Test
+    void getMcp_keepsTypeAllowedTools_whenInstanceOverrideIsDisjointFromType() {
+        // an empty effective list would mean "unrestricted" downstream, so a no-overlap override
+        // must be ignored in favour of the application type's own (restricting) list
+        when(configStore.get()).thenReturn(config);
+        URI schemaId = URI.create("schemaId");
+        application.setApplicationTypeSchemaId(schemaId);
+        when(config.getCustomApplicationSchema(schemaId)).thenReturn("""
+                {
+                  "dial:applicationTypeMcp": {
+                    "dial:endpoint": "http://localhost:9876/mcp",
+                    "dial:transport": "HTTP",
+                    "dial:allowedTools": ["classify_text", "extract_text"]
+                  }
+                }
+                """);
+        Application.Mcp instanceMcp = new Application.Mcp();
+        instanceMcp.setAllowedTools(List.of("other_tool"));
+        application.setMcp(instanceMcp);
+
+        Application.Mcp mcp = service.getMcp(application);
+
+        Assertions.assertEquals(List.of("classify_text", "extract_text"), mcp.getAllowedTools());
+    }
+
+    @Test
+    void getMcp_returnsTypeAllowedTools_whenInstanceOverrideIsEmpty() {
+        when(configStore.get()).thenReturn(config);
+        URI schemaId = URI.create("schemaId");
+        application.setApplicationTypeSchemaId(schemaId);
+        when(config.getCustomApplicationSchema(schemaId)).thenReturn("""
+                {
+                  "dial:applicationTypeMcp": {
+                    "dial:endpoint": "http://localhost:9876/mcp",
+                    "dial:transport": "HTTP",
+                    "dial:allowedTools": ["classify_text"]
+                  }
+                }
+                """);
+        application.setMcp(new Application.Mcp());
+
+        Application.Mcp mcp = service.getMcp(application);
+
+        Assertions.assertEquals(List.of("classify_text"), mcp.getAllowedTools());
+    }
+
+    @Test
+    void getMcp_returnsNull_whenTypeHasNoMcpBlock() {
+        when(configStore.get()).thenReturn(config);
+        URI schemaId = URI.create("schemaId");
+        application.setApplicationTypeSchemaId(schemaId);
+        when(config.getCustomApplicationSchema(schemaId)).thenReturn("""
+                {
+                  "dial:applicationTypeDisplayName": "No MCP Type"
+                }
+                """);
+        Application.Mcp instanceMcp = new Application.Mcp();
+        instanceMcp.setAllowedTools(List.of("classify_text"));
+        application.setMcp(instanceMcp);
+
+        Assertions.assertNull(service.getMcp(application));
+    }
+
+    @Test
+    void getMcp_usesInstanceAllowedTools_whenTypeIsUnrestricted() {
+        when(configStore.get()).thenReturn(config);
+        URI schemaId = URI.create("schemaId");
+        application.setApplicationTypeSchemaId(schemaId);
+        when(config.getCustomApplicationSchema(schemaId)).thenReturn("""
+                {
+                  "dial:applicationTypeMcp": {
+                    "dial:endpoint": "http://localhost:9876/mcp",
+                    "dial:transport": "HTTP",
+                    "dial:allowedTools": []
+                  }
+                }
+                """);
+        Application.Mcp instanceMcp = new Application.Mcp();
+        instanceMcp.setAllowedTools(List.of("classify_text"));
+        application.setMcp(instanceMcp);
+
+        Application.Mcp mcp = service.getMcp(application);
+
+        Assertions.assertEquals(List.of("classify_text"), mcp.getAllowedTools());
+    }
+
+    @Test
     void consumeMetadataProperties_returnsProperties_whenSchemaExists() {
         when(configStore.get()).thenReturn(config);
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);

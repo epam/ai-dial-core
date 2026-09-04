@@ -3590,7 +3590,7 @@ paths:
 
           If you do not provide `application_type_schema_id`, refer to [DIAL Core](https://github.com/epam/ai-dial-core/blob/development/docs/dynamic-settings/applications.md) documentation to learn about available properties of applications you can pass in the JSON object describing the structure of the application.
 
-          **Note**: When `applicationTypeSchemaId` and `applicationProperties` are specified, parameters defined in the corresponding JSON schema will take precedence and will override the corresponding parameters specified in the `application` object.
+          **Note**: When `applicationTypeSchemaId` and `applicationProperties` are specified, parameters defined in the corresponding JSON schema will take precedence and will override the corresponding parameters specified in the `application` object. The exception is `mcp.allowedTools`: if the `application` object also specifies its own `mcp.allowedTools`, the effective allowed tools are the intersection of the two lists — the `application` object can only narrow the schema's allowed tools, never widen them. A no-overlap override is meaningless and is never applied: the request is rejected with a bad request status rather than falling back to a wider set of tools than was asked for.
         content:
           application/json:
             schema:
@@ -13804,6 +13804,8 @@ components:
           type: array
           items:
             type: string
+          description: |
+            A list of allowed MCP tool names. When the application also has an `applicationTypeSchemaId`, this list is intersected with the application type's `allowedTools` — it can only narrow the type's list, never widen it. A no-overlap override is meaningless and is never applied: the request is rejected rather than falling back to a wider set of tools than was asked for.
         configDelivery:
           $ref: "#/components/schemas/ApplicationMcpConfigDelivery"
         endpoint:
