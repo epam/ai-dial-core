@@ -14863,12 +14863,16 @@ components:
     ConfigFileMigrateResult:
       type: object
       properties:
-        id:
-          type: string
         reason:
           type: string
         status:
           $ref: "#/components/schemas/ConfigFileMigrateStatus"
+        blobName:
+          type: string
+        fileId:
+          type: string
+        kind:
+          type: string
     ConfigFileMigrateStatus:
       type: string
       enum:
