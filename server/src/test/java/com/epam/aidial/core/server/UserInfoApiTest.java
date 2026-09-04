@@ -13,7 +13,7 @@ public class UserInfoApiTest extends ResourceBaseTest {
 
         assertEquals(200, resp.status());
         assertEquals("""
-                {"roles":["default"],"project":"EPM-RTC-GPT"}""", resp.body());
+                {"roles":["default"],"project":"EPM-RTC-GPT","userDisplayName":"EPM-RTC-GPT"}""", resp.body());
     }
 
     @Test
@@ -22,6 +22,15 @@ public class UserInfoApiTest extends ResourceBaseTest {
 
         assertEquals(200, resp.status());
         assertEquals("""
-                {"roles":["user"],"userId":"user","userClaims":{"title":["Manager"]}}""", resp.body());
+                {"roles":["user"],"userId":"user","userClaims":{"title":["Manager"]},"userDisplayName":"user user"}""", resp.body());
+    }
+
+    @Test
+    public void testUserInfoWithoutDisplayName() {
+        var resp = send(HttpMethod.GET, "/v1/user/info", null, null, "Authorization", "azp:svc");
+
+        assertEquals(200, resp.status());
+        assertEquals("""
+                {"roles":[],"userId":"svc","userClaims":{"azp":["svc"]}}""", resp.body());
     }
 }

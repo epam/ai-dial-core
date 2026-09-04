@@ -17373,6 +17373,9 @@ components:
             items:
               type: string
           description: Normalized token claims. Present only for user-based session authentication.
+        userDisplayName:
+          type: string
+          description: Human-readable caller name. For user-based session authentication it is resolved from the identity provider's configured userDisplayName claim path; for API key authentication it is the key's project name. Absent when not configured.
     UserLimitStats:
       type: object
       properties:
