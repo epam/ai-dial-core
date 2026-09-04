@@ -6,6 +6,7 @@ import com.azure.security.keyvault.keys.cryptography.CryptographyClientBuilder;
 import com.azure.security.keyvault.keys.cryptography.models.KeyWrapAlgorithm;
 import com.epam.aidial.core.credentials.data.configuration.KmsSettings;
 import com.google.cloud.kms.v1.KeyManagementServiceClient;
+import com.google.cloud.kms.v1.KeyManagementServiceSettings;
 import lombok.SneakyThrows;
 import lombok.experimental.UtilityClass;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
@@ -65,7 +66,8 @@ public class KeyManagementServiceFactory {
     private static KeyManagementService createGcpKeyManagementService(KmsSettings kmsSettings) {
         String keyId = Objects.requireNonNull(kmsSettings.getKeyId(), "keyId cannot be null.");
 
-        KeyManagementServiceClient kmsClient = KeyManagementServiceClient.create();
+        KeyManagementServiceSettings settings = KeyManagementServiceSettings.newHttpJsonBuilder().build();
+        KeyManagementServiceClient kmsClient = KeyManagementServiceClient.create(settings);
         return new GcpKeyManagementService(kmsClient, keyId);
     }
 

@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
+import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -210,20 +211,34 @@ public class BaseDeploymentPostController {
         return trackDeploymentStats(context.getDeployment().getName(), ownUsage, true);
     }
 
+    private boolean subjectToLimits(Deployment deployment) {
+        return DeploymentEndpointUtil.resolveMode(deployment, interfaceType()).isSubjectToLimits();
+    }
+
     /**
-     * Charges the request's usage to the initiator's token and cost limits, unless the interface it arrived
-     * on is served by a translator: the translator calls Core back to have the completion served, and that
-     * inner request is what carries the usage to the limits. Charging here as well would count it twice.
+     * Checks the initiator's limits before the request is forwarded. A translated request is not one the
+     * initiator is accountable for: the call the translator makes back to Core is, so a caller over quota
+     * is rejected on that one rather than on this.
+     */
+    protected Future<RateLimitResult> checkLimits(Deployment deployment) {
+        if (!subjectToLimits(deployment)) {
+            return Future.succeededFuture(RateLimitResult.SUCCESS);
+        }
+        return proxy.getRateLimiter().limit(context, deployment);
+    }
+
+    /**
+     * Charges the request's usage to the initiator's token and cost limits. Skipped on the same terms
+     * {@link #checkLimits} is, so the two can never disagree about what a mode exempts.
      */
     private Future<Void> increaseLimits(TokenUsage usage) {
         Deployment deployment = context.getDeployment();
-        InterfaceType type = interfaceType();
-        if (DeploymentEndpointUtil.resolveMode(deployment, type) == InterfaceMode.TRANSLATOR) {
+        if (!subjectToLimits(deployment)) {
             return Future.succeededFuture();
         }
         return proxy.getRateLimiter().increase(
                 deployment, BucketBuilder.buildInitiatorBucket(context), usage,
-                context.getRequestBody(), context.getResponseBody(), type, context.getPricingUsageNode()
+                context.getRequestBody(), context.getResponseBody(), interfaceType(), context.getPricingUsageNode()
         );
     }
 
@@ -369,6 +384,13 @@ public class BaseDeploymentPostController {
                     proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, propsString);
                 }
             });
+        }
+
+        // a translator has to know which deployment to call Core back for, and by the time it reads the body
+        // the model may already have been rewritten to overrideName. MessagesBaseController carries the id
+        // the client itself wrote and overrides this below; every other interface has only the deployment.
+        if (DeploymentEndpointUtil.resolveMode(context.getDeployment(), type) == InterfaceMode.TRANSLATOR) {
+            proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, context.getDeployment().getName());
         }
 
         enrichProxyRequestHeaders(proxyRequest);
