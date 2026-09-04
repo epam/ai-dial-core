@@ -4,7 +4,9 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.config.ConfigStore;
+import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
@@ -47,6 +49,8 @@ public class ApplicationSchemaServiceTest {
     private ResourceService resourceService;
     @Mock
     private EncryptionService encryptionService;
+    @Mock
+    private ComplexResourceService complexResourceService;
 
     @Mock
     private HttpClient httpClient;
@@ -152,7 +156,7 @@ public class ApplicationSchemaServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ApplicationSchemaService(resourceService, configStore, encryptionService, httpClient);
+        service = new ApplicationSchemaService(resourceService, configStore, complexResourceService, encryptionService, httpClient);
         customProperties.putAll(clientProperties);
         customProperties.putAll(serverProperties);
         application = new Application();
@@ -838,7 +842,7 @@ public class ApplicationSchemaServiceTest {
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
         application.setApplicationProperties(customProperties);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
-        when(resourceService.hasResource(any())).thenReturn(true);
+        when(complexResourceService.getMarker(any())).thenReturn(mock(FolderResourceMarker.class));
         when(encryptionService.decrypt(anyString())).thenReturn("/Users/123/");
 
         List<ResourceDescriptor> result = service.getSkills(application);
@@ -854,6 +858,19 @@ public class ApplicationSchemaServiceTest {
         List<ResourceDescriptor> result = service.getSkills(application);
 
         Assertions.assertTrue(result.isEmpty());
+    }
+
+    @Test
+    public void getSkills_throwsException_whenResourceNotFound() {
+        customProperties.put("toolset", Map.of("name", "my-skill", "dial_id", "skills/bucket/my-skill"));
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(any())).thenReturn(schema);
+        application.setApplicationProperties(customProperties);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        when(complexResourceService.getMarker(any())).thenReturn(null);
+        when(encryptionService.decrypt(anyString())).thenReturn("/Users/123/");
+
+        Assertions.assertThrows(ApplicationTypeResourceException.class, () -> service.getSkills(application));
     }
 
     @Test

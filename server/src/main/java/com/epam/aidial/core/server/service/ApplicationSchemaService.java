@@ -7,6 +7,7 @@ import com.epam.aidial.core.metaschemas.CopyAppBucketOptions;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -112,6 +113,7 @@ public class ApplicationSchemaService {
 
     private final ResourceService resourceService;
     private final ConfigStore configStore;
+    private final ComplexResourceService complexResourceService;
 
     private final EncryptionService encryptionService;
 
@@ -140,9 +142,11 @@ public class ApplicationSchemaService {
     private final ConcurrentHashMap<URI, CachedSchema> schemaCache = new ConcurrentHashMap<>();
 
     public ApplicationSchemaService(ResourceService resourceService, ConfigStore configStore,
+                                    ComplexResourceService complexResourceService,
                                     EncryptionService encryptionService, @Nullable ProxySelector proxySelector) {
         this.resourceService = resourceService;
         this.configStore = configStore;
+        this.complexResourceService = complexResourceService;
         this.encryptionService = encryptionService;
         HttpClient.Builder builder = HttpClient.newBuilder();
         builder.connectTimeout(Duration.of(5, ChronoUnit.SECONDS));
@@ -154,9 +158,11 @@ public class ApplicationSchemaService {
 
     @VisibleForTesting
     ApplicationSchemaService(ResourceService resourceService, ConfigStore configStore,
+                             ComplexResourceService complexResourceService,
                              EncryptionService encryptionService, HttpClient httpClient) {
         this.resourceService = resourceService;
         this.configStore = configStore;
+        this.complexResourceService = complexResourceService;
         this.encryptionService = encryptionService;
         this.httpClient = httpClient;
     }
@@ -453,7 +459,7 @@ public class ApplicationSchemaService {
                     ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(item, encryptionService);
                     ResourceType type = descriptor.getType();
                     if (resourceTypes.contains(type)) {
-                        if (!descriptor.isFolder() && !resourceService.hasResource(descriptor)) {
+                        if (!descriptor.isFolder() && !hasResource(descriptor)) {
                             throw new ApplicationTypeResourceException("Resource listed as dependent to the application is not found", item);
                         }
                         result.add(descriptor);
@@ -468,6 +474,12 @@ public class ApplicationSchemaService {
         } catch (Exception e) {
             throw new ApplicationTypeSchemaProcessingException("Failed to obtain list of resources attached to the custom app", e);
         }
+    }
+
+    private boolean hasResource(ResourceDescriptor resource) {
+        return resource.getType() == ResourceTypes.SKILL
+                ? complexResourceService.getMarker(resource) != null
+                : resourceService.hasResource(resource);
     }
 
     @Nullable
