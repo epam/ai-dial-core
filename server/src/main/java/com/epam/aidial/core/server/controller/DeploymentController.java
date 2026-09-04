@@ -32,6 +32,7 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -271,8 +272,16 @@ public class DeploymentController {
             List<ToolSet> resourceToolsets = deploymentService.listDeployments(context, ResourceTypes.TOOL_SET, new DeploymentService.DeploymentExtractor() {
                 @SuppressWarnings("unchecked")
                 @Override
-                public ToolSet extract(String content, ResourceItemMetadata metadata, ProxyContext context) {
-                    return toolSetService.extractFrom(content, metadata);
+                public <T extends Deployment> List<T> extract(List<Pair<ResourceItemMetadata, String>> items, ProxyContext context) {
+                    List<T> result = new ArrayList<>();
+                    for (Pair<ResourceItemMetadata, String> item : items) {
+                        try {
+                            result.add((T) toolSetService.extractFrom(item.getValue(), item.getKey()));
+                        } catch (Exception e) {
+                            log.warn("Can't extract toolset {} due to the error", item.getKey().getUrl(), e);
+                        }
+                    }
+                    return result;
                 }
             });
             for (ToolSet toolSet : resourceToolsets) {
