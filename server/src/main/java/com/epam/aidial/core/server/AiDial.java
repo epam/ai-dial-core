@@ -259,7 +259,18 @@ public class AiDial {
             mergedConfigStore.init(fileConfigStore);
             ConfigStore configStore = mergedConfigStore;
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
-            ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(resourceService, configStore, encryptionService, httpProxySelector);
+
+            // Hoisted ahead of ApplicationSchemaService construction: SKILL resource existence
+            // checks in ApplicationSchemaService.getApplicationResources need ComplexResourceService
+            // (skills are complex/versioned resources, not single-blob resources). storage and
+            // lockService are already available above, so hoisting this construction earlier is safe.
+            ComplexResourceService.Settings complexResourceSettings = Json.decodeValue(
+                    settings("complexResource").toBuffer(), ComplexResourceService.Settings.class);
+            ComplexResourceService complexResourceService = new ComplexResourceService(
+                    resourceService, lockService, storage, complexResourceSettings);
+
+            ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(
+                    resourceService, configStore, complexResourceService, encryptionService, httpProxySelector);
             CatalogSchemaService catalogSchemaService = new CatalogSchemaService(resourceService, configStore, encryptionService);
 
             ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
@@ -306,11 +317,6 @@ public class AiDial {
 
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
-
-            ComplexResourceService.Settings complexResourceSettings = Json.decodeValue(
-                    settings("complexResource").toBuffer(), ComplexResourceService.Settings.class);
-            ComplexResourceService complexResourceService = new ComplexResourceService(
-                    resourceService, lockService, storage, complexResourceSettings);
 
             ResourceOperationService resourceOperationService = new ResourceOperationService(applicationService,
                     toolSetService, resourceService, invitationService, shareService, lockService, complexResourceService);
