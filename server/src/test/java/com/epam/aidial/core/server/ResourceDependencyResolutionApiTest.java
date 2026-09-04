@@ -29,7 +29,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   "display_name": "Dependency Smoke App",
                   "resource_dependencies": [
                     {"kind": "dial.resourceLink", "link_id": "lnk_prompts",
-                     "target": {"path": "current-user/prompts/dep-smoke/"}, "access": ["write"], "required": true}
+                     "target": {"path": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
                   ]
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);

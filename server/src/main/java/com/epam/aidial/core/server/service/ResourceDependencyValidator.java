@@ -29,19 +29,15 @@ public class ResourceDependencyValidator {
     /** A declaration larger than this is wrong-shaped; it should be folder-scoped links, not a file inventory. */
     public static final int MAX_DECLARED_DEPENDENCIES = 100;
 
-    public static final String CURRENT_USER_PLACEHOLDER = "current-user";
-
-    /** Global-view roots a concrete path may address. The personal root is reachable only via the placeholder. */
-    private static final Set<String> GLOBAL_VIEW_ROOTS =
-            Set.of("files", "public", "prompts", "conversations", "applications", "toolsets", "skills");
+    public static final String CURRENT_USER_PLACEHOLDER = "{current-user}";
 
     /**
-     * Resource-type folders a {@code current-user/…} path must be rooted in for user-authored apps —
-     * a root-level {@code current-user/} declaration ("write everything personal") is not declarable.
-     * Also enforced by the resolver on the read side: ResourceTypes.of() maps internal engine types
-     * (credentials, keys, models, …) that must never be declarable as personal targets.
+     * The resource types a declaration may address — segment 0 of {type}/{bucket}/{path…}, for
+     * both the concrete and the placeholder form. Closed per Core version. ResourceTypes.of()
+     * also maps internal engine types (credentials, keys, models, …); those are never declarable,
+     * as a personal target or a concrete one. Enforced on both the write and the read side.
      */
-    public static final Set<String> PERSONAL_TYPED_ROOTS =
+    public static final Set<String> DECLARABLE_TYPE_ROOTS =
             Set.of("files", "prompts", "conversations", "applications", "toolsets", "skills");
 
     private final boolean allowUserResourceDependencies;
@@ -56,8 +52,11 @@ public class ResourceDependencyValidator {
 
     /**
      * Governance ceiling for user-authored apps: with the flag off (the default) they may not declare
-     * dependencies at all; with it on, personal targets must be typed — never the personal root.
-     * Admin-authored writes (public bucket by an admin, the platform bucket) are not gated here.
+     * dependencies at all. With it on, no further per-path ceiling applies — the grammar itself already
+     * requires segment 0 to be a declarable type (shape validation runs first, see ResourceController),
+     * so a root-level "write everything personal" declaration is not expressible under
+     * {type}/{bucket}/… at all. Admin-authored writes (public bucket by an admin, the platform bucket)
+     * are not gated here.
      */
     public void validateUserAuthored(Application application) {
         List<ResourceDependency> section = application.getResourceDependencies();
@@ -67,17 +66,6 @@ public class ResourceDependencyValidator {
         if (!allowUserResourceDependencies) {
             throw new HttpException(FORBIDDEN,
                     "User-authored applications may not declare resource dependencies (allowUserResourceDependencies is disabled)");
-        }
-        for (ResourceDependency dependency : section) {
-            String path = pathOf(dependency);
-            if (path == null) {
-                continue;
-            }
-            String[] segments = decodedSegments(path);
-            if (segments.length > 0 && CURRENT_USER_PLACEHOLDER.equals(segments[0]) && !isTypedPersonalPath(segments)) {
-                throw new HttpException(FORBIDDEN, "Root-level current-user dependency is not declarable: "
-                        + "personal targets must be rooted in a resource-type folder: " + path);
-            }
         }
     }
 
@@ -140,11 +128,34 @@ public class ResourceDependencyValidator {
             return issues;
         }
         String root = segments[0];
-        // Token rules on every segment after the root; the root itself is governed by the form checks below.
-        for (int i = 1; i < segments.length; i++) {
+        // Root vocabulary — unconditional and first, no early return for either form. Deleting the old
+        // placeholder early-return is deliberate: without this check running unconditionally,
+        // credentials/{current-user}/… would silently bypass root-vocabulary validation at write time.
+        if ("users".equals(root)) {
+            // Personal targets are declared only via the placeholder — a concrete users/… path resolves for
+            // no one but that user and is rejected at write time as a shape error.
+            issues.add(at + ": personal targets are declared as {type}/" + CURRENT_USER_PLACEHOLDER
+                    + "/…, not as a concrete users/… path: " + path);
+        } else if (!DECLARABLE_TYPE_ROOTS.contains(root)) {
+            issues.add(at + ": target must start with a declarable resource type "
+                    + "(files, prompts, conversations, applications, toolsets, skills): " + path);
+        } else if (segments.length < 2) {
+            // A bare type root addresses the whole global view of that type — as over-broad as the
+            // personal root the governance ceiling bans. Declarations must be folder- or file-scoped.
+            // Applies to both forms: {type}/{bucket}/… is the minimum for either.
+            issues.add(at + ": target must address a folder or resource within " + root + "/, not the type root: " + path);
+        }
+        // Token rules on every segment after the root, plus the placeholder-position rule covering
+        // segment 0 as well — both issues are collected when the placeholder sits at segment 0, since
+        // the root-vocabulary error above also fires there and two accurate messages beat one conditional.
+        for (int i = 0; i < segments.length; i++) {
             String segment = segments[i];
-            if (CURRENT_USER_PLACEHOLDER.equals(segment)) {
-                issues.add(at + ": the current-user placeholder is valid only as the root segment: " + path);
+            if (CURRENT_USER_PLACEHOLDER.equals(segment) && i != 1) {
+                issues.add(at + ": the " + CURRENT_USER_PLACEHOLDER
+                        + " placeholder is valid only as the bucket segment (the second segment): " + path);
+            }
+            if (i == 0) {
+                continue;
             }
             if (segment.isEmpty()) {
                 issues.add(at + ": path must not contain empty segments: " + path);
@@ -156,26 +167,7 @@ public class ResourceDependencyValidator {
                 issues.add(at + ": relative path segments are not allowed: " + path);
             }
         }
-        if (CURRENT_USER_PLACEHOLDER.equals(root)) {
-            // Placeholder-rooted form; the typed-root restriction is the governance ceiling's, not shape's.
-            return issues;
-        }
-        if ("users".equals(root)) {
-            // Personal targets are declared only via the placeholder — a concrete users/… path resolves for
-            // no one but that user and is rejected at write time as a shape error.
-            issues.add(at + ": personal targets must use the current-user placeholder, not a concrete users/… path: " + path);
-        } else if (!GLOBAL_VIEW_ROOTS.contains(root)) {
-            issues.add(at + ": target must be a global-view path or current-user rooted: " + path);
-        } else if (segments.length < 2) {
-            // A bare type root addresses the whole global view of that type — as over-broad as the
-            // personal root the governance ceiling bans. Declarations must be folder- or file-scoped.
-            issues.add(at + ": target must address a folder or resource within " + root + "/, not the type root: " + path);
-        }
         return issues;
-    }
-
-    private static boolean isTypedPersonalPath(String[] segments) {
-        return segments.length > 1 && PERSONAL_TYPED_ROOTS.contains(segments[1]);
     }
 
     private static String pathOf(ResourceDependency dependency) {

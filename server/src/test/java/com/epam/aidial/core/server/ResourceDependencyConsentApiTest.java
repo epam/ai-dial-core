@@ -29,7 +29,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
               "endpoint": "http://application1/v1/completions",
               "display_name": "Dependency Consent App",
               "resource_dependencies": [
-                {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "current-user/skills/"}, "access": ["write"], "required": true}
+                {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "skills/{current-user}/"}, "access": ["write"], "required": true}
               ]
             }
             """;
@@ -48,7 +48,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         // consentRequired flag anywhere — consent is never author-controlled (§6.1).
         Response consent = send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP, null, "", "authorization", "admin");
         verify(consent, 200);
-        assertTrue(consent.body().contains("current-user/skills/"), () -> "Body: " + consent.body());
+        assertTrue(consent.body().contains("skills/{current-user}/"), () -> "Body: " + consent.body());
 
         verify(send(HttpMethod.DELETE, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
                 "authorization", "admin"), 200);
@@ -101,7 +101,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         assertTrue(granted.body().contains("\"stale\":false"), () -> "Body: " + granted.body());
         assertTrue(granted.body().contains("\"grantedBy\":\"admin\""), () -> "Body: " + granted.body());
         assertTrue(granted.body().contains("\"grantedAt\":"), () -> "Body: " + granted.body());
-        assertTrue(granted.body().contains("\"url\":\"current-user/skills/\""), () -> "Body: " + granted.body());
+        assertTrue(granted.body().contains("\"url\":\"skills/{current-user}/\""), () -> "Body: " + granted.body());
 
         // Declaration changed since the grant: not consented, stale — and the last approval stays
         // visible for the panel's re-approve view.
@@ -110,8 +110,8 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
                   "endpoint": "http://application1/v1/completions",
                   "display_name": "Dependency Consent App",
                   "resource_dependencies": [
-                    {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "current-user/skills/"}, "access": ["write"], "required": true},
-                    {"kind": "dial.resourceLink", "link_id": "lnk_extra", "target": {"path": "current-user/files/dep-extra/"}, "access": ["read"]}
+                    {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "skills/{current-user}/"}, "access": ["write"], "required": true},
+                    {"kind": "dial.resourceLink", "link_id": "lnk_extra", "target": {"path": "files/{current-user}/dep-extra/"}, "access": ["read"]}
                   ]
                 }
                 """, "authorization", "admin"), 200);
@@ -121,7 +121,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         assertTrue(stale.body().contains("\"consented\":false"), () -> "Body: " + stale.body());
         assertTrue(stale.body().contains("\"stale\":true"), () -> "Body: " + stale.body());
         assertTrue(stale.body().contains("\"grantedBy\":\"admin\""), "the last approval's provenance survives the stale transition");
-        assertTrue(stale.body().contains("\"url\":\"current-user/skills/\""), "the approved snapshot survives for the re-approve diff view");
+        assertTrue(stale.body().contains("\"url\":\"skills/{current-user}/\""), "the approved snapshot survives for the re-approve diff view");
 
         // Withdrawn: back to the clean never-granted shape.
         verify(send(HttpMethod.DELETE, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
@@ -190,11 +190,11 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
 
             assertEquals(3, events.size(), () -> "Events: " + events);
             assertTrue(events.get(0).contains("action=GRANT") && events.get(0).contains("outcome=SUCCESS")
-                    && events.get(0).contains("targets=current-user/skills/"), () -> "Events: " + events);
+                    && events.get(0).contains("targets=skills/{current-user}/"), () -> "Events: " + events);
             assertTrue(events.get(1).contains("action=GRANT") && events.get(1).contains("outcome=DENIED"),
                     () -> "Events: " + events);
             assertTrue(events.get(2).contains("action=WITHDRAW") && events.get(2).contains("outcome=SUCCESS")
-                    && events.get(2).contains("targets=current-user/skills/"), () -> "Events: " + events);
+                    && events.get(2).contains("targets=skills/{current-user}/"), () -> "Events: " + events);
             assertFalse(events.stream().anyMatch(message -> message.contains("lnk_")));
         } finally {
             auditLogger.detachAppender(appender);
