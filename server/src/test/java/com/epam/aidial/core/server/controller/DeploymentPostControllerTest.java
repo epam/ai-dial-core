@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
+import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.log.LogStore;
@@ -81,8 +82,10 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -393,6 +396,38 @@ public class DeploymentPostControllerTest {
 
         assertNull(proxyHeaders.get(AUTHORIZATION));
         assertEquals("key1", proxyHeaders.get(HEADER_API_KEY));
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @EnumSource(value = InterfaceMode.class, names = {"PASSTHROUGH", "TRANSLATOR"})
+    public void testHandleProxyRequest_NamesTheDeploymentForTranslators(InterfaceMode mode) {
+        when(context.getRequest()).thenReturn(request);
+
+        Model model = new Model();
+        model.setName("openai-gpt-5.4-mini");
+        model.setOverrideName("gpt-5.4-mini");
+        DeploymentInterface chatCompletions = new DeploymentInterface("http://adapter");
+        chatCompletions.setMode(mode);
+        model.setInterfaces(Map.of(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(), chatCompletions));
+        when(context.getDeployment()).thenReturn(model);
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        MultiMap proxyHeaders = new HeadersMultiMap();
+        when(proxyRequest.headers()).thenReturn(proxyHeaders);
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setPerRequestKey("key1");
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+        when(context.getRequestBody()).thenReturn(Buffer.buffer());
+        when(request.path()).thenReturn("/openai/deployments/openai-gpt-5.4-mini/chat/completions");
+
+        controller.handleProxyRequest(proxyRequest);
+
+        // the deployment id, not overrideName: it is what the translator calls Core back with
+        String expected = mode == InterfaceMode.TRANSLATOR ? "openai-gpt-5.4-mini" : null;
+        verify(proxyRequest, expected == null ? never() : times(1))
+                .putHeader(eq(Proxy.HEADER_DEPLOYMENT_ID), eq("openai-gpt-5.4-mini"));
     }
 
     @Test
@@ -784,6 +819,31 @@ public class DeploymentPostControllerTest {
         // an interface declaring no mode is what every config written before mode existed is: still charged
         verify(rateLimiter).increase(
                 eq(model), any(), any(), any(), any(), eq(InterfaceType.OPENAI_CHAT_COMPLETIONS), any());
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @EnumSource(value = InterfaceMode.class, names = {"PASSTHROUGH", "TRANSLATOR"})
+    public void testCheckLimits_LeavesTranslatedRequestsToTheCallback(InterfaceMode mode) {
+        Model model = new Model();
+        DeploymentInterface chatCompletions = new DeploymentInterface("http://adapter");
+        chatCompletions.setMode(mode);
+        model.setInterfaces(Map.of(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(), chatCompletions));
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
+        lenient().when(rateLimiter.limit(any(), any())).thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
+
+        Future<RateLimitResult> result = controller.checkLimits(model);
+
+        if (mode == InterfaceMode.TRANSLATOR) {
+            // the call the translator makes back to Core is the real request: it is what the limits are
+            // checked and charged against, so a caller over quota is rejected there rather than here
+            verify(rateLimiter, never()).limit(any(), any());
+            assertEquals(HttpStatus.OK, result.result().status());
+        } else {
+            verify(rateLimiter).limit(eq(context), eq(model));
+        }
     }
 
     @Test

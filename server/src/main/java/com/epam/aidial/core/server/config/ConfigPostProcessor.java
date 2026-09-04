@@ -2,8 +2,12 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.Interceptor;
+import com.epam.aidial.core.config.InterfaceMode;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
@@ -13,16 +17,20 @@ import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.RoleBasedEntity;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.Translator;
+import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -95,6 +103,8 @@ public final class ConfigPostProcessor {
                                        @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
         Set<String> deploymentIds = new HashSet<>();
         sortRoutes(config);
+        validateTranslators(config);
+        linkTranslators(config);
         processModels(config, deploymentIds, onSkip);
         processApplications(config, deploymentIds, onSkip);
         processRoles(config);
@@ -133,8 +143,10 @@ public final class ConfigPostProcessor {
         }
         model.setName(mapKey);
         List<ValidationWarning> warnings = new ArrayList<>();
+        linkTranslators(model, config.getTranslators());
         validatePricing(model, warnings);
         validateUpstreamInterfaces(model, warnings);
+        validateDeploymentInterfaces(model, warnings);
         if (onSkip != null) {
             validateCrossReferences(model, config, warnings);
         }
@@ -232,6 +244,7 @@ public final class ConfigPostProcessor {
             List<ValidationWarning> warnings = new ArrayList<>();
             validatePricing(model, warnings);
             validateUpstreamInterfaces(model, warnings);
+            validateDeploymentInterfaces(model, warnings);
             // Cross-ref check is skip-mode-only — file-loaded abort-mode path (onSkip == null)
             // preserves design 02 §4.2's allowance for pre-existing file-side inconsistency.
             // Strict-mode 422 is enforced at the write controller, not here. Pricing validation
@@ -321,6 +334,146 @@ public final class ConfigPostProcessor {
                     );
                 }
             }
+        }
+    }
+
+    /**
+     * A {@code translators} entry has to say what it converts from: unlike a definition written inline it is
+     * declared under no interface, so {@code in} is the only thing tying it to one. {@code out} and
+     * {@code baseUrl} need no check here — {@link Translator} rejects an entry missing either as it is read.
+     */
+    private static void validateTranslators(Config config) {
+        for (Map.Entry<String, Translator> entry : config.getTranslators().entrySet()) {
+            Translator translator = entry.getValue();
+            if (translator == null) {
+                throw new IllegalStateException("Translator '" + entry.getKey() + "' is empty");
+            }
+            if (translator.getIn() == null) {
+                throw new IllegalStateException("Translator '" + entry.getKey() + "' declares no in");
+            }
+        }
+    }
+
+    /**
+     * Points every named {@code interfaces.<type>.translator} at its {@link Config#getTranslators()} entry.
+     * Runs on every load, so an edit to the registry reaches the deployments referencing it; a name with no
+     * entry stays unlinked and its interface serves nothing, the same as one with no base url.
+     */
+    private static void linkTranslators(Config config) {
+        Map<String, Translator> translators = config.getTranslators();
+        // toolsets are left out because they serve MCP alone
+        linkTranslators(config.getModels().values(), translators);
+        linkTranslators(config.getApplications().values(), translators);
+        linkTranslators(config.getInterceptors().values(), translators);
+    }
+
+    private static void linkTranslators(Collection<? extends Deployment> deployments, Map<String, Translator> translators) {
+        for (Deployment deployment : deployments) {
+            linkTranslators(deployment, translators);
+        }
+    }
+
+    /**
+     * Points the deployment's named {@code interfaces.<type>.translator} entries at their
+     * {@link Config#getTranslators()} entries. Every path putting a deployment into a live config has to run
+     * this: a reference left unlinked serves nothing on that interface, and says nothing about why.
+     */
+    static void linkTranslators(Deployment deployment, Map<String, Translator> translators) {
+        Map<String, DeploymentInterface> interfaces = deployment.getInterfaces();
+        if (interfaces == null) {
+            return;
+        }
+        for (DeploymentInterface declared : interfaces.values()) {
+            TranslatorRef translator = declared == null ? null : declared.getTranslator();
+            if (translator != null && translator.getName() != null) {
+                translator.setDefinition(translators.get(translator.getName()));
+            }
+        }
+    }
+
+    /**
+     * Validates a model's {@code interfaces}. An entry is served either by a base url or by a translator,
+     * never by both and never by neither, and {@code mode} is what says which — routing and limits both
+     * read it, so a config where it disagrees with the fields around it is rejected rather than resolved.
+     */
+    public static void validateDeploymentInterfaces(Model model, List<ValidationWarning> warnings) {
+        Map<String, DeploymentInterface> interfaces = model.getInterfaces();
+        if (interfaces == null) {
+            return;
+        }
+        for (Map.Entry<String, DeploymentInterface> entry : interfaces.entrySet()) {
+            DeploymentInterface declared = entry.getValue();
+            // an interface mapped to null declares itself unserved and carries nothing to validate
+            if (declared == null) {
+                continue;
+            }
+            String field = "interfaces." + entry.getKey();
+            if (declared.getMode() == InterfaceMode.TRANSLATOR) {
+                validateTranslatedInterface(model, entry.getKey(), declared, field, warnings);
+            } else if (declared.getTranslator() != null) {
+                warnings.add(new ValidationWarning(field, "A translator requires mode 'translator'"));
+            } else if (declared.getBaseUrl() == null && model.getBaseUrl() == null) {
+                warnings.add(new ValidationWarning(field,
+                        "Interface '" + entry.getKey() + "' declares no base_url and the model declares no baseUrl"));
+            }
+        }
+    }
+
+    private static void validateTranslatedInterface(Model model, String type, DeploymentInterface declared,
+                                                    String field, List<ValidationWarning> warnings) {
+        if (declared.getBaseUrl() != null) {
+            warnings.add(new ValidationWarning(field,
+                    "An interface is served either by a translator or by a base_url, not by both"));
+        }
+        TranslatorRef translator = declared.getTranslator();
+        if (translator == null) {
+            warnings.add(new ValidationWarning(field, "Mode 'translator' requires a translator"));
+            return;
+        }
+        // a name with no entry to link it to leaves the interface unserved rather than the model invalid:
+        // the request path answers 503 for it, exactly as it does for an application or interceptor, and a
+        // later reload can link it. A registry entry that exists is always complete — Translator sees to
+        // that — so what is rejected here is only config contradicting itself, which no reload will fix.
+        Translator definition = translator.getDefinition();
+        if (definition == null) {
+            return;
+        }
+        if (definition.getIn() != null && definition.getIn() != InterfaceType.find(type)) {
+            warnings.add(new ValidationWarning(field,
+                    "Translator converts from '" + definition.getIn().getValue() + "', not from '" + type + "'"));
+        }
+        // a definition written inline names no in: the interface it sits under is what it converts from
+        String in = definition.getIn() != null ? definition.getIn().getValue() : type;
+        if (in.equals(definition.getOut().getValue())) {
+            warnings.add(new ValidationWarning(field,
+                    "A translator cannot convert '" + in + "' to itself: its output would arrive back on the interface it came from"));
+            return;
+        }
+        validateTranslatorOutput(model, definition, field, warnings);
+    }
+
+    /**
+     * The interface a translator converts to has to be one the model serves itself, and serves pass-through:
+     * the translator calls Core back on it to have the completion served.
+     *
+     * <p>This is what bounds a chain of translators to the single hop a request already makes. An
+     * {@code out} landing on a second translated interface is rejected here, so no such chain can be
+     * configured, and with none there is no cycle to detect: the interface converting back to the first one
+     * would have to be the second hop of a chain this rule already refuses. Which leaves the one-interface
+     * cycle, a translator converting an interface to itself, rejected by the caller.
+     */
+    private static void validateTranslatorOutput(Model model, Translator definition,
+                                                 String field, List<ValidationWarning> warnings) {
+        InterfaceType out = definition.getOut();
+        if (DeploymentEndpointUtil.resolveMode(model, out) == InterfaceMode.TRANSLATOR) {
+            warnings.add(new ValidationWarning(field,
+                    "The model serves '" + out.getValue() + "' through a translator of its own, which the translator here converts to: "
+                            + "the callback would arrive on a translated interface and be handed to a translator again"));
+            return;
+        }
+        if (DeploymentEndpointUtil.resolveServingEndpoint(model, out) == null) {
+            warnings.add(new ValidationWarning(field,
+                    "The model does not serve '" + out.getValue() + "', which the translator converts to"));
         }
     }
 
