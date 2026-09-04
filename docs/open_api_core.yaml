@@ -14863,8 +14863,6 @@ components:
     ConfigFileMigrateResult:
       type: object
       properties:
-        id:
-          type: string
         reason:
           type: string
         status:
