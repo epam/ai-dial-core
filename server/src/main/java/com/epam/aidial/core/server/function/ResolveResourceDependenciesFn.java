@@ -9,7 +9,6 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AuthBucket;
 import com.epam.aidial.core.server.data.consent.Consent;
 import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
-import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.log.ResourceDependencyAuditLog;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ResourceDependencyValidator;
@@ -49,14 +48,20 @@ import javax.annotation.Nullable;
  * {@code AccessService.lookupOriginatingUserPermissions} — own bucket as the human, shared,
  * public — and never through rules that read the calling key's own grants (D-24).
  */
-public class ResolveResourceDependenciesFn extends BaseRequestFunction<RequestObject> {
+public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
 
     public ResolveResourceDependenciesFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
     }
 
+    /**
+     * The request body is not an input here — resolution reads only {@code context}. The type
+     * parameter exists solely so this function can join chains of either element type
+     * ({@code RequestObject} on the conversation mint sites, {@code ObjectNode} on the MCP
+     * proxy); see D-25a.
+     */
     @Override
-    public Boolean apply(RequestObject request) {
+    public Boolean apply(T ignored) {
         if (!(context.getDeployment() instanceof Application application)) {
             // Interceptor hop or a non-application deployment — dependencies resolve for the
             // application being called, nothing else.
@@ -72,9 +77,15 @@ public class ResolveResourceDependenciesFn extends BaseRequestFunction<RequestOb
 
     private void resolve(Application application, List<ResourceDependency> declaration) {
         String applicationId = application.getName();
+        // Nowhere to bake a grant into — e.g. an MCP application with forwardPerRequestKey
+        // disabled never gets a per-request key at all, so it can never receive one regardless of
+        // consent or reach. Treated exactly like "not consented": every declared dependency is
+        // unresolved, so a required one still hard-fails the call instead of silently succeeding
+        // for an app that was promised access it can never actually receive.
+        boolean hasKeyToBakeInto = context.getProxyApiKeyData() != null;
         // The consent record is content-bound to the whole declaration: any change since the grant
         // re-requires it, and until then nothing resolves. Checked before any resolution work.
-        boolean consented = proxy.getConsentService().isAdminConsented(applicationId, declaration);
+        boolean consented = hasKeyToBakeInto && proxy.getConsentService().isAdminConsented(applicationId, declaration);
         AuthBucket userBucket = BucketBuilder.buildBucket(context);
 
         List<Resolved> resolvedTargets = new ArrayList<>();
