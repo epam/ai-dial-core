@@ -869,4 +869,47 @@ public class ApplicationSchemaServiceTest {
         List<ResourceDescriptor> files = service.getFiles(application);
         Assertions.assertEquals(2, files.size());
     }
+
+    @Test
+    public void getMcp_calledTwiceWithSameSchema_reusesCacheEntry() {
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(any())).thenReturn(schema);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+
+        Application.Mcp first = service.getMcp(application);
+        Application.Mcp second = service.getMcp(application);
+
+        Assertions.assertEquals(first, second);
+        Assertions.assertEquals(1, service.schemaCacheSize());
+    }
+
+    @Test
+    public void filterCustomClientProperties_calledTwiceWithSameSchema_reusesCompiledSchema() {
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(any())).thenReturn(schema);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        application.setApplicationProperties(customProperties);
+
+        Application first = service.filterCustomClientProperties(application);
+        Application second = service.filterCustomClientProperties(application);
+
+        Assertions.assertEquals(first.getApplicationProperties(), second.getApplicationProperties());
+        Assertions.assertEquals(1, service.schemaCacheSize());
+    }
+
+    @Test
+    public void getSchema_differentSchemaIds_growsCacheIndependently() {
+        when(configStore.get()).thenReturn(config);
+        URI schemaId1 = URI.create("schemaId1");
+        URI schemaId2 = URI.create("schemaId2");
+        when(config.getCustomApplicationSchema(schemaId1)).thenReturn("{\"a\":1}");
+        when(config.getCustomApplicationSchema(schemaId2)).thenReturn("{\"b\":2}");
+
+        String result1 = service.getSchema(schemaId1, false);
+        String result2 = service.getSchema(schemaId2, false);
+
+        Assertions.assertEquals("{\"a\":1}", result1);
+        Assertions.assertEquals("{\"b\":2}", result2);
+        Assertions.assertEquals(2, service.schemaCacheSize());
+    }
 }
