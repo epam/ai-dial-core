@@ -59,10 +59,6 @@ public class UpstreamRouteProvider {
         return get(deployment, breakpointContext, Deployment::getEndpoint, null);
     }
 
-    public UpstreamRoute get(Deployment deployment, CacheBreakpointContext breakpointContext, String upstreamId) {
-        return get(deployment, breakpointContext, Deployment::getEndpoint, upstreamId);
-    }
-
     public UpstreamRoute get(Deployment deployment, CacheBreakpointContext breakpointContext,
                              Function<Deployment, String> endpointSupplier) {
         return get(deployment, breakpointContext, endpointSupplier, null);
