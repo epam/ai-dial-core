@@ -53,11 +53,11 @@
     "createBucket": true,
     "overrides": {
       "jclouds.filesystem.basedir": "data"
+    },
+    "layout": {
+      "tenantRooted": false,
+      "defaultTenant": "default"
     }
-  },
-  "storageLayout": {
-    "tenantRooted": false,
-    "defaultTenant": "default"
   },
   "resources": {
     "maxSize" : 67108864,

@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Drives the resource API with {@code storageLayout.tenantRooted} enabled: the whole stack — descriptor,
+ * Drives the resource API with {@code storage.layout.tenantRooted} enabled: the whole stack — descriptor,
  * cache and blob store — has to agree on the tenant-rooted paths, which unit tests cannot show.
  */
 public class TenantRootedLayoutApiTest extends ResourceBaseTest {
@@ -27,9 +27,9 @@ public class TenantRootedLayoutApiTest extends ResourceBaseTest {
 
     @Override
     protected JsonObject additionalSettingsOverrides() {
-        return new JsonObject().put("storageLayout", new JsonObject()
+        return new JsonObject().put("storage", new JsonObject().put("layout", new JsonObject()
                 .put("tenantRooted", true)
-                .put("defaultTenant", TENANT));
+                .put("defaultTenant", TENANT)));
     }
 
     @AfterEach
