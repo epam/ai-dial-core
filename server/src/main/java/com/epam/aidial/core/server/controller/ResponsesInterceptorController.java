@@ -49,7 +49,7 @@ public class ResponsesInterceptorController extends BaseInterceptorController {
     @Override
     protected String buildUri(ProxyContext context) {
         Deployment deployment = context.getDeployment();
-        String uri = DeploymentEndpointUtil.resolveResponsesBaseUri(deployment) + uriSuffix;
+        String uri = DeploymentEndpointUtil.resolveResponsesBaseUri(deployment, context.getConfig().getTranslators()) + uriSuffix;
         String query = context.getRequest().query();
         return query == null ? uri : uri + "?" + query;
     }

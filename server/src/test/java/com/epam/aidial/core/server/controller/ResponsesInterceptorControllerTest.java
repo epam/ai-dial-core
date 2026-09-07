@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceType;
@@ -15,6 +16,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServerRequest;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
@@ -29,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -40,6 +43,12 @@ public class ResponsesInterceptorControllerTest {
 
     @Mock
     private ProxyContext context;
+
+    @BeforeEach
+    void stubConfig() {
+        // the controller resolves translator references against the request's config on every routing step
+        lenient().when(context.getConfig()).thenReturn(new Config());
+    }
 
     @Mock
     private HttpServerRequest request;

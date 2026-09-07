@@ -3,12 +3,16 @@ package com.epam.aidial.core.config;
 import com.epam.aidial.core.config.databind.TranslatorRefDeserializer;
 import com.fasterxml.jackson.annotation.JsonValue;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import jakarta.annotation.Nullable;
 import lombok.Data;
+
+import java.util.Map;
 
 /**
  * The translator serving one {@link DeploymentInterface}: the name of a {@link Config#getTranslators()}
- * entry, or a definition written inline. Both spell the same thing, so {@link #getDefinition()} answers
- * for both.
+ * entry, or a definition written inline. A name is never materialized into the definition it stands for —
+ * {@link #resolve} looks it up in the registry each time it is asked, so an edit to a {@code translators}
+ * entry reaches every deployment naming it with nothing relinked and nothing rewritten.
  */
 @Data
 @JsonDeserialize(using = TranslatorRefDeserializer.class)
@@ -17,33 +21,43 @@ public class TranslatorRef {
     /**
      * The {@code translators} entry this names, or null when the definition was written inline.
      */
-    private String name;
+    private final String name;
 
     /**
-     * What the reference resolves to: the inline definition as written, or the named {@code translators}
-     * entry, linked at config load. Null while a name has no entry to link it to — the interface then
-     * serves nothing, the same as one with no base url.
+     * The definition as written inline, or null when the reference is a name.
      */
-    private Translator definition;
+    private final Translator inline;
+
+    private TranslatorRef(String name, Translator inline) {
+        this.name = name;
+        this.inline = inline;
+    }
 
     public static TranslatorRef named(String name) {
-        TranslatorRef ref = new TranslatorRef();
-        ref.name = name;
-        return ref;
+        return new TranslatorRef(name, null);
     }
 
     public static TranslatorRef inline(Translator definition) {
-        TranslatorRef ref = new TranslatorRef();
-        ref.definition = definition;
-        return ref;
+        return new TranslatorRef(null, definition);
+    }
+
+    /**
+     * The definition the reference stands for right now: the inline definition as written, or the named
+     * {@code translators} entry as the supplied registry has it. Null while a name has no entry — the
+     * interface then serves nothing, the same as one with no base url, and registering the entry serves
+     * it again with no edit to the deployment.
+     */
+    @Nullable
+    public Translator resolve(Map<String, Translator> translators) {
+        return name != null ? translators.get(name) : inline;
     }
 
     /**
      * Written back the way it was read: a name stays a name, an inline definition stays inline. A name is
-     * never replaced by what it resolved to, so the reference survives a config round-trip.
+     * never replaced by what it resolves to, so the reference survives a config round-trip.
      */
     @JsonValue
     public Object toJson() {
-        return name != null ? name : definition;
+        return name != null ? name : inline;
     }
 }

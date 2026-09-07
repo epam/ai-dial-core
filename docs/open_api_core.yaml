@@ -15150,6 +15150,8 @@ components:
           $ref: "#/components/schemas/InterfaceMode"
         translator:
           $ref: "#/components/schemas/TranslatorRef"
+        defaults:
+          $ref: "#/components/schemas/MapStringObject"
     EmbeddingResponse:
       required:
       - data
@@ -17272,6 +17274,8 @@ components:
           $ref: "#/components/schemas/Translator"
         name:
           type: string
+        inline:
+          $ref: "#/components/schemas/Translator"
     TruncatePromptError:
       required:
       - error

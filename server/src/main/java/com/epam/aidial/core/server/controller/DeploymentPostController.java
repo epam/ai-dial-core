@@ -198,7 +198,8 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                         dep = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(app);
                     }
 
-                    if (DeploymentEndpointUtil.resolveServingEndpoint(dep, requestedInterface()) == null) {
+                    if (DeploymentEndpointUtil.resolveServingEndpoint(dep, requestedInterface(),
+                            context.getConfig().getTranslators()) == null) {
                         throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
                     }
 
@@ -239,7 +240,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
     private Future<?> handleInterceptor(int interceptorIndex) {
         List<String> interceptors = context.getInterceptors();
         if (interceptorIndex < interceptors.size()) {
-            return new ChatCompletionInterceptorController(proxy, context, interceptorIndex).handle();
+            return new ChatCompletionInterceptorController(proxy, context, interceptorIndex, requestedInterface()).handle();
         } else { // all interceptors are completed we should call the initial deployment
             return handleDeployment(context.getApiKeyData().getInitialDeployment());
         }
@@ -348,7 +349,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         UpstreamRoute upstreamRoute;
         try {
             upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext(),
-                    dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, type), upstreamId);
+                    dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, type, context.getConfig().getTranslators()), upstreamId);
         } catch (HttpException e) {
             respond(e.getStatus(), e.getMessage());
             return;

@@ -441,9 +441,15 @@ public class SkillResourceApiTest extends ResourceBaseTest {
         verify(uploadSkill("/files-skill", files), 200);
 
         // non-recursive: immediate entries of the version, under a clean .../files/ url (version prefix hidden)
-        Set<String> immediate = childUrls(listSkillFiles("/files-skill"));
+        Response listing = listSkillFiles("/files-skill");
+        Set<String> immediate = childUrls(listing);
         assertTrue(immediate.contains("skills/" + bucket + "/files-skill/files/SKILL.md"), immediate.toString());
         assertTrue(immediate.contains("skills/" + bucket + "/files-skill/files/scripts/"), immediate.toString());
+
+        // nodeType must distinguish files from subfolders, just like the v1 metadata API
+        Map<String, String> nodeTypes = childNodeTypes(listing);
+        assertEquals("ITEM", nodeTypes.get("SKILL.md"));
+        assertEquals("FOLDER", nodeTypes.get("scripts"));
 
         // recursive: all files flattened
         Set<String> all = childUrls(send(HttpMethod.GET,

@@ -46,6 +46,14 @@ public class DeploymentInterface {
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     private Map<String, String> defaultHeaders = Map.of();
 
+    /**
+     * Body parameters added to a request for this interface that carries none under that key. Declaring
+     * any replaces the deployment-level defaults for this interface rather than adding to them.
+     * Resolved by {@link Deployment#resolveDefaults}.
+     */
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private Map<String, Object> defaults = Map.of();
+
     public DeploymentInterface(String baseUrl) {
         this.baseUrl = baseUrl;
     }

@@ -1,5 +1,6 @@
 package com.epam.aidial.core.config;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
@@ -7,6 +8,7 @@ import java.util.Map;
 
 import static com.epam.aidial.core.config.InterfaceType.ANTHROPIC_MESSAGES;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_CHAT_COMPLETIONS;
+import static com.epam.aidial.core.config.InterfaceType.OPENAI_EMBEDDINGS;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_RESPONSES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -144,6 +146,93 @@ public class DeploymentTest {
 
         assertEquals(source.getInterfaces(), copy.getInterfaces());
         assertEquals("http://adapter", copy.getInterfaces().get(OPENAI_RESPONSES.getValue()).getBaseUrl());
+    }
+
+    @Test
+    void defaultsServeTheOpenAiInterfacesTheyBelongTo() {
+        Model model = new Model();
+        model.setDefaults(Map.of("temperature", 1));
+        model.setResponsesDefaults(Map.of("store", false));
+
+        // chat completions and embeddings share the field that predates the split into typed interfaces
+        assertEquals(Map.of("temperature", 1), model.resolveDefaults(OPENAI_CHAT_COMPLETIONS));
+        assertEquals(Map.of("temperature", 1), model.resolveDefaults(OPENAI_EMBEDDINGS));
+        assertEquals(Map.of("store", false), model.resolveDefaults(OPENAI_RESPONSES));
+        // neither holds Anthropic parameters, so neither reaches the Anthropic interface
+        assertEquals(Map.of(), model.resolveDefaults(ANTHROPIC_MESSAGES));
+    }
+
+    @Test
+    void interfaceDefaultsReplaceTheDeploymentLevelRatherThanAddingToIt() {
+        DeploymentInterface chatCompletions = new DeploymentInterface("http://openai");
+        chatCompletions.setDefaults(Map.of("temperature", 0.5));
+        Model model = new Model();
+        model.setDefaults(Map.of("temperature", 1, "custom_fields", Map.of("configuration", "foo.baz")));
+        model.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), chatCompletions));
+
+        // the entry declares defaults, so they are the whole set: custom_fields is not laid under them
+        assertEquals(Map.of("temperature", 0.5), model.resolveDefaults(OPENAI_CHAT_COMPLETIONS));
+        // and it speaks for its own interface alone, so embeddings still take the deployment level
+        assertEquals(
+                Map.of("temperature", 1, "custom_fields", Map.of("configuration", "foo.baz")),
+                model.resolveDefaults(OPENAI_EMBEDDINGS));
+    }
+
+    @Test
+    void anthropicDefaultsComeFromTheInterfaceEntryAlone() {
+        DeploymentInterface anthropic = new DeploymentInterface("http://anthropic");
+        anthropic.setDefaults(Map.of("temperature", 0.5));
+        Model model = new Model();
+        model.setDefaults(Map.of("temperature", 1));
+        model.setResponsesDefaults(Map.of("store", false));
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), anthropic));
+
+        // nothing of the deployment level is laid under it
+        assertEquals(Map.of("temperature", 0.5), model.resolveDefaults(ANTHROPIC_MESSAGES));
+    }
+
+    @Test
+    void defaultsFallBackToDeploymentLevelForAnInterfaceDeclaringNone() {
+        Model model = new Model();
+        model.setDefaults(Map.of("temperature", 1));
+        model.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://openai")));
+
+        // declared without defaults of its own, and not declared at all, resolve alike
+        assertEquals(Map.of("temperature", 1), model.resolveDefaults(OPENAI_CHAT_COMPLETIONS));
+        assertEquals(Map.of("temperature", 1), model.resolveDefaults(OPENAI_EMBEDDINGS));
+    }
+
+    @Test
+    void roundTripInterfaceDefaults() throws Exception {
+        String json = """
+                {
+                    "endpoint": "http://host/chat/completions",
+                    "defaults": {"temperature": 1},
+                    "interfaces": {
+                        "anthropicMessages": {
+                            "base_url": "http://anthropic",
+                            "defaults": {"temperature": 0.5, "max_tokens": 1024}
+                        }
+                    }
+                }
+                """;
+
+        Model restored = MAPPER.readValue(MAPPER.writeValueAsString(MAPPER.readValue(json, Model.class)), Model.class);
+
+        assertEquals(Map.of("temperature", 0.5, "max_tokens", 1024), restored.resolveDefaults(ANTHROPIC_MESSAGES));
+        assertEquals(Map.of("temperature", 1), restored.resolveDefaults(OPENAI_CHAT_COMPLETIONS));
+    }
+
+    @Test
+    void interfaceDefaultsAreOmittedWhenEmpty() throws Exception {
+        Model model = new Model();
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), new DeploymentInterface("http://anthropic")));
+
+        JsonNode declared = MAPPER.readTree(MAPPER.writeValueAsString(model))
+                .path("interfaces").path(ANTHROPIC_MESSAGES.getValue());
+
+        // the deployment-level defaults serialize either way, so the check has to be scoped to the entry
+        assertFalse(declared.has("defaults"), declared.toString());
     }
 
     @Test
