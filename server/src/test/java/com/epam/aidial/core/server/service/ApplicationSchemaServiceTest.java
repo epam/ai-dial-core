@@ -832,6 +832,31 @@ public class ApplicationSchemaServiceTest {
     }
 
     @Test
+    public void getSkills_returnsListOfSkills_whenSchemaHasDialResourceSkills() {
+        customProperties.put("toolset", Map.of("name", "my-skill", "dial_id", "skills/bucket/my-skill"));
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(any())).thenReturn(schema);
+        application.setApplicationProperties(customProperties);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        when(resourceService.hasResource(any())).thenReturn(true);
+        when(encryptionService.decrypt(anyString())).thenReturn("/Users/123/");
+
+        List<ResourceDescriptor> result = service.getSkills(application);
+
+        Assertions.assertEquals(1, result.size());
+        Assertions.assertEquals("my-skill", result.getFirst().getName());
+    }
+
+    @Test
+    public void getSkills_returnsEmptyList_whenSchemaIsNull() {
+        application.setApplicationTypeSchemaId(null);
+
+        List<ResourceDescriptor> result = service.getSkills(application);
+
+        Assertions.assertTrue(result.isEmpty());
+    }
+
+    @Test
     public void testGetToolsets_ToolsetExistsNotDialResourceFormat() {
         customProperties.put("toolset", Map.of("name", "my-toolset", "dial_id", "mytoolset"));
         when(configStore.get()).thenReturn(config);
