@@ -2,6 +2,9 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.DeploymentInterface;
+import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.server.ProxyContext;
@@ -39,6 +42,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.Redisson;
@@ -50,7 +54,9 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -460,7 +466,7 @@ class BackgroundJobServiceTest {
         when(configStore.get()).thenReturn(config);
         when(config.selectDeployment(anyString())).thenReturn(deployment);
         when(deployment.getResponsesEndpoint()).thenReturn("http://test-upstream/responses");
-        when(upstreamRouteProvider.get(any(), any(), anyString()))
+        when(upstreamRouteProvider.get(any(), any(), any(), anyString()))
                 .thenThrow(new RuntimeException("No available upstream"));
 
         poller.poll(buildMapping())
@@ -490,12 +496,66 @@ class BackgroundJobServiceTest {
         await(ctx);
     }
 
+    @Test
+    void pollResolvesResponsesEndpointFromInterfaces(VertxTestContext ctx) throws Throwable {
+        Model model = new Model();
+        model.setName(DEPLOYMENT_NAME);
+        model.setInterfaces(Map.of(InterfaceType.OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://adapter")));
+        setupDeploymentMocks(model);
+        setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
+
+        poller.poll(buildMapping())
+                .onSuccess(result -> ctx.verify(() -> {
+                    assertNotNull(result);
+                    assertEquals("http://adapter/openai/v1/responses/" + UPSTREAM_RESPONSE_ID, capturePolledUrl());
+                    // the upstream is looked up by the endpoint the mapping's key was issued against
+                    assertEquals("http://adapter", captureEndpointSupplier().apply(model));
+                    ctx.completeNow();
+                }))
+                .onFailure(ctx::failNow);
+        await(ctx);
+    }
+
+    @Test
+    void pollResolvesResponsesEndpointFromDeploymentBaseUrl(VertxTestContext ctx) throws Throwable {
+        Model model = new Model();
+        model.setName(DEPLOYMENT_NAME);
+        model.setBaseUrl("http://adapter/");
+        model.setInterfaces(Map.of(InterfaceType.OPENAI_RESPONSES.getValue(), new DeploymentInterface()));
+        setupDeploymentMocks(model);
+        setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
+
+        poller.poll(buildMapping())
+                .onSuccess(result -> ctx.verify(() -> {
+                    assertEquals("http://adapter/openai/v1/responses/" + UPSTREAM_RESPONSE_ID, capturePolledUrl());
+                    ctx.completeNow();
+                }))
+                .onFailure(ctx::failNow);
+        await(ctx);
+    }
+
+    private String capturePolledUrl() {
+        ArgumentCaptor<RequestOptions> options = ArgumentCaptor.forClass(RequestOptions.class);
+        verify(httpClient).request(options.capture());
+        return "http://" + options.getValue().getHost() + options.getValue().getURI();
+    }
+
+    private Function<Deployment, String> captureEndpointSupplier() {
+        ArgumentCaptor<Function<Deployment, String>> endpointSupplier = ArgumentCaptor.forClass(Function.class);
+        verify(upstreamRouteProvider).get(any(Deployment.class), isNull(), endpointSupplier.capture(), anyString());
+        return endpointSupplier.getValue();
+    }
+
     private void setupDeploymentMocks() {
-        Config config = mock(Config.class);
         Deployment deployment = mock(Deployment.class);
+        when(deployment.getResponsesEndpoint()).thenReturn("http://test-upstream/responses");
+        setupDeploymentMocks(deployment);
+    }
+
+    private void setupDeploymentMocks(Deployment deployment) {
+        Config config = mock(Config.class);
         when(configStore.get()).thenReturn(config);
         when(config.selectDeployment(anyString())).thenReturn(deployment);
-        when(deployment.getResponsesEndpoint()).thenReturn("http://test-upstream/responses");
 
         Upstream upstream = mock(Upstream.class);
         when(upstream.getKey()).thenReturn("api-key");
@@ -504,7 +564,7 @@ class BackgroundJobServiceTest {
 
         UpstreamRoute route = mock(UpstreamRoute.class);
         when(route.next()).thenReturn(upstream);
-        when(upstreamRouteProvider.get(any(Deployment.class), isNull(), anyString())).thenReturn(route);
+        when(upstreamRouteProvider.get(any(Deployment.class), isNull(), any(), anyString())).thenReturn(route);
     }
 
     private void setupHttpMocks(String responseJson) {
