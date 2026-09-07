@@ -15143,6 +15143,8 @@ components:
           $ref: "#/components/schemas/InterfaceMode"
         translator:
           $ref: "#/components/schemas/TranslatorRef"
+        defaults:
+          $ref: "#/components/schemas/MapStringObject"
     EmbeddingResponse:
       required:
       - data

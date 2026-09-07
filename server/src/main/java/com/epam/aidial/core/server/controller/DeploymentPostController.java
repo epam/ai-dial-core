@@ -240,7 +240,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
     private Future<?> handleInterceptor(int interceptorIndex) {
         List<String> interceptors = context.getInterceptors();
         if (interceptorIndex < interceptors.size()) {
-            return new ChatCompletionInterceptorController(proxy, context, interceptorIndex).handle();
+            return new ChatCompletionInterceptorController(proxy, context, interceptorIndex, requestedInterface()).handle();
         } else { // all interceptors are completed we should call the initial deployment
             return handleDeployment(context.getApiKeyData().getInitialDeployment());
         }

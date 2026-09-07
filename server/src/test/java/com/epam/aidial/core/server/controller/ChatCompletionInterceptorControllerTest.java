@@ -62,7 +62,7 @@ public class ChatCompletionInterceptorControllerTest {
         when(request.path()).thenReturn("/openai/deployments/original-model/chat/completions");
         when(request.query()).thenReturn(null);
 
-        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0);
+        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0, InterfaceType.OPENAI_CHAT_COMPLETIONS);
 
         assertEquals(
                 "http://interceptor/openai/deployments/my-interceptor/chat/completions",
@@ -80,7 +80,7 @@ public class ChatCompletionInterceptorControllerTest {
         when(request.path()).thenReturn("/openai/deployments/original-model/chat/completions");
         when(request.query()).thenReturn("api-version=2024-05");
 
-        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0);
+        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0, InterfaceType.OPENAI_CHAT_COMPLETIONS);
 
         assertEquals(
                 "http://interceptor/openai/deployments/my-interceptor/chat/completions?api-version=2024-05",
@@ -99,7 +99,7 @@ public class ChatCompletionInterceptorControllerTest {
         when(request.query()).thenReturn(null);
         when(request.path()).thenReturn("/openai/deployments/original-model/chat/completions");
 
-        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0);
+        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0, InterfaceType.OPENAI_CHAT_COMPLETIONS);
 
         assertEquals(
                 "http://adapter/openai/deployments/my-interceptor/chat/completions",
@@ -118,7 +118,7 @@ public class ChatCompletionInterceptorControllerTest {
         when(request.query()).thenReturn("api-version=2024-05");
         when(request.path()).thenReturn("/openai/deployments/original-model/chat/completions");
 
-        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0);
+        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0, InterfaceType.OPENAI_CHAT_COMPLETIONS);
 
         assertEquals(
                 "http://adapter/openai/deployments/my-interceptor/chat/completions?api-version=2024-05",
@@ -137,7 +137,7 @@ public class ChatCompletionInterceptorControllerTest {
         when(request.query()).thenReturn(null);
         when(request.path()).thenReturn("/openai/deployments/model/chat/completions");
 
-        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0);
+        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0, InterfaceType.OPENAI_CHAT_COMPLETIONS);
 
         assertEquals(
                 "http://adapter/openai/deployments/my-interceptor/chat/completions",
@@ -156,7 +156,7 @@ public class ChatCompletionInterceptorControllerTest {
         when(request.query()).thenReturn("api-version=2025-01-01-preview");
         when(request.path()).thenReturn("/openai/deployments/models/platform/original-model/chat/completions");
 
-        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0);
+        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0, InterfaceType.OPENAI_CHAT_COMPLETIONS);
 
         assertEquals(
                 "http://adapter/openai/deployments/my-interceptor/chat/completions?api-version=2025-01-01-preview",
@@ -176,7 +176,7 @@ public class ChatCompletionInterceptorControllerTest {
         when(request.query()).thenReturn(null);
         when(request.path()).thenReturn("/openai/deployments/original-model/chat/completions");
 
-        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0);
+        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0, InterfaceType.OPENAI_CHAT_COMPLETIONS);
 
         assertEquals(
                 "http://adapter/openai/deployments/interceptor-override/chat/completions",
@@ -195,7 +195,7 @@ public class ChatCompletionInterceptorControllerTest {
         when(request.query()).thenReturn(null);
         when(request.path()).thenReturn("/some/other/path");
 
-        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0);
+        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0, InterfaceType.OPENAI_CHAT_COMPLETIONS);
 
         assertEquals("http://adapter/some/other/path", controller.buildUri(context));
     }
@@ -223,7 +223,7 @@ public class ChatCompletionInterceptorControllerTest {
         when(context.getRequestBody()).thenCallRealMethod();
         doCallRealMethod().when(context).setRequestBody(any());
 
-        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0);
+        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0, InterfaceType.OPENAI_CHAT_COMPLETIONS);
 
         String body = """
                 {

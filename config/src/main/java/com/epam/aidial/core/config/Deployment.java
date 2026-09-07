@@ -63,11 +63,15 @@ public abstract class Deployment extends RoleBasedEntity {
     @JsonAlias({"maxInputAttachments", "max_input_attachments"})
     private Integer maxInputAttachments;
     /**
-     * Default parameters are applied if a request doesn't contain them in OpenAI chat/completions API call.
+     * Default parameters applied to an OpenAI chat/completions or embeddings request that does not carry
+     * them. Used only where the interface entry declares no {@code defaults} of its own, see
+     * {@link #resolveDefaults}.
      */
     private Map<String, Object> defaults = Map.of();
     /**
-     * Default parameters are applied if a request doesn't contain them in OpenAI Responses API call.
+     * Default parameters applied to an OpenAI Responses API request that does not carry them. Used only
+     * where {@code interfaces.openaiResponses} declares no {@code defaults} of its own, see
+     * {@link #resolveDefaults}.
      */
     private Map<String, Object> responsesDefaults = Map.of();
     /**
@@ -152,5 +156,29 @@ public abstract class Deployment extends RoleBasedEntity {
         merged.putAll(defaultHeaders);
         merged.putAll(interfaceHeaders);
         return merged;
+    }
+
+    /**
+     * The default body parameters in force for the interface type: {@code interfaces.<type>.defaults} when
+     * the entry declares any, and the deployment-level defaults serving that interface otherwise. One set
+     * or the other, never both — an interface declaring its own replaces the deployment-level set rather
+     * than adding to it.
+     *
+     * <p>Which deployment-level field serves an interface is fixed per type, and Anthropic has none:
+     * {@link #defaults} and {@link #responsesDefaults} hold OpenAI parameters, so a deployment defaults an
+     * Anthropic parameter on the interface entry or nowhere.
+     */
+    public Map<String, Object> resolveDefaults(InterfaceType type) {
+        DeploymentInterface declared = interfaces == null ? null : interfaces.get(type.getValue());
+        Map<String, Object> interfaceDefaults = declared == null ? Map.of() : declared.getDefaults();
+        if (!interfaceDefaults.isEmpty()) {
+            return interfaceDefaults;
+        }
+        return switch (type) {
+            // an embeddings request is an OpenAI one, and predates the split into typed interfaces
+            case OPENAI_CHAT_COMPLETIONS, OPENAI_EMBEDDINGS -> defaults;
+            case OPENAI_RESPONSES -> responsesDefaults;
+            case ANTHROPIC_MESSAGES -> Map.of();
+        };
     }
 }
