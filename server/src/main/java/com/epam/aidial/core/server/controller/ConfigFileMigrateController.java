@@ -35,6 +35,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -229,7 +230,18 @@ public class ConfigFileMigrateController {
         boolean migrated = AdminApplyStatus.APPLIED.equals(result.status())
                 || AdminApplyStatus.APPLIED_INVALID.equals(result.status());
         ConfigFileMigrateStatus status = migrated ? ConfigFileMigrateStatus.MIGRATED : ConfigFileMigrateStatus.FAILED;
-        return new ConfigFileMigrateResult(pending.manifest().kind(), result.entityId(), pending.fileId(), status, result.error());
+        return new ConfigFileMigrateResult(pending.manifest().kind(), resourceUrl(result.entityId()), pending.fileId(), status, result.error());
+    }
+
+    /**
+     * The percent-encoded admin API path (no leading {@code /v1/}) at which {@code canonicalId} is
+     * reachable, matching the convention {@link ResourceDescriptor#getUrl()} uses elsewhere in the API
+     * — encoding matters here because a managed type's short name comes straight from an arbitrary
+     * file-config key (e.g. a model id containing {@code [}/{@code ]}) and isn't restricted the way
+     * {@code ConfigResourceController.ENTITY_NAME_PATTERN} restricts a PUT/DELETE name.
+     */
+    private static String resourceUrl(String canonicalId) {
+        return canonicalId == null ? null : UrlUtil.encodePath(canonicalId);
     }
 
     private static ConfigFileMigrateStatus skippedStatus(boolean dryRun) {
@@ -256,7 +268,7 @@ public class ConfigFileMigrateController {
                     ? resourceService.hasResource(platformDescriptor(spec.resourceType(), shortName))
                     : liveEntities.containsKey(canonicalId);
             if (alreadyInBlob) {
-                results.add(new ConfigFileMigrateResult(spec.kind(), canonicalId, shortName, skippedStatus(dryRun), "already in blob"));
+                results.add(new ConfigFileMigrateResult(spec.kind(), resourceUrl(canonicalId), shortName, skippedStatus(dryRun), "already in blob"));
                 continue;
             }
             JsonNode specNode = ProxyUtil.MAPPER.valueToTree(entry.getValue());
@@ -282,16 +294,16 @@ public class ConfigFileMigrateController {
             // created directly via the API) — a canonicalId/name check alone would miss that and
             // create a duplicate blob for the same secret, so idempotency here is secret-based.
             if (existingSecrets.contains(secret)) {
-                // No fileId reported: a key's file-side identity is its raw secret, which must never
-                // be echoed back into a response.
-                results.add(new ConfigFileMigrateResult("Key", canonicalId, null, skippedStatus(dryRun), "already in blob"));
+                // No key reported: a key entity's file-side identity is its raw secret, which must
+                // never be echoed back into a response.
+                results.add(new ConfigFileMigrateResult("Key", resourceUrl(canonicalId), null, skippedStatus(dryRun), "already in blob"));
                 continue;
             }
             // Reaching here means `secret` isn't in existingSecrets, so any occupant found under
             // shortName is necessarily a different secret — a genuine truncated-hash collision.
             String occupant = secretByName.get(shortName);
             if (occupant != null) {
-                results.add(new ConfigFileMigrateResult("Key", canonicalId, null, failedStatus(dryRun),
+                results.add(new ConfigFileMigrateResult("Key", resourceUrl(canonicalId), null, failedStatus(dryRun),
                         "Derived blob name collides with an existing key under a different secret"));
                 continue;
             }
@@ -327,7 +339,7 @@ public class ConfigFileMigrateController {
             if (blobSchemas.ids().contains(id)) {
                 String canonicalId = MergedConfigStore.canonicalId(spec.resourceType(), ResourceDescriptor.PLATFORM_BUCKET,
                         namesById.get(id));
-                results.add(new ConfigFileMigrateResult(spec.kind(), canonicalId, id, skippedStatus(dryRun), "already in blob"));
+                results.add(new ConfigFileMigrateResult(spec.kind(), resourceUrl(canonicalId), id, skippedStatus(dryRun), "already in blob"));
             } else {
                 notYetMigrated.put(id, entry.getValue());
             }
@@ -340,7 +352,7 @@ public class ConfigFileMigrateController {
             String id = entry.getKey();
             SchemaMigrationNameResolver.Resolution resolution = resolutions.get(id);
             if (!resolution.isValid()) {
-                // No blobName: the file schema's own $id is the only identifier there is to report
+                // No resourceUrl: the file schema's own $id is the only identifier there is to report
                 // when a blob name could never be derived for it.
                 results.add(new ConfigFileMigrateResult(spec.kind(), null, id, failedStatus(dryRun), resolution.error()));
                 continue;
@@ -351,7 +363,7 @@ public class ConfigFileMigrateController {
             try {
                 body = ProxyUtil.MAPPER.readTree(entry.getValue());
             } catch (JsonProcessingException e) {
-                results.add(new ConfigFileMigrateResult(spec.kind(), canonicalId, id, failedStatus(dryRun), "Failed to parse schema body"));
+                results.add(new ConfigFileMigrateResult(spec.kind(), resourceUrl(canonicalId), id, failedStatus(dryRun), "Failed to parse schema body"));
                 continue;
             }
             // MergedConfigStore.validateSchemaId (invoked by AdminApplyController while applying this
@@ -406,8 +418,8 @@ public class ConfigFileMigrateController {
         String canonicalId = MergedConfigStore.canonicalId(ResourceTypes.GLOBAL_SETTINGS,
                 ResourceDescriptor.PLATFORM_BUCKET, "global");
         if (mergedConfigStore.isSettingsFromApi()) {
-            // No fileId: settings is a file-wide singleton, with no name of its own in the file config.
-            results.add(new ConfigFileMigrateResult("Settings", canonicalId, null, skippedStatus(dryRun), "already in blob"));
+            // No key: settings is a file-wide singleton, with no name of its own in the file config.
+            results.add(new ConfigFileMigrateResult("Settings", resourceUrl(canonicalId), null, skippedStatus(dryRun), "already in blob"));
             return;
         }
         GlobalSettings settings = new GlobalSettings();
@@ -431,11 +443,11 @@ public class ConfigFileMigrateController {
         }
         ValidationResult validation = validationService.validateOnly(manifest, scratch);
         if (ValidationStatus.VALID.equals(validation.status())) {
-            results.add(new ConfigFileMigrateResult(manifest.kind(), manifest.name(), fileId,
+            results.add(new ConfigFileMigrateResult(manifest.kind(), resourceUrl(manifest.name()), fileId,
                     ConfigFileMigrateStatus.WOULD_MIGRATE, null));
             ConfigManifestSupport.mutateScratch(scratch, manifest);
         } else {
-            results.add(new ConfigFileMigrateResult(manifest.kind(), manifest.name(), fileId,
+            results.add(new ConfigFileMigrateResult(manifest.kind(), resourceUrl(manifest.name()), fileId,
                     ConfigFileMigrateStatus.WOULD_FAIL, validation.error()));
         }
     }
@@ -452,8 +464,8 @@ public class ConfigFileMigrateController {
     }
 
     /**
-     * A real-run candidate queued in {@code toApply}, carrying the file-side identifier ({@code
-     * fileId}, may be {@code null}) alongside the {@link AdminManifest} that {@link
+     * A real-run candidate queued in {@code toApply}, carrying the file-side identifier (reported as
+     * {@code key}, may be {@code null}) alongside the {@link AdminManifest} that {@link
      * ConfigApplyService#applyEntries} will actually apply — so {@link #toMigrateResult} can attach it
      * to the resulting {@link ConfigFileMigrateResult} once applied.
      */
