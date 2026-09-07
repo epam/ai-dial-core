@@ -1,6 +1,6 @@
 package com.epam.aidial.core.server.layout;
 
-import com.epam.aidial.core.storage.resource.TenantLayoutTransform;
+import com.epam.aidial.core.storage.resource.TenantLayoutTransformer;
 import lombok.SneakyThrows;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +27,7 @@ public class BucketCopier {
 
     /**
      * Splits a physical path into the bucket location and what follows, by finding the resource-type folder.
-     * The two halves are what {@link TenantLayoutTransform} converts, and a path is only made of those two
+     * The two halves are what {@link TenantLayoutTransformer} converts, and a path is only made of those two
      * plus the resource path within the type.
      */
     private record SplitPath(String location, String typeFolder, String rest) {
@@ -55,8 +55,8 @@ public class BucketCopier {
      */
     static String toTenantPath(String legacyPath, String tenantId, List<String> typeFolders) {
         SplitPath split = split(legacyPath, typeFolders);
-        return TenantLayoutTransform.toTenantLocation(split.location(), tenantId)
-                + TenantLayoutTransform.toTenantTypeFolder(split.typeFolder())
+        return TenantLayoutTransformer.toTenantLocation(split.location(), tenantId)
+                + TenantLayoutTransformer.toTenantTypeFolder(split.typeFolder())
                 + "/" + split.rest();
     }
 
