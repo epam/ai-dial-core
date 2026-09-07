@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.resource.SystemResourceRegistry;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -28,8 +29,8 @@ public class ResponseIdUtilTest {
         ResourceDescriptor descriptor = ResponseIdUtil.getResponseMappingDescriptor("dial_gpt-4_abc123");
 
         assertEquals(ResourceTypes.RESPONSE_MAPPING, descriptor.getType());
-        assertEquals(ResponseIdUtil.RESPONSE_MAPPINGS_BUCKET, descriptor.getBucketName());
-        assertEquals(ResponseIdUtil.RESPONSE_MAPPINGS_BUCKET_LOCATION, descriptor.getBucketLocation());
+        assertEquals(SystemResourceRegistry.RESPONSE_MAPPINGS.bucket(), descriptor.getBucketName());
+        assertEquals(SystemResourceRegistry.RESPONSE_MAPPINGS.location(), descriptor.getBucketLocation());
         assertEquals("gpt-4", descriptor.getParentPath());
         assertEquals("abc123", descriptor.getName());
     }

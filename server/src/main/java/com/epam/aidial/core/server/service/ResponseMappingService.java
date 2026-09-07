@@ -12,6 +12,7 @@ import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.resource.SystemResourceRegistry;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Vertx;
@@ -67,7 +68,7 @@ public class ResponseMappingService {
         log.debug("Housekeeping: scanning for expired response mappings");
         try {
             ResourceDescriptor root = ResourceDescriptorFactory.fromDecoded(
-                    ResourceTypes.RESPONSE_MAPPING, ResponseIdUtil.RESPONSE_MAPPINGS_BUCKET, ResponseIdUtil.RESPONSE_MAPPINGS_BUCKET_LOCATION, null);
+                    ResourceTypes.RESPONSE_MAPPING, SystemResourceRegistry.RESPONSE_MAPPINGS.bucket(), SystemResourceRegistry.RESPONSE_MAPPINGS.location(), null);
             cleanDeploymentSubfolders(root);
         } catch (Throwable e) {
             log.warn("Housekeeping: failed to clean expired response mappings", e);
@@ -96,7 +97,7 @@ public class ResponseMappingService {
 
     private void cleanItemsInDeploymentFolder(String deploymentName) {
         ResourceDescriptor subfolder = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.RESPONSE_MAPPING, ResponseIdUtil.RESPONSE_MAPPINGS_BUCKET, ResponseIdUtil.RESPONSE_MAPPINGS_BUCKET_LOCATION, deploymentName + "/");
+                ResourceTypes.RESPONSE_MAPPING, SystemResourceRegistry.RESPONSE_MAPPINGS.bucket(), SystemResourceRegistry.RESPONSE_MAPPINGS.location(), deploymentName + "/");
 
         long now = System.currentTimeMillis();
         String token = null;

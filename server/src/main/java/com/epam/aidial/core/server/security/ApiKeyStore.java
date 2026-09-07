@@ -11,6 +11,7 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.resource.SystemResourceRegistry;
 import com.epam.aidial.core.storage.util.RedisUtil;
 import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
@@ -28,7 +29,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 import static com.epam.aidial.core.server.security.ApiKeyGenerator.generateKey;
-import static com.epam.aidial.core.storage.resource.ResourceDescriptor.PATH_SEPARATOR;
 
 /**
  * The store keeps per request and project API key data.
@@ -39,9 +39,6 @@ import static com.epam.aidial.core.storage.resource.ResourceDescriptor.PATH_SEPA
  */
 @Slf4j
 public class ApiKeyStore {
-
-    public static final String API_KEY_DATA_BUCKET = "api_key_data";
-    public static final String API_KEY_DATA_LOCATION = API_KEY_DATA_BUCKET + PATH_SEPARATOR;
 
     private final AsyncTaskExecutor taskExecutor;
     private final RedissonClient redis;
@@ -271,7 +268,7 @@ public class ApiKeyStore {
 
     private String toRedisKey(String apiKey) {
         ResourceDescriptor resource = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.API_KEY_DATA, API_KEY_DATA_BUCKET, API_KEY_DATA_LOCATION, apiKey);
+                ResourceTypes.API_KEY_DATA, SystemResourceRegistry.API_KEY_DATA.bucket(), SystemResourceRegistry.API_KEY_DATA.location(), apiKey);
         return RedisUtil.redisKey(resource, prefix);
     }
 

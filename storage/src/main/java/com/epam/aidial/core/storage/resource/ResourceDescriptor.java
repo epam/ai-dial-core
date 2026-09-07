@@ -23,6 +23,13 @@ public class ResourceDescriptor {
     public static final String PLATFORM_BUCKET = "platform";
     public static final String PLATFORM_LOCATION = PLATFORM_BUCKET + PATH_SEPARATOR;
 
+    /**
+     * Prefixes of the two principal bucket-location shapes, {@code Users/<sub>/} and {@code Keys/<project>/}.
+     * The server-side bucket builder formats locations with them, and a storage layout recognizes principal
+     * locations by them — one set of literals for both, or the two drift.
+     */
+    public static final String USERS_LOCATION_PREFIX = "Users" + PATH_SEPARATOR;
+    public static final String KEYS_LOCATION_PREFIX = "Keys" + PATH_SEPARATOR;
 
     ResourceType type;
     /**
@@ -106,8 +113,24 @@ public class ResourceDescriptor {
      * Returns an absolute path to the resource in a persistent storage.
      */
     public String getAbsoluteFilePath() {
+        return getStoragePrefix(StorageLayouts.resolveActive()) + getPathWithinType();
+    }
+
+    /**
+     * The path {@link #getAbsoluteFilePath()} produces under the legacy layout, whichever layout is active.
+     * Anything durable derived from a path — an identifier handed to a user, an encryption AAD — must use
+     * this: a physical path is free to change when the layout does, and the stored artifact is not.
+     */
+    public String getLegacyFilePath() {
+        return getStoragePrefix(LegacyStorageLayout.INSTANCE) + getPathWithinType();
+    }
+
+    private String getStoragePrefix(StorageLayout layout) {
+        return layout.resolveLocationPrefix(bucketLocation) + layout.resolveTypeFolder(type.group()) + PATH_SEPARATOR;
+    }
+
+    private String getPathWithinType() {
         StringBuilder builder = new StringBuilder();
-        builder.append(getStoragePrefix());
 
         if (!parentFolders.isEmpty()) {
             builder.append(getParentPath())
@@ -123,15 +146,6 @@ public class ResourceDescriptor {
         }
 
         return builder.toString();
-    }
-
-    /**
-     * Returns the layout-dependent prefix every physical path of this resource starts with: the bucket
-     * location followed by the resource-type folder.
-     */
-    private String getStoragePrefix() {
-        StorageLayout layout = StorageLayouts.resolveActive();
-        return layout.resolveLocationPrefix(bucketLocation) + layout.resolveTypeFolder(type.group()) + PATH_SEPARATOR;
     }
 
     /**
@@ -218,7 +232,7 @@ public class ResourceDescriptor {
      * @param path - to the resource with decrypted bucket
      */
     public ResourceDescriptor resolveByPath(String path) {
-        String prefix = getStoragePrefix();
+        String prefix = getStoragePrefix(StorageLayouts.resolveActive());
         if (!isFolder) {
             throw new IllegalStateException("Resource must be a folder");
         }

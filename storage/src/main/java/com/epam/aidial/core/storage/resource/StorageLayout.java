@@ -9,5 +9,8 @@ public interface StorageLayout {
 
     String resolveLocationPrefix(String bucketLocation);
 
-    String resolveTypeFolder(String group);
+    /**
+     * @param typeGroup {@link ResourceType#group()} — the storage folder name of the resource type
+     */
+    String resolveTypeFolder(String typeGroup);
 }

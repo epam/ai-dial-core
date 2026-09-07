@@ -210,10 +210,15 @@ public class AiDial {
                 accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, taskExecutor, client, clientOptions, claimsLogLevel);
             }
 
-            StorageLayouts.useLayout(createStorageLayout(settings("storageLayout")));
+            StorageLayouts.useLayout(createStorageLayout(
+                    settings("storage").getJsonObject("layout", new JsonObject())));
 
             if (storage == null) {
-                Storage storageConfig = Json.decodeValue(settings("storage").toBuffer(), Storage.class);
+                // The layout block configures path composition, not the blob store; it is stripped
+                // before the decode because the codec rejects unknown properties.
+                JsonObject storageSettings = settings("storage").copy();
+                storageSettings.remove("layout");
+                Storage storageConfig = Json.decodeValue(storageSettings.toBuffer(), Storage.class);
                 storage = new BlobStorage(storageConfig);
             }
             encryptionService = new EncryptionService(settings("encryption"));

@@ -14,10 +14,11 @@ import java.util.List;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Drives the resource API with {@code storageLayout.tenantRooted} enabled: the whole stack — descriptor,
+ * Drives the resource API with {@code storage.layout.tenantRooted} enabled: the whole stack — descriptor,
  * cache and blob store — has to agree on the tenant-rooted paths, which unit tests cannot show.
  */
 public class TenantRootedLayoutApiTest extends ResourceBaseTest {
@@ -26,9 +27,9 @@ public class TenantRootedLayoutApiTest extends ResourceBaseTest {
 
     @Override
     protected JsonObject additionalSettingsOverrides() {
-        return new JsonObject().put("storageLayout", new JsonObject()
+        return new JsonObject().put("storage", new JsonObject().put("layout", new JsonObject()
                 .put("tenantRooted", true)
-                .put("defaultTenant", TENANT));
+                .put("defaultTenant", TENANT)));
     }
 
     @AfterEach
@@ -66,21 +67,19 @@ public class TenantRootedLayoutApiTest extends ResourceBaseTest {
         Response flushed = resourceRequest(HttpMethod.GET, "/folder/conversation");
         assertEquals(200, flushed.status());
 
-        List<Path> storedPaths = findStoredPaths("");
+        List<Path> storedPaths = findStoredPaths();
         List<Path> tenantRootedPaths = storedPaths.stream()
                 .filter(path -> path.toString().contains(".org/" + TENANT))
                 .toList();
-        assertTrue(!tenantRootedPaths.isEmpty(),
+        assertFalse(tenantRootedPaths.isEmpty(),
                 () -> "No blob stored under the tenant root, found: " + storedPaths);
         assertTrue(tenantRootedPaths.stream().anyMatch(path -> path.toString().contains(".conversations")),
                 () -> "Conversations are not stored in a reserved type folder: " + tenantRootedPaths);
     }
 
-    private List<Path> findStoredPaths(String marker) throws IOException {
+    private List<Path> findStoredPaths() throws IOException {
         try (Stream<Path> paths = Files.walk(testDir)) {
-            return paths.filter(Files::isRegularFile)
-                    .filter(path -> path.toString().contains(marker))
-                    .toList();
+            return paths.filter(Files::isRegularFile).toList();
         }
     }
 }
