@@ -15,7 +15,7 @@ import javax.annotation.Nullable;
  * migration tooling and the layout verifier.
  */
 @UtilityClass
-public class TenantLayoutTransform {
+public class TenantLayoutTransformer {
 
     private static final String ORG_PREFIX = ".org/";
     private static final String USERS_SEGMENT = ".users/";
