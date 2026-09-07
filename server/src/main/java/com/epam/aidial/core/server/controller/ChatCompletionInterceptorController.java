@@ -25,13 +25,13 @@ public class ChatCompletionInterceptorController extends BaseInterceptorControll
 
     /**
      * @param requestedInterface the interface the client called, {@link InterfaceType#OPENAI_EMBEDDINGS} for an
-     *                           embeddings request. It reaches the interceptor over the interceptor's chat
-     *                           completions interface, which is the only one {@link #buildUri} addresses it on.
+     *                           embeddings request. Both the interceptor and the deployment it fronts resolve
+     *                           their settings under it, however {@link #buildUri} routes this hop.
      */
     public ChatCompletionInterceptorController(Proxy proxy, ProxyContext context, int interceptorIndex,
                                                InterfaceType requestedInterface) {
         super(proxy, context, interceptorIndex, List.of(
-                new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.OPENAI_CHAT_COMPLETIONS, requestedInterface),
+                new ApplyDefaultDeploymentSettingsFn(proxy, context, requestedInterface),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestStandardAttachmentsFn(proxy, context),
                 new AutoShareDeploymentFn(proxy, context)));

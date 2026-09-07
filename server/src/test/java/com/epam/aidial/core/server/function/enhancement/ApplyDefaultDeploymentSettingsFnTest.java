@@ -281,9 +281,10 @@ public class ApplyDefaultDeploymentSettingsFnTest {
         model.setDefaults(Map.of("seed", 42));
         model.setInterfaces(Map.of(InterfaceType.OPENAI_EMBEDDINGS.getValue(), embeddings));
         DeploymentInterface chatCompletions = new DeploymentInterface("http://interceptor");
-        chatCompletions.setDefaultHeaders(Map.of("x-dial-custom-header", "from-interceptor"));
+        chatCompletions.setDefaultHeaders(Map.of("x-dial-custom-header", "from-chat-completions-entry"));
         Interceptor interceptor = new Interceptor();
         interceptor.setName("interceptor1");
+        interceptor.setDefaultHeaders(Map.of("x-dial-custom-header", "from-interceptor"));
         interceptor.setInterfaces(Map.of(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(), chatCompletions));
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setInterceptors(List.of("interceptor1"));
@@ -297,14 +298,13 @@ public class ApplyDefaultDeploymentSettingsFnTest {
         MultiMap headers = stubRequestHeaders();
         ObjectNode result = emptyBody();
 
-        new ApplyDefaultDeploymentSettingsFn(
-                proxy, context, InterfaceType.OPENAI_CHAT_COMPLETIONS, InterfaceType.OPENAI_EMBEDDINGS)
+        new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.OPENAI_EMBEDDINGS)
                 .apply(new ChatCompletionRequest(result));
 
-        // the fronted model resolves under the interface the client called, not the one this hop addresses
+        // the fronted model resolves under the interface the client called, not the one this hop is routed on
         assertEquals(256, result.get("dimensions").asInt());
         assertFalse(result.has("seed"));
-        // while the interceptor, addressed on its own chat completions interface, still resolves under that
+        // and so does the interceptor, so its chat completions entry gives way to its deployment-level header
         assertEquals("from-interceptor", headers.get("x-dial-custom-header"));
     }
 
