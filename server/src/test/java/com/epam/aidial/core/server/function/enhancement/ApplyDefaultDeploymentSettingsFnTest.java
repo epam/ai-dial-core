@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
+import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -24,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -202,6 +204,111 @@ public class ApplyDefaultDeploymentSettingsFnTest {
     }
 
     @Test
+    public void testDefaults_WhenInterfaceReplacesDeploymentLevel() throws JsonProcessingException {
+        DeploymentInterface chatCompletions = new DeploymentInterface("http://openai");
+        chatCompletions.setDefaults(Map.of("temperature", 0.5));
+        Model model = new Model();
+        model.setDefaults(Map.of("temperature", 1, "seed", 42));
+        model.setInterfaces(Map.of(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(), chatCompletions));
+        stubDeployment(model);
+        ObjectNode result = emptyBody();
+
+        assertTrue(fn.apply(new ChatCompletionRequest(result)));
+
+        assertEquals(0.5, result.get("temperature").asDouble());
+        // the entry's defaults are the whole set, so a key only the model names is not applied
+        assertFalse(result.has("seed"));
+    }
+
+    @Test
+    public void testDefaults_WhenRequestAlreadyCarriesTheKey() throws JsonProcessingException {
+        DeploymentInterface chatCompletions = new DeploymentInterface("http://openai");
+        chatCompletions.setDefaults(Map.of("temperature", 0.5));
+        Model model = new Model();
+        model.setInterfaces(Map.of(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(), chatCompletions));
+        stubDeployment(model);
+        ObjectNode result = (ObjectNode) ProxyUtil.MAPPER.readTree("{\"temperature\": 0.9}");
+
+        assertTrue(fn.apply(new ChatCompletionRequest(result)));
+
+        // an interface default is injected, never imposed, exactly as a deployment-level one is
+        assertEquals(0.9, result.get("temperature").asDouble());
+    }
+
+    @Test
+    public void testDefaults_WhenAnthropicInterface() throws JsonProcessingException {
+        DeploymentInterface anthropic = new DeploymentInterface("http://anthropic");
+        anthropic.setDefaults(Map.of("temperature", 0.5));
+        Model model = new Model();
+        model.setDefaults(Map.of("seed", 42));
+        model.setResponsesDefaults(Map.of("store", false));
+        model.setInterfaces(Map.of(InterfaceType.ANTHROPIC_MESSAGES.getValue(), anthropic));
+        stubDeployment(model);
+        ObjectNode result = emptyBody();
+
+        new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES)
+                .apply(new MessagesApiRequest(result));
+
+        // the OpenAI parameter sets hold nothing an Anthropic request could want, so neither reaches it
+        assertEquals(0.5, result.get("temperature").asDouble());
+        assertFalse(result.has("seed"));
+        assertFalse(result.has("store"));
+    }
+
+    @Test
+    public void testDefaults_WhenEmbeddingsInterfaceDeclaresItsOwn() throws JsonProcessingException {
+        DeploymentInterface embeddings = new DeploymentInterface("http://openai");
+        embeddings.setDefaults(Map.of("dimensions", 256));
+        Model model = new Model();
+        model.setDefaults(Map.of("seed", 42));
+        model.setInterfaces(Map.of(InterfaceType.OPENAI_EMBEDDINGS.getValue(), embeddings));
+        stubDeployment(model);
+        ObjectNode result = emptyBody();
+
+        new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.OPENAI_EMBEDDINGS)
+                .apply(new ChatCompletionRequest(result));
+
+        // embeddings fall back to the model-level defaults, but declaring their own replaces them
+        assertEquals(256, result.get("dimensions").asInt());
+        assertFalse(result.has("seed"));
+    }
+
+    @Test
+    public void testDefaults_AtFirstInterceptorOfAnEmbeddingsRequest() throws JsonProcessingException {
+        DeploymentInterface embeddings = new DeploymentInterface("http://openai");
+        embeddings.setDefaults(Map.of("dimensions", 256));
+        Model model = new Model();
+        model.setDefaults(Map.of("seed", 42));
+        model.setInterfaces(Map.of(InterfaceType.OPENAI_EMBEDDINGS.getValue(), embeddings));
+        DeploymentInterface chatCompletions = new DeploymentInterface("http://interceptor");
+        chatCompletions.setDefaultHeaders(Map.of("x-dial-custom-header", "from-interceptor"));
+        Interceptor interceptor = new Interceptor();
+        interceptor.setName("interceptor1");
+        interceptor.setInterfaces(Map.of(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(), chatCompletions));
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setInterceptors(List.of("interceptor1"));
+        proxyApiKeyData.setInterceptorIndex(0);
+        when(context.getDeployment()).thenReturn(interceptor);
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+        when(context.getInitialDeployment()).thenReturn("model");
+        DeploymentService deploymentService = mock(DeploymentService.class);
+        when(proxy.getDeploymentService()).thenReturn(deploymentService);
+        when(deploymentService.findDeployment(eq(context), eq("model"))).thenReturn(model);
+        MultiMap headers = stubRequestHeaders();
+        ObjectNode result = emptyBody();
+
+        new ApplyDefaultDeploymentSettingsFn(
+                proxy, context, InterfaceType.OPENAI_CHAT_COMPLETIONS, InterfaceType.OPENAI_EMBEDDINGS)
+                .apply(new ChatCompletionRequest(result));
+
+        // the fronted model resolves under the interface the client called, not the one this hop addresses
+        assertEquals(256, result.get("dimensions").asInt());
+        assertFalse(result.has("seed"));
+        // while the interceptor, addressed on its own chat completions interface, still resolves under that
+        assertEquals("from-interceptor", headers.get("x-dial-custom-header"));
+    }
+
+    @Test
     public void testDefaultHeaders_WhenModelWithoutInterceptors() throws JsonProcessingException {
         Model model = new Model();
         model.setDefaultHeaders(Map.of("x-dial-cache-policy", "cache-priority", "x-dial-custom-header", "foo-bar"));
@@ -319,6 +426,13 @@ public class ApplyDefaultDeploymentSettingsFnTest {
 
         // nothing to re-apply on the last hop, so the inbound request is not even touched
         verify(context, never()).getRequest();
+    }
+
+    private void stubDeployment(Model model) {
+        ApiKeyData apiKeyData = new ApiKeyData();
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(context.getProxyApiKeyData()).thenReturn(apiKeyData);
+        when(context.getDeployment()).thenReturn(model);
     }
 
     private static ObjectNode emptyBody() throws JsonProcessingException {

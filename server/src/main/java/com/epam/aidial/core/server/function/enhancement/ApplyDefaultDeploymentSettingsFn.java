@@ -16,11 +16,26 @@ import java.util.Map;
 @Slf4j
 public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<RequestObject> {
 
-    private final InterfaceType interfaceType;
+    /**
+     * The interface the deployment this hop calls is addressed on. On the hop that calls an interceptor
+     * that is the interceptor's own interface, which is not necessarily the one the client called.
+     */
+    private final InterfaceType servingInterface;
+    /**
+     * The interface the client called. The deployment the interceptor chain fronts resolves its settings
+     * under this one however the hops in front of it are addressed.
+     */
+    private final InterfaceType requestedInterface;
 
     public ApplyDefaultDeploymentSettingsFn(Proxy proxy, ProxyContext context, InterfaceType interfaceType) {
+        this(proxy, context, interfaceType, interfaceType);
+    }
+
+    public ApplyDefaultDeploymentSettingsFn(Proxy proxy, ProxyContext context,
+                                            InterfaceType servingInterface, InterfaceType requestedInterface) {
         super(proxy, context);
-        this.interfaceType = interfaceType;
+        this.servingInterface = servingInterface;
+        this.requestedInterface = requestedInterface;
     }
 
     @Override
@@ -34,7 +49,7 @@ public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<Reques
         request.clearInterceptorSettings();
         Deployment deployment = context.getDeployment();
         if (deployment instanceof Interceptor) {
-            applyDefaults(request, deployment);
+            applyDefaults(request, deployment, servingInterface);
         }
     }
 
@@ -45,7 +60,7 @@ public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<Reques
                 String deploymentId = context.getInitialDeployment();
                 deployment = proxy.getDeploymentService().findDeployment(context, deploymentId);
             }
-            applyDefaults(request, deployment);
+            applyDefaults(request, deployment, requestedInterface);
         }
     }
 
@@ -54,9 +69,9 @@ public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<Reques
      * already carries. At the first interceptor that means the interceptor's own settings, applied first,
      * take precedence over the ones of the deployment it fronts.
      */
-    private void applyDefaults(RequestObject request, Deployment deployment) {
-        request.applyDefaults(deployment);
-        applyDefaultHeaders(deployment);
+    private void applyDefaults(RequestObject request, Deployment deployment, InterfaceType interfaceType) {
+        request.applyDefaults(deployment.resolveDefaults(interfaceType));
+        applyDefaultHeaders(deployment, interfaceType);
     }
 
     /**
@@ -65,7 +80,7 @@ public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<Reques
      * the client had sent them: the core's own header reads see them, and they reach the deployment
      * through the same copy - and the same exclusions - as client headers.
      */
-    private void applyDefaultHeaders(Deployment deployment) {
+    private void applyDefaultHeaders(Deployment deployment, InterfaceType interfaceType) {
         Map<String, String> defaultHeaders = deployment.resolveDefaultHeaders(interfaceType);
         if (defaultHeaders.isEmpty()) {
             return;
