@@ -37,7 +37,7 @@ public class SystemBucketLayoutTest {
         ResourceDescriptor descriptor = ResponseIdUtil.getResponseMappingDescriptor("dial_gpt-4_abc123");
 
         assertEquals(".system/response_mappings/.response_mappings/gpt-4/abc123", descriptor.getAbsoluteFilePath());
-        assertEquals("response_mappings/response_mappings/gpt-4/abc123", descriptor.getStableFilePath());
+        assertEquals("response_mappings/response_mappings/gpt-4/abc123", descriptor.getLegacyFilePath());
     }
 
     @Test

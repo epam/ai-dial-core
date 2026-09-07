@@ -273,6 +273,6 @@ public class InvitationService {
     // the location back out of it. It must therefore not carry the physical path, which the storage layout is
     // free to change: an invitation issued before a layout change has to keep resolving after it.
     private String generateInvitationId(ResourceDescriptor resource) {
-        return encryptionService.encrypt(resource.getStableFilePath() + ResourceDescriptor.PATH_SEPARATOR + ApiKeyGenerator.generateKey());
+        return encryptionService.encrypt(resource.getLegacyFilePath() + ResourceDescriptor.PATH_SEPARATOR + ApiKeyGenerator.generateKey());
     }
 }

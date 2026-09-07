@@ -140,7 +140,7 @@ public class ResourceDescriptor {
      * Anything durable derived from a path — an identifier handed to a user, an encryption AAD — must use
      * this: a physical path is free to change when the layout does, and the stored artifact is not.
      */
-    public String getStableFilePath() {
+    public String getLegacyFilePath() {
         return getStoragePrefix(LegacyStorageLayout.INSTANCE) + getPathWithinType();
     }
 

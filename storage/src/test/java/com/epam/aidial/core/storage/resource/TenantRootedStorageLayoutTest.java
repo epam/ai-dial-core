@@ -51,7 +51,7 @@ public class TenantRootedStorageLayoutTest {
                 ResourceDescriptor.BACKGROUND_JOB_LOCATION, false);
 
         assertEquals(".system/background_jobs/.background_jobs/job-1", job.getAbsoluteFilePath());
-        assertEquals("background_jobs/background_jobs/job-1", job.getStableFilePath());
+        assertEquals("background_jobs/background_jobs/job-1", job.getLegacyFilePath());
     }
 
     /**

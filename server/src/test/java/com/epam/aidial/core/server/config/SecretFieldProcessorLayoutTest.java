@@ -79,12 +79,12 @@ public class SecretFieldProcessorLayoutTest {
         assertEquals("plain-secret", key.getKey());
     }
 
-    // Under the legacy layout the physical and stable paths coincide, so the divergence only exists on the
+    // Under the legacy layout the physical and legacy paths coincide, so the divergence only exists on the
     // tenant-rooted side: ciphertext bound to the tenant-shaped physical path must not decrypt against the
-    // stable AAD. This is also the guard proving the AAD participates at all — with a cipher that ignored
+    // legacy-path AAD. This is also the guard proving the AAD participates at all — with a cipher that ignored
     // it, the round-trip test above would pass for any path.
     @Test
-    public void testPhysicalPathAadDoesNotMatchTheStableAad() {
+    public void testPhysicalPathAadDoesNotMatchTheLegacyAad() {
         StorageLayouts.useLayout(new TenantRootedStorageLayout("acme"));
 
         byte[] physicalPathAad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);

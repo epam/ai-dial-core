@@ -35,7 +35,7 @@ public class ApplicationDeploymentLayoutTest {
         ResourceDescriptor folder = deploymentFolder(ResourceDescriptor.PUBLIC_LOCATION);
 
         assertEquals(".org/acme/deployments/fn-1/.files/", folder.getAbsoluteFilePath());
-        assertEquals("public/deployments/fn-1/files/", folder.getStableFilePath());
+        assertEquals("public/deployments/fn-1/files/", folder.getLegacyFilePath());
     }
 
     @Test

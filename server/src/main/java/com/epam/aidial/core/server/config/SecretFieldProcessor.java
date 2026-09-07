@@ -61,7 +61,7 @@ public class SecretFieldProcessor {
     }
 
     private static byte[] aad(ResourceDescriptor descriptor) {
-        return descriptor.getStableFilePath().getBytes(StandardCharsets.UTF_8);
+        return descriptor.getLegacyFilePath().getBytes(StandardCharsets.UTF_8);
     }
 
     /**
