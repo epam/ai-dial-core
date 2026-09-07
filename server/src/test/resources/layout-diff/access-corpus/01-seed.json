@@ -268,6 +268,50 @@
         "assistantModelId": "a",
         "lastActivityDate": 6
       }
+    },
+    {
+      "name": "svc-owner-bucket",
+      "method": "GET",
+      "path": "/v1/bucket",
+      "headers": {
+        "authorization": "svc-owner"
+      },
+      "capture": {
+        "svcOwnerBucket": {
+          "at": "/bucket"
+        }
+      }
+    },
+    {
+      "name": "create-svc-app",
+      "method": "PUT",
+      "path": "/v1/applications/${svcOwnerBucket}/svcapp",
+      "headers": {
+        "authorization": "svc-owner"
+      },
+      "body": {
+        "display_name": "svc app",
+        "endpoint": "http://localhost:9999/completions",
+        "description": "carries a user-authored external service with an encrypted client secret"
+      }
+    },
+    {
+      "name": "create-external-service",
+      "method": "PUT",
+      "path": "/v1/applications/${svcOwnerBucket}/svcapp/external-services/billing",
+      "headers": {
+        "authorization": "svc-owner"
+      },
+      "body": {
+        "display_name": "Billing",
+        "auth_settings": {
+          "authentication_type": "OAUTH",
+          "client_id": "layout-diff-client",
+          "client_secret": "layout-diff-secret",
+          "authorization_endpoint": "http://localhost:9999/authorize",
+          "token_endpoint": "http://localhost:9999/token"
+        }
+      }
     }
   ]
 }
