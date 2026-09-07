@@ -651,7 +651,12 @@ public class ComplexResourceService {
         for (MetadataBase item : raw.getItems()) {
             boolean folder = item.getNodeType() == NodeType.FOLDER;
             String relativePath = versionFolder.getRelativePath(item.getDescriptor());
-            ResourceItemMetadata file = new ResourceItemMetadata(displayFileDescriptor(resource, relativePath, folder));
+            ResourceDescriptor descriptor = displayFileDescriptor(resource, relativePath, folder);
+            if (folder) {
+                items.add(new ResourceFolderMetadata(descriptor));
+                continue;
+            }
+            ResourceItemMetadata file = new ResourceItemMetadata(descriptor);
             if (item instanceof ResourceItemMetadata source) {
                 file.setEtag(source.getEtag());
                 file.setCreatedAt(source.getCreatedAt());
