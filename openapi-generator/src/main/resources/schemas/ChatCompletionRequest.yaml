@@ -2,7 +2,9 @@ type: object
 properties:
     model:
       type: string
-      description: The name of the model to use.
+      description: >-
+        The name of the model to use. Ignored for model deployments: DIAL Core replaces it with the
+        deployment name from the path, or with the deployment's overrideName when one is configured.
 
     messages:
       type: array

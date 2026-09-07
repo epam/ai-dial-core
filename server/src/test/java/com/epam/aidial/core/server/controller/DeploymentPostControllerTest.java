@@ -481,7 +481,7 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
-    public void testHandleRequestBody_NotOverrideModelName() throws IOException {
+    public void testHandleRequestBody_OverrideClientChosenModelName() throws IOException {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, null, 0, 0, null, null, null));
@@ -502,7 +502,7 @@ public class DeploymentPostControllerTest {
         when(context.getDeployment()).thenReturn(model);
         String body = """
                 {
-                    "model": "name",
+                    "model": "foo-bar",
                     "messages": [],
                     "stream": false
                 }

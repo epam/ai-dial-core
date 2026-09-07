@@ -193,6 +193,28 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testClientChosenModelNameReplacedForChatCompletions() {
+        String answer = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"gpt-35-turbo\","
+                + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";
+        MutableObject<RecordedRequest> captured = new MutableObject<>();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/chat/completions", request -> {
+                captured.setValue(request);
+                return TestWebServer.createResponse(200, answer, "Content-Type", "application/json");
+            });
+
+            // the model the client picked must not survive: the deployment in the path decides
+            Response response = send(HttpMethod.POST, "/openai/deployments/gpt-3-turbo/chat/completions", null,
+                    "{\"model\":\"foo-bar\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+                    "content-type", "application/json");
+
+            verify(response, 200);
+            String upstreamBody = captured.getValue().getBody().readString(StandardCharsets.UTF_8);
+            assertTrue(upstreamBody.contains("\"model\":\"gpt-3-turbo\""), "Unexpected upstream body: " + upstreamBody);
+        }
+    }
+
+    @Test
     public void testDefaultHeadersSentForChatCompletions() {
         String answer = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"gpt-35-turbo\","
                 + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";

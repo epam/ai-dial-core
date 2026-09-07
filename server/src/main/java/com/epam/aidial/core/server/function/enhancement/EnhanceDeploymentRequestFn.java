@@ -1,5 +1,7 @@
 package com.epam.aidial.core.server.function.enhancement;
 
+import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
@@ -14,14 +16,22 @@ public class EnhanceDeploymentRequestFn extends BaseRequestFunction<RequestObjec
 
     @Override
     public Boolean apply(RequestObject request) {
-        String overrideName = context.getDeployment().getOverrideName();
+        Deployment deployment = context.getDeployment();
+        String overrideName = deployment.getOverrideName();
 
-        if (overrideName == null) {
-            return false;
+        if (overrideName != null) {
+            request.setModel(overrideName);
+            return true;
         }
 
-        request.setModel(overrideName);
+        // Model routing - and with it pricing and limits - is the core's domain: a model is called under
+        // the id the config gives it, never under the name the client put in the body. Applications and
+        // interceptors keep passing the body through untouched.
+        if (deployment instanceof Model) {
+            request.setModel(deployment.getName());
+            return true;
+        }
 
-        return true;
+        return false;
     }
 }
