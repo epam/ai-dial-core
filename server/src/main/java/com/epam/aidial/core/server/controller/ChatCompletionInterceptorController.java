@@ -25,8 +25,8 @@ public class ChatCompletionInterceptorController extends BaseInterceptorControll
 
     /**
      * @param requestedInterface the interface the client called, {@link InterfaceType#OPENAI_EMBEDDINGS} for an
-     *                           embeddings request. The interceptor itself is always addressed on its chat
-     *                           completions interface, which is the only one it may declare.
+     *                           embeddings request. It reaches the interceptor over the interceptor's chat
+     *                           completions interface, which is the only one {@link #buildUri} addresses it on.
      */
     public ChatCompletionInterceptorController(Proxy proxy, ProxyContext context, int interceptorIndex,
                                                InterfaceType requestedInterface) {
