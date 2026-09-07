@@ -14869,7 +14869,7 @@ components:
           $ref: "#/components/schemas/ConfigFileMigrateStatus"
         resourceUrl:
           type: string
-          description: Percent-encoded admin API path (relative, no leading /v1/) at which the resulting entity is reachable, e.g. models/platform/gpt-4. Present once the entity exists in blob storage or a resource url could be derived for it; absent when no resource url could be determined.
+          description: "Percent-encoded admin API path (relative, no leading /v1/) at which the resulting entity is reachable, e.g. models/platform/gpt-4. Present once the entity exists in blob storage or a resource url could be derived for it; absent when no resource url could be determined."
         key:
           type: string
           description: "Entity's identifier in the source file config (a short name, or a schema's $id). Absent when the entity has no safe file-side name to report - e.g. a key entity's file-side identity is its raw secret, which must never be echoed back, and global settings is a singleton with no name of its own."
