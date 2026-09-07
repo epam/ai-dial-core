@@ -89,9 +89,9 @@ public class TenantLayoutTransformerTest {
      */
     @Test
     public void testEverySystemLocationRoundTrips() {
-        for (String legacy : ResourceDescriptor.SYSTEM_LOCATIONS) {
-            String tenant = TenantLayoutTransformer.toTenantLocation(legacy, TENANT);
-            assertEquals(legacy, TenantLayoutTransformer.toLegacyLocation(tenant, TENANT));
+        for (SystemResourceRegistry entry : SystemResourceRegistry.values()) {
+            String tenant = TenantLayoutTransformer.toTenantLocation(entry.location(), TENANT);
+            assertEquals(entry.location(), TenantLayoutTransformer.toLegacyLocation(tenant, TENANT));
         }
     }
 
@@ -100,9 +100,9 @@ public class TenantLayoutTransformerTest {
      */
     @Test
     public void testSystemLocationsAreTenantIndependent() {
-        for (String legacy : ResourceDescriptor.SYSTEM_LOCATIONS) {
-            assertEquals(TenantLayoutTransformer.toTenantLocation(legacy, TENANT),
-                    TenantLayoutTransformer.toTenantLocation(legacy, "another-tenant"));
+        for (SystemResourceRegistry entry : SystemResourceRegistry.values()) {
+            assertEquals(TenantLayoutTransformer.toTenantLocation(entry.location(), TENANT),
+                    TenantLayoutTransformer.toTenantLocation(entry.location(), "another-tenant"));
         }
     }
 

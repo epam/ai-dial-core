@@ -8,7 +8,6 @@ import lombok.Getter;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
@@ -31,24 +30,6 @@ public class ResourceDescriptor {
      */
     public static final String USERS_LOCATION_PREFIX = "Users" + PATH_SEPARATOR;
     public static final String KEYS_LOCATION_PREFIX = "Keys" + PATH_SEPARATOR;
-
-    public static final String DEPLOYMENT_COST_STATS_BUCKET = "deployment_cost_stats";
-    public static final String DEPLOYMENT_COST_STATS_LOCATION = DEPLOYMENT_COST_STATS_BUCKET + PATH_SEPARATOR;
-    public static final String BACKGROUND_JOB_BUCKET = "background_jobs";
-    public static final String BACKGROUND_JOB_LOCATION = BACKGROUND_JOB_BUCKET + PATH_SEPARATOR;
-    public static final String RESPONSE_MAPPINGS_BUCKET = "response_mappings";
-    public static final String RESPONSE_MAPPINGS_LOCATION = RESPONSE_MAPPINGS_BUCKET + PATH_SEPARATOR;
-    public static final String API_KEY_DATA_BUCKET = "api_key_data";
-    public static final String API_KEY_DATA_LOCATION = API_KEY_DATA_BUCKET + PATH_SEPARATOR;
-
-    /**
-     * Buckets holding platform-internal runtime state rather than anyone's content. They belong to no
-     * principal, so a layout has to place them somewhere other than the branches it uses for users and
-     * projects, and they are listed here so a layout can enumerate them.
-     */
-    public static final Set<String> SYSTEM_LOCATIONS = Set.of(
-            DEPLOYMENT_COST_STATS_LOCATION, BACKGROUND_JOB_LOCATION, RESPONSE_MAPPINGS_LOCATION,
-            API_KEY_DATA_LOCATION);
 
     ResourceType type;
     /**

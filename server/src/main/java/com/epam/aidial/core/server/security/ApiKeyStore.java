@@ -11,6 +11,7 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.resource.SystemResourceRegistry;
 import com.epam.aidial.core.storage.util.RedisUtil;
 import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
@@ -267,7 +268,7 @@ public class ApiKeyStore {
 
     private String toRedisKey(String apiKey) {
         ResourceDescriptor resource = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.API_KEY_DATA, ResourceDescriptor.API_KEY_DATA_BUCKET, ResourceDescriptor.API_KEY_DATA_LOCATION, apiKey);
+                ResourceTypes.API_KEY_DATA, SystemResourceRegistry.API_KEY_DATA.bucket(), SystemResourceRegistry.API_KEY_DATA.location(), apiKey);
         return RedisUtil.redisKey(resource, prefix);
     }
 

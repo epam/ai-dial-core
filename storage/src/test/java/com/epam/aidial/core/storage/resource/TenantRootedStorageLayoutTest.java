@@ -47,8 +47,8 @@ public class TenantRootedStorageLayoutTest {
         StorageLayouts.useLayout(layout);
 
         ResourceDescriptor job = new ResourceDescriptor(ResourceTypes.BACKGROUND_JOB, "job-1",
-                List.of(), ResourceDescriptor.BACKGROUND_JOB_BUCKET,
-                ResourceDescriptor.BACKGROUND_JOB_LOCATION, false);
+                List.of(), SystemResourceRegistry.BACKGROUND_JOBS.bucket(),
+                SystemResourceRegistry.BACKGROUND_JOBS.location(), false);
 
         assertEquals(".system/background_jobs/.background_jobs/job-1", job.getAbsoluteFilePath());
         assertEquals("background_jobs/background_jobs/job-1", job.getLegacyFilePath());

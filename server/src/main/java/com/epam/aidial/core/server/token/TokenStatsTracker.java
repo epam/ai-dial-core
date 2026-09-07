@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.resource.SystemResourceRegistry;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -211,6 +212,6 @@ public class TokenStatsTracker {
 
     private static ResourceDescriptor toResource(String traceId) {
         return ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.DEPLOYMENT_COST_STATS, ResourceDescriptor.DEPLOYMENT_COST_STATS_BUCKET, ResourceDescriptor.DEPLOYMENT_COST_STATS_LOCATION, traceId);
+                ResourceTypes.DEPLOYMENT_COST_STATS, SystemResourceRegistry.DEPLOYMENT_COST_STATS.bucket(), SystemResourceRegistry.DEPLOYMENT_COST_STATS.location(), traceId);
     }
 }

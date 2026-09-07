@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.resource.SystemResourceRegistry;
 import lombok.experimental.UtilityClass;
 
 @UtilityClass
@@ -24,11 +25,11 @@ public class ResponseIdUtil {
         String uuid = dialResponseId.substring(underscore + 1);
         String relativePath = deploymentName + "/" + uuid;
         return ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.RESPONSE_MAPPING, ResourceDescriptor.RESPONSE_MAPPINGS_BUCKET, ResourceDescriptor.RESPONSE_MAPPINGS_LOCATION, relativePath);
+                ResourceTypes.RESPONSE_MAPPING, SystemResourceRegistry.RESPONSE_MAPPINGS.bucket(), SystemResourceRegistry.RESPONSE_MAPPINGS.location(), relativePath);
     }
 
     public ResourceDescriptor getBackgroundJobDescriptor(String jobId) {
         return ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.BACKGROUND_JOB, ResourceDescriptor.BACKGROUND_JOB_BUCKET, ResourceDescriptor.BACKGROUND_JOB_LOCATION, jobId);
+                ResourceTypes.BACKGROUND_JOB, SystemResourceRegistry.BACKGROUND_JOBS.bucket(), SystemResourceRegistry.BACKGROUND_JOBS.location(), jobId);
     }
 }

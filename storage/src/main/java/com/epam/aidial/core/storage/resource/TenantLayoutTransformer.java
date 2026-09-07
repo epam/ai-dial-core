@@ -27,7 +27,7 @@ public class TenantLayoutTransformer {
     private static final String TENANT_TREE_ROOT = "";
 
     /**
-     * Where the system buckets of {@link ResourceDescriptor#SYSTEM_LOCATIONS} land — at the root, above any
+     * Where the system buckets of {@link SystemResourceRegistry} land — at the root, above any
      * tenant, which preserves whole-bucket scans and globally unique keys; the bucket name is kept so the
      * mapping stays reversible.
      */
@@ -52,7 +52,7 @@ public class TenantLayoutTransformer {
             return TENANT_TREE_ROOT;
         }
 
-        if (ResourceDescriptor.SYSTEM_LOCATIONS.contains(legacyLocation)) {
+        if (SystemResourceRegistry.isSystemLocation(legacyLocation)) {
             return SYSTEM_SEGMENT + legacyLocation;
         }
 
@@ -86,7 +86,7 @@ public class TenantLayoutTransformer {
 
         if (tenantLocation.startsWith(SYSTEM_SEGMENT)) {
             String system = tenantLocation.substring(SYSTEM_SEGMENT.length());
-            if (!ResourceDescriptor.SYSTEM_LOCATIONS.contains(system)) {
+            if (!SystemResourceRegistry.isSystemLocation(system)) {
                 throw new IllegalArgumentException("Unknown system bucket location: " + tenantLocation);
             }
             return system;

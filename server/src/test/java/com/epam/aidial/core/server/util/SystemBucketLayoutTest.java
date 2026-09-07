@@ -4,6 +4,7 @@ import com.epam.aidial.core.storage.resource.LegacyStorageLayout;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.resource.StorageLayouts;
+import com.epam.aidial.core.storage.resource.SystemResourceRegistry;
 import com.epam.aidial.core.storage.resource.TenantRootedStorageLayout;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -61,7 +62,7 @@ public class SystemBucketLayoutTest {
     @Test
     public void testApiKeyDataPath() {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(ResourceTypes.API_KEY_DATA,
-                ResourceDescriptor.API_KEY_DATA_BUCKET, ResourceDescriptor.API_KEY_DATA_LOCATION, "some-key");
+                SystemResourceRegistry.API_KEY_DATA.bucket(), SystemResourceRegistry.API_KEY_DATA.location(), "some-key");
 
         assertEquals(".system/api_key_data/.api_key_data/some-key", descriptor.getAbsoluteFilePath());
     }
@@ -69,7 +70,7 @@ public class SystemBucketLayoutTest {
     @Test
     public void testDeploymentCostStatsPath() {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(ResourceTypes.DEPLOYMENT_COST_STATS,
-                ResourceDescriptor.DEPLOYMENT_COST_STATS_BUCKET, ResourceDescriptor.DEPLOYMENT_COST_STATS_LOCATION,
+                SystemResourceRegistry.DEPLOYMENT_COST_STATS.bucket(), SystemResourceRegistry.DEPLOYMENT_COST_STATS.location(),
                 "trace-id");
 
         assertEquals(".system/deployment_cost_stats/.deployment_cost_stats/trace-id", descriptor.getAbsoluteFilePath());
