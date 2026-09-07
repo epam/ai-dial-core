@@ -127,7 +127,7 @@ public class DialInstance implements AutoCloseable {
 
         JsonObject settings = AiDial.settings()
                 .mergeIn(new JsonObject(overrides), true)
-                .mergeIn(new JsonObject().put("storageLayout", layoutSettings), true);
+                .mergeIn(new JsonObject().put("storage", new JsonObject().put("layout", layoutSettings)), true);
 
         AiDial instance = new AiDial();
         instance.setSettings(settings);
