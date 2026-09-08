@@ -3990,7 +3990,6 @@ paths:
                 allOf:
                 - $ref: "#/components/schemas/CatalogSchema"
                 - $ref: "#/components/schemas/EntityMetadata"
-                - $ref: "#/components/schemas/ProxyResponse"
         "304":
           description: Not Modified
         "400":
@@ -11071,7 +11070,6 @@ paths:
                 allOf:
                 - $ref: "#/components/schemas/ApplicationTypeSchema"
                 - $ref: "#/components/schemas/EntityMetadata"
-                - $ref: "#/components/schemas/ProxyResponse"
         "304":
           description: Not Modified
         "400":
@@ -13569,14 +13567,6 @@ components:
         spec:
           $ref: "#/components/schemas/Key"
     AdminManifest:
-      type: object
-      properties:
-        kind:
-          type: string
-        name:
-          type: string
-        spec:
-          $ref: "#/components/schemas/JsonNode"
       required:
       - kind
       discriminator:
