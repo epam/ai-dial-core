@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.data;
+package com.epam.aidial.core.server.data.config.apply;
 
 public enum AdminApplyStatus {
   APPLIED,

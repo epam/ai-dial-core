@@ -548,7 +548,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOfSchemaRefs = {"ProxyResponse"}, allOf = {EntityMetadata.class}),
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOfSchemaRefs = {"ApplicationTypeSchema"}, allOf = {EntityMetadata.class}),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the schema", required = true)
                                     }
@@ -570,7 +570,7 @@ public class ConfigResourceController implements Controller {
                     path = "/v1/schemas/{bucket}/{path}",
                     operationId = "saveSchema",
                     tags = {"Schemas"},
-                    requestBody = @ApiSchema(schemaRef = "ProxyRequest"),
+                    requestBody = @ApiSchema(schemaRef = "ApplicationTypeSchema"),
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID),
@@ -629,7 +629,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOfSchemaRefs = {"ProxyResponse"}, allOf = {EntityMetadata.class}),
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOfSchemaRefs = {"CatalogSchema"}, allOf = {EntityMetadata.class}),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the catalog schema", required = true)
                                     }
@@ -651,7 +651,7 @@ public class ConfigResourceController implements Controller {
                     path = "/v1/catalog_schemas/{bucket}/{path}",
                     operationId = "saveCatalogSchemaResource",
                     tags = {"Catalog"},
-                    requestBody = @ApiSchema(schemaRef = "ProxyRequest"),
+                    requestBody = @ApiSchema(schemaRef = "CatalogSchema"),
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID),
