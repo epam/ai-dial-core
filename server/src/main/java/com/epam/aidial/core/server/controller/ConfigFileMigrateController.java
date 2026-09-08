@@ -69,11 +69,12 @@ public class ConfigFileMigrateController {
     public static final int KEY_HASH_LENGTH = 12;
 
     private static final List<String> ALL_TYPES = List.of(
-            "settings", "schemas", "catalog_schemas", "interceptors", "roles", "keys", "routes",
+            "settings", "schemas", "catalog_schemas", "interceptors", "translators", "roles", "keys", "routes",
             "models", "toolsets", "applications");
 
     private static final List<ManagedTypeSpec> MANAGED_TYPE_SPECS = List.of(
             new ManagedTypeSpec("interceptors", "Interceptor", ResourceTypes.INTERCEPTOR, Config::getInterceptors),
+            new ManagedTypeSpec("translators", "Translator", ResourceTypes.TRANSLATOR, Config::getTranslators),
             new ManagedTypeSpec("roles", "Role", ResourceTypes.ROLE, Config::getRoles),
             new ManagedTypeSpec("routes", "Route", ResourceTypes.ROUTE, Config::getRoutes),
             new ManagedTypeSpec("models", "Model", ResourceTypes.MODEL, Config::getModels),

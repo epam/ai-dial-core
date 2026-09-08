@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.data.AdminManifest;
@@ -75,6 +76,14 @@ public class ConfigValidationService {
                     String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(scratch, ResourceTypes.INTERCEPTOR, parsed);
                     if (dupError != null) {
                         return new ValidationResult(id, ValidationStatus.FAILED, dupError);
+                    }
+                }
+                case "Translator" -> {
+                    Translator translator = ConfigEntityCodec.treeToEntity(entry.spec(), Translator.class);
+                    List<ValidationWarning> warnings = new ArrayList<>();
+                    ConfigPostProcessor.validateTranslator(translator, warnings);
+                    if (!warnings.isEmpty()) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
                 }
                 case "Role" -> ConfigEntityCodec.treeToEntity(entry.spec(), Role.class);
