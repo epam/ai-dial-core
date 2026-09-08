@@ -3988,8 +3988,9 @@ paths:
             application/json:
               schema:
                 allOf:
-                - $ref: "#/components/schemas/ProxyResponse"
+                - $ref: "#/components/schemas/CatalogSchema"
                 - $ref: "#/components/schemas/EntityMetadata"
+                - $ref: "#/components/schemas/ProxyResponse"
         "304":
           description: Not Modified
         "400":
@@ -4055,7 +4056,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ProxyRequest"
+              $ref: "#/components/schemas/CatalogSchema"
         required: true
       responses:
         "200":
@@ -11068,8 +11069,9 @@ paths:
             application/json:
               schema:
                 allOf:
-                - $ref: "#/components/schemas/ProxyResponse"
+                - $ref: "#/components/schemas/ApplicationTypeSchema"
                 - $ref: "#/components/schemas/EntityMetadata"
+                - $ref: "#/components/schemas/ProxyResponse"
         "304":
           description: Not Modified
         "400":
@@ -11147,7 +11149,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ProxyRequest"
+              $ref: "#/components/schemas/ApplicationTypeSchema"
         required: true
       responses:
         "200":
@@ -13494,6 +13496,15 @@ components:
       properties:
         consent:
           $ref: "#/components/schemas/Consent"
+    AdminApplicationManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Application"
     AdminApplyRequest:
       type: object
       properties:
@@ -13530,6 +13541,33 @@ components:
       - APPLIED_INVALID
       - FAILED
       - SKIPPED
+    AdminCatalogSchemaManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/CatalogSchema"
+    AdminInterceptorManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Interceptor"
+    AdminKeyManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Key"
     AdminManifest:
       type: object
       properties:
@@ -13539,6 +13577,86 @@ components:
           type: string
         spec:
           $ref: "#/components/schemas/JsonNode"
+      required:
+      - kind
+      discriminator:
+        propertyName: kind
+        mapping:
+          Settings: "#/components/schemas/AdminSettingsManifest"
+          Schema: "#/components/schemas/AdminSchemaManifest"
+          CatalogSchema: "#/components/schemas/AdminCatalogSchemaManifest"
+          Interceptor: "#/components/schemas/AdminInterceptorManifest"
+          Role: "#/components/schemas/AdminRoleManifest"
+          Key: "#/components/schemas/AdminKeyManifest"
+          Route: "#/components/schemas/AdminRouteManifest"
+          Model: "#/components/schemas/AdminModelManifest"
+          ToolSet: "#/components/schemas/AdminToolSetManifest"
+          Application: "#/components/schemas/AdminApplicationManifest"
+      oneOf:
+      - $ref: "#/components/schemas/AdminSettingsManifest"
+      - $ref: "#/components/schemas/AdminSchemaManifest"
+      - $ref: "#/components/schemas/AdminCatalogSchemaManifest"
+      - $ref: "#/components/schemas/AdminInterceptorManifest"
+      - $ref: "#/components/schemas/AdminRoleManifest"
+      - $ref: "#/components/schemas/AdminKeyManifest"
+      - $ref: "#/components/schemas/AdminRouteManifest"
+      - $ref: "#/components/schemas/AdminModelManifest"
+      - $ref: "#/components/schemas/AdminToolSetManifest"
+      - $ref: "#/components/schemas/AdminApplicationManifest"
+    AdminModelManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Model"
+    AdminRoleManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Role"
+    AdminRouteManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Route"
+    AdminSchemaManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/ApplicationTypeSchema"
+    AdminSettingsManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/GlobalSettings"
+    AdminToolSetManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/ToolSet"
     AdminValidateResponse:
       type: object
       properties:
@@ -13819,6 +13937,17 @@ components:
       enum:
       - HEADER
       - META
+    ApplicationTypeSchema:
+      required:
+      - $id
+      type: object
+      properties:
+        $id:
+          type: string
+          format: uri-reference
+      additionalProperties: true
+      description: |
+        JSON Schema document describing a custom application type. Alongside standard JSON Schema keywords it carries `dial`-prefixed extension properties; `$id` is required and must be non-blank.
     AuthenticationType:
       type: string
       enum:
@@ -13857,6 +13986,17 @@ components:
           type: array
           items:
             type: string
+    CatalogSchema:
+      required:
+      - $id
+      type: object
+      properties:
+        $id:
+          type: string
+          format: uri-reference
+      additionalProperties: true
+      description: |
+        JSON Schema document describing a catalog entity type. Alongside standard JSON Schema keywords it carries `dial`-prefixed extension properties; `$id` is required and must be non-blank.
     ChatCompletionAddon:
       oneOf:
       - type: object
