@@ -1935,7 +1935,6 @@ paths:
                 allOf:
                 - $ref: "#/components/schemas/Application"
                 - $ref: "#/components/schemas/EntityMetadata"
-                - $ref: "#/components/schemas/Model"
         "403":
           description: Forbidden
           content:
@@ -2167,7 +2166,6 @@ paths:
                 allOf:
                 - $ref: "#/components/schemas/Key"
                 - $ref: "#/components/schemas/EntityMetadata"
-                - $ref: "#/components/schemas/Model"
         "403":
           description: Forbidden
           content:
@@ -2668,7 +2666,6 @@ paths:
                 allOf:
                 - $ref: "#/components/schemas/ToolSet"
                 - $ref: "#/components/schemas/EntityMetadata"
-                - $ref: "#/components/schemas/Model"
         "403":
           description: Forbidden
           content:
