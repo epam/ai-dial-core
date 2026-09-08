@@ -364,7 +364,16 @@ public enum RouteTemplate {
             "/v1/ops/resource/per-request-permissions/{operation}"),
 
     CLIENT_CHANNEL("^/v1/ops/client-channel/(subscribe|report|unsubscribe|interact)",
-            "/v1/ops/client-channel/{operation}");
+            "/v1/ops/client-channel/{operation}"),
+
+    // Declared last: {id} spans slashes (resource-backed deployments are addressed by their url), so this
+    // template also matches every /v1/deployments/{id}/... path. Path normalization returns the first
+    // matching template, hence the more specific ones must stay ahead of it - as must their routes in
+    // ControllerSelector.
+    DEPLOYMENT_INFO(
+            "^/+v1/deployments/(?<id>.+?)$",
+            "/v1/deployments/{id}"
+    );
 
     private final Pattern pattern;
     private final String template;
