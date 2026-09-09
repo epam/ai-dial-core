@@ -10,7 +10,11 @@ import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.data.ResourceUpload;
 import com.epam.aidial.core.storage.data.UserMetadata;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.migration.BucketMigrationStates;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.StorageLayouts;
 import com.epam.aidial.core.storage.util.Base58;
 import com.epam.aidial.core.storage.util.Compression;
 import com.epam.aidial.core.storage.util.EtagBuilder;
@@ -155,6 +159,7 @@ public class ResourceService implements AutoCloseable {
     private final String resourceQueue;
     private final Map<String, Long> resourceTypeExpiration;
     private final Supplier<String> senderPodIdSupplier;
+    private final BucketMigrationStates migrationStates;
 
     public ResourceService(TimerService timerService,
                            RedissonClient redis,
@@ -172,6 +177,19 @@ public class ResourceService implements AutoCloseable {
                            Settings settings,
                            String prefix,
                            Supplier<String> senderPodIdSupplier) {
+        this(timerService, redis, blobStore, lockService, settings, prefix, senderPodIdSupplier,
+                BucketMigrationStates.ALL_LEGACY);
+    }
+
+    public ResourceService(TimerService timerService,
+                           RedissonClient redis,
+                           BlobStorage blobStore,
+                           LockService lockService,
+                           Settings settings,
+                           String prefix,
+                           Supplier<String> senderPodIdSupplier,
+                           BucketMigrationStates migrationStates) {
+        this.migrationStates = migrationStates;
         this.redis = redis;
         this.blobStore = blobStore;
         this.lockService = lockService;
@@ -657,6 +675,7 @@ public class ResourceService implements AutoCloseable {
             String author,
             boolean lock,
             @Nullable Map<String, String> eventMetadata) {
+        requireWritable(descriptor);
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lock ? lockService.lock(redisKey) : null) {
@@ -718,6 +737,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     public ResourceUpload initFileUpload(ResourceDescriptor resource, String contentType, EtagHeader etagHeader, String author) {
+        requireWritable(resource);
         String redisKey = redisKey(resource);
         try (var ignore = lockService.lock(redisKey)) {
             ResourceItemMetadata metadata = getResourceMetadata(resource);
@@ -810,6 +830,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     public FileMetadata finishFileUpload(ResourceDescriptor descriptor, ResourceUpload resourceUpload, EtagHeader etagHeader) {
+        requireWritable(descriptor);
         String redisKey = redisKey(descriptor);
         try (var ignore = lockService.lock(redisKey)) {
             ResourceItemMetadata metadata = getResourceMetadata(descriptor);
@@ -878,6 +899,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     public ResourceItemMetadata computeResourceBytes(ResourceDescriptor descriptor, EtagHeader etag, String author, Function<byte[], byte[]> fn) {
+        requireWritable(descriptor);
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lockService.lock(redisKey)) {
@@ -913,6 +935,7 @@ public class ResourceService implements AutoCloseable {
 
     public boolean deleteResource(ResourceDescriptor descriptor, EtagHeader etag, boolean lock,
             @Nullable Map<String, String> eventMetadata) {
+        requireWritable(descriptor);
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lock ? lockService.lock(redisKey) : null) {
@@ -942,6 +965,10 @@ public class ResourceService implements AutoCloseable {
             return overwrite;
         }
 
+        // The source is sealed too: the copy flushes its pending writes, which would land in a bucket the
+        // migrator has already enumerated.
+        requireWritable(from);
+        requireWritable(to);
         String fromRedisKey = redisKey(from);
         String toRedisKey = redisKey(to);
         Pair<String, String> sortedPair = toOrderedPair(fromRedisKey, toRedisKey);
@@ -997,6 +1024,37 @@ public class ResourceService implements AutoCloseable {
 
     private Pair<String, String> toOrderedPair(String a, String b) {
         return a.compareTo(b) > 0 ? Pair.of(a, b) : Pair.of(b, a);
+    }
+
+    private void requireWritable(ResourceDescriptor descriptor) {
+        if (!migrationStates.resolve(descriptor.getBucketLocation()).isWritable()) {
+            throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "The resource is being migrated to a new storage layout, please retry shortly");
+        }
+    }
+
+    /**
+     * Writes every pending change for one bucket out to the blob store. Redis holds the authoritative body
+     * until it syncs, so a copy taken without this would capture stale bytes; {@link #sync()} cannot be used
+     * instead, being timer-driven and store-wide.
+     *
+     * <p>Costs a scan of the whole write-behind queue, which is shared by every bucket. Call it on a sealed
+     * bucket: a write admitted after the flush is a lost update, not merely a late one.
+     */
+    public void flushBucket(String bucketLocation) {
+        String pathPrefix = StorageLayouts.resolveFor(bucketLocation).resolveLocationPrefix(bucketLocation);
+        RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
+
+        for (String redisKey : set.valueRange(0, -1)) {
+            if (!blobKeyFromRedisKey(redisKey).startsWith(pathPrefix)) {
+                continue;
+            }
+
+            // Blocking, unlike the sweep in sync(): a resource skipped here is one the copy gets wrong.
+            try (var ignore = lockService.lock(redisKey)) {
+                flushToBlobStore(redisKey);
+            }
+        }
     }
 
     private Void sync() {
