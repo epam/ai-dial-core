@@ -10,7 +10,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -23,13 +22,6 @@ public final class ResourceDependencyAuditLog {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("DIAL_RESOURCE_DEPS_AUDIT");
 
-    // \p{Cntrl} is ASCII-only, so Unicode line breaks (NEL, LS, PS) are listed explicitly — some log viewers
-    // treat them as line terminators. Tokens additionally forbid whitespace, '=' and '"' so a caller-supplied
-    // value can't forge key=value pairs within the line; reason keeps spaces (it is quoted) but drops '=' and
-    // '"' so it can neither escape its quotes nor carry a parseable forged token.
-    private static final Pattern TOKEN_UNSAFE = Pattern.compile("[\\p{Cntrl}\\s=\"\\u0085\\u2028\\u2029]");
-    private static final Pattern REASON_UNSAFE = Pattern.compile("[\\p{Cntrl}=\"\\u0085\\u2028\\u2029]");
-
     private ResourceDependencyAuditLog() {
     }
 
@@ -40,20 +32,64 @@ public final class ResourceDependencyAuditLog {
      */
     public static void consent(ProxyContext context, String applicationId, String action,
                                List<Consent.ResourceEntry> declaration, RuntimeException error) {
-        String targets = declaration == null ? "" : declaration.stream()
+        String targets = declaration == null ? "" : targetsOf(declaration);
+        String accessTypes = declaration == null ? "" : accessTypesOf(declaration);
+        AUDIT.info("event=resource_dependency_consent action={} outcome={} actor={} admin_user_id={} "
+                        + "application_id={} targets={} access_types={} trace_id={}{}",
+                AuditLogSanitizer.sanitizeToken(action), outcomeOf(error), actorEvidence(context),
+                AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
+                targets, accessTypes, context.getTraceId(), AuditLogSanitizer.reasonOf(error));
+    }
+
+    /** One event per run whose declared dependencies resolved into grants, listing what was granted. */
+    public static void grant(ProxyContext context, String applicationId, List<Consent.ResourceEntry> granted) {
+        if (granted.isEmpty()) {
+            return;
+        }
+        AUDIT.info("event=resource_dependency_grant outcome=SUCCESS actor={} user_id={} application_id={} "
+                        + "targets={} access_types={} trace_id={}",
+                actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
+                targetsOf(granted), accessTypesOf(granted), context.getTraceId());
+    }
+
+    /**
+     * One event per run listing declared targets that did not resolve — the originating user
+     * cannot reach them with the declared rights, or the declaration is not admin-consented.
+     * No grant, no failure (unless a required record failed — see {@link #runtimeFail}).
+     */
+    public static void denial(ProxyContext context, String applicationId, List<Consent.ResourceEntry> unresolved) {
+        if (unresolved.isEmpty()) {
+            return;
+        }
+        AUDIT.info("event=resource_dependency_denial outcome=DENIED actor={} user_id={} application_id={} "
+                        + "targets={} trace_id={}",
+                actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
+                targetsOf(unresolved), context.getTraceId());
+    }
+
+    /** One event when a required dependency failed to resolve and the call is rejected. */
+    public static void runtimeFail(ProxyContext context, String applicationId, List<String> requiredFailures) {
+        AUDIT.info("event=resource_dependency_runtime_fail outcome=RUNTIME_FAIL actor={} user_id={} "
+                        + "application_id={} targets={} trace_id={} reason=\"required dependencies unresolvable\"",
+                actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
+                requiredFailures.stream().map(AuditLogSanitizer::sanitizeToken)
+                        .collect(Collectors.joining(",")),
+                context.getTraceId());
+    }
+
+    private static String targetsOf(List<Consent.ResourceEntry> entries) {
+        return entries.stream()
                 .map(Consent.ResourceEntry::getUrl)
-                .map(ResourceDependencyAuditLog::sanitizeToken)
+                .map(AuditLogSanitizer::sanitizeToken)
                 .collect(Collectors.joining(","));
-        String accessTypes = declaration == null ? "" : declaration.stream()
+    }
+
+    private static String accessTypesOf(List<Consent.ResourceEntry> entries) {
+        return entries.stream()
                 .flatMap(entry -> entry.getAccess().stream())
                 .map(Enum::name)
                 .distinct()
                 .collect(Collectors.joining(","));
-        AUDIT.info("event=resource_dependency_consent action={} outcome={} actor={} admin_user_id={} "
-                        + "application_id={} targets={} access_types={} trace_id={}{}",
-                sanitizeToken(action), outcomeOf(error), actorEvidence(context),
-                sanitizeToken(context.getUserId()), sanitizeToken(applicationId),
-                targets, accessTypes, context.getTraceId(), reasonOf(error));
     }
 
     private static String outcomeOf(RuntimeException error) {
@@ -65,17 +101,13 @@ public final class ResourceDependencyAuditLog {
         };
     }
 
-    private static String reasonOf(RuntimeException error) {
-        return error == null ? "" : " reason=\"%s\"".formatted(sanitizeReason(error.getMessage()));
-    }
-
     // Non-secret evidence of the calling actor: the DIAL key's project and/or the workload JWT's azp.
     private static String actorEvidence(ProxyContext context) {
         Key key = context.getKey();
         ExtractedClaims claims = context.getExtractedClaims();
         String azp = claims == null ? null : claims.authorizedParty();
-        String project = key == null ? null : "project:" + sanitizeToken(key.getProject());
-        String authorizedParty = azp == null ? null : "azp:" + sanitizeToken(azp);
+        String project = key == null ? null : "project:" + AuditLogSanitizer.sanitizeToken(key.getProject());
+        String authorizedParty = azp == null ? null : "azp:" + AuditLogSanitizer.sanitizeToken(azp);
         if (project != null && authorizedParty != null) {
             return project + " " + authorizedParty;
         }
@@ -83,13 +115,5 @@ public final class ResourceDependencyAuditLog {
             return project;
         }
         return authorizedParty == null ? "unknown" : authorizedParty;
-    }
-
-    private static String sanitizeToken(String value) {
-        return value == null ? null : TOKEN_UNSAFE.matcher(value).replaceAll("_");
-    }
-
-    private static String sanitizeReason(String value) {
-        return value == null ? null : REASON_UNSAFE.matcher(value).replaceAll("_");
     }
 }
