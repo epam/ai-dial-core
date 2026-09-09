@@ -80,7 +80,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                 new CollectRequestApplicationFilesFn(proxy, context),
                 new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_CHAT_COMPLETIONS),
                 new CollectDeploymentsFn(proxy, context),
-                new ResolveResourceDependenciesFn(proxy, context));
+                new ResolveResourceDependenciesFn<>(proxy, context));
     }
 
     @ApiOperation(

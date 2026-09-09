@@ -66,7 +66,7 @@ public class ResolveResourceDependenciesFnTest {
     private EncryptionService encryptionService;
 
     @InjectMocks
-    private ResolveResourceDependenciesFn fn;
+    private ResolveResourceDependenciesFn<RequestObject> fn;
 
     private final ApiKeyData proxyApiKeyData = new ApiKeyData();
     private Application application;
@@ -115,6 +115,35 @@ public class ResolveResourceDependenciesFnTest {
         when(context.getDeployment()).thenReturn(application);
 
         assertFalse(fn.apply(request));
+        verify(consentService, never()).isAdminConsented(anyString(), any());
+    }
+
+    @Test
+    void apply_isNoOpWithoutProxyApiKeyDataToBakeInto() {
+        // An MCP application with forwardPerRequestKey disabled never gets a per-request key at
+        // all, so context.getProxyApiKeyData() is null when this function runs — nowhere to bake
+        // a grant into regardless of consent or reach. Treated as unconsented: no NPE, and (since
+        // this record is optional) no failure either — see the next test for the required case.
+        when(context.getDeployment()).thenReturn(application);
+        application.setResourceDependencies(List.of(dependency("skills/{current-user}/", false)));
+        when(context.getProxyApiKeyData()).thenReturn(null);
+
+        assertFalse(fn.apply(request));
+        verify(consentService, never()).isAdminConsented(anyString(), any());
+    }
+
+    @Test
+    void apply_failsRequiredDependencyWhenNoKeyToBakeInto() {
+        // The bug a naive null-guard would reintroduce: an app that promises a required dependency
+        // must not have that promise silently ignored just because there is nowhere to bake the
+        // grant — an app that can never receive its required access must fail loudly, not pretend
+        // to work. Same "never half-works silently" rule the resolver applies everywhere else.
+        when(context.getDeployment()).thenReturn(application);
+        application.setResourceDependencies(List.of(dependency("skills/{current-user}/", true)));
+        when(context.getProxyApiKeyData()).thenReturn(null);
+
+        HttpException error = assertThrows(HttpException.class, () -> fn.apply(request));
+        assertEquals(HttpStatus.FORBIDDEN, error.getStatus());
         verify(consentService, never()).isAdminConsented(anyString(), any());
     }
 
@@ -172,6 +201,26 @@ public class ResolveResourceDependenciesFnTest {
         // The grant lands in the key's own shared map — the app's direct calls with this key are
         // served by it; the target is the user's skills ROOT folder, so the grant prefix-matches
         // everything under it (findFolderPermissions).
+        assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE),
+                proxyApiKeyData.getPerRequestSharedResources().get(userSkillsFolder().getUrl()).permissions());
+    }
+
+    @Test
+    void apply_isTypeAgnostic() {
+        // The unit-level pin for D-25a: the argument is genuinely unread, so the same
+        // implementation joins a chain of any element type — RequestObject on the conversation
+        // mint sites, ObjectNode on the MCP proxy.
+        when(context.getDeployment()).thenReturn(application);
+        application.setResourceDependencies(List.of(dependency("skills/{current-user}/", false)));
+        when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
+        when(accessService.lookupOriginatingUserPermissions(any(), eq(context)))
+                .thenReturn(Map.of(userSkillsFolder(), Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE)));
+
+        ResolveResourceDependenciesFn<com.fasterxml.jackson.databind.node.ObjectNode> objectNodeFn =
+                new ResolveResourceDependenciesFn<>(proxy, context);
+
+        assertFalse(objectNodeFn.apply(com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode()));
+
         assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE),
                 proxyApiKeyData.getPerRequestSharedResources().get(userSkillsFolder().getUrl()).permissions());
     }

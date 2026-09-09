@@ -49,7 +49,7 @@ public class McpUpstreamAuthInjector {
             headers.accept(authHeader.getHeaderName(), authHeader.getHeaderValue());
         }
         if (toolSet.isForwardPerRequestKey()) {
-            headers.accept(Proxy.HEADER_API_KEY, assignPerRequestKey(context));
+            headers.accept(Proxy.HEADER_API_KEY, perRequestKey(context));
         }
     }
 
@@ -61,7 +61,7 @@ public class McpUpstreamAuthInjector {
         headers.accept(HEADER_APPLICATION_ID, app.getName());
         Application.Mcp mcp = app.getMcp();
         if (mcp.isForwardPerRequestKey()) {
-            headers.accept(Proxy.HEADER_API_KEY, assignPerRequestKey(context));
+            headers.accept(Proxy.HEADER_API_KEY, perRequestKey(context));
         }
         if (mcp.getConfigDelivery() == Application.McpConfigDelivery.HEADER) {
             applicationSchemaService.consumeMetadataProperties(app, (properties, appendHeader) -> {
@@ -73,7 +73,19 @@ public class McpUpstreamAuthInjector {
         }
     }
 
-    private String assignPerRequestKey(ProxyContext context) {
+    /**
+     * Returns the per-request key the upstream should receive, minting one only if this request
+     * does not already have one. Re-entry is normal on this path: handleProxyRequest runs again
+     * on every 429 retry, connection/send failure, and same-origin 307/308 redirect. Minting
+     * afresh each time would orphan the previous Redis-backed key — only the current
+     * proxyApiKeyData is invalidated on completion — and would hand the upstream a key that does
+     * not carry the grants baked into the one built before the enhancement chain.
+     */
+    private String perRequestKey(ProxyContext context) {
+        ApiKeyData assigned = context.getProxyApiKeyData();
+        if (assigned != null && assigned.getPerRequestKey() != null) {
+            return assigned.getPerRequestKey();
+        }
         ApiKeyData keyData = new ApiKeyData();
         context.setProxyApiKeyData(keyData);
         ApiKeyData.initFromContext(keyData, context);

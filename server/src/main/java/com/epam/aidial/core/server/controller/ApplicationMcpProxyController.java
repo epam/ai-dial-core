@@ -12,6 +12,7 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.function.ResolveResourceDependenciesFn;
 import com.epam.aidial.core.server.function.enhancement.InjectApplicationPropsToMcpRequest;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.util.McpUpstreamAuthInjector;
@@ -37,7 +38,9 @@ public class ApplicationMcpProxyController extends McpProxyController {
     public ApplicationMcpProxyController(Proxy proxy, ProxyContext context, String toolSetId) {
         super(proxy, context, toolSetId);
         this.applicationSchemaService = proxy.getApplicationSchemaService();
-        this.enhancementFunctions = List.of(new InjectApplicationPropsToMcpRequest(proxy, context));
+        this.enhancementFunctions = List.of(
+                new InjectApplicationPropsToMcpRequest(proxy, context),
+                new ResolveResourceDependenciesFn<>(proxy, context));
         this.authInjector = new McpUpstreamAuthInjector(proxy);
     }
 
@@ -89,6 +92,11 @@ public class ApplicationMcpProxyController extends McpProxyController {
 
     protected String getUpstreamEndpoint(Deployment deployment) {
         return application.getMcp().getEndpoint();
+    }
+
+    @Override
+    protected boolean preAssignsPerRequestKey() {
+        return application.getMcp().isForwardPerRequestKey();
     }
 
     @Override
