@@ -38,6 +38,14 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
         assertTrue(idsWithStatus(results, "migrated").contains("translators/platform/translator1"),
                 () -> "Body: " + response.body());
 
+        JsonNode modelResult = findByResourceUrl(results, "models/platform/test-model-v1");
+        assertEquals("Model", modelResult.get("kind").asText(), () -> "Body: " + response.body());
+        assertEquals("test-model-v1", modelResult.get("key").asText(), () -> "Body: " + response.body());
+
+        JsonNode interceptorResult = findByResourceUrl(results, "interceptors/platform/interceptor1");
+        assertEquals("Interceptor", interceptorResult.get("kind").asText(), () -> "Body: " + response.body());
+        assertEquals("interceptor1", interceptorResult.get("key").asText(), () -> "Body: " + response.body());
+
         verify(send(HttpMethod.GET, "/v1/models/platform/test-model-v1", null, "",
                 "authorization", "admin"), 200);
         verify(send(HttpMethod.GET, "/v1/interceptors/platform/interceptor1", null, "",
@@ -55,6 +63,30 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
             }
         }
         assertEquals(1, occurrences, () -> "Expected exactly one 'test-model-v1' entry: " + models.body());
+    }
+
+    @Test
+    @SneakyThrows
+    @DialConfigLocation("dial-config/bracket-named-model.json")
+    void testMigrateModelWithUriUnsafeNameReportsEncodedReachableResourceUrl() {
+        // A model name only has to be legal configuration; brackets are legal there but illegal in a
+        // URI path, so resourceUrl must percent-encode the name for the admin API path to be reachable.
+        String body = """
+                {"types": ["models"]}
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, body,
+                "authorization", "admin");
+        verify(response, 200);
+        JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+        assertEquals(1, results.size(), () -> "Body: " + response.body());
+
+        JsonNode result = results.get(0);
+        assertEquals("migrated", result.get("status").asText(), () -> "Body: " + response.body());
+        assertEquals("anthropic.claude-opus-4-8[1m]", result.get("key").asText(), () -> "Body: " + response.body());
+        String resourceUrl = "models/platform/anthropic.claude-opus-4-8%5B1m%5D";
+        assertEquals(resourceUrl, result.get("resourceUrl").asText(), () -> "Body: " + response.body());
+
+        verify(send(HttpMethod.GET, "/v1/" + resourceUrl, null, "", "authorization", "admin"), 200);
     }
 
     @Test
@@ -168,6 +200,60 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
             verify(send(HttpMethod.GET, "/v1/schemas/platform/" + name, null, "",
                     "authorization", "admin"), 200);
         }
+
+        for (JsonNode r : results) {
+            assertEquals("Schema", r.get("kind").asText(), () -> "Body: " + response.body());
+            assertTrue(r.get("key").asText().startsWith("https://mydial.somewhere.com/custom_application_schemas/"),
+                    () -> "Body: " + response.body());
+        }
+    }
+
+    @Test
+    @SneakyThrows
+    @DialConfigLocation("dial-config/config-file-migrate.json")
+    void testMigrateSchemasIdempotentReportsMatchedBlobName() {
+        // The schema's own $id is never a blob path, so a repeat run must report the *matched
+        // existing blob's* name, not the raw $id, once the schema is already migrated.
+        String body = """
+                {"types": ["schemas"]}
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, body, "authorization", "admin"), 200);
+
+        Response second = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, body,
+                "authorization", "admin");
+        verify(second, 200);
+        JsonNode secondResults = ProxyUtil.MAPPER.readTree(second.body()).get("results");
+
+        JsonNode skipped = findByKey(secondResults, "https://mydial.somewhere.com/custom_application_schemas/schema_endpoint");
+        assertEquals("skipped", skipped.get("status").asText(), () -> "Body: " + second.body());
+        assertEquals("Schema", skipped.get("kind").asText(), () -> "Body: " + second.body());
+        assertEquals("schemas/platform/schema_endpoint", skipped.get("resourceUrl").asText(), () -> "Body: " + second.body());
+    }
+
+    @Test
+    @SneakyThrows
+    @DialConfigLocation("dial-config/config-file-migrate-bad-schema.json")
+    void testMigrateSchemaWithUnresolvableBlobNameReportsKeyOnly() {
+        // The $id's last path segment ("bad~schema~name") has characters that don't match
+        // ConfigResourceController.ENTITY_NAME_PATTERN, so no blob name can ever be derived for it —
+        // the result must fall back to the $id as key, with no resourceUrl (nothing was, or could be,
+        // written). Tildes are valid, unescaped URI characters, so the $id itself still passes the
+        // config file's own schema-meta-schema validation at startup.
+        String body = """
+                {"types": ["schemas"]}
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, body,
+                "authorization", "admin");
+        verify(response, 200);
+        JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+        assertEquals(1, results.size(), () -> "Body: " + response.body());
+
+        JsonNode result = results.get(0);
+        assertEquals("failed", result.get("status").asText(), () -> "Body: " + response.body());
+        assertEquals("Schema", result.get("kind").asText(), () -> "Body: " + response.body());
+        assertEquals("https://mydial.somewhere.com/custom_application_schemas/bad~schema~name",
+                result.get("key").asText(), () -> "Body: " + response.body());
+        assertFalse(result.has("resourceUrl"), () -> "Body: " + response.body());
     }
 
     @Test
@@ -205,10 +291,13 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
         JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
         assertEquals(5, results.size(), () -> "Body: " + response.body());
         for (JsonNode r : results) {
-            assertTrue(r.get("id").asText().startsWith("keys/platform/"),
+            assertTrue(r.get("resourceUrl").asText().startsWith("keys/platform/"),
                     () -> "Unexpected type migrated: " + response.body());
             assertEquals("migrated", r.get("status").asText(),
                     () -> "Key migration must actually succeed, not just target the right type: " + response.body());
+            assertEquals("Key", r.get("kind").asText(), () -> "Body: " + response.body());
+            // A key's file-side identity is its raw secret, which must never be echoed back.
+            assertFalse(r.has("key"), () -> "Key result must never carry a key: " + response.body());
         }
         // Untouched type never migrated.
         verify(send(HttpMethod.GET, "/v1/models/platform/test-model-v1", null, "",
@@ -300,6 +389,7 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
         assertEquals(5, secondResults.size(), () -> "Body: " + second.body());
         for (JsonNode r : secondResults) {
             assertEquals("skipped", r.get("status").asText(), () -> "Body: " + second.body());
+            assertFalse(r.has("key"), () -> "Skipped key result must never carry a key: " + second.body());
         }
     }
 
@@ -332,12 +422,13 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
 
         JsonNode collisionResult = null;
         for (JsonNode r : results) {
-            if (collisionId.equals(r.get("id").asText())) {
+            if (collisionId.equals(r.get("resourceUrl").asText())) {
                 collisionResult = r;
             }
         }
         assertNotNull(collisionResult, () -> "Missing result for " + collisionId + ": " + response.body());
         assertEquals("failed", collisionResult.get("status").asText(), () -> "Body: " + response.body());
+        assertFalse(collisionResult.has("key"), () -> "Failed key result must never carry a key: " + response.body());
 
         // The pre-existing occupant's secret must survive untouched.
         verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "unrelated-existing-secret"), 200);
@@ -385,11 +476,29 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
         return "keys/platform/" + project.toLowerCase(Locale.ROOT) + "-" + hash;
     }
 
+    private static JsonNode findByResourceUrl(JsonNode results, String resourceUrl) {
+        for (JsonNode r : results) {
+            if (r.hasNonNull("resourceUrl") && resourceUrl.equals(r.get("resourceUrl").asText())) {
+                return r;
+            }
+        }
+        throw new AssertionError("No result with resourceUrl " + resourceUrl + " in " + results);
+    }
+
+    private static JsonNode findByKey(JsonNode results, String key) {
+        for (JsonNode r : results) {
+            if (r.hasNonNull("key") && key.equals(r.get("key").asText())) {
+                return r;
+            }
+        }
+        throw new AssertionError("No result with key " + key + " in " + results);
+    }
+
     private static Set<String> idsWithStatus(JsonNode results, String status) {
         Set<String> ids = new HashSet<>();
         for (JsonNode r : results) {
             if (status.equals(r.get("status").asText())) {
-                ids.add(r.get("id").asText());
+                ids.add(r.get("resourceUrl").asText());
             }
         }
         return ids;
