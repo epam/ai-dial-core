@@ -4637,6 +4637,50 @@ paths:
       - lang: cURL
         label: CURL
         source: "curl https://chat.<company>.com/deployments?interface_type={interface_type} \\\n  -H \"Api-Key: DIAL_API_KEY\"          \n"
+  /v1/deployments/{deployment_name}:
+    get:
+      tags:
+      - Deployment listing
+      summary: "/v1/deployments/{deployment_name}"
+      operationId: getDeploymentInfo
+      parameters:
+      - name: deployment_name
+        in: path
+        description: The name of the deployment.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeploymentData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/deployments/{deployment_name}/configuration:
     get:
       summary: "/v1/deployments/{deployment_name}/configuration"

@@ -607,6 +607,14 @@ public class ControllerSelector {
         for (HttpMethod method : Proxy.ALLOWED_HTTP_METHODS) {
             ROUTES.add(new ControllerRoute(method, RouteTemplate.DEPLOYMENT_ROUTES.getPattern(), applicationRouteTemplate));
         }
+
+        // Registered last: its {id} spans slashes, so it also matches /v1/deployments/{id}/limits,
+        // /configuration, /mcp and /route/... - every one of those must be matched first (first match wins).
+        get(RouteTemplate.DEPLOYMENT_INFO, (proxy, context, pathMatcher) -> {
+            DeploymentController controller = new DeploymentController(proxy, context);
+            String deploymentId = UrlUtil.decodePath(pathMatcher.group("id"));
+            return () -> controller.getDeploymentInfo(deploymentId);
+        });
     }
 
     public ControllerTemplate select(HttpServerRequest request) {
