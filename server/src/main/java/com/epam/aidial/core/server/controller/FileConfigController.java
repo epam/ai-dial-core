@@ -1,11 +1,15 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
+import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiOperations;
@@ -132,7 +136,7 @@ public class FileConfigController implements Controller {
                             @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Key name")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Model.class, EntityMetadata.class})),
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Key.class, EntityMetadata.class})),
                             @ApiResponse(code = 403),
                             @ApiResponse(code = 404),
                             @ApiResponse(code = 405),
@@ -169,7 +173,7 @@ public class FileConfigController implements Controller {
                             @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Application name")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Model.class, EntityMetadata.class})),
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Application.class, EntityMetadata.class})),
                             @ApiResponse(code = 403),
                             @ApiResponse(code = 404),
                             @ApiResponse(code = 405),
@@ -206,7 +210,7 @@ public class FileConfigController implements Controller {
                             @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Toolset name")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Model.class, EntityMetadata.class})),
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {ToolSet.class, EntityMetadata.class})),
                             @ApiResponse(code = 403),
                             @ApiResponse(code = 404),
                             @ApiResponse(code = 405),
@@ -244,6 +248,43 @@ public class FileConfigController implements Controller {
                     },
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Interceptor.class, EntityMetadata.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/translators",
+                    operationId = "listFileConfigTranslators",
+                    tags = {"Admin"},
+                    responses = {
+                            @ApiResponse(code = 200, description = "List of file-sourced translators",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/translators/{name}",
+                    operationId = "getFileConfigTranslator",
+                    tags = {"Admin"},
+                    parameters = {
+                            @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Translator name")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Translator.class, EntityMetadata.class})),
                             @ApiResponse(code = 403),
                             @ApiResponse(code = 404),
                             @ApiResponse(code = 405),
@@ -573,6 +614,7 @@ public class FileConfigController implements Controller {
         return switch (resourceType) {
             case MODEL -> config.getModels();
             case INTERCEPTOR -> config.getInterceptors();
+            case TRANSLATOR -> config.getTranslators();
             case ROLE -> config.getRoles();
             case PROJECT_KEY -> config.getKeys();
             case ROUTE -> config.getRoutes();

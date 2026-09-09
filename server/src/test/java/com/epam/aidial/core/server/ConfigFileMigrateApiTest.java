@@ -23,9 +23,9 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
     @Test
     @SneakyThrows
     @DialConfigLocation("dial-config/config-file-migrate.json")
-    void testMigrateModelAndInterceptor() {
+    void testMigrateModelAndInterceptorAndTranslator() {
         String body = """
-                {"types": ["models", "interceptors"]}
+                {"types": ["models", "interceptors", "translators"]}
                 """;
         Response response = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, body,
                 "authorization", "admin");
@@ -34,6 +34,8 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
         assertTrue(idsWithStatus(results, "migrated").contains("models/platform/test-model-v1"),
                 () -> "Body: " + response.body());
         assertTrue(idsWithStatus(results, "migrated").contains("interceptors/platform/interceptor1"),
+                () -> "Body: " + response.body());
+        assertTrue(idsWithStatus(results, "migrated").contains("translators/platform/translator1"),
                 () -> "Body: " + response.body());
 
         JsonNode modelResult = findByResourceUrl(results, "models/platform/test-model-v1");
@@ -47,6 +49,8 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
         verify(send(HttpMethod.GET, "/v1/models/platform/test-model-v1", null, "",
                 "authorization", "admin"), 200);
         verify(send(HttpMethod.GET, "/v1/interceptors/platform/interceptor1", null, "",
+                "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/translators/platform/translator1", null, "",
                 "authorization", "admin"), 200);
 
         Response models = send(HttpMethod.GET, "/openai/models", null, "", "authorization", "admin");

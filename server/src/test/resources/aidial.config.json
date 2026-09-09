@@ -4,6 +4,13 @@
       "endpoint": "http://localhost:4088/api/v1/interceptor/handle"
     }
   },
+  "translators": {
+    "translator1": {
+      "in": "anthropicMessages",
+      "out": "openaiChatCompletions",
+      "baseUrl": "http://localhost:4089/translator"
+    }
+  },
   "routes" : {
     "route-rate" : {
       "paths": ["/+v1/rate"],

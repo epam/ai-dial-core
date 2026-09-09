@@ -78,7 +78,7 @@ public final class ConfigPostProcessor {
 
     /**
      * Drops file-defined entries with slash-keyed names across models, applications,
-     * interceptors, roles, routes, and toolsets. Warn + drop, not warn + skip-record:
+     * interceptors, translators, roles, routes, and toolsets. Warn + drop, not warn + skip-record:
      * the entries never reach {@link Config} and are not surfaced through the
      * invalid-entity sibling store.
      */
@@ -86,6 +86,7 @@ public final class ConfigPostProcessor {
         rejectSlashKeyedNames(config.getModels(), "models");
         rejectSlashKeyedNames(config.getApplications(), "applications");
         rejectSlashKeyedNames(config.getInterceptors(), "interceptors");
+        rejectSlashKeyedNames(config.getTranslators(), "translators");
         rejectSlashKeyedNames(config.getRoles(), "roles");
         rejectSlashKeyedNames(config.getRoutes(), "routes");
         rejectSlashKeyedNames(config.getToolsets(), "toolsets");
@@ -101,7 +102,7 @@ public final class ConfigPostProcessor {
                                        @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
         Set<String> deploymentIds = new HashSet<>();
         sortRoutes(config);
-        validateTranslators(config);
+        processTranslators(config, onSkip);
         processModels(config, deploymentIds, onSkip);
         processApplications(config, deploymentIds, onSkip);
         processRoles(config);
@@ -154,6 +155,29 @@ public final class ConfigPostProcessor {
         }
         config.getModels().remove(mapKey);
         onSkip.accept(ResourceTypes.MODEL, new InvalidEntityException(ResourceTypes.MODEL, mapKey, warnings));
+    }
+
+    /**
+     * Targeted per-type helper for {@link MergedConfigStore}'s partial-update path — validates the
+     * single written entry via {@link #validateTranslator}. {@link Translator} has no name field to
+     * back-fill, unlike Interceptor/Role/Application.
+     */
+    static void validateSingleTranslator(Config config, String mapKey,
+                                         @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Translator translator = config.getTranslators().get(mapKey);
+        if (translator == null) {
+            return;
+        }
+        List<ValidationWarning> warnings = new ArrayList<>();
+        validateTranslator(translator, warnings);
+        if (warnings.isEmpty()) {
+            return;
+        }
+        if (onSkip == null) {
+            throw new InvalidEntityException(ResourceTypes.TRANSLATOR, mapKey, warnings);
+        }
+        config.getTranslators().remove(mapKey);
+        onSkip.accept(ResourceTypes.TRANSLATOR, new InvalidEntityException(ResourceTypes.TRANSLATOR, mapKey, warnings));
     }
 
     static <T extends RoleBasedEntity> void setNameAsMapKey(Map<String, T> entities, String mapKey) {
@@ -333,20 +357,39 @@ public final class ConfigPostProcessor {
         }
     }
 
+    private static void processTranslators(Config config,
+                                           @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Iterator<Map.Entry<String, Translator>> iterator = config.getTranslators().entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, Translator> entry = iterator.next();
+            String name = entry.getKey();
+            List<ValidationWarning> warnings = new ArrayList<>();
+            validateTranslator(entry.getValue(), warnings);
+            if (warnings.isEmpty()) {
+                continue;
+            }
+            if (onSkip == null) {
+                throw new InvalidEntityException(ResourceTypes.TRANSLATOR, name, warnings);
+            }
+            iterator.remove();
+            onSkip.accept(ResourceTypes.TRANSLATOR, new InvalidEntityException(ResourceTypes.TRANSLATOR, name, warnings));
+        }
+    }
+
     /**
      * A {@code translators} entry has to say what it converts from: unlike a definition written inline it is
      * declared under no interface, so {@code in} is the only thing tying it to one. {@code out} and
      * {@code baseUrl} need no check here — {@link Translator} rejects an entry missing either as it is read.
+     * Shared by every write surface (full load, partial-update, admin apply/validate) so a translator is
+     * held to the same rule everywhere.
      */
-    private static void validateTranslators(Config config) {
-        for (Map.Entry<String, Translator> entry : config.getTranslators().entrySet()) {
-            Translator translator = entry.getValue();
-            if (translator == null) {
-                throw new IllegalStateException("Translator '" + entry.getKey() + "' is empty");
-            }
-            if (translator.getIn() == null) {
-                throw new IllegalStateException("Translator '" + entry.getKey() + "' declares no in");
-            }
+    public static void validateTranslator(@Nullable Translator translator, List<ValidationWarning> warnings) {
+        if (translator == null) {
+            warnings.add(new ValidationWarning("translator", "Translator is empty"));
+            return;
+        }
+        if (translator.getIn() == null) {
+            warnings.add(new ValidationWarning("in", "Translator declares no in"));
         }
     }
 

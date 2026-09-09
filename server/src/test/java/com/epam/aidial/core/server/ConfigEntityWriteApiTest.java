@@ -28,6 +28,29 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
             }
             """;
 
+    private static final String TRANSLATOR_BODY = """
+            {
+              "in": "anthropicMessages",
+              "out": "openaiChatCompletions",
+              "baseUrl": "http://localhost:7002/translate"
+            }
+            """;
+
+    private static final String TRANSLATOR_BODY_UPDATED = """
+            {
+              "in": "anthropicMessages",
+              "out": "openaiChatCompletions",
+              "baseUrl": "http://localhost:7002/translate-v2"
+            }
+            """;
+
+    private static final String TRANSLATOR_BODY_NO_IN = """
+            {
+              "out": "openaiChatCompletions",
+              "baseUrl": "http://localhost:7002/translate"
+            }
+            """;
+
     private static final String ROLE_BODY = """
             {
               "limits": {}
@@ -191,6 +214,87 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     @Test
     void testInterceptorDelete404OnMissing() {
         Response del = send(HttpMethod.DELETE, "/v1/interceptors/platform/no-such-interceptor-del", null, "",
+                "authorization", "admin");
+        verify(del, 404);
+    }
+
+    // ---- translators ---------------------------------------------------------
+
+    @Test
+    void testTranslatorPutCreate200HappyPath() {
+        Response put = send(HttpMethod.PUT, "/v1/translators/platform/test-translator-create",
+                null, TRANSLATOR_BODY, "authorization", "admin", "If-None-Match", "*");
+        verify(put, 200);
+        assertNotNull(put.headers().get("etag"));
+        assertTrue(put.body().contains("\"name\":\"test-translator-create\""),
+                () -> "Expected name in body: " + put.body());
+    }
+
+    @Test
+    void testTranslatorPutIfNoneMatchStar412OnExisting() {
+        verify(send(HttpMethod.PUT, "/v1/translators/platform/test-translator-conflict", null,
+                TRANSLATOR_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        Response again = send(HttpMethod.PUT, "/v1/translators/platform/test-translator-conflict", null,
+                TRANSLATOR_BODY, "authorization", "admin", "If-None-Match", "*");
+        verify(again, 412);
+    }
+
+    @Test
+    void testTranslatorPut200HappyPathUpdate() {
+        verify(send(HttpMethod.PUT, "/v1/translators/platform/test-translator-update", null,
+                TRANSLATOR_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response put = send(HttpMethod.PUT, "/v1/translators/platform/test-translator-update", null,
+                TRANSLATOR_BODY_UPDATED, "authorization", "admin");
+        verify(put, 200);
+        assertNotNull(put.headers().get("etag"));
+
+        Response get = send(HttpMethod.GET, "/v1/translators/platform/test-translator-update", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertTrue(get.body().contains("translate-v2"), () -> "Expected updated baseUrl: " + get.body());
+    }
+
+    @Test
+    void testTranslatorPutBareUpsertCreatesOnMissing() {
+        // Bare PUT against missing — upsert creates.
+        Response put = send(HttpMethod.PUT, "/v1/translators/platform/no-such-translator", null,
+                TRANSLATOR_BODY, "authorization", "admin");
+        verify(put, 200);
+    }
+
+    @Test
+    void testTranslatorPutWithoutInReturns422() {
+        // Translator.getIn() is only optional when written inline under an interface — a registry
+        // entry (the only shape this write surface produces) always needs it (see
+        // ConfigPostProcessor.validateTranslator). Must be rejected before the blob write, not left
+        // to surface later as a 500/silent-drop from MergedConfigStore.applyEntityWrite.
+        Response put = send(HttpMethod.PUT, "/v1/translators/platform/test-translator-no-in", null,
+                TRANSLATOR_BODY_NO_IN, "authorization", "admin", "If-None-Match", "*");
+        verify(put, 422);
+
+        Response get = send(HttpMethod.GET, "/v1/translators/platform/test-translator-no-in", null, "",
+                "authorization", "admin");
+        verify(get, 404);
+    }
+
+    @Test
+    void testTranslatorDelete204HappyPath() {
+        verify(send(HttpMethod.PUT, "/v1/translators/platform/test-translator-delete", null,
+                TRANSLATOR_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response del = send(HttpMethod.DELETE, "/v1/translators/platform/test-translator-delete", null, "",
+                "authorization", "admin");
+        verify(del, 204);
+
+        Response get = send(HttpMethod.GET, "/v1/translators/platform/test-translator-delete", null, "",
+                "authorization", "admin");
+        verify(get, 404);
+    }
+
+    @Test
+    void testTranslatorDelete404OnMissing() {
+        Response del = send(HttpMethod.DELETE, "/v1/translators/platform/no-such-translator-del", null, "",
                 "authorization", "admin");
         verify(del, 404);
     }
