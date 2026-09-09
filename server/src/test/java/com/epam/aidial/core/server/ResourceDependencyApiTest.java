@@ -3,7 +3,6 @@ package com.epam.aidial.core.server;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import com.epam.aidial.core.server.data.ApiKeyData;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
@@ -168,25 +167,29 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testChainedCallIntoDeclaringAppStaysCallableWithoutGrants() {
-        // Root-call-only resolution (design §7.1's chained composition is phase-2 machinery): a
-        // chained hop presenting a per-request key must stay callable — never the hard failure the
-        // first revision threw — and must not bake grants it cannot evaluate the originating
-        // user's reach for.
-        verify(putDeclaringApp("""
-                {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"path": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
-                """), 200);
+    void testInterceptorProtectedAppStillResolvesOnTheRootCall() {
+        // A plain-root-call correctness bug, not a chained-composition scenario: the interceptor's
+        // own call back into DeploymentPostController.handleDeployment(initialDeployment) re-enters
+        // with the interceptor's per-request key already in context, hitting the very guard PR4b
+        // removes — so before this PR an interceptor-protected declaring app silently never
+        // resolved its dependencies, even on a plain user root call.
+        verify(send(HttpMethod.PUT, "/v1/applications/public/dep-e2e-app", null, """
+                {
+                  "endpoint": "http://localhost:4849/chat/completions",
+                  "display_name": "Dependency E2E App",
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"path": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
+                  ],
+                  "interceptors": ["interceptor1"]
+                }
+                """, "authorization", "admin"), 200);
         verify(grantConsent(), 200);
         String bucket = userBucket();
 
-        // The key an orchestrator would hold when delegating to the declaring app.
-        ApiKeyData appKey = createAppKey("user", java.util.Map.of());
-        appKey.setExecutionPath(List.of("orchestrator"));
-        apiKeyStore.assignPerRequestApiKey(appKey);
-
         AtomicReference<Integer> targetStatus = new AtomicReference<>();
-        try (TestWebServer server = new TestWebServer(4849)) {
-            server.map(HttpMethod.POST, "/chat/completions", request -> {
+        try (TestWebServer appServer = new TestWebServer(4849);
+                TestWebServer interceptorServer = new TestWebServer(4088)) {
+            appServer.map(HttpMethod.POST, "/chat/completions", request -> {
                 targetStatus.set(send(HttpMethod.PUT,
                         "/v1/prompts/%s/dep-smoke/prompt-by-app".formatted(bucket), null, PROMPT_BODY,
                         "api-key", request.getHeader("Api-Key")).status());
@@ -194,16 +197,29 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
                         "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"choices\":[]}",
                         "Content-Type", "application/json");
             });
+            // The interceptor server: forwards to the original deployment with the per-request key
+            // it was handed — this second, inbound call is where handleDeployment re-enters with a
+            // per-request key already present.
+            interceptorServer.map(HttpMethod.POST, "/api/v1/interceptor/handle", request -> {
+                String perRequestKey = request.getHeader("Api-Key");
+                Response completion = send(HttpMethod.POST,
+                        "/openai/deployments/applications/public/dep-e2e-app/chat/completions", null, """
+                        {"messages":[{"role":"user","content":"how are you?"}]}
+                        """, "api-key", perRequestKey, "Content-Type", "application/json");
+                return TestWebServer.createResponse(completion.status(), completion.body(),
+                        "Content-Type", "application/json");
+            });
+
             Response completion = send(HttpMethod.POST,
                     "/openai/deployments/applications/public/dep-e2e-app/chat/completions", null, """
                     {"messages":[{"role":"user","content":"how are you?"}]}
-                    """, "api-key", appKey.getPerRequestKey(), "Content-Type", "application/json");
+                    """, "authorization", "user", "Content-Type", "application/json");
             assertEquals(200, completion.status(), () -> "Body: " + completion.body());
         }
 
-        // Callable, but the dependency did not resolve on this hop: no grant, target off-limits.
-        assertEquals(403, targetStatus.get(),
-                "a chained hop must not receive grants — the originating user's reach is not evaluable there");
+        // Before this PR: 403 (the guard skipped resolution on this re-entry). After: resolved.
+        assertEquals(200, targetStatus.get(),
+                "an interceptor-protected declaring app must resolve its dependencies on a plain root call");
     }
 
     @Test
@@ -240,6 +256,9 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
             assertTrue(denial.contains("targets=prompts/{current-user}/dep-smoke/"), denial);
             assertTrue(denial.contains("user_id=user"), denial);
             assertTrue(denial.contains("trace_id=") && !denial.contains("trace_id=,") && !denial.contains("trace_id=null"), denial);
+            // A plain user root call: no calling deployment, so source_deployment is the "root"
+            // sentinel — pinned here since it's the path least likely to be exercised elsewhere.
+            assertTrue(denial.contains("source_deployment=root"), denial);
 
             String runtimeFail = events.stream()
                     .filter(e -> e.contains("event=resource_dependency_runtime_fail")).findFirst().orElse(null);

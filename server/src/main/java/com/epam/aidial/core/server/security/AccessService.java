@@ -70,6 +70,20 @@ public class AccessService {
             AccessService::getAppSelfAccess,
             this::getOwnResourcesAccessForChainedSchemaRichApplication);
 
+    /**
+     * Reach as the <b>originating human</b>, independent of how deep in a call chain the request
+     * is. Three rules, and deliberately only three (D-24): the human's own bucket via
+     * {@link BucketBuilder#buildInitiatorBucket} (never the PRK holder's sandbox), what has been
+     * shared with the human, and what is public to the human's roles. Every rule that reads the
+     * <i>current per-request key holder's</i> state is excluded — otherwise a calling app could
+     * launder grants it already holds into satisfying the next app's independent reach check.
+     * Used by resource-dependency resolution only; the general chain is {@link #permissionRules}.
+     */
+    private final List<PermissionRule> originatingUserPermissionRules = List.of(
+            (resources, context) -> ownBucketAccess(resources, BucketBuilder.buildInitiatorBucket(context)),
+            this::getSharedAccess,
+            this::getPublicAccess);
+
     public AccessService(EncryptionService encryptionService,
                          ShareService shareService,
                          RuleService ruleService,
@@ -156,9 +170,15 @@ public class AccessService {
 
     private Map<ResourceDescriptor, Set<ResourceAccessType>> lookupPermissions(
             Set<ResourceDescriptor> resources, ProxyContext context, Set<ResourceAccessType> toLookup) {
+        return lookupPermissions(resources, context, toLookup, permissionRules);
+    }
+
+    private Map<ResourceDescriptor, Set<ResourceAccessType>> lookupPermissions(
+            Set<ResourceDescriptor> resources, ProxyContext context, Set<ResourceAccessType> toLookup,
+            List<PermissionRule> rules) {
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         Set<ResourceDescriptor> remainingResources = new HashSet<>(resources);
-        for (PermissionRule permissionRule : permissionRules) {
+        for (PermissionRule permissionRule : rules) {
             Map<ResourceDescriptor, Set<ResourceAccessType>> rulePermissions =
                     permissionRule.apply(remainingResources, context);
 
@@ -180,6 +200,19 @@ public class AccessService {
         }
 
         return result;
+    }
+
+    /**
+     * Permissions the <b>originating user</b> holds on {@code resources}, evaluated identically at
+     * the root call and at any depth in a chain. Not a variant of {@link #lookupPermissions}: it
+     * answers a narrower question — "what can the human behind this request reach on their own
+     * standing" — over a purpose-built rule set (see {@link #originatingUserPermissionRules}).
+     * Resource-dependency resolution is the only caller; do not widen it into a general-purpose
+     * permission API without revisiting D-24's exclusions.
+     */
+    public Map<ResourceDescriptor, Set<ResourceAccessType>> lookupOriginatingUserPermissions(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
+        return lookupPermissions(resources, context, ResourceAccessType.ALL, originatingUserPermissionRules);
     }
 
     @VisibleForTesting
@@ -300,10 +333,20 @@ public class AccessService {
 
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getOwnResourcesAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        String location = BucketBuilder.buildUserBucket(context);
+        return ownBucketAccess(resources, BucketBuilder.buildUserBucket(context));
+    }
+
+    /**
+     * Resources living in {@code bucketLocation}, with full rights. The caller picks whose bucket
+     * that is: {@link BucketBuilder#buildUserBucket} — the PRK holder's own sandbox under a
+     * per-request key — for the general chain, {@link BucketBuilder#buildInitiatorBucket} — always
+     * the originating human — for {@link #lookupOriginatingUserPermissions}.
+     */
+    private static Map<ResourceDescriptor, Set<ResourceAccessType>> ownBucketAccess(
+            Set<ResourceDescriptor> resources, String bucketLocation) {
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         for (ResourceDescriptor resource : resources) {
-            if (resource.getBucketLocation().equals(location)) {
+            if (resource.getBucketLocation().equals(bucketLocation)) {
                 result.put(resource, ResourceAccessType.ALL);
             }
         }
