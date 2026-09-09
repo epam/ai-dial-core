@@ -87,6 +87,58 @@ public class DeploymentApiTest extends ResourceBaseTest {
         assertTrue(collectInterfaces(body).containsKey("schema-app"));
     }
 
+    @DialConfigLocation("dial-config/deployment-interfaces-listing.json")
+    @Test
+    public void testGetDeployment() throws JsonProcessingException {
+        // a model, an application and a toolset are returned in the very same shape the listing uses
+        JsonNode model = readDeployment(send(HttpMethod.GET, "/v1/deployments/gpt-4"));
+        assertEquals("model", model.get("object").asText());
+        assertEquals(Set.of("chat", "openaiChatCompletions"), interfacesOf(model));
+
+        JsonNode application = readDeployment(send(HttpMethod.GET, "/v1/deployments/schema-app"));
+        assertEquals("application", application.get("object").asText());
+        assertEquals(Set.of("chat", "mcp", "custom_ui", "openaiChatCompletions"), interfacesOf(application));
+
+        JsonNode toolSet = readDeployment(send(HttpMethod.GET, "/v1/deployments/git"));
+        assertEquals("toolset", toolSet.get("object").asText());
+        assertEquals(Set.of("mcp"), interfacesOf(toolSet));
+
+        verify(send(HttpMethod.GET, "/v1/deployments/unknown-deployment"), 404);
+    }
+
+    @DialConfigLocation("dial-config/deployment-interfaces-listing.json")
+    @Test
+    public void testGetCustomApplicationDeployment() throws JsonProcessingException {
+        Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app", null, """
+                {
+                "display_name": "My App",
+                "display_version": "1.0",
+                "icon_url": "http://apprunner/icon.svg",
+                "description": "My app Description",
+                "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_toolset_type",
+                "applicationProperties": {
+                  "property1": "foo",
+                  "property2": "bar"
+                  }
+                }
+                """);
+        verify(response, 200);
+
+        String deploymentId = "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app";
+        JsonNode application = readDeployment(send(HttpMethod.GET, "/v1/deployments/" + deploymentId));
+        assertEquals("application", application.get("object").asText());
+        assertEquals(deploymentId, application.get("id").asText());
+        assertEquals(Set.of("chat", "mcp", "custom_ui", "openaiChatCompletions"), interfacesOf(application));
+    }
+
+    @Test
+    public void testGetForbiddenDeployment() {
+        // gpt-4 is restricted to the power-user role, proxyKey1 has the default one
+        verify(send(HttpMethod.GET, "/v1/deployments/gpt-4"), 403);
+        // an interceptor is a deployment, but it is not a part of the deployment listing
+        verify(send(HttpMethod.GET, "/v1/deployments/interceptor1"), 404);
+    }
+
     @DialConfigLocation("dial-config/deployment-interfaces-features.json")
     @Test
     public void testChatCompletionFeatureFollowsInterfaces() throws JsonProcessingException {
@@ -122,6 +174,19 @@ public class DeploymentApiTest extends ResourceBaseTest {
             result.put(deployment.get("id").asText(), deployment.get("features"));
         }
         return result;
+    }
+
+    private static JsonNode readDeployment(Response response) throws JsonProcessingException {
+        verify(response, 200);
+        return ProxyUtil.MAPPER.readTree(response.body());
+    }
+
+    private static Set<String> interfacesOf(JsonNode deployment) {
+        Set<String> interfaces = new HashSet<>();
+        for (JsonNode iface : deployment.get("interfaces")) {
+            interfaces.add(iface.asText());
+        }
+        return interfaces;
     }
 
     private static Map<String, Set<String>> collectInterfaces(JsonNode body) {

@@ -24,9 +24,11 @@ import com.epam.aidial.core.server.data.ToolSetData;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
+import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import io.vertx.core.CompositeFuture;
@@ -168,6 +170,54 @@ public class DeploymentController {
     }
 
 
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/deployments/{deployment_name}",
+            operationId = "getDeploymentInfo",
+            tags = {"Deployment listing"},
+            parameters = {
+                    @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = DeploymentData.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
+    public Future<?> getDeploymentInfo(String deploymentId) {
+        proxy.getTaskExecutor()
+                .submit(() -> toDeploymentData(deploymentService.findDeployment(context, deploymentId)))
+                .onSuccess(deployment -> context.respond(HttpStatus.OK, deployment))
+                .onFailure(error -> respondError(deploymentId, error));
+
+        return Future.succeededFuture();
+    }
+
+    private DeploymentData toDeploymentData(Deployment deployment) {
+        return switch (deployment) {
+            case Model model -> to(model);
+            case Application application -> to(resolveLocalApplication(application));
+            case ToolSet toolSet -> to(toolSet);
+            // interceptors are deployments as well, but the deployment listing never exposes them
+            default -> throw new ResourceNotFoundException("Deployment is not found: " + deployment.getName());
+        };
+    }
+
+    private void respondError(String deploymentId, Throwable error) {
+        switch (error) {
+            case IllegalArgumentException ignored -> context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
+            case PermissionDeniedException ignored -> context.respond(HttpStatus.FORBIDDEN, error.getMessage());
+            case ResourceNotFoundException ignored -> context.respond(HttpStatus.NOT_FOUND, error.getMessage());
+            case null, default -> {
+                log.error("Error occurred on getting deployment {}", deploymentId, error);
+                context.respond(error, "Internal error");
+            }
+        }
+    }
+
     private String[] getDeploymentInterfaces() {
         String interfacesParam = context.getRequest().getParam("interface_type", "all");
         return interfacesParam.split(",");
@@ -302,19 +352,23 @@ public class DeploymentController {
         Config config = context.getConfig();
         for (Model model : config.getModels().values()) {
             if (model.hasAccess(context.getUserRoles()) && match(filters, model)) {
-                DeploymentData deployment = createModel(model);
-                List<String> interfaces = new ArrayList<>();
-                if (model.getType() == ModelType.CHAT) {
-                    interfaces.add(CHAT_IFACE);
-                } else {
-                    interfaces.add(EMBEDDING_IFACE);
-                }
-                interfaces.addAll(supportedInterfaces(model));
-                deployment.setInterfaces(interfaces);
-                deployments.add(deployment);
+                deployments.add(to(model));
             }
         }
         return Future.succeededFuture(deployments);
+    }
+
+    private static DeploymentData to(Model model) {
+        DeploymentData deployment = createModel(model);
+        List<String> interfaces = new ArrayList<>();
+        if (model.getType() == ModelType.CHAT) {
+            interfaces.add(CHAT_IFACE);
+        } else {
+            interfaces.add(EMBEDDING_IFACE);
+        }
+        interfaces.addAll(supportedInterfaces(model));
+        deployment.setInterfaces(interfaces);
+        return deployment;
     }
 
     private static ApplicationData to(Application app) {

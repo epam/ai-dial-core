@@ -1,14 +1,17 @@
 package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
+import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Translator;
+import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceService;
@@ -44,6 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
@@ -196,6 +200,62 @@ public class MergedConfigStorePartialUpdateTest {
         assertNotNull(resurrected, "model resurrected to Config.models");
         assertEquals("http://localhost:5002/to-chat-completions",
                 DeploymentEndpointUtil.resolveServingEndpoint(resurrected, InterfaceType.ANTHROPIC_MESSAGES, result.getTranslators()));
+    }
+
+    @Test
+    public void translatorWriteMakesModelResolveItLiveWithNoCascade() {
+        // Confirms the design decision: a translator write does NOT walk/relink existing models —
+        // TranslatorRef.resolve() looks the name up in the live registry each time it is asked, so a
+        // model instance already in Config.models needs no relink to see a translator created after it.
+        DeploymentInterface anthropic = new DeploymentInterface();
+        anthropic.setMode(InterfaceMode.TRANSLATOR);
+        anthropic.setTranslator(TranslatorRef.named("anthropicMessagesToOpenaiChatCompletions"));
+
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of("anthropicMessages", anthropic));
+
+        Config seeded = newConfig();
+        seeded.setModels(mutable(MODEL_ID, model));
+
+        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_SKIP);
+
+        // Before the translator exists, the reference resolves to nothing.
+        assertNull(anthropic.getTranslator().resolve(store.get().getTranslators()));
+
+        Translator translator = new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS,
+                "http://localhost:5003/to-chat-completions");
+        Config result = store.applyEntityWrite(ResourceTypes.TRANSLATOR,
+                "anthropicMessagesToOpenaiChatCompletions", translator);
+
+        assertSame(model, result.getModels().get(MODEL_ID), "model instance untouched by the translator write");
+        assertEquals("http://localhost:5003/to-chat-completions",
+                anthropic.getTranslator().resolve(result.getTranslators()).getBaseUrl());
+    }
+
+    @Test
+    public void translatorWriteWithoutInThrowsAndRollsBack() {
+        Config seeded = newConfig();
+        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+
+        Translator bad = new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://localhost:5003/to-chat-completions");
+
+        assertThrows(InvalidEntityException.class,
+                () -> store.applyEntityWrite(ResourceTypes.TRANSLATOR, "bad-translator", bad));
+        assertFalse(store.get().getTranslators().containsKey("bad-translator"),
+                "rejected write must not leave a partial entry");
+    }
+
+    @Test
+    public void translatorDeleteRemovesEntry() {
+        Config seeded = newConfig();
+        seeded.setTranslators(mutable("anthropicMessagesToOpenaiChatCompletions",
+                new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://localhost:5003/to-chat-completions")));
+        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+
+        Config result = store.applyEntityDelete(ResourceTypes.TRANSLATOR, "anthropicMessagesToOpenaiChatCompletions");
+
+        assertFalse(result.getTranslators().containsKey("anthropicMessagesToOpenaiChatCompletions"));
     }
 
     @Test

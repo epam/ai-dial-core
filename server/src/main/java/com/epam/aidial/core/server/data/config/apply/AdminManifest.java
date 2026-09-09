@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.JsonNode;
                 @ApiSubType(discriminatorValue = "Schema", type = AdminSchemaManifest.class),
                 @ApiSubType(discriminatorValue = "CatalogSchema", type = AdminCatalogSchemaManifest.class),
                 @ApiSubType(discriminatorValue = "Interceptor", type = AdminInterceptorManifest.class),
+                @ApiSubType(discriminatorValue = "Translator", type = AdminTranslatorManifest.class),
                 @ApiSubType(discriminatorValue = "Role", type = AdminRoleManifest.class),
                 @ApiSubType(discriminatorValue = "Key", type = AdminKeyManifest.class),
                 @ApiSubType(discriminatorValue = "Route", type = AdminRouteManifest.class),

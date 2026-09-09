@@ -267,8 +267,27 @@ public class ConfigPostProcessorTest {
         config.setTranslators(Map.of("anthropicMessagesToOpenaiChatCompletions",
                 new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://translator/to-chat-completions")));
 
-        assertThrows(IllegalStateException.class,
+        assertThrows(InvalidEntityException.class,
                 () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticSkipDropsRegistryTranslatorWithoutIn() {
+        Config config = newMutableConfig();
+        config.setTranslators(new HashMap<>(Map.of("anthropicMessagesToOpenaiChatCompletions",
+                new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://translator/to-chat-completions"))));
+
+        AtomicReference<ResourceTypes> capturedType = new AtomicReference<>();
+        AtomicReference<String> capturedKey = new AtomicReference<>();
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), (type, error) -> {
+            capturedType.set(type);
+            capturedKey.set(error.getMapKey());
+        });
+
+        assertEquals(ResourceTypes.TRANSLATOR, capturedType.get());
+        assertEquals("anthropicMessagesToOpenaiChatCompletions", capturedKey.get());
+        assertTrue(config.getTranslators().isEmpty());
     }
 
     @Test

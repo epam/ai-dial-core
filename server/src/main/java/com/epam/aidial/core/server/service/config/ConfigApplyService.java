@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.EntityChange;
 import com.epam.aidial.core.server.config.MergedConfigStore;
@@ -24,6 +25,7 @@ import com.epam.aidial.core.server.data.config.apply.AdminRouteManifest;
 import com.epam.aidial.core.server.data.config.apply.AdminSchemaManifest;
 import com.epam.aidial.core.server.data.config.apply.AdminSettingsManifest;
 import com.epam.aidial.core.server.data.config.apply.AdminToolSetManifest;
+import com.epam.aidial.core.server.data.config.apply.AdminTranslatorManifest;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -138,6 +140,8 @@ public class ConfigApplyService {
                     applySchema(catalogSchema.spec(), id, parsed.name(), pending, ResourceTypes.CATALOG_SCHEMA, scratch);
             case AdminInterceptorManifest interceptor ->
                     applyManagedEntity(interceptor.spec(), id, parsed.name(), ResourceTypes.INTERCEPTOR, scratch, pending);
+            case AdminTranslatorManifest translator ->
+                    applyTranslator(translator.spec(), id, parsed.name(), pending);
             case AdminRoleManifest role ->
                     applyManagedEntity(role.spec(), id, parsed.name(), ResourceTypes.ROLE, scratch, pending);
             case AdminRouteManifest route ->
@@ -199,6 +203,20 @@ public class ConfigApplyService {
         String blobBody = ConfigEntityCodec.serializeForBlob(entity);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
         pending.add(new EntityChange(type, MergedConfigStore.resolveMapKeyFor(descriptor), entity));
+        return new EntityResult(id, AdminApplyStatus.APPLIED, null);
+    }
+
+    private EntityResult applyTranslator(Translator translator, String id, ParsedName parsed, List<EntityChange> pending) {
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateTranslator(translator, warnings);
+        if (!warnings.isEmpty()) {
+            return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+        }
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.TRANSLATOR, parsed.bucket(), parsed.location(), parsed.name());
+        String blobBody = ConfigEntityCodec.serializeForBlob(translator);
+        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+        pending.add(new EntityChange(ResourceTypes.TRANSLATOR, MergedConfigStore.resolveMapKeyFor(descriptor), translator));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 

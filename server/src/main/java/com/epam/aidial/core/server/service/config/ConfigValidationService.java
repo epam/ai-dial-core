@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service.config;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.data.config.apply.AdminApplicationManifest;
@@ -16,6 +17,7 @@ import com.epam.aidial.core.server.data.config.apply.AdminRouteManifest;
 import com.epam.aidial.core.server.data.config.apply.AdminSchemaManifest;
 import com.epam.aidial.core.server.data.config.apply.AdminSettingsManifest;
 import com.epam.aidial.core.server.data.config.apply.AdminToolSetManifest;
+import com.epam.aidial.core.server.data.config.apply.AdminTranslatorManifest;
 import com.epam.aidial.core.server.data.config.apply.ValidationResult;
 import com.epam.aidial.core.server.data.config.apply.ValidationStatus;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
@@ -77,6 +79,14 @@ public class ConfigValidationService {
                             scratch, ResourceTypes.INTERCEPTOR, parsed.name());
                     if (dupError != null) {
                         return new ValidationResult(id, ValidationStatus.FAILED, dupError);
+                    }
+                }
+                case AdminTranslatorManifest translatorManifest -> {
+                    Translator translator = translatorManifest.spec();
+                    List<ValidationWarning> warnings = new ArrayList<>();
+                    ConfigPostProcessor.validateTranslator(translator, warnings);
+                    if (!warnings.isEmpty()) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
                 }
                 case AdminRoleManifest role -> { }

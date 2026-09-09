@@ -10,6 +10,7 @@ public sealed interface AdminTypedManifest permits
         AdminSchemaManifest,
         AdminCatalogSchemaManifest,
         AdminInterceptorManifest,
+        AdminTranslatorManifest,
         AdminRoleManifest,
         AdminKeyManifest,
         AdminRouteManifest,

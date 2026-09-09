@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.ValidationWarning;
@@ -23,6 +24,7 @@ import com.epam.aidial.core.server.data.config.apply.AdminRouteManifest;
 import com.epam.aidial.core.server.data.config.apply.AdminSchemaManifest;
 import com.epam.aidial.core.server.data.config.apply.AdminSettingsManifest;
 import com.epam.aidial.core.server.data.config.apply.AdminToolSetManifest;
+import com.epam.aidial.core.server.data.config.apply.AdminTranslatorManifest;
 import com.epam.aidial.core.server.data.config.apply.AdminTypedManifest;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -50,17 +52,18 @@ public class ConfigManifestSupport {
 
     static final String SETTINGS_SINGLETON_NAME = "global";
 
-    public static final Map<String, Integer> DEPENDENCY_ORDER = Map.of(
-            "Settings", 0,
-            "Schema", 1,
-            "CatalogSchema", 1,
-            "Interceptor", 2,
-            "Role", 3,
-            "Key", 4,
-            "Route", 5,
-            "Model", 6,
-            "ToolSet", 7,
-            "Application", 8);
+    public static final Map<String, Integer> DEPENDENCY_ORDER = Map.ofEntries(
+            Map.entry("Settings", 0),
+            Map.entry("Schema", 1),
+            Map.entry("CatalogSchema", 1),
+            Map.entry("Translator", 2),
+            Map.entry("Interceptor", 3),
+            Map.entry("Role", 4),
+            Map.entry("Key", 5),
+            Map.entry("Route", 6),
+            Map.entry("Model", 7),
+            Map.entry("ToolSet", 8),
+            Map.entry("Application", 9));
 
     /**
      * Sorts a manifest list so a kind that other kinds can reference (e.g. {@code Interceptor})
@@ -71,17 +74,18 @@ public class ConfigManifestSupport {
     public static final Comparator<AdminManifest> DEPENDENCY_ORDER_COMPARATOR =
             Comparator.comparingInt(entry -> DEPENDENCY_ORDER.getOrDefault(entry.kind(), 99));
 
-    public static final Map<String, String> KIND_URL_SEGMENT = Map.of(
-            "Settings", "settings",
-            "Schema", "schemas",
-            "CatalogSchema", "catalog_schemas",
-            "Interceptor", "interceptors",
-            "Role", "roles",
-            "Key", "keys",
-            "Route", "routes",
-            "Model", "models",
-            "ToolSet", "toolsets",
-            "Application", "applications");
+    public static final Map<String, String> KIND_URL_SEGMENT = Map.ofEntries(
+            Map.entry("Settings", "settings"),
+            Map.entry("Schema", "schemas"),
+            Map.entry("CatalogSchema", "catalog_schemas"),
+            Map.entry("Interceptor", "interceptors"),
+            Map.entry("Translator", "translators"),
+            Map.entry("Role", "roles"),
+            Map.entry("Key", "keys"),
+            Map.entry("Route", "routes"),
+            Map.entry("Model", "models"),
+            Map.entry("ToolSet", "toolsets"),
+            Map.entry("Application", "applications"));
 
     public static Config newScratch(MergedConfigStore mergedConfigStore) {
         Config live = mergedConfigStore.get();
@@ -89,6 +93,7 @@ public class ConfigManifestSupport {
         if (live != null) {
             scratch.setModels(new HashMap<>(live.getModels()));
             scratch.setInterceptors(new HashMap<>(live.getInterceptors()));
+            scratch.setTranslators(new HashMap<>(live.getTranslators()));
             scratch.setApplicationTypeSchemas(new HashMap<>(live.getApplicationTypeSchemas()));
             scratch.setCatalogSchemas(new HashMap<>(live.getCatalogSchemas()));
             scratch.setApplications(new HashMap<>(live.getApplications()));
@@ -98,7 +103,6 @@ public class ConfigManifestSupport {
             scratch.getRoutes().putAll(live.getRoutes());
             scratch.setGlobalInterceptors(live.getGlobalInterceptors());
             scratch.setRetriableErrorCodes(live.getRetriableErrorCodes());
-            scratch.setTranslators(live.getTranslators());
         }
         return scratch;
     }
@@ -113,6 +117,8 @@ public class ConfigManifestSupport {
                 }
                 case AdminInterceptorManifest interceptor ->
                         scratch.getInterceptors().put(parsed.name().name(), interceptor.spec());
+                case AdminTranslatorManifest translator ->
+                        scratch.getTranslators().put(parsed.name().name(), translator.spec());
                 case AdminRoleManifest role ->
                         scratch.getRoles().put(parsed.name().name(), role.spec());
                 case AdminRouteManifest route ->
@@ -228,6 +234,8 @@ public class ConfigManifestSupport {
             case "CatalogSchema" -> new AdminCatalogSchemaManifest(entry.kind(), entry.name(), entry.spec());
             case "Interceptor" -> new AdminInterceptorManifest(entry.kind(), entry.name(),
                     ConfigEntityCodec.treeToEntity(entry.spec(), Interceptor.class));
+            case "Translator" -> new AdminTranslatorManifest(entry.kind(), entry.name(),
+                    ConfigEntityCodec.treeToEntity(entry.spec(), Translator.class));
             case "Role" -> new AdminRoleManifest(entry.kind(), entry.name(),
                     ConfigEntityCodec.treeToEntity(entry.spec(), Role.class));
             case "Key" -> new AdminKeyManifest(entry.kind(), entry.name(),
