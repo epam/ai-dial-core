@@ -49,7 +49,7 @@ public class ResourceDependencyValidatorTest {
     void acceptsCurrentUserPlaceholderTarget() {
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
 
-        assertDoesNotThrow(() -> validator.validateShape(appWith(dependency("current-user/skills/"))));
+        assertDoesNotThrow(() -> validator.validateShape(appWith(dependency("skills/{current-user}/"))));
     }
 
     @Test
@@ -124,7 +124,7 @@ public class ResourceDependencyValidatorTest {
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
         Application application = appWith(dependency("users/someone/files/folder/"));
 
-        assertTrue(validatorShapeMessage(validator, application).contains("current-user placeholder"));
+        assertTrue(validatorShapeMessage(validator, application).contains("{current-user}"));
     }
 
     @Test
@@ -132,15 +132,26 @@ public class ResourceDependencyValidatorTest {
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
         Application application = appWith(dependency("buckets/public/folder/"));
 
-        assertTrue(validatorShapeMessage(validator, application).contains("global-view path"));
+        assertTrue(validatorShapeMessage(validator, application).contains("declarable resource type"));
     }
 
     @Test
-    void rejectsPlaceholderOutsideTheRoot() {
+    void rejectsPlaceholderOutsideTheBucketSlot() {
+        // Under {type}/{bucket}/… the placeholder is legal only at segment 1 (the bucket slot).
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
-        Application application = appWith(dependency("files/public/current-user/folder/"));
 
-        assertTrue(validatorShapeMessage(validator, application).contains("only as the root segment"));
+        // Token at i == 2 — a folder literally named {current-user} deeper in the path.
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("files/public/{current-user}/folder/")))
+                .contains("only as the bucket segment"));
+
+        // Token at i == 0 — placeholder used where the type belongs.
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("{current-user}/skills/")))
+                .contains("only as the bucket segment"));
+
+        // A bare word (no braces) mid-path is an ordinary, legal folder name — the ban is
+        // positional-and-lexical (only the braced token, only at segment 1), not a lexical ban on
+        // the word "current-user" anywhere in a path.
+        assertDoesNotThrow(() -> validator.validateShape(appWith(dependency("files/current-user/folder/"))));
     }
 
     @Test
@@ -161,8 +172,8 @@ public class ResourceDependencyValidatorTest {
 
         assertTrue(validatorShapeMessage(validator, appWith(dependency("files/public/%2e%2e/x/"))).contains("relative path segments"));
         assertTrue(validatorShapeMessage(validator, appWith(dependency("files/public/%2a/"))).contains("wildcards"));
-        assertTrue(validatorShapeMessage(validator, appWith(dependency("files/public/%63urrent-user/f/"))).contains("only as the root segment"));
-        assertTrue(validatorShapeMessage(validator, appWith(dependency("%75sers/bob/files/"))).contains("current-user placeholder"));
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("files/public/%7Bcurrent-user%7D/f/"))).contains("only as the bucket segment"));
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("%75sers/bob/files/"))).contains("{current-user}"));
     }
 
     @Test
@@ -195,7 +206,30 @@ public class ResourceDependencyValidatorTest {
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
 
         assertTrue(validatorShapeMessage(validator, appWith(dependency("files"))).contains("not the type root"));
-        assertTrue(validatorShapeMessage(validator, appWith(dependency("public/"))).contains("not the type root"));
+
+        // "public" is a bucket value, never a type (D-23a) — it is rejected now by the root-vocabulary
+        // check, not by the removed dead "public" entry in the old GLOBAL_VIEW_ROOTS.
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("public/"))).contains("declarable resource type"));
+
+        // Two segments is type + bucket — the whole of one bucket's folder of that type, the shape the
+        // feature exists to serve (D-23c). The bar rejects one-segment paths only, for both forms.
+        assertDoesNotThrow(() -> validator.validateShape(appWith(dependency("skills/{current-user}/"))));
+        assertDoesNotThrow(() -> validator.validateShape(appWith(dependency("files/public/"))));
+    }
+
+    @Test
+    void credentialsPlaceholderIsRejectedAtWriteTime() {
+        // Regression guard for the deleted early return: without the unconditional root-vocabulary
+        // check, credentials/{current-user}/ would have silently bypassed write-time validation and
+        // been accepted, naming the user's secret-bearing blobs.
+        ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
+
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("credentials/{current-user}/")))
+                .contains("declarable resource type"));
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("keys/{current-user}/")))
+                .contains("declarable resource type"));
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("models/{current-user}/")))
+                .contains("declarable resource type"));
     }
 
     @Test
@@ -232,21 +266,25 @@ public class ResourceDependencyValidatorTest {
     void acceptsUserAuthoredSectionWhileFlagOn() {
         ResourceDependencyValidator validator = new ResourceDependencyValidator(true);
 
-        assertDoesNotThrow(() -> validator.validateUserAuthored(appWith(dependency("current-user/skills/"))));
+        assertDoesNotThrow(() -> validator.validateUserAuthored(appWith(dependency("skills/{current-user}/"))));
     }
 
     @Test
-    void rejectsRootLevelCurrentUserWhileFlagOn() {
+    void rootLevelPersonalDeclarationIsUnexpressible() {
+        // D-23b: the per-path ceiling is gone — the grammar itself makes "write everything personal"
+        // unexpressible, so both old root-level shapes now fail as shape errors (400, via
+        // validateShape), not as a ceiling violation (403, via validateUserAuthored).
         ResourceDependencyValidator validator = new ResourceDependencyValidator(true);
 
-        HttpException root = assertThrows(HttpException.class,
-                () -> validator.validateUserAuthored(appWith(dependency("current-user/"))));
-        HttpException untyped = assertThrows(HttpException.class,
-                () -> validator.validateUserAuthored(appWith(dependency("current-user/rootstuff/"))));
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("{current-user}/")))
+                .contains("declarable resource type"));
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("current-user/rootstuff/")))
+                .contains("declarable resource type"));
 
-        assertEquals(403, root.getStatus().getCode());
-        assertEquals(403, untyped.getStatus().getCode());
-        assertTrue(untyped.getMessage().contains("resource-type folder"));
+        // A well-shaped personal target passes validateUserAuthored with the flag on...
+        assertDoesNotThrow(() -> validator.validateUserAuthored(appWith(dependency("skills/{current-user}/"))));
+        // ...and the ceiling itself now throws for no well-shaped path — it degenerates to the flag check.
+        assertDoesNotThrow(() -> validator.validateUserAuthored(appWith(dependency("files/{current-user}/notes/"))));
     }
 
     @Test

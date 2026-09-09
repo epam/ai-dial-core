@@ -190,9 +190,9 @@ public class ResolveResourceDependenciesFn extends BaseRequestFunction<RequestOb
     }
 
     /**
-     * Resolves a declared target path to a descriptor: a {@code current-user/<type>/<path…>}
-     * path against the originating user's own bucket, a concrete global-view path as-is. Null
-     * when the record is malformed — an unresolvable record, never a crash.
+     * Resolves a declared target path to a descriptor: a {@code {type}/{current-user}/<path…>}
+     * path against the originating user's own bucket, a concrete {@code {type}/{bucket}/<path…>}
+     * path as-is. Null when the record is malformed — an unresolvable record, never a crash.
      */
     @Nullable
     private ResourceDescriptor resolveTarget(ResourceDependency dependency, AuthBucket userBucket) {
@@ -206,19 +206,19 @@ public class ResolveResourceDependenciesFn extends BaseRequestFunction<RequestOb
         boolean folder = path.endsWith("/");
         try {
             String[] segments = decodedSegments(path, folder);
-            if (segments.length == 0) {
+            if (segments.length < 2) {
+                return null;                                   // {type}/{bucket} is the minimum
+            }
+            if (!ResourceDependencyValidator.DECLARABLE_TYPE_ROOTS.contains(segments[0])) {
+                // ResourceTypes.of() also maps internal engine types (credentials, keys, models, …).
+                // Config-file apps bypass write-time validation, so the read side enforces the same
+                // closed vocabulary — for concrete paths too, not only placeholder ones.
                 return null;
             }
-            if (ResourceDependencyValidator.CURRENT_USER_PLACEHOLDER.equals(segments[0])) {
-                // current-user/<type-segment>/<path…>. Two segments (current-user/skills/) target the
-                // type's root folder in the user's bucket — the skill-creator shape. The type segment
-                // is restricted to the personal typed-root vocabulary: ResourceTypes.of() also maps
-                // internal engine types (credentials, keys, models, …), and a declaration like
-                // current-user/credentials/ must never resolve into the user's secret-bearing blobs.
-                if (segments.length < 2 || !ResourceDependencyValidator.PERSONAL_TYPED_ROOTS.contains(segments[1])) {
-                    return null;
-                }
-                ResourceType type = ResourceTypes.of(segments[1]);
+            if (ResourceDependencyValidator.CURRENT_USER_PLACEHOLDER.equals(segments[1])) {
+                // {type}/{current-user}/{path…}. Two segments target the type's root folder in the
+                // user's bucket — the skill-creator shape.
+                ResourceType type = ResourceTypes.of(segments[0]);
                 String relativePath = segments.length == 2
                         ? "" : String.join("/", Arrays.asList(segments).subList(2, segments.length));
                 if (folder && !relativePath.isEmpty()) {

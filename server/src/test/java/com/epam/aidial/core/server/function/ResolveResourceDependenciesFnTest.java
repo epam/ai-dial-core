@@ -125,7 +125,7 @@ public class ResolveResourceDependenciesFnTest {
         // (an interceptor's final call back, a chained app-to-app call) are skipped, never run
         // and never thrown: a declaring app behind an interceptor must stay callable.
         when(context.getDeployment()).thenReturn(application);
-        application.setResourceDependencies(List.of(dependency("current-user/skills/", false)));
+        application.setResourceDependencies(List.of(dependency("skills/{current-user}/", false)));
         ApiKeyData assigned = new ApiKeyData();
         assigned.setPerRequestKey("prk");
         when(context.getApiKeyData()).thenReturn(assigned);
@@ -138,7 +138,7 @@ public class ResolveResourceDependenciesFnTest {
     @Test
     void apply_bakesGrantForConsentedReachablePlaceholderTarget() {
         when(context.getDeployment()).thenReturn(application);
-        application.setResourceDependencies(List.of(dependency("current-user/skills/", false)));
+        application.setResourceDependencies(List.of(dependency("skills/{current-user}/", false)));
         when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
         when(accessService.lookupPermissions(any(), eq(context)))
                 .thenReturn(Map.of(userSkillsFolder(), Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE)));
@@ -178,12 +178,14 @@ public class ResolveResourceDependenciesFnTest {
     @Test
     void apply_neverResolvesInternalEngineTypesAsPersonalTargets() {
         // ResourceTypes.of() maps internal engine types (credentials, keys, models…) — a
-        // current-user/credentials/ declaration must never reach the user's secret-bearing blobs,
-        // whoever authored the app (config-file apps bypass the write-time ceiling).
+        // credentials/{current-user}/ declaration must never reach the user's secret-bearing blobs,
+        // whoever authored the app (config-file apps bypass the write-time ceiling). The same
+        // vocabulary gates concrete paths too, not only placeholder ones.
         when(context.getDeployment()).thenReturn(application);
         application.setResourceDependencies(List.of(
-                dependency("current-user/credentials/", false),
-                dependency("current-user/keys/", false)));
+                dependency("credentials/{current-user}/", false),
+                dependency("keys/{current-user}/", false),
+                dependency("credentials/public/x/", false)));
         when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
 
         assertFalse(fn.apply(request));
@@ -245,7 +247,7 @@ public class ResolveResourceDependenciesFnTest {
     @Test
     void apply_failsCallWhenRequiredDeclarationIsUnconsented() {
         when(context.getDeployment()).thenReturn(application);
-        application.setResourceDependencies(List.of(dependency("current-user/skills/", true)));
+        application.setResourceDependencies(List.of(dependency("skills/{current-user}/", true)));
         when(consentService.isAdminConsented(eq("app"), any())).thenReturn(false);
 
         HttpException error = assertThrows(HttpException.class, () -> fn.apply(request));
