@@ -420,4 +420,36 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
                 "authorization", "admin", "If-None-Match", "*");
         verify(put, 400);
     }
+
+    @Test
+    void testMalformedResourceDependenciesSectionRejected() {
+        // The platform bucket is always admin context, so only shape validation applies — but it
+        // must apply here too: this surface bypasses ResourceController.validateCustomApplication.
+        String body = """
+                {
+                  "endpoint": "http://application1/v1/completions",
+                  "display_name": "Platform App",
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk_1", "target": {"path": "users/bob/files/f/"}, "access": ["read"]}
+                  ]
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/applications/platform/bad-dependency-app", null, body,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 400);
+
+        // A valid section is accepted on the same surface.
+        String validBody = """
+                {
+                  "endpoint": "http://application1/v1/completions",
+                  "display_name": "Platform App",
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk_1", "target": {"path": "current-user/skills/"}, "access": ["write"]}
+                  ]
+                }
+                """;
+        put = send(HttpMethod.PUT, "/v1/applications/platform/good-dependency-app", null, validBody,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 200);
+    }
 }

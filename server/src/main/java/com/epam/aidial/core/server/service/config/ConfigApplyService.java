@@ -20,6 +20,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.config.ConfigManifestSupport.ParsedName;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -273,6 +274,13 @@ public class ConfigApplyService {
 
     private EntityResult applyApplication(AdminManifest entry, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {
         Application application = ConfigEntityCodec.treeToEntity(entry.spec(), Application.class);
+        // Same shape rules as every other application write surface; always admin context here, so the
+        // user-authored governance ceiling does not apply.
+        List<String> dependencyIssues = ResourceDependencyValidator.shapeIssues(application);
+        if (!dependencyIssues.isEmpty()) {
+            return new EntityResult(id, AdminApplyStatus.FAILED,
+                    "Invalid resource dependencies: " + String.join("; ", dependencyIssues));
+        }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.APPLICATION, parsed.bucket(), parsed.location(), parsed.name());
         // Only the platform bucket is materialized into MergedConfigStore (see EntityLocationStrategy) —

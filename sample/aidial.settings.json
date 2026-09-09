@@ -1,7 +1,8 @@
 {
   "config": {
     "files": ["/app/config/aidial.config.json"],
-    "reload": 60000
+    "reload": 60000,
+    "allowUserResourceDependencies": false
   },
   "redis": {
     "singleServerConfig": {

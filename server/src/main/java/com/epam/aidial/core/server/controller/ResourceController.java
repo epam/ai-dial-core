@@ -27,6 +27,7 @@ import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.ExternalServiceStatusEnricher;
 import com.epam.aidial.core.server.service.ExternalServicesWriteMode;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
@@ -80,6 +81,7 @@ public class ResourceController extends AccessControlBaseController {
 
     private final ToolSetService toolSetService;
     private final DeploymentService deploymentService;
+    private final ResourceDependencyValidator resourceDependencyValidator;
 
     public ResourceController(Proxy proxy, ProxyContext context, boolean metadata) {
         // PUT and DELETE require write access, GET - read
@@ -91,6 +93,7 @@ public class ResourceController extends AccessControlBaseController {
         this.resourceService = proxy.getResourceService();
         this.applicationSchemaService = proxy.getApplicationSchemaService();
         this.deploymentService = proxy.getDeploymentService();
+        this.resourceDependencyValidator = proxy.getResourceDependencyValidator();
         this.metadata = metadata;
     }
 
@@ -683,6 +686,12 @@ public class ResourceController extends AccessControlBaseController {
         try {
             checkCreateCodeApp(application);
             validateSchemaBasedApplication(application);
+            resourceDependencyValidator.validateShape(application);
+            if (!accessService.hasAdminAccess(context)) {
+                // Governance ceiling, keyed on the author rather than the destination bucket: an admin
+                // prototyping in their own bucket authors an admin app, not a user-authored one.
+                resourceDependencyValidator.validateUserAuthored(application);
+            }
             if (!application.getInterceptors().isEmpty()) {
                 if (!accessService.hasAdminAccess(context)) {
                     throw new HttpException(FORBIDDEN, "Only admins are allowed to set interceptors");

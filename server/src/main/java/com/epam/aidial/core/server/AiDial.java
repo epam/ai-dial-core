@@ -64,6 +64,7 @@ import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.PublicationUtil;
+import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.ResponseMappingService;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
@@ -328,6 +329,10 @@ public class AiDial {
             WellKnownResourceMetadataService wellKnownResourceMetadataService = new WellKnownResourceMetadataService(settings("toolsets"));
             WellKnownResourceMetadataController resourceMetadataController = new WellKnownResourceMetadataController(wellKnownResourceMetadataService);
             PerRequestPermissionService perRequestPermissionService = new PerRequestPermissionService(apiKeyStore, accessService, encryptionService);
+            // Static settings, not hot-reloaded — restarting Core is required to change it. Default off:
+            // user-authored apps may not declare resource dependencies until an operator opts in.
+            ResourceDependencyValidator resourceDependencyValidator = new ResourceDependencyValidator(
+                    settings("config").getBoolean("allowUserResourceDependencies", false));
 
             ApiKeyValidation apiKeyValidation = Json.decodeValue(settings("apiKeyValidation").toBuffer(), ApiKeyValidation.class);
             boolean printAuthorizationHeader = settings.getBoolean("printAuthorizationHeader", false);
@@ -364,7 +369,8 @@ public class AiDial {
                     toolSetService, securedResourceService, mcpHttpClientBuilder, toolSetRepairService, applicationSchemaService,
                     catalogSchemaService, authorizationHeaderProvider,
                     resourceAuthSettingsService, resourceCredentialsService,
-                    perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
+                    perRequestPermissionService, resourceDependencyValidator, resourceAuthSettingsEncryptionService,
+                    authSettingsResolver, clientChannelService, taskExecutor, version(),
                     printAuthorizationHeader,
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService);

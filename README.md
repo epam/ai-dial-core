@@ -343,6 +343,15 @@ the client subscribed with no events ever reaching it.
 </details>
 
 <details> 
+<summary><b>Configuration Files Configurations</b></summary>
+
+| Setting                                       | Default | Required | Description                                                                                                                                                                                                                     |
+|-----------------------------------------------|:-------:|:--------:|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| config.allowUserResourceDependencies          |  false  |    No    | Whether user-authored applications may declare `resource_dependencies` (scoped access to the calling user's resources outside the appdata sandbox). Admin-authored applications are not gated. **Note**: static settings — changing it requires a Core restart. Other `config.*` settings: see [sample](sample/aidial.settings.json). |
+
+</details>
+
+<details> 
 <summary><b>Applications Configurations</b></summary>
 
 | Setting                         | Default | Required | Description                                                                                                                           |
