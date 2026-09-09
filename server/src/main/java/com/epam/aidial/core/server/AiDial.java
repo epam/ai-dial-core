@@ -322,7 +322,7 @@ public class AiDial {
             DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
                     toolSetService, resourceService, applicationSchemaService);
 
-            ConsentService consentService = new ConsentService(deploymentService, resourceService);
+            ConsentService consentService = new ConsentService(deploymentService, resourceService, clock);
 
             HealthCheckController healthCheckController = new HealthCheckController(redis, taskExecutor);
 

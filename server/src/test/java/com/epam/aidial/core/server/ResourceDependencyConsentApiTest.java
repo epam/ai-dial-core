@@ -77,6 +77,78 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
     void testUnknownDeploymentIsNotFound() {
         verify(send(HttpMethod.POST, "/v1/consent/unknown-app/admin-consent", null, "",
                 "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/consent/unknown-app/admin-consent", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    void testAdminConsentStatusReadsTheTriState() {
+        // Never granted: consented false, nothing else — no stale, no provenance.
+        verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null,
+                DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        Response neverGranted = send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+                "authorization", "admin");
+        verify(neverGranted, 200);
+        assertEquals("{\"consented\":false}", neverGranted.body(), () -> "Body: " + neverGranted.body());
+
+        // Granted: consented true, stale false, provenance and the approved snapshot present.
+        verify(send(HttpMethod.POST, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+                "authorization", "admin"), 200);
+        Response granted = send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+                "authorization", "admin");
+        verify(granted, 200);
+        assertTrue(granted.body().contains("\"consented\":true"), () -> "Body: " + granted.body());
+        assertTrue(granted.body().contains("\"stale\":false"), () -> "Body: " + granted.body());
+        assertTrue(granted.body().contains("\"grantedBy\":\"admin\""), () -> "Body: " + granted.body());
+        assertTrue(granted.body().contains("\"grantedAt\":"), () -> "Body: " + granted.body());
+        assertTrue(granted.body().contains("\"url\":\"current-user/skills/\""), () -> "Body: " + granted.body());
+
+        // Declaration changed since the grant: not consented, stale — and the last approval stays
+        // visible for the panel's re-approve view.
+        verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null, """
+                {
+                  "endpoint": "http://application1/v1/completions",
+                  "display_name": "Dependency Consent App",
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "current-user/skills/"}, "access": ["write"], "required": true},
+                    {"kind": "dial.resourceLink", "link_id": "lnk_extra", "target": {"path": "current-user/files/dep-extra/"}, "access": ["read"]}
+                  ]
+                }
+                """, "authorization", "admin"), 200);
+        Response stale = send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+                "authorization", "admin");
+        verify(stale, 200);
+        assertTrue(stale.body().contains("\"consented\":false"), () -> "Body: " + stale.body());
+        assertTrue(stale.body().contains("\"stale\":true"), () -> "Body: " + stale.body());
+        assertTrue(stale.body().contains("\"grantedBy\":\"admin\""), "the last approval's provenance survives the stale transition");
+        assertTrue(stale.body().contains("\"url\":\"current-user/skills/\""), "the approved snapshot survives for the re-approve diff view");
+
+        // Withdrawn: back to the clean never-granted shape.
+        verify(send(HttpMethod.DELETE, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+                "authorization", "admin"), 200);
+        Response withdrawn = send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+                "authorization", "admin");
+        verify(withdrawn, 200);
+        assertEquals("{\"consented\":false}", withdrawn.body(), () -> "Body: " + withdrawn.body());
+    }
+
+    @Test
+    void testAdminConsentStatusForNonDeclarersAndNonAdmins() {
+        // A non-declaring app is a legitimate "nothing consented" answer, not an error.
+        verify(send(HttpMethod.PUT, "/v1/applications/public/plain-consent-app", null, """
+                {
+                  "endpoint": "http://application1/v1/completions",
+                  "display_name": "Plain App"
+                }
+                """, "authorization", "admin", "If-None-Match", "*"), 200);
+        Response status = send(HttpMethod.GET, "/v1/consent/applications/public/plain-consent-app/admin-consent",
+                null, "", "authorization", "admin");
+        verify(status, 200);
+        assertEquals("{\"consented\":false}", status.body(), () -> "Body: " + status.body());
+
+        // The status read is gated exactly like the writers — fail-closed for non-admins.
+        verify(send(HttpMethod.GET, "/v1/consent/applications/public/plain-consent-app/admin-consent",
+                null, ""), 403);
     }
 
     /**
