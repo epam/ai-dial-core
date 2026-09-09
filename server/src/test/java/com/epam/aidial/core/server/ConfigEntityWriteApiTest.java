@@ -495,6 +495,34 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testKeyPutExplicitNullKeyRejected400() {
+        String body = """
+                {
+                  "key": "secret-erase",
+                  "project": "projA",
+                  "roles": ["admin"]
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/keys/platform/test-key-erase", null,
+                body, "authorization", "admin", "If-None-Match", "*"), 200);
+
+        // Explicit null is the erase signal for upstream secrets, but a Key without its secret is
+        // meaningless: the merge leaves Key.key null and the explicit-key validation rejects it.
+        String eraseKey = """
+                {
+                  "key": null,
+                  "project": "projB",
+                  "roles": ["admin"]
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/keys/platform/test-key-erase", null,
+                eraseKey, "authorization", "admin");
+        verify(put, 400);
+        assertTrue(put.body().contains("must be provided explicitly"),
+                () -> "Expected explicit-key rejection: " + put.body());
+    }
+
+    @Test
     void testKeyPutBareUpsertCreatesOnMissing() {
         // Bare PUT against missing — upsert creates (was 404 pre-U.0).
         Response put = send(HttpMethod.PUT, "/v1/keys/platform/no-such-key-create", null,

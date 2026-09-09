@@ -1,10 +1,15 @@
 package com.epam.aidial.core.server;
 
 import io.vertx.core.http.HttpMethod;
+import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.atomic.AtomicReference;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -15,8 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Slice U.4 (2026-05-25) retired the {@code ?reveal_secrets=true} reveal flow, the
  * {@code security-admin} role, and the {@code "***"} mask sentinel. Secret fields drop from
- * GET responses via {@code @JsonProperty(WRITE_ONLY)}; preserve-on-omit signals are
- * null/absent only.
+ * GET responses via {@code @JsonProperty(WRITE_ONLY)}; on update, an omitted secret is
+ * preserved, an explicit null erases it, a literal value replaces it.
  *
  * <p>Slice 2S.14: write controllers call {@code MergedConfigStore.rebuildNow()} on the writer pod,
  * making post-write GETs immediately consistent — no polling helpers needed.
@@ -162,6 +167,57 @@ public class ModelWriteApiTest extends ResourceBaseTest {
                 () -> "Plaintext secret must not appear on GET: " + get.body());
         assertFalse(get.body().contains("\"key\""),
                 () -> "Upstream key must be absent on GET: " + get.body());
+    }
+
+    @Test
+    void testPutExplicitNullUpstreamKeyErasesSecret() {
+        // The model endpoint targets the local TestWebServer ("adapter" position); the upstream key
+        // reaches it as X-UPSTREAM-KEY, so the header's presence/absence is the direct runtime
+        // observable of preserve vs erase — no GET surface can show it (secrets drop everywhere).
+        String answer = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"m\","
+                + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";
+        String chatBody = "{\"model\":\"test-model-erase\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+        String withSecret = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:4849/chat/completions",
+                  "upstreams": [
+                    {"endpoint": "http://vendor.example/v1/chat/completions", "key": "real-secret"}
+                  ]
+                }
+                """;
+        String eraseKey = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:4849/chat/completions",
+                  "upstreams": [
+                    {"endpoint": "http://vendor.example/v1/chat/completions", "key": null}
+                  ]
+                }
+                """;
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4849)) {
+            server.map(HttpMethod.POST, "/chat/completions", request -> {
+                captured.set(request);
+                return TestWebServer.createResponse(200, answer, "Content-Type", "application/json");
+            });
+
+            verify(send(HttpMethod.PUT, "/v1/models/platform/test-model-erase", null, withSecret,
+                    "authorization", "admin", "If-None-Match", "*"), 200);
+
+            // Positive control: the create-time secret rides the header before the erase.
+            verify(send(HttpMethod.POST, "/openai/deployments/test-model-erase/chat/completions", null,
+                    chatBody, "content-type", "application/json"), 200);
+            assertEquals("real-secret", captured.get().getHeader("X-UPSTREAM-KEY"));
+
+            verify(send(HttpMethod.PUT, "/v1/models/platform/test-model-erase", null, eraseKey,
+                    "authorization", "admin"), 200);
+
+            verify(send(HttpMethod.POST, "/openai/deployments/test-model-erase/chat/completions", null,
+                    chatBody, "content-type", "application/json"), 200);
+            assertNull(captured.get().getHeader("X-UPSTREAM-KEY"),
+                    "Erased secret must not reach the upstream");
+        }
     }
 
     @Test

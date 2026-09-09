@@ -1578,8 +1578,9 @@ public class ConfigResourceController implements Controller {
                     }
                     JsonNode source;
                     if (spec.hasEncryptedFields() && existingBody != null) {
-                        // Update arm with secret fields — preserve omitted/sentinel-masked
-                        // ciphertext from the prior blob (see SecretFieldProcessor).
+                        // Update arm with secret fields — an omitted secret keeps the prior
+                        // ciphertext from the blob, explicit null erases it, a literal value
+                        // replaces it (see SecretFieldProcessor).
                         JsonNode existingBlobNode;
                         try {
                             existingBlobNode = BLOB_MAPPER.readTree(existingBody);
@@ -1603,7 +1604,7 @@ public class ConfigResourceController implements Controller {
                                         + "proceeding with new secret as authoritative", descriptor.getUrl());
                             }
                         }
-                        source = secretFieldProcessor.mergePreservingOmittedSecrets(
+                        source = secretFieldProcessor.mergeUpdateSecrets(
                                 existingBlobNode, requestNode, spec.entityClass());
                     } else {
                         // Create arm (no prior blob) or no encrypted fields — use the request
