@@ -104,3 +104,10 @@ tasks.register("layoutDiffTest", Test) {
         includeTags "layout-diff"
     }
 }
+
+tasks.register("bucketMigration", JavaExec) {
+    description = "Seals, drains and promotes one bucket's migration state against a running deployment."
+    group = "application"
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "com.epam.aidial.core.server.layout.BucketMigrationHarness"
+}

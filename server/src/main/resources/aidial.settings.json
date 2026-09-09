@@ -56,7 +56,10 @@
     },
     "layout": {
       "tenantRooted": false,
-      "defaultTenant": "default"
+      "defaultTenant": "default",
+      "migration": {
+        "refreshPeriodSeconds": 10
+      }
     }
   },
   "resources": {
