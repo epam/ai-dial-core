@@ -14,6 +14,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -50,6 +52,22 @@ public class BucketMigrator {
     }
 
     /**
+     * The bucket locations a copy of this prefix would touch, which is not always just the one asked for:
+     * the platform synthesizes sub-buckets under {@code public/}, such as a public function app's source
+     * folder at {@code public/deployments/<id>/}, and one copy carries them all.
+     *
+     * <p>They matter because a migration state is matched by exact location, not by prefix. Sealing and
+     * promoting {@code public/} alone would leave every sub-bucket resolving to the legacy layout over bytes
+     * that have already been copied — reads keep working, so nothing looks wrong, while writes go on landing
+     * in a tree the migration has left behind. Whoever seals a bucket must seal what this returns.
+     */
+    public Set<String> locations(String bucketLocation) {
+        Set<String> locations = new TreeSet<>();
+        walk(bucketLocation, metadata -> locations.add(split(bucketLocation, metadata.getName()).location()));
+        return locations;
+    }
+
+    /**
      * Copies the whole bucket, its content encryption keys first: every other encrypted payload in the bucket
      * decrypts through them, and a reader that finds the key missing at the resolved path mints a fresh one
      * rather than failing, which orphans the ciphertext permanently.
@@ -64,31 +82,44 @@ public class BucketMigrator {
     }
 
     private Result copy(String bucketLocation, String listPrefix, String excludedTypeFolder) {
-        int objects = 0;
-        long bytes = 0;
-        String marker = null;
+        Counter counter = new Counter();
+        walk(listPrefix, metadata -> {
+            String source = metadata.getName();
+            Split split = split(bucketLocation, source);
+            if (split.typeFolder().equals(excludedTypeFolder)) {
+                return;
+            }
 
+            copyObject(source, destination(split));
+            counter.objects++;
+            counter.bytes += metadata.getSize() == null ? 0 : metadata.getSize();
+            counter.locations.add(split.location());
+        });
+
+        return new Result(counter.objects, counter.bytes, counter.locations);
+    }
+
+    /**
+     * Pages through every blob under a prefix. Directory entries are skipped: the filesystem provider
+     * reports them, the cloud ones do not, and neither is an object to copy.
+     */
+    private void walk(String listPrefix, Consumer<StorageMetadata> consumer) {
+        String marker = null;
         do {
             PageSet<? extends StorageMetadata> page = blobStore.list(listPrefix, marker, PAGE_SIZE, true);
             for (StorageMetadata metadata : page) {
-                if (metadata.getType() != StorageType.BLOB) {
-                    continue;
+                if (metadata.getType() == StorageType.BLOB) {
+                    consumer.accept(metadata);
                 }
-
-                String source = metadata.getName();
-                Split split = split(bucketLocation, source);
-                if (split.typeFolder().equals(excludedTypeFolder)) {
-                    continue;
-                }
-
-                copyObject(source, destination(split));
-                objects++;
-                bytes += metadata.getSize() == null ? 0 : metadata.getSize();
             }
             marker = page.getNextMarker();
         } while (marker != null);
+    }
 
-        return new Result(objects, bytes);
+    private static final class Counter {
+        private int objects;
+        private long bytes;
+        private final Set<String> locations = new TreeSet<>();
     }
 
     /**
@@ -132,10 +163,16 @@ public class BucketMigrator {
     private record Split(String location, String typeFolder, String pathWithinType) {
     }
 
-    public record Result(int objects, long bytes) {
+    /**
+     * @param locations the bucket locations the copy actually touched. The caller seals buckets, so it is the
+     *                  caller that has to be told when a copy reached further than the location it named.
+     */
+    public record Result(int objects, long bytes, Set<String> locations) {
 
         Result plus(Result other) {
-            return new Result(objects + other.objects, bytes + other.bytes);
+            Set<String> merged = new TreeSet<>(locations);
+            merged.addAll(other.locations);
+            return new Result(objects + other.objects, bytes + other.bytes, merged);
         }
     }
 }

@@ -19,6 +19,8 @@ import org.redisson.api.RedissonClient;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Drives the per-bucket migration state of a deployment from outside it, so a bucket can be sealed, drained
@@ -130,12 +132,35 @@ public final class BucketMigrationHarness {
             }
         }
 
+        /**
+         * Seals everything the copy will touch, not only the location named. One copy of {@code public/}
+         * carries its sub-buckets with it, and a state is matched by exact location, so sealing the parent
+         * alone leaves them writable while their bytes are being copied.
+         */
         private void prepare(String bucketLocation) throws InterruptedException {
-            registry.seal(bucketLocation);
-            System.out.println("sealed " + bucketLocation + ", waiting " + registry.propagationWindow() + " ms");
+            for (String location : covered(bucketLocation)) {
+                registry.seal(location);
+                System.out.println("sealed " + location);
+            }
+
+            System.out.println("waiting " + registry.propagationWindow() + " ms");
             Thread.sleep(registry.propagationWindow());
-            resources.flushBucket(bucketLocation);
-            System.out.println("flushed " + bucketLocation);
+
+            for (String location : covered(bucketLocation)) {
+                resources.flushBucket(location);
+                System.out.println("flushed " + location);
+            }
+        }
+
+        /**
+         * The location asked for, plus every location a copy of it would reach. Enumerated before the seal,
+         * so it is read from a bucket still accepting writes: a location that appears afterwards is caught
+         * after the copy instead, where it is reported rather than silently promoted.
+         */
+        private Set<String> covered(String bucketLocation) {
+            Set<String> locations = new TreeSet<>(migrator.locations(bucketLocation));
+            locations.add(bucketLocation);
+            return locations;
         }
 
         private void copy(String bucketLocation) {
@@ -148,11 +173,25 @@ public final class BucketMigrationHarness {
 
             BucketMigrator.Result result = migrator.copyBucket(bucketLocation);
             System.out.println("copied " + result.objects() + " objects, " + result.bytes() + " bytes");
+
+            // A copy that reached a location nobody sealed took a moving target, and promoting the parent
+            // would leave that one resolving to the legacy tree over bytes already copied.
+            for (String location : result.locations()) {
+                BucketMigrationState reached = registry.resolve(location);
+                if (reached != BucketMigrationState.MIGRATING) {
+                    throw new IllegalStateException(("The copy of %s reached %s, which is %s rather than "
+                            + "sealed — seal it and copy again").formatted(bucketLocation, location, reached));
+                }
+            }
         }
 
         private void finish(String bucketLocation) throws InterruptedException {
-            registry.promote(bucketLocation);
-            System.out.println("promoted " + bucketLocation + ", waiting " + registry.propagationWindow() + " ms");
+            for (String location : covered(bucketLocation)) {
+                registry.promote(location);
+                System.out.println("promoted " + location);
+            }
+
+            System.out.println("waiting " + registry.propagationWindow() + " ms");
             Thread.sleep(registry.propagationWindow());
             System.out.println("done — " + bucketLocation + " now resolves to the tenant-rooted layout");
         }

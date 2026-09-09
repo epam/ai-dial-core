@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -128,6 +129,36 @@ public class BucketMigratorTest {
         migrator.copyBucket("public/");
 
         assertEquals("print(1)", body(".org/acme/deployments/app1/.files/source.py"));
+    }
+
+    @Test
+    public void testLocationsReportsThePublicSubBucketsTheCopyWouldReach() {
+        put("public/rules/rules", "{}");
+        put("public/deployments/app1/files/source.py", "print(1)");
+        put("public/deployments/app2/files/other.py", "print(2)");
+
+        // A migration state is matched by exact location, so sealing and promoting "public/" alone would
+        // leave both deployment sub-buckets resolving to the legacy layout over bytes already copied.
+        assertEquals(Set.of("public/", "public/deployments/app1/", "public/deployments/app2/"),
+                migrator.locations("public/"));
+    }
+
+    @Test
+    public void testCopyReportsEveryLocationItTouched() {
+        put("public/rules/rules", "{}");
+        put("public/deployments/app1/files/source.py", "print(1)");
+
+        BucketMigrator.Result result = migrator.copyBucket("public/");
+
+        assertEquals(Set.of("public/", "public/deployments/app1/"), result.locations());
+    }
+
+    @Test
+    public void testLocationsOfPrincipalBucketIsJustItself() {
+        put("Users/u1/conversations/chat", "{}");
+        put("Users/u1/prompts/folder/p1", "{}");
+
+        assertEquals(Set.of("Users/u1/"), migrator.locations("Users/u1/"));
     }
 
     @Test
