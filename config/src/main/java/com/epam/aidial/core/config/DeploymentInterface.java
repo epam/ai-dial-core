@@ -9,8 +9,7 @@ import lombok.NoArgsConstructor;
 import java.util.Map;
 
 /**
- * Per-interface routing configuration for a {@link Deployment}. Intentionally minimal;
- * future per-interface options (auth mode, defaults, ...) go here.
+ * Per-interface routing and request configuration for a {@link Deployment}.
  */
 @Data
 @NoArgsConstructor
@@ -53,6 +52,12 @@ public class DeploymentInterface {
      */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     private Map<String, Object> defaults = Map.of();
+
+    /**
+     * Non-null fields override deployment-level features for this interface only.
+     * Resolved by {@link Deployment#resolveFeatures} before applying Core defaults.
+     */
+    private Features features;
 
     public DeploymentInterface(String baseUrl) {
         this.baseUrl = baseUrl;

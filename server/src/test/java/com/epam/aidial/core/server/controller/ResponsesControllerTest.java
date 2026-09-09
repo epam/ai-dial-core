@@ -182,7 +182,7 @@ public class ResponsesControllerTest {
                 .thenReturn(deployment);
         doThrow(new PermissionDeniedException("permission error"))
                 .when(consentService)
-                .verifyUserConsent(context, deployment);
+                .verifyUserConsent(context, deployment, InterfaceType.OPENAI_RESPONSES);
         when(proxy.getConsentService()).thenReturn(consentService);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 

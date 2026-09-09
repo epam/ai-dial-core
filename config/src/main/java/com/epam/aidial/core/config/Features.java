@@ -72,7 +72,49 @@ public class Features {
     @JsonAlias({"customTemperatureSupported", "custom_temperature_supported"})
     private Boolean customTemperatureSupported;
 
-    @JsonInclude(JsonInclude.Include.NON_EMPTY)
     @JsonAlias({"reasoningEfforts", "reasoning_efforts"})
     private List<String> reasoningEfforts;
+
+    /**
+     * Merges declared values before defaults are applied. Null means unspecified, including an explicit
+     * JSON null; lists are replaced as a whole, including an explicitly empty list.
+     */
+    public static Features merge(Features base, Features overrides) {
+        if (overrides == null) {
+            return base;
+        }
+        if (base == null) {
+            base = new Features();
+        }
+        Features merged = new Features();
+        merged.rateEndpoint = override(base.rateEndpoint, overrides.rateEndpoint);
+        merged.tokenizeEndpoint = override(base.tokenizeEndpoint, overrides.tokenizeEndpoint);
+        merged.truncatePromptEndpoint = override(base.truncatePromptEndpoint, overrides.truncatePromptEndpoint);
+        merged.configurationEndpoint = override(base.configurationEndpoint, overrides.configurationEndpoint);
+        merged.systemPromptSupported = override(base.systemPromptSupported, overrides.systemPromptSupported);
+        merged.toolsSupported = override(base.toolsSupported, overrides.toolsSupported);
+        merged.seedSupported = override(base.seedSupported, overrides.seedSupported);
+        merged.urlAttachmentsSupported = override(base.urlAttachmentsSupported, overrides.urlAttachmentsSupported);
+        merged.folderAttachmentsSupported = override(base.folderAttachmentsSupported, overrides.folderAttachmentsSupported);
+        merged.allowResume = override(base.allowResume, overrides.allowResume);
+        merged.accessibleByPerRequestKey = override(base.accessibleByPerRequestKey, overrides.accessibleByPerRequestKey);
+        merged.contentPartsSupported = override(base.contentPartsSupported, overrides.contentPartsSupported);
+        merged.temperatureSupported = override(base.temperatureSupported, overrides.temperatureSupported);
+        merged.cacheSupported = override(base.cacheSupported, overrides.cacheSupported);
+        merged.autoCachingSupported = override(base.autoCachingSupported, overrides.autoCachingSupported);
+        merged.consentRequired = override(base.consentRequired, overrides.consentRequired);
+        merged.parallelToolCallsSupported = override(base.parallelToolCallsSupported, overrides.parallelToolCallsSupported);
+        merged.assistantAttachmentsInRequestSupported = override(base.assistantAttachmentsInRequestSupported, overrides.assistantAttachmentsInRequestSupported);
+        merged.supportCommentInRateResponse = override(base.supportCommentInRateResponse, overrides.supportCommentInRateResponse);
+        merged.maxTokensSupported = override(base.maxTokensSupported, overrides.maxTokensSupported);
+        merged.maxCompletionTokensSupported = override(base.maxCompletionTokensSupported, overrides.maxCompletionTokensSupported);
+        merged.customTemperatureSupported = override(base.customTemperatureSupported, overrides.customTemperatureSupported);
+        List<String> efforts = override(base.reasoningEfforts, overrides.reasoningEfforts);
+        merged.reasoningEfforts = efforts == null ? null : List.copyOf(efforts);
+        return merged;
+    }
+
+    private static <T> T override(T base, T value) {
+        return value == null ? base : value;
+    }
 }

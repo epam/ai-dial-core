@@ -155,9 +155,9 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     private Void setupDeployment(String model) {
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, model);
-        proxy.getConsentService().verifyUserConsent(context, deployment);
+        proxy.getConsentService().verifyUserConsent(context, deployment, InterfaceType.OPENAI_RESPONSES);
 
-        Features features = deployment.getFeatures();
+        Features features = deployment.resolveFeatures(InterfaceType.OPENAI_RESPONSES);
         boolean isPerRequestKey = !context.isOriginalRequest();
         if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
             throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", model, context.getApiKeyData().getSourceDeployment()));

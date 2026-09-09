@@ -125,9 +125,9 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
 
     protected Void setupDeployment(String model) {
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, model);
-        proxy.getConsentService().verifyUserConsent(context, deployment);
+        proxy.getConsentService().verifyUserConsent(context, deployment, InterfaceType.ANTHROPIC_MESSAGES);
 
-        Features features = deployment.getFeatures();
+        Features features = deployment.resolveFeatures(InterfaceType.ANTHROPIC_MESSAGES);
         boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
         if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
             throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", model, context.getApiKeyData().getSourceDeployment()));

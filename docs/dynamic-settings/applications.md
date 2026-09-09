@@ -156,6 +156,7 @@ Applications support only one interface type:
 Each value is an object with the following fields:
 
 * `base_url`: The root URL that the matching ingress path is appended to. Optional — the application-level `baseUrl` serves an entry that omits it.
+* `features`: Non-null fields override application-level `features` for this interface only; all other fields inherit, then Core defaults apply. Explicit `false` and empty arrays override inherited values. See [Features per interface](models.md#features-per-interface).
 * `defaultHeaders`: Headers applied to requests for this interface only, laid over the application-level `defaultHeaders`. Refer to [applications.<application_name>.defaultHeaders](#applicationsapplication_namedefaultheaders).
 * `defaults`: Body parameters applied to requests for this interface only. Unlike `defaultHeaders`, the two levels are **not** merged: an entry declaring `defaults` states the whole set and **replaces** the application-level `defaults`, so a key it does not name is not defaulted at all. The application-level `defaults` applies only where the entry declares none. Whatever the source, a default is only a fallback — a parameter the request body already carries is never replaced.
 
