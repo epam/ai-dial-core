@@ -9,8 +9,6 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.regex.Pattern;
-
 /**
  * Distinct audit stream for on-behalf-of external-service events. Kept separate from the downstream
  * credential-resolution logs so operators can route/retain it independently. Each event records both identities
@@ -19,13 +17,6 @@ import java.util.regex.Pattern;
 public final class ExternalServiceAuditLog {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("DIAL_OBO_AUDIT");
-
-    // \p{Cntrl} is ASCII-only, so Unicode line breaks (NEL, LS, PS) are listed explicitly — some log viewers
-    // treat them as line terminators. Tokens additionally forbid whitespace, '=' and '"' so a caller-supplied
-    // value can't forge key=value pairs within the line; reason keeps spaces (it is quoted) but drops '=' and
-    // '"' so it can neither escape its quotes nor carry a parseable forged token.
-    private static final Pattern TOKEN_UNSAFE = Pattern.compile("[\\p{Cntrl}\\s=\"\\u0085\\u2028\\u2029]");
-    private static final Pattern REASON_UNSAFE = Pattern.compile("[\\p{Cntrl}=\"\\u0085\\u2028\\u2029]");
 
     private ExternalServiceAuditLog() {
     }
@@ -36,8 +27,8 @@ public final class ExternalServiceAuditLog {
         // reason echoes only the exception message, never a response body or secret — keep it that way.
         AUDIT.info("event=obo_credential_retrieval outcome={} actor={} owner_user_id={} application_id={} "
                         + "external_service_id={} trace_id={}{}",
-                outcomeOf(error), actorEvidence(context), sanitizeToken(ownerUserId), sanitizeToken(applicationId),
-                sanitizeToken(externalServiceId), context.getTraceId(), reasonOf(error));
+                outcomeOf(error), actorEvidence(context), AuditLogSanitizer.sanitizeToken(ownerUserId), AuditLogSanitizer.sanitizeToken(applicationId),
+                AuditLogSanitizer.sanitizeToken(externalServiceId), context.getTraceId(), AuditLogSanitizer.reasonOf(error));
     }
 
     /**
@@ -46,9 +37,9 @@ public final class ExternalServiceAuditLog {
      */
     public static void offlineCredentials(ProxyContext context, String action, RuntimeException error) {
         AUDIT.info("event=offline_credentials action={} outcome={} actor={} user_id={} trace_id={}{}",
-                sanitizeToken(action), outcomeOf(error), actorEvidence(context),
-                sanitizeToken(context.getUserId()), context.getTraceId(),
-                reasonOf(error));
+                AuditLogSanitizer.sanitizeToken(action), outcomeOf(error), actorEvidence(context),
+                AuditLogSanitizer.sanitizeToken(context.getUserId()), context.getTraceId(),
+                AuditLogSanitizer.reasonOf(error));
     }
 
     /**
@@ -59,9 +50,9 @@ public final class ExternalServiceAuditLog {
                                String action, RuntimeException error) {
         AUDIT.info("event=external_service_consent action={} outcome={} actor={} admin_user_id={} "
                         + "application_id={} external_service_id={} trace_id={}{}",
-                sanitizeToken(action), outcomeOf(error), actorEvidence(context),
-                sanitizeToken(context.getUserId()), sanitizeToken(applicationId),
-                sanitizeToken(externalServiceId), context.getTraceId(), reasonOf(error));
+                AuditLogSanitizer.sanitizeToken(action), outcomeOf(error), actorEvidence(context),
+                AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
+                AuditLogSanitizer.sanitizeToken(externalServiceId), context.getTraceId(), AuditLogSanitizer.reasonOf(error));
     }
 
     private static String outcomeOf(RuntimeException error) {
@@ -74,18 +65,14 @@ public final class ExternalServiceAuditLog {
         };
     }
 
-    private static String reasonOf(RuntimeException error) {
-        return error == null ? "" : " reason=\"%s\"".formatted(sanitizeReason(error.getMessage()));
-    }
-
     // Non-secret evidence of the calling actor: the DIAL key's project and/or the workload JWT's azp. Both are
     // recorded when both are present, since AppIdentityMatcher may have passed the gate via either one.
     private static String actorEvidence(ProxyContext context) {
         Key key = context.getKey();
         ExtractedClaims claims = context.getExtractedClaims();
         String azp = claims == null ? null : claims.authorizedParty();
-        String project = key == null ? null : "project:" + sanitizeToken(key.getProject());
-        String authorizedParty = azp == null ? null : "azp:" + sanitizeToken(azp);
+        String project = key == null ? null : "project:" + AuditLogSanitizer.sanitizeToken(key.getProject());
+        String authorizedParty = azp == null ? null : "azp:" + AuditLogSanitizer.sanitizeToken(azp);
         if (project != null && authorizedParty != null) {
             return project + " " + authorizedParty;
         }
@@ -93,13 +80,5 @@ public final class ExternalServiceAuditLog {
             return project;
         }
         return authorizedParty == null ? "unknown" : authorizedParty;
-    }
-
-    private static String sanitizeToken(String value) {
-        return value == null ? null : TOKEN_UNSAFE.matcher(value).replaceAll("_");
-    }
-
-    private static String sanitizeReason(String value) {
-        return value == null ? null : REASON_UNSAFE.matcher(value).replaceAll("_");
     }
 }

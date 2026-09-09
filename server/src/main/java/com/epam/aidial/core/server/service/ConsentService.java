@@ -1,12 +1,16 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.ResourceDependency;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.consent.Consent;
 import com.epam.aidial.core.server.data.consent.ReviewConsentResponse;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -14,10 +18,13 @@ import com.epam.aidial.core.storage.util.EtagHeader;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+
+import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 
 @Slf4j
 public class ConsentService {
@@ -40,9 +47,13 @@ public class ConsentService {
         seen.add(deploymentId);
         Consent newConsent = new Consent();
         boolean noneConsentRequired = true;
+        Deployment rootDeployment = null;
         while (!queue.isEmpty()) {
             String currentDeploymentId = queue.poll();
             Deployment deployment = deploymentService.findDeployment(context, currentDeploymentId);
+            if (currentDeploymentId.equals(deploymentId)) {
+                rootDeployment = deployment;
+            }
             boolean consentRequired = isConsentRequired(deployment);
             if (consentRequired) {
                 noneConsentRequired = false;
@@ -55,8 +66,14 @@ public class ConsentService {
                 }
             }
         }
-        if (noneConsentRequired) {
-            // no deployments required user consent
+        // Consent is required for every declared dependency regardless of the author-controlled
+        // features.consentRequired flag (§6.1), so a declaring app is never auto-accepted.
+        List<Consent.ResourceEntry> resources = resourceEntriesOf(rootDeployment);
+        if (!resources.isEmpty()) {
+            newConsent.setResources(resources);
+        }
+        if (noneConsentRequired && resources.isEmpty()) {
+            // no deployments required user consent and nothing is declared
             return ACCEPTED_CONSENT_RESPONSE;
         }
         Consent prevConsent = readConsent(context, deploymentId);
@@ -96,6 +113,102 @@ public class ConsentService {
         if (consentDeployment == null || !consentDeployment.isConsentRequired()) {
             fail(currentDeploymentId);
         }
+    }
+
+    /**
+     * The v1 gate: an administrator approves the application's declared resource dependencies.
+     * The stored record is the approved snapshot — only the consent endpoint reaches this type
+     * (ADMIN_CONSENT is unmapped in ResourceTypes.of()), and any declaration change re-requires
+     * the grant because {@link #isAdminConsented} compares snapshots. The record is keyed by the
+     * RESOLVED application's canonical name — the same identity the resolver reads — never by the
+     * raw request id, so the two sides cannot diverge for names that carry percent-sequences.
+     */
+    public Consent grantAdminConsent(ProxyContext context, String deploymentId) {
+        Application application = requireDeclaringApplication(context, deploymentId);
+        Consent approval = adminConsentOf(application.getResourceDependencies());
+        resourceService.putResource(getAdminConsentDescription(application.getName()),
+                ProxyUtil.convertToString(approval), EtagHeader.ANY);
+        return approval;
+    }
+
+    /**
+     * Withdraws the approval — the application stops resolving dependencies for every user
+     * immediately. Returns the withdrawn record (null when absent) so the audit event can carry
+     * exactly what was withdrawn. Resolves the application first, for the same key-identity
+     * reason as the grant.
+     */
+    public Consent withdrawAdminConsent(ProxyContext context, String deploymentId) {
+        Application application = requireApplication(context, deploymentId);
+        ResourceDescriptor descriptor = getAdminConsentDescription(application.getName());
+        Consent withdrawn = readAdminConsent(descriptor);
+        resourceService.deleteResource(descriptor, EtagHeader.ANY);
+        return withdrawn;
+    }
+
+    /** Content-bound check: the stored snapshot must deep-equal the declaration's current snapshot. */
+    public boolean isAdminConsented(String applicationId, List<ResourceDependency> declaration) {
+        Consent stored = readAdminConsent(getAdminConsentDescription(applicationId));
+        return stored != null && Objects.equals(stored.getResources(), resourceEntriesOf(declaration));
+    }
+
+    private Application requireDeclaringApplication(ProxyContext context, String deploymentId) {
+        Application application = requireApplication(context, deploymentId);
+        if (application.getResourceDependencies() == null || application.getResourceDependencies().isEmpty()) {
+            throw new HttpException(BAD_REQUEST, "Application declares no resource dependencies: " + deploymentId);
+        }
+        return application;
+    }
+
+    private Application requireApplication(ProxyContext context, String deploymentId) {
+        Deployment deployment = deploymentService.findDeployment(context, deploymentId);
+        if (deployment instanceof Application application) {
+            return application;
+        }
+        throw new ResourceNotFoundException("Deployment is not an application: " + deploymentId);
+    }
+
+    private static Consent adminConsentOf(List<ResourceDependency> declaration) {
+        Consent consent = new Consent();
+        consent.setResources(resourceEntriesOf(declaration));
+        return consent;
+    }
+
+    private static List<Consent.ResourceEntry> resourceEntriesOf(Deployment deployment) {
+        return deployment instanceof Application application ? resourceEntriesOf(application.getResourceDependencies()) : List.of();
+    }
+
+    /** Declaration order is part of the content binding: a reordered section re-requires consent. */
+    private static List<Consent.ResourceEntry> resourceEntriesOf(List<ResourceDependency> declaration) {
+        if (declaration == null || declaration.isEmpty()) {
+            return List.of();
+        }
+        List<Consent.ResourceEntry> entries = new ArrayList<>(declaration.size());
+        for (ResourceDependency dependency : declaration) {
+            if (dependency == null) {
+                // Config-file apps bypass write-time validation — a null entry is skipped, never a crash.
+                continue;
+            }
+            Consent.ResourceEntry entry = new Consent.ResourceEntry();
+            entry.setUrl(dependency.getTarget() == null ? null : dependency.getTarget().getPath());
+            entry.setAccess(dependency.getAccess() == null ? Set.of() : dependency.getAccess());
+            entries.add(entry);
+        }
+        return entries;
+    }
+
+    /**
+     * One record per application, always in the public bucket, keyed by deployment id — the
+     * admin's yes (the user's yes lives in USER_CONSENT, per user). A moved app is a new key,
+     * hence effectively unconsented: fail-closed.
+     */
+    private static ResourceDescriptor getAdminConsentDescription(String deploymentId) {
+        return ResourceDescriptorFactory.fromEntityPath(ResourceTypes.ADMIN_CONSENT,
+                ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, deploymentId);
+    }
+
+    private Consent readAdminConsent(ResourceDescriptor descriptor) {
+        String consent = resourceService.getResource(descriptor);
+        return ProxyUtil.convertToObject(consent, Consent.class);
     }
 
     private String getRootDeploymentId(ProxyContext context, Deployment current) {

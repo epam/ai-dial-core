@@ -19,6 +19,10 @@ public enum ResourceTypes implements ResourceType {
     DEPLOYMENT_COST_STATS("deployment_cost_stats", true, TimeUnit.MINUTES.toMillis(5)),
     CODE_INTERPRETER_SESSION("code_interpreter_session", true, TimeUnit.MINUTES.toMillis(5)),
     USER_CONSENT("user_consent", true, TimeUnit.MINUTES.toMillis(5)),
+    // Admin approval of an application's declared resource dependencies — the admin's yes, per app,
+    // in the public bucket (the user's yes lives in USER_CONSENT, per user). Deliberately NOT mapped in
+    // of(): like user_consent, it is internal-only — no generic Resource API path can address it.
+    ADMIN_CONSENT("admin_consent", true, TimeUnit.MINUTES.toMillis(5)),
     TOOL_SET("toolsets", true, TimeUnit.DAYS.toMillis(30)),
     CREDENTIALS("credentials", true, TimeUnit.MINUTES.toMillis(5)),
     EXTERNAL_SERVICE("external_services", true, TimeUnit.MINUTES.toMillis(5)),

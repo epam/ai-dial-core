@@ -4272,6 +4272,79 @@ paths:
       - lang: cURL
         label: CURL
         source: "curl -X POST https://chat.<company>.com/v1/consent/{deployment_id} \\\n  -H \"Api-Key: DIAL_API_KEY\"            \n"
+  /v1/consent/{deployment_id}/admin-consent:
+    post:
+      tags:
+      - User Consent
+      summary: "/v1/consent/{deployment_id}/admin-consent"
+      operationId: grantApplicationAdminConsent
+      parameters:
+      - name: deployment_id
+        in: path
+        description: The unique identifier of the deployment.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    delete:
+      tags:
+      - User Consent
+      summary: "/v1/consent/{deployment_id}/admin-consent"
+      operationId: withdrawApplicationAdminConsent
+      parameters:
+      - name: deployment_id
+        in: path
+        description: The unique identifier of the deployment.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/conversations/{bucket}/{conversation_path}:
     get:
       tags:
@@ -14890,11 +14963,24 @@ components:
       properties:
         deployments:
           $ref: "#/components/schemas/MapStringConsentDeployment"
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConsentResourceEntry"
     ConsentDeployment:
       type: object
       properties:
         consentRequired:
           type: boolean
+    ConsentResourceEntry:
+      type: object
+      properties:
+        access:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceAccessType"
+        url:
+          type: string
     Conversation:
       type: object
       properties:
@@ -16690,6 +16776,7 @@ components:
       - DEPLOYMENT_COST_STATS
       - CODE_INTERPRETER_SESSION
       - USER_CONSENT
+      - ADMIN_CONSENT
       - TOOL_SET
       - CREDENTIALS
       - EXTERNAL_SERVICE
