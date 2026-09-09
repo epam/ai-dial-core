@@ -54,7 +54,7 @@ public class ConfigValidationService {
         }
         try {
             switch (parsed.manifest()) {
-                case AdminSettingsManifest settings -> {
+                case AdminSettingsManifest settingsManifest -> {
                     if (!ConfigManifestSupport.SETTINGS_SINGLETON_NAME.equals(parsed.name().name())) {
                         return new ValidationResult(id, ValidationStatus.FAILED, "Settings name must be 'global'");
                     }
@@ -74,7 +74,7 @@ public class ConfigValidationService {
                         return new ValidationResult(id, ValidationStatus.FAILED, dupError);
                     }
                 }
-                case AdminInterceptorManifest interceptor -> {
+                case AdminInterceptorManifest interceptorManifest -> {
                     String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
                             scratch, ResourceTypes.INTERCEPTOR, parsed.name());
                     if (dupError != null) {
@@ -89,8 +89,8 @@ public class ConfigValidationService {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
                 }
-                case AdminRoleManifest role -> { }
-                case AdminRouteManifest route -> { }
+                case AdminRoleManifest roleManifest -> { }
+                case AdminRouteManifest routeManifest -> { }
                 case AdminKeyManifest keyManifest -> {
                     Key key = keyManifest.spec();
                     if (StringUtils.isBlank(key.getKey())) {
@@ -104,7 +104,7 @@ public class ConfigValidationService {
                                 "Invalid key: at least one role must be assigned to the key " + key.getProject());
                     }
                 }
-                case AdminApplicationManifest application -> {
+                case AdminApplicationManifest applicationManifest -> {
                     if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.name().bucket())) {
                         String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
                                 scratch, ResourceTypes.APPLICATION, parsed.name());
@@ -113,7 +113,7 @@ public class ConfigValidationService {
                         }
                     }
                 }
-                case AdminToolSetManifest toolSet -> {
+                case AdminToolSetManifest toolSetManifest -> {
                     if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.name().bucket())) {
                         String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
                                 scratch, ResourceTypes.TOOL_SET, parsed.name());
@@ -122,15 +122,15 @@ public class ConfigValidationService {
                         }
                     }
                 }
-                case AdminSchemaManifest schema -> {
-                    String schemaError = ConfigManifestSupport.validateSchema(schema.spec(), parsed.name(), scratch,
+                case AdminSchemaManifest schemaManifest -> {
+                    String schemaError = ConfigManifestSupport.validateSchema(schemaManifest.spec(), parsed.name(), scratch,
                             ResourceTypes.APP_TYPE_SCHEMA, resourceService);
                     if (schemaError != null) {
                         return new ValidationResult(id, ValidationStatus.FAILED, schemaError);
                     }
                 }
-                case AdminCatalogSchemaManifest catalogSchema -> {
-                    String schemaError = ConfigManifestSupport.validateSchema(catalogSchema.spec(), parsed.name(), scratch,
+                case AdminCatalogSchemaManifest catalogSchemaManifest -> {
+                    String schemaError = ConfigManifestSupport.validateSchema(catalogSchemaManifest.spec(), parsed.name(), scratch,
                             ResourceTypes.CATALOG_SCHEMA, resourceService);
                     if (schemaError != null) {
                         return new ValidationResult(id, ValidationStatus.FAILED, schemaError);
