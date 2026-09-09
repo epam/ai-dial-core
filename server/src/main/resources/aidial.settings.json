@@ -55,6 +55,10 @@
       "jclouds.filesystem.basedir": "data"
     }
   },
+  "storageLayout": {
+    "tenantRooted": false,
+    "defaultTenant": "default"
+  },
   "resources": {
     "maxSize" : 67108864,
     "maxSizeToCache": 1048576,
