@@ -15553,6 +15553,8 @@ components:
           $ref: "#/components/schemas/TranslatorRef"
         defaults:
           $ref: "#/components/schemas/MapStringObject"
+        features:
+          $ref: "#/components/schemas/Features"
     EmbeddingResponse:
       required:
       - data
