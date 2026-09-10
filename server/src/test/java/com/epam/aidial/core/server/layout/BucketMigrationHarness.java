@@ -53,7 +53,7 @@ public final class BucketMigrationHarness {
     @SneakyThrows
     public static void main(String[] args) {
         if (args.length < 2) {
-            System.err.println("usage: <settings.json> <state|window|seal|flush|copy|promote|revert|prepare|finish|migrate> [bucketLocation]");
+            System.err.println("usage: <settings.json> <state|window|covered|seal|flush|copy|promote|revert|prepare|finish|rollback|migrate> [bucketLocation]");
             System.exit(2);
         }
 
@@ -122,7 +122,13 @@ public final class BucketMigrationHarness {
                             + " bytes, covering " + result.locations());
                 }
                 case "finish" -> System.out.println("promoted " + migration.finish(require(bucketLocation)));
-                case "revert" -> System.out.println("reverted " + migration.revert(require(bucketLocation)));
+                case "revert" -> {
+                    // The primitive, deliberately: reverting several buckets seals them all, waits the window
+                    // once, and then reverts each. "rollback" is the whole drill for a single bucket.
+                    registry.revert(require(bucketLocation));
+                    System.out.println("reverted " + bucketLocation + " to the legacy layout");
+                }
+                case "rollback" -> System.out.println("rolled back " + migration.revert(require(bucketLocation)));
                 case "migrate" -> {
                     BucketMigrator.Result result = migration.migrate(require(bucketLocation));
                     System.out.println("migrated " + bucketLocation + " — " + result.objects()
