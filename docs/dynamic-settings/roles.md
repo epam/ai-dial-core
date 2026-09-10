@@ -60,6 +60,31 @@ An object containing parameters for each [role](#roles).
 }
 ```
 
+## rateLimitSchedule
+
+A top-level (deployment-wide, not per-role) setting that anchors the fixed calendar windows used by the `day`/`week`/`month`/`requestDay` limits below - see [Fixed calendar windows](#rolesrole_namelimits). It is a single setting for the whole deployment: there is no per-role or per-user customization, and no self-service API for end users to change it.
+
+Available values:
+
+* `timezone`: An IANA timezone id (e.g. `"Europe/Warsaw"`, `"America/New_York"`, or `"UTC"`) the schedule is anchored to. Must be a real IANA region id, not a fixed UTC offset, since a fixed offset cannot express daylight-saving transitions. Default: `"UTC"`.
+* `weekStartDay`: The day the `week` window starts on, using a 3-letter abbreviation (`Mon`, `Tue`, `Wed`, `Thu`, `Fri`, `Sat`, `Sun`). Default: `"Mon"`.
+* `resetTime`: The 24h local time (`HH:mm`) at which `day`/`week`/`month`/`requestDay` periods reset. Default: `"00:00"`.
+
+Omitting `rateLimitSchedule` entirely is equivalent to `{"timezone": "UTC", "weekStartDay": "Mon", "resetTime": "00:00"}`, which reproduces the previous implicit UTC-midnight day/month behavior.
+
+**Example**:
+
+```json
+{
+    "rateLimitSchedule": {
+        "timezone": "Europe/Warsaw",
+        "weekStartDay": "Mon",
+        "resetTime": "09:00"
+    },
+    "roles": {}
+}
+```
+
 #### roles.<role_name>.limits 
 
 Use to define token usage limits for resources. 
@@ -68,12 +93,14 @@ Use to define token usage limits for resources.
 
 Available values:
 
-* `requestHour`: Total requests per hour that can be sent to a specific resource. 
-* `requestDay`: Total requests per day that can be sent to a specific resource. 
+* `requestHour`: Total requests per hour that can be sent to a specific resource, managed via floating window approach for well-distributed rate limiting.
+* `requestDay`: Total requests per day that can be sent to a specific resource, managed via a fixed calendar window - see below.
 * `minute`: Total tokens per minute that can be sent to a specific resource, managed via floating window approach for well-distributed rate limiting.
-* `day`: Total tokens per day that can be sent to a specific resource, managed via floating window approach for balanced rate limiting.
-* `week`: Total tokens per week that can be sent to a specific resource, managed via floating window approach for balanced rate limiting.
-* `month`: Total tokens per month that can be sent to a specific resource, managed via floating window approach for balanced rate limiting.
+* `day`: Total tokens per day that can be sent to a specific resource, managed via a fixed calendar window - see below.
+* `week`: Total tokens per week that can be sent to a specific resource, managed via a fixed calendar window - see below.
+* `month`: Total tokens per month that can be sent to a specific resource, managed via a fixed calendar window - see below.
+
+**Fixed calendar windows:** unlike `minute`/`requestHour`, which age usage out gradually as time advances, `day`/`week`/`month`/`requestDay` reset all at once at a deterministic boundary aligned to the calendar (e.g. "this month" is the 1st through the last day of the calendar month), so usage cannot exceed the limit until the next boundary regardless of when within the period it accrued. The boundary is anchored to the deployment-wide `rateLimitSchedule` top-level config setting (timezone, week start day, and daily reset time); omitting it defaults to UTC, Monday, 00:00, which reproduces the previous implicit UTC-midnight day/month behavior. The bulk limits/usage endpoints (`GET /v1/deployments/{deployment_id}/limits`, `GET /v1/user/limits`, `GET /v1/user/usage`) report this boundary as `resetsAt` on each fixed-window entry; `minute`/`requestHour` entries omit it, since a floating window has no single reset instant.
 
 **Requests served through a translator:** a model interface configured with `"mode": "translator"` does not add its tokens to these limits — the translator calls DIAL Core back to have the completion served, and that second call is what carries the usage, so it is counted once rather than twice. The limits are still checked before a translated request is forwarded, so an exhausted quota blocks it like any other request. `requestHour` and `requestDay` work the same way: the translated call is checked against them but spends no slot, so one client request never consumes two. Refer to [translators](translators.md#limits-and-a-translated-request).
 

@@ -12791,7 +12791,7 @@ paths:
       summary: /v1/user/limits
       operationId: getUserLimits
       description: |
-        Returns limits and current rolling usage for every deployment available to the authenticated caller -
+        Returns limits and current usage for every deployment available to the authenticated caller -
         a JWT user or an API-key project. It replaces calling `/v1/deployments/{deployment_name}/limits` once
         per deployment, and one response labels an entire model picker, so switching model needs no refetch.
 
@@ -12814,11 +12814,20 @@ paths:
            (`Long.MAX_VALUE`), meaning unlimited. That value exceeds JavaScript's `Number.MAX_SAFE_INTEGER`
            (`9007199254740991`), so treat any `total` at or above 2^53 as unlimited rather than rendering it
            as a `used / total` ratio.
-        5. **Every window is trailing, not calendar-aligned.** `day` is the last 24 hours, `week` the last 7
-           days, `month` the last 30 days - never "since midnight" or "since the 1st". As a result `used`
-           decreases on its own as older activity ages out; there is no refund and no periodic reset.
-           Eviction happens in steps on UTC boundaries at each window's granularity (1 hour for `day`, 1 day
-           for `week` and `month`).
+        5. **`minute` and `hour` windows are trailing; `day`, `week` and `month` are calendar-aligned.**
+           `minuteTokenStats`/`minuteCostStats` and `hourRequestStats` are a trailing window - the last 60
+           seconds or 60 minutes - so their `used` decreases on its own as older activity ages out, with no
+           periodic reset. `day`/`week`/`month` windows instead reset all at once at a deterministic
+           boundary (e.g. "since midnight" or "since the 1st") anchored to the deployment-wide
+           `rateLimitSchedule` config setting (default: UTC, Monday, 00:00) - `used` only ever grows within a
+           period, then drops to zero at the next boundary.
+        6. **`resetsAt` names that boundary, only for calendar-aligned windows.** `dayTokenStats`,
+           `weekTokenStats`, `monthTokenStats`, `dayRequestStats`, `dayCostStats`, `weekCostStats` and
+           `monthCostStats` carry a `resetsAt` field - an absolute ISO-8601 instant (e.g.
+           `"2026-10-01T00:00:00+02:00"`), not a countdown - for when that window's usage resets next.
+           `minuteTokenStats`, `minuteCostStats` and `hourRequestStats` omit the field entirely rather than
+           serializing it as `null`: a trailing window has no single reset instant to report, so clients
+           should treat a missing `resetsAt` as a permanent, expected omission rather than poll for it.
 
         Per-deployment spend does not reconcile to the global figure. Attribution starts at rollout and does
         not back-fill, and a model without `pricing` never contributes while still consuming tokens, so the
@@ -12846,30 +12855,37 @@ paths:
                         dayTokenStats:
                           total: 10000000
                           used: 42000
+                          resetsAt: 2026-09-10T00:00:00Z
                         weekTokenStats:
                           total: 9223372036854775807
                           used: 180000
+                          resetsAt: 2026-09-14T00:00:00Z
                         monthTokenStats:
                           total: 9223372036854775807
                           used: 640000
+                          resetsAt: 2026-10-01T00:00:00Z
                         hourRequestStats:
                           total: 9223372036854775807
                           used: 3
                         dayRequestStats:
                           total: 9223372036854775807
                           used: 12
+                          resetsAt: 2026-09-10T00:00:00Z
                         minuteCostStats:
                           total: 9223372036854775807
                           used: 0.02
                         dayCostStats:
                           total: 9223372036854775807
                           used: 1.85
+                          resetsAt: 2026-09-10T00:00:00Z
                         weekCostStats:
                           total: 9223372036854775807
                           used: 6.2
+                          resetsAt: 2026-09-14T00:00:00Z
                         monthCostStats:
                           total: 9223372036854775807
                           used: 21.4
+                          resetsAt: 2026-10-01T00:00:00Z
                       gpt-4:
                         minuteTokenStats:
                           total: 100000
@@ -13062,30 +13078,37 @@ paths:
                         dayTokenStats:
                           total: 10000000
                           used: 42000
+                          resetsAt: 2026-09-10T00:00:00Z
                         weekTokenStats:
                           total: 9223372036854775807
                           used: 180000
+                          resetsAt: 2026-09-14T00:00:00Z
                         monthTokenStats:
                           total: 9223372036854775807
                           used: 640000
+                          resetsAt: 2026-10-01T00:00:00Z
                         hourRequestStats:
                           total: 9223372036854775807
                           used: 3
                         dayRequestStats:
                           total: 9223372036854775807
                           used: 12
+                          resetsAt: 2026-09-10T00:00:00Z
                         minuteCostStats:
                           total: 9223372036854775807
                           used: 0.02
                         dayCostStats:
                           total: 9223372036854775807
                           used: 1.85
+                          resetsAt: 2026-09-10T00:00:00Z
                         weekCostStats:
                           total: 9223372036854775807
                           used: 6.2
+                          resetsAt: 2026-09-14T00:00:00Z
                         monthCostStats:
                           total: 9223372036854775807
                           used: 21.4
+                          resetsAt: 2026-10-01T00:00:00Z
                     minuteCostStats:
                       total: 10.0
                       used: 0.4
@@ -15245,6 +15268,8 @@ components:
           type: string
         translators:
           $ref: "#/components/schemas/MapStringTranslator"
+        rateLimitSchedule:
+          $ref: "#/components/schemas/RateLimitSchedule"
     ConfigFileMigrateRequest:
       type: object
       properties:
@@ -15370,6 +15395,8 @@ components:
           type: number
         used:
           type: number
+        resetsAt:
+          type: string
     CostLimit:
       type: object
       properties:
@@ -16124,6 +16151,8 @@ components:
           type: integer
         used:
           type: integer
+        resetsAt:
+          type: string
     JsonNode:
       type: object
     Key:
@@ -16772,6 +16801,15 @@ components:
       - PENDING
       - APPROVED
       - REJECTED
+    RateLimitSchedule:
+      type: object
+      properties:
+        resetTime:
+          type: string
+        timezone:
+          type: string
+        weekStartDay:
+          $ref: "#/components/schemas/WeekDay"
     RateRequest:
       required:
       - rate
@@ -17819,6 +17857,16 @@ components:
       - SKIPPED
     ValueNode:
       type: object
+    WeekDay:
+      type: string
+      enum:
+      - Mon
+      - Tue
+      - Wed
+      - Thu
+      - Fri
+      - Sat
+      - Sun
   securitySchemes:
     ApiKeyAuth:
       type: apiKey

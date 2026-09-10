@@ -298,7 +298,7 @@ public class AiDial {
             RuleService ruleService = new RuleService(resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
-            RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService);
+            RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService, configStore);
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,
                     accessService, encryptionService, operatorService, generator, settings("codeInterpreter"));
 
