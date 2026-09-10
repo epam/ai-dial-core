@@ -14282,6 +14282,8 @@ components:
         catalog_schema_id:
           type: string
           format: uri
+        interface_configs:
+          $ref: "#/components/schemas/MapStringInterfaceConfigData"
     ApplicationFunction:
       type: object
       properties:
@@ -16192,6 +16194,15 @@ components:
           $ref: "#/components/schemas/MapStringString"
         baseUrl:
           type: string
+    InterfaceConfigData:
+      type: object
+      properties:
+        defaults:
+          $ref: "#/components/schemas/MapStringObject"
+        features:
+          $ref: "#/components/schemas/FeaturesData"
+        default_headers:
+          $ref: "#/components/schemas/MapStringString"
     InterfaceMode:
       type: string
       enum:
@@ -16437,6 +16448,10 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/Interceptor"
+    MapStringInterfaceConfigData:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/InterfaceConfigData"
     MapStringKey:
       type: object
       additionalProperties:
@@ -16694,6 +16709,8 @@ components:
         catalog_schema_id:
           type: string
           format: uri
+        interface_configs:
+          $ref: "#/components/schemas/MapStringInterfaceConfigData"
     ModelType:
       type: string
       enum:
@@ -17781,6 +17798,8 @@ components:
         catalog_schema_id:
           type: string
           format: uri
+        interface_configs:
+          $ref: "#/components/schemas/MapStringInterfaceConfigData"
     ToolSetRepairControllerRepairResponse:
       type: object
       properties:

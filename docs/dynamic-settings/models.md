@@ -174,8 +174,6 @@ Supported interface types for models:
 
 The `interfaces` map is strict: chat completions is configured via `openaiChatCompletions` and embeddings via `openaiEmbeddings`, and one never stands in for the other — a model declaring only `openaiChatCompletions` answers `503` to `embeddings`, and a model declaring only `openaiEmbeddings` answers `503` to `chat/completions` and `completions`. The untyped legacy `endpoint` predates the split and keeps serving `embeddings` requests verbatim, so models configured before the split keep working unchanged.
 
-Only the interface types a model declares are reported in the `interfaces` array of the `/v1/deployments` listing. A legacy `endpoint` is advertised as the interface matching what the model says it is: `openaiEmbeddings` when `type` is `embedding`, `openaiChatCompletions` otherwise — so an embedding model configured this way reports `openaiEmbeddings` and `"chat_completion": false`, even though that one endpoint still serves the whole deployments POST family.
-
 Each value is an object with the following fields:
 
 * `base_url`: The root URL that the matching ingress path is appended to. Optional — the model-level `baseUrl` serves an entry that omits it.
@@ -256,7 +254,7 @@ Chat completions and Responses inherit `["low", "medium", "high"]`; Anthropic Me
 
 The same rule applies to `openaiEmbeddings`. It needs its own interface declaration when using `interfaces` for routing. Passthrough and translator requests receive effective features in `X-DIAL-DEPLOYMENT-FEATURES`, using the existing header format (`tools`, `temperature`, `reasoning_efforts`, etc.). Request-time caching, automatic caching, per-request-key access, and consent checks also use the requested interface's features. Consent reviews include requirements declared on interfaces.
 
-Deployment and model listings continue to expose deployment-level features, since they have no requested inference interface. Core defaults are applied after merging, and resolving a request does not modify the shared configuration.
+Core defaults are applied after merging, and resolving a request does not modify the shared configuration.
 
 #### models.<model_name>.defaultHeaders
 

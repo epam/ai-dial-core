@@ -21,6 +21,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.extraction.ApplicationDeploymentExtractor;
 import com.epam.aidial.core.server.data.ApplicationData;
 import com.epam.aidial.core.server.data.FeaturesData;
+import com.epam.aidial.core.server.data.InterfaceConfigData;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ResourceLink;
 import com.epam.aidial.core.server.security.AccessService;
@@ -384,6 +385,7 @@ public class ApplicationController {
         data.setMaxInputAttachments(application.getMaxInputAttachments());
         data.setDefaults(application.getDefaults());
         data.setResponsesDefaults(application.getResponsesDefaults());
+        data.setInterfaceConfigs(InterfaceConfigData.createInterfaceConfigs(application));
         data.setDescriptionKeywords(application.getDescriptionKeywords());
 
         data.setApplicationTypeSchemaId(application.getApplicationTypeSchemaId());
