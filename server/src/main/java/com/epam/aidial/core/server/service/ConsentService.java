@@ -79,8 +79,8 @@ public class ConsentService {
         verifyUserConsent(context, deployment, isConsentRequired(deployment.getFeatures()));
     }
 
-    public void verifyUserConsent(ProxyContext context, Deployment deployment, InterfaceType interfaceType) {
-        verifyUserConsent(context, deployment, isConsentRequired(deployment.resolveFeatures(interfaceType)));
+    public void verifyUserConsent(ProxyContext context, Deployment deployment, InterfaceType requestedInterface) {
+        verifyUserConsent(context, deployment, isConsentRequired(deployment.resolveFeatures(requestedInterface)));
     }
 
     private void verifyUserConsent(ProxyContext context, Deployment deployment, boolean consentRequired) {
