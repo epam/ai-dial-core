@@ -90,6 +90,7 @@ tags:
 - name: Sharing
 - name: Skills
 - name: Toolsets
+- name: Translators
 - name: User Consent
 paths:
   /anthropic/v1/messages:
@@ -1932,7 +1933,7 @@ paths:
             application/json:
               schema:
                 allOf:
-                - $ref: "#/components/schemas/Model"
+                - $ref: "#/components/schemas/Application"
                 - $ref: "#/components/schemas/EntityMetadata"
         "403":
           description: Forbidden
@@ -2163,7 +2164,7 @@ paths:
             application/json:
               schema:
                 allOf:
-                - $ref: "#/components/schemas/Model"
+                - $ref: "#/components/schemas/Key"
                 - $ref: "#/components/schemas/EntityMetadata"
         "403":
           description: Forbidden
@@ -2663,7 +2664,84 @@ paths:
             application/json:
               schema:
                 allOf:
-                - $ref: "#/components/schemas/Model"
+                - $ref: "#/components/schemas/ToolSet"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/translators:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/translators
+      operationId: listFileConfigTranslators
+      responses:
+        "200":
+          description: List of file-sourced translators
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/translators/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/translators/{name}"
+      operationId: getFileConfigTranslator
+      parameters:
+      - name: name
+        in: path
+        description: Translator name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Translator"
                 - $ref: "#/components/schemas/EntityMetadata"
         "403":
           description: Forbidden
@@ -4637,6 +4715,50 @@ paths:
       - lang: cURL
         label: CURL
         source: "curl https://chat.<company>.com/deployments?interface_type={interface_type} \\\n  -H \"Api-Key: DIAL_API_KEY\"          \n"
+  /v1/deployments/{deployment_name}:
+    get:
+      tags:
+      - Deployment listing
+      summary: "/v1/deployments/{deployment_name}"
+      operationId: getDeploymentInfo
+      parameters:
+      - name: deployment_name
+        in: path
+        description: The name of the deployment.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeploymentData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/deployments/{deployment_name}/configuration:
     get:
       summary: "/v1/deployments/{deployment_name}/configuration"
@@ -7172,6 +7294,74 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/translators/{bucket}/{path}:
+    get:
+      tags:
+      - Translators
+      summary: "/v1/metadata/translators/{bucket}/{path}"
+      operationId: getTranslatorMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "The parameter specifies path to the requested directory or application, for example: `folder1/folder2/` or `folder1/application_name/`. Note, it could be empty if you want to list the root folder."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
           content:
             application/json:
               schema:
@@ -12343,6 +12533,217 @@ paths:
     - lang: cURL
       label: CURL
       source: "curl -X DELETE https://chat.<company>.com/v1/toolsets/ENCRYPTED_BUCKET/my-toolset \\\n  -H \"Api-Key: DIAL_API_KEY\"    \n"
+  /v1/translators/{bucket}/{path}:
+    get:
+      tags:
+      - Translators
+      summary: "/v1/translators/{bucket}/{path}"
+      operationId: getTranslator
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Translator name
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the translator
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Translator"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Translators
+      summary: "/v1/translators/{bucket}/{path}"
+      operationId: saveTranslator
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Translator name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Translator"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved translator
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Translators
+      summary: "/v1/translators/{bucket}/{path}"
+      operationId: deleteTranslator
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Translator name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/user/info:
     get:
       summary: /v1/user/info
@@ -14842,6 +15243,8 @@ components:
           $ref: "#/components/schemas/MapStringString"
         defaultLocale:
           type: string
+        translators:
+          $ref: "#/components/schemas/MapStringTranslator"
     ConfigFileMigrateRequest:
       type: object
       properties:
@@ -14861,12 +15264,19 @@ components:
     ConfigFileMigrateResult:
       type: object
       properties:
-        id:
-          type: string
         reason:
           type: string
         status:
           $ref: "#/components/schemas/ConfigFileMigrateStatus"
+        resourceUrl:
+          type: string
+          description: "Percent-encoded admin API path (relative, no leading /v1/) at which the resulting entity is reachable, e.g. models/platform/gpt-4. Present once the entity exists in blob storage or a resource url could be derived for it; absent when no resource url could be determined."
+        key:
+          type: string
+          description: "Entity's identifier in the source file config (a short name, or a schema's $id). Absent when the entity has no safe file-side name to report - e.g. a key entity's file-side identity is its raw secret, which must never be echoed back, and global settings is a singleton with no name of its own."
+        kind:
+          type: string
+          description: "Entity kind being migrated (e.g. Model, Interceptor, Key, Schema, CatalogSchema, Settings)."
     ConfigFileMigrateStatus:
       type: string
       enum:
@@ -15139,6 +15549,10 @@ components:
           $ref: "#/components/schemas/MapStringString"
         mode:
           $ref: "#/components/schemas/InterfaceMode"
+        translator:
+          $ref: "#/components/schemas/TranslatorRef"
+        defaults:
+          $ref: "#/components/schemas/MapStringObject"
     EmbeddingResponse:
       required:
       - data
@@ -15640,6 +16054,13 @@ components:
       enum:
       - PASSTHROUGH
       - TRANSLATOR
+    InterfaceType:
+      type: string
+      enum:
+      - OPENAI_CHAT_COMPLETIONS
+      - OPENAI_EMBEDDINGS
+      - OPENAI_RESPONSES
+      - ANTHROPIC_MESSAGES
     Invitation:
       type: object
       properties:
@@ -15918,6 +16339,10 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/ToolSet"
+    MapStringTranslator:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/Translator"
     MapStringUpstreamInterface:
       type: object
       additionalProperties:
@@ -16675,6 +17100,7 @@ components:
       - APP_TYPE_SCHEMA
       - CATALOG_SCHEMA
       - INTERCEPTOR
+      - TRANSLATOR
       - ROLE
       - PROJECT_KEY
       - ROUTE
@@ -17234,6 +17660,24 @@ components:
       enum:
       - HTTP
       - SSE
+    Translator:
+      type: object
+      properties:
+        baseUrl:
+          type: string
+        in:
+          $ref: "#/components/schemas/InterfaceType"
+        out:
+          $ref: "#/components/schemas/InterfaceType"
+    TranslatorRef:
+      type: object
+      properties:
+        definition:
+          $ref: "#/components/schemas/Translator"
+        name:
+          type: string
+        inline:
+          $ref: "#/components/schemas/Translator"
     TruncatePromptError:
       required:
       - error
@@ -17342,6 +17786,9 @@ components:
             items:
               type: string
           description: Normalized token claims. Present only for user-based session authentication.
+        userDisplayName:
+          type: string
+          description: Human-readable caller name. For user-based session authentication it is resolved from the identity provider's configured userDisplayName claim path; for API key authentication it is the key's project name. Absent when not configured.
     UserLimitStats:
       type: object
       properties:

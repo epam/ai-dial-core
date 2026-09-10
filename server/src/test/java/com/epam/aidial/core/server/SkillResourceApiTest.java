@@ -195,6 +195,16 @@ public class SkillResourceApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testRecreateAfterDeleteWithIfNoneMatch() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+
+        verify(uploadSkill("/recreate-me", files), 200);
+        verify(deleteSkill("/recreate-me"), 200);
+        // path is free again -> create-only PUT must succeed, not 412
+        verify(uploadSkill("/recreate-me", files, "if-none-match", "*"), 200);
+    }
+
+    @Test
     void testInvisibleToV1FilesApi() {
         Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
         verify(uploadSkill("/hidden", files), 200);
@@ -374,6 +384,24 @@ public class SkillResourceApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testMetadataOfSkillItselfIsItem() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/cat/skill-a", files), 200);
+        verify(createFolder("/cat/sub/"), 200);
+
+        // requesting the skill's own path (not its parent) must report the skill itself as an ITEM,
+        // not an (empty) FOLDER
+        Response skillMetadata = listMetadata("cat/skill-a");
+        verify(skillMetadata, 200);
+        assertEquals("ITEM", nodeType(skillMetadata));
+
+        // a grouping folder's own path must still report itself as a FOLDER
+        Response folderMetadata = listMetadata("cat/sub");
+        verify(folderMetadata, 200);
+        assertEquals("FOLDER", nodeType(folderMetadata));
+    }
+
+    @Test
     void testMetadataListingRecursive() {
         Map<String, byte[]> files = new LinkedHashMap<>();
         files.put("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
@@ -413,9 +441,15 @@ public class SkillResourceApiTest extends ResourceBaseTest {
         verify(uploadSkill("/files-skill", files), 200);
 
         // non-recursive: immediate entries of the version, under a clean .../files/ url (version prefix hidden)
-        Set<String> immediate = childUrls(listSkillFiles("/files-skill"));
+        Response listing = listSkillFiles("/files-skill");
+        Set<String> immediate = childUrls(listing);
         assertTrue(immediate.contains("skills/" + bucket + "/files-skill/files/SKILL.md"), immediate.toString());
         assertTrue(immediate.contains("skills/" + bucket + "/files-skill/files/scripts/"), immediate.toString());
+
+        // nodeType must distinguish files from subfolders, just like the v1 metadata API
+        Map<String, String> nodeTypes = childNodeTypes(listing);
+        assertEquals("ITEM", nodeTypes.get("SKILL.md"));
+        assertEquals("FOLDER", nodeTypes.get("scripts"));
 
         // recursive: all files flattened
         Set<String> all = childUrls(send(HttpMethod.GET,
@@ -637,6 +671,11 @@ public class SkillResourceApiTest extends ResourceBaseTest {
 
     private Response deleteFolder(String folderPath, String... headers) {
         return send(HttpMethod.DELETE, "/v2/skills/" + bucket + folderPath, null, "", headers);
+    }
+
+    @SneakyThrows
+    private static String nodeType(Response metadata) {
+        return ProxyUtil.MAPPER.readTree(metadata.body()).get("nodeType").asText();
     }
 
     @SneakyThrows

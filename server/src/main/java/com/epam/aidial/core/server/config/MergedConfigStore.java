@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -90,6 +91,7 @@ public final class MergedConfigStore implements ConfigStore {
             ResourceTypes.APP_TYPE_SCHEMA,
             ResourceTypes.CATALOG_SCHEMA,
             ResourceTypes.INTERCEPTOR,
+            ResourceTypes.TRANSLATOR,
             ResourceTypes.ROLE,
             ResourceTypes.PROJECT_KEY,
             ResourceTypes.ROUTE,
@@ -457,6 +459,7 @@ public final class MergedConfigStore implements ConfigStore {
         return switch (type) {
             case MODEL -> BLOB_MAPPER.treeToValue(node, Model.class);
             case INTERCEPTOR -> BLOB_MAPPER.treeToValue(node, Interceptor.class);
+            case TRANSLATOR -> BLOB_MAPPER.treeToValue(node, Translator.class);
             case ROLE -> BLOB_MAPPER.treeToValue(node, Role.class);
             case PROJECT_KEY -> BLOB_MAPPER.treeToValue(node, Key.class);
             case ROUTE -> BLOB_MAPPER.treeToValue(node, Route.class);
@@ -746,6 +749,7 @@ public final class MergedConfigStore implements ConfigStore {
                     ConfigPostProcessor.setNameAsMapKey(next.getInterceptors(), mapKey);
                     resurrectInvalidModels(next, nextInvalid);
                 }
+                case TRANSLATOR -> ConfigPostProcessor.validateSingleTranslator(next, mapKey, onSkip);
                 case ROLE -> ConfigPostProcessor.setRoleNameAsMapKey(next.getRoles(), mapKey);
                 case APPLICATION -> ConfigPostProcessor.setNameAsMapKey(next.getApplications(), mapKey);
                 case TOOL_SET -> ConfigPostProcessor.setNameAsMapKey(next.getToolsets(), mapKey);
@@ -927,6 +931,7 @@ public final class MergedConfigStore implements ConfigStore {
         next.setToolsets(base.getToolsets());
         next.setRetriableErrorCodes(base.getRetriableErrorCodes());
         next.setGlobalInterceptors(base.getGlobalInterceptors());
+        next.setTranslators(base.getTranslators());
         return next;
     }
 
@@ -962,6 +967,7 @@ public final class MergedConfigStore implements ConfigStore {
         switch (type) {
             case MODEL -> config.setModels(new LinkedHashMap<>(config.getModels()));
             case INTERCEPTOR -> config.setInterceptors(new LinkedHashMap<>(config.getInterceptors()));
+            case TRANSLATOR -> config.setTranslators(new LinkedHashMap<>(config.getTranslators()));
             case ROLE -> config.setRoles(new HashMap<>(config.getRoles()));
             case PROJECT_KEY -> config.setKeys(new HashMap<>(config.getKeys()));
             case ROUTE -> config.setRoutes(new LinkedHashMap<>(config.getRoutes()));
@@ -977,6 +983,7 @@ public final class MergedConfigStore implements ConfigStore {
         return switch (type) {
             case MODEL -> config.getModels().get(mapKey);
             case INTERCEPTOR -> config.getInterceptors().get(mapKey);
+            case TRANSLATOR -> config.getTranslators().get(mapKey);
             case ROLE -> config.getRoles().get(mapKey);
             case PROJECT_KEY -> config.getKeys().get(mapKey);
             case ROUTE -> config.getRoutes().get(mapKey);
@@ -992,6 +999,7 @@ public final class MergedConfigStore implements ConfigStore {
         switch (type) {
             case MODEL -> config.getModels().put(mapKey, (Model) entity);
             case INTERCEPTOR -> config.getInterceptors().put(mapKey, (Interceptor) entity);
+            case TRANSLATOR -> config.getTranslators().put(mapKey, (Translator) entity);
             case ROLE -> config.getRoles().put(mapKey, (Role) entity);
             case PROJECT_KEY -> config.getKeys().put(mapKey, (Key) entity);
             case ROUTE -> config.getRoutes().put(mapKey, (Route) entity);
@@ -1007,6 +1015,7 @@ public final class MergedConfigStore implements ConfigStore {
         switch (type) {
             case MODEL -> config.getModels().remove(mapKey);
             case INTERCEPTOR -> config.getInterceptors().remove(mapKey);
+            case TRANSLATOR -> config.getTranslators().remove(mapKey);
             case ROLE -> config.getRoles().remove(mapKey);
             case PROJECT_KEY -> config.getKeys().remove(mapKey);
             case ROUTE -> config.getRoutes().remove(mapKey);
@@ -1101,6 +1110,7 @@ public final class MergedConfigStore implements ConfigStore {
         Map<String, String> catalogSchemas = new LinkedHashMap<>(base.getCatalogSchemas());
         Map<String, Application> applications = new LinkedHashMap<>(base.getApplications());
         Map<String, ToolSet> toolsets = new LinkedHashMap<>(base.getToolsets());
+        Map<String, Translator> translators = new LinkedHashMap<>(base.getTranslators());
         merged.setRetriableErrorCodes(base.getRetriableErrorCodes());
         merged.setGlobalInterceptors(base.getGlobalInterceptors());
         // Wire the (still-being-populated) local maps onto merged now rather than after the blob
@@ -1109,6 +1119,7 @@ public final class MergedConfigStore implements ConfigStore {
         // to take 9-11 map parameters each).
         merged.setModels(models);
         merged.setInterceptors(interceptors);
+        merged.setTranslators(translators);
         merged.setRoles(roles);
         merged.setKeys(keys);
         merged.setRoutes(routes);
@@ -1128,8 +1139,8 @@ public final class MergedConfigStore implements ConfigStore {
         // name) is indistinguishable in shape from a file entry's — both are bare, slash-free names.
         // Track which (type, mapKey) pairs came from a blob this rebuild so the semantic pass can
         // classify a skipped entity as "api" vs "file" correctly. Only models, applications,
-        // interceptors, and toolsets actually trigger onSkip (roles, schemas, keys, routes do not),
-        // but we track all five short-name-keyed types for completeness.
+        // interceptors, translators, and toolsets actually trigger onSkip (roles, schemas, keys,
+        // routes do not), but we track all short-name-keyed types for completeness.
         Map<ResourceTypes, Set<String>> apiSourcedKeys = new EnumMap<>(ResourceTypes.class);
 
         for (ResourceTypes type : MANAGED_TYPES) {
@@ -1418,7 +1429,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     public static boolean isShortNameKeyed(ResourceTypes type) {
         return switch (type) {
-            case MODEL, INTERCEPTOR, ROLE, APPLICATION, TOOL_SET -> true;
+            case MODEL, INTERCEPTOR, TRANSLATOR, ROLE, APPLICATION, TOOL_SET -> true;
             default -> false;
         };
     }
@@ -1440,6 +1451,12 @@ public final class MergedConfigStore implements ConfigStore {
             case INTERCEPTOR -> {
                 Interceptor entity = BLOB_MAPPER.treeToValue(node, Interceptor.class);
                 Object previous = config.getInterceptors().put(mapKey, entity);
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(entity, previous);
+            }
+            case TRANSLATOR -> {
+                Translator entity = BLOB_MAPPER.treeToValue(node, Translator.class);
+                Object previous = config.getTranslators().put(mapKey, entity);
                 warnIfReplaced(type, mapKey, previous);
                 return new BlobPutResult(entity, previous);
             }
@@ -1505,6 +1522,7 @@ public final class MergedConfigStore implements ConfigStore {
         switch (type) {
             case MODEL -> restore(config.getModels(), mapKey, (Model) previous);
             case INTERCEPTOR -> restore(config.getInterceptors(), mapKey, (Interceptor) previous);
+            case TRANSLATOR -> restore(config.getTranslators(), mapKey, (Translator) previous);
             case ROLE -> restore(config.getRoles(), mapKey, (Role) previous);
             case PROJECT_KEY -> restore(config.getKeys(), mapKey, (Key) previous);
             case ROUTE -> restore(config.getRoutes(), mapKey, (Route) previous);

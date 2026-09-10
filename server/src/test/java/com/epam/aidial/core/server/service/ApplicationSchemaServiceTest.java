@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
@@ -47,6 +48,8 @@ public class ApplicationSchemaServiceTest {
     private ResourceService resourceService;
     @Mock
     private EncryptionService encryptionService;
+    @Mock
+    private ComplexResourceService complexResourceService;
 
     @Mock
     private HttpClient httpClient;
@@ -152,7 +155,7 @@ public class ApplicationSchemaServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ApplicationSchemaService(resourceService, configStore, encryptionService, httpClient);
+        service = new ApplicationSchemaService(resourceService, configStore, complexResourceService, encryptionService, httpClient);
         customProperties.putAll(clientProperties);
         customProperties.putAll(serverProperties);
         application = new Application();
@@ -832,6 +835,44 @@ public class ApplicationSchemaServiceTest {
     }
 
     @Test
+    public void getSkills_returnsListOfSkills_whenSchemaHasDialResourceSkills() {
+        customProperties.put("toolset", Map.of("name", "my-skill", "dial_id", "skills/bucket/my-skill"));
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(any())).thenReturn(schema);
+        application.setApplicationProperties(customProperties);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        when(complexResourceService.hasResource(any())).thenReturn(true);
+        when(encryptionService.decrypt(anyString())).thenReturn("/Users/123/");
+
+        List<ResourceDescriptor> result = service.getSkills(application);
+
+        Assertions.assertEquals(1, result.size());
+        Assertions.assertEquals("my-skill", result.getFirst().getName());
+    }
+
+    @Test
+    public void getSkills_returnsEmptyList_whenSchemaIsNull() {
+        application.setApplicationTypeSchemaId(null);
+
+        List<ResourceDescriptor> result = service.getSkills(application);
+
+        Assertions.assertTrue(result.isEmpty());
+    }
+
+    @Test
+    public void getSkills_throwsException_whenResourceNotFound() {
+        customProperties.put("toolset", Map.of("name", "my-skill", "dial_id", "skills/bucket/my-skill"));
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(any())).thenReturn(schema);
+        application.setApplicationProperties(customProperties);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        when(complexResourceService.hasResource(any())).thenReturn(false);
+        when(encryptionService.decrypt(anyString())).thenReturn("/Users/123/");
+
+        Assertions.assertThrows(ApplicationTypeResourceException.class, () -> service.getSkills(application));
+    }
+
+    @Test
     public void testGetToolsets_ToolsetExistsNotDialResourceFormat() {
         customProperties.put("toolset", Map.of("name", "my-toolset", "dial_id", "mytoolset"));
         when(configStore.get()).thenReturn(config);
@@ -843,5 +884,48 @@ public class ApplicationSchemaServiceTest {
         when(resourceService.hasResource(any(ResourceDescriptor.class))).thenReturn(true);
         List<ResourceDescriptor> files = service.getFiles(application);
         Assertions.assertEquals(2, files.size());
+    }
+
+    @Test
+    public void getMcp_calledTwiceWithSameSchema_reusesCacheEntry() {
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(any())).thenReturn(schema);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+
+        Application.Mcp first = service.getMcp(application);
+        Application.Mcp second = service.getMcp(application);
+
+        Assertions.assertEquals(first, second);
+        Assertions.assertEquals(1, service.schemaCacheSize());
+    }
+
+    @Test
+    public void filterCustomClientProperties_calledTwiceWithSameSchema_reusesCompiledSchema() {
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(any())).thenReturn(schema);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        application.setApplicationProperties(customProperties);
+
+        Application first = service.filterCustomClientProperties(application);
+        Application second = service.filterCustomClientProperties(application);
+
+        Assertions.assertEquals(first.getApplicationProperties(), second.getApplicationProperties());
+        Assertions.assertEquals(1, service.schemaCacheSize());
+    }
+
+    @Test
+    public void getSchema_differentSchemaIds_growsCacheIndependently() {
+        when(configStore.get()).thenReturn(config);
+        URI schemaId1 = URI.create("schemaId1");
+        URI schemaId2 = URI.create("schemaId2");
+        when(config.getCustomApplicationSchema(schemaId1)).thenReturn("{\"a\":1}");
+        when(config.getCustomApplicationSchema(schemaId2)).thenReturn("{\"b\":2}");
+
+        String result1 = service.getSchema(schemaId1, false);
+        String result2 = service.getSchema(schemaId2, false);
+
+        Assertions.assertEquals("{\"a\":1}", result1);
+        Assertions.assertEquals("{\"b\":2}", result2);
+        Assertions.assertEquals(2, service.schemaCacheSize());
     }
 }

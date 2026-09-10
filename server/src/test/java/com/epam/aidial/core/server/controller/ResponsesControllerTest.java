@@ -97,6 +97,12 @@ public class ResponsesControllerTest {
     @Mock
     private ProxyContext context;
 
+    @BeforeEach
+    void stubConfig() {
+        // the controller resolves translator references against the request's config on every routing step
+        lenient().when(context.getConfig()).thenReturn(new Config());
+    }
+
     @Mock(answer = Answers.RETURNS_DEEP_STUBS)
     private Proxy proxy;
 
@@ -222,7 +228,7 @@ public class ResponsesControllerTest {
                 .thenAnswer(invocation -> complete(textContext));
         when(proxy.getDeploymentService().findDeployment(context, "test"))
                 .thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(context, deployment)).thenReturn(Future.succeededFuture(
+        when(proxy.getRateLimiter().limit(eq(context), eq(deployment))).thenReturn(Future.succeededFuture(
                 new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, "rate limit error", null, 0)));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         doCallRealMethod().when(context).setDeployment(any());
@@ -336,7 +342,7 @@ public class ResponsesControllerTest {
         when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test"))
                 .thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(context, deployment))
+        when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getRateLimiter().increase(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(Future.succeededFuture());
@@ -453,7 +459,7 @@ public class ResponsesControllerTest {
         when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test"))
                 .thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(context, deployment))
+        when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
@@ -583,7 +589,7 @@ public class ResponsesControllerTest {
         when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
         when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(context, deployment))
+        when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
@@ -696,7 +702,7 @@ public class ResponsesControllerTest {
         }).when(response).write(any(Buffer.class), any());
         when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(context, deployment))
+        when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
@@ -773,7 +779,7 @@ public class ResponsesControllerTest {
         when(context.respond(any(HttpStatus.class), anyString()))
                 .thenAnswer(invocation -> complete(textContext));
         when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(context, deployment))
+        when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
@@ -828,7 +834,7 @@ public class ResponsesControllerTest {
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
         when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(context, deployment))
+        when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
@@ -940,7 +946,7 @@ public class ResponsesControllerTest {
         when(context.getApiKeyData()).thenReturn(apiKeyData);
         DeploymentService deploymentService = proxy.getDeploymentService();
         when(deploymentService.findDeployment(context, "actual-model")).thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(context, deployment)).thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
+        when(proxy.getRateLimiter().limit(eq(context), eq(deployment))).thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
         when(proxy.getClient()).thenReturn(httpClient);

@@ -41,7 +41,7 @@ An object containing parameters for each [model](#models).
 * `author`: The model's developer.
 * `createdAt`: The date of the model creation.
 * `updatedAt`: The date of the last model update.
-* `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call.
+* `defaults`: Default parameters are applied if a request doesn't contain them in an OpenAI `chat/completions` or `embeddings` API call. Used only where the interface entry declares no `defaults` of its own. Refer to [models.<model_name>.interfaces](#modelsmodel_nameinterfaces).
 * `responsesEndpoint`: Endpoint of the model adapter that supports the OpenAI Responses API. Currently only OpenAI adapters support this. When set, DIAL Core proxies the following Responses API operations to this endpoint:
   * `POST /openai/v1/responses` — create a response (streaming and non-streaming, including background mode).
   * `GET /openai/v1/responses/{id}` — retrieve a response by its DIAL-assigned ID; supports streaming via SSE.
@@ -49,7 +49,7 @@ An object containing parameters for each [model](#models).
   * `POST /openai/v1/responses/{id}/cancel` — cancel an in-progress background response.
 
   DIAL Core rewrites upstream response IDs to stable `resp_dial_*` identifiers and uses sticky routing to ensure follow-up requests are forwarded to the same upstream instance that handled the original request. `previous_response_id`, conversations, prompts, and files are not supported.
-* `responsesDefaults`: Default parameters applied if a request doesn't contain them in an OpenAI Responses API call. Works the same way as `defaults` for the chat completions API.
+* `responsesDefaults`: Default parameters applied if a request doesn't contain them in an OpenAI Responses API call. Works the same way as `defaults` for the chat completions API, and is used only where `interfaces.openaiResponses` declares no `defaults` of its own.
 * `defaultHeaders`: HTTP headers DIAL Core adds to a request that doesn't already carry them, for every interface the model serves. Refer to [models.<model_name>.defaultHeaders](#modelsmodel_namedefaultheaders).
 * `baseUrl`: The root URL shared by every `interfaces` entry that declares no `base_url` of its own. Refer to [models.<model_name>.interfaces](#modelsmodel_nameinterfaces).
 * `interfaces`: An alternative to the flat `endpoint`/`responsesEndpoint` fields for declaring routing targets, keyed by interface type. Both shapes are first-class — pick whichever you prefer per model. Refer to [models.<model_name>.interfaces](#modelsmodel_nameinterfaces).
@@ -158,7 +158,8 @@ The base URL serving an interface is resolved in this order:
 
 1. `interfaces.<interface_type>.base_url`, when the entry declares one.
 2. The model-level `baseUrl`. Usually a single root serves every interface and only the path differs (`/openai/deployments/{name}/chat/completions`, `/openai/v1/responses`, `/anthropic/v1/messages`), so declaring it once at the model level and listing the supported interfaces with no `base_url` of their own is enough; an entry that does declare one overrides it for that interface only.
-3. `endpoint`/`responsesEndpoint`, for interface types the `interfaces` map does not declare at all.
+3. The `translator` serving the entry, when `mode` is `translator`. A translated interface is served by its translator and by nothing else — it takes neither base URL above nor the legacy field below. Refer to [translators](translators.md).
+4. `endpoint`/`responsesEndpoint`, for interface types the `interfaces` map does not declare at all.
 
 `interfaces` is the whitelist of what the model serves: a model-level `baseUrl` on its own declares no interface, and an interface listed with neither base URL is answered with `503`. If both `interfaces` and a legacy field are declared for the same interface type, `interfaces` takes precedence; the legacy field is left untouched in config and ignored for routing.
 
@@ -178,8 +179,10 @@ Only the interface types a model declares are reported in the `interfaces` array
 Each value is an object with the following fields:
 
 * `base_url`: The root URL that the matching ingress path is appended to. Optional — the model-level `baseUrl` serves an entry that omits it.
-* `mode`: `passthrough` (default) or `translator`. It declares whether the request is forwarded in the shape it arrived in, or handed to a service that translates it into an API the model does speak. A `translator` interface does not charge its tokens to the model's [limits](#modelsmodel_namelimits): the translator calls DIAL Core back to have the completion served, and that inner request is what carries the usage to the limits, so charging both would count it twice.
+* `mode`: `passthrough` (default) or `translator`. It declares whether the request is forwarded in the shape it arrived in, or handed to a service that translates it into an API the model does speak. A `translator` interface **does not touch the caller's [role limits](roles.md#rolesrole_namelimits)** — neither checks nor charges them. The translator calls DIAL Core back to have the completion served, and that second call is the real request: it carries the tokens, the cost and the `requestHour`/`requestDay` slot, so a client call is counted once rather than twice. An exhausted quota is therefore enforced on the callback rather than on the translated call itself. Refer to [Limits and a translated request](translators.md#limits-and-a-translated-request).
+* `translator`: The translator serving this interface, required by `mode: translator` and rejected without it. Either the name of a [translators](translators.md) entry, or a definition written inline as `{"out": ..., "baseUrl": ...}`. An interface is served either by a base URL or by a translator, never by both — a model declaring both is rejected on config load.
 * `defaultHeaders`: Headers applied to requests for this interface only, laid over the model-level `defaultHeaders`. Refer to [models.<model_name>.defaultHeaders](#modelsmodel_namedefaultheaders).
+* `defaults`: Body parameters applied to requests for this interface only, replacing whichever model-level defaults would otherwise serve it. They are injected the same way the model-level ones are — a key the request already carries is never replaced. Refer to [Defaults per interface](#defaults-per-interface).
 
 **Example**
 
@@ -200,8 +203,8 @@ Each value is an object with the following fields:
             "openaiChatCompletions": { "mode": "passthrough" },
             "openaiResponses": null,
             "anthropicMessages": {
-                "mode": "passthrough",
-                "base_url": "http://dial-bedrock-adapter"
+                "mode": "translator",
+                "translator": "anthropicMessagesToOpenaiChatCompletions"
             }
         }
     },
@@ -221,6 +224,50 @@ An object of HTTP header names and values DIAL Core adds to a request that does 
 A default header behaves exactly as if the client had sent it: DIAL Core reads it as part of the incoming request — so `X-DIAL-CACHE-POLICY` set this way drives upstream cache pinning, not just what the adapter receives — and forwards it under the same rules as a client header. That cuts both ways: a name DIAL Core strips on the way to the model — a hop-by-hop header, `Api-Key`/`x-api-key`, `traceparent`/`tracestate`, or `Authorization` unless `forwardAuthToken` is set — is stripped when it comes from `defaultHeaders` too, even though DIAL Core itself still sees it on the incoming request.
 
 The model-level `defaultHeaders` apply to every interface the model serves. `interfaces.<type>.defaultHeaders` is laid over them for that interface only: a name it repeats is overridden, a new name is added, and every other model-level header still applies.
+
+### Defaults per interface
+
+Unlike `defaultHeaders`, the model-level defaults are **not** shared by every interface — each holds parameters of one API, so each serves only the interfaces speaking that API:
+
+| Interface | Model-level source (fallback) | Interface-level, when declared |
+|---|---|---|
+| `openaiChatCompletions` | `defaults` | `interfaces.openaiChatCompletions.defaults` |
+| `openaiEmbeddings` | `defaults` | `interfaces.openaiEmbeddings.defaults` |
+| `openaiResponses` | `responsesDefaults` | `interfaces.openaiResponses.defaults` |
+| `anthropicMessages` | *none* | `interfaces.anthropicMessages.defaults` |
+
+`defaults` and `responsesDefaults` hold OpenAI parameters, so **neither reaches an Anthropic request**: a model defaults an Anthropic parameter on `interfaces.anthropicMessages.defaults` or nowhere.
+
+Unlike `defaultHeaders`, the two levels are **not** merged. An interface entry declaring `defaults` states the whole set for that interface, and the model-level source is not laid under it — a key it does not name is simply not defaulted. The model-level source applies only where the entry declares no `defaults` at all.
+
+Each entry speaks for its own interface alone: `interfaces.openaiChatCompletions.defaults` does not reach an `embeddings` request, which takes the model-level `defaults` unless `interfaces.openaiEmbeddings.defaults` declares its own.
+
+Whatever the source, a default is only ever a **fallback**: a parameter the request body already carries is taken from the request, and one it omits is filled in from the defaults. That is unchanged from how the model-level `defaults` has always behaved.
+
+```json
+"openai-gpt-5.4-mini": {
+    "type": "chat",
+    "baseUrl": "http://dial-openai-adapter",
+    "defaults": {
+        "temperature": 1,
+        "custom_fields": { "configuration": "foo.baz" }
+    },
+    "interfaces": {
+        "openaiChatCompletions": { "mode": "passthrough" },
+        "openaiResponses": { "mode": "passthrough" },
+        "anthropicMessages": {
+            "mode": "passthrough",
+            "defaults": { "temperature": 0.5 }
+        }
+    }
+}
+```
+
+Effective defaults for that model:
+
+* `POST /openai/deployments/{name}/chat/completions` and `POST /openai/deployments/{name}/embeddings` — `{"temperature": 1, "custom_fields": {"configuration": "foo.baz"}}`, from the model level, since neither entry declares `defaults`.
+* `POST /openai/v1/responses` — nothing: `responsesDefaults` is absent and the entry declares no `defaults` of its own. The model-level `defaults` does not serve this interface.
+* `POST /anthropic/v1/messages` — `{"temperature": 0.5}` and nothing else: the entry declares `defaults`, so that is the whole set.
 
 They are applied once per request, when it enters the model: with `interceptors` configured that is the hop to the first interceptor, from where they travel down the chain. An interceptor's own `defaultHeaders` are applied on the hop that calls it and take precedence over the model's.
 

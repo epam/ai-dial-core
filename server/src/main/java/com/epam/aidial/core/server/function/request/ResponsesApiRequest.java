@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.function.request;
 
-import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.data.cache.CachePrefixPath;
 import com.epam.aidial.core.server.util.ChatUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -12,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Slf4j
@@ -85,8 +85,8 @@ public class ResponsesApiRequest implements RequestObject {
     }
 
     @Override
-    public void applyDefaults(Deployment deployment) {
-        ChatUtil.applyDefaults(tree, deployment.getResponsesDefaults());
+    public void applyDefaults(Map<String, Object> defaults) {
+        ChatUtil.applyDefaults(tree, defaults);
     }
 
     @Override

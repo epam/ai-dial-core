@@ -487,6 +487,15 @@ public class ComplexResourceService {
     }
 
     /**
+     * Checks whether the given complex resource (e.g. a {@code SKILL}) exists, i.e. has an
+     * active {@code .dial-resource} marker. Complex resources have no blob at their bare URL
+     * key, so this must be used instead of a plain blob/Redis existence check.
+     */
+    public boolean hasResource(ResourceDescriptor resource) {
+        return getMarker(resource) != null;
+    }
+
+    /**
      * Resolves the {@code .dial-resource} marker for a whole-resource GET. Returns {@code null} if the path
      * is absent or in the {@code deleting} state (→ 404), or throws {@code 400} if the path is a DIAL folder
      * (clients must use the metadata listing for folders).
@@ -543,6 +552,28 @@ public class ComplexResourceService {
             resourceService.deleteResource(marker, EtagHeader.ANY);
             return null;
         });
+    }
+
+    /**
+     * Resolves metadata for the v2 metadata route's target path. If the path is itself an active DIAL
+     * resource (a skill), returns its metadata as a single {@code ITEM}; otherwise treats it as a grouping
+     * level and lists its children via {@link #listChildren}.
+     */
+    public MetadataBase getMetadata(ResourceDescriptor resource, String token, int limit, boolean recursive) {
+        FolderResourceMarker marker = getMarker(resource);
+        if (marker != null) {
+            return itemMetadata(resource, marker);
+        }
+        return listChildren(resource, token, limit, recursive);
+    }
+
+    private static ResourceItemMetadata itemMetadata(ResourceDescriptor resource, FolderResourceMarker marker) {
+        ResourceItemMetadata metadata = new ResourceItemMetadata(resource);
+        metadata.setCreatedAt(marker.getCreatedAt());
+        metadata.setUpdatedAt(marker.getUpdatedAt());
+        metadata.setEtag(marker.getEtag());
+        metadata.setAuthor(marker.getAuthor());
+        return metadata;
     }
 
     /**
@@ -620,7 +651,12 @@ public class ComplexResourceService {
         for (MetadataBase item : raw.getItems()) {
             boolean folder = item.getNodeType() == NodeType.FOLDER;
             String relativePath = versionFolder.getRelativePath(item.getDescriptor());
-            ResourceItemMetadata file = new ResourceItemMetadata(displayFileDescriptor(resource, relativePath, folder));
+            ResourceDescriptor descriptor = displayFileDescriptor(resource, relativePath, folder);
+            if (folder) {
+                items.add(new ResourceFolderMetadata(descriptor));
+                continue;
+            }
+            ResourceItemMetadata file = new ResourceItemMetadata(descriptor);
             if (item instanceof ResourceItemMetadata source) {
                 file.setEtag(source.getEtag());
                 file.setCreatedAt(source.getCreatedAt());
@@ -948,7 +984,7 @@ public class ComplexResourceService {
 
     private String readAggregateEtag(ResourceDescriptor marker) {
         FolderResourceMarker document = readMarker(marker, false);
-        return document == null ? null : document.getEtag();
+        return isActive(document) ? document.getEtag() : null;
     }
 
     private FolderResourceMarker readMarker(ResourceDescriptor marker, boolean lock) {

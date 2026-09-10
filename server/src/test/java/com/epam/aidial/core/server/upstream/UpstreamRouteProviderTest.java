@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.upstream;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
@@ -151,7 +152,7 @@ public class UpstreamRouteProviderTest {
         model.setUpstreams(List.of(upstream1, upstream2));
 
         UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
-        UpstreamRoute route = provider.get(model, null, "beta");
+        UpstreamRoute route = provider.get(model, null, Deployment::getEndpoint, "beta");
         Upstream result = route.next();
 
         assertEquals(upstream2, result);
@@ -168,7 +169,7 @@ public class UpstreamRouteProviderTest {
         model.setUpstreams(List.of(upstream1));
 
         UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
-        HttpException ex = assertThrows(HttpException.class, () -> provider.get(model, null, "missing"));
+        HttpException ex = assertThrows(HttpException.class, () -> provider.get(model, null, Deployment::getEndpoint, "missing"));
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
         assertEquals("Unknown upstream id missing", ex.getMessage());
     }
@@ -190,8 +191,8 @@ public class UpstreamRouteProviderTest {
 
         UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
 
-        assertEquals(interfaced, provider.get(model, null, "fireworks").next());
-        assertEquals(legacy, provider.get(model, null, "alpha").next());
+        assertEquals(interfaced, provider.get(model, null, Deployment::getEndpoint, "fireworks").next());
+        assertEquals(legacy, provider.get(model, null, Deployment::getEndpoint, "alpha").next());
     }
 
     @Test
@@ -205,7 +206,7 @@ public class UpstreamRouteProviderTest {
         model.setUpstreams(List.of(upstream1, upstream2));
 
         UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
-        UpstreamRoute route = provider.get(model, null, "   ");
+        UpstreamRoute route = provider.get(model, null, Deployment::getEndpoint, "   ");
         assertNotNull(route.next());
     }
 

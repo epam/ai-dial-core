@@ -43,6 +43,8 @@ public class Config {
     private Set<Integer> retriableErrorCodes = Set.of();
     // key: deployment id (short name); shared namespace with models/applications/toolsets
     private Map<String, Interceptor> interceptors = Map.of();
+    // key: translator name, as referenced by interfaces.<type>.translator
+    private Map<String, Translator> translators = Map.of();
 
     // key: schema $id (URI string)
     @JsonDeserialize(using = JsonArrayToSchemaMapDeserializer.class)

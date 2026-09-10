@@ -12,7 +12,7 @@ public enum ResourceTypes implements ResourceType {
     SHARED_BY_ME("shared_by_me", true, TimeUnit.MINUTES.toMillis(5)),
     INVITATION("invitations", true, TimeUnit.MINUTES.toMillis(5)),
     PUBLICATION("publications", true, TimeUnit.MINUTES.toMillis(5)),
-    RULES("rules", true, TimeUnit.MINUTES.toMillis(5)),
+    RULES("rules", true, TimeUnit.DAYS.toMillis(30)),
     API_KEY_DATA("api_key_data", true, TimeUnit.MINUTES.toMillis(5)),
     NOTIFICATION("notifications", true, TimeUnit.MINUTES.toMillis(5)),
     APPLICATION("applications", true, TimeUnit.DAYS.toMillis(30)),
@@ -28,6 +28,7 @@ public enum ResourceTypes implements ResourceType {
     APP_TYPE_SCHEMA("app_type_schemas", "schemas", true, TimeUnit.DAYS.toMillis(30)),
     CATALOG_SCHEMA("catalog_schemas", true, TimeUnit.DAYS.toMillis(30)),
     INTERCEPTOR("interceptors", true, TimeUnit.DAYS.toMillis(30)),
+    TRANSLATOR("translators", true, TimeUnit.DAYS.toMillis(30)),
     ROLE("roles", true, TimeUnit.DAYS.toMillis(30)),
     PROJECT_KEY("project_keys", "keys", true, TimeUnit.DAYS.toMillis(30)),
     ROUTE("routes", true, TimeUnit.DAYS.toMillis(30)),
@@ -68,6 +69,7 @@ public enum ResourceTypes implements ResourceType {
             case "app_type_schemas", "schemas" -> APP_TYPE_SCHEMA;
             case "catalog_schemas" -> CATALOG_SCHEMA;
             case "interceptors" -> INTERCEPTOR;
+            case "translators" -> TRANSLATOR;
             case "roles" -> ROLE;
             case "project_keys", "keys" -> PROJECT_KEY;
             case "routes" -> ROUTE;

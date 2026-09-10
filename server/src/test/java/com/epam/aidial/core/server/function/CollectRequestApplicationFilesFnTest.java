@@ -221,6 +221,49 @@ public class CollectRequestApplicationFilesFnTest {
     }
 
     @Test
+    void apply_appendsSkillsToApiKeyData_whenApplicationHasCustomSchemaId() {
+        String skillUrl = "skills/bucket/my-skill";
+        when(context.getDeployment()).thenReturn(application);
+        application.setApplicationTypeSchemaId(URI.create("customSchemaId"));
+        Map<String, Object> customProps = new HashMap<>();
+        customProps.put("skill", Map.of("name", "my-skill", "dial_id", skillUrl));
+        application.setApplicationProperties(customProps);
+        when(accessService.hasReadAccess(any(), any())).thenReturn(true);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        when(context.getProxyApiKeyData()).thenReturn(apiKeyData);
+        when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
+        when(proxy.getAccessService()).thenReturn(accessService);
+        ResourceDescriptor skill = mock(ResourceDescriptor.class);
+        when(skill.getUrl()).thenReturn(skillUrl);
+        when(applicationSchemaService.getSkills(eq(application))).thenReturn(List.of(skill));
+
+        boolean result = fn.apply(request);
+
+        assertFalse(result);
+        assertNotNull(apiKeyData.getAttachedSkills().get(skillUrl));
+        assertEquals(1, apiKeyData.getAttachedSkills().size());
+    }
+
+    @Test
+    void apply_throws_whenAccessServiceHasNoReadAccessToSkill() {
+        String skillUrl = "skills/bucket/my-skill";
+        when(context.getDeployment()).thenReturn(application);
+        application.setApplicationTypeSchemaId(URI.create("customSchemaId"));
+        Map<String, Object> customProps = new HashMap<>();
+        customProps.put("skill", Map.of("name", "my-skill", "dial_id", skillUrl));
+        application.setApplicationProperties(customProps);
+        when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
+        when(proxy.getAccessService()).thenReturn(accessService);
+        ResourceDescriptor skill = mock(ResourceDescriptor.class);
+        when(applicationSchemaService.getSkills(eq(application))).thenReturn(List.of(skill));
+        when(accessService.hasReadAccess(any(), any())).thenReturn(false);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        when(context.getProxyApiKeyData()).thenReturn(apiKeyData);
+
+        Assertions.assertThrows(HttpException.class, () -> fn.apply(request));
+    }
+
+    @Test
     void apply_throws_whenAccessServiceHasNoReadAccess() {
         when(context.getProxyApiKeyData()).thenReturn(new ApiKeyData());
         String serverFile = "files/public/valid-file-path/valid-sub-path/valid%20file%20name2.ext";

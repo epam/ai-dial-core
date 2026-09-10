@@ -46,7 +46,7 @@ An object containing parameters for each [interceptor](#interceptors).
 * `updatedAt`: The date of the last interceptor update.
 * `features`: Features supported by the interceptors.
 *  `configurationEndpoint`: The URL that exposes the configuration of the interceptor.
-*  `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call.
+*  `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call. Used only where the interface entry declares no `defaults` of its own. Refer to [interceptors.<interceptor_name>.interfaces](#interceptorsinterceptor_nameinterfaces).
 *  `defaultHeaders`: HTTP headers DIAL Core adds to a request that doesn't already carry them, on the hop that calls this interceptor. Refer to [interceptors.<interceptor_name>.defaultHeaders](#interceptorsinterceptor_namedefaultheaders).
 
 ### interceptors.<interceptor_name>.interfaces
@@ -65,6 +65,7 @@ Each value is an object with the following fields:
 
 * `base_url`: The interceptor service root that the matching ingress path is appended to. Optional — the interceptor-level `baseUrl` serves an entry that omits it.
 * `defaultHeaders`: Headers applied to requests for this interface only, laid over the interceptor-level `defaultHeaders`. Refer to [interceptors.<interceptor_name>.defaultHeaders](#interceptorsinterceptor_namedefaultheaders).
+* `defaults`: Body parameters applied to requests for this interface only. Unlike `defaultHeaders`, the two levels are **not** merged: an entry declaring `defaults` states the whole set and **replaces** the interceptor-level `defaults`, so a key it does not name is not defaulted at all. The interceptor-level `defaults` applies only where the entry declares none. Whatever the source, a default is only a fallback — a parameter the request body already carries is never replaced.
 
 **Example**
 

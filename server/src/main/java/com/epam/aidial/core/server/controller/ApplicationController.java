@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.LocalizedValue;
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
@@ -47,6 +48,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 
 @Slf4j
@@ -62,7 +64,7 @@ public class ApplicationController {
     private final ApplicationSchemaService applicationSchemaService;
     private final UserExternalServiceService userExternalServiceService;
 
-    private final DeploymentService.DeploymentExtractor deploymentExtractor;
+    private final ApplicationDeploymentExtractor deploymentExtractor;
 
     private final AsyncTaskExecutor taskExecutor;
 
@@ -333,7 +335,14 @@ public class ApplicationController {
             try {
                 ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(appName, encryptionService);
                 if (resource.getType() == ResourceTypes.APPLICATION) {
-                    return accessService.hasWriteAccess(resource, context);
+                    // Reuses the permissions already batched per folder during the listing that produced
+                    // this Application, instead of re-deriving write access (and re-hitting Redis) per item.
+                    // Falls back to a real lookup for callers that didn't come through that listing (e.g.
+                    // the single-app GET), where the resource was never added to the batched map.
+                    Set<ResourceAccessType> batched = deploymentExtractor.getBatchedPermissions().get(resource);
+                    return batched != null
+                            ? batched.contains(ResourceAccessType.WRITE)
+                            : accessService.hasWriteAccess(resource, context);
                 }
             } catch (Exception e) {
                 // appName is not DIAL resource url, fall through to admin check

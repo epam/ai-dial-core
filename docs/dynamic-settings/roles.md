@@ -75,6 +75,8 @@ Available values:
 * `week`: Total tokens per week that can be sent to a specific resource, managed via floating window approach for balanced rate limiting.
 * `month`: Total tokens per month that can be sent to a specific resource, managed via floating window approach for balanced rate limiting.
 
+**Requests served through a translator:** a model interface configured with `"mode": "translator"` does not add its tokens to these limits — the translator calls DIAL Core back to have the completion served, and that second call is what carries the usage, so it is counted once rather than twice. The limits are still checked before a translated request is forwarded, so an exhausted quota blocks it like any other request. `requestHour` and `requestDay` work the same way: the translated call is checked against them but spends no slot, so one client request never consumes two. Refer to [translators](translators.md#limits-and-a-translated-request).
+
 **Example**:
 
 ```json

@@ -112,7 +112,7 @@ public class ComplexResourceMetadataController extends AccessControlBaseControll
 
         proxy.getTaskExecutor().submit(() -> filesMode
                         ? complexResourceService.listFiles(resource, subPath, token, limit, recursive)
-                        : complexResourceService.listChildren(resource, token, limit, recursive))
+                        : complexResourceService.getMetadata(resource, token, limit, recursive))
                 .onSuccess(result -> {
                     if (result == null) {
                         context.respond(HttpStatus.NOT_FOUND);

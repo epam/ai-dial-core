@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.function.request;
 
-import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.data.cache.CachePrefixPath;
 import com.epam.aidial.core.server.util.ChatUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
@@ -148,9 +147,8 @@ public class MessagesApiRequest implements RequestObject {
     }
 
     @Override
-    public void applyDefaults(Deployment deployment) {
-        // No-op: Anthropic params differ from the OpenAI chat/responses defaults, so applying
-        // Deployment defaults here would be wrong. Per-interface defaults can be added later.
+    public void applyDefaults(Map<String, Object> defaults) {
+        ChatUtil.applyDefaults(tree, defaults);
     }
 
     @Override

@@ -23,7 +23,6 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -134,15 +133,8 @@ public class DeploymentService {
             throw new IllegalArgumentException("Invalid deployment folder: " + resource.getUrl());
         }
 
-        return resourceService.listResources(resource, filter)
-                .stream().map(item -> {
-                    try {
-                        return extractor.<T>extract(item.getValue(), item.getKey(), ctx);
-                    } catch (Exception e) {
-                        log.warn("Can't extract deployment {} due to the error", item.getKey().getUrl(), e);
-                        return null;
-                    }
-                }).filter(Objects::nonNull).toList();
+        List<Pair<ResourceItemMetadata, String>> items = resourceService.listResources(resource, filter);
+        return extractor.<T>extract(items, ctx);
     }
 
     private <T extends  Deployment> List<T> getSharedDeployments(ProxyContext context, ResourceTypes resourceType, DeploymentExtractor extractor) {
@@ -161,14 +153,7 @@ public class DeploymentService {
                 .filter(meta -> meta instanceof ResourceItemMetadata).map(meta -> (ResourceItemMetadata) meta).toList();
         List<Pair<ResourceItemMetadata, String>> deploymentContent = new ArrayList<>();
         resourceService.load(deployments, deploymentContent);
-        for (Pair<ResourceItemMetadata, String> item : deploymentContent) {
-            try {
-                T deployment = extractor.extract(item.getValue(), item.getKey(), context);
-                list.add(deployment);
-            } catch (Exception e) {
-                log.warn("Can't extract deployment {} due to the error", item.getKey().getUrl(), e);
-            }
-        }
+        list.addAll(extractor.<T>extract(deploymentContent, context));
 
         List<MetadataBase> folders = metadata.stream()
                 .filter(meta -> meta instanceof ResourceFolderMetadata).toList();
@@ -186,7 +171,7 @@ public class DeploymentService {
     }
 
     public interface DeploymentExtractor {
-        <T extends  Deployment> T extract(String content, ResourceItemMetadata metadata, ProxyContext context);
+        <T extends  Deployment> List<T> extract(List<Pair<ResourceItemMetadata, String>> items, ProxyContext context);
     }
 
     public List<String> getInterceptors(ProxyContext context, Deployment deployment) {
