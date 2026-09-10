@@ -16972,13 +16972,13 @@ components:
           type: string
           description: "If `reference_type` is specified, the content of `reference_url` should follow the format described in the MIME standard for `reference_type`."
     RequestSkill:
-      type: object
       required:
       - url
+      type: object
       properties:
         url:
           type: string
-          description: The URL of the skill resource, e.g. `skills/<bucket>/<path>`.
+          description: "The URL of the skill resource, e.g. `skills/<bucket>/<path>`."
     ResourceAccessType:
       type: string
       enum:
