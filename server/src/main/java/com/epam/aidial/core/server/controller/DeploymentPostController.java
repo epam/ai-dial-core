@@ -77,7 +77,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                 new ApplyDefaultDeploymentSettingsFn(proxy, context, requestedInterface()),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
-                new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_CHAT_COMPLETIONS),
+                new BuildUpstreamCacheFn(proxy, context, requestedInterface()),
                 new CollectDeploymentsFn(proxy, context));
     }
 
@@ -184,11 +184,11 @@ public class DeploymentPostController extends BaseDeploymentPostController {
     private Future<?> handleDeployment(String deploymentId) {
         return proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findDeployment(context, deploymentId))
                 .compose(dep -> proxy.getTaskExecutor().submit(() -> {
-                    proxy.getConsentService().verifyUserConsent(context, dep);
+                    proxy.getConsentService().verifyUserConsent(context, dep, requestedInterface());
                     return dep;
                 }))
                 .map(dep -> {
-                    Features features = dep.getFeatures();
+                    Features features = dep.resolveFeatures(requestedInterface());
                     boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
                     if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
                         throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", deploymentId, context.getApiKeyData().getSourceDeployment()));

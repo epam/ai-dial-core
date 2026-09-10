@@ -51,6 +51,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -284,9 +285,11 @@ public class DeploymentPostControllerTest {
         verify(context).respond(eq(NOT_FOUND), anyString());
     }
 
-    @Test
-    public void testDeploymentIsNotAccessible() {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    public void testDeploymentIsNotAccessible(boolean interfaceOverride) {
         when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/app1/chat/completions");
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         Config config = new Config();
         config.setApplications(new HashMap<>());
@@ -294,7 +297,16 @@ public class DeploymentPostControllerTest {
         app.setEndpoint("http://fake-endpoint.com");
         Features features = new Features();
         features.setAccessibleByPerRequestKey(false);
-        app.setFeatures(features);
+        if (interfaceOverride) {
+            DeploymentInterface declared = new DeploymentInterface();
+            declared.setFeatures(features);
+            app.setInterfaces(Map.of(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(), declared));
+            Features inherited = new Features();
+            inherited.setAccessibleByPerRequestKey(true);
+            app.setFeatures(inherited);
+        } else {
+            app.setFeatures(features);
+        }
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("perRequestKey");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
