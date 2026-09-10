@@ -174,7 +174,7 @@ Supported interface types for models:
 
 The `interfaces` map is strict: chat completions is configured via `openaiChatCompletions` and embeddings via `openaiEmbeddings`, and one never stands in for the other — a model declaring only `openaiChatCompletions` answers `503` to `embeddings`, and a model declaring only `openaiEmbeddings` answers `503` to `chat/completions` and `completions`. The untyped legacy `endpoint` predates the split and keeps serving `embeddings` requests verbatim, so models configured before the split keep working unchanged.
 
-Only the interface types a model declares are reported in the `interfaces` array of the `/v1/deployments` listing. A legacy `endpoint` is advertised as the interface matching what the model says it is: `openaiEmbeddings` when `type` is `embedding`, `openaiChatCompletions` otherwise — so an embedding model configured this way reports `openaiEmbeddings` and `"chat_completion": false`, even though that one endpoint still serves the whole deployments POST family.
+Only the interface types a model declares are reported in the `interfaces` array of the `/v1/deployments` listing. A legacy `endpoint` is advertised as the interface matching what the model says it is: `openaiEmbeddings` when `type` is `embedding`, `openaiChatCompletions` otherwise — so an embedding model configured this way reports `openaiEmbeddings` and `"chat_completion": false`, even though that one endpoint still serves the whole deployments POST family. The same advertisement drives the listing's `interface_configs` map, which reports the `features`, `defaults` and `default_headers` in force for each advertised interface — see [Interface configs in the listings](#interface-configs-in-the-listings).
 
 Each value is an object with the following fields:
 
@@ -256,7 +256,7 @@ Chat completions and Responses inherit `["low", "medium", "high"]`; Anthropic Me
 
 The same rule applies to `openaiEmbeddings`. It needs its own interface declaration when using `interfaces` for routing. Passthrough and translator requests receive effective features in `X-DIAL-DEPLOYMENT-FEATURES`, using the existing header format (`tools`, `temperature`, `reasoning_efforts`, etc.). Request-time caching, automatic caching, per-request-key access, and consent checks also use the requested interface's features. Consent reviews include requirements declared on interfaces.
 
-Deployment and model listings continue to expose deployment-level features, since they have no requested inference interface. Core defaults are applied after merging, and resolving a request does not modify the shared configuration.
+Deployment and model listings continue to expose deployment-level features, since they have no requested inference interface; the values in force per interface appear in the listings' `interface_configs` map instead — see [Interface configs in the listings](#interface-configs-in-the-listings). Core defaults are applied after merging, and resolving a request does not modify the shared configuration.
 
 #### models.<model_name>.defaultHeaders
 
@@ -338,6 +338,44 @@ They are applied once per request, when it enters the model: with `interceptors`
 ```
 
 The effective headers are `x-dial-cache-policy: cache-priority` and `x-dial-custom-header: foo-bar` for `chat/completions`, `embeddings` and the Responses API, and `x-dial-cache-policy: cache-priority`, `x-dial-custom-header: foo-bar-2`, `x-dial-custom-header-2: some-value` for the Anthropic Messages API.
+
+### Interface configs in the listings
+
+The deployment listings — `/v1/deployments` and `/v1/deployments/{name}`, plus the OpenAI-flavoured `/openai/models`, `/openai/models/{name}`, `/openai/deployments`, `/openai/deployments/{name}` and `/openai/applications` — report an `interface_configs` object next to the `interfaces` array, with one entry per interface the deployment advertises, keyed by that interface's own name:
+
+```json
+"interface_configs": {
+    "openaiChatCompletions": {
+        "features": {
+            "system_prompt": true, "tools": true, "temperature": true,
+            "chat_completion": true, "responses_api": false,
+            "reasoning_efforts": ["low", "medium"]
+        },
+        "defaults": {"temperature": 1},
+        "default_headers": {"x-dial-cache-policy": "cache-priority", "x-dial-custom-header": "foo-bar"}
+    },
+    "openaiResponses": {
+        "features": {
+            "system_prompt": true, "tools": true, "temperature": true,
+            "chat_completion": false, "responses_api": true,
+            "reasoning_efforts": ["low", "medium"]
+        },
+        "defaults": {"temperature": 1},
+        "default_headers": {"x-dial-cache-policy": "cache-priority", "x-dial-custom-header": "foo-bar"}
+    },
+    "anthropicMessages": {
+        "features": {
+            "system_prompt": true, "tools": true, "temperature": true,
+            "chat_completion": false, "responses_api": false,
+            "reasoning_efforts": ["low", "medium", "high", "xhigh", "max"]
+        },
+        "defaults": {"temperature": 0.5},
+        "default_headers": {"x-dial-cache-policy": "cache-priority", "x-dial-custom-header": "foo-bar-2", "x-dial-custom-header-2": "some-value"}
+    }
+}
+```
+
+Each entry's `features`, `defaults` and `default_headers` are the ones in force for that interface, resolved exactly as [Features per interface](#features-per-interface), [Defaults per interface](#defaults-per-interface) and [models.<model_name>.defaultHeaders](#modelsmodel_namedefaultheaders) resolve them; an entry with no default headers returns `"default_headers": {}`, consistent with `defaults`. A legacy `endpoint` or `responsesEndpoint` is advertised the same way as in the `interfaces` array. Inside an entry, `chat_completion` and `responses_api` name the API that the interface itself is — `true` only on the `openaiChatCompletions` and `openaiResponses` entries respectively — whereas in the deployment-level `features` they name the APIs the deployment serves at all. The deployment-level `features`, `defaults` and `responses_defaults` fields keep their own meaning, and a deployment serving no interface omits `interface_configs` altogether.
 
 #### models.<model_name>.limits
 

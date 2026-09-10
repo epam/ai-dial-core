@@ -172,6 +172,8 @@ Each value is an object with the following fields:
 }
 ```
 
+The application listings — `/v1/deployments`, `/v1/deployments/{name}` and `/openai/applications` — report the effective per-interface `features`, `defaults` and `default_headers` in an `interface_configs` object next to the `interfaces` array; see [Interface configs in the listings](models.md#interface-configs-in-the-listings).
+
 #### applications.<application_name>.defaultHeaders
 
 An object of HTTP header names and values DIAL Core adds to a request that does not already carry a header of that name. A header sent by the client always wins, and so does one DIAL Core sets itself (`Api-Key`, `X-DIAL-DEPLOYMENT-ID`, ...). Names are matched case-insensitively.
