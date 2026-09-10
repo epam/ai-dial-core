@@ -1,21 +1,25 @@
 package com.epam.aidial.core.server.service.config;
 
-import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.config.GlobalSettings;
-import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.config.Role;
-import com.epam.aidial.core.config.Route;
-import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.ValidationWarning;
-import com.epam.aidial.core.server.data.AdminManifest;
-import com.epam.aidial.core.server.data.ValidationResult;
-import com.epam.aidial.core.server.data.ValidationStatus;
-import com.epam.aidial.core.server.service.config.ConfigManifestSupport.ParsedName;
+import com.epam.aidial.core.server.data.config.manifest.AdminApplicationManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminCatalogSchemaManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminInterceptorManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminKeyManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminModelManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminRoleManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminRouteManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminSchemaManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminSettingsManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminToolSetManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminTranslatorManifest;
+import com.epam.aidial.core.server.data.config.manifest.ValidationResult;
+import com.epam.aidial.core.server.data.config.manifest.ValidationStatus;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -42,22 +46,21 @@ public class ConfigValidationService {
 
     public ValidationResult validateOnly(AdminManifest entry, Config scratch) {
         String id = entry.name();
-        ParsedName parsed;
+        ConfigManifestSupport.ParsedManifest parsed;
         try {
-            parsed = ConfigManifestSupport.parseName(entry);
+            parsed = ConfigManifestSupport.parseManifest(entry);
         } catch (IllegalArgumentException ex) {
             return new ValidationResult(id, ValidationStatus.FAILED, ex.getMessage());
         }
         try {
-            switch (entry.kind()) {
-                case "Settings" -> {
-                    if (!ConfigManifestSupport.SETTINGS_SINGLETON_NAME.equals(parsed.name())) {
+            switch (parsed.manifest()) {
+                case AdminSettingsManifest settingsManifest -> {
+                    if (!ConfigManifestSupport.SETTINGS_SINGLETON_NAME.equals(parsed.name().name())) {
                         return new ValidationResult(id, ValidationStatus.FAILED, "Settings name must be 'global'");
                     }
-                    ConfigEntityCodec.treeToEntity(entry.spec(), GlobalSettings.class);
                 }
-                case "Model" -> {
-                    Model model = ConfigEntityCodec.treeToEntity(entry.spec(), Model.class);
+                case AdminModelManifest modelManifest -> {
+                    Model model = modelManifest.spec();
                     List<ValidationWarning> warnings = new ArrayList<>();
                     ConfigPostProcessor.validatePricing(model, warnings);
                     ConfigPostProcessor.validateUpstreamInterfaces(model, warnings);
@@ -66,30 +69,30 @@ public class ConfigValidationService {
                     if (!warnings.isEmpty() && !softValidation) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
-                    String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(scratch, ResourceTypes.MODEL, parsed);
+                    String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(scratch, ResourceTypes.MODEL, parsed.name());
                     if (dupError != null) {
                         return new ValidationResult(id, ValidationStatus.FAILED, dupError);
                     }
                 }
-                case "Interceptor" -> {
-                    ConfigEntityCodec.treeToEntity(entry.spec(), Interceptor.class);
-                    String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(scratch, ResourceTypes.INTERCEPTOR, parsed);
+                case AdminInterceptorManifest interceptorManifest -> {
+                    String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
+                            scratch, ResourceTypes.INTERCEPTOR, parsed.name());
                     if (dupError != null) {
                         return new ValidationResult(id, ValidationStatus.FAILED, dupError);
                     }
                 }
-                case "Translator" -> {
-                    Translator translator = ConfigEntityCodec.treeToEntity(entry.spec(), Translator.class);
+                case AdminTranslatorManifest translatorManifest -> {
+                    Translator translator = translatorManifest.spec();
                     List<ValidationWarning> warnings = new ArrayList<>();
                     ConfigPostProcessor.validateTranslator(translator, warnings);
                     if (!warnings.isEmpty()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
                 }
-                case "Role" -> ConfigEntityCodec.treeToEntity(entry.spec(), Role.class);
-                case "Route" -> ConfigEntityCodec.treeToEntity(entry.spec(), Route.class);
-                case "Key" -> {
-                    Key key = ConfigEntityCodec.treeToEntity(entry.spec(), Key.class);
+                case AdminRoleManifest roleManifest -> { }
+                case AdminRouteManifest routeManifest -> { }
+                case AdminKeyManifest keyManifest -> {
+                    Key key = keyManifest.spec();
                     if (StringUtils.isBlank(key.getKey())) {
                         return new ValidationResult(id, ValidationStatus.FAILED, "Key.key must be provided explicitly");
                     }
@@ -101,40 +104,37 @@ public class ConfigValidationService {
                                 "Invalid key: at least one role must be assigned to the key " + key.getProject());
                     }
                 }
-                case "Application" -> {
-                    ConfigEntityCodec.treeToEntity(entry.spec(), Application.class);
-                    if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket())) {
-                        String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(scratch, ResourceTypes.APPLICATION, parsed);
+                case AdminApplicationManifest applicationManifest -> {
+                    if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.name().bucket())) {
+                        String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
+                                scratch, ResourceTypes.APPLICATION, parsed.name());
                         if (dupError != null) {
                             return new ValidationResult(id, ValidationStatus.FAILED, dupError);
                         }
                     }
                 }
-                case "ToolSet" -> {
-                    ConfigEntityCodec.treeToEntity(entry.spec(), ToolSet.class);
-                    if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket())) {
-                        String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(scratch, ResourceTypes.TOOL_SET, parsed);
+                case AdminToolSetManifest toolSetManifest -> {
+                    if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.name().bucket())) {
+                        String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
+                                scratch, ResourceTypes.TOOL_SET, parsed.name());
                         if (dupError != null) {
                             return new ValidationResult(id, ValidationStatus.FAILED, dupError);
                         }
                     }
                 }
-                case "Schema" -> {
-                    String schemaError = ConfigManifestSupport.validateSchema(entry, parsed, scratch,
+                case AdminSchemaManifest schemaManifest -> {
+                    String schemaError = ConfigManifestSupport.validateSchema(schemaManifest.spec(), parsed.name(), scratch,
                             ResourceTypes.APP_TYPE_SCHEMA, resourceService);
                     if (schemaError != null) {
                         return new ValidationResult(id, ValidationStatus.FAILED, schemaError);
                     }
                 }
-                case "CatalogSchema" -> {
-                    String schemaError = ConfigManifestSupport.validateSchema(entry, parsed, scratch,
+                case AdminCatalogSchemaManifest catalogSchemaManifest -> {
+                    String schemaError = ConfigManifestSupport.validateSchema(catalogSchemaManifest.spec(), parsed.name(), scratch,
                             ResourceTypes.CATALOG_SCHEMA, resourceService);
                     if (schemaError != null) {
                         return new ValidationResult(id, ValidationStatus.FAILED, schemaError);
                     }
-                }
-                default -> {
-                    return new ValidationResult(id, ValidationStatus.FAILED, "Unknown kind: " + entry.kind());
                 }
             }
         } catch (IllegalArgumentException ex) {
