@@ -1561,7 +1561,6 @@ public class ConfigResourceController implements Controller {
 
                 String blobBody;
                 Key keyEntity = null;
-                String keySecret = null;
                 String oldSecret = null;
                 Object entity = null;
                 Map<String, String> putEventMetadata = null;
@@ -1624,9 +1623,6 @@ public class ConfigResourceController implements Controller {
                     if (spec.isKey()) {
                         keyEntity = (Key) entity;
                         validateKeyForApiWrite(keyEntity, "PUT");
-                        // Capture before encryptFields mutates Key.key to ciphertext in place;
-                        // ApiKeyStore is indexed by plaintext secret (see ApiKeyStore.getApiKeyData).
-                        keySecret = keyEntity.getKey();
                     }
                     if (spec.hasEncryptedFields()) {
                         secretFieldProcessor.encryptFields(entity, descriptor);
@@ -1637,12 +1633,6 @@ public class ConfigResourceController implements Controller {
                 // blob layer doesn't re-validate against a stale snapshot.
                 ResourceItemMetadata meta = resourceService.putResource(
                         descriptor, blobBody, EtagHeader.ANY, author, false, putEventMetadata);
-                if (keySecret != null) {
-                    apiKeyStore.addOrUpdateKey(keySecret, apiKeyData(keyEntity));
-                    if (oldSecret != null && !oldSecret.isBlank() && !oldSecret.equals(keySecret)) {
-                        apiKeyStore.removeKey(oldSecret);
-                    }
-                }
                 // Decrypt-in-place after blob put. PUT-upsert can produce a mixed
                 // plaintext/ciphertext entity (preserve-on-omit on the update arm); decryptValue
                 // is idempotent on plaintext and restores ciphertext fields to plaintext,
@@ -1650,6 +1640,16 @@ public class ConfigResourceController implements Controller {
                 // Config (read-after-write parity).
                 if (entity != null && spec.hasEncryptedFields()) {
                     secretFieldProcessor.decryptFields(entity, descriptor);
+                }
+                if (keyEntity != null) {
+                    // Capture after the decrypt above: on preserve-on-omit the merged Key.key
+                    // holds the prior ciphertext until then, and ApiKeyStore is indexed by
+                    // plaintext (see ApiKeyStore.addOrUpdateKey).
+                    String keySecret = keyEntity.getKey();
+                    apiKeyStore.addOrUpdateKey(keySecret, apiKeyData(keyEntity));
+                    if (oldSecret != null && !oldSecret.isBlank() && !oldSecret.equals(keySecret)) {
+                        apiKeyStore.removeKey(oldSecret);
+                    }
                 }
                 ResourceTypes writeType = typeOf(descriptor);
                 String mapKey = putEventMetadata != null
