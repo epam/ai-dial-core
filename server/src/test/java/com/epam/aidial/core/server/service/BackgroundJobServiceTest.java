@@ -245,7 +245,7 @@ class BackgroundJobServiceTest {
     @Test
     void saveJobStartsPollingAndCompletesJob(VertxTestContext ctx) throws Throwable {
         doReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), new TokenUsage())))
-                .when(service).poll(any());
+                .when(service).poll(any(), any());
         Config config = mock(Config.class);
         when(configStore.get()).thenReturn(config);
         when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
@@ -267,7 +267,7 @@ class BackgroundJobServiceTest {
         doReturn(Future.succeededFuture(null))
                 .doReturn(Future.succeededFuture(null))
                 .doReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), new TokenUsage())))
-                .when(service).poll(any());
+                .when(service).poll(any(), any());
         when(configStore.get()).thenReturn(mock(Config.class));
         when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
         when(apiKeyStore.invalidatePerRequestApiKey(any()))
@@ -279,13 +279,13 @@ class BackgroundJobServiceTest {
         service.saveJob(JOB_ID, proxyContext).onFailure(ctx::failNow);
 
         await(ctx);
-        verify(service, times(3)).poll(any());
+        verify(service, times(3)).poll(any(), any());
     }
 
     @Test
     void pollingAbandonedAfterMaxSequentialFailures(Vertx vertx, VertxTestContext ctx) throws Throwable {
         var bundle = buildServiceBundle(vertx, 3);
-        doAnswer(inv -> Future.failedFuture("upstream error")).when(bundle.service()).poll(any());
+        doAnswer(inv -> Future.failedFuture("upstream error")).when(bundle.service()).poll(any(), any());
         when(configStore.get()).thenReturn(mock(Config.class));
         when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
         when(apiKeyStore.invalidatePerRequestApiKey(any()))
@@ -298,7 +298,7 @@ class BackgroundJobServiceTest {
         bundle.service().saveJob(JOB_ID, proxyContext).onFailure(ctx::failNow);
 
         await(ctx);
-        verify(bundle.service(), times(3)).poll(any());
+        verify(bundle.service(), times(3)).poll(any(), any());
     }
 
     @Test
@@ -312,7 +312,7 @@ class BackgroundJobServiceTest {
                 .doReturn(Future.failedFuture("upstream error"))
                 .doReturn(Future.failedFuture("upstream error"))
                 .doReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), new TokenUsage())))
-                .when(bundle.service()).poll(any());
+                .when(bundle.service()).poll(any(), any());
         when(configStore.get()).thenReturn(mock(Config.class));
         when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
         when(apiKeyStore.invalidatePerRequestApiKey(any()))
@@ -325,7 +325,7 @@ class BackgroundJobServiceTest {
         bundle.service().saveJob(JOB_ID, proxyContext).onFailure(ctx::failNow);
 
         await(ctx);
-        verify(bundle.service(), times(6)).poll(any());
+        verify(bundle.service(), times(6)).poll(any(), any());
     }
 
     @Test
@@ -365,7 +365,7 @@ class BackgroundJobServiceTest {
         setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
         setupDeploymentMocks();
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(result -> ctx.verify(() -> {
                     assertNotNull(result);
                     ctx.completeNow();
@@ -379,7 +379,7 @@ class BackgroundJobServiceTest {
         setupHttpMocks("{\"status\":\"in_progress\"}");
         setupDeploymentMocks();
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(result -> ctx.verify(() -> {
                     assertNull(result);
                     ctx.completeNow();
@@ -393,7 +393,7 @@ class BackgroundJobServiceTest {
         setupHttpMocks("{\"status\":\"queued\"}");
         setupDeploymentMocks();
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(result -> ctx.verify(() -> {
                     assertNull(result);
                     ctx.completeNow();
@@ -408,7 +408,7 @@ class BackgroundJobServiceTest {
         when(configStore.get()).thenReturn(config);
         when(config.selectDeployment(anyString())).thenReturn(null);
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("not found"));
@@ -425,7 +425,7 @@ class BackgroundJobServiceTest {
         when(httpRequest.send()).thenReturn(Future.succeededFuture(httpResponse));
         when(httpResponse.statusCode()).thenReturn(500);
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("500"));
@@ -439,7 +439,7 @@ class BackgroundJobServiceTest {
         setupDeploymentMocks();
         setupHttpMocks("not valid json {{{");
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.completeNow());
         await(ctx);
@@ -450,7 +450,7 @@ class BackgroundJobServiceTest {
         setupDeploymentMocks();
         setupHttpMocks("[1, 2, 3]");
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("not a JSON object"));
@@ -469,7 +469,7 @@ class BackgroundJobServiceTest {
         when(upstreamRouteProvider.get(any(), any(), any(), anyString()))
                 .thenThrow(new RuntimeException("No available upstream"));
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("Failed to get upstream"));
@@ -487,7 +487,7 @@ class BackgroundJobServiceTest {
         when(deployment.getResponsesEndpoint()).thenReturn(null);
         when(deployment.getName()).thenReturn(DEPLOYMENT_NAME);
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("responses endpoint"));
@@ -504,7 +504,7 @@ class BackgroundJobServiceTest {
         setupDeploymentMocks(model);
         setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(result -> ctx.verify(() -> {
                     assertNotNull(result);
                     assertEquals("http://adapter/openai/v1/responses/" + UPSTREAM_RESPONSE_ID, capturePolledUrl());
@@ -525,7 +525,7 @@ class BackgroundJobServiceTest {
         setupDeploymentMocks(model);
         setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(result -> ctx.verify(() -> {
                     assertEquals("http://adapter/openai/v1/responses/" + UPSTREAM_RESPONSE_ID, capturePolledUrl());
                     ctx.completeNow();

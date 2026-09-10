@@ -190,7 +190,7 @@ public class BackgroundJobService {
     }
 
     @VisibleForTesting
-    Future<ResponsesApiClient.TerminalResult> poll(ResponseMapping mapping) {
+    Future<ResponsesApiClient.TerminalResult> poll(ResponseMapping mapping, String apiKey) {
         Config config = configStore.get();
         Deployment deployment = config.selectDeployment(mapping.getDeploymentName());
         if (deployment == null) {
@@ -213,7 +213,7 @@ public class BackgroundJobService {
                     + " and upstream key " + mapping.getUpstreamKey() + ": " + e.getMessage());
         }
         String targetUrl = responsesBaseUri + "/" + mapping.getUpstreamResponseId();
-        return client.send(targetUrl, HttpMethod.GET, upstream)
+        return client.send(targetUrl, HttpMethod.GET, upstream, apiKey)
                 .compose(response -> {
                     int statusCode = response.statusCode();
                     if (statusCode != 200) {
@@ -346,7 +346,8 @@ public class BackgroundJobService {
         private final ResponseMapping mapping;
 
         public Future<Boolean> poll() {
-            return BackgroundJobService.this.poll(mapping)
+            String apiKey = decryptKey(ResponseIdUtil.getBackgroundJobDescriptor(dialId), record.perRequestKey());
+            return BackgroundJobService.this.poll(mapping, apiKey)
                     .compose(result -> {
                                 if (result != null) {
                                     return completeAndProcess(dialId, record, mapping, result)
