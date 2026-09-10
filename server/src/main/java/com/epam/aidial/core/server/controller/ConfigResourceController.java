@@ -34,6 +34,7 @@ import com.epam.aidial.core.server.security.EntityBucketBinding;
 import com.epam.aidial.core.server.security.Operation;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.ExternalServiceStatusEnricher;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -49,6 +50,7 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -1119,19 +1121,30 @@ public class ConfigResourceController implements Controller {
             // actually be shown the hint.
             case APPLICATION -> handleSingleGetFromBlob(ResourceTypes.APPLICATION,
                     (key, application) -> {
+                        Application entity = (Application) application;
+                        new ExternalServiceStatusEnricher(context, context.getProxy().getResourceAuthSettingsService())
+                                .enrichApplication(path, entity.getExternalServices());
                         if (admin) {
                             applicationService.decryptExternalServiceSecretsForResponse(
-                                    descriptorFor(ResourceTypes.APPLICATION), (Application) application);
+                                    descriptorFor(ResourceTypes.APPLICATION), entity);
                         }
-                        return redactExternalServiceSecrets(projectItem(application, key), admin);
+                        return redactExternalServiceSecrets(projectItem(entity, key), admin);
                     });
             case TOOL_SET -> handleSingleGetFromBlob(ResourceTypes.TOOL_SET,
                     (key, toolSet) -> {
+                        ToolSet entity = (ToolSet) toolSet;
+                        if (entity.getAuthSettings() != null) {
+                            try {
+                                toolSetService.setResourceAuthStatuses(context, entity, UrlUtil.encodePath(path));
+                            } catch (RuntimeException e) {
+                                log.warn("Failed to compute auth statuses for platform toolset '{}'", path, e);
+                            }
+                        }
                         if (admin) {
                             toolSetService.decryptAuthSettingsForResponse(
-                                    descriptorFor(ResourceTypes.TOOL_SET), (ToolSet) toolSet);
+                                    descriptorFor(ResourceTypes.TOOL_SET), entity);
                         }
-                        return redactAuthSettingsSecrets(projectItem(toolSet, key), admin);
+                        return redactAuthSettingsSecrets(projectItem(entity, key), admin);
                     });
             case GLOBAL_SETTINGS -> handleSettingsGet(config);
             default -> respondMethodNotAllowed();
