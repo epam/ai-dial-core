@@ -3,8 +3,8 @@ package com.epam.aidial.core.server.layout;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.cache.CacheClientFactory;
+import com.epam.aidial.core.storage.migration.BucketMigration;
 import com.epam.aidial.core.storage.migration.BucketMigrationRegistry;
-import com.epam.aidial.core.storage.migration.BucketMigrationState;
 import com.epam.aidial.core.storage.migration.BucketMigrator;
 import com.epam.aidial.core.storage.resource.StorageLayouts;
 import com.epam.aidial.core.storage.resource.TenantRootedStorageLayout;
@@ -19,8 +19,6 @@ import org.redisson.api.RedissonClient;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Set;
-import java.util.TreeSet;
 
 /**
  * Drives the per-bucket migration state of a deployment from outside it, so a bucket can be sealed, drained
@@ -74,7 +72,7 @@ public final class BucketMigrationHarness {
         private final RedissonClient redis;
         private final BucketMigrationRegistry registry;
         private final ResourceService resources;
-        private final BucketMigrator migrator;
+        private final BucketMigration migration;
 
         @SneakyThrows
         private Session(JsonNode settings) {
@@ -88,13 +86,13 @@ public final class BucketMigrationHarness {
             long refreshPeriod = refreshPeriod(layout);
             registry = new BucketMigrationRegistry(blobStore, lockService, INERT_TIMERS, refreshPeriod);
             String tenantId = tenantId(layout);
-            migrator = new BucketMigrator(blobStore, tenantId);
             // The same composition the core does, so a flush resolves the bucket's paths exactly as it will.
             StorageLayouts.useLayoutPerBucket(new TenantRootedStorageLayout(tenantId), registry);
 
             resources = new ResourceService(INERT_TIMERS, redis, blobStore, lockService,
                     MAPPER.treeToValue(settings.get("resources"), ResourceService.Settings.class),
                     blobStore.getPrefix(), () -> null, registry);
+            migration = new BucketMigration(registry, new BucketMigrator(blobStore, tenantId), resources);
         }
 
         private void run(String command, String bucketLocation) throws InterruptedException {
@@ -103,6 +101,7 @@ public final class BucketMigrationHarness {
                         ? "pass a bucket location to read its state"
                         : bucketLocation + " " + registry.resolve(bucketLocation));
                 case "window" -> System.out.println(registry.propagationWindow() + " ms");
+                case "covered" -> System.out.println(migration.covered(require(bucketLocation)));
                 case "seal" -> {
                     registry.seal(require(bucketLocation));
                     System.out.println("sealed " + bucketLocation + "; wait " + registry.propagationWindow()
@@ -116,84 +115,21 @@ public final class BucketMigrationHarness {
                     registry.promote(require(bucketLocation));
                     System.out.println("promoted " + bucketLocation);
                 }
-                case "revert" -> {
-                    registry.revert(require(bucketLocation));
-                    System.out.println("reverted " + bucketLocation + " to the legacy layout");
+                case "prepare" -> System.out.println("sealed and drained " + migration.prepare(require(bucketLocation)));
+                case "copy" -> {
+                    BucketMigrator.Result result = migration.copy(require(bucketLocation));
+                    System.out.println("copied " + result.objects() + " objects, " + result.bytes()
+                            + " bytes, covering " + result.locations());
                 }
-                case "copy" -> copy(require(bucketLocation));
-                case "prepare" -> prepare(require(bucketLocation));
-                case "finish" -> finish(require(bucketLocation));
+                case "finish" -> System.out.println("promoted " + migration.finish(require(bucketLocation)));
+                case "revert" -> System.out.println("reverted " + migration.revert(require(bucketLocation)));
                 case "migrate" -> {
-                    prepare(require(bucketLocation));
-                    copy(bucketLocation);
-                    finish(bucketLocation);
+                    BucketMigrator.Result result = migration.migrate(require(bucketLocation));
+                    System.out.println("migrated " + bucketLocation + " — " + result.objects()
+                            + " objects, " + result.bytes() + " bytes, covering " + result.locations());
                 }
                 default -> throw new IllegalArgumentException("Unknown command: " + command);
             }
-        }
-
-        /**
-         * Seals everything the copy will touch, not only the location named. One copy of {@code public/}
-         * carries its sub-buckets with it, and a state is matched by exact location, so sealing the parent
-         * alone leaves them writable while their bytes are being copied.
-         */
-        private void prepare(String bucketLocation) throws InterruptedException {
-            for (String location : covered(bucketLocation)) {
-                registry.seal(location);
-                System.out.println("sealed " + location);
-            }
-
-            System.out.println("waiting " + registry.propagationWindow() + " ms");
-            Thread.sleep(registry.propagationWindow());
-
-            for (String location : covered(bucketLocation)) {
-                resources.flushBucket(location);
-                System.out.println("flushed " + location);
-            }
-        }
-
-        /**
-         * The location asked for, plus every location a copy of it would reach. Enumerated before the seal,
-         * so it is read from a bucket still accepting writes: a location that appears afterwards is caught
-         * after the copy instead, where it is reported rather than silently promoted.
-         */
-        private Set<String> covered(String bucketLocation) {
-            Set<String> locations = new TreeSet<>(migrator.locations(bucketLocation));
-            locations.add(bucketLocation);
-            return locations;
-        }
-
-        private void copy(String bucketLocation) {
-            // The seal is what makes the copy meaningful; copying an open bucket copies a moving target.
-            BucketMigrationState state = registry.resolve(bucketLocation);
-            if (state != BucketMigrationState.MIGRATING) {
-                throw new IllegalStateException(
-                        "Seal %s before copying it — it is %s".formatted(bucketLocation, state));
-            }
-
-            BucketMigrator.Result result = migrator.copyBucket(bucketLocation);
-            System.out.println("copied " + result.objects() + " objects, " + result.bytes() + " bytes");
-
-            // A copy that reached a location nobody sealed took a moving target, and promoting the parent
-            // would leave that one resolving to the legacy tree over bytes already copied.
-            for (String location : result.locations()) {
-                BucketMigrationState reached = registry.resolve(location);
-                if (reached != BucketMigrationState.MIGRATING) {
-                    throw new IllegalStateException(("The copy of %s reached %s, which is %s rather than "
-                            + "sealed — seal it and copy again").formatted(bucketLocation, location, reached));
-                }
-            }
-        }
-
-        private void finish(String bucketLocation) throws InterruptedException {
-            for (String location : covered(bucketLocation)) {
-                registry.promote(location);
-                System.out.println("promoted " + location);
-            }
-
-            System.out.println("waiting " + registry.propagationWindow() + " ms");
-            Thread.sleep(registry.propagationWindow());
-            System.out.println("done — " + bucketLocation + " now resolves to the tenant-rooted layout");
         }
 
         private static String require(String bucketLocation) {
