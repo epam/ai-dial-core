@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.data.config.apply;
+package com.epam.aidial.core.server.data.config.manifest;
 
 /**
  * Typed counterpart of {@link AdminManifest}: the per-kind record a manifest is converted to once
