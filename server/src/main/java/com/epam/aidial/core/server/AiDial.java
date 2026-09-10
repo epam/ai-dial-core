@@ -236,7 +236,7 @@ public class AiDial {
                     storage.getPrefix(), () -> podId, migrationStates);
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"));
-            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
+            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService(migrationStates);
             SecretFieldProcessor secretFieldProcessor = new SecretFieldProcessor(
                     credentialEncryptionService,
                     new BucketInfo(ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION));
@@ -425,7 +425,7 @@ public class AiDial {
         return new ResourceRegistrationService(authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService, allowedRedirectUris);
     }
 
-    private CredentialEncryptionService getCredentialEncryptionService() {
+    private CredentialEncryptionService getCredentialEncryptionService(BucketMigrationStates migrationStates) {
         JsonObject toolsetSecurity = settings("toolsets").getJsonObject("security", new JsonObject());
         KmsSettings kmsSettings = Json.decodeValue(toolsetSecurity
                 .getJsonObject("kms", new JsonObject()).toBuffer(), KmsSettings.class);
@@ -434,7 +434,8 @@ public class AiDial {
         ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator(encryptionSettings);
         KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings);
         ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
-                resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache());
+                resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache(),
+                migrationStates);
         ContentEncryptionKeyService contentEncryptionKeyService = getContentEncryptionKeyService(contentEncryptionKeyManager);
         DataEncryptionService dataEncryptionService = new DataEncryptionService(encryptionSettings, new SecureRandom());
         return new CredentialEncryptionService(contentEncryptionKeyService, dataEncryptionService);

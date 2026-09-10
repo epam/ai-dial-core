@@ -2,6 +2,7 @@ package com.epam.aidial.core.credentials.encryption;
 
 import com.epam.aidial.core.credentials.data.configuration.CacheSettings;
 import com.epam.aidial.core.credentials.keymanagement.KeyManagementService;
+import com.epam.aidial.core.storage.migration.BucketMigrationStates;
 import com.epam.aidial.core.storage.service.ResourceService;
 import jakarta.annotation.Nullable;
 import lombok.experimental.UtilityClass;
@@ -14,10 +15,11 @@ public class ContentEncryptionKeyManagerFactory {
             ResourceService resourceService,
             ContentEncryptionKeyGenerator contentEncryptionKeyGenerator,
             KeyManagementService keyManagementService,
-            @Nullable CacheSettings cacheSettings) {
+            @Nullable CacheSettings cacheSettings,
+            BucketMigrationStates migrationStates) {
 
-        ContentEncryptionKeyManager baseManager =
-                new ContentEncryptionKeyManagerImpl(resourceService, contentEncryptionKeyGenerator, keyManagementService);
+        ContentEncryptionKeyManager baseManager = new ContentEncryptionKeyManagerImpl(
+                resourceService, contentEncryptionKeyGenerator, keyManagementService, migrationStates);
 
         return addCacheIfEnabled(baseManager, cacheSettings);
     }
