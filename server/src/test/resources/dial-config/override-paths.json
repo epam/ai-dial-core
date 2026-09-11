@@ -1,0 +1,48 @@
+{
+  "models": {
+    "gpt-switchyard": {
+      "type": "chat",
+      "overrideName": "switchyard-gpt",
+      "interfaces": {
+        "openaiChatCompletions": {
+          "base_url": "http://localhost:4848",
+          "overridePaths": {"postAzureOpenaiChatCompletions": "/openai/deployments/{overrideName}/v1/chat/completions"}
+        }
+      }
+    },
+    "emb-switchyard": {
+      "type": "embedding",
+      "interfaces": {
+        "openaiEmbeddings": {
+          "base_url": "http://localhost:4848",
+          "overridePaths": {"postAzureOpenaiEmbeddings": "/v1/embeddings"}
+        }
+      }
+    },
+    "claude-switchyard": {
+      "type": "chat",
+      "interfaces": {
+        "anthropicMessages": {
+          "base_url": "http://localhost:4848",
+          "overridePaths": {
+            "postAnthropicMessages": "/v1/messages",
+            "postAnthropicMessagesCountTokens": "/v1/messages/count_tokens"
+          }
+        }
+      }
+    },
+    "responses-switchyard": {
+      "type": "chat",
+      "interfaces": {
+        "openaiResponses": {
+          "base_url": "http://localhost:4848",
+          "overridePaths": {
+            "postOpenaiResponses": "/v1/responses",
+            "getOpenaiResponsesById": "/v1/responses/{id}"
+          }
+        }
+      }
+    }
+  },
+  "keys": {"proxyKey1": {"project": "test", "role": "default"}}
+}
