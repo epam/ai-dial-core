@@ -6,11 +6,13 @@ import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
+import com.epam.aidial.core.config.OverridePathKey;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.experimental.UtilityClass;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -90,10 +92,40 @@ public class DeploymentEndpointUtil {
     public String resolveRequestUri(Deployment deployment, InterfaceType type, Map<String, Translator> translators,
                                     String ingressPath, @Nullable String query) {
         String baseUrl = resolveInterfaceBaseUrl(deployment, type, translators);
-        String uri = baseUrl != null
-                ? baseUrl + rewriteDeploymentName(ingressPath, resolveDeploymentName(deployment))
-                : resolveLegacyEndpoint(deployment, type);
+        String uri;
+        if (baseUrl == null) {
+            uri = resolveLegacyEndpoint(deployment, type);
+        } else {
+            OverridePathKey pathKey = findRequestPathKey(type, ingressPath);
+            String template = findOverridePath(deployment, type, pathKey);
+            uri = template != null
+                    ? baseUrl + leadingSlash(PathTemplateUtil.render(template,
+                            templateVariables(deployment, pathKey.isIdAvailable() ? deployment.getName() : null)))
+                    : baseUrl + rewriteDeploymentName(ingressPath, resolveDeploymentName(deployment));
+        }
         return query == null ? uri : uri + "?" + query;
+    }
+
+    /**
+     * The absolute uri a Responses API item operation (get/delete/cancel, and the background poll) is
+     * forwarded to, or null when nothing serves the type. An {@code overridePaths} template for the
+     * operation replaces the whole path under the base url; otherwise the id and the operation's suffix
+     * are appended to {@link #resolveResponsesBaseUri}. {@code responseId} is the id of this hop: the
+     * upstream response id toward the provider, the dial one toward an interceptor.
+     */
+    @Nullable
+    public String resolveResponseItemUri(Deployment deployment, Map<String, Translator> translators,
+                                         OverridePathKey pathKey, String responseId, @Nullable String query) {
+        String baseUrl = resolveInterfaceBaseUrl(deployment, InterfaceType.OPENAI_RESPONSES, translators);
+        String template = baseUrl == null ? null : findOverridePath(deployment, InterfaceType.OPENAI_RESPONSES, pathKey);
+        String uri;
+        if (template != null) {
+            uri = baseUrl + leadingSlash(PathTemplateUtil.render(template, templateVariables(deployment, responseId)));
+        } else {
+            String responsesBaseUri = resolveResponsesBaseUri(deployment, translators);
+            uri = responsesBaseUri == null ? null : responsesBaseUri + "/" + responseId + itemOperationSuffix(pathKey);
+        }
+        return uri == null || query == null ? uri : uri + "?" + query;
     }
 
     /**
@@ -158,6 +190,74 @@ public class DeploymentEndpointUtil {
     @Nullable
     private String passthroughBaseUrl(Deployment deployment, DeploymentInterface deploymentInterface) {
         return deploymentInterface.getBaseUrl() != null ? deploymentInterface.getBaseUrl() : deployment.getBaseUrl();
+    }
+
+    private String itemOperationSuffix(OverridePathKey pathKey) {
+        return switch (pathKey) {
+            case GET_OPENAI_RESPONSES_BY_ID, DELETE_OPENAI_RESPONSES_BY_ID -> "";
+            case POST_OPENAI_RESPONSES_CANCEL -> "/cancel";
+            default -> throw new IllegalArgumentException("Not a response item operation: " + pathKey);
+        };
+    }
+
+    /**
+     * The override key the ingress request maps to, or null for the one deployments-POST action with no
+     * key of its own — the legacy {@code /completions}. The anthropic paths carry no deployment segment,
+     * so the path itself picks between messages and count_tokens.
+     */
+    @Nullable
+    private OverridePathKey findRequestPathKey(InterfaceType type, String ingressPath) {
+        return switch (type) {
+            case OPENAI_CHAT_COMPLETIONS -> isChatCompletionsPath(ingressPath)
+                    ? OverridePathKey.POST_AZURE_OPENAI_CHAT_COMPLETIONS
+                    : null;
+            case OPENAI_EMBEDDINGS -> OverridePathKey.POST_AZURE_OPENAI_EMBEDDINGS;
+            case OPENAI_RESPONSES -> OverridePathKey.POST_OPENAI_RESPONSES;
+            case ANTHROPIC_MESSAGES -> ingressPath.endsWith("/count_tokens")
+                    ? OverridePathKey.POST_ANTHROPIC_MESSAGES_COUNT_TOKENS
+                    : OverridePathKey.POST_ANTHROPIC_MESSAGES;
+        };
+    }
+
+    private boolean isChatCompletionsPath(String ingressPath) {
+        Matcher matcher = DEPLOYMENT_SEGMENT.matcher(ingressPath);
+        return matcher.find() && "chat/completions".equals(matcher.group("action"));
+    }
+
+    /**
+     * The {@code overridePaths} template the interface entry declares for the operation, or null when it
+     * declares none. A translated interface routes to its translator's DIAL-contract url, so overrides
+     * never apply to it.
+     */
+    @Nullable
+    private String findOverridePath(Deployment deployment, InterfaceType type, @Nullable OverridePathKey pathKey) {
+        if (pathKey == null) {
+            return null;
+        }
+        DeploymentInterface deploymentInterface = findInterface(deployment, type);
+        if (deploymentInterface == null || deploymentInterface.getMode() == InterfaceMode.TRANSLATOR) {
+            return null;
+        }
+        Map<String, String> overridePaths = deploymentInterface.getOverridePaths();
+        return overridePaths == null ? null : overridePaths.get(pathKey.getValue());
+    }
+
+    /**
+     * The values an override template renders with: {@code overrideName} always — the name the deployment
+     * is addressed by upstream, see {@link #resolveDeploymentName} — and {@code id} when the operation
+     * carries one.
+     */
+    private Map<String, String> templateVariables(Deployment deployment, @Nullable String id) {
+        Map<String, String> variables = new HashMap<>();
+        variables.put("overrideName", resolveDeploymentName(deployment));
+        if (id != null) {
+            variables.put("id", id);
+        }
+        return variables;
+    }
+
+    private String leadingSlash(String path) {
+        return path.startsWith("/") ? path : "/" + path;
     }
 
     /**
