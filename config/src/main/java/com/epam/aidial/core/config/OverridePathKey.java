@@ -13,21 +13,55 @@ import lombok.Getter;
 public enum OverridePathKey {
 
     @JsonAlias({"post_azure_openai_chat_completions"})
-    POST_AZURE_OPENAI_CHAT_COMPLETIONS("postAzureOpenaiChatCompletions", InterfaceType.OPENAI_CHAT_COMPLETIONS, true),
+    POST_AZURE_OPENAI_CHAT_COMPLETIONS(
+            "postAzureOpenaiChatCompletions",
+            InterfaceType.OPENAI_CHAT_COMPLETIONS,
+            true
+    ),
     @JsonAlias({"post_azure_openai_embeddings"})
-    POST_AZURE_OPENAI_EMBEDDINGS("postAzureOpenaiEmbeddings", InterfaceType.OPENAI_EMBEDDINGS, true),
+    POST_AZURE_OPENAI_EMBEDDINGS(
+            "postAzureOpenaiEmbeddings",
+            InterfaceType.OPENAI_EMBEDDINGS,
+            true
+    ),
+
     @JsonAlias({"post_openai_responses"})
-    POST_OPENAI_RESPONSES("postOpenaiResponses", InterfaceType.OPENAI_RESPONSES, false),
+    POST_OPENAI_RESPONSES(
+            "postOpenaiResponses",
+            InterfaceType.OPENAI_RESPONSES,
+            false
+    ),
     @JsonAlias({"get_openai_responses_by_id"})
-    GET_OPENAI_RESPONSES_BY_ID("getOpenaiResponsesById", InterfaceType.OPENAI_RESPONSES, true),
+    GET_OPENAI_RESPONSES_BY_ID(
+            "getOpenaiResponsesById",
+            InterfaceType.OPENAI_RESPONSES,
+            true
+    ),
     @JsonAlias({"delete_openai_responses_by_id"})
-    DELETE_OPENAI_RESPONSES_BY_ID("deleteOpenaiResponsesById", InterfaceType.OPENAI_RESPONSES, true),
+    DELETE_OPENAI_RESPONSES_BY_ID(
+            "deleteOpenaiResponsesById",
+            InterfaceType.OPENAI_RESPONSES,
+            true
+    ),
     @JsonAlias({"post_openai_responses_cancel"})
-    POST_OPENAI_RESPONSES_CANCEL("postOpenaiResponsesCancel", InterfaceType.OPENAI_RESPONSES, true),
+    POST_OPENAI_RESPONSES_CANCEL(
+            "postOpenaiResponsesCancel",
+            InterfaceType.OPENAI_RESPONSES,
+            true
+    ),
+
     @JsonAlias({"post_anthropic_messages"})
-    POST_ANTHROPIC_MESSAGES("postAnthropicMessages", InterfaceType.ANTHROPIC_MESSAGES, false),
+    POST_ANTHROPIC_MESSAGES(
+            "postAnthropicMessages",
+            InterfaceType.ANTHROPIC_MESSAGES,
+            false
+    ),
     @JsonAlias({"post_anthropic_messages_count_tokens"})
-    POST_ANTHROPIC_MESSAGES_COUNT_TOKENS("postAnthropicMessagesCountTokens", InterfaceType.ANTHROPIC_MESSAGES, false);
+    POST_ANTHROPIC_MESSAGES_COUNT_TOKENS(
+            "postAnthropicMessagesCountTokens",
+            InterfaceType.ANTHROPIC_MESSAGES,
+            false
+    );
 
     @JsonValue
     private final String value;
