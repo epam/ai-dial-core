@@ -7,7 +7,6 @@ import com.epam.aidial.core.config.LocalizedValue;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.Route;
-import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -41,6 +40,7 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
 
@@ -115,7 +115,8 @@ public class ApplicationController {
             // sign-in status (one credential lookup per service). The listing skips both to avoid
             // N×M lookups — it returns the inline definitions only.
             overlayUserAuthoredServices(data, application);
-            enrichExternalServiceStatuses(data);
+            new ExternalServiceStatusEnricher(context, resourceAuthSettingsService)
+                    .enrichApplication(UrlUtil.tryDecodePath(data.getId()), data.getExternalServices());
             return data;
         })
                 .onSuccess(data -> context.respond(HttpStatus.OK, data))
@@ -465,29 +466,6 @@ public class ApplicationController {
         }
         return id.startsWith(CredentialsLocatorFactory.APPLICATIONS_PREFIX)
                 ? id.substring(CredentialsLocatorFactory.APPLICATIONS_PREFIX.length()) : id;
-    }
-
-    private void enrichExternalServiceStatuses(ApplicationData data) {
-        Map<String, ExternalService> services = data.getExternalServices();
-        if (services == null || services.isEmpty()) {
-            return;
-        }
-        String appId = appPart(data.getId());
-        ExternalServiceStatusEnricher enricher = new ExternalServiceStatusEnricher(context, resourceAuthSettingsService);
-        for (Map.Entry<String, ExternalService> entry : services.entrySet()) {
-            ResourceAuthSettings authSettings = entry.getValue().getAuthSettings();
-            if (authSettings == null) {
-                continue;
-            }
-            try {
-                String scopeId = CredentialsLocatorFactory.APPLICATIONS_PREFIX + appId
-                        + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + entry.getKey();
-                CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
-                enricher.enrich(locator, authSettings);
-            } catch (RuntimeException e) {
-                log.warn("Failed to compute external-service status for '{}' on '{}'", entry.getKey(), data.getId(), e);
-            }
-        }
     }
 
 }
