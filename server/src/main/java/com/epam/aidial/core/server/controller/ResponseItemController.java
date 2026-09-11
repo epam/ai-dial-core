@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.config.OverridePathKey;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -176,7 +177,7 @@ public class ResponseItemController implements Controller {
     }
 
     private Future<Void> handleInterceptor(int interceptorIndex) {
-        return new ResponsesInterceptorController(proxy, context, dialResponseId, operation.suffix, interceptorIndex).handle().mapEmpty();
+        return new ResponsesInterceptorController(proxy, context, dialResponseId, operation.key, interceptorIndex).handle().mapEmpty();
     }
 
     private Future<Void> forwardToUpstream(ResponseMapping mapping, Deployment deployment) {
@@ -188,10 +189,9 @@ public class ResponseItemController implements Controller {
                         mapping.getUpstreamKey());
         Upstream upstream = upstreamRoute.next();
 
-        String query = context.getRequest().query();
-        String targetUrl = DeploymentEndpointUtil.resolveResponsesBaseUri(deployment, context.getConfig().getTranslators())
-                + "/" + mapping.getUpstreamResponseId() + operation.suffix
-                + (query != null ? "?" + query : "");
+        String targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment,
+                context.getConfig().getTranslators(), operation.key, mapping.getUpstreamResponseId(),
+                context.getRequest().query());
 
         return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream)
                 .compose(response -> {
@@ -302,11 +302,11 @@ public class ResponseItemController implements Controller {
 
     @RequiredArgsConstructor
     public enum Operation {
-        GET(HttpMethod.GET, ""),
-        CANCEL(HttpMethod.POST, "/cancel"),
-        DELETE(HttpMethod.DELETE, "");
+        GET(HttpMethod.GET, OverridePathKey.GET_OPENAI_RESPONSES_BY_ID),
+        CANCEL(HttpMethod.POST, OverridePathKey.POST_OPENAI_RESPONSES_CANCEL),
+        DELETE(HttpMethod.DELETE, OverridePathKey.DELETE_OPENAI_RESPONSES_BY_ID);
 
         private final HttpMethod method;
-        private final String suffix;
+        private final OverridePathKey key;
     }
 }
