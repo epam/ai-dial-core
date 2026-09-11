@@ -10,6 +10,7 @@ import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.OverridePathKey;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.Role;
@@ -25,6 +26,7 @@ import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
+import com.epam.aidial.core.server.util.PathTemplateUtil;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import lombok.extern.slf4j.Slf4j;
 
@@ -420,6 +422,61 @@ public final class ConfigPostProcessor {
             } else if (declared.getBaseUrl() == null && model.getBaseUrl() == null) {
                 warnings.add(new ValidationWarning(field,
                         "Interface '" + entry.getKey() + "' declares no base_url and the model declares no baseUrl"));
+            }
+            validateOverridePaths(entry.getKey(), declared, field, warnings);
+        }
+    }
+
+    /**
+     * Validates an interface entry's {@code overridePaths}. A key this Core does not know is tolerated —
+     * exactly as an unknown interface type is — but a known key under an interface that does not own it,
+     * a template that does not parse, and a variable the operation cannot render are config contradicting
+     * itself. A translated interface routes to its translator, so overrides on it are dead config.
+     */
+    private static void validateOverridePaths(String type, DeploymentInterface declared, String field,
+                                              List<ValidationWarning> warnings) {
+        Map<String, String> overridePaths = declared.getOverridePaths();
+        if (overridePaths == null || overridePaths.isEmpty()) {
+            return;
+        }
+        if (declared.getMode() == InterfaceMode.TRANSLATOR) {
+            warnings.add(new ValidationWarning(field,
+                    "A translated interface is served by its translator: overridePaths has no effect"));
+            return;
+        }
+        for (Map.Entry<String, String> entry : overridePaths.entrySet()) {
+            OverridePathKey pathKey = OverridePathKey.find(entry.getKey());
+            if (pathKey == null) {
+                continue;
+            }
+            String keyField = field + ".overridePaths." + entry.getKey();
+            if (pathKey.getInterfaceType() != InterfaceType.find(type)) {
+                warnings.add(new ValidationWarning(keyField, "Override path key '" + entry.getKey()
+                        + "' belongs to interface '" + pathKey.getInterfaceType().getValue() + "'"));
+                continue;
+            }
+            validateOverridePathTemplate(pathKey, entry.getValue(), keyField, warnings);
+        }
+    }
+
+    private static void validateOverridePathTemplate(OverridePathKey pathKey, @Nullable String template,
+                                                     String keyField, List<ValidationWarning> warnings) {
+        if (template == null || template.isBlank()) {
+            warnings.add(new ValidationWarning(keyField, "Override path is empty"));
+            return;
+        }
+        Set<String> variables;
+        try {
+            variables = PathTemplateUtil.collectVariables(template);
+        } catch (IllegalArgumentException e) {
+            warnings.add(new ValidationWarning(keyField, e.getMessage()));
+            return;
+        }
+        for (String variable : variables) {
+            if (variable.equals("id") && !pathKey.isIdAvailable()) {
+                warnings.add(new ValidationWarning(keyField, "The operation carries no id: {id} cannot render"));
+            } else if (!variable.equals("id") && !variable.equals("overrideName")) {
+                warnings.add(new ValidationWarning(keyField, "Unknown template variable: {" + variable + "}"));
             }
         }
     }

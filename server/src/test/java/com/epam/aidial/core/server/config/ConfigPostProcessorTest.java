@@ -467,6 +467,89 @@ public class ConfigPostProcessorTest {
         assertTrue(config.getModels().containsKey("model"));
     }
 
+    private static Config configWithOverridePaths(String interfaceType, Map<String, String> overridePaths) {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setBaseUrl("http://model");
+        DeploymentInterface declared = new DeploymentInterface();
+        declared.setOverridePaths(overridePaths);
+        model.setInterfaces(Map.of(interfaceType, declared));
+        config.getModels().put("model", model);
+        return config;
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnOverridePathKeyUnderTheWrongInterface() {
+        Config config = configWithOverridePaths("openaiChatCompletions", Map.of("postAnthropicMessages", "/v1/messages"));
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnMalformedOverridePathTemplate() {
+        Config config = configWithOverridePaths("openaiChatCompletions", Map.of("postAzureOpenaiChatCompletions", "/v1/{id"));
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnUnknownOverridePathVariable() {
+        Config config = configWithOverridePaths("openaiChatCompletions", Map.of("postAzureOpenaiChatCompletions", "/v1/{nope}"));
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnIdVariableWhereTheOperationHasNone() {
+        Config config = configWithOverridePaths("anthropicMessages", Map.of("postAnthropicMessages", "/v1/{id}/messages"));
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnOverridePathsForATranslatedInterface() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setBaseUrl("http://model");
+        DeploymentInterface anthropic = translated(TranslatorRef.inline(
+                new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://translator")));
+        anthropic.setOverridePaths(Map.of("postAnthropicMessages", "/v1/messages"));
+        model.setInterfaces(Map.of(
+                "openaiChatCompletions", new DeploymentInterface(),
+                "anthropicMessages", anthropic));
+        config.getModels().put("model", model);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAllowsValidOverridePathsAndToleratesUnknownKeys() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setBaseUrl("http://model");
+        DeploymentInterface chat = new DeploymentInterface();
+        chat.setOverridePaths(Map.of(
+                "postAzureOpenaiChatCompletions", "/openai/deployments/{overrideName}/v1/{id}/re{{}}sponses",
+                "someFutureKey", "/whatever/{unvalidated}"));
+        DeploymentInterface responses = new DeploymentInterface();
+        responses.setOverridePaths(Map.of(
+                "postOpenaiResponses", "/v1/responses",
+                "getOpenaiResponsesById", "/v1/responses/{id}"));
+        model.setInterfaces(Map.of(
+                "openaiChatCompletions", chat,
+                "openaiResponses", responses));
+        config.getModels().put("model", model);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getModels().containsKey("model"));
+    }
+
     private static DeploymentInterface translated(TranslatorRef translator) {
         DeploymentInterface declared = new DeploymentInterface();
         declared.setMode(InterfaceMode.TRANSLATOR);
