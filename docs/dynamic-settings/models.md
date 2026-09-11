@@ -182,6 +182,7 @@ Each value is an object with the following fields:
 * `defaultHeaders`: Headers applied to requests for this interface only, laid over the model-level `defaultHeaders`. Refer to [models.<model_name>.defaultHeaders](#modelsmodel_namedefaultheaders).
 * `features`: Feature fields that override model-level `features` for this interface only. Unspecified fields inherit the model-level value, then Core defaults apply. Refer to [Features per interface](#features-per-interface).
 * `defaults`: Body parameters applied to requests for this interface only, replacing whichever model-level defaults would otherwise serve it. They are injected the same way the model-level ones are — a key the request already carries is never replaced. Refer to [Defaults per interface](#defaults-per-interface).
+* `overridePaths`: Per-operation upstream paths that replace the default "base URL + ingress path" routing for this interface. Refer to [Override paths per interface](#override-paths-per-interface).
 
 **Example**
 
@@ -215,6 +216,83 @@ Each value is an object with the following fields:
     }
 }
 ```
+
+### Override paths per interface
+
+By default an `interfaces` entry forwards each request to its base URL + the exact ingress path.
+`overridePaths` replaces that path per operation, which is how DIAL Core fronts services that do not
+follow the DIAL API path contract (e.g. Switchyard serving `/v1/chat/completions`).
+
+The map is keyed by a constant naming the Core operation (`{http_method}{api_provider}{api_type}`),
+and the value is the path applied to the base URL instead of the ingress path:
+
+| Key                                | Core operation                                   |
+|------------------------------------|--------------------------------------------------|
+| `postAzureOpenaiChatCompletions`   | `POST /openai/deployments/{id}/chat/completions` |
+| `postAzureOpenaiEmbeddings`        | `POST /openai/deployments/{id}/embeddings`       |
+| `postOpenaiResponses`              | `POST /openai/v1/responses`                      |
+| `getOpenaiResponsesById`           | `GET /openai/v1/responses/{id}`                  |
+| `deleteOpenaiResponsesById`        | `DELETE /openai/v1/responses/{id}`               |
+| `postOpenaiResponsesCancel`        | `POST /openai/v1/responses/{id}/cancel`          |
+| `postAnthropicMessages`            | `POST /anthropic/v1/messages`                    |
+| `postAnthropicMessagesCountTokens` | `POST /anthropic/v1/messages/count_tokens`       |
+
+A key sits under the interface that owns it — a known key declared under a different interface is
+rejected on config load, while a key this Core version does not know is ignored, exactly as an
+unknown interface type is. Operations without an override keep the default routing, so overriding
+only some of an interface's operations is fine.
+
+The value is a template with `{variable}` placeholders, following the Python `str.format`
+convention: literal curly braces are escaped by doubling (`{{` renders `{`, `}}` renders `}`, and a
+doubled opening brace does not start a variable), and an unmatched brace is rejected on config load.
+
+* `{id}` renders the id of the operation: the deployment's name for the deployments-POST family
+  (`postAzureOpenaiChatCompletions`, `postAzureOpenaiEmbeddings`), and the response id for the
+  Responses API item operations (`getOpenaiResponsesById`, `deleteOpenaiResponsesById`,
+  `postOpenaiResponsesCancel`) — the upstream response id toward the provider, the DIAL one toward
+  an interceptor. The remaining operations carry no id, so `{id}` there is rejected on config load.
+* `{overrideName}` renders the deployment's URL-encoded `overrideName`, or its own name when none
+  is set.
+
+Override paths apply only to the interfaces/base-URL routing: the legacy `endpoint`/
+`responsesEndpoint` fields are still forwarded verbatim, and a `mode: translator` interface is
+served by its translator — declaring `overridePaths` on one is rejected on config load. Query
+strings are appended to the overridden URL exactly as they are to the default one.
+
+**Example**
+
+```json
+"models": {
+    "gpt_switchyard": {
+        "type": "chat",
+        "overrideName": "switchyard-gpt",
+        "baseUrl": "https://dm-switchyard/",
+        "interfaces": {
+            "openaiChatCompletions": {
+                "overridePaths": { "postAzureOpenaiChatCompletions": "/v1/chat/completions" }
+            },
+            "openaiResponses": {
+                "overridePaths": {
+                    "postOpenaiResponses": "/v1/responses",
+                    "getOpenaiResponsesById": "/v1/responses/{id}",
+                    "deleteOpenaiResponsesById": "/v1/responses/{id}",
+                    "postOpenaiResponsesCancel": "/v1/responses/{id}/cancel"
+                }
+            },
+            "anthropicMessages": {
+                "overridePaths": {
+                    "postAnthropicMessages": "/v1/messages",
+                    "postAnthropicMessagesCountTokens": "/v1/messages/count_tokens"
+                }
+            }
+        }
+    }
+}
+```
+
+With this configuration, `POST {core}/openai/deployments/gpt_switchyard/chat/completions` is
+forwarded to `POST https://dm-switchyard/v1/chat/completions` instead of
+`https://dm-switchyard/openai/deployments/switchyard-gpt/chat/completions`.
 
 ### Features per interface
 

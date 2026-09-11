@@ -66,6 +66,7 @@ Each value is an object with the following fields:
 * `base_url`: The interceptor service root that the matching ingress path is appended to. Optional — the interceptor-level `baseUrl` serves an entry that omits it.
 * `defaultHeaders`: Headers applied to requests for this interface only, laid over the interceptor-level `defaultHeaders`. Refer to [interceptors.<interceptor_name>.defaultHeaders](#interceptorsinterceptor_namedefaultheaders).
 * `defaults`: Body parameters applied to requests for this interface only. Unlike `defaultHeaders`, the two levels are **not** merged: an entry declaring `defaults` states the whole set and **replaces** the interceptor-level `defaults`, so a key it does not name is not defaulted at all. The interceptor-level `defaults` applies only where the entry declares none. Whatever the source, a default is only a fallback — a parameter the request body already carries is never replaced.
+* `overridePaths`: Per-operation upstream paths that replace the default routing for the hop that calls this interceptor, working exactly as they do for models — for interceptors the applicable key is `postAzureOpenaiChatCompletions`, and `{id}` renders the interceptor's own name. See [Override paths per interface](models.md#override-paths-per-interface).
 
 **Example**
 
