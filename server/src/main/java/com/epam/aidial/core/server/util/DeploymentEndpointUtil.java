@@ -245,7 +245,9 @@ public class DeploymentEndpointUtil {
     /**
      * The values an override template renders with: {@code overrideName} always — the name the deployment
      * is addressed by upstream, see {@link #resolveDeploymentName} — and {@code id} when the operation
-     * carries one.
+     * carries one. For the deployments-POST family {@code id} is the deployment's own name rather than the
+     * raw ingress segment: they are equal on a direct call, but the segment is the pseudo-id
+     * {@code interceptor} on the callback hop, exactly the case {@link #rewriteDeploymentName} exists for.
      */
     private Map<String, String> templateVariables(Deployment deployment, @Nullable String id) {
         Map<String, String> variables = new HashMap<>();
