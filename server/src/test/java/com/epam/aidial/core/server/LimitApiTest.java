@@ -1,5 +1,8 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.RateLimitSchedule;
+import com.epam.aidial.core.server.limiter.CalendarPeriod;
+import com.epam.aidial.core.server.limiter.CalendarWindowCalculator;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
@@ -7,6 +10,9 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,6 +25,15 @@ public class LimitApiTest extends ResourceBaseTest {
 
     @Test
     public void testGetLimitStats_Success() {
+        // the default (unconfigured) rateLimitSchedule - UTC, Monday, 00:00 - is what every dial-config
+        // fixture here relies on; resetsAt is a pure function of "now" against that schedule, computed
+        // the same way here and by the server, so it lands on the same instant unless the test happens
+        // to straddle a period boundary at the exact millisecond
+        RateLimitSchedule schedule = new RateLimitSchedule();
+        String dayResetsAt = resetsAt(CalendarPeriod.DAY, schedule);
+        String weekResetsAt = resetsAt(CalendarPeriod.WEEK, schedule);
+        String monthResetsAt = resetsAt(CalendarPeriod.MONTH, schedule);
+
         Response response = send(HttpMethod.GET, "/v1/deployments/test-model-v1/limits", null, null);
         verifyJson(response, 200, """
                 {
@@ -28,15 +43,18 @@ public class LimitApiTest extends ResourceBaseTest {
                   },
                   "dayTokenStats": {
                     "total": %d,
-                    "used": %d
+                    "used": %d,
+                    "resetsAt": "%s"
                   },
                   "weekTokenStats": {
                     "total": %d,
-                    "used": %d
+                    "used": %d,
+                    "resetsAt": "%s"
                   },
                   "monthTokenStats": {
                     "total": %d,
-                    "used": %d
+                    "used": %d,
+                    "resetsAt": "%s"
                   },
                   "hourRequestStats": {
                     "total": %d,
@@ -44,7 +62,8 @@ public class LimitApiTest extends ResourceBaseTest {
                   },
                   "dayRequestStats": {
                     "total": %d,
-                    "used": %d
+                    "used": %d,
+                    "resetsAt": "%s"
                   },
                   "minuteCostStats": {
                     "total": %d,
@@ -52,21 +71,37 @@ public class LimitApiTest extends ResourceBaseTest {
                   },
                   "dayCostStats": {
                     "total": %d,
-                    "used": %d
+                    "used": %d,
+                    "resetsAt": "%s"
                   },
                   "weekCostStats": {
                     "total": %d,
-                    "used": %d
+                    "used": %d,
+                    "resetsAt": "%s"
                   },
                   "monthCostStats": {
                     "total": %d,
-                    "used": %d
+                    "used": %d,
+                    "resetsAt": "%s"
                   }
                 }
                 """.formatted(
-                        Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0,
-                        Long.MAX_VALUE, 0, Long.MAX_VALUE, 0,
-                        Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0));
+                        Long.MAX_VALUE, 0,
+                        Long.MAX_VALUE, 0, dayResetsAt,
+                        Long.MAX_VALUE, 0, weekResetsAt,
+                        Long.MAX_VALUE, 0, monthResetsAt,
+                        Long.MAX_VALUE, 0,
+                        Long.MAX_VALUE, 0, dayResetsAt,
+                        Long.MAX_VALUE, 0,
+                        Long.MAX_VALUE, 0, dayResetsAt,
+                        Long.MAX_VALUE, 0, weekResetsAt,
+                        Long.MAX_VALUE, 0, monthResetsAt));
+    }
+
+    private static String resetsAt(CalendarPeriod period, RateLimitSchedule schedule) {
+        long resetsAtMillis = CalendarWindowCalculator.nextPeriodStart(period, System.currentTimeMillis(), schedule);
+        return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(
+                Instant.ofEpochMilli(resetsAtMillis).atZone(ZoneId.of(schedule.getTimezone())));
     }
 
     @Test

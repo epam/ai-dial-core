@@ -250,6 +250,11 @@
             "role": "default"
         }
     },
+    "rateLimitSchedule": {
+        "timezone": "UTC",
+        "weekStartDay": "Mon",
+        "resetTime": "00:00"
+    },
     "roles": {
         "default": {
             "limits": {
