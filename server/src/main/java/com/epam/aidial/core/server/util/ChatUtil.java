@@ -22,6 +22,10 @@ public class ChatUtil {
         return JsonUtil.collectStrings(node, paths, ChatUtil::readCustomAttachment);
     }
 
+    public Set<String> collectCustomSkills(JsonNode node, List<String> paths) {
+        return JsonUtil.collectStrings(node, paths, ChatUtil::readCustomSkill);
+    }
+
     private String readAttachment(JsonNode node) {
         if (!node.isTextual()) {
             throw new IllegalArgumentException("Invalid attachment.");
@@ -45,6 +49,17 @@ public class ChatUtil {
                 throw new IllegalArgumentException("Url of metadata attachment must start with metadata/: " + url);
             }
             url = url.substring(ProxyUtil.METADATA_PREFIX.length());
+        }
+        return url;
+    }
+
+    public String readCustomSkill(JsonNode node) {
+        if (!node.isObject()) {
+            throw new IllegalArgumentException("Invalid skill attachment.");
+        }
+        String url = node.path("url").asText();
+        if (StringUtils.isBlank(url)) {
+            throw new IllegalArgumentException("Missing url in skill attachment.");
         }
         return url;
     }

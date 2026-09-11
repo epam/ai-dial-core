@@ -61,6 +61,11 @@ public class ChatCompletionRequest implements RequestObject {
     }
 
     @Override
+    public Set<String> collectSkills() {
+        return ChatUtil.collectCustomSkills(tree, List.of("$.messages[*].custom_content.skills[*]"));
+    }
+
+    @Override
     public List<CacheKey> buildCacheKeys(List<String> nodeOrder) {
         CacheKeyBuilder builder = new CacheKeyBuilder();
         List<CacheKey> result = new ArrayList<>();
