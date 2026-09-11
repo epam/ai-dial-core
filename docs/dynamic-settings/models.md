@@ -240,7 +240,10 @@ and the value is the path applied to the base URL instead of the ingress path:
 A key sits under the interface that owns it — a known key declared under a
 different interface is rejected on config load, while a key this Core version does not know is
 ignored, exactly as an unknown interface type is. Operations without an override keep the default routing, so overriding
-only some of an interface's operations is fine.
+only some of an interface's operations is fine. Operation keys use the exact camelCase spellings
+listed above; `override_paths` is an alias for the `overridePaths` field itself.
+Malformed templates are rejected before API writes persist the deployment, including admin
+validate/apply and application writes.
 
 The value is a template with `{variable}` placeholders, following the Python `str.format`
 convention: literal curly braces are escaped by doubling (`{{` renders `{`, `}}` renders `}`, and a

@@ -4,17 +4,46 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * End-to-end coverage for {@code interfaces.<type>.overridePaths}: a request on the standard Core
  * path reaches the upstream on the overridden path, per API family.
  */
 class OverridePathsApiTest extends ResourceBaseTest {
+
+    @Test
+    @DialConfigLocation("dial-config/override-paths.json")
+    void streamingGetPreservesQueryAndRewritesResponseIdOnOverriddenPath() throws Exception {
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/v1/responses", request ->
+                    TestWebServer.createResponse(200,
+                            "{\"id\":\"stream_1\",\"object\":\"response\",\"output\":[]}",
+                            "Content-Type", "application/json"));
+            server.map(HttpMethod.GET, "/v1/responses/stream_1?stream=true&starting_after=3", request ->
+                    TestWebServer.createResponse(200,
+                            "event: response.completed\ndata: {\"response\":{\"id\":\"stream_1\",\"status\":\"completed\",\"output\":[]}}\n\n",
+                            "Content-Type", "text/event-stream"));
+            Response created = send(HttpMethod.POST, "/openai/v1/responses", null,
+                    "{\"model\":\"responses-switchyard\",\"store\":true,\"input\":\"hello\"}",
+                    "Content-Type", "application/json");
+            assertEquals(200, created.status(), created.body());
+            String dialId = ProxyUtil.MAPPER.readTree(created.body()).path("id").asText();
+            Response response = send(HttpMethod.GET,
+                    "/openai/v1/responses/" + dialId + "?stream=true&starting_after=3", null, null);
+            assertEquals(200, response.status(), response.body());
+            assertTrue(response.body().contains(dialId), response.body());
+            assertFalse(response.body().contains("\"stream_1\""), response.body());
+        }
+    }
 
     @Test
     @DialConfigLocation("dial-config/override-paths.json")
@@ -103,9 +132,13 @@ class OverridePathsApiTest extends ResourceBaseTest {
         }
     }
 
-    @Test
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
     @DialConfigLocation("dial-config/override-paths.json")
-    void responsesCreateAndGetByIdRoutedToTheOverriddenPaths() throws Exception {
+    void responsesCreateAndGetByIdRoutedToTheOverriddenPaths(boolean overrideAllOperations) throws Exception {
+        String model = overrideAllOperations ? "responses-fully-overridden" : "responses-switchyard";
+        String cancelPath = overrideAllOperations ? "/custom/cancel/resp_1" : "/openai/v1/responses/resp_1/cancel";
+        String deletePath = overrideAllOperations ? "/custom/delete/resp_1" : "/openai/v1/responses/resp_1";
         AtomicReference<String> capturedPath = new AtomicReference<>();
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/v1/responses", request -> {
@@ -120,19 +153,19 @@ class OverridePathsApiTest extends ResourceBaseTest {
                 return TestWebServer.createResponse(200, "{\"id\":\"resp_1\",\"status\":\"completed\"}",
                         "Content-Type", "application/json");
             });
-            server.map(HttpMethod.POST, "/openai/v1/responses/resp_1/cancel", request -> {
+            server.map(HttpMethod.POST, cancelPath, request -> {
                 capturedPath.set(request.getPath());
                 return TestWebServer.createResponse(200, "{\"id\":\"resp_1\",\"status\":\"cancelled\"}",
                         "Content-Type", "application/json");
             });
-            server.map(HttpMethod.DELETE, "/openai/v1/responses/resp_1", request -> {
+            server.map(HttpMethod.DELETE, deletePath, request -> {
                 capturedPath.set(request.getPath());
                 return TestWebServer.createResponse(200, "{\"id\":\"resp_1\",\"deleted\":true}",
                         "Content-Type", "application/json");
             });
 
             Response response = send(HttpMethod.POST, "/openai/v1/responses", null,
-                    "{\"model\":\"responses-switchyard\",\"store\":true,\"input\":\"hello\"}",
+                    "{\"model\":\"" + model + "\",\"store\":true,\"input\":\"hello\"}",
                     "Content-Type", "application/json");
             assertEquals(200, response.status(), response.body());
             assertEquals("/v1/responses", capturedPath.get());
@@ -147,14 +180,14 @@ class OverridePathsApiTest extends ResourceBaseTest {
             // {id} in getOpenaiResponsesById renders the upstream response id, not the dial one
             assertEquals("/v1/responses/resp_1", capturedPath.get());
 
-            // cancel and delete carry no override of their own here, so they keep the default path
+            // Verify both explicit operation overrides and fallback when only create/GET are overridden.
             response = send(HttpMethod.POST, "/openai/v1/responses/" + dialId + "/cancel", null, null);
             assertEquals(200, response.status(), response.body());
-            assertEquals("/openai/v1/responses/resp_1/cancel", capturedPath.get());
+            assertEquals(cancelPath, capturedPath.get());
 
             response = send(HttpMethod.DELETE, "/openai/v1/responses/" + dialId, null, null);
             assertEquals(200, response.status(), response.body());
-            assertEquals("/openai/v1/responses/resp_1", capturedPath.get());
+            assertEquals(deletePath, capturedPath.get());
         }
     }
 }

@@ -1,5 +1,18 @@
 {
   "models": {
+    "responses-fully-overridden": {
+      "baseUrl": "http://localhost:4848/",
+      "interfaces": {
+        "openaiResponses": {
+          "overridePaths": {
+            "postOpenaiResponses": "/v1/responses",
+            "getOpenaiResponsesById": "/v1/responses/{id}",
+            "deleteOpenaiResponsesById": "/custom/delete/{id}",
+            "postOpenaiResponsesCancel": "/custom/cancel/{id}"
+          }
+        }
+      }
+    },
     "gpt-switchyard": {
       "type": "chat",
       "overrideName": "switchyard-gpt",

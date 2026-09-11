@@ -28,7 +28,10 @@ import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.PathTemplateUtil;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -468,6 +471,16 @@ public final class ConfigPostProcessor {
                         "Interface '" + entry.getKey() + "' declares no base_url and the model declares no baseUrl"));
             }
             validateOverridePaths(entry.getKey(), declared, field, warnings);
+        }
+    }
+
+    /** Reject malformed templates before an API write persists or encrypts the deployment. */
+    public static void requireValidOverridePaths(Deployment deployment) {
+        List<ValidationWarning> warnings = new ArrayList<>();
+        validateOverridePaths(deployment, warnings);
+        if (!warnings.isEmpty()) {
+            throw new HttpException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    new JsonObject().put("validationWarnings", warnings).encode());
         }
     }
 

@@ -21,6 +21,7 @@ import com.epam.aidial.core.server.data.config.manifest.AdminTranslatorManifest;
 import com.epam.aidial.core.server.data.config.manifest.ValidationResult;
 import com.epam.aidial.core.server.data.config.manifest.ValidationStatus;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -60,6 +61,7 @@ public class ConfigValidationService {
                     }
                 }
                 case AdminModelManifest modelManifest -> {
+                    ConfigPostProcessor.requireValidOverridePaths(modelManifest.spec());
                     Model model = modelManifest.spec();
                     List<ValidationWarning> warnings = new ArrayList<>();
                     ConfigPostProcessor.validatePricing(model, warnings);
@@ -75,6 +77,7 @@ public class ConfigValidationService {
                     }
                 }
                 case AdminInterceptorManifest interceptorManifest -> {
+                    ConfigPostProcessor.requireValidOverridePaths(interceptorManifest.spec());
                     String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
                             scratch, ResourceTypes.INTERCEPTOR, parsed.name());
                     if (dupError != null) {
@@ -105,6 +108,7 @@ public class ConfigValidationService {
                     }
                 }
                 case AdminApplicationManifest applicationManifest -> {
+                    ConfigPostProcessor.requireValidOverridePaths(applicationManifest.spec());
                     if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.name().bucket())) {
                         String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
                                 scratch, ResourceTypes.APPLICATION, parsed.name());
@@ -137,7 +141,7 @@ public class ConfigValidationService {
                     }
                 }
             }
-        } catch (IllegalArgumentException ex) {
+        } catch (IllegalArgumentException | HttpException ex) {
             return new ValidationResult(id, ValidationStatus.FAILED, ex.getMessage());
         }
         return new ValidationResult(id, ValidationStatus.VALID, null);

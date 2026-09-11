@@ -517,6 +517,28 @@ class BackgroundJobServiceTest {
     }
 
     @Test
+    void pollUsesOverriddenGetPathAndUpstreamResponseId(VertxTestContext ctx) throws Throwable {
+        Model model = new Model();
+        model.setName(DEPLOYMENT_NAME);
+        DeploymentInterface responses = new DeploymentInterface("http://adapter/");
+        responses.setOverridePaths(Map.of("postOpenaiResponses", "/create", "getOpenaiResponsesById", "/poll/{id}"));
+        model.setInterfaces(Map.of(InterfaceType.OPENAI_RESPONSES.getValue(), responses));
+        setupDeploymentMocks(model);
+        setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
+
+        poller.poll(buildMapping())
+                .onSuccess(result -> ctx.verify(() -> {
+                    assertNotNull(result);
+                    assertEquals("http://adapter/poll/" + UPSTREAM_RESPONSE_ID, capturePolledUrl());
+                    // the upstream is looked up by the endpoint the mapping's key was issued against
+                    assertEquals("http://adapter", captureEndpointSupplier().apply(model));
+                    ctx.completeNow();
+                }))
+                .onFailure(ctx::failNow);
+        await(ctx);
+    }
+
+    @Test
     void pollResolvesResponsesEndpointFromDeploymentBaseUrl(VertxTestContext ctx) throws Throwable {
         Model model = new Model();
         model.setName(DEPLOYMENT_NAME);

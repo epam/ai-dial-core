@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.metaschemas.CopyAppBucketOptions;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
@@ -327,6 +328,7 @@ public class ApplicationService {
 
         EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;
         consumer.accept(application);
+        ConfigPostProcessor.requireValidOverridePaths(application);
         application.setName(destination.getUrl());
 
         boolean isPublicOrReview = isPublicOrReview(destination);
@@ -575,6 +577,7 @@ public class ApplicationService {
 
     private void prepareApplication(ResourceDescriptor resource, Application application, boolean preserveForwardAuthToken) {
         verifyApplication(resource);
+        ConfigPostProcessor.requireValidOverridePaths(application);
         boolean platformBucket = ResourceDescriptor.PLATFORM_BUCKET.equals(resource.getBucketName());
         // platform hosts migrated config-file apps (and future API-managed equivalents), which are
         // inherently endpoint-based; function-type apps have no legitimate reason to live there, and

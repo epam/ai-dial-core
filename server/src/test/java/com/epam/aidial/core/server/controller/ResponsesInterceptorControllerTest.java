@@ -258,4 +258,32 @@ public class ResponsesInterceptorControllerTest {
         ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(updatedBody.getBytes());
         assertEquals("name", tree.get("model").asText());
     }
+
+    @Test
+    void interceptorOverridesUseDialIdAndPreserveQueryForEveryItemOperation() {
+        Interceptor interceptor = new Interceptor();
+        interceptor.setName("guard");
+        interceptor.setOverrideName("upstream guard");
+        DeploymentInterface config = new DeploymentInterface("http://adapter/root/");
+        config.setOverridePaths(Map.of(
+                "postOpenaiResponses", "/create",
+                "getOpenaiResponsesById", "/get/{id}",
+                "deleteOpenaiResponsesById", "/delete/{id}",
+                "postOpenaiResponsesCancel", "/cancel/{id}"));
+        interceptor.setInterfaces(Map.of("openaiResponses", config));
+        when(context.getDeployment()).thenReturn(interceptor);
+        when(context.getConfig()).thenReturn(new Config());
+        when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/v1/responses");
+        when(request.query()).thenReturn("stream=true&starting_after=42");
+        assertEquals("http://adapter/root/create?stream=true&starting_after=42",
+                new ResponsesInterceptorController(proxy, context, 0).buildUri(context));
+        for (var entry : Map.of(OverridePathKey.GET_OPENAI_RESPONSES_BY_ID, "get",
+                OverridePathKey.DELETE_OPENAI_RESPONSES_BY_ID, "delete",
+                OverridePathKey.POST_OPENAI_RESPONSES_CANCEL, "cancel").entrySet()) {
+            var controller = new ResponsesInterceptorController(proxy, context, "dial_123", entry.getKey(), 0);
+            assertEquals("http://adapter/root/" + entry.getValue() + "/dial_123?stream=true&starting_after=42",
+                    controller.buildUri(context));
+        }
+    }
 }
