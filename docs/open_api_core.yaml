@@ -16288,6 +16288,7 @@ components:
         key:
           type: string
           writeOnly: true
+          description: "Write-only secret, required on create. On PUT update an omitted key is preserved from the stored entity; an explicit null is rejected with 400."
         project:
           type: string
         role:
@@ -17900,11 +17901,15 @@ components:
         key:
           type: string
           writeOnly: true
+          nullable: true
+          description: "Write-only secret. On PUT update: omitted - preserved from the stored entity; explicit null - erased; a value (including the empty string) - replaces the secret."
         responsesEndpoint:
           type: string
         secretExtraData:
           type: string
           writeOnly: true
+          nullable: true
+          description: "Write-only secret. On PUT update: omitted - preserved from the stored entity; explicit null - erased; a value (including the empty string) - replaces the secret."
         tier:
           type: integer
         weight:
@@ -17923,9 +17928,13 @@ components:
         key:
           type: string
           writeOnly: true
+          nullable: true
+          description: "Write-only secret. On PUT update: omitted - preserved from the stored entity; explicit null - erased; a value (including the empty string) - replaces the secret."
         secretExtraData:
           type: string
           writeOnly: true
+          nullable: true
+          description: "Write-only secret. On PUT update: omitted - preserved from the stored entity; explicit null - erased; a value (including the empty string) - replaces the secret."
     UserInfoResponse:
       type: object
       properties:

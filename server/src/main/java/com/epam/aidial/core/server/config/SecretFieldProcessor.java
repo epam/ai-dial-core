@@ -106,9 +106,9 @@ public class SecretFieldProcessor {
         }
     }
 
-    public ObjectNode mergePreservingOmittedSecrets(JsonNode existingBlobNode,
-                                                    JsonNode requestNode,
-                                                    Class<?> entityClass) {
+    public ObjectNode mergeUpdateSecrets(JsonNode existingBlobNode,
+                                         JsonNode requestNode,
+                                         Class<?> entityClass) {
         if (!(requestNode instanceof ObjectNode)) {
             throw new IllegalArgumentException("requestNode must be an object");
         }
@@ -125,11 +125,10 @@ public class SecretFieldProcessor {
             String name = field.getName();
             if (field.isAnnotationPresent(EncryptedField.class)) {
                 JsonNode current = target.get(name);
-                // Preserve-on-omit: a null or absent secret in the request body keeps the prior
-                // ciphertext from the stored blob. Without the retired "***" mask sentinel, only
-                // null / missing signals "omitted" — a literal string in the request is treated as
-                // a real value and re-encrypted.
-                if (current == null || current.isNull()) {
+                // Update intents: an absent field preserves the prior ciphertext from the stored
+                // blob; explicit null erases the secret (null flows into the entity and the blob
+                // omits the field); a literal string — empty string included — is the new value.
+                if (current == null) {
                     JsonNode existing = source.get(name);
                     if (existing != null && !existing.isNull()) {
                         target.set(name, existing.deepCopy());

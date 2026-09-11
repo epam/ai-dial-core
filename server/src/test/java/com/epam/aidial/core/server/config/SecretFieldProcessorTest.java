@@ -27,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
@@ -200,7 +201,7 @@ class SecretFieldProcessorTest {
     }
 
     @Test
-    void mergePreservingOmittedSecrets_preservesSecretsNestedInUpstreamInterfaces() {
+    void mergeUpdateSecrets_preservesSecretsNestedInUpstreamInterfaces() {
         ObjectNode existing = ProxyUtil.MAPPER.createObjectNode();
         ObjectNode existingUpstream = existing.putArray("upstreams").addObject();
         existingUpstream.put("endpoint", "http://provider");
@@ -212,7 +213,7 @@ class SecretFieldProcessorTest {
         requestUpstream.putObject("interfaces").putObject("anthropicMessages")
                 .put("endpoint", "http://anthropic/v1/messages");
 
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Model.class);
 
         assertEquals("ENC[prior]", merged.get("upstreams").get(0)
                 .get("interfaces").get("anthropicMessages").get("key").asText());
@@ -237,36 +238,102 @@ class SecretFieldProcessorTest {
     }
 
     @Test
-    void mergePreservingOmittedSecrets_copiesCiphertextWhenAbsent() throws Exception {
+    void mergeUpdateSecrets_copiesCiphertextWhenAbsent() throws Exception {
         ObjectNode existing = (ObjectNode) M.readTree("{\"key\": \"ENC[abc]\", \"role\": \"r\"}");
         ObjectNode request = (ObjectNode) M.readTree("{\"role\": \"r2\"}");
 
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Key.class);
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Key.class);
 
         assertEquals("ENC[abc]", merged.get("key").asText());
         assertEquals("r2", merged.get("role").asText());
     }
 
     @Test
-    void mergePreservingOmittedSecrets_treatsMaskAsLiteralValue() throws Exception {
+    void mergeUpdateSecrets_treatsMaskAsLiteralValue() throws Exception {
         // Slice U.4: the "***" sentinel was retired. A textual "***" in the request body is a real
-        // value (re-encrypted on write), not a signal to preserve. Only null / missing preserves.
+        // value (re-encrypted on write), not a signal to preserve. Only missing preserves;
+        // explicit null erases.
         ObjectNode existing = (ObjectNode) M.readTree("{\"key\": \"ENC[abc]\"}");
         ObjectNode request = (ObjectNode) M.readTree("{\"key\": \"***\"}");
 
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Key.class);
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Key.class);
 
         assertEquals("***", merged.get("key").asText());
     }
 
     @Test
-    void mergePreservingOmittedSecrets_keepsExplicitNewSecret() throws Exception {
+    void mergeUpdateSecrets_keepsExplicitNewSecret() throws Exception {
         ObjectNode existing = (ObjectNode) M.readTree("{\"key\": \"ENC[abc]\"}");
         ObjectNode request = (ObjectNode) M.readTree("{\"key\": \"new-plain\"}");
 
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Key.class);
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Key.class);
 
         assertEquals("new-plain", merged.get("key").asText());
+    }
+
+    @Test
+    void mergeUpdateSecrets_explicitNullErasesPriorSecret() throws Exception {
+        ObjectNode existing = (ObjectNode) M.readTree("{\"key\": \"ENC[abc]\", \"role\": \"r\"}");
+        ObjectNode request = (ObjectNode) M.readTree("{\"key\": null, \"role\": \"r2\"}");
+
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Key.class);
+
+        assertTrue(merged.get("key").isNull(), () -> "prior ciphertext must not survive: " + merged);
+        assertEquals("r2", merged.get("role").asText());
+    }
+
+    @Test
+    void mergeUpdateSecrets_explicitNullInUpstreamArrayElementErases() throws Exception {
+        ObjectNode existing = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"A\",\"key\":\"ENC[a]\"},{\"endpoint\":\"B\",\"key\":\"ENC[b]\"}]}");
+        ObjectNode request = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"A\",\"key\":null},{\"endpoint\":\"B\"}]}");
+
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Model.class);
+
+        assertTrue(merged.get("upstreams").get(0).get("key").isNull(),
+                () -> "element A's prior ciphertext must not survive: " + merged.get("upstreams"));
+        assertEquals("ENC[b]", merged.get("upstreams").get(1).get("key").asText());
+    }
+
+    @Test
+    void mergeUpdateSecrets_explicitNullInInterfaceMapEntryErases() {
+        ObjectNode existing = ProxyUtil.MAPPER.createObjectNode();
+        ObjectNode existingUpstream = existing.putArray("upstreams").addObject();
+        existingUpstream.put("endpoint", "http://provider");
+        existingUpstream.putObject("interfaces").putObject("anthropicMessages").put("key", "ENC[prior]");
+
+        ObjectNode request = ProxyUtil.MAPPER.createObjectNode();
+        ObjectNode requestUpstream = request.putArray("upstreams").addObject();
+        requestUpstream.put("endpoint", "http://provider");
+        requestUpstream.putObject("interfaces").putObject("anthropicMessages").putNull("key");
+
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Model.class);
+
+        assertTrue(merged.get("upstreams").get(0)
+                .get("interfaces").get("anthropicMessages").get("key").isNull());
+    }
+
+    @Test
+    void mergeUpdateSecrets_emptyStringStaysLiteralValue() throws Exception {
+        ObjectNode existing = (ObjectNode) M.readTree("{\"key\": \"ENC[abc]\"}");
+        ObjectNode request = (ObjectNode) M.readTree("{\"key\": \"\"}");
+
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Key.class);
+
+        // "" is a literal value, not an erase or preserve signal.
+        assertEquals("", merged.get("key").asText());
+    }
+
+    @Test
+    void mergeUpdateSecrets_nullWithNoPriorValueIsNoop() throws Exception {
+        ObjectNode existing = (ObjectNode) M.readTree("{\"role\": \"r\"}");
+        ObjectNode request = (ObjectNode) M.readTree("{\"key\": null, \"role\": \"r2\"}");
+
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Key.class);
+
+        assertTrue(merged.get("key").isNull());
+        assertEquals("r2", merged.get("role").asText());
     }
 
     @Test
@@ -315,7 +382,7 @@ class SecretFieldProcessorTest {
         ObjectNode request = (ObjectNode) M.readTree(
                 "{\"upstreams\":[{\"endpoint\":\"B\"},{\"endpoint\":\"A\"}]}");
 
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Model.class);
 
         assertEquals("B", merged.get("upstreams").get(0).get("endpoint").asText());
         assertEquals("ENC[b]", merged.get("upstreams").get(0).get("key").asText());
@@ -330,7 +397,7 @@ class SecretFieldProcessorTest {
         ObjectNode request = (ObjectNode) M.readTree(
                 "{\"upstreams\":[{\"endpoint\":\"C\"},{\"endpoint\":\"A\"}]}");
 
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Model.class);
 
         ObjectNode c = (ObjectNode) merged.get("upstreams").get(0);
         assertEquals("C", c.get("endpoint").asText());
@@ -346,7 +413,7 @@ class SecretFieldProcessorTest {
         ObjectNode request = (ObjectNode) M.readTree(
                 "{\"upstreams\":[{\"endpoint\":\"A\"},{\"endpoint\":\"C\"}]}");
 
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Model.class);
 
         assertEquals("ENC[a]", merged.get("upstreams").get(0).get("key").asText());
         assertEquals("ENC[c]", merged.get("upstreams").get(1).get("key").asText());
@@ -360,7 +427,7 @@ class SecretFieldProcessorTest {
         ObjectNode request = (ObjectNode) M.readTree(
                 "{\"upstreams\":[{\"endpoint\":\"A\"},{\"endpoint\":\"A\"}]}");
 
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Model.class);
 
         assertEquals("ENC[a0]", merged.get("upstreams").get(0).get("key").asText());
         assertEquals("ENC[a1]", merged.get("upstreams").get(1).get("key").asText());
@@ -373,7 +440,7 @@ class SecretFieldProcessorTest {
         ObjectNode request = (ObjectNode) M.readTree(
                 "{\"upstreams\":[{\"endpoint\":\"D\",\"key\":\"new-plain\"},{\"endpoint\":\"A\"}]}");
 
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Model.class);
 
         assertEquals("new-plain", merged.get("upstreams").get(0).get("key").asText());
         assertEquals("ENC[a]", merged.get("upstreams").get(1).get("key").asText());
@@ -387,7 +454,7 @@ class SecretFieldProcessorTest {
         ObjectNode request = (ObjectNode) M.readTree(
                 "{\"upstreams\":[{\"endpoint\":\"B\"},{\"endpoint\":\"A\"}]}");
 
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Model.class);
 
         assertEquals("ENC[xb]", merged.get("upstreams").get(0).get("secretExtraData").asText());
         assertEquals("ENC[xa]", merged.get("upstreams").get(1).get("secretExtraData").asText());
@@ -404,7 +471,7 @@ class SecretFieldProcessorTest {
         ObjectNode request = (ObjectNode) M.readTree(
                 "{\"upstreams\":[{\"endpoint\":\"B\"},{}]}");
 
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Model.class);
 
         assertEquals("ENC[b]", merged.get("upstreams").get(0).get("key").asText());
         ObjectNode element1 = (ObjectNode) merged.get("upstreams").get(1);
@@ -420,7 +487,7 @@ class SecretFieldProcessorTest {
         ObjectNode request = (ObjectNode) M.readTree(
                 "{\"upstreams\":[{},{},{}]}");
 
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Model.class);
 
         assertEquals("ENC[a]", merged.get("upstreams").get(0).get("key").asText());
         assertEquals("ENC[b]", merged.get("upstreams").get(1).get("key").asText());
@@ -434,7 +501,7 @@ class SecretFieldProcessorTest {
         ObjectNode request = (ObjectNode) M.readTree(
                 "{\"upstreams\":[{},{\"key\":\"new-plain\"}]}");
 
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Model.class);
 
         // element0 index-pairs with slot 0; element1 index 1 is out of source bounds (size 1) → no
         // preservation, its explicit value survives (re-encrypted on write).
@@ -449,7 +516,7 @@ class SecretFieldProcessorTest {
         ObjectNode request = (ObjectNode) M.readTree(
                 "{\"upstreams\":[{},{\"endpoint\":\"A\"}]}");
 
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+        ObjectNode merged = processor.mergeUpdateSecrets(existing, request, Model.class);
 
         // element0 (no endpoint) strict-index-pairs slot 0 → preserves ENC[a], consumes slot 0.
         // element1 endpoint=A then finds slot 0 consumed and no other A source → preserves nothing.
