@@ -39,6 +39,15 @@ public interface RequestObject {
     Set<String> collectAttachments();
 
     /**
+     * Collects skill resource URLs present in the request body.
+     *
+     * @return a set of skill URLs found in the request body, or an empty set if this request shape doesn't support it
+     */
+    default Set<String> collectSkills() {
+        return Set.of();
+    }
+
+    /**
      * Collects image and file URLs located at the specified paths.
      *
      * @param paths the paths to inspect

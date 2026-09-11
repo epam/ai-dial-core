@@ -14282,6 +14282,8 @@ components:
         catalog_schema_id:
           type: string
           format: uri
+        interface_configs:
+          $ref: "#/components/schemas/MapStringInterfaceConfigData"
     ApplicationFunction:
       type: object
       properties:
@@ -14762,6 +14764,11 @@ components:
           description: |-
             The JSON schema describing a form that the assistant prompts the user to fill in.
             Given this schema, the user is expected to provide a JSON value in the next message in the `custom_content.form_value` field.
+        skills:
+          type: array
+          description: List of skills referenced by the model as part of the response.
+          items:
+            $ref: "#/components/schemas/RequestSkill"
       description: The custom content of the assistant message.
     ChatCompletionRequestCustomFields:
       type: object
@@ -15005,6 +15012,11 @@ components:
         form_value:
           type: object
           description: The JSON value corresponding to the JSON schema sent by the assistant in the previous message in the `custom_content.form_schema` field.
+        skills:
+          type: array
+          description: List of skills used to supply an additional input for the model.
+          items:
+            $ref: "#/components/schemas/RequestSkill"
       description: The custom content of the user message.
     ChatCompletionResponseAttachment:
       required:
@@ -16192,6 +16204,15 @@ components:
           $ref: "#/components/schemas/MapStringString"
         baseUrl:
           type: string
+    InterfaceConfigData:
+      type: object
+      properties:
+        defaults:
+          $ref: "#/components/schemas/MapStringObject"
+        features:
+          $ref: "#/components/schemas/FeaturesData"
+        default_headers:
+          $ref: "#/components/schemas/MapStringString"
     InterfaceMode:
       type: string
       enum:
@@ -16437,6 +16458,10 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/Interceptor"
+    MapStringInterfaceConfigData:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/InterfaceConfigData"
     MapStringKey:
       type: object
       additionalProperties:
@@ -16694,6 +16719,8 @@ components:
         catalog_schema_id:
           type: string
           format: uri
+        interface_configs:
+          $ref: "#/components/schemas/MapStringInterfaceConfigData"
     ModelType:
       type: string
       enum:
@@ -16961,6 +16988,14 @@ components:
         reference_url:
           type: string
           description: "If `reference_type` is specified, the content of `reference_url` should follow the format described in the MIME standard for `reference_type`."
+    RequestSkill:
+      required:
+      - url
+      type: object
+      properties:
+        url:
+          type: string
+          description: "The URL of the skill resource, e.g. `skills/<bucket>/<path>`."
     ResourceAccessType:
       type: string
       enum:
@@ -17781,6 +17816,8 @@ components:
         catalog_schema_id:
           type: string
           format: uri
+        interface_configs:
+          $ref: "#/components/schemas/MapStringInterfaceConfigData"
     ToolSetRepairControllerRepairResponse:
       type: object
       properties:
