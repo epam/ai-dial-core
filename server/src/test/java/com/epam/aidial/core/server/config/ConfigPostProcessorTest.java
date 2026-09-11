@@ -511,7 +511,7 @@ public class ConfigPostProcessorTest {
     }
 
     @Test
-    void testSemanticAbortThrowsOnOverridePathsForATranslatedInterface() {
+    void testSemanticAbortThrowsOnOverridePathsForTranslatedInterfaces() {
         Config config = newMutableConfig();
         Model model = new Model();
         model.setBaseUrl("http://model");

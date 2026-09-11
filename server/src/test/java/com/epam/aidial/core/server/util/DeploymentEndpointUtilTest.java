@@ -4,9 +4,9 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceMode;
-import com.epam.aidial.core.config.OverridePathKey;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
+import com.epam.aidial.core.config.OverridePathKey;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
 import org.junit.jupiter.api.Test;
@@ -545,7 +545,7 @@ public class DeploymentEndpointUtilTest {
     }
 
     @Test
-    void overridePathDoesNotApplyToATranslatedInterface() {
+    void overridePathDoesNotApplyToTranslatedInterfaces() {
         Model model = new Model();
         model.setName("gpt-5.5");
         model.setBaseUrl("http://openai-service");

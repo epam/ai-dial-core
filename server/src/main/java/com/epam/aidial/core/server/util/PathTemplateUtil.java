@@ -25,19 +25,6 @@ public class PathTemplateUtil {
         });
     }
 
-    /**
-     * The variable names the template references, for validating them against what the operation can
-     * supply without rendering anything.
-     */
-    public Set<String> collectVariables(String template) {
-        Set<String> variables = new LinkedHashSet<>();
-        render(template, name -> {
-            variables.add(name);
-            return "";
-        });
-        return variables;
-    }
-
     private String render(String template, Function<String, String> resolver) {
         StringBuilder rendered = new StringBuilder(template.length());
         int i = 0;
@@ -68,5 +55,18 @@ public class PathTemplateUtil {
             }
         }
         return rendered.toString();
+    }
+
+    /**
+     * The variable names the template references, for validating them against what the operation can
+     * supply without rendering anything.
+     */
+    public Set<String> collectVariables(String template) {
+        Set<String> variables = new LinkedHashSet<>();
+        render(template, name -> {
+            variables.add(name);
+            return "";
+        });
+        return variables;
     }
 }
