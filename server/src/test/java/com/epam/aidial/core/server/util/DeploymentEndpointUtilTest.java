@@ -519,31 +519,6 @@ public class DeploymentEndpointUtilTest {
     }
 
     @Test
-    void snakeCaseAliasServesTheOverride() {
-        Model model = new Model();
-        model.setName("foo-bar");
-        model.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), interfaceWithOverrides("http://switchyard",
-                Map.of("post_azure_openai_chat_completions", "/v1/chat/completions"))));
-
-        assertEquals("http://switchyard/v1/chat/completions",
-                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
-                        "/openai/deployments/foo-bar/chat/completions", null));
-    }
-
-    @Test
-    void camelCaseKeyWinsOverItsSnakeCaseAlias() {
-        Model model = new Model();
-        model.setName("foo-bar");
-        model.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), interfaceWithOverrides("http://switchyard",
-                Map.of("postAzureOpenaiChatCompletions", "/camel/chat/completions",
-                        "post_azure_openai_chat_completions", "/snake/chat/completions"))));
-
-        assertEquals("http://switchyard/camel/chat/completions",
-                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
-                        "/openai/deployments/foo-bar/chat/completions", null));
-    }
-
-    @Test
     void unmatchedKeyFallsBackToTheIngressPath() {
         Model model = new Model();
         model.setName("foo-bar");

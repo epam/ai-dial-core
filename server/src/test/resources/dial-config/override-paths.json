@@ -26,7 +26,7 @@
           "base_url": "http://localhost:4848",
           "overridePaths": {
             "postAnthropicMessages": "/v1/messages",
-            "post_anthropic_messages_count_tokens": "/v1/messages/count_tokens"
+            "postAnthropicMessagesCountTokens": "/v1/messages/count_tokens"
           }
         }
       }

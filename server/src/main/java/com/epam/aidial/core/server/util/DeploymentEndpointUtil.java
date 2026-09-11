@@ -225,9 +225,9 @@ public class DeploymentEndpointUtil {
     }
 
     /**
-     * The {@code overridePaths} template the interface entry declares for the operation, under either
-     * spelling {@link OverridePathKey} accepts, or null when it declares neither. A translated
-     * interface routes to its translator's DIAL-contract url, so overrides never apply to it.
+     * The {@code overridePaths} template the interface entry declares for the operation, or null when it
+     * declares none. A translated interface routes to its translator's DIAL-contract url, so overrides
+     * never apply to it.
      */
     @Nullable
     private String findOverridePath(Deployment deployment, InterfaceType type, @Nullable OverridePathKey pathKey) {
@@ -239,7 +239,7 @@ public class DeploymentEndpointUtil {
             return null;
         }
         Map<String, String> overridePaths = deploymentInterface.getOverridePaths();
-        return overridePaths == null ? null : pathKey.findTemplate(overridePaths);
+        return overridePaths == null ? null : overridePaths.get(pathKey.getValue());
     }
 
     /**
