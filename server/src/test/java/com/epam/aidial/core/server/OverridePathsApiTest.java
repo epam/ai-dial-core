@@ -86,6 +86,25 @@ class OverridePathsApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation("dial-config/override-paths.json")
+    void applicationRoutedToTheOverriddenPath() {
+        AtomicReference<String> capturedPath = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/v1/chat/completions", request -> {
+                capturedPath.set(request.getPath());
+                return TestWebServer.createResponse(200, "{}", "Content-Type", "application/json");
+            });
+
+            Response response = send(HttpMethod.POST, "/openai/deployments/app-switchyard/chat/completions", null,
+                    "{\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}],\"max_tokens\":16}",
+                    "Content-Type", "application/json");
+
+            assertEquals(200, response.status(), response.body());
+            assertEquals("/v1/chat/completions", capturedPath.get());
+        }
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/override-paths.json")
     void responsesCreateAndGetByIdRoutedToTheOverriddenPaths() throws Exception {
         AtomicReference<String> capturedPath = new AtomicReference<>();
         try (TestWebServer server = new TestWebServer(4848)) {
@@ -99,6 +118,16 @@ class OverridePathsApiTest extends ResourceBaseTest {
             server.map(HttpMethod.GET, "/v1/responses/resp_1", request -> {
                 capturedPath.set(request.getPath());
                 return TestWebServer.createResponse(200, "{\"id\":\"resp_1\",\"status\":\"completed\"}",
+                        "Content-Type", "application/json");
+            });
+            server.map(HttpMethod.POST, "/openai/v1/responses/resp_1/cancel", request -> {
+                capturedPath.set(request.getPath());
+                return TestWebServer.createResponse(200, "{\"id\":\"resp_1\",\"status\":\"cancelled\"}",
+                        "Content-Type", "application/json");
+            });
+            server.map(HttpMethod.DELETE, "/openai/v1/responses/resp_1", request -> {
+                capturedPath.set(request.getPath());
+                return TestWebServer.createResponse(200, "{\"id\":\"resp_1\",\"deleted\":true}",
                         "Content-Type", "application/json");
             });
 
@@ -117,6 +146,15 @@ class OverridePathsApiTest extends ResourceBaseTest {
             assertEquals(200, response.status(), response.body());
             // {id} in getOpenaiResponsesById renders the upstream response id, not the dial one
             assertEquals("/v1/responses/resp_1", capturedPath.get());
+
+            // cancel and delete carry no override of their own here, so they keep the default path
+            response = send(HttpMethod.POST, "/openai/v1/responses/" + dialId + "/cancel", null, null);
+            assertEquals(200, response.status(), response.body());
+            assertEquals("/openai/v1/responses/resp_1/cancel", capturedPath.get());
+
+            response = send(HttpMethod.DELETE, "/openai/v1/responses/" + dialId, null, null);
+            assertEquals(200, response.status(), response.body());
+            assertEquals("/openai/v1/responses/resp_1", capturedPath.get());
         }
     }
 }

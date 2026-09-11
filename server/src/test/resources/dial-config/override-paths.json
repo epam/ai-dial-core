@@ -44,5 +44,16 @@
       }
     }
   },
+  "applications": {
+    "app-switchyard": {
+      "overrideName": "switchyard-app",
+      "interfaces": {
+        "openaiChatCompletions": {
+          "base_url": "http://localhost:4848",
+          "overridePaths": {"postAzureOpenaiChatCompletions": "/v1/chat/completions"}
+        }
+      }
+    }
+  },
   "keys": {"proxyKey1": {"project": "test", "role": "default"}}
 }
