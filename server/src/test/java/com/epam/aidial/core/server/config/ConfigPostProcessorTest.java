@@ -550,6 +550,98 @@ public class ConfigPostProcessorTest {
         assertTrue(config.getModels().containsKey("model"));
     }
 
+    private static Application applicationWithOverridePaths(Map<String, String> overridePaths) {
+        Application application = new Application();
+        DeploymentInterface chat = new DeploymentInterface("http://app");
+        chat.setOverridePaths(overridePaths);
+        application.setInterfaces(Map.of("openaiChatCompletions", chat));
+        return application;
+    }
+
+    private static Interceptor interceptorWithOverridePaths(Map<String, String> overridePaths) {
+        Interceptor interceptor = new Interceptor();
+        DeploymentInterface chat = new DeploymentInterface("http://interceptor");
+        chat.setOverridePaths(overridePaths);
+        interceptor.setInterfaces(Map.of("openaiChatCompletions", chat));
+        return interceptor;
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnApplicationOverridePathTemplate() {
+        Config config = newMutableConfig();
+        config.getApplications().put("app",
+                applicationWithOverridePaths(Map.of("postAzureOpenaiChatCompletions", "/v1/{unknown}")));
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticSkipDropsApplicationWithBadOverridePathTemplate() {
+        Config config = newMutableConfig();
+        config.getApplications().put("app",
+                applicationWithOverridePaths(Map.of("postAzureOpenaiChatCompletions", "/v1/{id")));
+
+        AtomicReference<ResourceTypes> capturedType = new AtomicReference<>();
+        AtomicReference<String> capturedKey = new AtomicReference<>();
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), (type, error) -> {
+            capturedType.set(type);
+            capturedKey.set(error.getMapKey());
+        });
+
+        assertEquals(ResourceTypes.APPLICATION, capturedType.get());
+        assertEquals("app", capturedKey.get());
+        assertFalse(config.getApplications().containsKey("app"));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnInterceptorOverridePathTemplate() {
+        Config config = newMutableConfig();
+        config.getInterceptors().put("interceptor",
+                interceptorWithOverridePaths(Map.of("postAzureOpenaiChatCompletions", "/v1/{unknown}")));
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAllowsValidApplicationAndInterceptorOverridePaths() {
+        Config config = newMutableConfig();
+        config.getApplications().put("app",
+                applicationWithOverridePaths(Map.of("postAzureOpenaiChatCompletions", "/openai/deployments/{id}/v1/chat/completions")));
+        config.getInterceptors().put("interceptor",
+                interceptorWithOverridePaths(Map.of("postAzureOpenaiChatCompletions", "/v1/chat/completions")));
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getApplications().containsKey("app"));
+        assertTrue(config.getInterceptors().containsKey("interceptor"));
+    }
+
+    @Test
+    void testValidateSingleApplicationSkipsBadOverridePaths() {
+        Config config = newMutableConfig();
+        config.getApplications().put("app",
+                applicationWithOverridePaths(Map.of("postAzureOpenaiChatCompletions", "/v1/{unknown}")));
+
+        AtomicReference<ResourceTypes> capturedType = new AtomicReference<>();
+        ConfigPostProcessor.validateSingleApplication(config, "app", (type, error) -> capturedType.set(type));
+
+        assertEquals(ResourceTypes.APPLICATION, capturedType.get());
+        assertFalse(config.getApplications().containsKey("app"));
+    }
+
+    @Test
+    void testValidateSingleInterceptorThrowsInAbortMode() {
+        Config config = newMutableConfig();
+        config.getInterceptors().put("interceptor",
+                interceptorWithOverridePaths(Map.of("postAzureOpenaiChatCompletions", "/v1/{unknown}")));
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.validateSingleInterceptor(config, "interceptor", null));
+    }
+
     private static DeploymentInterface translated(TranslatorRef translator) {
         DeploymentInterface declared = new DeploymentInterface();
         declared.setMode(InterfaceMode.TRANSLATOR);

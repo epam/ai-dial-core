@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.Interceptor;
@@ -180,6 +181,49 @@ public final class ConfigPostProcessor {
         }
         config.getTranslators().remove(mapKey);
         onSkip.accept(ResourceTypes.TRANSLATOR, new InvalidEntityException(ResourceTypes.TRANSLATOR, mapKey, warnings));
+    }
+
+    /**
+     * Targeted per-type helpers for {@link MergedConfigStore}'s partial-update path. Set the name from
+     * the map key and validate {@code overridePaths} — the one semantic check these types carry — so a
+     * write cannot accept an entity the next full rebuild would reject.
+     */
+    static void validateSingleApplication(Config config, String mapKey,
+                                          @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Application application = config.getApplications().get(mapKey);
+        if (application == null) {
+            return;
+        }
+        application.setName(mapKey);
+        List<ValidationWarning> warnings = new ArrayList<>();
+        validateOverridePaths(application, warnings);
+        if (warnings.isEmpty()) {
+            return;
+        }
+        if (onSkip == null) {
+            throw new InvalidEntityException(ResourceTypes.APPLICATION, mapKey, warnings);
+        }
+        config.getApplications().remove(mapKey);
+        onSkip.accept(ResourceTypes.APPLICATION, new InvalidEntityException(ResourceTypes.APPLICATION, mapKey, warnings));
+    }
+
+    static void validateSingleInterceptor(Config config, String mapKey,
+                                          @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Interceptor interceptor = config.getInterceptors().get(mapKey);
+        if (interceptor == null) {
+            return;
+        }
+        interceptor.setName(mapKey);
+        List<ValidationWarning> warnings = new ArrayList<>();
+        validateOverridePaths(interceptor, warnings);
+        if (warnings.isEmpty()) {
+            return;
+        }
+        if (onSkip == null) {
+            throw new InvalidEntityException(ResourceTypes.INTERCEPTOR, mapKey, warnings);
+        }
+        config.getInterceptors().remove(mapKey);
+        onSkip.accept(ResourceTypes.INTERCEPTOR, new InvalidEntityException(ResourceTypes.INTERCEPTOR, mapKey, warnings));
     }
 
     static <T extends RoleBasedEntity> void setNameAsMapKey(Map<String, T> entities, String mapKey) {
@@ -428,6 +472,25 @@ public final class ConfigPostProcessor {
     }
 
     /**
+     * Validates every interface entry's {@code overridePaths} on a deployment whose interfaces get no
+     * other semantic validation — applications and interceptors. Models run the same per-entry check
+     * inside {@link #validateDeploymentInterfaces}.
+     */
+    public static void validateOverridePaths(Deployment deployment, List<ValidationWarning> warnings) {
+        Map<String, DeploymentInterface> interfaces = deployment.getInterfaces();
+        if (interfaces == null) {
+            return;
+        }
+        for (Map.Entry<String, DeploymentInterface> entry : interfaces.entrySet()) {
+            DeploymentInterface declared = entry.getValue();
+            if (declared == null) {
+                continue;
+            }
+            validateOverridePaths(entry.getKey(), declared, "interfaces." + entry.getKey(), warnings);
+        }
+    }
+
+    /**
      * Validates an interface entry's {@code overridePaths}. A key this Core does not know is tolerated —
      * exactly as an unknown interface type is — but a known key under an interface that does not own it,
      * a template that does not parse, and a variable the operation cannot render are config contradicting
@@ -553,6 +616,16 @@ public final class ConfigPostProcessor {
             Application application = entry.getValue();
             application.setName(name);
             validateExternalServices(application);
+            List<ValidationWarning> warnings = new ArrayList<>();
+            validateOverridePaths(application, warnings);
+            if (!warnings.isEmpty()) {
+                if (onSkip == null) {
+                    throw new InvalidEntityException(ResourceTypes.APPLICATION, name, warnings);
+                }
+                iterator.remove();
+                onSkip.accept(ResourceTypes.APPLICATION, new InvalidEntityException(ResourceTypes.APPLICATION, name, warnings));
+                continue;
+            }
             log.debug("Loading {}", application);
         }
     }
@@ -628,6 +701,16 @@ public final class ConfigPostProcessor {
             }
             Interceptor interceptor = entry.getValue();
             interceptor.setName(name);
+            List<ValidationWarning> warnings = new ArrayList<>();
+            validateOverridePaths(interceptor, warnings);
+            if (!warnings.isEmpty()) {
+                if (onSkip == null) {
+                    throw new InvalidEntityException(ResourceTypes.INTERCEPTOR, name, warnings);
+                }
+                iterator.remove();
+                onSkip.accept(ResourceTypes.INTERCEPTOR, new InvalidEntityException(ResourceTypes.INTERCEPTOR, name, warnings));
+                continue;
+            }
             log.debug("Loading {}", interceptor);
         }
     }
