@@ -26,6 +26,10 @@ public class CollectChatCompletionUsageFn extends BaseResponseFunction {
 
     @Override
     public Future<JsonNode> apply(JsonNode tree) {
+        if (tree == null) {
+            return Future.succeededFuture(tree);
+        }
+
         usage = MergeChunks.merge(usage, tree.get("usage"));
         if (tree.get("service_tier") != null) {
             serviceTier = tree.get("service_tier");

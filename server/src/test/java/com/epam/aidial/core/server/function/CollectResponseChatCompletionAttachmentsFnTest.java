@@ -1,8 +1,10 @@
 package com.epam.aidial.core.server.function;
 
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -12,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.when;
 
 
@@ -217,5 +220,22 @@ class CollectResponseChatCompletionAttachmentsFnTest {
         assertEquals(Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file1.txt",
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file2.txt"), files);
 
+    }
+
+    @Test
+    public void testApplyPassesTreeThroughUnchangedWhenNoAttachments() throws JsonProcessingException {
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("per-request-key");
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+
+        JsonNode tree = ProxyUtil.MAPPER.readTree("""
+                {
+                  "choices": [{ "index": 0, "delta": { "content": "hi" } }]
+                }
+                """);
+
+        JsonNode result = new CollectResponseChatCompletionAttachmentsFn(null, context).apply(tree).result();
+
+        assertSame(tree, result);
     }
 }

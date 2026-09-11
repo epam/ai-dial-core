@@ -38,7 +38,7 @@ public abstract class CollectResponseAttachmentsFn extends BaseResponseFunction 
                 processAttachedFile(attachment, permittedAttachments);
             }
             if (permittedAttachments.isEmpty()) {
-                return Future.succeededFuture();
+                return Future.succeededFuture(tree);
             }
             return proxy.getTaskExecutor().submit(() -> {
                 proxy.getApiKeyStore().updatePerRequestApiKey(perRequestKey, json -> updateAutoSharedAttachments(json, permittedAttachments, perRequestKey));
