@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.OverridePathKey;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
@@ -197,8 +198,9 @@ public class BackgroundJobService {
             return Future.failedFuture("Deployment {} not found");
         }
         Map<String, Translator> translators = config.getTranslators();
-        String responsesBaseUri = DeploymentEndpointUtil.resolveResponsesBaseUri(deployment, translators);
-        if (responsesBaseUri == null) {
+        String targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment, translators,
+                OverridePathKey.GET_OPENAI_RESPONSES_BY_ID, mapping.getUpstreamResponseId(), null);
+        if (targetUrl == null) {
             return Future.failedFuture("Deployment " + deployment.getName() + " does not have a responses endpoint");
         }
         Upstream upstream;
@@ -212,7 +214,6 @@ public class BackgroundJobService {
             return Future.failedFuture("Failed to get upstream for deployment " + deployment.getName()
                     + " and upstream key " + mapping.getUpstreamKey() + ": " + e.getMessage());
         }
-        String targetUrl = responsesBaseUri + "/" + mapping.getUpstreamResponseId();
         return client.send(targetUrl, HttpMethod.GET, upstream)
                 .compose(response -> {
                     int statusCode = response.statusCode();

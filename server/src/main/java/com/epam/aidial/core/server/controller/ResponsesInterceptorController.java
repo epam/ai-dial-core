@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.config.OverridePathKey;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.AutoShareDeploymentFn;
@@ -16,22 +17,27 @@ import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpServerRequest;
 
 import java.io.IOException;
 import java.util.List;
 
 public class ResponsesInterceptorController extends BaseInterceptorController {
 
-    private final String uriSuffix;
+    private final OverridePathKey pathKey;
+    private final String dialResponseId;
 
     public ResponsesInterceptorController(Proxy proxy, ProxyContext context, int interceptorIndex) {
         super(proxy, context, interceptorIndex, defaultEnhancementFunctions(proxy, context));
-        this.uriSuffix = "";
+        this.pathKey = null;
+        this.dialResponseId = null;
     }
 
-    public ResponsesInterceptorController(Proxy proxy, ProxyContext context, String dialResponseId, String operationSuffix, int interceptorIndex) {
+    public ResponsesInterceptorController(Proxy proxy, ProxyContext context, String dialResponseId,
+                                          OverridePathKey pathKey, int interceptorIndex) {
         super(proxy, context, interceptorIndex, defaultEnhancementFunctions(proxy, context));
-        this.uriSuffix = "/" + dialResponseId + operationSuffix;
+        this.pathKey = pathKey;
+        this.dialResponseId = dialResponseId;
     }
 
     private static List<BaseRequestFunction<RequestObject>> defaultEnhancementFunctions(Proxy proxy, ProxyContext context) {
@@ -43,15 +49,20 @@ public class ResponsesInterceptorController extends BaseInterceptorController {
 
     @Override
     protected RequestObject parseRequest(Buffer body) throws IOException {
-        return uriSuffix.isEmpty() ? new ResponsesApiRequest(ProxyUtil.parseObject(body)) : null;
+        return pathKey == null ? new ResponsesApiRequest(ProxyUtil.parseObject(body)) : null;
     }
 
+    // an interceptor speaks the DIAL Responses API, so an item hop renders {id} with the dial response id
     @Override
     protected String buildUri(ProxyContext context) {
         Deployment deployment = context.getDeployment();
-        String uri = DeploymentEndpointUtil.resolveResponsesBaseUri(deployment, context.getConfig().getTranslators()) + uriSuffix;
-        String query = context.getRequest().query();
-        return query == null ? uri : uri + "?" + query;
+        HttpServerRequest request = context.getRequest();
+        if (pathKey == null) {
+            return DeploymentEndpointUtil.resolveRequestUri(deployment, InterfaceType.OPENAI_RESPONSES,
+                    context.getConfig().getTranslators(), request.path(), request.query());
+        }
+        return DeploymentEndpointUtil.resolveResponseItemUri(deployment, context.getConfig().getTranslators(),
+                pathKey, dialResponseId, request.query());
     }
 
     @Override
