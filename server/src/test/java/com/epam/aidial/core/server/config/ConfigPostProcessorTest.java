@@ -534,7 +534,7 @@ public class ConfigPostProcessorTest {
         model.setBaseUrl("http://model");
         DeploymentInterface chat = new DeploymentInterface();
         chat.setOverridePaths(Map.of(
-                "postAzureOpenaiChatCompletions", "/openai/deployments/{overrideName}/v1/{id}/re{{}}sponses",
+                "postAzureOpenaiChatCompletions", "/openai/deployments/{overrideName}/v1/{id}/responses",
                 "someFutureKey", "/whatever/{unvalidated}"));
         DeploymentInterface responses = new DeploymentInterface();
         responses.setOverridePaths(Map.of(

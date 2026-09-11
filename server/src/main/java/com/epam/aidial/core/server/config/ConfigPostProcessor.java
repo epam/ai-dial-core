@@ -541,19 +541,12 @@ public final class ConfigPostProcessor {
             warnings.add(new ValidationWarning(keyField, "Override path is empty"));
             return;
         }
-        Set<String> variables;
-        try {
-            variables = PathTemplateUtil.collectVariables(template);
-        } catch (IllegalArgumentException e) {
-            warnings.add(new ValidationWarning(keyField, e.getMessage()));
-            return;
+        if (!pathKey.isIdApplicable() && PathTemplateUtil.referencesId(template)) {
+            warnings.add(new ValidationWarning(keyField, "The operation carries no id: {id} cannot render"));
         }
-        for (String variable : variables) {
-            if (variable.equals("id") && !pathKey.isIdApplicable()) {
-                warnings.add(new ValidationWarning(keyField, "The operation carries no id: {id} cannot render"));
-            } else if (!variable.equals("id") && !variable.equals("overrideName")) {
-                warnings.add(new ValidationWarning(keyField, "Unknown template variable: {" + variable + "}"));
-            }
+        if (PathTemplateUtil.hasStrayBraces(template)) {
+            warnings.add(new ValidationWarning(keyField,
+                    "Unexpected '{' or '}': only the {id} and {overrideName} tokens are supported"));
         }
     }
 

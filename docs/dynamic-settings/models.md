@@ -245,9 +245,10 @@ listed above; `override_paths` is an alias for the `overridePaths` field itself.
 Malformed templates are rejected before API writes persist the deployment, including admin
 validate/apply and application writes.
 
-The value is a template with `{variable}` placeholders, following the Python `str.format`
-convention: literal curly braces are escaped by doubling (`{{` renders `{`, `}}` renders `}`, and a
-doubled opening brace does not start a variable), and an unmatched brace is rejected on config load.
+The value is a path in which exactly two tokens are substituted: `{id}` and `{overrideName}`,
+matched by their literal spelling. Nothing else is interpreted — but a path may not carry any other
+`{` or `}` (a near-miss such as `{Id}` or an unclosed brace is rejected on config load, keeping the
+brace syntax reserved for the tokens).
 
 * `{id}` renders the id of the operation: the deployment's name for the deployments-POST family
   (`postAzureOpenaiChatCompletions`, `postAzureOpenaiEmbeddings`), and the response id for the

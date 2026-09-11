@@ -12,7 +12,6 @@ import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.experimental.UtilityClass;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -99,8 +98,8 @@ public class DeploymentEndpointUtil {
             OverridePathKey pathKey = findRequestPathKey(type, ingressPath);
             String template = findOverridePath(deployment, type, pathKey);
             uri = template != null
-                    ? baseUrl + leadingSlash(PathTemplateUtil.render(template,
-                            templateVariables(deployment, pathKey.isIdApplicable() ? deployment.getName() : null)))
+                    ? baseUrl + leadingSlash(PathTemplateUtil.render(template, resolveDeploymentName(deployment),
+                            pathKey.isIdApplicable() ? deployment.getName() : null))
                     : baseUrl + rewriteDeploymentName(ingressPath, resolveDeploymentName(deployment));
         }
         return query == null ? uri : uri + "?" + query;
@@ -120,7 +119,7 @@ public class DeploymentEndpointUtil {
         String template = baseUrl == null ? null : findOverridePath(deployment, InterfaceType.OPENAI_RESPONSES, pathKey);
         String uri;
         if (template != null) {
-            uri = baseUrl + leadingSlash(PathTemplateUtil.render(template, templateVariables(deployment, responseId)));
+            uri = baseUrl + leadingSlash(PathTemplateUtil.render(template, resolveDeploymentName(deployment), responseId));
         } else {
             String responsesBaseUri = resolveResponsesBaseUri(deployment, translators);
             uri = responsesBaseUri == null ? null : responsesBaseUri + "/" + responseId + itemOperationSuffix(pathKey);
@@ -240,22 +239,6 @@ public class DeploymentEndpointUtil {
         }
         Map<String, String> overridePaths = deploymentInterface.getOverridePaths();
         return overridePaths == null ? null : overridePaths.get(pathKey.getValue());
-    }
-
-    /**
-     * The values an override template renders with: {@code overrideName} always — the name the deployment
-     * is addressed by upstream, see {@link #resolveDeploymentName} — and {@code id} when the operation
-     * carries one. For the deployments-POST family {@code id} is the deployment's own name rather than the
-     * raw ingress segment: they are equal on a direct call, but the segment is the pseudo-id
-     * {@code interceptor} on the callback hop, exactly the case {@link #rewriteDeploymentName} exists for.
-     */
-    private Map<String, String> templateVariables(Deployment deployment, @Nullable String id) {
-        Map<String, String> variables = new HashMap<>();
-        variables.put("overrideName", resolveDeploymentName(deployment));
-        if (id != null) {
-            variables.put("id", id);
-        }
-        return variables;
     }
 
     private String leadingSlash(String path) {
