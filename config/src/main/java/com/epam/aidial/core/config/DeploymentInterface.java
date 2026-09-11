@@ -59,6 +59,15 @@ public class DeploymentInterface {
      */
     private Features features;
 
+    /**
+     * Upstream paths replacing the operation's default path under the base url, keyed by
+     * {@link OverridePathKey#getValue()}. A value is a template: {@code {id}} renders the operation's
+     * id, {@code {overrideName}} the deployment's override name, and doubled braces render literally.
+     */
+    @JsonAlias({"overridePaths", "override_paths"})
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private Map<String, String> overridePaths = Map.of();
+
     public DeploymentInterface(String baseUrl) {
         this.baseUrl = baseUrl;
     }
