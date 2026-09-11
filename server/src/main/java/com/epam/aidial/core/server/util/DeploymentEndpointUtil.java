@@ -100,7 +100,7 @@ public class DeploymentEndpointUtil {
             String template = findOverridePath(deployment, type, pathKey);
             uri = template != null
                     ? baseUrl + leadingSlash(PathTemplateUtil.render(template,
-                            templateVariables(deployment, pathKey.isIdAvailable() ? deployment.getName() : null)))
+                            templateVariables(deployment, pathKey.isIdApplicable() ? deployment.getName() : null)))
                     : baseUrl + rewriteDeploymentName(ingressPath, resolveDeploymentName(deployment));
         }
         return query == null ? uri : uri + "?" + query;
@@ -225,9 +225,9 @@ public class DeploymentEndpointUtil {
     }
 
     /**
-     * The {@code overridePaths} template the interface entry declares for the operation, under the
-     * camelCase key or its snake_case alias, or null when it declares neither. A translated interface
-     * routes to its translator's DIAL-contract url, so overrides never apply to it.
+     * The {@code overridePaths} template the interface entry declares for the operation, under either
+     * spelling {@link OverridePathKey} accepts, or null when it declares neither. A translated
+     * interface routes to its translator's DIAL-contract url, so overrides never apply to it.
      */
     @Nullable
     private String findOverridePath(Deployment deployment, InterfaceType type, @Nullable OverridePathKey pathKey) {
@@ -239,11 +239,7 @@ public class DeploymentEndpointUtil {
             return null;
         }
         Map<String, String> overridePaths = deploymentInterface.getOverridePaths();
-        if (overridePaths == null) {
-            return null;
-        }
-        String template = overridePaths.get(pathKey.getValue());
-        return template != null ? template : overridePaths.get(pathKey.getAlias());
+        return overridePaths == null ? null : pathKey.findTemplate(overridePaths);
     }
 
     /**

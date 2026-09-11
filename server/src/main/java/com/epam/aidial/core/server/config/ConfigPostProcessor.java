@@ -536,7 +536,7 @@ public final class ConfigPostProcessor {
             return;
         }
         for (String variable : variables) {
-            if (variable.equals("id") && !pathKey.isIdAvailable()) {
+            if (variable.equals("id") && !pathKey.isIdApplicable()) {
                 warnings.add(new ValidationWarning(keyField, "The operation carries no id: {id} cannot render"));
             } else if (!variable.equals("id") && !variable.equals("overrideName")) {
                 warnings.add(new ValidationWarning(keyField, "Unknown template variable: {" + variable + "}"));
