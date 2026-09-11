@@ -118,11 +118,27 @@ public class ResponseItemController implements Controller {
         return proxy.getTaskExecutor().submit(this::loadMapping)
                 .compose(this::checkNotDeletingActive)
                 .compose(this::dispatch)
+                .eventually(this::finalizeRequest)
                 .onFailure(error -> {
                     if (!context.getResponse().ended()) {
                         context.respond(error, "Failed to process response operation");
                     }
                 });
+    }
+
+    private Future<Void> finalizeRequest() {
+        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
+        if (proxyApiKeyData == null) {
+            return Future.succeededFuture();
+        }
+        return proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)
+                .onSuccess(invalidated -> {
+                    if (!invalidated) {
+                        log.warn("Per request is not removed: {}", proxyApiKeyData.getPerRequestKey());
+                    }
+                })
+                .onFailure(error -> log.error("error occurred on invalidating per-request key", error))
+                .mapEmpty();
     }
 
     private Future<ResponseMapping> checkNotDeletingActive(ResponseMapping mapping) {
@@ -193,7 +209,12 @@ public class ResponseItemController implements Controller {
                 + "/" + mapping.getUpstreamResponseId() + operation.suffix
                 + (query != null ? "?" + query : "");
 
-        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream)
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        ApiKeyData.initFromContext(proxyApiKeyData, context);
+        context.setProxyApiKeyData(proxyApiKeyData);
+        proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+
+        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, proxyApiKeyData.getPerRequestKey())
                 .compose(response -> {
                     String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
                     if (operation == Operation.GET

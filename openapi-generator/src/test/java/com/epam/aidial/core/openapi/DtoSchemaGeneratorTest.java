@@ -1,8 +1,12 @@
 package com.epam.aidial.core.openapi;
 
 import com.epam.aidial.core.config.LocalizedValue;
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ApiSchemaType;
+import com.epam.aidial.core.openapi.annotations.ApiSubType;
+import com.epam.aidial.core.openapi.annotations.ApiSubTypes;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
@@ -104,6 +108,154 @@ class DtoSchemaGeneratorTest {
             oneOfTypes = {@ApiSchemaType(implementation = Map.class, typeArguments = {String.class, Integer.class})}
     )
     private static final class SampleUnionType {
+    }
+
+    private record SampleManifest(
+            String kind,
+            @ApiSchema(oneOf = {com.epam.aidial.core.server.data.ResourceLink.class},
+                    oneOfSchemaRefs = {"ProxyRequest"}) com.fasterxml.jackson.databind.JsonNode spec) {
+    }
+
+    private record SampleSchemaManifest(
+            String kind,
+            @ApiSchema(schemaRef = "ApplicationTypeSchema") com.fasterxml.jackson.databind.JsonNode spec) {
+    }
+
+    @Test
+    void fieldLevelSchemaRefAnnotationDrivesPropertyRef() {
+        DtoSchemaGenerator generator = new DtoSchemaGenerator();
+        generator.processType(SampleSchemaManifest.class);
+
+        Map<String, ObjectNode> schemas = generator.getSchemas();
+        ObjectNode schema = schemas.get(generator.resolveTypeName(SampleSchemaManifest.class));
+        assertNotNull(schema, "SampleSchemaManifest schema should be generated");
+
+        ObjectNode spec = (ObjectNode) schema.get("properties").get("spec");
+        assertNotNull(spec, "spec property should be generated");
+        assertTrue(spec.has("$ref"), "spec property should be a $ref");
+        assertEquals("#/components/schemas/ApplicationTypeSchema", spec.get("$ref").asText());
+
+        ObjectNode applicationTypeSchema = schemas.get("ApplicationTypeSchema");
+        assertNotNull(applicationTypeSchema, "ApplicationTypeSchema component should be registered");
+        assertEquals("object", applicationTypeSchema.get("type").asText());
+        assertTrue(applicationTypeSchema.get("additionalProperties").asBoolean());
+        ArrayNode requiredIds = (ArrayNode) applicationTypeSchema.get("required");
+        assertNotNull(requiredIds);
+        assertEquals("$id", requiredIds.get(0).asText());
+        ObjectNode idProperty = (ObjectNode) applicationTypeSchema.get("properties").get("$id");
+        assertNotNull(idProperty);
+        assertEquals("string", idProperty.get("type").asText());
+        assertEquals("uri-reference", idProperty.get("format").asText());
+    }
+
+    @ApiSubTypes(
+            discriminatorProperty = "kind",
+            value = {
+                    @ApiSubType(discriminatorValue = "Settings", type = SampleSettingsTypedManifest.class),
+                    @ApiSubType(discriminatorValue = "Model", type = SampleModelTypedManifest.class),
+                    @ApiSubType(discriminatorValue = "Schema", type = SampleSchemaTypedManifest.class)
+            }
+    )
+    private record SampleAdminManifest(String kind, String name, JsonNode spec) {
+    }
+
+    private record SampleSettingsTypedManifest(String kind, String name, LocalizedValue spec) {
+    }
+
+    private record SampleModelTypedManifest(String kind, String name, Model spec) {
+    }
+
+    private record SampleSchemaTypedManifest(
+            String kind,
+            String name,
+            @ApiSchema(schemaRef = "ApplicationTypeSchema") JsonNode spec) {
+    }
+
+    @Test
+    void apiSubTypesAnnotationProducesKindDiscriminatedOneOf() {
+        DtoSchemaGenerator generator = new DtoSchemaGenerator();
+        generator.processType(SampleAdminManifest.class);
+
+        Map<String, ObjectNode> schemas = generator.getSchemas();
+        ObjectNode schema = schemas.get(generator.resolveTypeName(SampleAdminManifest.class));
+        assertNotNull(schema, "SampleAdminManifest schema should be generated");
+
+        ArrayNode oneOf = (ArrayNode) schema.get("oneOf");
+        assertNotNull(oneOf, "SampleAdminManifest should be a oneOf");
+        assertEquals(3, oneOf.size());
+        String settingsRef = "#/components/schemas/" + generator.resolveTypeName(SampleSettingsTypedManifest.class);
+        String modelRef = "#/components/schemas/" + generator.resolveTypeName(SampleModelTypedManifest.class);
+        String schemaRef = "#/components/schemas/" + generator.resolveTypeName(SampleSchemaTypedManifest.class);
+        assertEquals(settingsRef, oneOf.get(0).get("$ref").asText());
+        assertEquals(modelRef, oneOf.get(1).get("$ref").asText());
+        assertEquals(schemaRef, oneOf.get(2).get("$ref").asText());
+
+        ObjectNode discriminator = (ObjectNode) schema.get("discriminator");
+        assertNotNull(discriminator, "SampleAdminManifest should carry a discriminator");
+        assertEquals("kind", discriminator.get("propertyName").asText());
+        ObjectNode mapping = (ObjectNode) discriminator.get("mapping");
+        assertEquals(modelRef, mapping.get("Model").asText());
+        assertEquals(schemaRef, mapping.get("Schema").asText());
+
+        ArrayNode required = (ArrayNode) schema.get("required");
+        assertNotNull(required);
+        assertEquals("kind", required.get(0).asText());
+
+        ObjectNode modelManifest = schemas.get(generator.resolveTypeName(SampleModelTypedManifest.class));
+        assertNotNull(modelManifest, "model manifest schema should be generated");
+        assertEquals("#/components/schemas/Model",
+                modelManifest.get("properties").get("spec").get("$ref").asText());
+        assertEquals("string", modelManifest.get("properties").get("kind").get("type").asText());
+
+        ObjectNode schemaManifest = schemas.get(generator.resolveTypeName(SampleSchemaTypedManifest.class));
+        assertNotNull(schemaManifest, "schema manifest schema should be generated");
+        assertEquals("#/components/schemas/ApplicationTypeSchema",
+                schemaManifest.get("properties").get("spec").get("$ref").asText());
+    }
+
+    @Test
+    void inheritanceBasedPolymorphicSchemaUsesComponentRefs() {
+        DtoSchemaGenerator generator = new DtoSchemaGenerator();
+        generator.processType(com.epam.aidial.core.storage.data.MetadataBase.class);
+
+        Map<String, ObjectNode> schemas = generator.getSchemas();
+        ObjectNode schema = schemas.get("MetadataBase");
+        assertNotNull(schema, "MetadataBase schema should be generated");
+
+        ArrayNode oneOf = (ArrayNode) schema.get("oneOf");
+        assertEquals(2, oneOf.size());
+        assertEquals("#/components/schemas/ResourceFolderMetadata", oneOf.get(0).get("$ref").asText());
+        assertEquals("#/components/schemas/ResourceItemMetadata", oneOf.get(1).get("$ref").asText());
+
+        ObjectNode folderMetadata = schemas.get("ResourceFolderMetadata");
+        assertNotNull(folderMetadata, "ResourceFolderMetadata schema should be generated");
+        ObjectNode items = (ObjectNode) folderMetadata.get("properties").get("items").get("items");
+        assertEquals("#/components/schemas/MetadataBase", items.get("$ref").asText());
+    }
+
+    @Test
+    void fieldLevelApiSchemaAnnotationDrivesPropertyOneOf() {
+        DtoSchemaGenerator generator = new DtoSchemaGenerator();
+        generator.processType(SampleManifest.class);
+
+        Map<String, ObjectNode> schemas = generator.getSchemas();
+        ObjectNode schema = schemas.get(generator.resolveTypeName(SampleManifest.class));
+        assertNotNull(schema, "SampleManifest schema should be generated");
+
+        ObjectNode spec = (ObjectNode) schema.get("properties").get("spec");
+        assertNotNull(spec, "spec property should be generated");
+        assertTrue(spec.has("oneOf"), "spec property should be a oneOf");
+        ArrayNode oneOf = (ArrayNode) spec.get("oneOf");
+        assertEquals(2, oneOf.size());
+        assertEquals("#/components/schemas/ResourceLink", oneOf.get(0).get("$ref").asText());
+        assertEquals("#/components/schemas/ProxyRequest", oneOf.get(1).get("$ref").asText());
+
+        assertNotNull(schemas.get("ResourceLink"), "Referenced ResourceLink schema should be generated");
+        assertNotNull(schemas.get("ProxyRequest"), "Referenced ProxyRequest schema should be registered");
+
+        ObjectNode kind = (ObjectNode) schema.get("properties").get("kind");
+        assertNotNull(kind);
+        assertEquals("string", kind.get("type").asText());
     }
 
     @Test

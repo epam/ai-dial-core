@@ -4066,7 +4066,7 @@ paths:
             application/json:
               schema:
                 allOf:
-                - $ref: "#/components/schemas/ProxyResponse"
+                - $ref: "#/components/schemas/CatalogSchema"
                 - $ref: "#/components/schemas/EntityMetadata"
         "304":
           description: Not Modified
@@ -4133,7 +4133,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ProxyRequest"
+              $ref: "#/components/schemas/CatalogSchema"
         required: true
       responses:
         "200":
@@ -11258,7 +11258,7 @@ paths:
             application/json:
               schema:
                 allOf:
-                - $ref: "#/components/schemas/ProxyResponse"
+                - $ref: "#/components/schemas/ApplicationTypeSchema"
                 - $ref: "#/components/schemas/EntityMetadata"
         "304":
           description: Not Modified
@@ -11337,7 +11337,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ProxyRequest"
+              $ref: "#/components/schemas/ApplicationTypeSchema"
         required: true
       responses:
         "200":
@@ -13918,6 +13918,15 @@ components:
       properties:
         consent:
           $ref: "#/components/schemas/Consent"
+    AdminApplicationManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Application"
     AdminApplyRequest:
       type: object
       properties:
@@ -13954,7 +13963,7 @@ components:
       - APPLIED_INVALID
       - FAILED
       - SKIPPED
-    AdminManifest:
+    AdminCatalogSchemaManifest:
       type: object
       properties:
         kind:
@@ -13962,7 +13971,117 @@ components:
         name:
           type: string
         spec:
-          $ref: "#/components/schemas/JsonNode"
+          $ref: "#/components/schemas/CatalogSchema"
+    AdminInterceptorManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Interceptor"
+    AdminKeyManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Key"
+    AdminManifest:
+      required:
+      - kind
+      discriminator:
+        propertyName: kind
+        mapping:
+          Settings: "#/components/schemas/AdminSettingsManifest"
+          Schema: "#/components/schemas/AdminSchemaManifest"
+          CatalogSchema: "#/components/schemas/AdminCatalogSchemaManifest"
+          Interceptor: "#/components/schemas/AdminInterceptorManifest"
+          Translator: "#/components/schemas/AdminTranslatorManifest"
+          Role: "#/components/schemas/AdminRoleManifest"
+          Key: "#/components/schemas/AdminKeyManifest"
+          Route: "#/components/schemas/AdminRouteManifest"
+          Model: "#/components/schemas/AdminModelManifest"
+          ToolSet: "#/components/schemas/AdminToolSetManifest"
+          Application: "#/components/schemas/AdminApplicationManifest"
+      oneOf:
+      - $ref: "#/components/schemas/AdminSettingsManifest"
+      - $ref: "#/components/schemas/AdminSchemaManifest"
+      - $ref: "#/components/schemas/AdminCatalogSchemaManifest"
+      - $ref: "#/components/schemas/AdminInterceptorManifest"
+      - $ref: "#/components/schemas/AdminTranslatorManifest"
+      - $ref: "#/components/schemas/AdminRoleManifest"
+      - $ref: "#/components/schemas/AdminKeyManifest"
+      - $ref: "#/components/schemas/AdminRouteManifest"
+      - $ref: "#/components/schemas/AdminModelManifest"
+      - $ref: "#/components/schemas/AdminToolSetManifest"
+      - $ref: "#/components/schemas/AdminApplicationManifest"
+    AdminModelManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Model"
+    AdminRoleManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Role"
+    AdminRouteManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Route"
+    AdminSchemaManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/ApplicationTypeSchema"
+    AdminSettingsManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/GlobalSettings"
+    AdminToolSetManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/ToolSet"
+    AdminTranslatorManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Translator"
     AdminValidateResponse:
       type: object
       properties:
@@ -14186,6 +14305,8 @@ components:
         catalog_schema_id:
           type: string
           format: uri
+        interface_configs:
+          $ref: "#/components/schemas/MapStringInterfaceConfigData"
     ApplicationFunction:
       type: object
       properties:
@@ -14243,6 +14364,17 @@ components:
       enum:
       - HEADER
       - META
+    ApplicationTypeSchema:
+      required:
+      - $id
+      type: object
+      properties:
+        $id:
+          type: string
+          format: uri-reference
+      additionalProperties: true
+      description: |
+        JSON Schema document describing a custom application type. Alongside standard JSON Schema keywords it carries `dial`-prefixed extension properties; `$id` is required and must be non-blank.
     AuthenticationType:
       type: string
       enum:
@@ -14281,6 +14413,17 @@ components:
           type: array
           items:
             type: string
+    CatalogSchema:
+      required:
+      - $id
+      type: object
+      properties:
+        $id:
+          type: string
+          format: uri-reference
+      additionalProperties: true
+      description: |
+        JSON Schema document describing a catalog entity type. Alongside standard JSON Schema keywords it carries `dial`-prefixed extension properties; `$id` is required and must be non-blank.
     ChatCompletionAddon:
       oneOf:
       - type: object
@@ -14644,6 +14787,11 @@ components:
           description: |-
             The JSON schema describing a form that the assistant prompts the user to fill in.
             Given this schema, the user is expected to provide a JSON value in the next message in the `custom_content.form_value` field.
+        skills:
+          type: array
+          description: List of skills referenced by the model as part of the response.
+          items:
+            $ref: "#/components/schemas/RequestSkill"
       description: The custom content of the assistant message.
     ChatCompletionRequestCustomFields:
       type: object
@@ -14887,6 +15035,11 @@ components:
         form_value:
           type: object
           description: The JSON value corresponding to the JSON schema sent by the assistant in the previous message in the `custom_content.form_schema` field.
+        skills:
+          type: array
+          description: List of skills used to supply an additional input for the model.
+          items:
+            $ref: "#/components/schemas/RequestSkill"
       description: The custom content of the user message.
     ChatCompletionResponseAttachment:
       required:
@@ -15580,6 +15733,8 @@ components:
           $ref: "#/components/schemas/TranslatorRef"
         defaults:
           $ref: "#/components/schemas/MapStringObject"
+        features:
+          $ref: "#/components/schemas/Features"
     EmbeddingResponse:
       required:
       - data
@@ -16076,6 +16231,15 @@ components:
           $ref: "#/components/schemas/MapStringString"
         baseUrl:
           type: string
+    InterfaceConfigData:
+      type: object
+      properties:
+        defaults:
+          $ref: "#/components/schemas/MapStringObject"
+        features:
+          $ref: "#/components/schemas/FeaturesData"
+        default_headers:
+          $ref: "#/components/schemas/MapStringString"
     InterfaceMode:
       type: string
       enum:
@@ -16323,6 +16487,10 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/Interceptor"
+    MapStringInterfaceConfigData:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/InterfaceConfigData"
     MapStringKey:
       type: object
       additionalProperties:
@@ -16580,6 +16748,8 @@ components:
         catalog_schema_id:
           type: string
           format: uri
+        interface_configs:
+          $ref: "#/components/schemas/MapStringInterfaceConfigData"
     ModelType:
       type: string
       enum:
@@ -16856,6 +17026,14 @@ components:
         reference_url:
           type: string
           description: "If `reference_type` is specified, the content of `reference_url` should follow the format described in the MIME standard for `reference_type`."
+    RequestSkill:
+      required:
+      - url
+      type: object
+      properties:
+        url:
+          type: string
+          description: "The URL of the skill resource, e.g. `skills/<bucket>/<path>`."
     ResourceAccessType:
       type: string
       enum:
@@ -17676,6 +17854,8 @@ components:
         catalog_schema_id:
           type: string
           format: uri
+        interface_configs:
+          $ref: "#/components/schemas/MapStringInterfaceConfigData"
     ToolSetRepairControllerRepairResponse:
       type: object
       properties:

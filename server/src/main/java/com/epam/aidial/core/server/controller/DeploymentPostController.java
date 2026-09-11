@@ -22,6 +22,7 @@ import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectChatCompletionUsageFn;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
+import com.epam.aidial.core.server.function.CollectRequestSkillsFn;
 import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.StripUsagePerModelFn;
@@ -74,10 +75,11 @@ public class DeploymentPostController extends BaseDeploymentPostController {
      */
     private List<BaseRequestFunction<RequestObject>> buildEnhancementFunctions() {
         return List.of(new CollectRequestStandardAttachmentsFn(proxy, context),
+                new CollectRequestSkillsFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context, requestedInterface()),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
-                new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_CHAT_COMPLETIONS),
+                new BuildUpstreamCacheFn(proxy, context, requestedInterface()),
                 new CollectDeploymentsFn(proxy, context));
     }
 
@@ -184,11 +186,11 @@ public class DeploymentPostController extends BaseDeploymentPostController {
     private Future<?> handleDeployment(String deploymentId) {
         return proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findDeployment(context, deploymentId))
                 .compose(dep -> proxy.getTaskExecutor().submit(() -> {
-                    proxy.getConsentService().verifyUserConsent(context, dep);
+                    proxy.getConsentService().verifyUserConsent(context, dep, requestedInterface());
                     return dep;
                 }))
                 .map(dep -> {
-                    Features features = dep.getFeatures();
+                    Features features = dep.resolveFeatures(requestedInterface());
                     boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
                     if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
                         throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", deploymentId, context.getApiKeyData().getSourceDeployment()));

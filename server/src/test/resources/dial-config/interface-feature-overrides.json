@@ -1,0 +1,55 @@
+{
+  "models": {
+    "feature-inheritance": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "features": {
+        "tools_supported": true,
+        "temperature_supported": true,
+        "reasoning_efforts": ["low", "medium", "high"]
+      },
+      "interfaces": {
+        "openaiChatCompletions": {"mode": "passthrough"},
+        "openaiEmbeddings": {"mode": "passthrough"},
+        "openaiResponses": {"mode": "passthrough"},
+        "anthropicMessages": {
+          "mode": "passthrough",
+          "features": {"reasoning_efforts": ["low", "medium", "high", "xhigh", "max"]}
+        }
+      },
+      "upstreams": [{"id": "upstream", "endpoint": "http://provider", "key": "test-key"}]
+    },
+    "feature-translator": {
+      "type": "chat",
+      "features": {"tools_supported": true, "temperature_supported": false, "reasoning_efforts": ["low"]},
+      "interfaces": {
+        "openaiChatCompletions": {"base_url": "http://localhost:4848"},
+        "anthropicMessages": {
+          "mode": "translator",
+          "translator": {"out": "openaiChatCompletions", "baseUrl": "http://localhost:4848"},
+          "features": {"reasoning_efforts": ["max"]}
+        }
+      },
+      "upstreams": [{"id": "upstream", "endpoint": "http://provider", "key": "test-key"}]
+    },
+    "feature-overrides": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "features": {
+        "tools_supported": true,
+        "temperature_supported": false,
+        "reasoning_efforts": ["high"]
+      },
+      "interfaces": {
+        "openaiChatCompletions": {"features": {"tools_supported": false, "reasoning_efforts": []}},
+        "openaiEmbeddings": {"features": {"tools_supported": false, "reasoning_efforts": []}},
+        "openaiResponses": {"features": {"tools_supported": false, "reasoning_efforts": []}},
+        "anthropicMessages": {"features": {"tools_supported": false, "reasoning_efforts": []}}
+      },
+      "upstreams": [{"id": "upstream", "endpoint": "http://provider", "key": "test-key"}]
+    }
+  },
+  "keys": {
+    "proxyKey1": {"project": "test", "role": "default"}
+  }
+}

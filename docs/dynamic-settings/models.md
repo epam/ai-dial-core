@@ -174,14 +174,13 @@ Supported interface types for models:
 
 The `interfaces` map is strict: chat completions is configured via `openaiChatCompletions` and embeddings via `openaiEmbeddings`, and one never stands in for the other — a model declaring only `openaiChatCompletions` answers `503` to `embeddings`, and a model declaring only `openaiEmbeddings` answers `503` to `chat/completions` and `completions`. The untyped legacy `endpoint` predates the split and keeps serving `embeddings` requests verbatim, so models configured before the split keep working unchanged.
 
-Only the interface types a model declares are reported in the `interfaces` array of the `/v1/deployments` listing. A legacy `endpoint` is advertised as the interface matching what the model says it is: `openaiEmbeddings` when `type` is `embedding`, `openaiChatCompletions` otherwise — so an embedding model configured this way reports `openaiEmbeddings` and `"chat_completion": false`, even though that one endpoint still serves the whole deployments POST family.
-
 Each value is an object with the following fields:
 
 * `base_url`: The root URL that the matching ingress path is appended to. Optional — the model-level `baseUrl` serves an entry that omits it.
 * `mode`: `passthrough` (default) or `translator`. It declares whether the request is forwarded in the shape it arrived in, or handed to a service that translates it into an API the model does speak. A `translator` interface **does not touch the caller's [role limits](roles.md#rolesrole_namelimits)** — neither checks nor charges them. The translator calls DIAL Core back to have the completion served, and that second call is the real request: it carries the tokens, the cost and the `requestHour`/`requestDay` slot, so a client call is counted once rather than twice. An exhausted quota is therefore enforced on the callback rather than on the translated call itself. Refer to [Limits and a translated request](translators.md#limits-and-a-translated-request).
 * `translator`: The translator serving this interface, required by `mode: translator` and rejected without it. Either the name of a [translators](translators.md) entry, or a definition written inline as `{"out": ..., "baseUrl": ...}`. An interface is served either by a base URL or by a translator, never by both — a model declaring both is rejected on config load.
 * `defaultHeaders`: Headers applied to requests for this interface only, laid over the model-level `defaultHeaders`. Refer to [models.<model_name>.defaultHeaders](#modelsmodel_namedefaultheaders).
+* `features`: Feature fields that override model-level `features` for this interface only. Unspecified fields inherit the model-level value, then Core defaults apply. Refer to [Features per interface](#features-per-interface).
 * `defaults`: Body parameters applied to requests for this interface only, replacing whichever model-level defaults would otherwise serve it. They are injected the same way the model-level ones are — a key the request already carries is never replaced. Refer to [Defaults per interface](#defaults-per-interface).
 
 **Example**
@@ -216,6 +215,46 @@ Each value is an object with the following fields:
     }
 }
 ```
+
+### Features per interface
+
+Effective features are resolved field by field in this order:
+
+1. `interfaces.<type>.features`, when the field has a non-null value.
+2. Model-level `features`.
+3. DIAL Core's existing default for that feature.
+
+An absent, `null`, or empty interface `features` object inherits all model-level fields. A field set to `null` also inherits. Explicit `false` overrides `true`. Arrays replace the entire inherited array: `"reasoning_efforts": []` clears the supported efforts. Snake-case and camelCase feature names are both accepted.
+
+```json
+{
+  "models": {
+    "openai-gpt-5.4-mini": {
+      "type": "chat",
+      "baseUrl": "http://dial-openai-adapter/",
+      "features": {
+        "tools_supported": true,
+        "temperature_supported": true,
+        "reasoning_efforts": ["low", "medium", "high"]
+      },
+      "interfaces": {
+        "openaiChatCompletions": {"mode": "passthrough"},
+        "openaiResponses": {"mode": "passthrough"},
+        "anthropicMessages": {
+          "mode": "passthrough",
+          "features": {"reasoning_efforts": ["low", "medium", "high", "xhigh", "max"]}
+        }
+      }
+    }
+  }
+}
+```
+
+Chat completions and Responses inherit `["low", "medium", "high"]`; Anthropic Messages uses `["low", "medium", "high", "xhigh", "max"]`. All three retain `tools_supported: true` and `temperature_supported: true`. Tool support is explicitly enabled here because Core's default is `false`.
+
+The same rule applies to `openaiEmbeddings`. It needs its own interface declaration when using `interfaces` for routing. Passthrough and translator requests receive effective features in `X-DIAL-DEPLOYMENT-FEATURES`, using the existing header format (`tools`, `temperature`, `reasoning_efforts`, etc.). Request-time caching, automatic caching, per-request-key access, and consent checks also use the requested interface's features. Consent reviews include requirements declared on interfaces.
+
+Core defaults are applied after merging, and resolving a request does not modify the shared configuration.
 
 #### models.<model_name>.defaultHeaders
 

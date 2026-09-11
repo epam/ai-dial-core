@@ -485,13 +485,19 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
                 """;
         verify(send(HttpMethod.PUT, "/v1/keys/platform/test-key-preserve", null,
                 body, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "",
+                "Api-key", "secret-preserve"), 200);
 
         // PUT body omits "key": a 200 response proves preserve-on-omit pulled the encrypted secret
         // from the existing blob — otherwise the post-merge blank-key check would 400. The secret
-        // value itself is not asserted because U.4 retired the plaintext-reveal path.
+        // value itself is not asserted because U.4 retired the plaintext-reveal path; the bearer
+        // roundtrip below proves the preserved secret still authenticates under its plaintext
+        // form (ApiKeyStore is indexed by plaintext, not by the preserved ciphertext).
         Response put = send(HttpMethod.PUT, "/v1/keys/platform/test-key-preserve", null,
                 KEY_BODY_PROJECT_B_NO_KEY, "authorization", "admin");
         verify(put, 200);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "",
+                "Api-key", "secret-preserve"), 200);
     }
 
     @Test
