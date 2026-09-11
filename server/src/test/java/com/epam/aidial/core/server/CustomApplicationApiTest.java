@@ -603,6 +603,38 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     "responses_defaults" : { },
                     "description_keywords" : [ ],
                     "max_retry_attempts" : 1,
+                    "interface_configs" : {
+                      "openaiChatCompletions" : {
+                        "features" : {
+                          "rate" : true,
+                          "tokenize" : false,
+                          "truncate_prompt" : false,
+                          "configuration" : true,
+                          "system_prompt" : false,
+                          "tools" : false,
+                          "seed" : false,
+                          "url_attachments" : false,
+                          "folder_attachments" : false,
+                          "allow_resume" : true,
+                          "accessible_by_per_request_key" : true,
+                          "content_parts" : false,
+                          "temperature" : true,
+                          "cache" : false,
+                          "auto_caching" : false,
+                          "parallel_tool_calls" : true,
+                          "assistant_attachments_in_request" : false,
+                          "mcp" : false,
+                          "chat_completion" : true,
+                          "responses_api" : false,
+                          "max_tokens_supported" : true,
+                          "max_completion_tokens_supported" : false,
+                          "custom_temperature_supported" : true,
+                          "reasoning_efforts" : [ ]
+                        },
+                        "defaults" : { },
+                        "default_headers" : { }
+                      }
+                    },
                     "routes" : { },
                     "viewer_url" : "http://some-host",
                     "editor_url" : "http://some-host"
@@ -648,6 +680,38 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     "responses_defaults" : { },
                     "description_keywords" : [ ],
                     "max_retry_attempts" : 1,
+                    "interface_configs" : {
+                      "openaiChatCompletions" : {
+                        "features" : {
+                          "rate" : true,
+                          "tokenize" : false,
+                          "truncate_prompt" : false,
+                          "configuration" : true,
+                          "system_prompt" : false,
+                          "tools" : false,
+                          "seed" : false,
+                          "url_attachments" : false,
+                          "folder_attachments" : false,
+                          "allow_resume" : true,
+                          "accessible_by_per_request_key" : true,
+                          "content_parts" : false,
+                          "temperature" : true,
+                          "cache" : false,
+                          "auto_caching" : false,
+                          "parallel_tool_calls" : true,
+                          "assistant_attachments_in_request" : false,
+                          "mcp" : false,
+                          "chat_completion" : true,
+                          "responses_api" : false,
+                          "max_tokens_supported" : true,
+                          "max_completion_tokens_supported" : false,
+                          "custom_temperature_supported" : true,
+                          "reasoning_efforts" : [ ]
+                        },
+                        "defaults" : { },
+                        "default_headers" : { }
+                      }
+                    },
                     "routes" : {
                       "index-search" : {
                         "rewritePath" : true,
@@ -702,6 +766,68 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     "responses_defaults" : { },
                     "description_keywords" : [ ],
                     "max_retry_attempts" : 1,
+                    "interface_configs" : {
+                      "openaiChatCompletions" : {
+                        "features" : {
+                          "rate" : false,
+                          "tokenize" : false,
+                          "truncate_prompt" : false,
+                          "configuration" : false,
+                          "system_prompt" : true,
+                          "tools" : false,
+                          "seed" : false,
+                          "url_attachments" : false,
+                          "folder_attachments" : false,
+                          "allow_resume" : true,
+                          "accessible_by_per_request_key" : true,
+                          "content_parts" : false,
+                          "temperature" : true,
+                          "cache" : false,
+                          "auto_caching" : false,
+                          "parallel_tool_calls" : true,
+                          "assistant_attachments_in_request" : false,
+                          "mcp" : false,
+                          "chat_completion" : true,
+                          "responses_api" : false,
+                          "max_tokens_supported" : true,
+                          "max_completion_tokens_supported" : false,
+                          "custom_temperature_supported" : true,
+                          "reasoning_efforts" : [ ]
+                        },
+                        "defaults" : { },
+                        "default_headers" : { }
+                      },
+                      "openaiResponses" : {
+                        "features" : {
+                          "rate" : false,
+                          "tokenize" : false,
+                          "truncate_prompt" : false,
+                          "configuration" : false,
+                          "system_prompt" : true,
+                          "tools" : false,
+                          "seed" : false,
+                          "url_attachments" : false,
+                          "folder_attachments" : false,
+                          "allow_resume" : true,
+                          "accessible_by_per_request_key" : true,
+                          "content_parts" : false,
+                          "temperature" : true,
+                          "cache" : false,
+                          "auto_caching" : false,
+                          "parallel_tool_calls" : true,
+                          "assistant_attachments_in_request" : false,
+                          "mcp" : false,
+                          "chat_completion" : false,
+                          "responses_api" : true,
+                          "max_tokens_supported" : true,
+                          "max_completion_tokens_supported" : false,
+                          "custom_temperature_supported" : true,
+                          "reasoning_efforts" : [ ]
+                        },
+                        "defaults" : { },
+                        "default_headers" : { }
+                      }
+                    },
                     "routes" : { }
                   } ],
                   "object" : "list"
@@ -767,6 +893,40 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     "responses_defaults":{},
                     "description_keywords":[],
                     "max_retry_attempts" : 1,
+                    "interface_configs" : {
+                      "openaiChatCompletions" : {
+                        "features" : {
+                          "rate" : true,
+                          "tokenize" : false,
+                          "truncate_prompt" : false,
+                          "configuration" : true,
+                          "system_prompt" : true,
+                          "tokenize" : false,
+                          "truncate_prompt" : false,
+                          "tools" : false,
+                          "seed" : false,
+                          "url_attachments" : false,
+                          "folder_attachments" : false,
+                          "allow_resume" : true,
+                          "accessible_by_per_request_key" : true,
+                          "content_parts" : false,
+                          "temperature" : true,
+                          "cache" : false,
+                          "auto_caching" : false,
+                          "parallel_tool_calls" : true,
+                          "assistant_attachments_in_request" : false,
+                          "mcp" : false,
+                          "chat_completion" : true,
+                          "responses_api" : false,
+                          "max_tokens_supported" : true,
+                          "max_completion_tokens_supported" : false,
+                          "custom_temperature_supported" : true,
+                          "reasoning_efforts" : [ ]
+                        },
+                        "defaults" : { },
+                        "default_headers" : { }
+                      }
+                    },
                     "owner" : "EPM-RTC-GPT",
                     "created_at" : "@ignore",
                     "updated_at" : "@ignore",
@@ -820,6 +980,38 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     "responses_defaults" : { },
                     "description_keywords" : [ ],
                     "max_retry_attempts" : 1,
+                    "interface_configs" : {
+                      "openaiChatCompletions" : {
+                        "features" : {
+                          "rate" : true,
+                          "tokenize" : false,
+                          "truncate_prompt" : false,
+                          "configuration" : true,
+                          "system_prompt" : false,
+                          "tools" : false,
+                          "seed" : false,
+                          "url_attachments" : false,
+                          "folder_attachments" : false,
+                          "allow_resume" : true,
+                          "accessible_by_per_request_key" : true,
+                          "content_parts" : false,
+                          "temperature" : true,
+                          "cache" : false,
+                          "auto_caching" : false,
+                          "parallel_tool_calls" : true,
+                          "assistant_attachments_in_request" : false,
+                          "mcp" : false,
+                          "chat_completion" : true,
+                          "responses_api" : false,
+                          "max_tokens_supported" : true,
+                          "max_completion_tokens_supported" : false,
+                          "custom_temperature_supported" : true,
+                          "reasoning_efforts" : [ ]
+                        },
+                        "defaults" : { },
+                        "default_headers" : { }
+                      }
+                    },
                     "routes" : { },
                     "viewer_url" : "http://some-host",
                     "editor_url" : "http://some-host"
@@ -865,6 +1057,38 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     "responses_defaults" : { },
                     "description_keywords" : [ ],
                     "max_retry_attempts" : 1,
+                    "interface_configs" : {
+                      "openaiChatCompletions" : {
+                        "features" : {
+                          "rate" : true,
+                          "tokenize" : false,
+                          "truncate_prompt" : false,
+                          "configuration" : true,
+                          "system_prompt" : false,
+                          "tools" : false,
+                          "seed" : false,
+                          "url_attachments" : false,
+                          "folder_attachments" : false,
+                          "allow_resume" : true,
+                          "accessible_by_per_request_key" : true,
+                          "content_parts" : false,
+                          "temperature" : true,
+                          "cache" : false,
+                          "auto_caching" : false,
+                          "parallel_tool_calls" : true,
+                          "assistant_attachments_in_request" : false,
+                          "mcp" : false,
+                          "chat_completion" : true,
+                          "responses_api" : false,
+                          "max_tokens_supported" : true,
+                          "max_completion_tokens_supported" : false,
+                          "custom_temperature_supported" : true,
+                          "reasoning_efforts" : [ ]
+                        },
+                        "defaults" : { },
+                        "default_headers" : { }
+                      }
+                    },
                     "routes" : {
                       "index-search" : {
                         "rewritePath" : true,
@@ -919,6 +1143,68 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     "responses_defaults" : { },
                     "description_keywords" : [ ],
                     "max_retry_attempts" : 1,
+                    "interface_configs" : {
+                      "openaiChatCompletions" : {
+                        "features" : {
+                          "rate" : false,
+                          "tokenize" : false,
+                          "truncate_prompt" : false,
+                          "configuration" : false,
+                          "system_prompt" : true,
+                          "tools" : false,
+                          "seed" : false,
+                          "url_attachments" : false,
+                          "folder_attachments" : false,
+                          "allow_resume" : true,
+                          "accessible_by_per_request_key" : true,
+                          "content_parts" : false,
+                          "temperature" : true,
+                          "cache" : false,
+                          "auto_caching" : false,
+                          "parallel_tool_calls" : true,
+                          "assistant_attachments_in_request" : false,
+                          "mcp" : false,
+                          "chat_completion" : true,
+                          "responses_api" : false,
+                          "max_tokens_supported" : true,
+                          "max_completion_tokens_supported" : false,
+                          "custom_temperature_supported" : true,
+                          "reasoning_efforts" : [ ]
+                        },
+                        "defaults" : { },
+                        "default_headers" : { }
+                      },
+                      "openaiResponses" : {
+                        "features" : {
+                          "rate" : false,
+                          "tokenize" : false,
+                          "truncate_prompt" : false,
+                          "configuration" : false,
+                          "system_prompt" : true,
+                          "tools" : false,
+                          "seed" : false,
+                          "url_attachments" : false,
+                          "folder_attachments" : false,
+                          "allow_resume" : true,
+                          "accessible_by_per_request_key" : true,
+                          "content_parts" : false,
+                          "temperature" : true,
+                          "cache" : false,
+                          "auto_caching" : false,
+                          "parallel_tool_calls" : true,
+                          "assistant_attachments_in_request" : false,
+                          "mcp" : false,
+                          "chat_completion" : false,
+                          "responses_api" : true,
+                          "max_tokens_supported" : true,
+                          "max_completion_tokens_supported" : false,
+                          "custom_temperature_supported" : true,
+                          "reasoning_efforts" : [ ]
+                        },
+                        "defaults" : { },
+                        "default_headers" : { }
+                      }
+                    },
                     "routes" : { }
                   }, {
                     "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
@@ -963,6 +1249,38 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     "responses_defaults" : { },
                     "description_keywords" : [ ],
                     "max_retry_attempts" : 1,
+                    "interface_configs" : {
+                      "openaiChatCompletions" : {
+                        "features" : {
+                          "rate" : true,
+                          "tokenize" : false,
+                          "truncate_prompt" : false,
+                          "configuration" : true,
+                          "system_prompt" : true,
+                          "tools" : false,
+                          "seed" : false,
+                          "url_attachments" : false,
+                          "folder_attachments" : false,
+                          "allow_resume" : true,
+                          "accessible_by_per_request_key" : true,
+                          "content_parts" : false,
+                          "temperature" : true,
+                          "cache" : false,
+                          "auto_caching" : false,
+                          "parallel_tool_calls" : true,
+                          "assistant_attachments_in_request" : false,
+                          "mcp" : false,
+                          "chat_completion" : true,
+                          "responses_api" : false,
+                          "max_tokens_supported" : true,
+                          "max_completion_tokens_supported" : false,
+                          "custom_temperature_supported" : true,
+                          "reasoning_efforts" : [ ]
+                        },
+                        "defaults" : { },
+                        "default_headers" : { }
+                      }
+                    },
                     "routes" : { }
                   } ],
                   "object" : "list"
@@ -1239,6 +1557,38 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                   "responses_defaults" : { },
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
+                  "interface_configs" : {
+                    "openaiChatCompletions" : {
+                      "features" : {
+                        "rate" : false,
+                        "tokenize" : false,
+                        "truncate_prompt" : false,
+                        "configuration" : false,
+                        "system_prompt" : true,
+                        "tools" : false,
+                        "seed" : false,
+                        "url_attachments" : false,
+                        "folder_attachments" : false,
+                        "allow_resume" : true,
+                        "accessible_by_per_request_key" : true,
+                        "content_parts" : false,
+                        "temperature" : true,
+                        "cache" : false,
+                        "auto_caching" : false,
+                        "parallel_tool_calls" : true,
+                        "assistant_attachments_in_request" : false,
+                        "mcp" : false,
+                        "chat_completion" : true,
+                        "responses_api" : false,
+                        "max_tokens_supported" : true,
+                        "max_completion_tokens_supported" : false,
+                        "custom_temperature_supported" : true,
+                        "reasoning_efforts" : [ ]
+                      },
+                      "defaults" : { },
+                      "default_headers" : { }
+                    }
+                  },
                   "application_properties" : {
                     "property1" : "test property1"
                   },

@@ -1,0 +1,56 @@
+{
+  "applications": {
+    "app-iface": {
+      "displayName": "App configured via interfaces",
+      "interfaces": {
+        "openaiChatCompletions": {
+          "base_url": "http://localhost:7001",
+          "defaults": {"temperature": 0.1}
+        }
+      }
+    },
+    "app-ui-only": {
+      "displayName": "App serving no typed interface",
+      "viewerUrl": "http://localhost:7001/app"
+    }
+  },
+  "models": {
+    "gpt-5.4-mini": {
+      "type": "chat",
+      "displayName": "GPT 5.4 mini",
+      "features": {
+        "system_prompt_supported": true,
+        "temperature_supported": true,
+        "tools_supported": true,
+        "reasoning_efforts": ["low", "medium"]
+      },
+      "defaults": {"temperature": 1},
+      "responsesDefaults": {"temperature": 1},
+      "defaultHeaders": {"x-dial-cache-policy": "cache-priority", "x-dial-custom-header": "foo-bar"},
+      "interfaces": {
+        "openaiChatCompletions": {"base_url": "http://localhost:7001"},
+        "openaiResponses": {"base_url": "http://localhost:7001"},
+        "anthropicMessages": {
+          "base_url": "http://localhost:7001",
+          "features": {"reasoning_efforts": ["low", "medium", "high", "xhigh", "max"]},
+          "defaults": {"temperature": 0.5},
+          "defaultHeaders": {"x-dial-custom-header": "foo-bar-2", "x-dial-custom-header-2": "some-value"}
+        }
+      }
+    },
+    "model-legacy": {
+      "type": "chat",
+      "endpoint": "http://localhost:7001/openai/deployments/model-legacy/chat/completions"
+    },
+    "embedding-ada": {
+      "type": "embedding",
+      "endpoint": "http://localhost:7001/openai/deployments/embedding-ada/embeddings"
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "default"
+    }
+  }
+}
