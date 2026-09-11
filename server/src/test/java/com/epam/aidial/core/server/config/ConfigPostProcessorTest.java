@@ -511,6 +511,15 @@ public class ConfigPostProcessorTest {
     }
 
     @Test
+    void testSemanticValidatesSnakeCaseOverridePathKeys() {
+        // the alias resolves to the same key, so its template is validated, not tolerated as unknown
+        Config config = configWithOverridePaths("anthropicMessages", Map.of("post_anthropic_messages", "/v1/{id}/messages"));
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
     void testSemanticAbortThrowsOnOverridePathsForTranslatedInterfaces() {
         Config config = newMutableConfig();
         Model model = new Model();

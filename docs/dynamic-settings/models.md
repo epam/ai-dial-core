@@ -237,9 +237,11 @@ and the value is the path applied to the base URL instead of the ingress path:
 | `postAnthropicMessages`            | `POST /anthropic/v1/messages`                    |
 | `postAnthropicMessagesCountTokens` | `POST /anthropic/v1/messages/count_tokens`       |
 
-A key sits under the interface that owns it — a known key declared under a different interface is
-rejected on config load, while a key this Core version does not know is ignored, exactly as an
-unknown interface type is. Operations without an override keep the default routing, so overriding
+Each key is also accepted in snake_case (`post_azure_openai_chat_completions`,
+`get_openai_responses_by_id`, ...), exactly as interface types are; the camelCase spelling wins when
+both are declared. A key sits under the interface that owns it — a known key declared under a
+different interface is rejected on config load, while a key this Core version does not know is
+ignored, exactly as an unknown interface type is. Operations without an override keep the default routing, so overriding
 only some of an interface's operations is fine.
 
 The value is a template with `{variable}` placeholders, following the Python `str.format`
