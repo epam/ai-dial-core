@@ -15698,6 +15698,8 @@ components:
           $ref: "#/components/schemas/MapStringObject"
         features:
           $ref: "#/components/schemas/Features"
+        overridePaths:
+          $ref: "#/components/schemas/MapStringString"
     EmbeddingResponse:
       required:
       - data
