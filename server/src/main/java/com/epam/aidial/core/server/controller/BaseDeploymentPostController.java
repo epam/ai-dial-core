@@ -19,6 +19,7 @@ import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
@@ -171,6 +172,10 @@ public class BaseDeploymentPostController {
     }
 
     protected Future<Void> collectTokenUsage(Buffer responseBody) {
+        if (GenAiTraceAttributes.isEnabled(context)) {
+            // interfaceType() reads the request path, which not every deployment kind reaching here has
+            GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseBody);
+        }
         if (context.getDeployment() instanceof Model model) {
             if (context.getResponse().getStatusCode() != HttpStatus.OK.getCode()) {
                 return Future.succeededFuture();
@@ -190,6 +195,7 @@ public class BaseDeploymentPostController {
                 tokenUsage = new TokenUsage();
             }
             context.setTokenUsage(tokenUsage);
+            GenAiTraceAttributes.setUsageAttributes(context, tokenUsage);
             TokenUsage usage = context.getTokenUsage();
             return increaseLimits(usage)
                     .transform(result -> {
@@ -273,6 +279,7 @@ public class BaseDeploymentPostController {
                     forLog.setAggCost(stats.total().getAggCost());
                 }
                 context.setTokenUsage(forLog);
+                GenAiTraceAttributes.setUsageAttributes(context, forLog);
             }
             return Future.<Void>succeededFuture();
         });

@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequest
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -81,7 +82,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
         context.getRequest().body()
-                .map(MessagesBaseController::parseBody)
+                .map(this::parseBody)
                 .compose(request -> {
                     String model = request.getModel();
                     deploymentId = model;
@@ -113,14 +114,21 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         return null;
     }
 
-    protected static MessagesApiRequest parseBody(Buffer body) {
+    protected MessagesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
             ObjectNode tree = ProxyUtil.parseObject(body);
+            if (isGenAiOperation()) {
+                GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.ANTHROPIC_MESSAGES, tree);
+            }
             return new MessagesApiRequest(tree);
         } catch (IOException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
+    }
+
+    protected boolean isGenAiOperation() {
+        return true;
     }
 
     protected Void setupDeployment(String model) {

@@ -17,6 +17,9 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.service.ResourceService;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.TraceFlags;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Vertx;
@@ -62,6 +65,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -199,6 +203,50 @@ public class ProxyTest {
         proxy.handle(request);
 
         verify(response).setStatusCode(UNAUTHORIZED.getCode());
+    }
+
+    @Test
+    public void testHandle_ResponseTraceHeadersAreReturnedWhenEnabled() {
+        Config config = new Config();
+        config.getTracing().setResponseTraceHeaders(true);
+        when(configStore.get()).thenReturn(config);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(request.path()).thenReturn("/foo");
+
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            SpanContext spanContext = mock(SpanContext.class);
+            TraceFlags traceFlags = mock(TraceFlags.class);
+            when(span.getSpanContext()).thenReturn(spanContext);
+            when(spanContext.getTraceId()).thenReturn("11111111111111111111111111111111");
+            when(spanContext.getSpanId()).thenReturn("2222222222222222");
+            when(spanContext.getTraceFlags()).thenReturn(traceFlags);
+            when(traceFlags.asHex()).thenReturn("01");
+            when(Span.current()).thenReturn(span);
+
+            proxy.handle(request);
+
+            verify(response).putHeader(Proxy.HEADER_DIAL_TRACE_ID, "11111111111111111111111111111111");
+            verify(response).putHeader(Proxy.HEADER_DIAL_SPAN_ID, "2222222222222222");
+        }
+    }
+
+    @Test
+    public void testHandle_ResponseTraceHeadersAreOmittedWhenDisabled() {
+        when(configStore.get()).thenReturn(new Config());
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(request.path()).thenReturn("/foo");
+
+        proxy.handle(request);
+
+        verify(response, never()).putHeader(eq(Proxy.HEADER_DIAL_TRACE_ID), anyString());
+        verify(response, never()).putHeader(eq(Proxy.HEADER_DIAL_SPAN_ID), anyString());
     }
 
     @ParameterizedTest

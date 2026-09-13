@@ -30,6 +30,11 @@ public class MessagesCountTokensController extends MessagesBaseController {
         super(proxy, context);
     }
 
+    @Override
+    protected boolean isGenAiOperation() {
+        return false;
+    }
+
     @ApiOperations({
             @ApiOperation(
                     method = "POST",

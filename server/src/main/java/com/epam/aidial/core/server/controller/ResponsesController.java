@@ -30,6 +30,7 @@ import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
@@ -111,7 +112,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
         context.getRequest().body()
-                .map(ResponsesController::parseBody)
+                .map(this::parseBody)
                 .compose(this::dispatch)
                 .onFailure(this::handleRequestBodyError);
         return Future.succeededFuture();
@@ -191,7 +192,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 });
     }
 
-    private static ResponsesApiRequest parseBody(Buffer body) {
+    private ResponsesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
             ObjectNode tree = ProxyUtil.parseObject(body);
@@ -201,6 +202,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             if (tree.has("conversation")) {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "conversation is not supported");
             }
+            GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.OPENAI_RESPONSES, tree);
             return new ResponsesApiRequest(tree);
         } catch (IOException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());

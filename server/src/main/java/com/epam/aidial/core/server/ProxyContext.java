@@ -29,7 +29,9 @@ import lombok.Setter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -105,6 +107,7 @@ public class ProxyContext {
     private ServerWebSocket serverWebSocket;
     private boolean isStoreResponse;
     private boolean isBackgroundJob;
+    private final Map<String, Object> tracingAttributes = new LinkedHashMap<>();
 
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {
@@ -295,7 +298,9 @@ public class ProxyContext {
     }
 
     public ProxyContext copyWith(ApiKeyData newApiKeyData) {
-        return new ProxyContext(proxy, request, newApiKeyData, extractedClaims, traceId, spanId, traceFlags);
+        ProxyContext copy = new ProxyContext(proxy, request, newApiKeyData, extractedClaims, traceId, spanId, traceFlags);
+        copy.getTracingAttributes().putAll(tracingAttributes);
+        return copy;
     }
 
     public boolean isOriginalRequest() {

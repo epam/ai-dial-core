@@ -395,6 +395,7 @@ DIAL Core stores user data in the following storages:
 | roles                  | API key or JWT roles and their parameters. Refer to [Roles](/docs/dynamic-settings/roles.md) to see dynamic settings.                                                                                                                                                           |
 | keys                   | API keys and their parameters. Refer to [API Keys](/docs/dynamic-settings/keys.md) to see dynamic settings.                                                                                                                                                                     |
 | retriableErrorCodes    | List of Retriable Error Codes for handling outages at LLM Providers. This list extends the existing error codes (429, 502, 503, 504) but doesn't override them.                                                                                                                 |
+| tracing                | Opt-in OpenTelemetry GenAI enrichment settings. Refer to [Tracing](/docs/dynamic-settings/tracing.md) to see dynamic settings.                                                                                                                              |
 | applicationTypeSchemas | Map of application schemas where key - schema ID, value - schema itself in JSON format. All schemas must be conformed to the root schema `https://dial.epam.com/application_type_schemas/schema#`. See [link](config/src/main/resources/custom-application-schemas/schema.json) |
 
 ## Claude Code commands

@@ -67,6 +67,16 @@ public class Config {
 
     private List<String> globalInterceptors = List.of();
 
+    private Tracing tracing = new Tracing();
+
+    /**
+     * Keeps an explicit {@code "tracing": null} in the config from turning every request's
+     * enrichment lookup into an NPE - an absent section means the defaults, not no section.
+     */
+    public void setTracing(Tracing tracing) {
+        this.tracing = tracing == null ? new Tracing() : tracing;
+    }
+
     @JsonIgnore
     public Deployment selectDeployment(String deploymentId) {
         Application application = applications.get(deploymentId);

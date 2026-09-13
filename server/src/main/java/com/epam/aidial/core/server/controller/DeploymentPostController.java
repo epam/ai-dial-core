@@ -34,6 +34,7 @@ import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -328,7 +329,9 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         context.setRequestBodyTimestamp(System.currentTimeMillis());
 
         try {
-            RequestObject request = new ChatCompletionRequest(ProxyUtil.parseObject(requestBody));
+            ObjectNode requestTree = ProxyUtil.parseObject(requestBody);
+            RequestObject request = new ChatCompletionRequest(requestTree);
+            GenAiTraceAttributes.setRequestAttributes(context, requestedInterface(), requestTree);
             context.setStreamingRequest(request.isStreaming());
             if (ProxyUtil.processChain(request, buildEnhancementFunctions())) {
                 context.setRequestBody(Buffer.buffer(request.serialize()));

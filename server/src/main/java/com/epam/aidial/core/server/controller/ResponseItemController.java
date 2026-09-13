@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
@@ -195,6 +196,7 @@ public class ResponseItemController implements Controller {
 
         return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream)
                 .compose(response -> {
+                    context.setProxyResponse(response);
                     String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
                     if (operation == Operation.GET
                             && Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM)) {
@@ -208,11 +210,17 @@ public class ResponseItemController implements Controller {
         return proxyResponse.body()
                 .compose(body -> {
                     if (proxyResponse.statusCode() != 200) {
+                        if (operation == Operation.GET) {
+                            GenAiTraceAttributes.setFetchResponseAttributes(context, body);
+                        }
                         return sendResponse(proxyResponse, body);
                     }
                     return proxy.getTaskExecutor()
                             .submit(() -> rewriteId(body, mapping.getUpstreamResponseId()))
                             .compose(rewritten -> {
+                                if (operation == Operation.GET) {
+                                    GenAiTraceAttributes.setFetchResponseAttributes(context, rewritten);
+                                }
                                 if (operation == Operation.DELETE) {
                                     return proxy.getTaskExecutor().submit(() -> {
                                         proxy.getResponseMappingService().deleteMapping(dialResponseId);
@@ -282,7 +290,12 @@ public class ResponseItemController implements Controller {
                 .endOnFailure(false)
                 .endOnSuccess(false)
                 .to(response)
-                .onSuccess(ignored -> responseStream.end(response))
+                .onSuccess(ignored -> {
+                    if (operation == Operation.GET) {
+                        GenAiTraceAttributes.setFetchResponseAttributes(context, responseStream.getContent());
+                    }
+                    responseStream.end(response);
+                })
                 .onFailure(error -> {
                     response.reset();
                     log.warn("Can't send streaming response to client. Error:", error);

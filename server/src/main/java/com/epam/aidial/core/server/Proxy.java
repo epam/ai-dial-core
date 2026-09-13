@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
@@ -51,6 +52,7 @@ import com.epam.aidial.core.server.service.config.ConfigApplyService;
 import com.epam.aidial.core.server.service.config.ConfigValidationService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.AuthSettingsResolver;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -94,6 +96,8 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     public static final String HEALTH_CHECK_PATH = "/health";
     public static final String VERSION_PATH = "/version";
+    public static final String HEADER_DIAL_TRACE_ID = "X-DIAL-TRACE-ID";
+    public static final String HEADER_DIAL_SPAN_ID = "X-DIAL-SPAN-ID";
 
     public static final Pattern TOOLSET_PROXY_PATTERN = RouteTemplate.TOOL_SET_MCP_PROXY.getPattern();
     public static final Pattern TOOLSET_PROXY_METADATA_PATTERN = RouteTemplate.TOOL_SET_PROXY_METADATA.getPattern();
@@ -286,6 +290,12 @@ public class Proxy implements Handler<HttpServerRequest> {
         String spanId = spanContext.getSpanId();
         String traceFlags = spanContext.getTraceFlags().asHex();
 
+        Config config = configStore.get();
+        if (config != null && config.getTracing().isResponseTraceHeaders()) {
+            request.response().putHeader(HEADER_DIAL_TRACE_ID, traceId);
+            request.response().putHeader(HEADER_DIAL_SPAN_ID, spanId);
+        }
+
         request.pause();
         Future<AuthorizationResult> authorizationResultFuture = authorizeRequest(request);
         authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, request, result.apiKeyData, traceId, spanId, traceFlags))
@@ -430,6 +440,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         Future<?> future;
         try {
             ProxyContext context = new ProxyContext(this, request, apiKeyData, extractedClaims, traceId, spanId, traceFlags);
+            GenAiTraceAttributes.initialize(context);
             ContextManager.setProxyContext(context);
             ControllerTemplate controllerTemplate = ControllerSelector.select(request);
             Controller controller = controllerTemplate.build(this, context);

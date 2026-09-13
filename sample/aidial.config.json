@@ -285,6 +285,18 @@
         }
     },
     "retriableErrorCodes": [401, 403],
+    "tracing": {
+        "genAiSpanAttributes": false,
+        "responseTraceHeaders": false,
+        "conversationIdHeaders": [
+            "x-claude-code-session-id",
+            "thread-id",
+            "x-session-id",
+            "x-dial-client-channel-id",
+            "X-CONVERSATION-ID"
+        ],
+        "genAiAttributeBlacklist": []
+    },
     "applicationTypeSchemas": [
         {
             "$schema": "https://dial.epam.com/application_type_schemas/schema#",
