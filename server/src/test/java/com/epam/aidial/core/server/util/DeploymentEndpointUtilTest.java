@@ -17,6 +17,7 @@ import static com.epam.aidial.core.config.InterfaceType.ANTHROPIC_MESSAGES;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_CHAT_COMPLETIONS;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_EMBEDDINGS;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_RESPONSES;
+import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.hasRoutingInterface;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.isInterfaceDeclared;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveMode;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveRequestUri;
@@ -280,6 +281,59 @@ public class DeploymentEndpointUtilTest {
         assertTrue(isInterfaceDeclared(application, OPENAI_CHAT_COMPLETIONS));
         assertFalse(isInterfaceDeclared(application, OPENAI_EMBEDDINGS));
         assertTrue(isInterfaceDeclared(interceptor, OPENAI_CHAT_COMPLETIONS));
+    }
+
+    @Test
+    void legacyFieldsAloneAreNoRoutingInterface() {
+        Application application = new Application();
+        application.setEndpoint("http://host/chat/completions");
+
+        assertTrue(isInterfaceDeclared(application, OPENAI_CHAT_COMPLETIONS));
+        assertFalse(hasRoutingInterface(application));
+    }
+
+    @Test
+    void anInterfacesEntryClaimingAnyBaseUrlRoutes() {
+        Application fromDeploymentBaseUrl = new Application();
+        fromDeploymentBaseUrl.setBaseUrl("http://adapter:5000");
+        fromDeploymentBaseUrl.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface()));
+        assertTrue(hasRoutingInterface(fromDeploymentBaseUrl));
+
+        Application fromOwnBaseUrl = new Application();
+        DeploymentInterface entry = new DeploymentInterface();
+        entry.setBaseUrl("http://adapter:5000/v1");
+        fromOwnBaseUrl.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), entry));
+        assertTrue(hasRoutingInterface(fromOwnBaseUrl));
+    }
+
+    @Test
+    void interfacesEntryWithoutAnyUrlIsNoRoutingInterface() {
+        Application application = new Application();
+        application.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface()));
+
+        assertFalse(isInterfaceDeclared(application, OPENAI_CHAT_COMPLETIONS));
+        assertFalse(hasRoutingInterface(application));
+    }
+
+    @Test
+    void translatedEntryRoutesByItsReferenceAlone() {
+        Application withReference = new Application();
+        withReference.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(),
+                translated(TranslatorRef.named("anthropicMessagesToOpenaiChatCompletions"))));
+        assertTrue(hasRoutingInterface(withReference));
+
+        Application withoutReference = new Application();
+        withoutReference.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), translated(null)));
+        assertFalse(hasRoutingInterface(withoutReference));
+    }
+
+    @Test
+    void legacyResponsesFieldServesTheDeclaredResponsesEntry() {
+        Application application = new Application();
+        application.setResponsesEndpoint("http://host/openai/v1/responses");
+        application.setInterfaces(Map.of(OPENAI_RESPONSES.getValue(), new DeploymentInterface()));
+
+        assertTrue(hasRoutingInterface(application));
     }
 
     @Test
