@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
+import com.epam.aidial.core.config.OverridePathKey;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,7 @@ import static com.epam.aidial.core.config.InterfaceType.OPENAI_RESPONSES;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.isInterfaceDeclared;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveMode;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveRequestUri;
+import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveResponseItemUri;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveResponsesBaseUri;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveServingEndpoint;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -434,5 +436,166 @@ public class DeploymentEndpointUtilTest {
 
         assertEquals("http://adapter/some/other/path",
                 resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS, "/some/other/path", null));
+    }
+
+    private static DeploymentInterface interfaceWithOverrides(String baseUrl, Map<String, String> overridePaths) {
+        DeploymentInterface deploymentInterface = new DeploymentInterface(baseUrl);
+        deploymentInterface.setOverridePaths(overridePaths);
+        return deploymentInterface;
+    }
+
+    @Test
+    void overridePathReplacesTheChatCompletionsIngressPath() {
+        Model model = new Model();
+        model.setName("foo-bar");
+        model.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), interfaceWithOverrides("http://switchyard/",
+                Map.of("postAzureOpenaiChatCompletions", "/v1/chat/completions"))));
+
+        assertEquals("http://switchyard/v1/chat/completions",
+                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
+                        "/openai/deployments/foo-bar/chat/completions", null));
+    }
+
+    @Test
+    void overridePathRendersIdAndOverrideName() {
+        Model model = new Model();
+        model.setName("foo-bar");
+        model.setOverrideName("tst-name");
+        model.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), interfaceWithOverrides("http://switchyard",
+                Map.of("postAzureOpenaiChatCompletions", "/openai/deployments/{overrideName}/v1/{id}/chat"))));
+
+        assertEquals("http://switchyard/openai/deployments/tst-name/v1/foo-bar/chat?api-version=1",
+                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
+                        "/openai/deployments/foo-bar/chat/completions", "api-version=1"));
+    }
+
+    @Test
+    void overrideNameVariableFallsBackToTheDeploymentName() {
+        Model model = new Model();
+        model.setName("foo-bar");
+        model.setInterfaces(Map.of(OPENAI_EMBEDDINGS.getValue(), interfaceWithOverrides("http://switchyard",
+                Map.of("postAzureOpenaiEmbeddings", "/openai/deployments/{overrideName}/v1/embeddings"))));
+
+        assertEquals("http://switchyard/openai/deployments/foo-bar/v1/embeddings",
+                resolveRequestUri(model, OPENAI_EMBEDDINGS, NO_TRANSLATORS,
+                        "/openai/deployments/foo-bar/embeddings", null));
+    }
+
+    @Test
+    void overridePathSelectsTheAnthropicKeyByPath() {
+        Model model = new Model();
+        model.setName("claude");
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), interfaceWithOverrides("http://switchyard",
+                Map.of("postAnthropicMessages", "/v1/messages",
+                        "postAnthropicMessagesCountTokens", "/v1/messages/count_tokens"))));
+
+        assertEquals("http://switchyard/v1/messages",
+                resolveRequestUri(model, ANTHROPIC_MESSAGES, NO_TRANSLATORS, "/anthropic/v1/messages", null));
+        assertEquals("http://switchyard/v1/messages/count_tokens",
+                resolveRequestUri(model, ANTHROPIC_MESSAGES, NO_TRANSLATORS, "/anthropic/v1/messages/count_tokens", null));
+    }
+
+    @Test
+    void overridePathAppliesToTheResponsesCreate() {
+        Model model = new Model();
+        model.setName("resp");
+        model.setInterfaces(Map.of(OPENAI_RESPONSES.getValue(), interfaceWithOverrides("http://switchyard",
+                Map.of("postOpenaiResponses", "/v1/responses"))));
+
+        assertEquals("http://switchyard/v1/responses",
+                resolveRequestUri(model, OPENAI_RESPONSES, NO_TRANSLATORS, "/openai/v1/responses", null));
+    }
+
+    @Test
+    void legacyCompletionsActionIsNeverOverridden() {
+        Model model = new Model();
+        model.setName("foo-bar");
+        model.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), interfaceWithOverrides("http://switchyard",
+                Map.of("postAzureOpenaiChatCompletions", "/v1/chat/completions"))));
+
+        assertEquals("http://switchyard/openai/deployments/foo-bar/completions",
+                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
+                        "/openai/deployments/foo-bar/completions", null));
+    }
+
+    @Test
+    void unmatchedKeyFallsBackToTheIngressPath() {
+        Model model = new Model();
+        model.setName("foo-bar");
+        model.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), interfaceWithOverrides("http://switchyard",
+                Map.of("postAnthropicMessages", "/v1/messages"))));
+
+        assertEquals("http://switchyard/openai/deployments/foo-bar/chat/completions",
+                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
+                        "/openai/deployments/foo-bar/chat/completions", null));
+    }
+
+    @Test
+    void overridePathDoesNotApplyToTheLegacyEndpointFlow() {
+        Model model = new Model();
+        model.setName("foo-bar");
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), interfaceWithOverrides("http://switchyard",
+                Map.of("postAnthropicMessages", "/v1/messages"))));
+
+        // chat completions is served by the legacy endpoint: the anthropic override plays no part in it
+        assertEquals("http://legacy/chat/completions",
+                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
+                        "/openai/deployments/foo-bar/chat/completions", null));
+    }
+
+    @Test
+    void overridePathDoesNotApplyToTranslatedInterfaces() {
+        Model model = new Model();
+        model.setName("gpt-5.5");
+        model.setBaseUrl("http://openai-service");
+        DeploymentInterface anthropic = translated(TranslatorRef.inline(
+                new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://translator/to-chat-completions/")));
+        anthropic.setOverridePaths(Map.of("postAnthropicMessages", "/v1/messages"));
+        model.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface(),
+                ANTHROPIC_MESSAGES.getValue(), anthropic));
+
+        assertEquals("http://translator/to-chat-completions/anthropic/v1/messages",
+                resolveRequestUri(model, ANTHROPIC_MESSAGES, NO_TRANSLATORS, "/anthropic/v1/messages", null));
+    }
+
+    @Test
+    void responseItemUriWithoutOverrideAppendsIdAndSuffix() {
+        Model model = new Model();
+        model.setName("resp");
+        model.setInterfaces(Map.of(OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://adapter/")));
+
+        assertEquals("http://adapter/openai/v1/responses/resp_1",
+                resolveResponseItemUri(model, NO_TRANSLATORS, OverridePathKey.GET_OPENAI_RESPONSES_BY_ID, "resp_1", null));
+        assertEquals("http://adapter/openai/v1/responses/resp_1/cancel?a=b",
+                resolveResponseItemUri(model, NO_TRANSLATORS, OverridePathKey.POST_OPENAI_RESPONSES_CANCEL, "resp_1", "a=b"));
+    }
+
+    @Test
+    void responseItemUriWithoutOverrideHangsOffTheLegacyEndpoint() {
+        Model model = new Model();
+        model.setResponsesEndpoint("http://host/openai/v1/responses");
+
+        assertEquals("http://host/openai/v1/responses/resp_1",
+                resolveResponseItemUri(model, NO_TRANSLATORS, OverridePathKey.DELETE_OPENAI_RESPONSES_BY_ID, "resp_1", null));
+        assertNull(resolveResponseItemUri(new Model(), NO_TRANSLATORS, OverridePathKey.GET_OPENAI_RESPONSES_BY_ID, "resp_1", null));
+    }
+
+    @Test
+    void responseItemUriRendersTheResponseId() {
+        Model model = new Model();
+        model.setName("resp");
+        model.setInterfaces(Map.of(OPENAI_RESPONSES.getValue(), interfaceWithOverrides("http://switchyard/",
+                Map.of("getOpenaiResponsesById", "/v1/responses/{id}",
+                        "postOpenaiResponsesCancel", "/v1/responses/{id}/cancel"))));
+
+        assertEquals("http://switchyard/v1/responses/1234",
+                resolveResponseItemUri(model, NO_TRANSLATORS, OverridePathKey.GET_OPENAI_RESPONSES_BY_ID, "1234", null));
+        assertEquals("http://switchyard/v1/responses/1234/cancel",
+                resolveResponseItemUri(model, NO_TRANSLATORS, OverridePathKey.POST_OPENAI_RESPONSES_CANCEL, "1234", null));
+        // DELETE declares no override here, so it keeps the default path
+        assertEquals("http://switchyard/openai/v1/responses/1234",
+                resolveResponseItemUri(model, NO_TRANSLATORS, OverridePathKey.DELETE_OPENAI_RESPONSES_BY_ID, "1234", null));
     }
 }

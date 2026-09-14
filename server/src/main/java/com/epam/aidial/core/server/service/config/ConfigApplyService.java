@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service.config;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
+import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ToolSet;
@@ -195,6 +196,7 @@ public class ConfigApplyService {
         /// Deployment-id uniqueness only applies to INTERCEPTOR here — ROLE/ROUTE aren't deployments
         // resolved through Config.selectDeployment, so they don't share the short-name namespace.
         if (type == ResourceTypes.INTERCEPTOR) {
+            ConfigPostProcessor.requireValidOverridePaths((Interceptor) entity);
             String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(scratch, type, parsed);
             if (dupError != null) {
                 return new EntityResult(id, AdminApplyStatus.FAILED, dupError);
@@ -267,6 +269,7 @@ public class ConfigApplyService {
     }
 
     private EntityResult applyModel(Model model, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {
+        ConfigPostProcessor.requireValidOverridePaths(model);
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validatePricing(model, warnings);
         ConfigPostProcessor.validateUpstreamInterfaces(model, warnings);

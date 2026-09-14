@@ -1612,7 +1612,10 @@ public class ConfigResourceController implements Controller {
                     }
                     entity = ConfigEntityCodec.treeToEntity(source, spec.entityClass());
                     if (entity instanceof Model m) {
+                        ConfigPostProcessor.requireValidOverridePaths(m);
                         checkCrossReferences(m);
+                    } else if (entity instanceof Interceptor interceptor) {
+                        ConfigPostProcessor.requireValidOverridePaths(interceptor);
                     } else if (entity instanceof Translator t) {
                         checkTranslator(t);
                     }
