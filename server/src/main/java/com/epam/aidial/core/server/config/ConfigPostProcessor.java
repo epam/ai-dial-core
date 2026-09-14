@@ -38,6 +38,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.regex.Pattern;
@@ -765,6 +766,25 @@ public final class ConfigPostProcessor {
         }
         return deploymentIdSpaces.entrySet().stream()
                 .anyMatch(entry -> entry.getKey() != type && entry.getValue().containsKey(shortName));
+    }
+
+    /**
+     * Returns {@code true} if {@code candidate}'s secret is already used by a different entry of
+     * the folded {@code Config.keys} map — file-sourced entries keyed by their raw secret,
+     * blob-sourced entries keyed by canonical id. The entry stored under {@code selfMapKey} is
+     * the candidate's own and never counts as a collision.
+     */
+    public static boolean isKeySecretTakenByAnotherKey(Config config, String selfMapKey, Key candidate) {
+        String secret = candidate.getKey();
+        if (secret == null || secret.isBlank()) {
+            return false;
+        }
+        return config.getKeys().entrySet().stream()
+                .filter(entry -> !entry.getKey().equals(selfMapKey))
+                .map(Map.Entry::getValue)
+                .filter(Objects::nonNull)
+                .map(Key::getKey)
+                .anyMatch(secret::equals);
     }
 
     private static boolean isValidResourceKey(String resourceKey) {
