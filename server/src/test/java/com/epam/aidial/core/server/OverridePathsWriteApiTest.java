@@ -118,10 +118,41 @@ class OverridePathsWriteApiTest extends ResourceBaseTest {
         assertEquals(404, api.send(HttpMethod.GET, "/v1/" + id, null, "", "authorization", "admin").status());
     }
 
+    /**
+     * Soft validation forgives cross-reference warnings, but not override-path defects: the real apply
+     * phase refuses those regardless of the mode, so the precheck surface must refuse them as well.
+     */
+    private static void modelValidateRejectsOverridePathOnly(ResourceBaseTest api) throws Exception {
+        String crossReferenceOnly = new JsonObject(VALID).put("interceptors", List.of("missing-interceptor")).encode();
+        Response accepted = api.send(HttpMethod.POST, "/v1/admin/validate", null,
+                validateBody(crossReferenceOnly), "authorization", "admin");
+        assertEquals(200, accepted.status(), accepted.body());
+        assertEquals(0, ProxyUtil.MAPPER.readTree(accepted.body()).path("failed").asInt(), accepted.body());
+
+        Response rejected = api.send(HttpMethod.POST, "/v1/admin/validate", null,
+                validateBody(INVALID), "authorization", "admin");
+        assertEquals(422, rejected.status(), rejected.body());
+        assertTrue(rejected.body().contains("getOpenaiResponsesById"), rejected.body());
+    }
+
+    private static String validateBody(String spec) {
+        return new JsonObject()
+                .put("manifests", List.of(new JsonObject()
+                        .put("kind", "Model")
+                        .put("name", "models/platform/override-soft-validate")
+                        .put("spec", new JsonObject(spec))))
+                .encode();
+    }
+
     public static class SoftValidation extends ResourceBaseTest {
         @Test
         void modelPutReturnsOverridePathAndCrossReferenceWarnings() throws Exception {
             OverridePathsWriteApiTest.modelPutReturnsOverridePathAndCrossReferenceWarnings(this);
+        }
+
+        @Test
+        void modelValidateRejectsOverridePathOnly() throws Exception {
+            OverridePathsWriteApiTest.modelValidateRejectsOverridePathOnly(this);
         }
 
         @Test

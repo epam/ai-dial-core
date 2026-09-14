@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.service.config;
 
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Translator;
@@ -29,7 +28,6 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
-import javax.annotation.Nullable;
 
 /**
  * Precheck engine behind {@code /v1/admin/validate} and the {@code precheck=true} phase of
@@ -65,11 +63,14 @@ public class ConfigValidationService {
                     Model model = modelManifest.spec();
                     List<ValidationWarning> warnings = new ArrayList<>();
                     ConfigPostProcessor.validateOverridePaths(model, warnings);
+                    boolean invalidOverridePaths = !warnings.isEmpty();
                     ConfigPostProcessor.validatePricing(model, warnings);
                     ConfigPostProcessor.validateUpstreamInterfaces(model, warnings);
                     ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
                     UpstreamExtraDataMerger.validateNoOverlap(model);
-                    if (!warnings.isEmpty() && !softValidation) {
+                    // Override paths stay fatal in soft mode, matching ConfigApplyService#applyModel — otherwise
+                    // precheck greenlights a batch whose real-apply phase refuses the model mid-write.
+                    if (!warnings.isEmpty() && (invalidOverridePaths || !softValidation)) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
                     String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(scratch, ResourceTypes.MODEL, parsed.name());
@@ -78,9 +79,10 @@ public class ConfigValidationService {
                     }
                 }
                 case AdminInterceptorManifest interceptorManifest -> {
-                    String overridePathError = describeOverridePathWarnings(interceptorManifest.spec());
-                    if (overridePathError != null) {
-                        return new ValidationResult(id, ValidationStatus.FAILED, overridePathError);
+                    List<ValidationWarning> warnings = new ArrayList<>();
+                    ConfigPostProcessor.validateOverridePaths(interceptorManifest.spec(), warnings);
+                    if (!warnings.isEmpty()) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
                     String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
                             scratch, ResourceTypes.INTERCEPTOR, parsed.name());
@@ -112,9 +114,10 @@ public class ConfigValidationService {
                     }
                 }
                 case AdminApplicationManifest applicationManifest -> {
-                    String overridePathError = describeOverridePathWarnings(applicationManifest.spec());
-                    if (overridePathError != null) {
-                        return new ValidationResult(id, ValidationStatus.FAILED, overridePathError);
+                    List<ValidationWarning> warnings = new ArrayList<>();
+                    ConfigPostProcessor.validateOverridePaths(applicationManifest.spec(), warnings);
+                    if (!warnings.isEmpty()) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
                     if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.name().bucket())) {
                         String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
@@ -152,16 +155,5 @@ public class ConfigValidationService {
             return new ValidationResult(id, ValidationStatus.FAILED, ex.getMessage());
         }
         return new ValidationResult(id, ValidationStatus.VALID, null);
-    }
-
-    /**
-     * The {@code overridePaths} defects on a deployment joined into one message, or null when it has
-     * none. An unrenderable path is structural, so it fails the entity even under soft validation.
-     */
-    @Nullable
-    private static String describeOverridePathWarnings(Deployment deployment) {
-        List<ValidationWarning> warnings = new ArrayList<>();
-        ConfigPostProcessor.validateOverridePaths(deployment, warnings);
-        return warnings.isEmpty() ? null : ConfigManifestSupport.joinWarnings(warnings);
     }
 }
