@@ -18,14 +18,12 @@ import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequest
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
-import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -117,18 +115,10 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     protected MessagesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
-            ObjectNode tree = ProxyUtil.parseObject(body);
-            if (isGenAiOperation()) {
-                GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.ANTHROPIC_MESSAGES, tree);
-            }
-            return new MessagesApiRequest(tree);
+            return new MessagesApiRequest(ProxyUtil.parseObject(body));
         } catch (IOException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
-    }
-
-    protected boolean isGenAiOperation() {
-        return true;
     }
 
     protected Void setupDeployment(String model) {

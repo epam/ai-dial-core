@@ -16,12 +16,11 @@ payloads, API keys, arbitrary headers, or upstream provider names.
   `X-DIAL-TRACE-ID` and `X-DIAL-SPAN-ID` of Core's own root span.
 * `conversationIdHeaders`: Request headers, in priority order, that may carry a conversation or
   session id. The first non-blank one present is published as `gen_ai.conversation.id`. Matching is
-  case-insensitive. A header sent more than once, or a value longer than 256 characters, is ignored
-  rather than truncated. Values are trimmed.
-* `genAiAttributeBlacklist`: Defaults to `[]`. Java regexes, each matched **in full** against an
-  attribute name, that suppress attributes this feature adds. Built-in Vert.x and OpenTelemetry HTTP
-  attributes are never filtered. An invalid regex is rejected when the config is read, and the
-  previous config stays live.
+  case-insensitive and values are trimmed; a value longer than 256 characters is ignored rather than
+  truncated.
+
+To suppress individual attributes, drop them in the OpenTelemetry Collector (an `attributes` or
+`transform` processor) rather than in Core.
 
 Defaults for `conversationIdHeaders` cover the harnesses DIAL ships with — Claude Code
 (`x-claude-code-session-id`), OpenAI Codex CLI (`thread-id`), OpenCode (`x-session-id`), and DIAL
@@ -40,10 +39,6 @@ needs its own session header listed explicitly.
         "x-session-id",
         "x-dial-client-channel-id",
         "X-CONVERSATION-ID"
-    ],
-    "genAiAttributeBlacklist": [
-        "gen_ai\.request\..*",
-        "dial\.usage\.total_tokens"
     ]
 }
 ```

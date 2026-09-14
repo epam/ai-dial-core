@@ -2,7 +2,6 @@ package com.epam.aidial.core.server.tracing;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.InterfaceType;
-import com.epam.aidial.core.config.Tracing;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
@@ -25,6 +24,12 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static io.opentelemetry.api.common.AttributeKey.booleanKey;
+import static io.opentelemetry.api.common.AttributeKey.doubleKey;
+import static io.opentelemetry.api.common.AttributeKey.longKey;
+import static io.opentelemetry.api.common.AttributeKey.stringArrayKey;
+import static io.opentelemetry.api.common.AttributeKey.stringKey;
+
 public final class GenAiTraceAttributes {
     private static final Pattern TRACEPARENT_PATTERN = Pattern.compile(
             "00-(?!0{32})([0-9a-f]{32})-(?!0{16})([0-9a-f]{16})-([0-9a-f]{2})");
@@ -36,46 +41,46 @@ public final class GenAiTraceAttributes {
     }
 
     public static void initialize(ProxyContext context) {
-        setStringAttribute(context, CONVERSATION_ID_ATTRIBUTE, resolveConversationId(context));
-        setStringAttribute(context, PARENT_SPAN_ATTRIBUTE, parseParentSpanId(context));
+        set(context, stringKey(CONVERSATION_ID_ATTRIBUTE), resolveConversationId(context));
+        set(context, stringKey(PARENT_SPAN_ATTRIBUTE), parseParentSpanId(context));
     }
 
     public static void setRequestAttributes(ProxyContext context, InterfaceType type, ObjectNode request) {
         if (!isEnabled(context)) {
             return;
         }
-        setOperationAttributes(context, type);
-        setStringAttribute(context, "gen_ai.request.model", text(request.get("model")));
-        setBooleanAttribute(context, "gen_ai.request.stream", request.get("stream"));
+        setOperationAttributes(context, type, operationName(type));
+        set(context, stringKey("gen_ai.request.model"), text(request.get("model")));
+        set(context, booleanKey("gen_ai.request.stream"), booleanValue(request.get("stream")));
         switch (type) {
             case OPENAI_CHAT_COMPLETIONS -> {
-                setLongAttribute(context, "gen_ai.request.max_tokens",
-                        firstNode(request, "max_tokens", "max_completion_tokens"));
-                setDoubleAttribute(context, "gen_ai.request.temperature", request.get("temperature"));
-                setDoubleAttribute(context, "gen_ai.request.top_p", request.get("top_p"));
-                setStringArrayAttribute(context, "gen_ai.request.stop_sequences", request.get("stop"));
-                setLongAttribute(context, "gen_ai.request.choice.count", request.get("n"));
-                setDoubleAttribute(context, "gen_ai.request.frequency_penalty", request.get("frequency_penalty"));
-                setDoubleAttribute(context, "gen_ai.request.presence_penalty", request.get("presence_penalty"));
-                setLongAttribute(context, "gen_ai.request.seed", request.get("seed"));
-                setStringAttribute(context, "gen_ai.request.reasoning.level", text(request.get("reasoning_effort")));
+                set(context, longKey("gen_ai.request.max_tokens"),
+                        longValue(firstNode(request, "max_tokens", "max_completion_tokens")));
+                set(context, doubleKey("gen_ai.request.temperature"), doubleValue(request.get("temperature")));
+                set(context, doubleKey("gen_ai.request.top_p"), doubleValue(request.get("top_p")));
+                set(context, stringArrayKey("gen_ai.request.stop_sequences"), stringList(request.get("stop")));
+                set(context, longKey("gen_ai.request.choice.count"), longValue(request.get("n")));
+                set(context, doubleKey("gen_ai.request.frequency_penalty"), doubleValue(request.get("frequency_penalty")));
+                set(context, doubleKey("gen_ai.request.presence_penalty"), doubleValue(request.get("presence_penalty")));
+                set(context, longKey("gen_ai.request.seed"), longValue(request.get("seed")));
+                set(context, stringKey("gen_ai.request.reasoning.level"), text(request.get("reasoning_effort")));
             }
-            case OPENAI_EMBEDDINGS -> setStringArrayAttribute(context, "gen_ai.request.encoding_formats",
-                    firstNode(request, "encoding_format", "encoding_formats"));
+            case OPENAI_EMBEDDINGS -> set(context, stringArrayKey("gen_ai.request.encoding_formats"),
+                    stringList(firstNode(request, "encoding_format", "encoding_formats")));
             case OPENAI_RESPONSES -> {
-                setLongAttribute(context, "gen_ai.request.max_tokens", request.get("max_output_tokens"));
-                setDoubleAttribute(context, "gen_ai.request.temperature", request.get("temperature"));
-                setDoubleAttribute(context, "gen_ai.request.top_p", request.get("top_p"));
-                setStringAttribute(context, "gen_ai.request.previous_response.id",
+                set(context, longKey("gen_ai.request.max_tokens"), longValue(request.get("max_output_tokens")));
+                set(context, doubleKey("gen_ai.request.temperature"), doubleValue(request.get("temperature")));
+                set(context, doubleKey("gen_ai.request.top_p"), doubleValue(request.get("top_p")));
+                set(context, stringKey("gen_ai.request.previous_response.id"),
                         text(request.get("previous_response_id")));
-                setStringAttribute(context, "gen_ai.request.reasoning.level",
+                set(context, stringKey("gen_ai.request.reasoning.level"),
                         text(request.path("reasoning").get("effort")));
             }
             case ANTHROPIC_MESSAGES -> {
-                setLongAttribute(context, "gen_ai.request.max_tokens", request.get("max_tokens"));
-                setDoubleAttribute(context, "gen_ai.request.temperature", request.get("temperature"));
-                setDoubleAttribute(context, "gen_ai.request.top_p", request.get("top_p"));
-                setStringArrayAttribute(context, "gen_ai.request.stop_sequences", request.get("stop_sequences"));
+                set(context, longKey("gen_ai.request.max_tokens"), longValue(request.get("max_tokens")));
+                set(context, doubleKey("gen_ai.request.temperature"), doubleValue(request.get("temperature")));
+                set(context, doubleKey("gen_ai.request.top_p"), doubleValue(request.get("top_p")));
+                set(context, stringArrayKey("gen_ai.request.stop_sequences"), stringList(request.get("stop_sequences")));
             }
             default -> throw new IllegalArgumentException("Unsupported interface type: " + type);
         }
@@ -85,25 +90,22 @@ public final class GenAiTraceAttributes {
         if (!isEnabled(context)) {
             return;
         }
-        setOperationAttributes(context, type);
+        setOperationAttributes(context, type, operationName(type));
         setResponseAttributes(context, type, responseTree(context, type, responseBody));
     }
 
     private static void setResponseAttributes(ProxyContext context, InterfaceType type, JsonNode response) {
-        setStringAttribute(context, "gen_ai.response.id", text(response.get("id")));
-        setStringAttribute(context, "gen_ai.response.model", text(response.get("model")));
-        List<String> finishReasons = finishReasons(response, type);
-        setStringArrayAttribute(context, "gen_ai.response.finish_reasons", finishReasons);
-        setStringAttribute(context, "gen_ai.response.status", responseStatus(context, response, finishReasons));
+        set(context, stringKey("gen_ai.response.id"), text(response.get("id")));
+        set(context, stringKey("gen_ai.response.model"), text(response.get("model")));
+        set(context, stringArrayKey("gen_ai.response.finish_reasons"), finishReasons(response, type));
+        set(context, stringKey("gen_ai.response.status"), responseStatus(context, response));
     }
 
     public static void setFetchResponseAttributes(ProxyContext context, Buffer responseBody) {
         if (!isEnabled(context)) {
             return;
         }
-        setStringAttribute(context, "gen_ai.operation.name", "fetch_response");
-        setStringAttribute(context, "dial.api", "openai_responses");
-        setStringAttribute(context, "gen_ai.provider.name", "dial");
+        setOperationAttributes(context, InterfaceType.OPENAI_RESPONSES, "fetch_response");
         JsonNode response = responseTree(context, InterfaceType.OPENAI_RESPONSES, responseBody);
         setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, response);
         setUsageAttributes(context, tokenUsage(response.get("usage")));
@@ -113,34 +115,37 @@ public final class GenAiTraceAttributes {
         if (usage == null || usage.isEmpty() || !isEnabled(context)) {
             return;
         }
-        setLongAttribute(context, "gen_ai.usage.input_tokens", usage.getPromptTokens());
-        setLongAttribute(context, "gen_ai.usage.output_tokens", usage.getCompletionTokens());
+        set(context, longKey("gen_ai.usage.input_tokens"), usage.getPromptTokens());
+        set(context, longKey("gen_ai.usage.output_tokens"), usage.getCompletionTokens());
         PromptTokensDetails promptDetails = usage.getPromptTokensDetails();
         if (promptDetails != null) {
-            setLongAttribute(context, "gen_ai.usage.cache_read.input_tokens", promptDetails.getCachedTokens());
-            setLongAttribute(context, "gen_ai.usage.cache_write.input_tokens", promptDetails.getCacheWriteTokens());
+            set(context, longKey("gen_ai.usage.cache_read.input_tokens"), promptDetails.getCachedTokens());
+            set(context, longKey("gen_ai.usage.cache_write.input_tokens"), promptDetails.getCacheWriteTokens());
         }
         CompletionTokensDetails completionDetails = usage.getCompletionTokensDetails();
         if (completionDetails != null) {
-            setLongAttribute(context, "gen_ai.usage.reasoning.output_tokens",
-                    completionDetails.getReasoningTokens());
+            set(context, longKey("gen_ai.usage.reasoning.output_tokens"), completionDetails.getReasoningTokens());
         }
-        setLongAttribute(context, "dial.usage.total_tokens", usage.getTotalTokens());
+        set(context, longKey("dial.usage.total_tokens"), usage.getTotalTokens());
     }
 
-    private static void setOperationAttributes(ProxyContext context, InterfaceType type) {
-        setStringAttribute(context, "gen_ai.operation.name", switch (type) {
-            case OPENAI_CHAT_COMPLETIONS, ANTHROPIC_MESSAGES -> "chat";
-            case OPENAI_EMBEDDINGS -> "embeddings";
-            case OPENAI_RESPONSES -> "generate_content";
-        });
-        setStringAttribute(context, "dial.api", switch (type) {
+    private static void setOperationAttributes(ProxyContext context, InterfaceType type, String operation) {
+        set(context, stringKey("gen_ai.operation.name"), operation);
+        set(context, stringKey("dial.api"), switch (type) {
             case OPENAI_CHAT_COMPLETIONS -> "openai_chat_completions";
             case OPENAI_EMBEDDINGS -> "openai_embeddings";
             case OPENAI_RESPONSES -> "openai_responses";
             case ANTHROPIC_MESSAGES -> "anthropic_messages";
         });
-        setStringAttribute(context, "gen_ai.provider.name", "dial");
+        set(context, stringKey("gen_ai.provider.name"), "dial");
+    }
+
+    private static String operationName(InterfaceType type) {
+        return switch (type) {
+            case OPENAI_CHAT_COMPLETIONS, ANTHROPIC_MESSAGES -> "chat";
+            case OPENAI_EMBEDDINGS -> "embeddings";
+            case OPENAI_RESPONSES -> "generate_content";
+        };
     }
 
     private static List<String> finishReasons(JsonNode response, InterfaceType type) {
@@ -157,25 +162,18 @@ public final class GenAiTraceAttributes {
         return result.isEmpty() ? null : result;
     }
 
-    private static String responseStatus(ProxyContext context, JsonNode response, List<String> finishReasons) {
+    private static String responseStatus(ProxyContext context, JsonNode response) {
         String status = text(response.get("status"));
         if (status != null) {
             return status;
         }
         HttpClientResponse proxyResponse = context.getProxyResponse();
         int statusCode = proxyResponse == null ? 200 : proxyResponse.statusCode();
-        if (statusCode < 200 || statusCode >= 300) {
-            return "failed";
-        }
-        if (finishReasons != null && (finishReasons.contains("length")
-                || finishReasons.contains("content_filter") || finishReasons.contains("max_tokens"))) {
-            return "incomplete";
-        }
-        return "completed";
+        return statusCode < 200 || statusCode >= 300 ? "failed" : "completed";
     }
 
     private static JsonNode responseTree(ProxyContext context, InterfaceType type, Buffer responseBody) {
-        if (!isEventStream(context, responseBody)) {
+        if (!isEventStream(context)) {
             return JsonUtil.tryParse(responseBody.getBytes());
         }
         return switch (type) {
@@ -227,15 +225,8 @@ public final class GenAiTraceAttributes {
         return result;
     }
 
-    private static boolean isEventStream(ProxyContext context, Buffer responseBody) {
-        if (isEventStream(context.getProxyResponse())) {
-            return true;
-        }
-        String body = responseBody.toString();
-        return body.startsWith("data:") || body.startsWith("event:") || body.contains("\ndata:");
-    }
-
-    private static boolean isEventStream(HttpClientResponse response) {
+    private static boolean isEventStream(ProxyContext context) {
+        HttpClientResponse response = context.getProxyResponse();
         String contentType = response == null ? null : response.getHeader(HttpHeaders.CONTENT_TYPE);
         return Strings.CI.contains(contentType, "text/event-stream");
     }
@@ -244,24 +235,13 @@ public final class GenAiTraceAttributes {
         if (!isEnabled(context)) {
             return null;
         }
-        Tracing tracing = context.getConfig().getTracing();
-        for (String header : tracing.getConversationIdHeaders()) {
-            if (header == null || header.isBlank()) {
-                continue;
+        // List.copyOf in the setter already rejects null header names, and getAll("") is empty
+        for (String header : context.getConfig().getTracing().getConversationIdHeaders()) {
+            String value = context.getRequest().headers().get(header);
+            if (value != null && !value.isBlank()) {
+                String conversationId = value.trim();
+                return conversationId.length() <= MAX_ATTRIBUTE_LENGTH ? conversationId : null;
             }
-            List<String> values = context.getRequest().headers().getAll(header);
-            if (values.size() > 1) {
-                return null;
-            }
-            if (values.isEmpty()) {
-                continue;
-            }
-            String value = values.get(0);
-            if (value == null || value.isBlank()) {
-                continue;
-            }
-            String conversationId = value.trim();
-            return conversationId.length() <= MAX_ATTRIBUTE_LENGTH ? conversationId : null;
         }
         return null;
     }
@@ -276,9 +256,6 @@ public final class GenAiTraceAttributes {
     }
 
     private static TokenUsage tokenUsage(JsonNode usage) {
-        if (usage == null || !usage.isObject()) {
-            return null;
-        }
         try {
             return ProxyUtil.MAPPER.convertValue(usage, TokenUsage.class);
         } catch (IllegalArgumentException e) {
@@ -291,98 +268,39 @@ public final class GenAiTraceAttributes {
         return config != null && config.getTracing().isGenAiSpanAttributes();
     }
 
-    private static boolean canSet(ProxyContext context, String key) {
-        return isEnabled(context) && !context.getConfig().getTracing().isAttributeBlacklisted(key);
-    }
-
-    private static void setStringAttribute(ProxyContext context, String key, String value) {
-        if (value == null || !canSet(context, key)) {
+    private static <T> void set(ProxyContext context, AttributeKey<T> key, T value) {
+        if (value == null || !isEnabled(context)) {
             return;
         }
-        context.getTracingAttributes().put(key, value);
+        context.getTracingAttributes().put(key.getKey(), value);
         Span span = Span.current();
         if (span.isRecording()) {
             span.setAttribute(key, value);
         }
     }
 
-    private static void setLongAttribute(ProxyContext context, String key, Long value) {
-        if (value == null || !canSet(context, key)) {
-            return;
-        }
-        context.getTracingAttributes().put(key, value);
-        Span span = Span.current();
-        if (span.isRecording()) {
-            span.setAttribute(key, value);
-        }
+    private static Long longValue(JsonNode node) {
+        return node != null && node.isNumber() && node.canConvertToLong() ? node.longValue() : null;
     }
 
-    private static void setLongAttribute(ProxyContext context, String key, JsonNode node) {
-        if (node != null && node.isNumber() && node.canConvertToLong()) {
-            setLongAttribute(context, key, node.longValue());
-        }
+    private static Double doubleValue(JsonNode node) {
+        return node != null && node.isNumber() ? node.doubleValue() : null;
     }
 
-    private static void setDoubleAttribute(ProxyContext context, String key, Double value) {
-        if (value == null || !canSet(context, key)) {
-            return;
-        }
-        context.getTracingAttributes().put(key, value);
-        Span span = Span.current();
-        if (span.isRecording()) {
-            span.setAttribute(key, value);
-        }
+    private static Boolean booleanValue(JsonNode node) {
+        return node != null && node.isBoolean() ? node.booleanValue() : null;
     }
 
-    private static void setDoubleAttribute(ProxyContext context, String key, JsonNode node) {
-        if (node != null && node.isNumber()) {
-            setDoubleAttribute(context, key, node.doubleValue());
-        }
-    }
-
-    private static void setBooleanAttribute(ProxyContext context, String key, Boolean value) {
-        if (value == null || !canSet(context, key)) {
-            return;
-        }
-        context.getTracingAttributes().put(key, value);
-        Span span = Span.current();
-        if (span.isRecording()) {
-            span.setAttribute(key, value);
-        }
-    }
-
-    private static void setBooleanAttribute(ProxyContext context, String key, JsonNode node) {
-        if (node != null && node.isBoolean()) {
-            setBooleanAttribute(context, key, node.booleanValue());
-        }
-    }
-
-    private static void setStringArrayAttribute(ProxyContext context, String key, List<String> value) {
-        if (value == null || value.isEmpty() || !canSet(context, key)) {
-            return;
-        }
-        context.getTracingAttributes().put(key, value);
-        Span span = Span.current();
-        if (span.isRecording()) {
-            span.setAttribute(AttributeKey.stringArrayKey(key), value);
-        }
-    }
-
-    private static void setStringArrayAttribute(ProxyContext context, String key, JsonNode node) {
-        if (node == null) {
-            return;
-        }
-        if (node.isTextual()) {
-            setStringArrayAttribute(context, key, List.of(node.asText()));
-            return;
-        }
-        if (node.isArray()) {
-            List<String> values = new ArrayList<>();
+    private static List<String> stringList(JsonNode node) {
+        List<String> values = new ArrayList<>();
+        if (node != null && node.isArray()) {
             for (JsonNode item : node) {
                 addText(values, item);
             }
-            setStringArrayAttribute(context, key, values);
+        } else {
+            addText(values, node);
         }
+        return values.isEmpty() ? null : values;
     }
 
     private static JsonNode firstNode(ObjectNode request, String... names) {

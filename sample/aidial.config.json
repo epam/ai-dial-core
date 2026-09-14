@@ -294,8 +294,7 @@
             "x-session-id",
             "x-dial-client-channel-id",
             "X-CONVERSATION-ID"
-        ],
-        "genAiAttributeBlacklist": []
+        ]
     },
     "applicationTypeSchemas": [
         {

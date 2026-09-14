@@ -18,7 +18,6 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
@@ -69,6 +68,11 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         // Enrich OpenTelemetry span
         enrichOpenTelemetrySpan(event, attributes);
 
+        // after the span pass: GenAiTraceAttributes already set these on the span, typed
+        if (proxyContext != null) {
+            attributes.putAll(proxyContext.getTracingAttributes());
+        }
+
         Map<String, Object> resource = new HashMap<>();
         resource.put("service.name", serviceName);
         resource.put("service.version", serviceVersion);
@@ -102,7 +106,6 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
                 attributes.put("response.status", proxyContext.getResponse().getStatusMessage());
                 attributes.put("response.status.code", proxyContext.getResponse().getStatusCode());
             }
-            attributes.putAll(proxyContext.getTracingAttributes());
         }
     }
 
@@ -129,15 +132,9 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
             return;
         }
 
-        ProxyContext proxyContext = ContextManager.getProxyContext();
-        Set<String> tracingAttributes = proxyContext == null
-                ? Set.of()
-                : proxyContext.getTracingAttributes().keySet();
         // Set span attributes from already collected data
         for (Map.Entry<String, Object> entry : attributes.entrySet()) {
-            if (!tracingAttributes.contains(entry.getKey())) {
-                currentSpan.setAttribute(entry.getKey(), String.valueOf(entry.getValue()));
-            }
+            currentSpan.setAttribute(entry.getKey(), String.valueOf(entry.getValue()));
         }
     }
 

@@ -69,10 +69,7 @@ public class Config {
 
     private Tracing tracing = new Tracing();
 
-    /**
-     * Keeps an explicit {@code "tracing": null} in the config from turning every request's
-     * enrichment lookup into an NPE - an absent section means the defaults, not no section.
-     */
+    // an explicit "tracing": null means the defaults, not an NPE on every request
     public void setTracing(Tracing tracing) {
         this.tracing = tracing == null ? new Tracing() : tracing;
     }

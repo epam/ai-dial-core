@@ -210,17 +210,11 @@ public class ResponseItemController implements Controller {
         return proxyResponse.body()
                 .compose(body -> {
                     if (proxyResponse.statusCode() != 200) {
-                        if (operation == Operation.GET) {
-                            GenAiTraceAttributes.setFetchResponseAttributes(context, body);
-                        }
                         return sendResponse(proxyResponse, body);
                     }
                     return proxy.getTaskExecutor()
                             .submit(() -> rewriteId(body, mapping.getUpstreamResponseId()))
                             .compose(rewritten -> {
-                                if (operation == Operation.GET) {
-                                    GenAiTraceAttributes.setFetchResponseAttributes(context, rewritten);
-                                }
                                 if (operation == Operation.DELETE) {
                                     return proxy.getTaskExecutor().submit(() -> {
                                         proxy.getResponseMappingService().deleteMapping(dialResponseId);
@@ -241,6 +235,10 @@ public class ResponseItemController implements Controller {
     }
 
     private Future<Void> sendResponse(HttpClientResponse proxyResponse, Buffer body) {
+        if (operation == Operation.GET) {
+            // the single non-streaming exit: the body here is final, so the response id is DIAL's own
+            GenAiTraceAttributes.setFetchResponseAttributes(context, body);
+        }
         HttpServerResponse serverResponse = context.getResponse();
         serverResponse.setStatusCode(proxyResponse.statusCode());
         String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);

@@ -15,6 +15,7 @@ import io.opentelemetry.api.trace.Span;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
+import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -22,6 +23,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 
+import static io.opentelemetry.api.common.AttributeKey.longKey;
+import static io.opentelemetry.api.common.AttributeKey.stringKey;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -57,8 +60,8 @@ class GenAiTraceAttributesTest {
             assertEquals("conversation-1", context.getTracingAttributes().get("gen_ai.conversation.id"));
             assertEquals("2222222222222222",
                     context.getTracingAttributes().get("dial.request.parent_span.id"));
-            verify(span).setAttribute("gen_ai.conversation.id", "conversation-1");
-            verify(span).setAttribute("dial.request.parent_span.id", "2222222222222222");
+            verify(span).setAttribute(stringKey("gen_ai.conversation.id"), "conversation-1");
+            verify(span).setAttribute(stringKey("dial.request.parent_span.id"), "2222222222222222");
         }
     }
 
@@ -105,26 +108,16 @@ class GenAiTraceAttributesTest {
     }
 
     @Test
-    void initializeOmitsDuplicateAndOversizedConversationHeaders() {
-        HttpServerRequest duplicate = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
-        MultiMap duplicateHeaders = MultiMap.caseInsensitiveMultiMap();
-        duplicateHeaders.add("thread-id", "conversation-1");
-        duplicateHeaders.add("THREAD-ID", "conversation-2");
-        when(duplicate.headers()).thenReturn(duplicateHeaders);
-
+    void initializeOmitsOversizedConversationHeader() {
         HttpServerRequest oversized = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         MultiMap oversizedHeaders = MultiMap.caseInsensitiveMultiMap();
         oversizedHeaders.add("thread-id", "x".repeat(257));
         when(oversized.headers()).thenReturn(oversizedHeaders);
+        ProxyContext context = context(proxy(enabledConfig()), oversized);
 
-        ProxyContext duplicateContext = context(proxy(enabledConfig()), duplicate);
-        ProxyContext oversizedContext = context(proxy(enabledConfig()), oversized);
+        GenAiTraceAttributes.initialize(context);
 
-        GenAiTraceAttributes.initialize(duplicateContext);
-        GenAiTraceAttributes.initialize(oversizedContext);
-
-        assertFalse(duplicateContext.getTracingAttributes().containsKey("gen_ai.conversation.id"));
-        assertFalse(oversizedContext.getTracingAttributes().containsKey("gen_ai.conversation.id"));
+        assertFalse(context.getTracingAttributes().containsKey("gen_ai.conversation.id"));
     }
 
     @ParameterizedTest
@@ -230,7 +223,7 @@ class GenAiTraceAttributesTest {
 
     @Test
     void setResponseAttributesCoversStreamingChatResponse() {
-        ProxyContext context = context(proxy(enabledConfig()));
+        ProxyContext context = streamingContext();
         Buffer body = Buffer.buffer("""
                 data: {"id":"chat-1","model":"gpt-4","choices":[{"index":0,"finish_reason":null}]}
 
@@ -243,12 +236,12 @@ class GenAiTraceAttributesTest {
 
         assertEquals("chat-1", context.getTracingAttributes().get("gen_ai.response.id"));
         assertEquals(List.of("length"), context.getTracingAttributes().get("gen_ai.response.finish_reasons"));
-        assertEquals("incomplete", context.getTracingAttributes().get("gen_ai.response.status"));
+        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
     }
 
     @Test
     void setResponseAttributesCoversStreamingAnthropicResponse() {
-        ProxyContext context = context(proxy(enabledConfig()));
+        ProxyContext context = streamingContext();
         Buffer body = Buffer.buffer("""
                 event: message_start
                 data: {"type":"message_start","message":{"id":"msg-1","model":"claude"}}
@@ -266,7 +259,7 @@ class GenAiTraceAttributesTest {
 
     @Test
     void setResponseAttributesCoversStreamingResponsesApi() {
-        ProxyContext context = context(proxy(enabledConfig()));
+        ProxyContext context = streamingContext();
         Buffer body = Buffer.buffer("""
                 event: response.completed
                 data: {"type":"response.completed","response":{"id":"resp-1","model":"gpt-4","status":"completed"}}
@@ -325,27 +318,13 @@ class GenAiTraceAttributesTest {
 
             GenAiTraceAttributes.setUsageAttributes(context, usage);
 
-            verify(span).setAttribute("gen_ai.usage.input_tokens", 10L);
-            verify(span).setAttribute("gen_ai.usage.output_tokens", 20L);
-            verify(span).setAttribute("gen_ai.usage.cache_read.input_tokens", 2L);
-            verify(span).setAttribute("gen_ai.usage.cache_write.input_tokens", 3L);
-            verify(span).setAttribute("gen_ai.usage.reasoning.output_tokens", 4L);
-            verify(span).setAttribute("dial.usage.total_tokens", 30L);
+            verify(span).setAttribute(longKey("gen_ai.usage.input_tokens"), 10L);
+            verify(span).setAttribute(longKey("gen_ai.usage.output_tokens"), 20L);
+            verify(span).setAttribute(longKey("gen_ai.usage.cache_read.input_tokens"), 2L);
+            verify(span).setAttribute(longKey("gen_ai.usage.cache_write.input_tokens"), 3L);
+            verify(span).setAttribute(longKey("gen_ai.usage.reasoning.output_tokens"), 4L);
+            verify(span).setAttribute(longKey("dial.usage.total_tokens"), 30L);
         }
-    }
-
-    @Test
-    void blacklistFiltersOnlyDialAddedAttributes() throws Exception {
-        Config config = enabledConfig();
-        config.getTracing().setGenAiAttributeBlacklist(java.util.List.of("gen_ai\\.request\\..*"));
-        ProxyContext context = context(proxy(config));
-        var tree = ProxyUtil.MAPPER.readTree("{\"model\":\"gpt-4\",\"stream\":true}");
-
-        GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, (ObjectNode) tree);
-
-        assertFalse(context.getTracingAttributes().containsKey("gen_ai.request.model"));
-        assertEquals("chat", context.getTracingAttributes().get("gen_ai.operation.name"));
-        assertEquals("dial", context.getTracingAttributes().get("gen_ai.provider.name"));
     }
 
     private static ProxyContext context(Proxy proxy, HttpServerRequest request) {
@@ -357,6 +336,18 @@ class GenAiTraceAttributesTest {
 
     private static ProxyContext context(Proxy proxy) {
         return context(proxy, mock(HttpServerRequest.class, RETURNS_DEEP_STUBS));
+    }
+
+    /**
+     * A context whose upstream response is SSE: the content type is the only streaming signal.
+     */
+    private static ProxyContext streamingContext() {
+        ProxyContext context = context(proxy(enabledConfig()));
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class);
+        when(proxyResponse.statusCode()).thenReturn(200);
+        when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("text/event-stream");
+        context.setProxyResponse(proxyResponse);
+        return context;
     }
 
     private static Proxy proxy(Config config) {

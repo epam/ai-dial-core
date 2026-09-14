@@ -17,10 +17,12 @@ import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectMessagesTokenUsageFn;
+import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import io.vertx.core.Future;
@@ -55,6 +57,17 @@ public class MessagesController extends MessagesBaseController {
         List<BaseRequestFunction<RequestObject>> functions = new ArrayList<>(super.buildEnhancementFunctions());
         functions.add(functions.size() - 1, new BuildUpstreamCacheFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES));
         return functions;
+    }
+
+    /**
+     * Adds GenAI request attributes here rather than in the base parser, so that
+     * {@link MessagesCountTokensController} - which generates nothing - publishes none.
+     */
+    @Override
+    protected MessagesApiRequest parseBody(Buffer body) {
+        MessagesApiRequest request = super.parseBody(body);
+        GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.ANTHROPIC_MESSAGES, request.getTree());
+        return request;
     }
 
     @ApiOperations({
