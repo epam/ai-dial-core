@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
+import com.epam.aidial.core.storage.data.ComplexResourceItemMetadata;
 import com.epam.aidial.core.storage.data.FileMetadata;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.NodeType;
@@ -568,11 +569,12 @@ public class ComplexResourceService {
     }
 
     private static ResourceItemMetadata itemMetadata(ResourceDescriptor resource, FolderResourceMarker marker) {
-        ResourceItemMetadata metadata = new ResourceItemMetadata(resource);
+        ComplexResourceItemMetadata metadata = new ComplexResourceItemMetadata(resource);
         metadata.setCreatedAt(marker.getCreatedAt());
         metadata.setUpdatedAt(marker.getUpdatedAt());
         metadata.setEtag(marker.getEtag());
         metadata.setAuthor(marker.getAuthor());
+        metadata.setAttributes(marker.getMetadata());
         return metadata;
     }
 
@@ -620,10 +622,12 @@ public class ComplexResourceService {
             }
             // A folder marker has no tombstone lifecycle, but a resource marker does: its file can still
             // exist in a `deleting` state until the sweep reclaims it, so presence alone isn't enough.
-            if (nodeType == NodeType.ITEM && !isActive(readMarker(item.getDescriptor(), false))) {
+            FolderResourceMarker itemMarker = nodeType == NodeType.ITEM ? readMarker(item.getDescriptor(), false) : null;
+            if (nodeType == NodeType.ITEM && !isActive(itemMarker)) {
                 continue;
             }
-            items.add(nodeMetadata(item.getDescriptor().getParent(), nodeType, (ResourceItemMetadata) item));
+            items.add(nodeMetadata(item.getDescriptor().getParent(), nodeType, (ResourceItemMetadata) item,
+                    itemMarker == null ? null : itemMarker.getMetadata()));
         }
         return new ResourceFolderMetadata(groupingFolder, items, raw.getNextToken());
     }
@@ -749,13 +753,17 @@ public class ComplexResourceService {
     }
 
     /**
-     * Builds a listing item for a DIAL node from its marker's listing metadata (timestamps/author), without
-     * reading the marker file content. The {@code nodeType} ({@code ITEM} for a resource, {@code FOLDER} for a
-     * grouping folder) already conveys the kind. The aggregate etag is not included: it lives inside the marker
-     * and is available via a whole-resource GET.
+     * Builds a listing item for a DIAL node from its marker's listing metadata (timestamps/author) and,
+     * for an {@code ITEM}, its manifest-derived attributes (e.g. a skill's name/description/version).
+     * The {@code nodeType} ({@code ITEM} for a resource, {@code FOLDER} for a grouping folder) already
+     * conveys the kind. The aggregate etag is not included: it lives inside the marker and is available
+     * via a whole-resource GET.
      */
-    private static ResourceItemMetadata nodeMetadata(ResourceDescriptor node, NodeType nodeType, ResourceItemMetadata marker) {
-        ResourceItemMetadata metadata = new ResourceItemMetadata(node);
+    private static ResourceItemMetadata nodeMetadata(ResourceDescriptor node, NodeType nodeType, ResourceItemMetadata marker,
+            @Nullable Map<String, Object> attributes) {
+        ResourceItemMetadata metadata = attributes == null
+                ? new ResourceItemMetadata(node)
+                : new ComplexResourceItemMetadata(node).setAttributes(attributes);
         metadata.setNodeType(nodeType);
         metadata.setCreatedAt(marker.getCreatedAt());
         metadata.setUpdatedAt(marker.getUpdatedAt());
