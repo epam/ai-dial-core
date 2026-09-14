@@ -66,6 +66,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -154,7 +155,11 @@ public class RateLimiterTest {
         ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
         resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
                 lockService, settings, null);
-        rateLimiter = new RateLimiter(taskExecutor, resourceService);
+        // increase() only ever needs the schedule, and no test configures a non-default one;
+        // lenient() since not every test method calls increase()
+        ConfigStore configStore = mock(ConfigStore.class);
+        lenient().when(configStore.get()).thenReturn(new Config());
+        rateLimiter = new RateLimiter(taskExecutor, resourceService, configStore);
     }
 
     @AfterEach
@@ -556,7 +561,8 @@ public class RateLimiterTest {
 
         TokenUsage tokenUsage = new TokenUsage();
         tokenUsage.setTotalTokens(90);
-        assertNull(rateLimiter.increase(usedModel, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+        assertNull(rateLimiter.increase(
+                usedModel, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
 
         UserLimitStats stats = rateLimiter.getUserStats(proxyContext, List.of(usedModel, unusedModel), false).result();
 
@@ -616,7 +622,8 @@ public class RateLimiterTest {
         tokenUsage.setPromptTokens(1000);
         tokenUsage.setCompletionTokens(2000);
         tokenUsage.setTotalTokens(3000);
-        assertNull(rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+        assertNull(rateLimiter.increase(
+                model, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
 
         UserLimitStats stats = rateLimiter.getUserStats(proxyContext, List.of(model), false).result();
 
@@ -679,7 +686,8 @@ public class RateLimiterTest {
 
         TokenUsage tokenUsage = new TokenUsage();
         tokenUsage.setTotalTokens(11);
-        assertNull(rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+        assertNull(rateLimiter.increase(
+                model, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
 
         UserLimitStats stats = rateLimiter.getUserStats(proxyContext, List.of(model), false).result();
 
@@ -852,7 +860,8 @@ public class RateLimiterTest {
         assertEquals(HttpStatus.OK, rateLimiter.limit(proxyContext, model).result().status());
         assertNull(rateLimiter.increase(model, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
 
-        // age the token record's listing entry past RateWindow.MONTH, leaving its counter untouched
+        // age the token record's listing entry past RateLimiter's widest-window pre-filter (32 days),
+        // leaving its counter untouched
         ResourceDescriptor tokens = ResourceDescriptorFactory
                 .fromEncoded(ResourceTypes.LIMIT, bucket, bucket, "aged-model/tokens");
         long agedOut = System.currentTimeMillis() - Duration.ofDays(60).toMillis();
@@ -867,7 +876,8 @@ public class RateLimiterTest {
             }
             return page;
         }).when(listingWithAgedRecord).getFolderMetadata(any(), any(), anyInt(), anyBoolean());
-        RateLimiter limiter = new RateLimiter(taskExecutor, listingWithAgedRecord);
+        // this instance never calls increase(), so its ConfigStore is never actually read
+        RateLimiter limiter = new RateLimiter(taskExecutor, listingWithAgedRecord, mock(ConfigStore.class));
 
         Future<UserLimitStats> future = limiter.getUserStats(proxyContext, List.of(model), false);
 

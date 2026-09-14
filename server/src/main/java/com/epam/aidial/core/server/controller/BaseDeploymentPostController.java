@@ -365,7 +365,7 @@ public class BaseDeploymentPostController {
         proxyRequest.headers().add(Proxy.HEADER_API_KEY, context.getProxyApiKeyData().getPerRequestKey());
 
         proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_FEATURES,
-                ProxyUtil.convertToString(FeaturesData.createDeploymentFeatures(context.getDeployment())));
+                ProxyUtil.convertToString(FeaturesData.createDeploymentFeatures(context.getDeployment(), type)));
 
         if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
             Upstream upstream = Objects.requireNonNull(context.getUpstreamRoute().get());

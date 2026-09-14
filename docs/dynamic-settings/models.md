@@ -174,15 +174,15 @@ Supported interface types for models:
 
 The `interfaces` map is strict: chat completions is configured via `openaiChatCompletions` and embeddings via `openaiEmbeddings`, and one never stands in for the other — a model declaring only `openaiChatCompletions` answers `503` to `embeddings`, and a model declaring only `openaiEmbeddings` answers `503` to `chat/completions` and `completions`. The untyped legacy `endpoint` predates the split and keeps serving `embeddings` requests verbatim, so models configured before the split keep working unchanged.
 
-Only the interface types a model declares are reported in the `interfaces` array of the `/v1/deployments` listing. A legacy `endpoint` is advertised as the interface matching what the model says it is: `openaiEmbeddings` when `type` is `embedding`, `openaiChatCompletions` otherwise — so an embedding model configured this way reports `openaiEmbeddings` and `"chat_completion": false`, even though that one endpoint still serves the whole deployments POST family.
-
 Each value is an object with the following fields:
 
 * `base_url`: The root URL that the matching ingress path is appended to. Optional — the model-level `baseUrl` serves an entry that omits it.
 * `mode`: `passthrough` (default) or `translator`. It declares whether the request is forwarded in the shape it arrived in, or handed to a service that translates it into an API the model does speak. A `translator` interface **does not touch the caller's [role limits](roles.md#rolesrole_namelimits)** — neither checks nor charges them. The translator calls DIAL Core back to have the completion served, and that second call is the real request: it carries the tokens, the cost and the `requestHour`/`requestDay` slot, so a client call is counted once rather than twice. An exhausted quota is therefore enforced on the callback rather than on the translated call itself. Refer to [Limits and a translated request](translators.md#limits-and-a-translated-request).
 * `translator`: The translator serving this interface, required by `mode: translator` and rejected without it. Either the name of a [translators](translators.md) entry, or a definition written inline as `{"out": ..., "baseUrl": ...}`. An interface is served either by a base URL or by a translator, never by both — a model declaring both is rejected on config load.
 * `defaultHeaders`: Headers applied to requests for this interface only, laid over the model-level `defaultHeaders`. Refer to [models.<model_name>.defaultHeaders](#modelsmodel_namedefaultheaders).
+* `features`: Feature fields that override model-level `features` for this interface only. Unspecified fields inherit the model-level value, then Core defaults apply. Refer to [Features per interface](#features-per-interface).
 * `defaults`: Body parameters applied to requests for this interface only, replacing whichever model-level defaults would otherwise serve it. They are injected the same way the model-level ones are — a key the request already carries is never replaced. Refer to [Defaults per interface](#defaults-per-interface).
+* `overridePaths`: Per-operation upstream paths that replace the default "base URL + ingress path" routing for this interface. Refer to [Override paths per interface](#override-paths-per-interface).
 
 **Example**
 
@@ -216,6 +216,127 @@ Each value is an object with the following fields:
     }
 }
 ```
+
+### Override paths per interface
+
+By default an `interfaces` entry forwards each request to its base URL + the exact ingress path.
+`overridePaths` replaces that path per operation, which is how DIAL Core fronts services that do not
+follow the DIAL API path contract.
+
+The map is keyed by a constant naming the Core operation (`{http_method}{api_provider}{api_type}`),
+and the value is the path applied to the base URL instead of the ingress path:
+
+| Key                                | Core operation                                   |
+|------------------------------------|--------------------------------------------------|
+| `postAzureOpenaiChatCompletions`   | `POST /openai/deployments/{id}/chat/completions` |
+| `postAzureOpenaiEmbeddings`        | `POST /openai/deployments/{id}/embeddings`       |
+| `postOpenaiResponses`              | `POST /openai/v1/responses`                      |
+| `getOpenaiResponsesById`           | `GET /openai/v1/responses/{id}`                  |
+| `deleteOpenaiResponsesById`        | `DELETE /openai/v1/responses/{id}`               |
+| `postOpenaiResponsesCancel`        | `POST /openai/v1/responses/{id}/cancel`          |
+| `postAnthropicMessages`            | `POST /anthropic/v1/messages`                    |
+| `postAnthropicMessagesCountTokens` | `POST /anthropic/v1/messages/count_tokens`       |
+
+A key sits under the interface that owns it — a known key declared under a
+different interface is rejected on config load, while a key this Core version does not know is
+ignored, exactly as an unknown interface type is. Operations without an override keep the default routing, so overriding
+only some of an interface's operations is fine. Operation keys use the exact camelCase spellings
+listed above; `override_paths` is an alias for the `overridePaths` field itself.
+Malformed templates are rejected before API writes persist the deployment, including admin
+validate/apply and application writes.
+
+The value is a path in which exactly two tokens are substituted: `{id}` and `{overrideName}`,
+matched by their literal spelling. Nothing else is interpreted: any other text, braces included, is
+forwarded exactly as written — so a near-miss such as `{Id}` reaches the upstream literally, as the
+misconfiguration it is.
+
+* `{id}` renders the id of the operation: the deployment's name for the deployments-POST family
+  (`postAzureOpenaiChatCompletions`, `postAzureOpenaiEmbeddings`), and the response id for the
+  Responses API item operations (`getOpenaiResponsesById`, `deleteOpenaiResponsesById`,
+  `postOpenaiResponsesCancel`) — the upstream response id toward the provider, the DIAL one toward
+  an interceptor. The remaining operations carry no id, so `{id}` there is rejected on config load.
+* `{overrideName}` renders the deployment's URL-encoded `overrideName`, or its own name when none
+  is set.
+
+Override paths apply only to the interfaces/base-URL routing: the legacy `endpoint`/
+`responsesEndpoint` fields are still forwarded verbatim, and a `mode: translator` interface is
+served by its translator — declaring `overridePaths` on one is rejected on config load. Query
+strings are appended to the overridden URL exactly as they are to the default one.
+
+**Example**
+
+```json
+"models": {
+    "gpt_switchyard": {
+        "type": "chat",
+        "overrideName": "switchyard-gpt",
+        "baseUrl": "https://dm-switchyard/",
+        "interfaces": {
+            "openaiChatCompletions": {
+                "overridePaths": { "postAzureOpenaiChatCompletions": "/v1/chat/completions" }
+            },
+            "openaiResponses": {
+                "overridePaths": {
+                    "postOpenaiResponses": "/v1/responses",
+                    "getOpenaiResponsesById": "/v1/responses/{id}",
+                    "deleteOpenaiResponsesById": "/v1/responses/{id}",
+                    "postOpenaiResponsesCancel": "/v1/responses/{id}/cancel"
+                }
+            },
+            "anthropicMessages": {
+                "overridePaths": {
+                    "postAnthropicMessages": "/v1/messages",
+                    "postAnthropicMessagesCountTokens": "/v1/messages/count_tokens"
+                }
+            }
+        }
+    }
+}
+```
+
+With this configuration, `POST {core}/openai/deployments/gpt_switchyard/chat/completions` is
+forwarded to `POST https://dm-switchyard/v1/chat/completions` instead of
+`https://dm-switchyard/openai/deployments/switchyard-gpt/chat/completions`.
+
+### Features per interface
+
+Effective features are resolved field by field in this order:
+
+1. `interfaces.<type>.features`, when the field has a non-null value.
+2. Model-level `features`.
+3. DIAL Core's existing default for that feature.
+
+An absent, `null`, or empty interface `features` object inherits all model-level fields. A field set to `null` also inherits. Explicit `false` overrides `true`. Arrays replace the entire inherited array: `"reasoning_efforts": []` clears the supported efforts. Snake-case and camelCase feature names are both accepted.
+
+```json
+{
+  "models": {
+    "openai-gpt-5.4-mini": {
+      "type": "chat",
+      "baseUrl": "http://dial-openai-adapter/",
+      "features": {
+        "tools_supported": true,
+        "temperature_supported": true,
+        "reasoning_efforts": ["low", "medium", "high"]
+      },
+      "interfaces": {
+        "openaiChatCompletions": {"mode": "passthrough"},
+        "openaiResponses": {"mode": "passthrough"},
+        "anthropicMessages": {
+          "mode": "passthrough",
+          "features": {"reasoning_efforts": ["low", "medium", "high", "xhigh", "max"]}
+        }
+      }
+    }
+  }
+}
+```
+
+Chat completions and Responses inherit `["low", "medium", "high"]`; Anthropic Messages uses `["low", "medium", "high", "xhigh", "max"]`. All three retain `tools_supported: true` and `temperature_supported: true`. Tool support is explicitly enabled here because Core's default is `false`.
+
+The same rule applies to `openaiEmbeddings`. It needs its own interface declaration when using `interfaces` for routing. Passthrough and translator requests receive effective features in `X-DIAL-DEPLOYMENT-FEATURES`, using the existing header format (`tools`, `temperature`, `reasoning_efforts`, etc.). Request-time caching, automatic caching, per-request-key access, and consent checks also use the requested interface's features. Consent reviews include requirements declared on interfaces.
+
+Core defaults are applied after merging, and resolving a request does not modify the shared configuration.
 
 #### models.<model_name>.defaultHeaders
 

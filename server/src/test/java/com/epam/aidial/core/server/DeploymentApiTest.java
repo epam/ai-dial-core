@@ -6,8 +6,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -16,6 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class DeploymentApiTest extends ResourceBaseTest {
+
+    private static final double DELTA = 1e-9;
 
     @DialConfigLocation("dial-config/deployment-interfaces-listing.json")
     @Test
@@ -160,6 +164,76 @@ public class DeploymentApiTest extends ResourceBaseTest {
         assertTrue(applications.get("app-legacy").get("chat_completion").asBoolean());
     }
 
+    @DialConfigLocation("dial-config/deployment-interface-configs.json")
+    @Test
+    public void testInterfaceConfigsListEffectiveFeaturesAndDefaultsPerInterface() throws JsonProcessingException {
+        Map<String, JsonNode> deploymentsById = collectDeployments(send(HttpMethod.GET, "/v1/deployments", null, null));
+
+        JsonNode modelConfigs = deploymentsById.get("gpt-5.4-mini").get("interface_configs");
+        assertEquals(Set.of("openaiChatCompletions", "openaiResponses", "anthropicMessages"), fieldNames(modelConfigs));
+
+        // the API-surface flags name the API each interface itself is, unlike the deployment-level
+        // features where they name the APIs the deployment serves at all
+        JsonNode chat = modelConfigs.get("openaiChatCompletions");
+        assertTrue(chat.get("features").get("chat_completion").asBoolean());
+        assertFalse(chat.get("features").get("responses_api").asBoolean());
+        assertTrue(chat.get("features").get("system_prompt").asBoolean());
+        assertEquals(1, chat.get("defaults").get("temperature").asDouble(), DELTA);
+
+        JsonNode responses = modelConfigs.get("openaiResponses");
+        assertFalse(responses.get("features").get("chat_completion").asBoolean());
+        assertTrue(responses.get("features").get("responses_api").asBoolean());
+        assertEquals(1, responses.get("defaults").get("temperature").asDouble(), DELTA);
+
+        JsonNode anthropic = modelConfigs.get("anthropicMessages");
+        assertFalse(anthropic.get("features").get("chat_completion").asBoolean());
+        assertFalse(anthropic.get("features").get("responses_api").asBoolean());
+        // the interface-level reasoning efforts and defaults replace the deployment-level ones ...
+        assertEquals(List.of("low", "medium", "high", "xhigh", "max"),
+                textValues(anthropic.get("features").get("reasoning_efforts")));
+        assertEquals(0.5, anthropic.get("defaults").get("temperature").asDouble(), DELTA);
+        // ... for that interface only: the deployment-level view keeps its own values
+        JsonNode model = deploymentsById.get("gpt-5.4-mini");
+        assertEquals(List.of("low", "medium"), textValues(model.get("features").get("reasoning_efforts")));
+        assertEquals(1, model.get("defaults").get("temperature").asDouble(), DELTA);
+
+        // the default headers follow the same resolution: the deployment-level set, overlaid per interface
+        assertEquals("cache-priority", chat.get("default_headers").get("x-dial-cache-policy").asText());
+        assertEquals("foo-bar", chat.get("default_headers").get("x-dial-custom-header").asText());
+        assertEquals("foo-bar", responses.get("default_headers").get("x-dial-custom-header").asText());
+        assertEquals("cache-priority", anthropic.get("default_headers").get("x-dial-cache-policy").asText());
+        // the interface entry overrides the header it names and adds the one the deployment level lacks
+        assertEquals("foo-bar-2", anthropic.get("default_headers").get("x-dial-custom-header").asText());
+        assertEquals("some-value", anthropic.get("default_headers").get("x-dial-custom-header-2").asText());
+
+        // a legacy endpoint is advertised as the interface matching what the model says it is
+        assertEquals(Set.of("openaiChatCompletions"),
+                fieldNames(deploymentsById.get("model-legacy").get("interface_configs")));
+        // a deployment with no default headers lists an empty object, like defaults
+        JsonNode legacyChat = deploymentsById.get("model-legacy").get("interface_configs").get("openaiChatCompletions");
+        assertEquals(ProxyUtil.MAPPER.createObjectNode(), legacyChat.get("default_headers"));
+        assertEquals(Set.of("openaiEmbeddings"),
+                fieldNames(deploymentsById.get("embedding-ada").get("interface_configs")));
+
+        // applications carry their interface entry too, and one serving no typed interface omits the field
+        JsonNode appConfigs = deploymentsById.get("app-iface").get("interface_configs");
+        assertEquals(Set.of("openaiChatCompletions"), fieldNames(appConfigs));
+        assertEquals(0.1, appConfigs.get("openaiChatCompletions").get("defaults").get("temperature").asDouble(), DELTA);
+        assertFalse(deploymentsById.get("app-ui-only").has("interface_configs"));
+
+        // the openai listings and the single-deployment endpoints return the same configs
+        assertEquals(modelConfigs, collectDeployments(
+                send(HttpMethod.GET, "/openai/models", null, null)).get("gpt-5.4-mini").get("interface_configs"));
+        assertEquals(modelConfigs, collectDeployments(
+                send(HttpMethod.GET, "/openai/deployments", null, null)).get("gpt-5.4-mini").get("interface_configs"));
+        assertEquals(appConfigs, collectDeployments(
+                send(HttpMethod.GET, "/openai/applications", null, null)).get("app-iface").get("interface_configs"));
+        assertEquals(modelConfigs, readDeployment(
+                send(HttpMethod.GET, "/v1/deployments/gpt-5.4-mini")).get("interface_configs"));
+        assertEquals(modelConfigs, readDeployment(
+                send(HttpMethod.GET, "/openai/deployments/gpt-5.4-mini")).get("interface_configs"));
+    }
+
     /**
      * Maps deployment id to its {@code features} object. Handles both the bare array returned by
      * {@code /v1/deployments} and the {@code {"data": [...]}} envelope of the legacy listings.
@@ -199,5 +273,35 @@ public class DeploymentApiTest extends ResourceBaseTest {
             result.put(deployment.get("id").asText(), interfaces);
         }
         return result;
+    }
+
+    /**
+     * Maps deployment id to its whole listing entry. Handles both the bare array returned by
+     * {@code /v1/deployments} and the {@code {"data": [...]}} envelope of the legacy listings.
+     */
+    private static Map<String, JsonNode> collectDeployments(Response response) throws JsonProcessingException {
+        verify(response, 200);
+        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
+        JsonNode deployments = body.isArray() ? body : body.get("data");
+
+        Map<String, JsonNode> result = new HashMap<>();
+        for (JsonNode deployment : deployments) {
+            result.put(deployment.get("id").asText(), deployment);
+        }
+        return result;
+    }
+
+    private static Set<String> fieldNames(JsonNode object) {
+        Set<String> names = new HashSet<>();
+        object.fieldNames().forEachRemaining(names::add);
+        return names;
+    }
+
+    private static List<String> textValues(JsonNode array) {
+        List<String> values = new ArrayList<>();
+        for (JsonNode value : array) {
+            values.add(value.asText());
+        }
+        return values;
     }
 }

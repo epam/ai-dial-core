@@ -5,7 +5,9 @@ import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.metaschemas.CopyAppBucketOptions;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.ConfigStore;
+import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -327,6 +329,7 @@ public class ApplicationService {
 
         EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;
         consumer.accept(application);
+        requireRenderableOverridePaths(application);
         application.setName(destination.getUrl());
 
         boolean isPublicOrReview = isPublicOrReview(destination);
@@ -573,8 +576,22 @@ public class ApplicationService {
         return controller.getApplicationLogs(application.getFunction());
     }
 
+    /**
+     * An {@code overridePaths} entry Core cannot render is refused before the application is written,
+     * so the blob never holds config the next config rebuild would drop.
+     */
+    private static void requireRenderableOverridePaths(Application application) {
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateOverridePaths(application, warnings);
+        if (!warnings.isEmpty()) {
+            ValidationWarning warning = warnings.get(0);
+            throw new HttpException(HttpStatus.UNPROCESSABLE_ENTITY, warning.getField() + ": " + warning.getMessage());
+        }
+    }
+
     private void prepareApplication(ResourceDescriptor resource, Application application, boolean preserveForwardAuthToken) {
         verifyApplication(resource);
+        requireRenderableOverridePaths(application);
         boolean platformBucket = ResourceDescriptor.PLATFORM_BUCKET.equals(resource.getBucketName());
         // platform hosts migrated config-file apps (and future API-managed equivalents), which are
         // inherently endpoint-based; function-type apps have no legitimate reason to live there, and

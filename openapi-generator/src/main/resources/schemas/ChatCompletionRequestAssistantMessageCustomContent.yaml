@@ -15,3 +15,8 @@ properties:
     description: |-
       The JSON schema describing a form that the assistant prompts the user to fill in.
       Given this schema, the user is expected to provide a JSON value in the next message in the `custom_content.form_value` field.
+  skills:
+    type: array
+    items:
+      $ref: "#/components/schemas/RequestSkill"
+    description: List of skills referenced by the model as part of the response.

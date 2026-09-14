@@ -746,12 +746,12 @@ public final class MergedConfigStore implements ConfigStore {
             switch (type) {
                 case MODEL -> ConfigPostProcessor.validateSingleModel(next, mapKey, onSkip);
                 case INTERCEPTOR -> {
-                    ConfigPostProcessor.setNameAsMapKey(next.getInterceptors(), mapKey);
+                    ConfigPostProcessor.validateSingleInterceptor(next, mapKey, onSkip);
                     resurrectInvalidModels(next, nextInvalid);
                 }
                 case TRANSLATOR -> ConfigPostProcessor.validateSingleTranslator(next, mapKey, onSkip);
                 case ROLE -> ConfigPostProcessor.setRoleNameAsMapKey(next.getRoles(), mapKey);
-                case APPLICATION -> ConfigPostProcessor.setNameAsMapKey(next.getApplications(), mapKey);
+                case APPLICATION -> ConfigPostProcessor.validateSingleApplication(next, mapKey, onSkip);
                 case TOOL_SET -> ConfigPostProcessor.setNameAsMapKey(next.getToolsets(), mapKey);
                 case PROJECT_KEY, APP_TYPE_SCHEMA, CATALOG_SCHEMA -> { /* no post-processing */ }
                 case ROUTE -> ConfigPostProcessor.sortRoutesInPlace(next);
