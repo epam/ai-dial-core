@@ -103,10 +103,15 @@ public class ResponseItemControllerTest {
                 .deploymentName("test-deployment")
                 .initiatorBucket("Users/other-user/")
                 .build();
+        Model deployment = new Model();
+        deployment.setName("test-deployment");
+        deployment.setResponsesEndpoint("http://adapter/responses");
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
+        when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(context.getUserId()).thenReturn("test-user");
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getResponse()).thenReturn(response);
         when(response.ended()).thenReturn(false);
         when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> complete(testContext));
@@ -124,8 +129,14 @@ public class ResponseItemControllerTest {
 
     @Test
     public void testMappingNotFound(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        Model deployment = new Model();
+        deployment.setName("test-deployment");
+        deployment.setResponsesEndpoint("http://adapter/responses");
+
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(null);
+        when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getResponse()).thenReturn(response);
         when(response.ended()).thenReturn(false);
         when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> complete(testContext));
@@ -373,17 +384,8 @@ public class ResponseItemControllerTest {
 
     @Test
     public void testDeleteBlockedByActiveBackgroundJob(Vertx vertx, VertxTestContext testContext) throws Throwable {
-        ResponseMapping mapping = ResponseMapping.builder()
-                .upstreamResponseId("upstream-id-del")
-                .upstreamKey("endpoint")
-                .deploymentName("test-deployment")
-                .initiatorBucket("Users/test-user/")
-                .build();
-
-        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getBackgroundJobService().isJobActive(anyString())).thenReturn(Future.succeededFuture(true));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(context.getUserId()).thenReturn("test-user");
         when(context.getResponse()).thenReturn(response);
         when(response.ended()).thenReturn(false);
         when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> complete(testContext));
@@ -402,19 +404,11 @@ public class ResponseItemControllerTest {
 
     @Test
     public void testNoResponsesEndpoint(Vertx vertx, VertxTestContext testContext) throws Throwable {
-        ResponseMapping mapping = ResponseMapping.builder()
-                .upstreamResponseId("upstream-id")
-                .upstreamKey("endpoint")
-                .deploymentName("no-responses-deployment")
-                .initiatorBucket("Users/test-user/")
-                .build();
         Model deployment = new Model();
         deployment.setName("no-responses-deployment");
 
-        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "no-responses-deployment")).thenReturn(deployment);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(context.getUserId()).thenReturn("test-user");
         when(context.respond(any(HttpStatus.class), anyString())).thenAnswer(invocation -> complete(testContext));
 
         controller("dial_no-responses-deployment_x", GET).handle();
@@ -598,12 +592,6 @@ public class ResponseItemControllerTest {
 
     @Test
     public void testInterceptorReentryDispatchesToNextInterceptor(Vertx vertx, VertxTestContext testContext) throws Throwable {
-        ResponseMapping mapping = ResponseMapping.builder()
-                .upstreamResponseId("upstream-id-123")
-                .upstreamKey("endpoint")
-                .deploymentName("test-deployment")
-                .initiatorBucket("Users/test-user/")
-                .build();
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
@@ -623,19 +611,16 @@ public class ResponseItemControllerTest {
 
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
 
-        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
-        when(context.getUserId()).thenReturn("test-user");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
         when(context.getInterceptors()).thenReturn(apiKeyData.getInterceptors());
         when(context.getConfig()).thenReturn(config);
         when(context.getRequest()).thenReturn(serverRequest);
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
-        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(serverRequest.method()).thenReturn(HttpMethod.GET);
         doAnswer(invocation -> {
             testContext.completeNow();
@@ -653,16 +638,11 @@ public class ResponseItemControllerTest {
                 "interceptor2".equals(opts.getHost())
                 && "/responses/dial_test-deployment_123".equals(opts.getURI().toString())));
         verify(proxy.getResponsesApiClient(), never()).send(any(), any(), any(), any());
+        verify(proxy.getResponseMappingService(), never()).getMapping(anyString());
     }
 
     @Test
     public void testDeploymentInterceptorForwardsToInterceptor(Vertx vertx, VertxTestContext testContext) throws Throwable {
-        ResponseMapping mapping = ResponseMapping.builder()
-                .upstreamResponseId("upstream-id-123")
-                .upstreamKey("endpoint")
-                .deploymentName("test-deployment")
-                .initiatorBucket("Users/test-user/")
-                .build();
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
@@ -675,21 +655,18 @@ public class ResponseItemControllerTest {
 
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
 
-        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getDeploymentService().getInterceptors(context, deployment, InterfaceType.OPENAI_RESPONSES)).thenReturn(List.of("interceptor1"));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
-        when(context.getUserId()).thenReturn("test-user");
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.hasNextInterceptor()).thenReturn(true);
         when(context.getInterceptors()).thenReturn(List.of("interceptor1"));
         when(context.getConfig()).thenReturn(config);
         when(context.getRequest()).thenReturn(serverRequest);
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
-        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(serverRequest.method()).thenReturn(HttpMethod.GET);
         doAnswer(invocation -> {
             testContext.completeNow();
@@ -707,6 +684,57 @@ public class ResponseItemControllerTest {
                 "interceptor1".equals(opts.getHost())
                 && "/responses/dial_test-deployment_123".equals(opts.getURI().toString())));
         verify(proxy.getResponsesApiClient(), never()).send(any(), any(), any(), any());
+        verify(proxy.getResponseMappingService(), never()).getMapping(anyString());
+    }
+
+    @Test
+    public void testInterceptorDispatchSkipsOwnershipCheck(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        // Ownership of the response_id (the mapping's initiatorBucket) is only known once the mapping is
+        // loaded, and the mapping is not loaded while an interceptor still needs to run - so a caller who
+        // does not own this response_id is not rejected before reaching the interceptor.
+        Model deployment = new Model();
+        deployment.setName("test-deployment");
+        deployment.setResponsesEndpoint("http://adapter/responses");
+
+        Interceptor interceptor1 = new Interceptor();
+        interceptor1.setResponsesEndpoint("http://interceptor1/responses");
+
+        Config config = new Config();
+        config.setInterceptors(Map.of("interceptor1", interceptor1));
+
+        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
+
+        when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
+        when(proxy.getDeploymentService().getInterceptors(context, deployment, InterfaceType.OPENAI_RESPONSES)).thenReturn(List.of("interceptor1"));
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
+        when(proxy.getClient()).thenReturn(httpClient);
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.hasNextInterceptor()).thenReturn(true);
+        when(context.getInterceptors()).thenReturn(List.of("interceptor1"));
+        when(context.getConfig()).thenReturn(config);
+        when(context.getRequest()).thenReturn(serverRequest);
+        when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
+        when(serverRequest.method()).thenReturn(HttpMethod.GET);
+        doAnswer(invocation -> {
+            testContext.completeNow();
+            return Future.failedFuture(new RuntimeException("abort"));
+        }).when(httpClient).request(any(RequestOptions.class));
+        doCallRealMethod().when(context).setDeployment(any());
+        doCallRealMethod().when(context).getDeployment();
+
+        // note: proxy.getResponseMappingService().getMapping(...) is deliberately not stubbed here -
+        // if it were called, the returned null would surface as a 404 rather than the interceptor call below.
+        controller("dial_test-deployment_123", GET).handle();
+
+        await(testContext);
+
+        verify(httpClient).request(argThat(opts ->
+                "interceptor1".equals(opts.getHost())
+                && "/responses/dial_test-deployment_123".equals(opts.getURI().toString())));
+        verify(context, never()).respond(any(HttpStatus.class), anyString());
+        verify(proxy.getResponseMappingService(), never()).getMapping(anyString());
     }
 
     private static Future<?> complete(VertxTestContext testContext) {

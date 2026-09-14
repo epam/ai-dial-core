@@ -23,6 +23,7 @@ import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -115,7 +116,7 @@ public class ResponseItemController implements Controller {
             )
     })
     public Future<?> handle() {
-        return proxy.getTaskExecutor().submit(this::loadMapping)
+        return proxy.getTaskExecutor().submit(() -> ResponseIdUtil.extractDeploymentName(dialResponseId))
                 .compose(this::checkNotDeletingActive)
                 .compose(this::dispatch)
                 .eventually(this::finalizeRequest)
@@ -141,14 +142,14 @@ public class ResponseItemController implements Controller {
                 .mapEmpty();
     }
 
-    private Future<ResponseMapping> checkNotDeletingActive(ResponseMapping mapping) {
+    private Future<String> checkNotDeletingActive(String deploymentName) {
         if (operation != Operation.DELETE) {
-            return Future.succeededFuture(mapping);
+            return Future.succeededFuture(deploymentName);
         }
         return proxy.getBackgroundJobService().isJobActive(dialResponseId)
                 .compose(active -> active
                         ? Future.failedFuture(new HttpException(HttpStatus.CONFLICT, "Cannot delete response while background job is in progress"))
-                        : Future.succeededFuture(mapping));
+                        : Future.succeededFuture(deploymentName));
     }
 
     private ResponseMapping loadMapping() {
@@ -163,8 +164,8 @@ public class ResponseItemController implements Controller {
         return mapping;
     }
 
-    private Future<Void> dispatch(ResponseMapping mapping) {
-        Deployment deployment = proxy.getDeploymentService().findDeployment(context, mapping.getDeploymentName());
+    private Future<Void> dispatch(String deploymentName) {
+        Deployment deployment = proxy.getDeploymentService().findDeployment(context, deploymentName);
         if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES,
                 context.getConfig().getTranslators()) == null) {
             return context.respond(HttpStatus.SERVICE_UNAVAILABLE, "Deployment for response_id does not support Responses API")
@@ -188,6 +189,7 @@ public class ResponseItemController implements Controller {
             }
         }
 
+        ResponseMapping mapping = loadMapping();
         return forwardToUpstream(mapping, deployment);
     }
 
