@@ -16,7 +16,18 @@ public class ResponseIdUtil {
         return RESPONSE_ID_PREFIX + deploymentName + "_" + uuid;
     }
 
+    public String extractDeploymentName(String dialResponseId) {
+        return parse(dialResponseId).deploymentName();
+    }
+
     public ResourceDescriptor getResponseMappingDescriptor(String dialResponseId) {
+        ParsedId id = parse(dialResponseId);
+        String relativePath = id.deploymentName() + "/" + id.uuid();
+        return ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.RESPONSE_MAPPING, RESPONSE_MAPPINGS_BUCKET, RESPONSE_MAPPINGS_BUCKET_LOCATION, relativePath);
+    }
+
+    private ParsedId parse(String dialResponseId) {
         if (!dialResponseId.startsWith(RESPONSE_ID_PREFIX)) {
             throw new IllegalArgumentException("Invalid response id: " + dialResponseId);
         }
@@ -24,15 +35,16 @@ public class ResponseIdUtil {
         if (underscore < RESPONSE_ID_PREFIX.length()) {
             throw new IllegalArgumentException("Invalid response id: " + dialResponseId);
         }
-        String deploymentName = dialResponseId.substring(RESPONSE_ID_PREFIX.length(), underscore);
-        String uuid = dialResponseId.substring(underscore + 1);
-        String relativePath = deploymentName + "/" + uuid;
-        return ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.RESPONSE_MAPPING, RESPONSE_MAPPINGS_BUCKET, RESPONSE_MAPPINGS_BUCKET_LOCATION, relativePath);
+        return new ParsedId(
+                dialResponseId.substring(RESPONSE_ID_PREFIX.length(), underscore),
+                dialResponseId.substring(underscore + 1));
     }
 
     public ResourceDescriptor getBackgroundJobDescriptor(String jobId) {
         return ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.BACKGROUND_JOB, BACKGROUND_JOB_BUCKET, BACKGROUND_JOB_BUCKET_LOCATION, jobId);
+    }
+
+    private record ParsedId(String deploymentName, String uuid) {
     }
 }
