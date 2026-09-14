@@ -394,6 +394,7 @@ public class SkillResourceApiTest extends ResourceBaseTest {
         Response skillMetadata = listMetadata("cat/skill-a");
         verify(skillMetadata, 200);
         assertEquals("ITEM", nodeType(skillMetadata));
+        assertEquals("Does something useful", attributes(skillMetadata).get("description").asText());
 
         // a grouping folder's own path must still report itself as a FOLDER
         Response folderMetadata = listMetadata("cat/sub");
@@ -410,7 +411,10 @@ public class SkillResourceApiTest extends ResourceBaseTest {
         verify(uploadSkill("/tree/sub/nested", files), 200);
 
         // non-recursive: only the immediate children (a resource and a grouping folder)
-        assertEquals(Set.of("skill-a", "sub"), childNodeTypes(listMetadata("tree")).keySet());
+        Response listing = listMetadata("tree");
+        assertEquals(Set.of("skill-a", "sub"), childNodeTypes(listing).keySet());
+        // a listed skill child must also carry its manifest-derived attributes
+        assertEquals("Does something useful", childAttributes(listing, "skill-a").get("description").asText());
 
         // recursive: every DIAL resource/folder in the subtree, and never the files inside a resource
         Set<String> urls = childUrls(send(HttpMethod.GET,
@@ -676,6 +680,21 @@ public class SkillResourceApiTest extends ResourceBaseTest {
     @SneakyThrows
     private static String nodeType(Response metadata) {
         return ProxyUtil.MAPPER.readTree(metadata.body()).get("nodeType").asText();
+    }
+
+    @SneakyThrows
+    private static JsonNode attributes(Response metadata) {
+        return ProxyUtil.MAPPER.readTree(metadata.body()).get("attributes");
+    }
+
+    @SneakyThrows
+    private static JsonNode childAttributes(Response listing, String name) {
+        for (JsonNode item : ProxyUtil.MAPPER.readTree(listing.body()).get("items")) {
+            if (item.get("name").asText().equals(name)) {
+                return item.get("attributes");
+            }
+        }
+        throw new AssertionError("No child named " + name + " in listing: " + listing.body());
     }
 
     @SneakyThrows

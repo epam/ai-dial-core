@@ -9,7 +9,9 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
+import com.epam.aidial.core.storage.data.ComplexResourceItemMetadata;
 import com.epam.aidial.core.storage.data.MetadataBase;
+import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.Future;
@@ -62,7 +64,7 @@ public class ComplexResourceMetadataController extends AccessControlBaseControll
             },
             responses = {
                     @ApiResponse(code = 200, description = "The complex resources and grouping folders at this level",
-                            body = @ApiSchema(implementation = MetadataBase.class)),
+                            body = @ApiSchema(oneOf = {ResourceFolderMetadata.class, ComplexResourceItemMetadata.class})),
                     @ApiResponse(code = 400, description = "Bad request - limit out of range"),
                     @ApiResponse(code = 403),
                     @ApiResponse(code = 404, description = "Grouping folder not found"),
