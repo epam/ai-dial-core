@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.service.config;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Translator;
@@ -21,7 +22,6 @@ import com.epam.aidial.core.server.data.config.manifest.AdminTranslatorManifest;
 import com.epam.aidial.core.server.data.config.manifest.ValidationResult;
 import com.epam.aidial.core.server.data.config.manifest.ValidationStatus;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
-import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -29,6 +29,7 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import javax.annotation.Nullable;
 
 /**
  * Precheck engine behind {@code /v1/admin/validate} and the {@code precheck=true} phase of
@@ -61,9 +62,9 @@ public class ConfigValidationService {
                     }
                 }
                 case AdminModelManifest modelManifest -> {
-                    ConfigPostProcessor.requireValidOverridePaths(modelManifest.spec());
                     Model model = modelManifest.spec();
                     List<ValidationWarning> warnings = new ArrayList<>();
+                    ConfigPostProcessor.validateOverridePaths(model, warnings);
                     ConfigPostProcessor.validatePricing(model, warnings);
                     ConfigPostProcessor.validateUpstreamInterfaces(model, warnings);
                     ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
@@ -77,7 +78,10 @@ public class ConfigValidationService {
                     }
                 }
                 case AdminInterceptorManifest interceptorManifest -> {
-                    ConfigPostProcessor.requireValidOverridePaths(interceptorManifest.spec());
+                    String overridePathError = describeOverridePathWarnings(interceptorManifest.spec());
+                    if (overridePathError != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, overridePathError);
+                    }
                     String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
                             scratch, ResourceTypes.INTERCEPTOR, parsed.name());
                     if (dupError != null) {
@@ -108,7 +112,10 @@ public class ConfigValidationService {
                     }
                 }
                 case AdminApplicationManifest applicationManifest -> {
-                    ConfigPostProcessor.requireValidOverridePaths(applicationManifest.spec());
+                    String overridePathError = describeOverridePathWarnings(applicationManifest.spec());
+                    if (overridePathError != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, overridePathError);
+                    }
                     if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.name().bucket())) {
                         String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
                                 scratch, ResourceTypes.APPLICATION, parsed.name());
@@ -141,9 +148,20 @@ public class ConfigValidationService {
                     }
                 }
             }
-        } catch (IllegalArgumentException | HttpException ex) {
+        } catch (IllegalArgumentException ex) {
             return new ValidationResult(id, ValidationStatus.FAILED, ex.getMessage());
         }
         return new ValidationResult(id, ValidationStatus.VALID, null);
+    }
+
+    /**
+     * The {@code overridePaths} defects on a deployment joined into one message, or null when it has
+     * none. An unrenderable path is structural, so it fails the entity even under soft validation.
+     */
+    @Nullable
+    private static String describeOverridePathWarnings(Deployment deployment) {
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateOverridePaths(deployment, warnings);
+        return warnings.isEmpty() ? null : ConfigManifestSupport.joinWarnings(warnings);
     }
 }

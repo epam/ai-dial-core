@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
@@ -1612,10 +1613,10 @@ public class ConfigResourceController implements Controller {
                     }
                     entity = ConfigEntityCodec.treeToEntity(source, spec.entityClass());
                     if (entity instanceof Model m) {
-                        ConfigPostProcessor.requireValidOverridePaths(m);
+                        checkOverridePaths(m);
                         checkCrossReferences(m);
                     } else if (entity instanceof Interceptor interceptor) {
-                        ConfigPostProcessor.requireValidOverridePaths(interceptor);
+                        checkOverridePaths(interceptor);
                     } else if (entity instanceof Translator t) {
                         checkTranslator(t);
                     }
@@ -1913,14 +1914,7 @@ public class ConfigResourceController implements Controller {
             log.warn("Soft-mode cross-ref warnings for model '{}': {}", path, warnings);
             return;
         }
-        ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
-        ArrayNode arr = body.putArray("validationWarnings");
-        for (ValidationWarning warning : warnings) {
-            ObjectNode w = arr.addObject();
-            w.put("field", warning.getField());
-            w.put("message", warning.getMessage());
-        }
-        throw new HttpException(HttpStatus.UNPROCESSABLE_ENTITY, body.toString());
+        rejectWithValidationWarnings(warnings);
     }
 
     /**
@@ -1937,6 +1931,24 @@ public class ConfigResourceController implements Controller {
         if (warnings.isEmpty()) {
             return;
         }
+        rejectWithValidationWarnings(warnings);
+    }
+
+    /**
+     * Structural check for a deployment write: an {@code overridePaths} entry Core cannot render is
+     * rejected before the blob is written, exactly as {@link #checkTranslator} rejects a translator the
+     * rebuild would refuse. Always enforced, unlike {@link #checkCrossReferences}'s soft-mode allowance.
+     */
+    private void checkOverridePaths(Deployment entity) {
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateOverridePaths(entity, warnings);
+        if (warnings.isEmpty()) {
+            return;
+        }
+        rejectWithValidationWarnings(warnings);
+    }
+
+    private void rejectWithValidationWarnings(List<ValidationWarning> warnings) {
         ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
         ArrayNode arr = body.putArray("validationWarnings");
         for (ValidationWarning warning : warnings) {

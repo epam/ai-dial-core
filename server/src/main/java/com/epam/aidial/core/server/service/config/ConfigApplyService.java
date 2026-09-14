@@ -196,7 +196,11 @@ public class ConfigApplyService {
         /// Deployment-id uniqueness only applies to INTERCEPTOR here — ROLE/ROUTE aren't deployments
         // resolved through Config.selectDeployment, so they don't share the short-name namespace.
         if (type == ResourceTypes.INTERCEPTOR) {
-            ConfigPostProcessor.requireValidOverridePaths((Interceptor) entity);
+            List<ValidationWarning> warnings = new ArrayList<>();
+            ConfigPostProcessor.validateOverridePaths((Interceptor) entity, warnings);
+            if (!warnings.isEmpty()) {
+                return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+            }
             String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(scratch, type, parsed);
             if (dupError != null) {
                 return new EntityResult(id, AdminApplyStatus.FAILED, dupError);
@@ -269,7 +273,11 @@ public class ConfigApplyService {
     }
 
     private EntityResult applyModel(Model model, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {
-        ConfigPostProcessor.requireValidOverridePaths(model);
+        List<ValidationWarning> overridePathWarnings = new ArrayList<>();
+        ConfigPostProcessor.validateOverridePaths(model, overridePathWarnings);
+        if (!overridePathWarnings.isEmpty()) {
+            return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(overridePathWarnings));
+        }
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validatePricing(model, warnings);
         ConfigPostProcessor.validateUpstreamInterfaces(model, warnings);

@@ -28,10 +28,7 @@ import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.PathTemplateUtil;
-import com.epam.aidial.core.storage.http.HttpException;
-import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
-import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -474,20 +471,12 @@ public final class ConfigPostProcessor {
         }
     }
 
-    /** Reject malformed templates before an API write persists or encrypts the deployment. */
-    public static void requireValidOverridePaths(Deployment deployment) {
-        List<ValidationWarning> warnings = new ArrayList<>();
-        validateOverridePaths(deployment, warnings);
-        if (!warnings.isEmpty()) {
-            throw new HttpException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    new JsonObject().put("validationWarnings", warnings).encode());
-        }
-    }
-
     /**
      * Validates every interface entry's {@code overridePaths} on a deployment whose interfaces get no
      * other semantic validation — applications and interceptors. Models run the same per-entry check
-     * inside {@link #validateDeploymentInterfaces}.
+     * inside {@link #validateDeploymentInterfaces}. Shared by every write surface, each of which turns
+     * the warnings into its own layer's failure: a result object for the admin services, a response
+     * status for the controllers.
      */
     public static void validateOverridePaths(Deployment deployment, List<ValidationWarning> warnings) {
         Map<String, DeploymentInterface> interfaces = deployment.getInterfaces();
