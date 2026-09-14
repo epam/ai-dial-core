@@ -16034,6 +16034,8 @@ components:
           type: string
         url_attachments_supported:
           type: boolean
+        skills_supported:
+          type: boolean
     FeaturesData:
       type: object
       properties:
@@ -16086,6 +16088,8 @@ components:
         truncate_prompt:
           type: boolean
         url_attachments:
+          type: boolean
+        skills_supported:
           type: boolean
     FileConfigControllerItemsResponseFileConfigControllerNamedEntity:
       type: object

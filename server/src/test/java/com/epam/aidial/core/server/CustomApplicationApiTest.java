@@ -597,6 +597,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                       "max_tokens_supported" : true,
                       "max_completion_tokens_supported" : false,
                       "custom_temperature_supported" : true,
+                      "skills_supported" : false,
                       "reasoning_efforts" : [ ]
                     },
                     "defaults" : { },
@@ -629,6 +630,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                           "max_tokens_supported" : true,
                           "max_completion_tokens_supported" : false,
                           "custom_temperature_supported" : true,
+                          "skills_supported" : false,
                           "reasoning_efforts" : [ ]
                         },
                         "defaults" : { },
@@ -674,6 +676,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                       "max_tokens_supported" : true,
                       "max_completion_tokens_supported" : false,
                       "custom_temperature_supported" : true,
+                      "skills_supported" : false,
                       "reasoning_efforts" : [ ]
                     },
                     "defaults" : { },
@@ -706,6 +709,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                           "max_tokens_supported" : true,
                           "max_completion_tokens_supported" : false,
                           "custom_temperature_supported" : true,
+                          "skills_supported" : false,
                           "reasoning_efforts" : [ ]
                         },
                         "defaults" : { },
@@ -760,6 +764,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                       "max_tokens_supported" : true,
                       "max_completion_tokens_supported" : false,
                       "custom_temperature_supported" : true,
+                      "skills_supported" : false,
                       "reasoning_efforts" : [ ]
                     },
                     "defaults" : { },
@@ -792,6 +797,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                           "max_tokens_supported" : true,
                           "max_completion_tokens_supported" : false,
                           "custom_temperature_supported" : true,
+                          "skills_supported" : false,
                           "reasoning_efforts" : [ ]
                         },
                         "defaults" : { },
@@ -822,6 +828,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                           "max_tokens_supported" : true,
                           "max_completion_tokens_supported" : false,
                           "custom_temperature_supported" : true,
+                          "skills_supported" : false,
                           "reasoning_efforts" : [ ]
                         },
                         "defaults" : { },
@@ -887,6 +894,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         "max_tokens_supported": true,
                         "max_completion_tokens_supported": false,
                         "custom_temperature_supported": true,
+                        "skills_supported": false,
                         "reasoning_efforts": []
                     },
                     "defaults":{},
@@ -921,6 +929,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                           "max_tokens_supported" : true,
                           "max_completion_tokens_supported" : false,
                           "custom_temperature_supported" : true,
+                          "skills_supported" : false,
                           "reasoning_efforts" : [ ]
                         },
                         "defaults" : { },
@@ -974,6 +983,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                       "max_tokens_supported" : true,
                       "max_completion_tokens_supported" : false,
                       "custom_temperature_supported" : true,
+                      "skills_supported" : false,
                       "reasoning_efforts" : [ ]
                     },
                     "defaults" : { },
@@ -1006,6 +1016,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                           "max_tokens_supported" : true,
                           "max_completion_tokens_supported" : false,
                           "custom_temperature_supported" : true,
+                          "skills_supported" : false,
                           "reasoning_efforts" : [ ]
                         },
                         "defaults" : { },
@@ -1051,6 +1062,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                       "max_tokens_supported" : true,
                       "max_completion_tokens_supported" : false,
                       "custom_temperature_supported" : true,
+                      "skills_supported" : false,
                       "reasoning_efforts" : [ ]
                     },
                     "defaults" : { },
@@ -1083,6 +1095,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                           "max_tokens_supported" : true,
                           "max_completion_tokens_supported" : false,
                           "custom_temperature_supported" : true,
+                          "skills_supported" : false,
                           "reasoning_efforts" : [ ]
                         },
                         "defaults" : { },
@@ -1137,6 +1150,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                       "max_tokens_supported" : true,
                       "max_completion_tokens_supported" : false,
                       "custom_temperature_supported" : true,
+                      "skills_supported" : false,
                       "reasoning_efforts" : [ ]
                     },
                     "defaults" : { },
@@ -1169,6 +1183,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                           "max_tokens_supported" : true,
                           "max_completion_tokens_supported" : false,
                           "custom_temperature_supported" : true,
+                          "skills_supported" : false,
                           "reasoning_efforts" : [ ]
                         },
                         "defaults" : { },
@@ -1199,6 +1214,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                           "max_tokens_supported" : true,
                           "max_completion_tokens_supported" : false,
                           "custom_temperature_supported" : true,
+                          "skills_supported" : false,
                           "reasoning_efforts" : [ ]
                         },
                         "defaults" : { },
@@ -1243,6 +1259,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                       "max_tokens_supported" : true,
                       "max_completion_tokens_supported" : false,
                       "custom_temperature_supported" : true,
+                      "skills_supported" : false,
                       "reasoning_efforts" : [ ]
                     },
                     "defaults" : { },
@@ -1275,6 +1292,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                           "max_tokens_supported" : true,
                           "max_completion_tokens_supported" : false,
                           "custom_temperature_supported" : true,
+                          "skills_supported" : false,
                           "reasoning_efforts" : [ ]
                         },
                         "defaults" : { },
@@ -1551,6 +1569,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     "max_tokens_supported" : true,
                     "max_completion_tokens_supported" : false,
                     "custom_temperature_supported" : true,
+                    "skills_supported" : false,
                     "reasoning_efforts" : [ ]
                   },
                   "defaults" : { },
@@ -1583,6 +1602,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         "max_tokens_supported" : true,
                         "max_completion_tokens_supported" : false,
                         "custom_temperature_supported" : true,
+                        "skills_supported" : false,
                         "reasoning_efforts" : [ ]
                       },
                       "defaults" : { },
@@ -1934,6 +1954,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                        "max_tokens_supported": true,
                        "max_completion_tokens_supported": false,
                        "custom_temperature_supported": true,
+                       "skills_supported": false,
                        "reasoning_efforts": []
                      },
                      "defaults" : { },

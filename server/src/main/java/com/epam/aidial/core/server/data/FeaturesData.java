@@ -40,6 +40,7 @@ public class FeaturesData {
     private boolean maxTokensSupported = true;
     private boolean maxCompletionTokensSupported = false;
     private boolean customTemperatureSupported = true;
+    private boolean skillsSupported = false;
     private List<String> reasoningEfforts = List.of();
 
     /**
@@ -139,6 +140,10 @@ public class FeaturesData {
 
         if (features.getCustomTemperatureSupported() != null) {
             data.setCustomTemperatureSupported(features.getCustomTemperatureSupported());
+        }
+
+        if (features.getSkillsSupported() != null) {
+            data.setSkillsSupported(features.getSkillsSupported());
         }
 
         if (features.getReasoningEfforts() != null && !features.getReasoningEfforts().isEmpty()) {
