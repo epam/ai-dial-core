@@ -27,8 +27,8 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
-import com.epam.aidial.core.server.service.ExternalServiceStatusEnricher;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
 import com.epam.aidial.core.server.service.UserExternalServiceService;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -114,7 +114,7 @@ public class ApplicationController {
             // sign-in status (one credential lookup per service). The listing skips both to avoid
             // N×M lookups — it returns the inline definitions only.
             overlayUserAuthoredServices(data, application);
-            new ExternalServiceStatusEnricher(context, resourceAuthSettingsService)
+            new ResourceAuthStatusEnricher(context, resourceAuthSettingsService)
                     .enrichApplication(UrlUtil.tryDecodePath(data.getId()), data.getExternalServices());
             return data;
         })

@@ -23,9 +23,9 @@ import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
-import com.epam.aidial.core.server.service.ExternalServiceStatusEnricher;
 import com.epam.aidial.core.server.service.ExternalServicesWriteMode;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
@@ -54,7 +54,6 @@ import org.apache.commons.lang3.tuple.Pair;
 import java.net.ConnectException;
 import java.net.http.HttpConnectTimeoutException;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -563,7 +562,7 @@ public class ResourceController extends AccessControlBaseController {
                 proxy.getExternalServiceService().decryptSecretsForResponse(descriptor, application);
             }
             overlayUserAuthoredServices(descriptor, application);
-            new ExternalServiceStatusEnricher(context, proxy.getResourceAuthSettingsService())
+            new ResourceAuthStatusEnricher(context, proxy.getResourceAuthSettingsService())
                     .enrichApplication(descriptor.getDecodedUrl(), application.getExternalServices());
             clearExternalServiceSecrets(application, hasWriteAccess);
 
@@ -647,7 +646,8 @@ public class ResourceController extends AccessControlBaseController {
             Pair<ResourceItemMetadata, ToolSet> result = toolSetService.getToolSet(descriptor, etagHeader);
             ResourceItemMetadata meta = result.getKey();
             ToolSet toolSet = result.getValue();
-            toolSetService.setResourceAuthStatuses(context, toolSet, descriptor.getUrl());
+            new ResourceAuthStatusEnricher(context, proxy.getResourceAuthSettingsService())
+                    .enrichToolSet(descriptor.getDecodedUrl(), toolSet);
             toolSetService.redactAuthSettings(descriptor, toolSet, hasWriteAccess);
             if (!hasWriteAccess) {
                 toolSet.setEndpoint(null);
