@@ -632,6 +632,35 @@ public class SkillResourceApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testItemShareInheritsMetadataAccess() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/shared-item/skill-a", files), 200);
+
+        // before sharing, an unrelated user has no access to the item's metadata
+        assertEquals(403, listMetadata("shared-item/skill-a", "Api-key", "proxyKey2").status());
+
+        // share the skill item itself, not its containing folder
+        Response share = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    { "url": "skills/%s/shared-item/skill-a" }
+                  ]
+                }
+                """.formatted(bucket));
+        verify(share, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(share.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        verify(send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2"), 200);
+
+        // the item's own metadata is now visible to the invited user, correctly classified as an ITEM
+        Response metadata = listMetadata("shared-item/skill-a", "Api-key", "proxyKey2");
+        verify(metadata, 200);
+        assertEquals("ITEM", nodeType(metadata));
+    }
+
+    @Test
     void testCleanUpShareAccessWhenOnResourceDeletion() {
         Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
         verify(uploadSkill("/delete-cleanup-skill", files), 200);
