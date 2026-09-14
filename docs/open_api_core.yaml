@@ -13254,7 +13254,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MetadataBase"
+                oneOf:
+                - $ref: "#/components/schemas/ResourceFolderMetadata"
+                - $ref: "#/components/schemas/ComplexResourceItemMetadata"
         "400":
           description: Bad request - limit out of range
         "403":
@@ -15380,6 +15382,43 @@ components:
       type: array
       items:
         $ref: "#/components/schemas/MetadataBase"
+    ComplexResourceItemMetadata:
+      type: object
+      properties:
+        attributes:
+          $ref: "#/components/schemas/MapStringObject"
+        author:
+          type: string
+        bucket:
+          type: string
+        createdAt:
+          type: integer
+        etag:
+          type: string
+        name:
+          type: string
+        nodeType:
+          $ref: "#/components/schemas/NodeType"
+        parentPath:
+          type: string
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceAccessType"
+        resourceType:
+          $ref: "#/components/schemas/ResourceType"
+        sharedBy:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShareMetadata"
+        sharedWith:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShareMetadata"
+        updatedAt:
+          type: integer
+        url:
+          type: string
     Condition:
       type: object
       properties:
@@ -15735,6 +15774,8 @@ components:
           $ref: "#/components/schemas/MapStringObject"
         features:
           $ref: "#/components/schemas/Features"
+        overridePaths:
+          $ref: "#/components/schemas/MapStringString"
     EmbeddingResponse:
       required:
       - data
@@ -15993,6 +16034,8 @@ components:
           type: string
         url_attachments_supported:
           type: boolean
+        skills_supported:
+          type: boolean
     FeaturesData:
       type: object
       properties:
@@ -16045,6 +16088,8 @@ components:
         truncate_prompt:
           type: boolean
         url_attachments:
+          type: boolean
+        skills_supported:
           type: boolean
     FileConfigControllerItemsResponseFileConfigControllerNamedEntity:
       type: object

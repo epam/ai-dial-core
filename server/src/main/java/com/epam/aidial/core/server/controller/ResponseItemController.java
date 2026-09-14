@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfacePathMapping;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
@@ -192,7 +193,7 @@ public class ResponseItemController implements Controller {
     }
 
     private Future<Void> handleInterceptor(int interceptorIndex) {
-        return new ResponsesInterceptorController(proxy, context, dialResponseId, operation.suffix, interceptorIndex).handle().mapEmpty();
+        return new ResponsesInterceptorController(proxy, context, dialResponseId, operation.pathMapping, interceptorIndex).handle().mapEmpty();
     }
 
     private Future<Void> forwardToUpstream(ResponseMapping mapping, Deployment deployment) {
@@ -204,10 +205,9 @@ public class ResponseItemController implements Controller {
                         mapping.getUpstreamKey());
         Upstream upstream = upstreamRoute.next();
 
-        String query = context.getRequest().query();
-        String targetUrl = DeploymentEndpointUtil.resolveResponsesBaseUri(deployment, context.getConfig().getTranslators())
-                + "/" + mapping.getUpstreamResponseId() + operation.suffix
-                + (query != null ? "?" + query : "");
+        String targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment,
+                context.getConfig().getTranslators(), operation.pathMapping, mapping.getUpstreamResponseId(),
+                context.getRequest().query());
 
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         ApiKeyData.initFromContext(proxyApiKeyData, context);
@@ -323,11 +323,11 @@ public class ResponseItemController implements Controller {
 
     @RequiredArgsConstructor
     public enum Operation {
-        GET(HttpMethod.GET, ""),
-        CANCEL(HttpMethod.POST, "/cancel"),
-        DELETE(HttpMethod.DELETE, "");
+        GET(HttpMethod.GET, InterfacePathMapping.GET_OPENAI_RESPONSES_BY_ID),
+        CANCEL(HttpMethod.POST, InterfacePathMapping.POST_OPENAI_RESPONSES_CANCEL),
+        DELETE(HttpMethod.DELETE, InterfacePathMapping.DELETE_OPENAI_RESPONSES_BY_ID);
 
         private final HttpMethod method;
-        private final String suffix;
+        private final InterfacePathMapping pathMapping;
     }
 }

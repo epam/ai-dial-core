@@ -72,6 +72,9 @@ public class Features {
     @JsonAlias({"customTemperatureSupported", "custom_temperature_supported"})
     private Boolean customTemperatureSupported;
 
+    @JsonAlias({"skillsSupported", "skills_supported"})
+    private Boolean skillsSupported;
+
     @JsonAlias({"reasoningEfforts", "reasoning_efforts"})
     private List<String> reasoningEfforts;
 
@@ -109,6 +112,7 @@ public class Features {
         merged.maxTokensSupported = override(base.maxTokensSupported, overrides.maxTokensSupported);
         merged.maxCompletionTokensSupported = override(base.maxCompletionTokensSupported, overrides.maxCompletionTokensSupported);
         merged.customTemperatureSupported = override(base.customTemperatureSupported, overrides.customTemperatureSupported);
+        merged.skillsSupported = override(base.skillsSupported, overrides.skillsSupported);
         List<String> efforts = override(base.reasoningEfforts, overrides.reasoningEfforts);
         merged.reasoningEfforts = efforts == null ? null : List.copyOf(efforts);
         return merged;

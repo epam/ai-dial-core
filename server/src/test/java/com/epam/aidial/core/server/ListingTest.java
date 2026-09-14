@@ -67,7 +67,7 @@ public class ListingTest extends ResourceBaseTest {
                     "assistant_attachments_in_request": false, "mcp" : false,
                     "chat_completion": false, "responses_api": false,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
-                    "custom_temperature_supported": true, "reasoning_efforts": []
+                    "custom_temperature_supported": true, "skills_supported": false, "reasoning_efforts": []
                     }
                 """));
     }
@@ -84,7 +84,7 @@ public class ListingTest extends ResourceBaseTest {
                     "assistant_attachments_in_request": false, "mcp" : false,
                     "chat_completion": true, "responses_api": false,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
-                    "custom_temperature_supported": true, "reasoning_efforts": []
+                    "custom_temperature_supported": true, "skills_supported": false, "reasoning_efforts": []
                     }
                 """));
     }
@@ -101,7 +101,7 @@ public class ListingTest extends ResourceBaseTest {
                     "assistant_attachments_in_request": false, "mcp" : false,
                     "chat_completion": true, "responses_api": false,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
-                    "custom_temperature_supported": true, "reasoning_efforts": []
+                    "custom_temperature_supported": true, "skills_supported": false, "reasoning_efforts": []
                     }
                 """));
     }
@@ -118,7 +118,7 @@ public class ListingTest extends ResourceBaseTest {
                     "assistant_attachments_in_request": false, "mcp" : false,
                     "chat_completion": true, "responses_api": true,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
-                    "custom_temperature_supported": true, "reasoning_efforts": []
+                    "custom_temperature_supported": true, "skills_supported": false, "reasoning_efforts": []
                     }
                 """));
     }
@@ -135,7 +135,7 @@ public class ListingTest extends ResourceBaseTest {
                     "assistant_attachments_in_request": false, "mcp" : false,
                     "chat_completion": true, "responses_api": true,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
-                    "custom_temperature_supported": true, "reasoning_efforts": []
+                    "custom_temperature_supported": true, "skills_supported": false, "reasoning_efforts": []
                     }
                 """));
     }
@@ -152,7 +152,7 @@ public class ListingTest extends ResourceBaseTest {
                     "assistant_attachments_in_request": false, "mcp" : false,
                     "chat_completion": true, "responses_api": true,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
-                    "custom_temperature_supported": true, "reasoning_efforts": []
+                    "custom_temperature_supported": true, "skills_supported": false, "reasoning_efforts": []
                     }
                 """));
     }
@@ -169,7 +169,7 @@ public class ListingTest extends ResourceBaseTest {
                     "assistant_attachments_in_request": false, "mcp" : false,
                     "chat_completion": false, "responses_api": false,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
-                    "custom_temperature_supported": true, "reasoning_efforts": []
+                    "custom_temperature_supported": true, "skills_supported": false, "reasoning_efforts": []
                     }
                 """));
     }
