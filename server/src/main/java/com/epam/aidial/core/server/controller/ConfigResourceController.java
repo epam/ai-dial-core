@@ -1613,8 +1613,7 @@ public class ConfigResourceController implements Controller {
                     }
                     entity = ConfigEntityCodec.treeToEntity(source, spec.entityClass());
                     if (entity instanceof Model m) {
-                        checkOverridePaths(m);
-                        checkCrossReferences(m);
+                        checkModel(m);
                     } else if (entity instanceof Interceptor interceptor) {
                         checkOverridePaths(interceptor);
                     } else if (entity instanceof Translator t) {
@@ -1894,23 +1893,23 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * Cross-reference check for Model writes. Strict mode aborts with HTTP 422 carrying a
-     * {@code {"validationWarnings":[...]}} JSON body. Soft mode logs and proceeds — the next
-     * merged-config rebuild's skip path records the entity in
-     * {@link MergedConfigStore#getInvalidEntities()}.
+     * Collects override-path and cross-reference warnings for Model writes. Override-path errors
+     * always abort with HTTP 422; cross-reference warnings alone may proceed in soft mode, with the
+     * next merged-config rebuild recording the entity in {@link MergedConfigStore#getInvalidEntities()}.
      */
-    private void checkCrossReferences(Model entity) {
-        Config snapshot = mergedConfigStore.get();
-        if (snapshot == null) {
-            return;
-        }
+    private void checkModel(Model entity) {
         List<ValidationWarning> warnings = new ArrayList<>();
-        ConfigPostProcessor.validateCrossReferences(entity, snapshot, warnings);
-        UpstreamExtraDataMerger.validateNoOverlap(entity);
+        ConfigPostProcessor.validateOverridePaths(entity, warnings);
+        boolean invalidOverridePaths = !warnings.isEmpty();
+        Config snapshot = mergedConfigStore.get();
+        if (snapshot != null) {
+            ConfigPostProcessor.validateCrossReferences(entity, snapshot, warnings);
+            UpstreamExtraDataMerger.validateNoOverlap(entity);
+        }
         if (warnings.isEmpty()) {
             return;
         }
-        if (softValidation) {
+        if (softValidation && !invalidOverridePaths) {
             log.warn("Soft-mode cross-ref warnings for model '{}': {}", path, warnings);
             return;
         }
@@ -1921,7 +1920,7 @@ public class ConfigResourceController implements Controller {
      * Structural check for Translator writes. Without this, a translator missing {@code in} would
      * reach the blob store before {@link MergedConfigStore#applyEntityWrite} rejects it, leaving a
      * written-but-invalid blob and a misleading response — see
-     * {@link ConfigPostProcessor#validateTranslator}. Always enforced, unlike {@link #checkCrossReferences}'s
+     * {@link ConfigPostProcessor#validateTranslator}. Always enforced, unlike {@link #checkModel}'s
      * soft-mode allowance: this is a self-contained structural defect, not a reference that a later
      * write could still resolve.
      */
@@ -1937,7 +1936,7 @@ public class ConfigResourceController implements Controller {
     /**
      * Structural check for a deployment write: an {@code overridePaths} entry Core cannot render is
      * rejected before the blob is written, exactly as {@link #checkTranslator} rejects a translator the
-     * rebuild would refuse. Always enforced, unlike {@link #checkCrossReferences}'s soft-mode allowance.
+     * rebuild would refuse. Always enforced, unlike {@link #checkModel}'s soft-mode allowance.
      */
     private void checkOverridePaths(Deployment entity) {
         List<ValidationWarning> warnings = new ArrayList<>();

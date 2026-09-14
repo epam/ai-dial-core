@@ -2,9 +2,13 @@ package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.JsonObject;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -17,7 +21,7 @@ class OverridePathsWriteApiTest extends ResourceBaseTest {
               "overridePaths":{"getOpenaiResponsesById":"/valid/{id}"}
             }}}
             """;
-    private static final String INVALID = VALID.replace("/valid/{id}", "/v1/{unknown}");
+    private static final String INVALID = VALID.replace("/valid/{id}", "");
 
     @ParameterizedTest
     @ValueSource(strings = {
@@ -63,12 +67,74 @@ class OverridePathsWriteApiTest extends ResourceBaseTest {
 
     @ParameterizedTest
     @CsvSource({"Model, models", "Interceptor, interceptors", "Application, applications"})
-    void adminValidateRejectsMalformedTemplate(String kind, String group) {
+    void adminValidateRejectsInvalidOverridePath(String kind, String group) {
         String body = "{\"manifests\":[{\"kind\":\"" + kind + "\",\"name\":\""
                 + group + "/platform/override-validate\",\"spec\":" + INVALID + "}]}";
         Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
         assertEquals(422, response.status(), response.body());
         assertTrue(response.body().contains("getOpenaiResponsesById"), response.body());
+    }
+
+    @Test
+    void modelPutReturnsOverridePathAndCrossReferenceWarnings() throws Exception {
+        modelPutReturnsOverridePathAndCrossReferenceWarnings(this);
+    }
+
+    private static void modelPutReturnsOverridePathAndCrossReferenceWarnings(ResourceBaseTest api) throws Exception {
+        String path = "/v1/models/platform/override-combined";
+        String body = new JsonObject(INVALID).put("interceptors", List.of("missing-interceptor")).encode();
+
+        Response response = api.send(HttpMethod.PUT, path, null, body, "authorization", "admin");
+
+        assertEquals(422, response.status(), response.body());
+        assertTrue(response.body().contains("interfaces.openaiResponses.overridePaths.getOpenaiResponsesById"), response.body());
+        assertTrue(response.body().contains("interceptors[0]"), response.body());
+        assertEquals(404, api.send(HttpMethod.GET, path, null, "", "authorization", "admin").status());
+    }
+
+    @Test
+    void modelApplyReturnsAllValidationWarnings() throws Exception {
+        modelApplyReturnsAllValidationWarnings(this);
+    }
+
+    private static void modelApplyReturnsAllValidationWarnings(ResourceBaseTest api) throws Exception {
+        String id = "models/platform/override-combined";
+        JsonObject spec = new JsonObject(INVALID)
+                .put("interceptors", List.of("missing-interceptor"))
+                .put("pricing", new JsonObject().put("unit", "char_without_whitespace").put("cacheRead", "1"));
+        String body = new JsonObject().put("precheck", false)
+                .put("manifests", List.of(new JsonObject().put("kind", "Model").put("name", id).put("spec", spec)))
+                .encode();
+
+        Response response = api.send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+
+        assertEquals(200, response.status(), response.body());
+        var result = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, result.path("failed").asInt(), response.body());
+        assertEquals(0, result.path("applied").asInt(), response.body());
+        assertTrue(response.body().contains("interfaces.openaiResponses.overridePaths.getOpenaiResponsesById"), response.body());
+        assertTrue(response.body().contains("interceptors[0]"), response.body());
+        assertTrue(response.body().contains("pricing"), response.body());
+        assertEquals(404, api.send(HttpMethod.GET, "/v1/" + id, null, "", "authorization", "admin").status());
+    }
+
+    public static class SoftValidation extends ResourceBaseTest {
+        @Test
+        void modelPutReturnsOverridePathAndCrossReferenceWarnings() throws Exception {
+            OverridePathsWriteApiTest.modelPutReturnsOverridePathAndCrossReferenceWarnings(this);
+        }
+
+        @Test
+        void modelApplyReturnsAllValidationWarnings() throws Exception {
+            OverridePathsWriteApiTest.modelApplyReturnsAllValidationWarnings(this);
+        }
+
+        @Override
+        protected JsonObject additionalSettingsOverrides() {
+            return new JsonObject().put("config", new JsonObject()
+                    .put("write", new JsonObject().put("softValidation", true))
+                    .put("onInvalidEntity", "skip"));
+        }
     }
 
     private void assertStoredPath(String path, String... auth) throws Exception {
