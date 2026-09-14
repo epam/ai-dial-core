@@ -2,12 +2,16 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Interceptor;
+import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ListSharedResourcesRequest;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.BucketBuilder;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
@@ -23,6 +27,7 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -174,7 +179,7 @@ public class DeploymentService {
         <T extends  Deployment> List<T> extract(List<Pair<ResourceItemMetadata, String>> items, ProxyContext context);
     }
 
-    public List<String> getInterceptors(ProxyContext context, Deployment deployment) {
+    public List<String> getInterceptors(ProxyContext context, Deployment deployment, InterfaceType requestedInterface) {
         List<String> result = new ArrayList<>(context.getConfig().getGlobalInterceptors());
         if (deployment instanceof Application application) {
             List<String> appTypeInterceptors = applicationSchemaService.getInterceptors(application);
@@ -182,7 +187,7 @@ public class DeploymentService {
         }
         List<String> localInterceptors = deployment.getInterceptors();
         mergeInterceptors(localInterceptors, result);
-        return result;
+        return filterByInterface(context, result, requestedInterface);
     }
 
     private static void mergeInterceptors(List<String> source, List<String> destination) {
@@ -191,6 +196,26 @@ public class DeploymentService {
                 destination.add(interceptor);
             }
         }
+    }
+
+    /**
+     * Drops interceptors that don't serve the requested interface, e.g. an interceptor with only a
+     * {@code responsesEndpoint} is skipped for a chat completions request. An unresolvable interceptor name is
+     * kept as-is - that's a "not found" case handled downstream, not an "unsupported interface" one.
+     */
+    private static List<String> filterByInterface(ProxyContext context, List<String> interceptorNames, InterfaceType requestedInterface) {
+        Map<String, Interceptor> interceptors = context.getConfig().getInterceptors();
+        Map<String, Translator> translators = context.getConfig().getTranslators();
+        List<String> result = new ArrayList<>(interceptorNames.size());
+        for (String name : interceptorNames) {
+            Interceptor interceptor = interceptors.get(name);
+            if (interceptor != null
+                    && DeploymentEndpointUtil.resolveServingEndpoint(interceptor, requestedInterface, translators) == null) {
+                continue;
+            }
+            result.add(name);
+        }
+        return result;
     }
 
 }

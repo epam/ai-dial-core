@@ -181,7 +181,7 @@ public class ResponseItemController implements Controller {
                 return handleInterceptor(nextIndex);
             }
         } else {
-            context.setInterceptors(proxy.getDeploymentService().getInterceptors(context, deployment));
+            context.setInterceptors(proxy.getDeploymentService().getInterceptors(context, deployment, InterfaceType.OPENAI_RESPONSES));
             if (context.hasNextInterceptor()) {
                 context.setInitialDeployment(deployment.getName());
                 return handleInterceptor(0);
