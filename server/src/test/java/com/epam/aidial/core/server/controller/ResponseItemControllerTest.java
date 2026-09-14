@@ -677,7 +677,7 @@ public class ResponseItemControllerTest {
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
-        when(proxy.getDeploymentService().getInterceptors(context, deployment)).thenReturn(List.of("interceptor1"));
+        when(proxy.getDeploymentService().getInterceptors(context, deployment, InterfaceType.OPENAI_RESPONSES)).thenReturn(List.of("interceptor1"));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getClient()).thenReturn(httpClient);
