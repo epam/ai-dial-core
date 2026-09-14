@@ -7,11 +7,11 @@ import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceMode;
+import com.epam.aidial.core.config.InterfacePathMapping;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.config.OverridePathKey;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.Role;
@@ -510,27 +510,27 @@ public final class ConfigPostProcessor {
             return;
         }
         for (Map.Entry<String, String> entry : overridePaths.entrySet()) {
-            OverridePathKey pathKey = OverridePathKey.find(entry.getKey());
-            if (pathKey == null) {
+            InterfacePathMapping pathMapping = InterfacePathMapping.find(entry.getKey());
+            if (pathMapping == null) {
                 continue;
             }
             String keyField = field + ".overridePaths." + entry.getKey();
-            if (pathKey.getInterfaceType() != InterfaceType.find(type)) {
+            if (pathMapping.getInterfaceType() != InterfaceType.find(type)) {
                 warnings.add(new ValidationWarning(keyField, "Override path key '" + entry.getKey()
-                        + "' belongs to interface '" + pathKey.getInterfaceType().getValue() + "'"));
+                        + "' belongs to interface '" + pathMapping.getInterfaceType().getValue() + "'"));
                 continue;
             }
-            validateOverridePathTemplate(pathKey, entry.getValue(), keyField, warnings);
+            validateOverridePathTemplate(pathMapping, entry.getValue(), keyField, warnings);
         }
     }
 
-    private static void validateOverridePathTemplate(OverridePathKey pathKey, @Nullable String template,
+    private static void validateOverridePathTemplate(InterfacePathMapping pathMapping, @Nullable String template,
                                                      String keyField, List<ValidationWarning> warnings) {
         if (template == null || template.isBlank()) {
             warnings.add(new ValidationWarning(keyField, "Override path is empty"));
             return;
         }
-        if (!pathKey.isIdApplicable() && PathTemplateUtil.referencesId(template)) {
+        if (!pathMapping.isIdApplicable() && PathTemplateUtil.referencesId(template)) {
             warnings.add(new ValidationWarning(keyField, "The operation carries no id: {id} cannot render"));
         }
     }

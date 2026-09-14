@@ -4,9 +4,9 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceMode;
+import com.epam.aidial.core.config.InterfacePathMapping;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
-import com.epam.aidial.core.config.OverridePathKey;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
 import org.junit.jupiter.api.Test;
@@ -567,9 +567,9 @@ public class DeploymentEndpointUtilTest {
         model.setInterfaces(Map.of(OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://adapter/")));
 
         assertEquals("http://adapter/openai/v1/responses/resp_1",
-                resolveResponseItemUri(model, NO_TRANSLATORS, OverridePathKey.GET_OPENAI_RESPONSES_BY_ID, "resp_1", null));
+                resolveResponseItemUri(model, NO_TRANSLATORS, InterfacePathMapping.GET_OPENAI_RESPONSES_BY_ID, "resp_1", null));
         assertEquals("http://adapter/openai/v1/responses/resp_1/cancel?a=b",
-                resolveResponseItemUri(model, NO_TRANSLATORS, OverridePathKey.POST_OPENAI_RESPONSES_CANCEL, "resp_1", "a=b"));
+                resolveResponseItemUri(model, NO_TRANSLATORS, InterfacePathMapping.POST_OPENAI_RESPONSES_CANCEL, "resp_1", "a=b"));
     }
 
     @Test
@@ -578,8 +578,8 @@ public class DeploymentEndpointUtilTest {
         model.setResponsesEndpoint("http://host/openai/v1/responses");
 
         assertEquals("http://host/openai/v1/responses/resp_1",
-                resolveResponseItemUri(model, NO_TRANSLATORS, OverridePathKey.DELETE_OPENAI_RESPONSES_BY_ID, "resp_1", null));
-        assertNull(resolveResponseItemUri(new Model(), NO_TRANSLATORS, OverridePathKey.GET_OPENAI_RESPONSES_BY_ID, "resp_1", null));
+                resolveResponseItemUri(model, NO_TRANSLATORS, InterfacePathMapping.DELETE_OPENAI_RESPONSES_BY_ID, "resp_1", null));
+        assertNull(resolveResponseItemUri(new Model(), NO_TRANSLATORS, InterfacePathMapping.GET_OPENAI_RESPONSES_BY_ID, "resp_1", null));
     }
 
     @Test
@@ -591,11 +591,11 @@ public class DeploymentEndpointUtilTest {
                         "postOpenaiResponsesCancel", "/v1/responses/{id}/cancel"))));
 
         assertEquals("http://switchyard/v1/responses/1234",
-                resolveResponseItemUri(model, NO_TRANSLATORS, OverridePathKey.GET_OPENAI_RESPONSES_BY_ID, "1234", null));
+                resolveResponseItemUri(model, NO_TRANSLATORS, InterfacePathMapping.GET_OPENAI_RESPONSES_BY_ID, "1234", null));
         assertEquals("http://switchyard/v1/responses/1234/cancel",
-                resolveResponseItemUri(model, NO_TRANSLATORS, OverridePathKey.POST_OPENAI_RESPONSES_CANCEL, "1234", null));
+                resolveResponseItemUri(model, NO_TRANSLATORS, InterfacePathMapping.POST_OPENAI_RESPONSES_CANCEL, "1234", null));
         // DELETE declares no override here, so it keeps the default path
         assertEquals("http://switchyard/openai/v1/responses/1234",
-                resolveResponseItemUri(model, NO_TRANSLATORS, OverridePathKey.DELETE_OPENAI_RESPONSES_BY_ID, "1234", null));
+                resolveResponseItemUri(model, NO_TRANSLATORS, InterfacePathMapping.DELETE_OPENAI_RESPONSES_BY_ID, "1234", null));
     }
 }

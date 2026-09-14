@@ -1,8 +1,8 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfacePathMapping;
 import com.epam.aidial.core.config.InterfaceType;
-import com.epam.aidial.core.config.OverridePathKey;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.AutoShareDeploymentFn;
@@ -24,19 +24,19 @@ import java.util.List;
 
 public class ResponsesInterceptorController extends BaseInterceptorController {
 
-    private final OverridePathKey pathKey;
+    private final InterfacePathMapping pathMapping;
     private final String dialResponseId;
 
     public ResponsesInterceptorController(Proxy proxy, ProxyContext context, int interceptorIndex) {
         super(proxy, context, interceptorIndex, defaultEnhancementFunctions(proxy, context));
-        this.pathKey = null;
+        this.pathMapping = null;
         this.dialResponseId = null;
     }
 
     public ResponsesInterceptorController(Proxy proxy, ProxyContext context, String dialResponseId,
-                                          OverridePathKey pathKey, int interceptorIndex) {
+                                          InterfacePathMapping pathMapping, int interceptorIndex) {
         super(proxy, context, interceptorIndex, defaultEnhancementFunctions(proxy, context));
-        this.pathKey = pathKey;
+        this.pathMapping = pathMapping;
         this.dialResponseId = dialResponseId;
     }
 
@@ -49,7 +49,7 @@ public class ResponsesInterceptorController extends BaseInterceptorController {
 
     @Override
     protected RequestObject parseRequest(Buffer body) throws IOException {
-        return pathKey == null ? new ResponsesApiRequest(ProxyUtil.parseObject(body)) : null;
+        return pathMapping == null ? new ResponsesApiRequest(ProxyUtil.parseObject(body)) : null;
     }
 
     // an interceptor speaks the DIAL Responses API, so an item hop renders {id} with the dial response id
@@ -57,12 +57,12 @@ public class ResponsesInterceptorController extends BaseInterceptorController {
     protected String buildUri(ProxyContext context) {
         Deployment deployment = context.getDeployment();
         HttpServerRequest request = context.getRequest();
-        if (pathKey == null) {
+        if (pathMapping == null) {
             return DeploymentEndpointUtil.resolveRequestUri(deployment, InterfaceType.OPENAI_RESPONSES,
                     context.getConfig().getTranslators(), request.path(), request.query());
         }
         return DeploymentEndpointUtil.resolveResponseItemUri(deployment, context.getConfig().getTranslators(),
-                pathKey, dialResponseId, request.query());
+                pathMapping, dialResponseId, request.query());
     }
 
     @Override

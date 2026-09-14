@@ -9,7 +9,7 @@ import lombok.Getter;
  * replace. The string {@link #value} is the key used in {@link DeploymentInterface#getOverridePaths()}.
  */
 @Getter
-public enum OverridePathKey {
+public enum InterfacePathMapping {
 
     POST_AZURE_OPENAI_CHAT_COMPLETIONS(
             "postAzureOpenaiChatCompletions",
@@ -63,7 +63,7 @@ public enum OverridePathKey {
     /** Whether the {@code {id}} template variable applies: the operation addresses an id to render. */
     private final boolean idApplicable;
 
-    OverridePathKey(String value, InterfaceType interfaceType, boolean idApplicable) {
+    InterfacePathMapping(String value, InterfaceType interfaceType, boolean idApplicable) {
         this.value = value;
         this.interfaceType = interfaceType;
         this.idApplicable = idApplicable;
@@ -74,8 +74,8 @@ public enum OverridePathKey {
      * that only a newer Core understands.
      */
     @Nullable
-    public static OverridePathKey find(String value) {
-        for (OverridePathKey key : values()) {
+    public static InterfacePathMapping find(String value) {
+        for (InterfacePathMapping key : values()) {
             if (key.value.equals(value)) {
                 return key;
             }

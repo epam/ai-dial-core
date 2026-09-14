@@ -3,9 +3,9 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
+import com.epam.aidial.core.config.InterfacePathMapping;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.config.OverridePathKey;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -66,7 +66,7 @@ public class ResponsesInterceptorControllerTest {
     @Test
     void parseRequest_itemHop_returnsNull() throws IOException {
         ResponsesInterceptorController controller =
-                new ResponsesInterceptorController(proxy, context, "dial_dep_abc", OverridePathKey.POST_OPENAI_RESPONSES_CANCEL, 0);
+                new ResponsesInterceptorController(proxy, context, "dial_dep_abc", InterfacePathMapping.POST_OPENAI_RESPONSES_CANCEL, 0);
 
         RequestObject result = controller.parseRequest(Buffer.buffer("{\"model\":\"test\"}"));
 
@@ -111,7 +111,7 @@ public class ResponsesInterceptorControllerTest {
         when(request.query()).thenReturn(null);
 
         ResponsesInterceptorController controller =
-                new ResponsesInterceptorController(proxy, context, "dial_dep_abc", OverridePathKey.POST_OPENAI_RESPONSES_CANCEL, 0);
+                new ResponsesInterceptorController(proxy, context, "dial_dep_abc", InterfacePathMapping.POST_OPENAI_RESPONSES_CANCEL, 0);
 
         assertEquals("http://interceptor/responses/dial_dep_abc/cancel", controller.buildUri(context));
     }
@@ -126,7 +126,7 @@ public class ResponsesInterceptorControllerTest {
         when(request.query()).thenReturn("stream=true");
 
         ResponsesInterceptorController controller =
-                new ResponsesInterceptorController(proxy, context, "dial_dep_abc", OverridePathKey.GET_OPENAI_RESPONSES_BY_ID, 0);
+                new ResponsesInterceptorController(proxy, context, "dial_dep_abc", InterfacePathMapping.GET_OPENAI_RESPONSES_BY_ID, 0);
 
         assertEquals("http://interceptor/responses/dial_dep_abc?stream=true", controller.buildUri(context));
     }
@@ -176,7 +176,7 @@ public class ResponsesInterceptorControllerTest {
         when(request.query()).thenReturn(null);
 
         ResponsesInterceptorController controller =
-                new ResponsesInterceptorController(proxy, context, "dial_dep_abc", OverridePathKey.POST_OPENAI_RESPONSES_CANCEL, 0);
+                new ResponsesInterceptorController(proxy, context, "dial_dep_abc", InterfacePathMapping.POST_OPENAI_RESPONSES_CANCEL, 0);
 
         assertEquals("http://adapter/openai/v1/responses/dial_dep_abc/cancel", controller.buildUri(context));
     }
@@ -192,7 +192,7 @@ public class ResponsesInterceptorControllerTest {
         when(request.query()).thenReturn("stream=true");
 
         ResponsesInterceptorController controller =
-                new ResponsesInterceptorController(proxy, context, "dial_dep_abc", OverridePathKey.GET_OPENAI_RESPONSES_BY_ID, 0);
+                new ResponsesInterceptorController(proxy, context, "dial_dep_abc", InterfacePathMapping.GET_OPENAI_RESPONSES_BY_ID, 0);
 
         assertEquals("http://adapter/openai/v1/responses/dial_dep_abc?stream=true", controller.buildUri(context));
     }
@@ -278,9 +278,9 @@ public class ResponsesInterceptorControllerTest {
         when(request.query()).thenReturn("stream=true&starting_after=42");
         assertEquals("http://adapter/root/create?stream=true&starting_after=42",
                 new ResponsesInterceptorController(proxy, context, 0).buildUri(context));
-        for (var entry : Map.of(OverridePathKey.GET_OPENAI_RESPONSES_BY_ID, "get",
-                OverridePathKey.DELETE_OPENAI_RESPONSES_BY_ID, "delete",
-                OverridePathKey.POST_OPENAI_RESPONSES_CANCEL, "cancel").entrySet()) {
+        for (var entry : Map.of(InterfacePathMapping.GET_OPENAI_RESPONSES_BY_ID, "get",
+                InterfacePathMapping.DELETE_OPENAI_RESPONSES_BY_ID, "delete",
+                InterfacePathMapping.POST_OPENAI_RESPONSES_CANCEL, "cancel").entrySet()) {
             var controller = new ResponsesInterceptorController(proxy, context, "dial_123", entry.getKey(), 0);
             assertEquals("http://adapter/root/" + entry.getValue() + "/dial_123?stream=true&starting_after=42",
                     controller.buildUri(context));

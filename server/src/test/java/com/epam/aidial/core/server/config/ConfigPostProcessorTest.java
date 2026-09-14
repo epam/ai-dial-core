@@ -479,7 +479,7 @@ public class ConfigPostProcessorTest {
     }
 
     @Test
-    void testSemanticAbortThrowsOnOverridePathKeyUnderTheWrongInterface() {
+    void testSemanticAbortThrowsOnInterfacePathMappingUnderTheWrongInterface() {
         Config config = configWithOverridePaths("openaiChatCompletions", Map.of("postAnthropicMessages", "/v1/messages"));
 
         assertThrows(InvalidEntityException.class,

@@ -3,10 +3,10 @@ package com.epam.aidial.core.server.util;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.InterfaceMode;
+import com.epam.aidial.core.config.InterfacePathMapping;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
-import com.epam.aidial.core.config.OverridePathKey;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.storage.util.UrlUtil;
@@ -95,11 +95,11 @@ public class DeploymentEndpointUtil {
         if (baseUrl == null) {
             uri = resolveLegacyEndpoint(deployment, type);
         } else {
-            OverridePathKey pathKey = findRequestPathKey(type, ingressPath);
-            String template = findOverridePath(deployment, type, pathKey);
+            InterfacePathMapping pathMapping = findRequestPathMapping(type, ingressPath);
+            String template = findOverridePath(deployment, type, pathMapping);
             uri = template != null
                     ? baseUrl + leadingSlash(PathTemplateUtil.render(template, resolveDeploymentName(deployment),
-                            pathKey.isIdApplicable() ? deployment.getName() : null))
+                            pathMapping.isIdApplicable() ? deployment.getName() : null))
                     : baseUrl + rewriteDeploymentName(ingressPath, resolveDeploymentName(deployment));
         }
         return query == null ? uri : uri + "?" + query;
@@ -114,15 +114,15 @@ public class DeploymentEndpointUtil {
      */
     @Nullable
     public String resolveResponseItemUri(Deployment deployment, Map<String, Translator> translators,
-                                         OverridePathKey pathKey, String responseId, @Nullable String query) {
+                                         InterfacePathMapping pathMapping, String responseId, @Nullable String query) {
         String baseUrl = resolveInterfaceBaseUrl(deployment, InterfaceType.OPENAI_RESPONSES, translators);
-        String template = baseUrl == null ? null : findOverridePath(deployment, InterfaceType.OPENAI_RESPONSES, pathKey);
+        String template = baseUrl == null ? null : findOverridePath(deployment, InterfaceType.OPENAI_RESPONSES, pathMapping);
         String uri;
         if (template != null) {
             uri = baseUrl + leadingSlash(PathTemplateUtil.render(template, resolveDeploymentName(deployment), responseId));
         } else {
             String responsesBaseUri = resolveResponsesBaseUri(deployment, translators);
-            uri = responsesBaseUri == null ? null : responsesBaseUri + "/" + responseId + itemOperationSuffix(pathKey);
+            uri = responsesBaseUri == null ? null : responsesBaseUri + "/" + responseId + itemOperationSuffix(pathMapping);
         }
         return uri == null || query == null ? uri : uri + "?" + query;
     }
@@ -191,11 +191,11 @@ public class DeploymentEndpointUtil {
         return deploymentInterface.getBaseUrl() != null ? deploymentInterface.getBaseUrl() : deployment.getBaseUrl();
     }
 
-    private String itemOperationSuffix(OverridePathKey pathKey) {
-        return switch (pathKey) {
+    private String itemOperationSuffix(InterfacePathMapping pathMapping) {
+        return switch (pathMapping) {
             case GET_OPENAI_RESPONSES_BY_ID, DELETE_OPENAI_RESPONSES_BY_ID -> "";
             case POST_OPENAI_RESPONSES_CANCEL -> "/cancel";
-            default -> throw new IllegalArgumentException("Not a response item operation: " + pathKey);
+            default -> throw new IllegalArgumentException("Not a response item operation: " + pathMapping);
         };
     }
 
@@ -205,16 +205,16 @@ public class DeploymentEndpointUtil {
      * so the path itself picks between messages and count_tokens.
      */
     @Nullable
-    private OverridePathKey findRequestPathKey(InterfaceType type, String ingressPath) {
+    private InterfacePathMapping findRequestPathMapping(InterfaceType type, String ingressPath) {
         return switch (type) {
             case OPENAI_CHAT_COMPLETIONS -> isChatCompletionsPath(ingressPath)
-                    ? OverridePathKey.POST_AZURE_OPENAI_CHAT_COMPLETIONS
+                    ? InterfacePathMapping.POST_AZURE_OPENAI_CHAT_COMPLETIONS
                     : null;
-            case OPENAI_EMBEDDINGS -> OverridePathKey.POST_AZURE_OPENAI_EMBEDDINGS;
-            case OPENAI_RESPONSES -> OverridePathKey.POST_OPENAI_RESPONSES;
+            case OPENAI_EMBEDDINGS -> InterfacePathMapping.POST_AZURE_OPENAI_EMBEDDINGS;
+            case OPENAI_RESPONSES -> InterfacePathMapping.POST_OPENAI_RESPONSES;
             case ANTHROPIC_MESSAGES -> ingressPath.endsWith("/count_tokens")
-                    ? OverridePathKey.POST_ANTHROPIC_MESSAGES_COUNT_TOKENS
-                    : OverridePathKey.POST_ANTHROPIC_MESSAGES;
+                    ? InterfacePathMapping.POST_ANTHROPIC_MESSAGES_COUNT_TOKENS
+                    : InterfacePathMapping.POST_ANTHROPIC_MESSAGES;
         };
     }
 
@@ -229,8 +229,8 @@ public class DeploymentEndpointUtil {
      * never apply to it.
      */
     @Nullable
-    private String findOverridePath(Deployment deployment, InterfaceType type, @Nullable OverridePathKey pathKey) {
-        if (pathKey == null) {
+    private String findOverridePath(Deployment deployment, InterfaceType type, @Nullable InterfacePathMapping pathMapping) {
+        if (pathMapping == null) {
             return null;
         }
         DeploymentInterface deploymentInterface = findInterface(deployment, type);
@@ -238,7 +238,7 @@ public class DeploymentEndpointUtil {
             return null;
         }
         Map<String, String> overridePaths = deploymentInterface.getOverridePaths();
-        return overridePaths == null ? null : overridePaths.get(pathKey.getValue());
+        return overridePaths == null ? null : overridePaths.get(pathMapping.getValue());
     }
 
     private String leadingSlash(String path) {

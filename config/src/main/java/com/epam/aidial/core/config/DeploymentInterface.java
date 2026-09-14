@@ -61,8 +61,9 @@ public class DeploymentInterface {
 
     /**
      * Upstream paths replacing the operation's default path under the base url, keyed by
-     * {@link OverridePathKey#getValue()}. A value is a template: {@code {id}} renders the operation's
-     * id, {@code {overrideName}} the deployment's override name, and doubled braces render literally.
+     * {@link InterfacePathMapping#getValue()}. A value substitutes exactly two tokens: {@code {id}}
+     * renders the operation's id and {@code {overrideName}} the deployment's override name. Every
+     * other character, braces included, is path text forwarded as written.
      */
     @JsonAlias({"overridePaths", "override_paths"})
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
