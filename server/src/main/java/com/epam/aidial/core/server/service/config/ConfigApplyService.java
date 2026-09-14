@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service.config;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
+import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ToolSet;
@@ -195,6 +196,11 @@ public class ConfigApplyService {
         /// Deployment-id uniqueness only applies to INTERCEPTOR here — ROLE/ROUTE aren't deployments
         // resolved through Config.selectDeployment, so they don't share the short-name namespace.
         if (type == ResourceTypes.INTERCEPTOR) {
+            List<ValidationWarning> warnings = new ArrayList<>();
+            ConfigPostProcessor.validateOverridePaths((Interceptor) entity, warnings);
+            if (!warnings.isEmpty()) {
+                return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+            }
             String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(scratch, type, parsed);
             if (dupError != null) {
                 return new EntityResult(id, AdminApplyStatus.FAILED, dupError);
@@ -268,12 +274,14 @@ public class ConfigApplyService {
 
     private EntityResult applyModel(Model model, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {
         List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateOverridePaths(model, warnings);
+        boolean invalidOverridePaths = !warnings.isEmpty();
         ConfigPostProcessor.validatePricing(model, warnings);
         ConfigPostProcessor.validateUpstreamInterfaces(model, warnings);
         ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
         UpstreamExtraDataMerger.validateNoOverlap(model);
         boolean invalid = !warnings.isEmpty();
-        if (invalid && !softValidation) {
+        if (invalidOverridePaths || (invalid && !softValidation)) {
             return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(

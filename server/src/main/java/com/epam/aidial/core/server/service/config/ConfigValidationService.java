@@ -62,11 +62,15 @@ public class ConfigValidationService {
                 case AdminModelManifest modelManifest -> {
                     Model model = modelManifest.spec();
                     List<ValidationWarning> warnings = new ArrayList<>();
+                    ConfigPostProcessor.validateOverridePaths(model, warnings);
+                    boolean invalidOverridePaths = !warnings.isEmpty();
                     ConfigPostProcessor.validatePricing(model, warnings);
                     ConfigPostProcessor.validateUpstreamInterfaces(model, warnings);
                     ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
                     UpstreamExtraDataMerger.validateNoOverlap(model);
-                    if (!warnings.isEmpty() && !softValidation) {
+                    // Override paths stay fatal in soft mode, matching ConfigApplyService#applyModel — otherwise
+                    // precheck greenlights a batch whose real-apply phase refuses the model mid-write.
+                    if (!warnings.isEmpty() && (invalidOverridePaths || !softValidation)) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
                     String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(scratch, ResourceTypes.MODEL, parsed.name());
@@ -75,6 +79,11 @@ public class ConfigValidationService {
                     }
                 }
                 case AdminInterceptorManifest interceptorManifest -> {
+                    List<ValidationWarning> warnings = new ArrayList<>();
+                    ConfigPostProcessor.validateOverridePaths(interceptorManifest.spec(), warnings);
+                    if (!warnings.isEmpty()) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+                    }
                     String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
                             scratch, ResourceTypes.INTERCEPTOR, parsed.name());
                     if (dupError != null) {
@@ -105,6 +114,11 @@ public class ConfigValidationService {
                     }
                 }
                 case AdminApplicationManifest applicationManifest -> {
+                    List<ValidationWarning> warnings = new ArrayList<>();
+                    ConfigPostProcessor.validateOverridePaths(applicationManifest.spec(), warnings);
+                    if (!warnings.isEmpty()) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+                    }
                     if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.name().bucket())) {
                         String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
                                 scratch, ResourceTypes.APPLICATION, parsed.name());
