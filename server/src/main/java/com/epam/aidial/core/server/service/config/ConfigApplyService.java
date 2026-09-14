@@ -147,7 +147,7 @@ public class ConfigApplyService {
                     applyManagedEntity(role.spec(), id, parsed.name(), ResourceTypes.ROLE, scratch, pending);
             case AdminRouteManifest route ->
                     applyManagedEntity(route.spec(), id, parsed.name(), ResourceTypes.ROUTE, scratch, pending);
-            case AdminKeyManifest key -> applyKey(key.spec(), id, parsed.name(), pending);
+            case AdminKeyManifest key -> applyKey(key.spec(), id, parsed.name(), scratch, pending);
             case AdminModelManifest model -> applyModel(model.spec(), id, parsed.name(), scratch, pending);
             case AdminToolSetManifest toolSet -> applyToolSet(toolSet.spec(), id, parsed.name(), scratch, pending);
             case AdminApplicationManifest application ->
@@ -226,7 +226,7 @@ public class ConfigApplyService {
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applyKey(Key key, String id, ParsedName parsed, List<EntityChange> pending) {
+    private EntityResult applyKey(Key key, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {
         if (StringUtils.isBlank(key.getKey())) {
             return new EntityResult(id, AdminApplyStatus.FAILED, "Key.key must be provided explicitly");
         }
@@ -255,6 +255,11 @@ public class ConfigApplyService {
                 log.warn("Could not recover prior key secret for rotation at {}; "
                         + "proceeding with new secret as authoritative", descriptor.getUrl());
             }
+        }
+        if (!secret.equals(oldSecret)
+                && ConfigPostProcessor.isKeySecretTakenByAnotherKey(scratch, MergedConfigStore.canonicalId(descriptor), key)) {
+            return new EntityResult(id, AdminApplyStatus.FAILED,
+                    "Key secret is already used by a different key entity");
         }
         secretFieldProcessor.encryptFields(key, descriptor);
         String blobBody = ConfigEntityCodec.serializeForBlob(key);

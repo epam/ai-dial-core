@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
+import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.data.config.manifest.AdminApplicationManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminCatalogSchemaManifest;
@@ -111,6 +112,15 @@ public class ConfigValidationService {
                     if (StringUtils.isBlank(key.getRole()) && (key.getRoles() == null || key.getRoles().isEmpty())) {
                         return new ValidationResult(id, ValidationStatus.FAILED,
                                 "Invalid key: at least one role must be assigned to the key " + key.getProject());
+                    }
+                    String canonicalId = MergedConfigStore.canonicalId(
+                            ResourceTypes.PROJECT_KEY, parsed.name().bucket(), parsed.name().name());
+                    Key prior = scratch.getKeys().get(canonicalId);
+                    String oldSecret = prior == null ? null : prior.getKey();
+                    if (!key.getKey().equals(oldSecret)
+                            && ConfigPostProcessor.isKeySecretTakenByAnotherKey(scratch, canonicalId, key)) {
+                        return new ValidationResult(id, ValidationStatus.FAILED,
+                                "Key secret is already used by a different key entity");
                     }
                 }
                 case AdminApplicationManifest applicationManifest -> {

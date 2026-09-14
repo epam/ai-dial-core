@@ -1625,7 +1625,8 @@ public class ConfigResourceController implements Controller {
                     }
                     if (spec.isKey()) {
                         keyEntity = (Key) entity;
-                        validateKeyForApiWrite(keyEntity, "PUT");
+                        validateKeyForApiWrite(keyEntity);
+                        rejectDuplicateKeySecret(keyEntity, oldSecret, requestNode, descriptor);
                     }
                     if (spec.hasEncryptedFields()) {
                         secretFieldProcessor.encryptFields(entity, descriptor);
@@ -1807,16 +1808,37 @@ public class ConfigResourceController implements Controller {
         }
     }
 
+    /**
+     * Rejects a key write whose secret is already used by a different key entity in the live
+     * merged Config — ApiKeyStore indexes keys by plaintext secret, so a duplicate would silently
+     * collapse the two entities' auth, roles and project attribution. Skipped when the request
+     * omits the secret (preserve-on-omit) or re-supplies the entity's own current secret.
+     */
+    private void rejectDuplicateKeySecret(Key keyEntity, String oldSecret, JsonNode requestNode,
+                                          ResourceDescriptor descriptor) {
+        if (!requestNode.hasNonNull("key") || keyEntity.getKey().equals(oldSecret)) {
+            return;
+        }
+        Config snapshot = mergedConfigStore.get();
+        if (snapshot == null) {
+            return;
+        }
+        if (ConfigPostProcessor.isKeySecretTakenByAnotherKey(snapshot,
+                MergedConfigStore.resolveMapKeyFor(descriptor), keyEntity)) {
+            throw new HttpException(HttpStatus.CONFLICT,
+                    "Key secret is already used by a different key entity");
+        }
+    }
+
     private static ApiKeyData apiKeyData(Key key) {
         ApiKeyData data = new ApiKeyData();
         data.setOriginalKey(key);
         return data;
     }
 
-    private static void validateKeyForApiWrite(Key key, String method) {
+    private static void validateKeyForApiWrite(Key key) {
         if (StringUtils.isBlank(key.getKey())) {
-            throw new HttpException(HttpStatus.BAD_REQUEST,
-                    "Key.key must be provided explicitly on " + method);
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Key.key must be provided explicitly on PUT");
         }
         validateProjectKey(key);
     }

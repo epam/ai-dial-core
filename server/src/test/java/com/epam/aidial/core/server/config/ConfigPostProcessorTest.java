@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceMode;
+import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.PricingRate;
@@ -672,5 +673,53 @@ public class ConfigPostProcessorTest {
         ConfigPostProcessor.process(config, null);
 
         assertEquals(List.of("good"), List.copyOf(config.getModels().keySet()));
+    }
+
+    private static Key keyWithSecret(String secret) {
+        Key key = new Key();
+        key.setKey(secret);
+        key.setProject("proj");
+        return key;
+    }
+
+    @Test
+    void testIsKeySecretTakenByAnotherKeyBlobAgainstBlob() {
+        Config config = new Config();
+        config.getKeys().put("keys/platform/other", keyWithSecret("shared-secret"));
+        config.getKeys().put("keys/platform/self", keyWithSecret("own-secret"));
+
+        assertTrue(ConfigPostProcessor.isKeySecretTakenByAnotherKey(
+                config, "keys/platform/self", keyWithSecret("shared-secret")));
+        assertFalse(ConfigPostProcessor.isKeySecretTakenByAnotherKey(
+                config, "keys/platform/self", keyWithSecret("own-secret")));
+        assertFalse(ConfigPostProcessor.isKeySecretTakenByAnotherKey(
+                config, "keys/platform/self", keyWithSecret("fresh-secret")));
+    }
+
+    @Test
+    void testIsKeySecretTakenByAnotherKeyFileSourcedEntry() {
+        // File-sourced entries sit under their raw secret as the map key, with the secret
+        // back-filled into the value by ApiKeyStore before the merged config is served.
+        Config config = new Config();
+        config.getKeys().put("file-secret", keyWithSecret("file-secret"));
+
+        assertTrue(ConfigPostProcessor.isKeySecretTakenByAnotherKey(
+                config, "keys/platform/self", keyWithSecret("file-secret")));
+    }
+
+    @Test
+    void testIsKeySecretTakenByAnotherKeySkipsSelfBlankAndNull() {
+        Config config = new Config();
+        config.getKeys().put("keys/platform/self", keyWithSecret("own-secret"));
+        config.getKeys().put("keys/platform/blank", keyWithSecret(null));
+        config.getKeys().put("keys/platform/null-value", null);
+
+        // Self-map-key skip, blank candidate, blank other, null other value.
+        assertFalse(ConfigPostProcessor.isKeySecretTakenByAnotherKey(
+                config, "keys/platform/self", keyWithSecret("own-secret")));
+        assertFalse(ConfigPostProcessor.isKeySecretTakenByAnotherKey(
+                config, "keys/platform/self", keyWithSecret(" ")));
+        assertFalse(ConfigPostProcessor.isKeySecretTakenByAnotherKey(
+                config, "keys/platform/self", keyWithSecret("blank")));
     }
 }

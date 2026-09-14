@@ -790,6 +790,150 @@ public class AdminApplyApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void applyKeyDuplicateSecretFailsSecondEntity() {
+        // ApiKeyStore indexes keys by plaintext secret, so two key entities sharing one secret
+        // would silently collapse their auth, roles and project attribution. The second entity
+        // in the batch must fail and leave nothing behind.
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-dup-key-a",
+                      "spec": {"key": "apply-dup-secret", "project": "projA", "roles": ["admin"]}
+                    },
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-dup-key-b",
+                      "spec": {"key": "apply-dup-secret", "project": "projB", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        assertTrue(parsed.get("results").get(1).get("error").asText()
+                        .contains("already used by a different key entity"), () -> "Body: " + response.body());
+        assertFalse(response.body().contains("apply-dup-secret"),
+                () -> "Response must not echo the secret: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/keys/platform/apply-dup-key-a", null, "",
+                "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/keys/platform/apply-dup-key-b", null, "",
+                "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "apply-dup-secret"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void applyKeyRotateToExistingSecretFailsEntity() {
+        String bodyA = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-rotate-dup-key-a",
+                      "spec": {"key": "apply-rotate-dup-a", "project": "projA", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        String bodyB = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-rotate-dup-key-b",
+                      "spec": {"key": "apply-rotate-dup-b", "project": "projB", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        String bodyRotate = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-rotate-dup-key-a",
+                      "spec": {"key": "apply-rotate-dup-b", "project": "projA", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, bodyA, "authorization", "admin"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, bodyB, "authorization", "admin"), 200);
+
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, bodyRotate, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+
+        // Both original secrets still authenticate; the rotation was refused wholesale.
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "apply-rotate-dup-a"), 200);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "apply-rotate-dup-b"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void applyKeyUpdateWithUnchangedSecretSucceeds() {
+        // An update re-supplying the entity's own current secret is not a collision with itself —
+        // the guard only polices new secrets.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-unchanged-key",
+                      "spec": {"key": "apply-unchanged-secret", "project": "projA", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        String bodyUpdated = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-unchanged-key",
+                      "spec": {"key": "apply-unchanged-secret", "project": "projB", "roles": ["default"]}
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, bodyUpdated, "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "apply-unchanged-secret"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void applyKeyWithFileKeySecretFails() {
+        // The file→blob handoff for keys goes through the migration endpoint; a direct apply
+        // claiming a file-sourced key's secret must fail.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-file-secret-key",
+                      "spec": {"key": "proxyKey1", "project": "someone-else", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 422);
+        assertFalse(response.body().contains("proxyKey1"),
+                () -> "Response must not echo the secret: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/keys/platform/apply-file-secret-key", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
     void testApplyEmptyManifestsBatchOk() {
         Response response = send(HttpMethod.POST, "/v1/admin/apply", null, "{\"manifests\": []}",
                 "authorization", "admin");
