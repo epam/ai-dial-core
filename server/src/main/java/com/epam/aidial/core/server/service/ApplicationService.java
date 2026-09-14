@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.CatalogPropertiesLinkRewriter;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
@@ -609,8 +610,9 @@ public class ApplicationService {
                 throw new IllegalArgumentException("Application schema is not found by schema id: " + applicationSchemaId);
             }
         } else if (application.getEndpoint() == null && application.getFunction() == null
-                && (application.getMcp() == null || application.getMcp().getEndpoint() == null)) {
-            throw new IllegalArgumentException("At least application endpoint, MCP endpoint or function must be provided");
+                && (application.getMcp() == null || application.getMcp().getEndpoint() == null)
+                && !DeploymentEndpointUtil.hasRoutingInterface(application)) {
+            throw new IllegalArgumentException("At least application endpoint, MCP endpoint, function or interface must be provided");
         }
         validateCatalogProperties(application);
 
