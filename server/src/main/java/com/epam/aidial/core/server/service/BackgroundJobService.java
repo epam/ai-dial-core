@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfacePathMapping;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Translator;
@@ -190,15 +191,16 @@ public class BackgroundJobService {
     }
 
     @VisibleForTesting
-    Future<ResponsesApiClient.TerminalResult> poll(ResponseMapping mapping) {
+    Future<ResponsesApiClient.TerminalResult> poll(ResponseMapping mapping, String apiKey) {
         Config config = configStore.get();
         Deployment deployment = config.selectDeployment(mapping.getDeploymentName());
         if (deployment == null) {
             return Future.failedFuture("Deployment {} not found");
         }
         Map<String, Translator> translators = config.getTranslators();
-        String responsesBaseUri = DeploymentEndpointUtil.resolveResponsesBaseUri(deployment, translators);
-        if (responsesBaseUri == null) {
+        String targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment, translators,
+                InterfacePathMapping.GET_OPENAI_RESPONSES_BY_ID, mapping.getUpstreamResponseId(), null);
+        if (targetUrl == null) {
             return Future.failedFuture("Deployment " + deployment.getName() + " does not have a responses endpoint");
         }
         Upstream upstream;
@@ -212,8 +214,7 @@ public class BackgroundJobService {
             return Future.failedFuture("Failed to get upstream for deployment " + deployment.getName()
                     + " and upstream key " + mapping.getUpstreamKey() + ": " + e.getMessage());
         }
-        String targetUrl = responsesBaseUri + "/" + mapping.getUpstreamResponseId();
-        return client.send(targetUrl, HttpMethod.GET, upstream)
+        return client.send(targetUrl, HttpMethod.GET, upstream, apiKey)
                 .compose(response -> {
                     int statusCode = response.statusCode();
                     if (statusCode != 200) {
@@ -346,7 +347,8 @@ public class BackgroundJobService {
         private final ResponseMapping mapping;
 
         public Future<Boolean> poll() {
-            return BackgroundJobService.this.poll(mapping)
+            String apiKey = decryptKey(ResponseIdUtil.getBackgroundJobDescriptor(dialId), record.perRequestKey());
+            return BackgroundJobService.this.poll(mapping, apiKey)
                     .compose(result -> {
                                 if (result != null) {
                                     return completeAndProcess(dialId, record, mapping, result)

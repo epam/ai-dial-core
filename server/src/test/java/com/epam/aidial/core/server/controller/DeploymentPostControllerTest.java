@@ -70,6 +70,7 @@ import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
 import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_GATEWAY;
+import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.storage.http.HttpStatus.FORBIDDEN;
 import static com.epam.aidial.core.storage.http.HttpStatus.NOT_FOUND;
 import static com.epam.aidial.core.storage.http.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
@@ -574,6 +575,128 @@ public class DeploymentPostControllerTest {
         byte[] content = updatedBody.getBytes();
         ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content);
         assertEquals(tree.get("model").asText(), "overrideName");
+    }
+
+    @Test
+    public void testHandleRequestBody_SkillAutoShared_WhenReadable() {
+        when(context.getRequest()).thenReturn(request);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, null, 0, 0, null, null, null));
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
+        when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
+        when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setInterceptorIndex(0);
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+        when(proxy.getEncryptionService().decrypt("bucket")).thenReturn("location/");
+        when(proxy.getAccessService().hasReadAccess(any(), any())).thenReturn(true);
+
+        Model model = new Model();
+        model.setName("name");
+        model.setEndpoint("http://host/model");
+        when(context.getDeployment()).thenReturn(model);
+        String body = """
+                {
+                    "model": "name",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": "use the summarizer skill",
+                            "custom_content": {
+                                "skills": [
+                                    {"url": "skills/bucket/summarizer"}
+                                ]
+                            }
+                        }
+                    ],
+                    "stream": false
+                }
+                """;
+        Buffer requestBody = Buffer.buffer(body);
+
+        controller.handleRequestBody(requestBody);
+
+        assertNotNull(proxyApiKeyData.getAttachedSkills().get("skills/bucket/summarizer"));
+    }
+
+    @Test
+    public void testHandleRequestBody_SkillAccessDenied() {
+        when(context.getRequest()).thenReturn(request);
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+        when(proxy.getEncryptionService().decrypt("bucket")).thenReturn("location/");
+        // proxy.getAccessService().hasReadAccess(...) defaults to false (deep stub)
+
+        Model model = new Model();
+        model.setName("name");
+        model.setEndpoint("http://host/model");
+        when(context.getDeployment()).thenReturn(model);
+        String body = """
+                {
+                    "model": "name",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": "use the summarizer skill",
+                            "custom_content": {
+                                "skills": [
+                                    {"url": "skills/bucket/summarizer"}
+                                ]
+                            }
+                        }
+                    ],
+                    "stream": false
+                }
+                """;
+        Buffer requestBody = Buffer.buffer(body);
+
+        controller.handleRequestBody(requestBody);
+
+        verify(context).respond(eq(FORBIDDEN), anyString());
+    }
+
+    @Test
+    public void testHandleRequestBody_SkillUrlIsNotSkillResource() {
+        when(context.getRequest()).thenReturn(request);
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+
+        Model model = new Model();
+        model.setName("name");
+        model.setEndpoint("http://host/model");
+        when(context.getDeployment()).thenReturn(model);
+        String body = """
+                {
+                    "model": "name",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": "use the summarizer skill",
+                            "custom_content": {
+                                "skills": [
+                                    {"url": "files/public/readme.md"}
+                                ]
+                            }
+                        }
+                    ],
+                    "stream": false
+                }
+                """;
+        Buffer requestBody = Buffer.buffer(body);
+
+        controller.handleRequestBody(requestBody);
+
+        verify(context).respond(eq(BAD_REQUEST), eq("Url must reference a skill resource: files/public/readme.md"));
     }
 
     @Test

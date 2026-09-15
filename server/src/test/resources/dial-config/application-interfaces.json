@@ -1,0 +1,19 @@
+{
+  "applications": {
+    "app-multi-interface": {
+      "baseUrl": "http://localhost:4848",
+      "interfaces": {
+        "openaiChatCompletions": {},
+        "openaiResponses": {},
+        "anthropicMessages": {}
+      }
+    },
+    "app-chat-only": {
+      "baseUrl": "http://localhost:4848",
+      "interfaces": {
+        "openaiChatCompletions": {}
+      }
+    }
+  },
+  "keys": {"proxyKey1": {"project": "test", "role": "default"}}
+}

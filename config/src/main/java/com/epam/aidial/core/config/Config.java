@@ -67,6 +67,9 @@ public class Config {
 
     private List<String> globalInterceptors = List.of();
 
+    // deployment-wide anchor for the DAY/WEEK/MONTH fixed calendar rate-limit windows
+    private RateLimitSchedule rateLimitSchedule = new RateLimitSchedule();
+
     @JsonIgnore
     public Deployment selectDeployment(String deploymentId) {
         Application application = applications.get(deploymentId);

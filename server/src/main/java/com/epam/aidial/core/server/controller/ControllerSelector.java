@@ -154,7 +154,7 @@ public class ControllerSelector {
         });
         get(RouteTemplate.COMPLEX_RESOURCE_METADATA, (proxy, context, pathMatcher) -> {
             ComplexResourceMetadataController controller = new ComplexResourceMetadataController(proxy, context, false, null);
-            return () -> controller.handle(complexResourceFolderUrl(pathMatcher));
+            return () -> controller.handle(complexResourceUrl(pathMatcher), complexResourceFolderUrl(pathMatcher));
         });
         get(RouteTemplate.RESOURCE_FOLDER, (proxy, context, pathMatcher) -> {
             ComplexResourceController controller = new ComplexResourceController(proxy, context, false, true);
@@ -708,8 +708,11 @@ public class ControllerSelector {
         return "skills/" + matcher.group("bucket") + "/" + matcher.group("path");
     }
 
-    // Builds the grouping-folder url (trailing slash so fromAnyUrl marks it a folder) for folder ops and the
-    // children metadata listing. An empty path lists the bucket root.
+    // Builds the grouping-folder url (trailing slash so fromAnyUrl marks it a folder) for folder ops, and
+    // as the metadata route's second access-check candidate: {path} may name either a specific skill (shared
+    // as the non-folder url from complexResourceUrl) or a grouping folder (shared as this folder url), and
+    // the client has no way to know which up front, so both shapes are checked. An empty path addresses the
+    // bucket root.
     private static String complexResourceFolderUrl(Matcher matcher) {
         String path = matcher.group("path");
         if (path != null && path.endsWith("/")) {
