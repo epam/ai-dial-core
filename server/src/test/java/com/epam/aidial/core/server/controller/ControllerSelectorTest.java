@@ -6,7 +6,6 @@ import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.controller.route.GlobalRouteController;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ApplicationService;
-import com.epam.aidial.core.server.service.ToolSetService;
 import io.vertx.core.Context;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpMethod;
@@ -480,11 +479,7 @@ public class ControllerSelectorTest {
     }
 
     private void stubConfigResourceControllerDependencies() {
-        when(proxy.getAccessService()).thenReturn(mock(AccessService.class));
-        MergedConfigStore mergedConfigStore = mock(MergedConfigStore.class);
-        when(proxy.getConfigStore()).thenReturn(mergedConfigStore);
-        when(proxy.getApplicationService()).thenReturn(mock(ApplicationService.class));
-        when(proxy.getToolSetService()).thenReturn(mock(ToolSetService.class));
+        when(proxy.getConfigStore()).thenReturn(mock(MergedConfigStore.class));
     }
 
     @Test

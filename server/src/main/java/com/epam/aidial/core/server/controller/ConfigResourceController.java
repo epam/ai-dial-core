@@ -12,6 +12,7 @@ import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -21,6 +22,7 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.InvalidEntityRecord;
@@ -35,6 +37,7 @@ import com.epam.aidial.core.server.security.EntityBucketBinding;
 import com.epam.aidial.core.server.security.Operation;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -102,35 +105,28 @@ public class ConfigResourceController implements Controller {
     private final LockService lockService;
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
+    private final ResourceAuthSettingsService resourceAuthSettingsService;
     private final String entityType;
     private final String bucket;
     private final String path;
 
-    public ConfigResourceController(ProxyContext context,
-                                    ConfigAuthorizationService authorizationService,
-                                    MergedConfigStore mergedConfigStore,
-                                    ResourceService resourceService,
-                                    AsyncTaskExecutor taskExecutor,
-                                    SecretFieldProcessor secretFieldProcessor,
-                                    boolean softValidation,
-                                    ApiKeyStore apiKeyStore,
-                                    LockService lockService,
-                                    ApplicationService applicationService,
-                                    ToolSetService toolSetService,
+    public ConfigResourceController(Proxy proxy,
+                                    ProxyContext context,
                                     String entityType,
                                     String bucket,
                                     String path) {
         this.context = context;
-        this.authorizationService = authorizationService;
-        this.mergedConfigStore = mergedConfigStore;
-        this.resourceService = resourceService;
-        this.taskExecutor = taskExecutor;
-        this.secretFieldProcessor = secretFieldProcessor;
-        this.softValidation = softValidation;
-        this.apiKeyStore = apiKeyStore;
-        this.lockService = lockService;
-        this.applicationService = applicationService;
-        this.toolSetService = toolSetService;
+        this.authorizationService = proxy.getConfigAuthService();
+        this.mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
+        this.resourceService = proxy.getResourceService();
+        this.taskExecutor = proxy.getTaskExecutor();
+        this.secretFieldProcessor = mergedConfigStore.getSecretFieldProcessor();
+        this.softValidation = mergedConfigStore.isSoftValidation();
+        this.apiKeyStore = proxy.getApiKeyStore();
+        this.lockService = proxy.getLockService();
+        this.applicationService = proxy.getApplicationService();
+        this.toolSetService = proxy.getToolSetService();
+        this.resourceAuthSettingsService = proxy.getResourceAuthSettingsService();
         this.entityType = entityType;
         this.bucket = bucket;
         this.path = path;
@@ -1120,19 +1116,24 @@ public class ConfigResourceController implements Controller {
             // actually be shown the hint.
             case APPLICATION -> handleSingleGetFromBlob(ResourceTypes.APPLICATION,
                     (key, application) -> {
+                        Application entity = (Application) application;
+                        new ResourceAuthStatusEnricher(context, resourceAuthSettingsService)
+                                .enrichApplication(path, entity.getExternalServices());
                         if (admin) {
                             applicationService.decryptExternalServiceSecretsForResponse(
-                                    descriptorFor(ResourceTypes.APPLICATION), (Application) application);
+                                    descriptorFor(ResourceTypes.APPLICATION), entity);
                         }
-                        return redactExternalServiceSecrets(projectItem(application, key), admin);
+                        return redactExternalServiceSecrets(projectItem(entity, key), admin);
                     });
             case TOOL_SET -> handleSingleGetFromBlob(ResourceTypes.TOOL_SET,
                     (key, toolSet) -> {
+                        ToolSet entity = (ToolSet) toolSet;
+                        new ResourceAuthStatusEnricher(context, resourceAuthSettingsService).enrichToolSet(path, entity);
                         if (admin) {
                             toolSetService.decryptAuthSettingsForResponse(
-                                    descriptorFor(ResourceTypes.TOOL_SET), (ToolSet) toolSet);
+                                    descriptorFor(ResourceTypes.TOOL_SET), entity);
                         }
-                        return redactAuthSettingsSecrets(projectItem(toolSet, key), admin);
+                        return redactAuthSettingsSecrets(projectItem(entity, key), admin);
                     });
             case GLOBAL_SETTINGS -> handleSettingsGet(config);
             default -> respondMethodNotAllowed();
