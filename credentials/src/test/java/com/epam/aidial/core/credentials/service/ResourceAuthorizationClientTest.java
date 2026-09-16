@@ -28,7 +28,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPOutputStream;
 
@@ -44,6 +43,10 @@ import static org.mockito.Mockito.when;
 class ResourceAuthorizationClientTest {
 
     private static final HttpHeaders EMPTY_HEADERS = HttpHeaders.of(Map.of(), (k, v) -> true);
+
+    /** One real client for the probe tests below: each instance owns a selector thread and executor. */
+    private static final ResourceAuthorizationClient PROBE_CLIENT =
+            new ResourceAuthorizationClient((java.net.ProxySelector) null);
 
     @Mock
     private HttpClient httpClientMock;
@@ -465,14 +468,12 @@ class ResourceAuthorizationClientTest {
                 // the client abandons the body; nothing to do
             }
         });
-        server.setExecutor(Executors.newCachedThreadPool());
         server.start();
         try {
-            ResourceAuthorizationClient client = new ResourceAuthorizationClient((java.net.ProxySelector) null);
             String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/mcp";
 
             assertTimeoutPreemptively(Duration.ofSeconds(10), () ->
-                    client.executeProbe(url, Map.of("jsonrpc", "2.0"), ContentType.APPLICATION_JSON.toString(),
+                    PROBE_CLIENT.executeProbe(url, Map.of("jsonrpc", "2.0"), ContentType.APPLICATION_JSON.toString(),
                             Map.of("Accept", "application/json, text/event-stream")));
         } finally {
             released.countDown();
@@ -490,14 +491,12 @@ class ResourceAuthorizationClientTest {
             exchange.sendResponseHeaders(401, -1);
             exchange.close();
         });
-        server.setExecutor(Executors.newCachedThreadPool());
         server.start();
         try {
-            ResourceAuthorizationClient client = new ResourceAuthorizationClient((java.net.ProxySelector) null);
             String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/mcp";
 
             HttpException e = assertThrows(HttpException.class, () ->
-                    client.executeProbe(url, Map.of("jsonrpc", "2.0"), ContentType.APPLICATION_JSON.toString(), Map.of()));
+                    PROBE_CLIENT.executeProbe(url, Map.of("jsonrpc", "2.0"), ContentType.APPLICATION_JSON.toString(), Map.of()));
 
             assertEquals("https://example.com/.well-known/oauth-protected-resource/mcp",
                     new HttpHeadersHandler().extractMetadataUrl(e.getHeaders()).orElse(null));
@@ -526,16 +525,41 @@ class ResourceAuthorizationClientTest {
             exchange.getResponseBody().write(body);
             exchange.close();
         });
-        server.setExecutor(Executors.newCachedThreadPool());
         server.start();
         try {
-            ResourceAuthorizationClient client = new ResourceAuthorizationClient((java.net.ProxySelector) null);
             String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/mcp";
 
-            client.executeProbe(url, Map.of("jsonrpc", "2.0"), ContentType.APPLICATION_JSON.toString(), Map.of());
+            PROBE_CLIENT.executeProbe(url, Map.of("jsonrpc", "2.0"), ContentType.APPLICATION_JSON.toString(), Map.of());
 
             assertTrue(deleted.await(10, TimeUnit.SECONDS), "Expected the probe to close its session");
             assertEquals(List.of("session-42"), deletedSessions);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
+     * A strict server explains its rejection in the body, and that explanation is the only
+     * diagnostic a failed probe produces - abandoning the body must not cost it.
+     */
+    @Test
+    void probeKeepsTheErrorBodyExplainingARejection() throws Exception {
+        String explanation = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Missing session ID\"}}";
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/mcp", exchange -> {
+            byte[] body = explanation.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(400, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        try {
+            String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/mcp";
+
+            HttpException e = assertThrows(HttpException.class, () ->
+                    PROBE_CLIENT.executeProbe(url, Map.of("jsonrpc", "2.0"), ContentType.APPLICATION_JSON.toString(), Map.of()));
+
+            assertEquals(explanation, e.getBody());
         } finally {
             server.stop(0);
         }

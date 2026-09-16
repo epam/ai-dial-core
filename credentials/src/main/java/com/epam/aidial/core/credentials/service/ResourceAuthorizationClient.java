@@ -32,6 +32,8 @@ import javax.annotation.Nullable;
 public class ResourceAuthorizationClient {
 
     private static final String MCP_SESSION_HEADER = "Mcp-Session-Id";
+    private static final Duration SESSION_CLEANUP_TIMEOUT = Duration.ofSeconds(5);
+    private static final byte[] EMPTY_BODY = new byte[0];
 
     private final HttpClient httpClient;
     private final HttpHeadersHandler httpHeadersHandler;
@@ -93,23 +95,33 @@ public class ResourceAuthorizationClient {
     }
 
     /**
-     * Sends a request to observe only its status and headers, abandoning the body unread.
+     * Sends a request to observe its status and headers, abandoning the body of a successful reply.
      *
      * <p>Discovery probes an MCP endpoint to draw out its 401 challenge. A probe that instead
      * succeeds may be answered with an SSE stream the server holds open indefinitely, and
      * {@link HttpRequest#timeout} does not bound that: it stops once the response headers arrive,
      * long before the body. Reading such a body would hang the calling thread for as long as the
-     * peer keeps the stream open, so the body is never requested at all.
+     * peer keeps the stream open.
+     *
+     * <p>Only a success can be that stream, so error bodies are still read: a strict server
+     * explains its rejection there, which is the whole diagnostic for a probe that fails.
      */
     public void executeProbe(String url, Object requestPayload, String contentType, Map<String, String> extraHeaders) {
         HttpRequest request = buildPost(url, requestPayload, contentType, extraHeaders);
-        HttpResponse<Void> response = exchange(request, abandonBody());
+        HttpResponse<byte[]> response = exchange(request, probeBody());
         response.headers().firstValue(MCP_SESSION_HEADER)
                 .ifPresent(sessionId -> terminateProbeSession(url, sessionId));
         int status = response.statusCode();
         if (status != 200 && status != 201) {
-            throw errorFor(request, status, response.headers(), "");
+            throw errorFor(request, status, response.headers(), decodeBody(response));
         }
+    }
+
+    /** Abandons the body of a 2xx - the only reply that can be an endless stream - and reads any other. */
+    private static HttpResponse.BodyHandler<byte[]> probeBody() {
+        return responseInfo -> responseInfo.statusCode() / 100 == 2
+                ? abandonBody()
+                : HttpResponse.BodySubscribers.ofByteArray();
     }
 
     /**
@@ -117,20 +129,23 @@ public class ResourceAuthorizationClient {
      * a real connection - so it closes the session again rather than leaving one behind on every
      * toolset create, update and repair.
      *
-     * <p>Best-effort by design: servers on protocol revisions that dropped sessions answer DELETE
-     * with 405, and a failure here costs the caller nothing.
+     * <p>Best-effort and off the caller's path: nothing depends on the result, so it is sent
+     * asynchronously under a short timeout rather than charging a toolset create or repair for a
+     * server that accepts the request and never answers.
      */
     private void terminateProbeSession(String url, String sessionId) {
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
-                    .timeout(createRequestConfig())
+                    .timeout(SESSION_CLEANUP_TIMEOUT)
                     .header(MCP_SESSION_HEADER, sessionId)
                     .DELETE()
                     .build();
-            httpClient.send(request, abandonBody());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            httpClient.sendAsync(request, probeBody())
+                    .exceptionally(e -> {
+                        log.debug("Could not close the MCP session opened by the discovery probe at {}: {}", url, e.getMessage());
+                        return null;
+                    });
         } catch (Exception e) {
             log.debug("Could not close the MCP session opened by the discovery probe at {}: {}", url, e.getMessage());
         }
@@ -140,19 +155,19 @@ public class ResourceAuthorizationClient {
      * A body handler that completes as soon as the response headers are in and cancels the body
      * subscription, so no part of the response body is read or buffered.
      */
-    private static HttpResponse.BodyHandler<Void> abandonBody() {
-        return responseInfo -> new HttpResponse.BodySubscriber<>() {
-            private final CompletableFuture<Void> body = new CompletableFuture<>();
+    private static HttpResponse.BodySubscriber<byte[]> abandonBody() {
+        return new HttpResponse.BodySubscriber<>() {
+            private final CompletableFuture<byte[]> body = new CompletableFuture<>();
 
             @Override
-            public CompletionStage<Void> getBody() {
+            public CompletionStage<byte[]> getBody() {
                 return body;
             }
 
             @Override
             public void onSubscribe(Flow.Subscription subscription) {
                 subscription.cancel();
-                body.complete(null);
+                body.complete(EMPTY_BODY);
             }
 
             @Override
@@ -167,7 +182,7 @@ public class ResourceAuthorizationClient {
 
             @Override
             public void onComplete() {
-                body.complete(null);
+                body.complete(EMPTY_BODY);
             }
         };
     }
