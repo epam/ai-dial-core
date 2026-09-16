@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server;
 
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
@@ -53,6 +52,7 @@ import com.epam.aidial.core.server.service.config.ConfigValidationService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
+import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.AuthSettingsResolver;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -196,6 +196,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ConfigAuthorizationService configAuthService;
     private final ConfigApplyService configApplyService;
     private final ConfigValidationService configValidationService;
+    private final TracingSettings tracingSettings;
 
     @Override
     public void handle(HttpServerRequest request) {
@@ -290,8 +291,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         String spanId = spanContext.getSpanId();
         String traceFlags = spanContext.getTraceFlags().asHex();
 
-        Config config = configStore.get();
-        if (config != null && config.getTracing().isResponseTraceHeaders()) {
+        if (tracingSettings.responseTraceHeaders()) {
             request.response().putHeader(HEADER_DIAL_TRACE_ID, traceId);
             request.response().putHeader(HEADER_DIAL_SPAN_ID, spanId);
         }

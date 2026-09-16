@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
+import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -105,6 +106,9 @@ public class ProxyTest {
 
     @Mock
     private ApiKeyValidation apiKeyValidation;
+
+    @Mock
+    private TracingSettings tracingSettings;
 
     @InjectMocks
     private Proxy proxy;
@@ -207,9 +211,7 @@ public class ProxyTest {
 
     @Test
     public void testHandle_ResponseTraceHeadersAreReturnedWhenEnabled() {
-        Config config = new Config();
-        config.getTracing().setResponseTraceHeaders(true);
-        when(configStore.get()).thenReturn(config);
+        when(tracingSettings.responseTraceHeaders()).thenReturn(true);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.GET);
         MultiMap headers = mock(MultiMap.class);
@@ -236,7 +238,6 @@ public class ProxyTest {
 
     @Test
     public void testHandle_ResponseTraceHeadersAreOmittedWhenDisabled() {
-        when(configStore.get()).thenReturn(new Config());
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.GET);
         MultiMap headers = mock(MultiMap.class);

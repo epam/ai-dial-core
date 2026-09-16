@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.tracing;
 
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.sse.SseEvent;
@@ -275,8 +274,8 @@ public final class GenAiTraceAttributes {
     }
 
     private static String resolveConversationId(ProxyContext context) {
-        // the setter drops null, blank and credential header names
-        for (String header : context.getConfig().getTracing().getConversationIdHeaders()) {
+        // TracingSettings drops blank and credential header names
+        for (String header : context.getTracingSettings().conversationIdHeaders()) {
             String value = context.getRequest().headers().get(header);
             if (value != null && !value.isBlank()) {
                 String conversationId = value.trim();
@@ -304,8 +303,8 @@ public final class GenAiTraceAttributes {
     }
 
     public static boolean isEnabled(ProxyContext context) {
-        Config config = context.getConfig();
-        return config != null && config.getTracing().isGenAiSpanAttributes();
+        TracingSettings settings = context.getTracingSettings();
+        return settings != null && settings.genAiSpanAttributes();
     }
 
     /**

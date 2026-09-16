@@ -1,12 +1,18 @@
-# Dynamic Setting for Tracing
+# Static Setting for Tracing
 
-DIAL Core always emits OpenTelemetry spans for incoming requests. The `tracing` section adds
-*opt-in* enrichment on top of that: [OTel GenAI semantic-convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
+DIAL Core always emits OpenTelemetry spans for incoming requests. The `tracing` section of
+`aidial.settings.json` adds *opt-in* enrichment on top of that: [OTel GenAI semantic-convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
 attributes, a conversation/session correlation id taken from a request header, and response
 headers that hand the caller Core's own trace and span ids.
 
 Everything here is off by default, and nothing here ever publishes prompts, completions, tool
 payloads, API keys, arbitrary headers, or upstream provider names.
+
+These are static settings, so they are read once at startup: changing them needs a restart.
+
+> This section used to live in the dynamic config (`aidial.config.json`). A leftover `tracing` block
+> there is ignored rather than rejected, so move it to `aidial.settings.json` or the enrichment
+> silently stays off.
 
 ## tracing
 
@@ -20,8 +26,8 @@ payloads, API keys, arbitrary headers, or upstream provider names.
   truncated. Blank entries and the known credential headers (`authorization`,
   `proxy-authorization`, `cookie`, `set-cookie`, `api-key`, `api_key`, `x-api-key`, `x-auth-token`,
   `x-amz-security-token`) are rejected with a warning rather than published, so naming one cannot
-  put a credential on the span. An explicit `null` means no correlation, and one bad entry never
-  fails the config reload.
+  put a credential on the span. An omitted or empty array means no correlation. An operator-supplied
+  array replaces the bundled default outright rather than adding to it.
 
 To suppress individual attributes, drop them in the OpenTelemetry Collector (an `attributes` or
 `transform` processor) rather than in Core.
@@ -35,15 +41,15 @@ needs its own session header listed explicitly.
 
 ```json
 "tracing": {
-    "genAiSpanAttributes": true,
-    "responseTraceHeaders": true,
-    "conversationIdHeaders": [
-        "x-claude-code-session-id",
-        "thread-id",
-        "x-session-id",
-        "x-dial-client-channel-id",
-        "X-CONVERSATION-ID"
-    ]
+  "genAiSpanAttributes": true,
+  "responseTraceHeaders": true,
+  "conversationIdHeaders": [
+    "x-claude-code-session-id",
+    "thread-id",
+    "x-session-id",
+    "x-dial-client-channel-id",
+    "X-CONVERSATION-ID"
+  ]
 }
 ```
 

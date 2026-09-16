@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.tracing;
 
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.Proxy;
@@ -17,6 +16,8 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.json.JsonArray;
+import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -40,10 +41,7 @@ class GenAiTraceAttributesTest {
 
     @Test
     void initializeCollectsConversationAndIncomingParentSpan() {
-        Config config = new Config();
-        config.getTracing().setGenAiSpanAttributes(true);
-        Proxy proxy = mock(Proxy.class, RETURNS_DEEP_STUBS);
-        when(proxy.getConfigStore().get()).thenReturn(config);
+        Proxy proxy = proxy(enabledSettings());
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         MultiMap headers = MultiMap.caseInsensitiveMultiMap();
         headers.add("thread-id", "conversation-1");
@@ -69,8 +67,7 @@ class GenAiTraceAttributesTest {
 
     @Test
     void initializeDoesNothingWhenGenAiAttributesAreDisabled() {
-        Proxy proxy = mock(Proxy.class, RETURNS_DEEP_STUBS);
-        when(proxy.getConfigStore().get()).thenReturn(new Config());
+        Proxy proxy = proxy(TracingSettings.from(new JsonObject()));
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(request.getHeader("thread-id")).thenReturn("conversation-1");
         when(request.getHeader("traceparent"))
@@ -97,12 +94,11 @@ class GenAiTraceAttributesTest {
             "X-CONVERSATION-ID"
     })
     void initializeMapsEveryDefaultConversationHeader(String header) {
-        Config config = enabledConfig();
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         MultiMap headers = MultiMap.caseInsensitiveMultiMap();
         headers.add(header, " conversation-1 ");
         when(request.headers()).thenReturn(headers);
-        ProxyContext context = context(proxy(config), request);
+        ProxyContext context = context(proxy(enabledSettings()), request);
 
         GenAiTraceAttributes.initialize(context);
 
@@ -115,7 +111,7 @@ class GenAiTraceAttributesTest {
         MultiMap oversizedHeaders = MultiMap.caseInsensitiveMultiMap();
         oversizedHeaders.add("thread-id", "x".repeat(257));
         when(oversized.headers()).thenReturn(oversizedHeaders);
-        ProxyContext context = context(proxy(enabledConfig()), oversized);
+        ProxyContext context = context(proxy(enabledSettings()), oversized);
 
         GenAiTraceAttributes.initialize(context);
 
@@ -129,7 +125,7 @@ class GenAiTraceAttributesTest {
         MultiMap headers = MultiMap.caseInsensitiveMultiMap();
         when(request.headers()).thenReturn(headers);
         when(request.getHeader("traceparent")).thenReturn(traceparent);
-        ProxyContext context = context(proxy(enabledConfig()), request);
+        ProxyContext context = context(proxy(enabledSettings()), request);
 
         GenAiTraceAttributes.initialize(context);
 
@@ -138,7 +134,7 @@ class GenAiTraceAttributesTest {
 
     @Test
     void setRequestAttributesCoversChatCompletions() throws Exception {
-        ProxyContext context = context(proxy(enabledConfig()));
+        ProxyContext context = context(proxy(enabledSettings()));
         var tree = ProxyUtil.MAPPER.readTree("""
                 {"model":"gpt-4","stream":true,"max_tokens":100,"temperature":0.2,"top_p":0.8,
                  "stop":["stop","length"],"n":2,"frequency_penalty":0.1,"presence_penalty":0.2,
@@ -164,7 +160,7 @@ class GenAiTraceAttributesTest {
 
     @Test
     void setRequestAttributesCoversEmbeddings() throws Exception {
-        ProxyContext context = context(proxy(enabledConfig()));
+        ProxyContext context = context(proxy(enabledSettings()));
         var tree = ProxyUtil.MAPPER.readTree("{\"model\":\"embedding\",\"encoding_format\":\"base64\"}");
 
         GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.OPENAI_EMBEDDINGS, (ObjectNode) tree);
@@ -177,7 +173,7 @@ class GenAiTraceAttributesTest {
 
     @Test
     void setRequestAttributesCoversResponsesCreate() throws Exception {
-        ProxyContext context = context(proxy(enabledConfig()));
+        ProxyContext context = context(proxy(enabledSettings()));
         var tree = ProxyUtil.MAPPER.readTree("""
                 {"model":"gpt-4","stream":true,"max_output_tokens":100,"temperature":0.2,
                  "top_p":0.8,"previous_response_id":"resp_1","reasoning":{"effort":"low"}}
@@ -194,7 +190,7 @@ class GenAiTraceAttributesTest {
 
     @Test
     void setRequestAttributesCoversAnthropicMessages() throws Exception {
-        ProxyContext context = context(proxy(enabledConfig()));
+        ProxyContext context = context(proxy(enabledSettings()));
         var tree = ProxyUtil.MAPPER.readTree("""
                 {"model":"claude","stream":true,"max_tokens":100,"temperature":0.2,
                  "top_p":0.8,"stop_sequences":["end_turn"]}
@@ -209,7 +205,7 @@ class GenAiTraceAttributesTest {
 
     @Test
     void setResponseAttributesCoversNonStreamingChatResponse() {
-        ProxyContext context = context(proxy(enabledConfig()));
+        ProxyContext context = context(proxy(enabledSettings()));
         Buffer body = Buffer.buffer("""
                 {"id":"chat-1","model":"gpt-4","choices":[{"finish_reason":"stop"}],
                  "usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}
@@ -275,7 +271,7 @@ class GenAiTraceAttributesTest {
 
     @Test
     void setResponseAttributesReportsFailedStatusOnErrorResponse() {
-        ProxyContext context = context(proxy(enabledConfig()));
+        ProxyContext context = context(proxy(enabledSettings()));
         when(context.getResponse().getStatusCode()).thenReturn(500);
         Buffer body = Buffer.buffer("{\"error\":{\"message\":\"upstream is down\"}}");
 
@@ -287,7 +283,7 @@ class GenAiTraceAttributesTest {
 
     @Test
     void setResponseAttributesReportsTheClientStatusNotTheUpstreamOne() {
-        ProxyContext context = context(proxy(enabledConfig()));
+        ProxyContext context = context(proxy(enabledSettings()));
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class);
         when(proxyResponse.statusCode()).thenReturn(200);
         context.setProxyResponse(proxyResponse);
@@ -302,7 +298,7 @@ class GenAiTraceAttributesTest {
 
     @Test
     void setResponseAttributesReportsFailedWhenNoUpstreamWasReached() {
-        ProxyContext context = context(proxy(enabledConfig()));
+        ProxyContext context = context(proxy(enabledSettings()));
         when(context.getResponse().getStatusCode()).thenReturn(429);
 
         GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
@@ -313,7 +309,7 @@ class GenAiTraceAttributesTest {
 
     @Test
     void setResponseAttributesClampsOversizedCallerControlledText() {
-        ProxyContext context = context(proxy(enabledConfig()));
+        ProxyContext context = context(proxy(enabledSettings()));
 
         GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
                 (ObjectNode) ProxyUtil.MAPPER.valueToTree(Map.of("model", "m".repeat(1000))));
@@ -323,7 +319,7 @@ class GenAiTraceAttributesTest {
 
     @Test
     void setRequestAttributesCapsUnboundedStopSequences() {
-        ProxyContext context = context(proxy(enabledConfig()));
+        ProxyContext context = context(proxy(enabledSettings()));
         List<String> stop = IntStream.range(0, 100).mapToObj(Integer::toString).toList();
 
         GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
@@ -365,7 +361,7 @@ class GenAiTraceAttributesTest {
 
     @Test
     void setFetchResponseAttributesUsesFetchOperation() {
-        ProxyContext context = context(proxy(enabledConfig()));
+        ProxyContext context = context(proxy(enabledSettings()));
         Buffer body = Buffer.buffer("{\"id\":\"resp-1\",\"model\":\"gpt-4\",\"status\":\"completed\"}");
 
         GenAiTraceAttributes.setFetchResponseAttributes(context, body, "resp-1");
@@ -390,7 +386,7 @@ class GenAiTraceAttributesTest {
 
     @Test
     void setUsageAttributesUsesTypedValues() {
-        ProxyContext context = context(proxy(enabledConfig()));
+        ProxyContext context = context(proxy(enabledSettings()));
         TokenUsage usage = new TokenUsage();
         usage.setPromptTokens(10);
         usage.setCompletionTokens(20);
@@ -437,7 +433,7 @@ class GenAiTraceAttributesTest {
      * A context whose upstream response is SSE: the content type is the only streaming signal.
      */
     private static ProxyContext streamingContext() {
-        ProxyContext context = context(proxy(enabledConfig()));
+        ProxyContext context = context(proxy(enabledSettings()));
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class);
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("text/event-stream");
@@ -445,15 +441,20 @@ class GenAiTraceAttributesTest {
         return context;
     }
 
-    private static Proxy proxy(Config config) {
+    private static Proxy proxy(TracingSettings settings) {
         Proxy proxy = mock(Proxy.class, RETURNS_DEEP_STUBS);
-        when(proxy.getConfigStore().get()).thenReturn(config);
+        when(proxy.getTracingSettings()).thenReturn(settings);
         return proxy;
     }
 
-    private static Config enabledConfig() {
-        Config config = new Config();
-        config.getTracing().setGenAiSpanAttributes(true);
-        return config;
+    private static TracingSettings enabledSettings() {
+        return TracingSettings.from(new JsonObject()
+                .put("genAiSpanAttributes", true)
+                .put("conversationIdHeaders", new JsonArray()
+                        .add("x-claude-code-session-id")
+                        .add("thread-id")
+                        .add("x-session-id")
+                        .add("x-dial-client-channel-id")
+                        .add("X-CONVERSATION-ID")));
     }
 }

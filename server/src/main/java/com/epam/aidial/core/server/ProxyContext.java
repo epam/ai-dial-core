@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -199,6 +200,10 @@ public class ProxyContext {
 
     public Config getConfig() {
         return proxy.getConfigStore().get();
+    }
+
+    public TracingSettings getTracingSettings() {
+        return proxy.getTracingSettings();
     }
 
     public String getProject() {

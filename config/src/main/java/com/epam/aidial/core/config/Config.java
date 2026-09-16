@@ -67,13 +67,6 @@ public class Config {
 
     private List<String> globalInterceptors = List.of();
 
-    private Tracing tracing = new Tracing();
-
-    // an explicit "tracing": null means the defaults, not an NPE on every request
-    public void setTracing(Tracing tracing) {
-        this.tracing = tracing == null ? new Tracing() : tracing;
-    }
-
     @JsonIgnore
     public Deployment selectDeployment(String deploymentId) {
         Application application = applications.get(deploymentId);
