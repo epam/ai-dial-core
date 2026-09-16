@@ -2,6 +2,7 @@ package com.epam.aidial.core.credentials.service;
 
 import com.epam.aidial.core.credentials.service.metadata.HttpHeadersHandler;
 import com.epam.aidial.core.storage.http.HttpException;
+import com.sun.net.httpserver.HttpServer;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -14,20 +15,27 @@ import org.mockito.MockitoAnnotations;
 
 import java.io.ByteArrayOutputStream;
 import java.net.ConnectException;
+import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.channels.UnresolvedAddressException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -433,5 +441,103 @@ class ResourceAuthorizationClientTest {
     @NoArgsConstructor
     static class TestResponse {
         private String key;
+    }
+
+    /**
+     * A server may answer the discovery probe with an SSE stream it holds open indefinitely.
+     * {@link java.net.http.HttpRequest#timeout} stops once the response headers arrive and does not
+     * bound the body, so reading that body would block the calling thread - and with it the toolset
+     * create/update request - for as long as the peer keeps the stream open. The probe must come
+     * back with the status and headers and leave the body alone.
+     */
+    @Test
+    void probeReturnsWithoutReadingAnEndlessResponseBody() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        CountDownLatch released = new CountDownLatch(1);
+        server.createContext("/mcp", exchange -> {
+            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            try {
+                exchange.getResponseBody().write(": open\n\n".getBytes(StandardCharsets.UTF_8));
+                exchange.getResponseBody().flush();
+                released.await(30, TimeUnit.SECONDS);
+            } catch (Exception ignored) {
+                // the client abandons the body; nothing to do
+            }
+        });
+        server.setExecutor(Executors.newCachedThreadPool());
+        server.start();
+        try {
+            ResourceAuthorizationClient client = new ResourceAuthorizationClient((java.net.ProxySelector) null);
+            String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/mcp";
+
+            assertTimeoutPreemptively(Duration.ofSeconds(10), () ->
+                    client.executeProbe(url, Map.of("jsonrpc", "2.0"), ContentType.APPLICATION_JSON.toString(),
+                            Map.of("Accept", "application/json, text/event-stream")));
+        } finally {
+            released.countDown();
+            server.stop(0);
+        }
+    }
+
+    /** The challenge a probe exists to collect must survive the body being abandoned. */
+    @Test
+    void probeSurfacesTheChallengeHeadersOnUnauthorized() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/mcp", exchange -> {
+            exchange.getResponseHeaders().add("WWW-Authenticate",
+                    "Bearer resource_metadata=\"https://example.com/.well-known/oauth-protected-resource/mcp\"");
+            exchange.sendResponseHeaders(401, -1);
+            exchange.close();
+        });
+        server.setExecutor(Executors.newCachedThreadPool());
+        server.start();
+        try {
+            ResourceAuthorizationClient client = new ResourceAuthorizationClient((java.net.ProxySelector) null);
+            String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/mcp";
+
+            HttpException e = assertThrows(HttpException.class, () ->
+                    client.executeProbe(url, Map.of("jsonrpc", "2.0"), ContentType.APPLICATION_JSON.toString(), Map.of()));
+
+            assertEquals("https://example.com/.well-known/oauth-protected-resource/mcp",
+                    new HttpHeadersHandler().extractMetadataUrl(e.getHeaders()).orElse(null));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /** A probe that opens a session on a stateful server must close it rather than orphan it. */
+    @Test
+    void probeClosesTheSessionItOpens() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        CountDownLatch deleted = new CountDownLatch(1);
+        List<String> deletedSessions = Collections.synchronizedList(new java.util.ArrayList<>());
+        server.createContext("/mcp", exchange -> {
+            if ("DELETE".equals(exchange.getRequestMethod())) {
+                deletedSessions.add(exchange.getRequestHeaders().getFirst("Mcp-Session-Id"));
+                exchange.sendResponseHeaders(204, -1);
+                exchange.close();
+                deleted.countDown();
+                return;
+            }
+            exchange.getResponseHeaders().add("Mcp-Session-Id", "session-42");
+            byte[] body = "{}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.setExecutor(Executors.newCachedThreadPool());
+        server.start();
+        try {
+            ResourceAuthorizationClient client = new ResourceAuthorizationClient((java.net.ProxySelector) null);
+            String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/mcp";
+
+            client.executeProbe(url, Map.of("jsonrpc", "2.0"), ContentType.APPLICATION_JSON.toString(), Map.of());
+
+            assertTrue(deleted.await(10, TimeUnit.SECONDS), "Expected the probe to close its session");
+            assertEquals(List.of("session-42"), deletedSessions);
+        } finally {
+            server.stop(0);
+        }
     }
 }
