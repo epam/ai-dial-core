@@ -61,6 +61,10 @@ public class ResourceAuthorizationClient {
 
     public <R> R executePost(String url, Object requestPayload, String contentType,
                              Map<String, String> extraHeaders, Class<R> responseType) {
+        return execute(buildPost(url, requestPayload, contentType, extraHeaders), responseType);
+    }
+
+    private HttpRequest buildPost(String url, Object requestPayload, String contentType, Map<String, String> extraHeaders) {
         String stringPayload;
         if (contentType.equals(ContentType.APPLICATION_JSON.toString())) {
             stringPayload = JsonMapperUtil.convertToString(requestPayload);
@@ -74,16 +78,32 @@ public class ResourceAuthorizationClient {
                 .timeout(createRequestConfig())
                 .header("Content-Type", contentType)
                 .header("Accept", ContentType.APPLICATION_JSON.toString());
-        extraHeaders.forEach(requestBuilder::header);
-        HttpRequest request = requestBuilder
+        // setHeader, not header: these replace the defaults above rather than appending a second value
+        extraHeaders.forEach(requestBuilder::setHeader);
+        return requestBuilder
                 .POST(HttpRequest.BodyPublishers.ofString(stringPayload, StandardCharsets.UTF_8))
                 .build();
+    }
 
-        return execute(request, responseType);
+    /**
+     * Sends a request only to observe its status and headers, deliberately leaving the body unread.
+     * Discovery probes an MCP endpoint to draw out a 401 challenge, and the reply to a successful
+     * probe may be an SSE stream or a JSON-RPC error - neither is parseable as an OAuth payload, and
+     * neither says anything this client needs.
+     */
+    public void executeProbe(String url, Object requestPayload, String contentType, Map<String, String> extraHeaders) {
+        send(buildPost(url, requestPayload, contentType, extraHeaders));
     }
 
     @SneakyThrows
     private <R> R execute(HttpRequest request, Class<R> responseType) {
+        String body = send(request);
+        checkOauthError(body, request.uri());
+        return JsonMapperUtil.convertToObject(body, responseType);
+    }
+
+    @SneakyThrows
+    private String send(HttpRequest request) {
         try {
             HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
 
@@ -102,9 +122,7 @@ public class ResourceAuthorizationClient {
                 }
             }
 
-            checkOauthError(body, request.uri());
-
-            return JsonMapperUtil.convertToObject(body, responseType);
+            return body;
         } catch (ConnectException e) {
             if (hasUnresolvedAddressException(e)) {
                 throw new IllegalArgumentException(

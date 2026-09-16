@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.core5.http.ContentType;
 
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -36,6 +37,30 @@ import java.util.Set;
 public class ProtectedResourceMetadataService {
 
     private static final String WELL_KNOWN_SUFFIX = "oauth-protected-resource";
+
+    /**
+     * Streamable HTTP requires clients to accept both response shapes; a server that streams its
+     * replies rejects an {@code Accept: application/json} request outright, and a rejection is not
+     * the 401 challenge the pointer travels on.
+     */
+    private static final Map<String, String> MCP_PROBE_HEADERS =
+            Map.of("Accept", "application/json, text/event-stream");
+
+    /**
+     * A real {@code initialize} call, because the probe only yields a pointer if the server
+     * recognises it as an MCP request and answers with its 401 challenge rather than a protocol
+     * error. The negotiated version travels in the body: sending an {@code MCP-Protocol-Version}
+     * header here would instead force a 400 from any server that does not support that exact
+     * version, which is the failure this probe exists to avoid.
+     */
+    private static final Object MCP_INITIALIZE_PROBE = Map.of(
+            "jsonrpc", "2.0",
+            "id", 1,
+            "method", "initialize",
+            "params", Map.of(
+                    "protocolVersion", "2025-06-18",
+                    "capabilities", Map.of(),
+                    "clientInfo", Map.of("name", "DIAL", "version", "1.0")));
 
     private final ResourceAuthorizationClient resourceAuthorizationClient;
     private final ProtectedResourceMetadataValidator protectedResourceMetadataValidator;
@@ -108,7 +133,8 @@ public class ProtectedResourceMetadataService {
     private AuthorizationServerProtectedResourceMetadata tryFetchMetadataUsingHeader(String resourceEndpoint) {
         try {
             log.debug("Resolving Resource Metadata endpoint for resource: {}", resourceEndpoint);
-            resourceAuthorizationClient.executePost(resourceEndpoint, "{}", ContentType.APPLICATION_JSON.toString(), Object.class);
+            resourceAuthorizationClient.executeProbe(resourceEndpoint, MCP_INITIALIZE_PROBE,
+                    ContentType.APPLICATION_JSON.toString(), MCP_PROBE_HEADERS);
         } catch (HttpException e) {
             HttpStatus httpExceptionStatus = e.getStatus();
             if (httpExceptionStatus.equals(HttpStatus.UNAUTHORIZED)) {
