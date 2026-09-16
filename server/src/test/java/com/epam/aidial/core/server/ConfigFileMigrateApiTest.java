@@ -276,6 +276,7 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
         JsonNode settings = ProxyUtil.MAPPER.readTree(get.body());
         assertTrue(settings.get("globalInterceptors").isArray());
         assertTrue(settings.get("retriableErrorCodes").isArray());
+        assertEquals("UTC", settings.get("rateLimitSchedule").get("timezone").asText());
     }
 
     @Test

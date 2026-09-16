@@ -43,6 +43,7 @@ import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
+import com.epam.aidial.core.server.validation.ValidationUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
@@ -61,6 +62,7 @@ import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
@@ -1377,6 +1379,7 @@ public class ConfigResourceController implements Controller {
         ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
         body.set("globalInterceptors", ProxyUtil.MAPPER.valueToTree(config.getGlobalInterceptors()));
         body.set("retriableErrorCodes", ProxyUtil.MAPPER.valueToTree(config.getRetriableErrorCodes()));
+        body.set("rateLimitSchedule", ProxyUtil.MAPPER.valueToTree(config.getRateLimitSchedule()));
         body.put("name", SETTINGS_SINGLETON_NAME);
         body.put("status", "valid");
         context.respond(HttpStatus.OK, body);
@@ -1401,6 +1404,9 @@ public class ConfigResourceController implements Controller {
             // Deserialize through the typed GlobalSettings POJO so unknown fields are dropped and types
             // are validated; re-serialize so the blob is canonical (locked field set, no extras).
             GlobalSettings settings = ConfigEntityCodec.treeToEntity(requestNode, GlobalSettings.class);
+            // BLOB_MAPPER (unlike the file-config load path) does not run bean validation, so
+            // rateLimitSchedule's @ValidTimezone/@Pattern constraints need an explicit check here.
+            ValidationUtil.validate(settings.getRateLimitSchedule());
             String blobBody = ConfigEntityCodec.serializeForBlob(settings);
             String author = context.getUserDisplayName();
             return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
@@ -1886,6 +1892,8 @@ public class ConfigResourceController implements Controller {
             // ApplicationService/ToolSetService signal a missing entity via this unchecked exception
             // rather than HttpException (unlike the raw-blob path this controller otherwise uses).
             context.respond(HttpStatus.NOT_FOUND, notFound.getMessage());
+        } else if (error instanceof ConstraintViolationException constraintViolationException) {
+            context.respond(HttpStatus.BAD_REQUEST, constraintViolationException.getMessage());
         } else if (error instanceof IllegalArgumentException ex) {
             context.respond(HttpStatus.BAD_REQUEST, ex.getMessage());
         } else {

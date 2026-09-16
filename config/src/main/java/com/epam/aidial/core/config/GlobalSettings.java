@@ -11,4 +11,5 @@ import java.util.Set;
 public class GlobalSettings {
     private List<String> globalInterceptors = List.of();
     private Set<Integer> retriableErrorCodes = Set.of();
+    private RateLimitSchedule rateLimitSchedule = new RateLimitSchedule();
 }
