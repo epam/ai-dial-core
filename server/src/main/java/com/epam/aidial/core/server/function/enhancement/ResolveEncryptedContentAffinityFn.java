@@ -11,7 +11,7 @@ import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
 /**
  * Resolves the upstream config id encoded into an incoming Responses API request's echoed encrypted content
  * items (see {@link EncryptedContentAffinityUtil}), unwraps those items back to their provider-native shape,
- * and stores the resolved id via {@link RequestObject#setUpstreamConfigId(String)} so the controller can
+ * and stores the resolved id via {@link RequestObject#setEncryptedUpstreamId(String)} so the controller can
  * force routing back to the originating upstream.
  */
 public class ResolveEncryptedContentAffinityFn extends BaseRequestFunction<RequestObject> {
@@ -38,7 +38,7 @@ public class ResolveEncryptedContentAffinityFn extends BaseRequestFunction<Reque
         if (!exists) {
             throw EncryptedContentAffinityUtil.upstreamUnavailableException(resolvedUpstreamId);
         }
-        request.setUpstreamConfigId(resolvedUpstreamId);
+        request.setEncryptedUpstreamId(resolvedUpstreamId);
         return false;
     }
 }

@@ -45,23 +45,23 @@ public class EncryptedContentAffinityUtil {
      * Wraps both the {@code id} and {@code encrypted_content} fields of an output item in place. No-op if
      * the item is not an encrypted item.
      */
-    public void wrapOutputItem(JsonNode item, String upstreamConfigId) {
+    public void wrapOutputItem(JsonNode item, String encryptedUpstreamId) {
         if (!isEncryptedItem(item) || !(item instanceof ObjectNode object)) {
             return;
         }
         JsonNode idNode = object.path("id");
         if (idNode.isTextual()) {
-            object.put("id", wrapId(upstreamConfigId, idNode.asText()));
+            object.put("id", wrapId(encryptedUpstreamId, idNode.asText()));
         }
-        object.put("encrypted_content", wrapContent(upstreamConfigId, object.path("encrypted_content").asText()));
+        object.put("encrypted_content", wrapContent(encryptedUpstreamId, object.path("encrypted_content").asText()));
     }
 
-    public void wrapOutputArray(JsonNode output, String upstreamConfigId) {
+    public void wrapOutputArray(JsonNode output, String encryptedUpstreamId) {
         if (!(output instanceof ArrayNode array)) {
             return;
         }
         for (JsonNode item : array) {
-            wrapOutputItem(item, upstreamConfigId);
+            wrapOutputItem(item, encryptedUpstreamId);
         }
     }
 
@@ -105,13 +105,13 @@ public class EncryptedContentAffinityUtil {
         try {
             byte[] decoded = DECODER.decode(wrapped);
             JsonNode payload = ProxyUtil.MAPPER.readTree(decoded);
-            String upstreamConfigId = payload.path("u").asText(null);
+            String encryptedUpstreamId = payload.path("u").asText(null);
             String originalId = payload.path("o").asText(null);
-            if (upstreamConfigId == null || originalId == null) {
+            if (encryptedUpstreamId == null || originalId == null) {
                 return null;
             }
             object.put("id", originalId);
-            return upstreamConfigId;
+            return encryptedUpstreamId;
         } catch (Exception e) {
             // malformed/garbage wrapper - treat as not wrapped, pass through untouched
             return null;
@@ -132,9 +132,9 @@ public class EncryptedContentAffinityUtil {
         String encodedUpstreamId = wrapped.substring(0, separator);
         String originalContent = wrapped.substring(separator + 1);
         try {
-            String upstreamConfigId = new String(DECODER.decode(encodedUpstreamId), StandardCharsets.UTF_8);
+            String encryptedUpstreamId = new String(DECODER.decode(encodedUpstreamId), StandardCharsets.UTF_8);
             object.put("encrypted_content", originalContent);
-            return upstreamConfigId;
+            return encryptedUpstreamId;
         } catch (IllegalArgumentException e) {
             // malformed/garbage wrapper - treat as not wrapped, pass through untouched
             return null;
@@ -142,16 +142,16 @@ public class EncryptedContentAffinityUtil {
     }
 
     @SneakyThrows
-    private String wrapId(String upstreamConfigId, String originalId) {
+    private String wrapId(String encryptedUpstreamId, String originalId) {
         ObjectNode payload = ProxyUtil.MAPPER.createObjectNode();
-        payload.put("u", upstreamConfigId);
+        payload.put("u", encryptedUpstreamId);
         payload.put("o", originalId);
         return ID_WRAP_PREFIX + ENCODER.encodeToString(ProxyUtil.MAPPER.writeValueAsBytes(payload));
     }
 
-    private String wrapContent(String upstreamConfigId, String originalContent) {
+    private String wrapContent(String encryptedUpstreamId, String originalContent) {
         return CONTENT_WRAP_PREFIX
-                + ENCODER.encodeToString(upstreamConfigId.getBytes(StandardCharsets.UTF_8))
+                + ENCODER.encodeToString(encryptedUpstreamId.getBytes(StandardCharsets.UTF_8))
                 + ";" + originalContent;
     }
 
@@ -167,9 +167,9 @@ public class EncryptedContentAffinityUtil {
     }
 
     @SneakyThrows
-    public HttpException upstreamUnavailableException(String upstreamConfigId) {
+    public HttpException upstreamUnavailableException(String encryptedUpstreamId) {
         ErrorData response = new ErrorData();
-        String message = "Upstream '%s' referenced by encrypted content is no longer available.".formatted(upstreamConfigId);
+        String message = "Upstream '%s' referenced by encrypted content is no longer available.".formatted(encryptedUpstreamId);
         response.getError().setMessage(message);
         response.getError().setDisplayMessage(message);
         response.getError().setCode("encrypted_content_upstream_unavailable");

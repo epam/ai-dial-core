@@ -114,15 +114,15 @@ public interface RequestObject {
      * @return the upstream config id, or {@code null} if this request carries no such affinity
      */
     @Nullable
-    default String getUpstreamConfigId() {
+    default String getEncryptedUpstreamId() {
         return null;
     }
 
     /**
      * Sets the id of the upstream config this request must be routed back to.
      *
-     * @param upstreamConfigId the upstream config id to set
+     * @param encryptedUpstreamId the upstream config id to set
      */
-    default void setUpstreamConfigId(String upstreamConfigId) {
+    default void setEncryptedUpstreamId(String encryptedUpstreamId) {
     }
 }

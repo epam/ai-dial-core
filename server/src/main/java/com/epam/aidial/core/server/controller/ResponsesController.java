@@ -252,7 +252,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         Deployment deployment = context.getDeployment();
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
         if (upstreamId == null) {
-            upstreamId = request.getUpstreamConfigId();
+            upstreamId = request.getEncryptedUpstreamId();
         }
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
                 .get(deployment, context.getCacheBreakpointContext(),

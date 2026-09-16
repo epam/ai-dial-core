@@ -14,15 +14,15 @@ import io.vertx.core.Future;
  */
 public class EncryptedContentWrapFn extends BaseResponseFunction {
 
-    private final String explicitUpstreamConfigId;
+    private final String explicitEncryptedUpstreamId;
 
     public EncryptedContentWrapFn(Proxy proxy, ProxyContext context) {
         this(proxy, context, null);
     }
 
-    public EncryptedContentWrapFn(Proxy proxy, ProxyContext context, String explicitUpstreamConfigId) {
+    public EncryptedContentWrapFn(Proxy proxy, ProxyContext context, String explicitEncryptedUpstreamId) {
         super(proxy, context);
-        this.explicitUpstreamConfigId = explicitUpstreamConfigId;
+        this.explicitEncryptedUpstreamId = explicitEncryptedUpstreamId;
     }
 
     @Override
@@ -30,14 +30,14 @@ public class EncryptedContentWrapFn extends BaseResponseFunction {
         if (!EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
             return Future.succeededFuture(tree);
         }
-        String upstreamConfigId = explicitUpstreamConfigId != null
-                ? explicitUpstreamConfigId
+        String encryptedUpstreamId = explicitEncryptedUpstreamId != null
+                ? explicitEncryptedUpstreamId
                 : context.getUpstreamRoute().get().getId();
 
         if (tree.get("item") instanceof ObjectNode item && "response.output_item.done".equals(tree.path("type").asText())) {
-            EncryptedContentAffinityUtil.wrapOutputItem(item, upstreamConfigId);
+            EncryptedContentAffinityUtil.wrapOutputItem(item, encryptedUpstreamId);
         } else if (tree.get("response") instanceof ObjectNode response) {
-            EncryptedContentAffinityUtil.wrapOutputArray(response.path("output"), upstreamConfigId);
+            EncryptedContentAffinityUtil.wrapOutputArray(response.path("output"), encryptedUpstreamId);
         }
         return Future.succeededFuture(tree);
     }

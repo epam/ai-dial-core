@@ -23,7 +23,7 @@ public class ResponsesApiRequest implements RequestObject {
     private final ObjectNode tree;
 
     @Nullable
-    private String upstreamConfigId;
+    private String encryptedUpstreamId;
 
     @Override
     public String getModel() {
@@ -112,13 +112,13 @@ public class ResponsesApiRequest implements RequestObject {
 
     @Nullable
     @Override
-    public String getUpstreamConfigId() {
-        return upstreamConfigId;
+    public String getEncryptedUpstreamId() {
+        return encryptedUpstreamId;
     }
 
     @Override
-    public void setUpstreamConfigId(String upstreamConfigId) {
-        this.upstreamConfigId = upstreamConfigId;
+    public void setEncryptedUpstreamId(String encryptedUpstreamId) {
+        this.encryptedUpstreamId = encryptedUpstreamId;
     }
 
     /**
