@@ -236,8 +236,7 @@ public class ResponseItemController implements Controller {
 
     private Future<Void> sendResponse(HttpClientResponse proxyResponse, Buffer body) {
         if (operation == Operation.GET) {
-            // the single non-streaming exit: the body here is final, so the response id is DIAL's own
-            GenAiTraceAttributes.setFetchResponseAttributes(context, body);
+            GenAiTraceAttributes.setFetchResponseAttributes(context, body, dialResponseId);
         }
         HttpServerResponse serverResponse = context.getResponse();
         serverResponse.setStatusCode(proxyResponse.statusCode());
@@ -290,7 +289,8 @@ public class ResponseItemController implements Controller {
                 .to(response)
                 .onSuccess(ignored -> {
                     if (operation == Operation.GET) {
-                        GenAiTraceAttributes.setFetchResponseAttributes(context, responseStream.getContent());
+                        // the buffered bytes are the raw upstream frames, so the id has to come from us
+                        GenAiTraceAttributes.setFetchResponseAttributes(context, responseStream.getContent(), dialResponseId);
                     }
                     responseStream.end(response);
                 })

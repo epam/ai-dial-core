@@ -22,6 +22,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.IntStream;
 
 import static io.opentelemetry.api.common.AttributeKey.longKey;
 import static io.opentelemetry.api.common.AttributeKey.stringKey;
@@ -274,9 +276,7 @@ class GenAiTraceAttributesTest {
     @Test
     void setResponseAttributesReportsFailedStatusOnErrorResponse() {
         ProxyContext context = context(proxy(enabledConfig()));
-        HttpClientResponse proxyResponse = mock(HttpClientResponse.class);
-        when(proxyResponse.statusCode()).thenReturn(500);
-        context.setProxyResponse(proxyResponse);
+        when(context.getResponse().getStatusCode()).thenReturn(500);
         Buffer body = Buffer.buffer("{\"error\":{\"message\":\"upstream is down\"}}");
 
         GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
@@ -286,14 +286,106 @@ class GenAiTraceAttributesTest {
     }
 
     @Test
+    void setResponseAttributesReportsTheClientStatusNotTheUpstreamOne() {
+        ProxyContext context = context(proxy(enabledConfig()));
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class);
+        when(proxyResponse.statusCode()).thenReturn(200);
+        context.setProxyResponse(proxyResponse);
+        // DIAL rewrote the status after a 200 upstream
+        when(context.getResponse().getStatusCode()).thenReturn(502);
+
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
+                Buffer.buffer("{\"id\":\"chat-1\"}"));
+
+        assertEquals("failed", context.getTracingAttributes().get("gen_ai.response.status"));
+    }
+
+    @Test
+    void setResponseAttributesReportsFailedWhenNoUpstreamWasReached() {
+        ProxyContext context = context(proxy(enabledConfig()));
+        when(context.getResponse().getStatusCode()).thenReturn(429);
+
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
+                Buffer.buffer("{}"));
+
+        assertEquals("failed", context.getTracingAttributes().get("gen_ai.response.status"));
+    }
+
+    @Test
+    void setResponseAttributesClampsOversizedCallerControlledText() {
+        ProxyContext context = context(proxy(enabledConfig()));
+
+        GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
+                (ObjectNode) ProxyUtil.MAPPER.valueToTree(Map.of("model", "m".repeat(1000))));
+
+        assertEquals("m".repeat(256), context.getTracingAttributes().get("gen_ai.request.model"));
+    }
+
+    @Test
+    void setRequestAttributesCapsUnboundedStopSequences() {
+        ProxyContext context = context(proxy(enabledConfig()));
+        List<String> stop = IntStream.range(0, 100).mapToObj(Integer::toString).toList();
+
+        GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
+                (ObjectNode) ProxyUtil.MAPPER.valueToTree(Map.of("stop", stop)));
+
+        assertEquals(32, ((List<?>) context.getTracingAttributes().get("gen_ai.request.stop_sequences")).size());
+    }
+
+    @Test
+    void setResponseAttributesSurvivesTerminalResponsesEventWithoutResponseObject() {
+        ProxyContext context = streamingContext();
+        Buffer body = Buffer.buffer("""
+                event: response.failed
+                data: {"type":"response.failed","error":{"message":"boom"}}
+                """);
+
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body);
+
+        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.id"));
+        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
+    }
+
+    @Test
+    void setResponseAttributesSurvivesAnthropicMessageStartWithoutMessage() {
+        ProxyContext context = streamingContext();
+        Buffer body = Buffer.buffer("""
+                event: message_start
+                data: {"type":"message_start"}
+
+                event: message_delta
+                data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}
+                """);
+
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.ANTHROPIC_MESSAGES, body);
+
+        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.id"));
+        assertEquals(List.of("end_turn"), context.getTracingAttributes().get("gen_ai.response.finish_reasons"));
+    }
+
+    @Test
     void setFetchResponseAttributesUsesFetchOperation() {
         ProxyContext context = context(proxy(enabledConfig()));
         Buffer body = Buffer.buffer("{\"id\":\"resp-1\",\"model\":\"gpt-4\",\"status\":\"completed\"}");
 
-        GenAiTraceAttributes.setFetchResponseAttributes(context, body);
+        GenAiTraceAttributes.setFetchResponseAttributes(context, body, "resp-1");
 
         assertEquals("fetch_response", context.getTracingAttributes().get("gen_ai.operation.name"));
         assertEquals("resp-1", context.getTracingAttributes().get("gen_ai.response.id"));
+    }
+
+    @Test
+    void setFetchResponseAttributesPublishesDialResponseIdNotTheUpstreamOne() {
+        ProxyContext context = streamingContext();
+        // the buffered bytes are the raw upstream frames, before ReplaceResponseIdFn rewrote the id
+        Buffer body = Buffer.buffer("""
+                event: response.completed
+                data: {"type":"response.completed","response":{"id":"upstream-1","model":"gpt-4"}}
+                """);
+
+        GenAiTraceAttributes.setFetchResponseAttributes(context, body, "dial-1");
+
+        assertEquals("dial-1", context.getTracingAttributes().get("gen_ai.response.id"));
     }
 
     @Test
@@ -330,8 +422,11 @@ class GenAiTraceAttributesTest {
     private static ProxyContext context(Proxy proxy, HttpServerRequest request) {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(new Key());
-        return new ProxyContext(proxy, request, apiKeyData, null,
+        ProxyContext context = new ProxyContext(proxy, request, apiKeyData, null,
                 "11111111111111111111111111111111", "3333333333333333", "01");
+        // gen_ai.response.status is derived from the status the client sees
+        when(context.getResponse().getStatusCode()).thenReturn(200);
+        return context;
     }
 
     private static ProxyContext context(Proxy proxy) {

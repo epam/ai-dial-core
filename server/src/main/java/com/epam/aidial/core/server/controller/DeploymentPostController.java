@@ -523,7 +523,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
         String assembledStreamingResponse = null;
         if (isEventStreamResponse(context.getProxyResponse())) {
-            assembledStreamingResponse = AnalyticsLogContext.assembleStreamingChatCompletionsResponse(context.getResponseBody());
+            assembledStreamingResponse = context.assembledStreamingResponse(context.getResponseBody());
         }
         finishAndLog(assembledStreamingResponse);
     }

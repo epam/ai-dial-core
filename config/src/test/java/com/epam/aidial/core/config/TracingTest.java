@@ -1,9 +1,13 @@
 package com.epam.aidial.core.config;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
+import java.util.Arrays;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -21,5 +25,33 @@ class TracingTest {
                 "x-session-id",
                 "x-dial-client-channel-id",
                 "X-CONVERSATION-ID")));
+    }
+
+    @Test
+    void explicitNullHeaderListMeansNoCorrelation() {
+        Tracing tracing = new Tracing();
+
+        tracing.setConversationIdHeaders(null);
+
+        assertEquals(List.of(), tracing.getConversationIdHeaders());
+    }
+
+    @Test
+    void nullAndBlankHeaderNamesAreDropped() {
+        Tracing tracing = new Tracing();
+
+        tracing.setConversationIdHeaders(Arrays.asList("thread-id", null, "  ", " x-session-id "));
+
+        assertEquals(List.of("thread-id", "x-session-id"), tracing.getConversationIdHeaders());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"authorization", "Authorization", "api-key", "x-api-key", "cookie", "proxy-authorization"})
+    void credentialHeaderNamesAreNeverPublishable(String header) {
+        Tracing tracing = new Tracing();
+
+        tracing.setConversationIdHeaders(List.of(header, "thread-id"));
+
+        assertEquals(List.of("thread-id"), tracing.getConversationIdHeaders());
     }
 }

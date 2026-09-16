@@ -173,8 +173,13 @@ public class BaseDeploymentPostController {
 
     protected Future<Void> collectTokenUsage(Buffer responseBody) {
         if (GenAiTraceAttributes.isEnabled(context)) {
-            // interfaceType() reads the request path, which not every deployment kind reaching here has
-            GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseBody);
+            try {
+                // interfaceType() reads the request path, which not every deployment kind reaching here has,
+                // and this runs before the client response is completed - tracing must not fail the request
+                GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseBody);
+            } catch (Throwable e) {
+                log.warn("Failed to set GenAI response trace attributes", e);
+            }
         }
         if (context.getDeployment() instanceof Model model) {
             if (context.getResponse().getStatusCode() != HttpStatus.OK.getCode()) {

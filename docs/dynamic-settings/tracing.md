@@ -17,7 +17,11 @@ payloads, API keys, arbitrary headers, or upstream provider names.
 * `conversationIdHeaders`: Request headers, in priority order, that may carry a conversation or
   session id. The first non-blank one present is published as `gen_ai.conversation.id`. Matching is
   case-insensitive and values are trimmed; a value longer than 256 characters is ignored rather than
-  truncated.
+  truncated. Blank entries and the known credential headers (`authorization`,
+  `proxy-authorization`, `cookie`, `set-cookie`, `api-key`, `api_key`, `x-api-key`, `x-auth-token`,
+  `x-amz-security-token`) are rejected with a warning rather than published, so naming one cannot
+  put a credential on the span. An explicit `null` means no correlation, and one bad entry never
+  fails the config reload.
 
 To suppress individual attributes, drop them in the OpenTelemetry Collector (an `attributes` or
 `transform` processor) rather than in Core.
@@ -54,11 +58,18 @@ present — a missing value is omitted, never written as `null` or `""`.
 | `dial.api`                              | `openai_chat_completions`, `anthropic_messages`, `openai_responses`, `openai_embeddings`                                                                   |
 | `gen_ai.provider.name`                  | Always `dial` — the upstream provider is never published                                                                                                  |
 | `gen_ai.request.*`                      | `model`, `stream`, `max_tokens`, `temperature`, `top_p`, `stop_sequences`, `choice.count`, `frequency_penalty`, `presence_penalty`, `seed`, `reasoning.level`, `previous_response.id`, `encoding_formats` |
-| `gen_ai.response.*`                     | `id`, `model`, `finish_reasons`, `status`                                                                                                                  |
+| `gen_ai.response.*`                     | `id` (always the id the client sees — for Responses that is DIAL's own, not the upstream's), `model`, `finish_reasons`, `status` (from the body, else derived from the status the client receives) |
 | `gen_ai.usage.*`                        | `input_tokens`, `output_tokens`, `cache_read.input_tokens`, `cache_write.input_tokens`, `reasoning.output_tokens`                                          |
 | `dial.usage.total_tokens`               | Core's own total, not the upstream's                                                                                                                      |
 | `gen_ai.conversation.id`                | Resolved from `conversationIdHeaders`; set regardless of the API surface                                                                                  |
 | `dial.request.parent_span.id`           | Parent span id of a valid incoming W3C `traceparent`. The header itself is still not forwarded upstream                                                   |
+
+String attribute values are capped at 256 characters and list attributes at 32 elements, since model
+names, response ids and stop sequences are caller- or upstream-controlled and every attribute is
+replayed onto each log record of the request.
+
+Enrichment can never fail a request: it runs on the critical path, before the client response is
+completed, so a failure is logged and the response proceeds without the attributes.
 
 Which request attributes apply depends on the API surface: `stop_sequences`, `choice.count`,
 `frequency_penalty`, `presence_penalty` and `seed` come from Chat Completions,

@@ -3,7 +3,9 @@ package com.epam.aidial.core.server.tracing;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.sse.SseEvent;
+import com.epam.aidial.core.server.sse.SseEventListener;
+import com.epam.aidial.core.server.sse.SseParser;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -16,6 +18,7 @@ import io.opentelemetry.api.trace.Span;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
 import java.nio.charset.StandardCharsets;
@@ -30,25 +33,31 @@ import static io.opentelemetry.api.common.AttributeKey.longKey;
 import static io.opentelemetry.api.common.AttributeKey.stringArrayKey;
 import static io.opentelemetry.api.common.AttributeKey.stringKey;
 
+@Slf4j
 public final class GenAiTraceAttributes {
     private static final Pattern TRACEPARENT_PATTERN = Pattern.compile(
             "00-(?!0{32})([0-9a-f]{32})-(?!0{16})([0-9a-f]{16})-([0-9a-f]{2})");
     private static final String CONVERSATION_ID_ATTRIBUTE = "gen_ai.conversation.id";
     private static final String PARENT_SPAN_ATTRIBUTE = "dial.request.parent_span.id";
     private static final int MAX_ATTRIBUTE_LENGTH = 256;
+    private static final int MAX_ATTRIBUTE_VALUES = 32;
+    private static final int SSE_LINE_BUFFER_SIZE = 1024;
 
     private GenAiTraceAttributes() {
     }
 
     public static void initialize(ProxyContext context) {
-        set(context, stringKey(CONVERSATION_ID_ATTRIBUTE), resolveConversationId(context));
-        set(context, stringKey(PARENT_SPAN_ATTRIBUTE), parseParentSpanId(context));
+        enrich(context, () -> {
+            set(context, stringKey(CONVERSATION_ID_ATTRIBUTE), resolveConversationId(context));
+            set(context, stringKey(PARENT_SPAN_ATTRIBUTE), parseParentSpanId(context));
+        });
     }
 
     public static void setRequestAttributes(ProxyContext context, InterfaceType type, ObjectNode request) {
-        if (!isEnabled(context)) {
-            return;
-        }
+        enrich(context, () -> collectRequestAttributes(context, type, request));
+    }
+
+    private static void collectRequestAttributes(ProxyContext context, InterfaceType type, ObjectNode request) {
         setOperationAttributes(context, type, operationName(type));
         set(context, stringKey("gen_ai.request.model"), text(request.get("model")));
         set(context, booleanKey("gen_ai.request.stream"), booleanValue(request.get("stream")));
@@ -82,37 +91,48 @@ public final class GenAiTraceAttributes {
                 set(context, doubleKey("gen_ai.request.top_p"), doubleValue(request.get("top_p")));
                 set(context, stringArrayKey("gen_ai.request.stop_sequences"), stringList(request.get("stop_sequences")));
             }
-            default -> throw new IllegalArgumentException("Unsupported interface type: " + type);
+            default -> {
+                // a future interface type gets the common attributes only, never a failed request
+            }
         }
     }
 
     public static void setResponseAttributes(ProxyContext context, InterfaceType type, Buffer responseBody) {
-        if (!isEnabled(context)) {
-            return;
-        }
-        setOperationAttributes(context, type, operationName(type));
-        setResponseAttributes(context, type, responseTree(context, type, responseBody));
+        enrich(context, () -> {
+            setOperationAttributes(context, type, operationName(type));
+            setResponseAttributes(context, type, responseTree(context, type, responseBody), null);
+        });
     }
 
-    private static void setResponseAttributes(ProxyContext context, InterfaceType type, JsonNode response) {
-        set(context, stringKey("gen_ai.response.id"), text(response.get("id")));
+    /**
+     * @param responseId overrides the body's own id when the caller knows the client-facing id; null keeps the body's.
+     */
+    private static void setResponseAttributes(ProxyContext context, InterfaceType type, JsonNode response, String responseId) {
+        set(context, stringKey("gen_ai.response.id"), responseId == null ? text(response.get("id")) : clamp(responseId));
         set(context, stringKey("gen_ai.response.model"), text(response.get("model")));
         set(context, stringArrayKey("gen_ai.response.finish_reasons"), finishReasons(response, type));
         set(context, stringKey("gen_ai.response.status"), responseStatus(context, response));
     }
 
-    public static void setFetchResponseAttributes(ProxyContext context, Buffer responseBody) {
-        if (!isEnabled(context)) {
-            return;
-        }
-        setOperationAttributes(context, InterfaceType.OPENAI_RESPONSES, "fetch_response");
-        JsonNode response = responseTree(context, InterfaceType.OPENAI_RESPONSES, responseBody);
-        setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, response);
-        setUsageAttributes(context, tokenUsage(response.get("usage")));
+    /**
+     * @param responseId DIAL's own response id. A streamed body is buffered before {@code ReplaceResponseIdFn}
+     *                   rewrites it, so the buffered bytes still carry the upstream id.
+     */
+    public static void setFetchResponseAttributes(ProxyContext context, Buffer responseBody, String responseId) {
+        enrich(context, () -> {
+            setOperationAttributes(context, InterfaceType.OPENAI_RESPONSES, "fetch_response");
+            JsonNode response = responseTree(context, InterfaceType.OPENAI_RESPONSES, responseBody);
+            setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, response, responseId);
+            collectUsageAttributes(context, tokenUsage(response.get("usage")));
+        });
     }
 
     public static void setUsageAttributes(ProxyContext context, TokenUsage usage) {
-        if (usage == null || usage.isEmpty() || !isEnabled(context)) {
+        enrich(context, () -> collectUsageAttributes(context, usage));
+    }
+
+    private static void collectUsageAttributes(ProxyContext context, TokenUsage usage) {
+        if (usage == null || usage.isEmpty()) {
             return;
         }
         set(context, longKey("gen_ai.usage.input_tokens"), usage.getPromptTokens());
@@ -152,6 +172,9 @@ public final class GenAiTraceAttributes {
         List<String> result = new ArrayList<>();
         if (type == InterfaceType.OPENAI_CHAT_COMPLETIONS) {
             for (JsonNode choice : response.path("choices")) {
+                if (result.size() >= MAX_ATTRIBUTE_VALUES) {
+                    break;
+                }
                 addText(result, choice.get("finish_reason"));
             }
         } else if (type == InterfaceType.ANTHROPIC_MESSAGES) {
@@ -167,8 +190,9 @@ public final class GenAiTraceAttributes {
         if (status != null) {
             return status;
         }
-        HttpClientResponse proxyResponse = context.getProxyResponse();
-        int statusCode = proxyResponse == null ? 200 : proxyResponse.statusCode();
+        // the client-facing status, as everywhere else on this path: DIAL may rewrite a 200 upstream,
+        // and a request short-circuited before any upstream call must not read as a success
+        int statusCode = context.getResponse().getStatusCode();
         return statusCode < 200 || statusCode >= 300 ? "failed" : "completed";
     }
 
@@ -177,8 +201,8 @@ public final class GenAiTraceAttributes {
             return JsonUtil.tryParse(responseBody.getBytes());
         }
         return switch (type) {
-            case OPENAI_CHAT_COMPLETIONS -> JsonUtil.tryParse(AnalyticsLogContext
-                    .assembleStreamingChatCompletionsResponse(responseBody)
+            // shared with the analytics log, which assembles the same body once per streamed request
+            case OPENAI_CHAT_COMPLETIONS -> JsonUtil.tryParse(context.assembledStreamingResponse(responseBody)
                     .getBytes(StandardCharsets.UTF_8));
             case OPENAI_RESPONSES -> responsesEvent(responseBody);
             case ANTHROPIC_MESSAGES -> anthropicResponse(responseBody);
@@ -187,12 +211,12 @@ public final class GenAiTraceAttributes {
     }
 
     private static JsonNode responsesEvent(Buffer responseBody) {
-        for (String data : sseData(responseBody)) {
-            JsonNode event = JsonUtil.tryParse(data.getBytes(StandardCharsets.UTF_8));
+        for (JsonNode event : sseEvents(responseBody)) {
             String type = text(event.get("type"));
             if ("response.completed".equals(type) || "response.incomplete".equals(type)
                     || "response.failed".equals(type) || "response.cancelled".equals(type)) {
-                return event.get("response");
+                // path, not get: a truncated or error-only terminal frame carries no response object
+                return event.path("response");
             }
         }
         return ProxyUtil.MAPPER.createObjectNode();
@@ -200,11 +224,11 @@ public final class GenAiTraceAttributes {
 
     private static JsonNode anthropicResponse(Buffer responseBody) {
         ObjectNode result = ProxyUtil.MAPPER.createObjectNode();
-        for (String data : sseData(responseBody)) {
-            JsonNode event = JsonUtil.tryParse(data.getBytes(StandardCharsets.UTF_8));
+        for (JsonNode event : sseEvents(responseBody)) {
             String type = text(event.get("type"));
             if ("message_start".equals(type)) {
-                JsonNode message = event.get("message");
+                // path, not get: a truncated frame carries no message object
+                JsonNode message = event.path("message");
                 result.set("id", message.get("id"));
                 result.set("model", message.get("model"));
             } else if ("message_delta".equals(type)) {
@@ -214,13 +238,32 @@ public final class GenAiTraceAttributes {
         return result;
     }
 
-    private static List<String> sseData(Buffer responseBody) {
-        List<String> result = new ArrayList<>();
-        for (String data : responseBody.toString().split("(?m)^data: *")) {
-            String value = data.trim();
-            if (!value.isEmpty() && !"[DONE]".equals(value)) {
-                result.add(value);
+    private static List<JsonNode> sseEvents(Buffer responseBody) {
+        List<JsonNode> result = new ArrayList<>();
+        SseParser parser = new SseParser(SSE_LINE_BUFFER_SIZE, new SseEventListener() {
+            @Override
+            public void onEvent(SseEvent event) {
+                String data = event.getData();
+                if (data != null && !data.isBlank() && !"[DONE]".equals(data.trim())) {
+                    result.add(JsonUtil.tryParse(data.getBytes(StandardCharsets.UTF_8)));
+                }
             }
+
+            @Override
+            public void onComment(String comment) {
+                // not an event
+            }
+
+            @Override
+            public void onComplete() {
+                // nothing to flush
+            }
+        });
+        try {
+            parser.parse(responseBody);
+            parser.finish();
+        } finally {
+            parser.close();
         }
         return result;
     }
@@ -232,10 +275,7 @@ public final class GenAiTraceAttributes {
     }
 
     private static String resolveConversationId(ProxyContext context) {
-        if (!isEnabled(context)) {
-            return null;
-        }
-        // List.copyOf in the setter already rejects null header names, and getAll("") is empty
+        // the setter drops null, blank and credential header names
         for (String header : context.getConfig().getTracing().getConversationIdHeaders()) {
             String value = context.getRequest().headers().get(header);
             if (value != null && !value.isBlank()) {
@@ -268,8 +308,23 @@ public final class GenAiTraceAttributes {
         return config != null && config.getTracing().isGenAiSpanAttributes();
     }
 
+    /**
+     * Opt-in observability runs on the critical path - {@code collectTokenUsage} is called synchronously
+     * before the client response is completed - so a tracing failure must never fail a request.
+     */
+    private static void enrich(ProxyContext context, Runnable enrichment) {
+        if (!isEnabled(context)) {
+            return;
+        }
+        try {
+            enrichment.run();
+        } catch (Throwable e) {
+            log.warn("Failed to set GenAI trace attributes", e);
+        }
+    }
+
     private static <T> void set(ProxyContext context, AttributeKey<T> key, T value) {
-        if (value == null || !isEnabled(context)) {
+        if (value == null) {
             return;
         }
         context.getTracingAttributes().put(key.getKey(), value);
@@ -295,6 +350,9 @@ public final class GenAiTraceAttributes {
         List<String> values = new ArrayList<>();
         if (node != null && node.isArray()) {
             for (JsonNode item : node) {
+                if (values.size() >= MAX_ATTRIBUTE_VALUES) {
+                    break;
+                }
                 addText(values, item);
             }
         } else {
@@ -315,7 +373,15 @@ public final class GenAiTraceAttributes {
 
     private static String text(JsonNode node) {
         String value = node == null || !node.isTextual() ? null : node.asText();
-        return value == null || value.isBlank() ? null : value;
+        return value == null || value.isBlank() ? null : clamp(value);
+    }
+
+    /**
+     * Model names, response ids and stop sequences are caller- or upstream-controlled and unbounded,
+     * and every attribute is replayed onto each log record of the request.
+     */
+    private static String clamp(String value) {
+        return value.length() <= MAX_ATTRIBUTE_LENGTH ? value : value.substring(0, MAX_ATTRIBUTE_LENGTH);
     }
 
     private static void addText(List<String> values, JsonNode node) {
