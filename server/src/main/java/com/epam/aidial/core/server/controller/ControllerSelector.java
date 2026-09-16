@@ -665,17 +665,7 @@ public class ControllerSelector {
         // FILES/RESOURCE routes (see ResourceDescriptorFactory.fromAnyUrl) and the {@code path}
         // contract on ResourceDescriptorFactory.fromDecoded ("url decoded relative path").
         String path = UrlUtil.decodePath(pathMatcher.group("path"));
-        ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
-        MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
-        return new ConfigResourceController(context, authService, mergedConfigStore,
-                proxy.getResourceService(), proxy.getTaskExecutor(),
-                mergedConfigStore.getSecretFieldProcessor(),
-                mergedConfigStore.isSoftValidation(),
-                proxy.getApiKeyStore(),
-                proxy.getLockService(),
-                proxy.getApplicationService(),
-                proxy.getToolSetService(),
-                entityType, bucket, path);
+        return new ConfigResourceController(proxy, context, entityType, bucket, path);
     }
 
     private static Controller configResourceMetadataController(Proxy proxy, ProxyContext context, Matcher pathMatcher) {
