@@ -24,6 +24,7 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.InvalidEntityRecord;
+import com.epam.aidial.core.server.config.KeyValidator;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.config.ValidationWarning;
@@ -1809,24 +1810,27 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * Rejects a key write whose secret is already used by a different key entity in the live
-     * merged Config — ApiKeyStore indexes keys by plaintext secret, so a duplicate would silently
-     * collapse the two entities' auth, roles and project attribution. Skipped when the request
-     * omits the secret (preserve-on-omit) or re-supplies the entity's own current secret.
+     * Rejects a key write whose secret is already used by a different key entity — ApiKeyStore
+     * indexes keys by plaintext secret, so a duplicate would collapse the two entities' auth.
+     *
+     * <p>The {@code requestNode.hasNonNull("key")} guard is load-bearing: on an omitted-key
+     * update, {@code keyEntity.getKey()} still holds ciphertext (merged from the raw blob before
+     * decryption) while {@code oldSecret} is plaintext, so without this guard every unrelated-field
+     * update would look like a secret change.
      */
     private void rejectDuplicateKeySecret(Key keyEntity, String oldSecret, JsonNode requestNode,
                                           ResourceDescriptor descriptor) {
-        if (!requestNode.hasNonNull("key") || keyEntity.getKey().equals(oldSecret)) {
+        if (!requestNode.hasNonNull("key")) {
             return;
         }
         Config snapshot = mergedConfigStore.get();
         if (snapshot == null) {
             return;
         }
-        if (ConfigPostProcessor.isKeySecretTakenByAnotherKey(snapshot,
-                MergedConfigStore.resolveMapKeyFor(descriptor), keyEntity)) {
-            throw new HttpException(HttpStatus.CONFLICT,
-                    "Key secret is already used by a different key entity");
+        String error = KeyValidator.validateSecretNotTaken(snapshot,
+                MergedConfigStore.resolveMapKeyFor(descriptor), keyEntity, oldSecret);
+        if (error != null) {
+            throw new HttpException(HttpStatus.CONFLICT, error);
         }
     }
 
@@ -1837,10 +1841,10 @@ public class ConfigResourceController implements Controller {
     }
 
     private static void validateKeyForApiWrite(Key key) {
-        if (StringUtils.isBlank(key.getKey())) {
-            throw new HttpException(HttpStatus.BAD_REQUEST, "Key.key must be provided explicitly on PUT");
+        String error = KeyValidator.validateRequiredFields(key);
+        if (error != null) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, error);
         }
-        validateProjectKey(key);
     }
 
     /**
@@ -1874,17 +1878,6 @@ public class ConfigResourceController implements Controller {
         };
     }
 
-    private static void validateProjectKey(Key key) {
-        // Mirrors ApiKeyStore#validateProjectKey (private there); duplicated to translate
-        // IllegalArgumentException into HttpException without widening visibility upstream.
-        if (StringUtils.isBlank(key.getProject())) {
-            throw new HttpException(HttpStatus.BAD_REQUEST, "Project key is undefined");
-        }
-        if (StringUtils.isBlank(key.getRole()) && (key.getRoles() == null || key.getRoles().isEmpty())) {
-            throw new HttpException(HttpStatus.BAD_REQUEST,
-                    "Invalid key: at least one role must be assigned to the key " + key.getProject());
-        }
-    }
 
     private static JsonNode parseJsonBody(Buffer body) {
         String text = body == null ? "" : body.toString(StandardCharsets.UTF_8);

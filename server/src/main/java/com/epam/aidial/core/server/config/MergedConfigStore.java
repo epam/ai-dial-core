@@ -394,7 +394,7 @@ public final class MergedConfigStore implements ConfigStore {
                         apiKeyStore.removeKey(oldSecret);
                     }
                     if (snapshot != null
-                            && ConfigPostProcessor.isKeySecretTakenByAnotherKey(snapshot, mapKey, key)) {
+                            && KeyValidator.isKeySecretChangedAndTakenByAnotherKey(snapshot, mapKey, key, oldSecret)) {
                         log.warn("Replica key event carries a secret already used by a different key entity: {}",
                                 descriptor.getUrl());
                     }
