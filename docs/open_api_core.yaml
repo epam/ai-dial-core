@@ -17424,6 +17424,8 @@ components:
       properties:
         upstreamConfigId:
           type: string
+        encryptedUpstreamId:
+          type: string
     ReviewConsentResponse:
       type: object
       properties:
