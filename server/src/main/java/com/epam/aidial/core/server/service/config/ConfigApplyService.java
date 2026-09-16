@@ -206,8 +206,11 @@ public class ConfigApplyService {
                 return new EntityResult(id, AdminApplyStatus.FAILED, dupError);
             }
         }
+        secretFieldProcessor.encryptFields(entity, descriptor);
         String blobBody = ConfigEntityCodec.serializeForBlob(entity);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+        // Slice 4S.4: decrypt-in-place so partial-update receives plaintext upstream secrets.
+        secretFieldProcessor.decryptFields(entity, descriptor);
         pending.add(new EntityChange(type, MergedConfigStore.resolveMapKeyFor(descriptor), entity));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
