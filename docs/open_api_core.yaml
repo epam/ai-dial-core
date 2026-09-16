@@ -17421,6 +17421,9 @@ components:
       additionalProperties: true
     ResponsesApiRequest:
       type: object
+      properties:
+        upstreamConfigId:
+          type: string
     ReviewConsentResponse:
       type: object
       properties:
