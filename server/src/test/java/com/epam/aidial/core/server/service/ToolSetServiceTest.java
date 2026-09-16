@@ -1,17 +1,11 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.AuthenticationType;
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
-import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
-import com.epam.aidial.core.server.Proxy;
-import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -28,9 +22,7 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.Set;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -38,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -53,16 +46,71 @@ class ToolSetServiceTest {
     @Mock
     private ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
     @Mock
-    private EncryptionService encryptionService;
-    @Mock
-    private ProxyContext context;
-    @Mock
-    private Proxy proxy;
-    @Mock
     private CatalogSchemaService catalogSchemaService;
 
     @InjectMocks
     private ToolSetService toolSetService;
+
+    private static ToolSet toolSetWithSecret(AuthenticationType type) {
+        ToolSet toolSet = new ToolSet();
+        toolSet.setAuthSettings(ResourceAuthSettings.builder()
+                .authenticationType(type)
+                .clientSecret("cipher-text")
+                .codeVerifier("code-verifier")
+                .build());
+        return toolSet;
+    }
+
+    private static ResourceDescriptor resourceDescriptor() {
+        ResourceDescriptor resource = mock(ResourceDescriptor.class);
+        when(resource.getUrl()).thenReturn("url");
+        when(resource.getBucketName()).thenReturn("bucket");
+        when(resource.getBucketLocation()).thenReturn("location");
+        return resource;
+    }
+
+    // A blob of any type can carry a clientSecret — written before the per-type validators existed, or
+    // hand-seeded. The hint path decrypts it, so anything short of unconditional redaction returns plaintext.
+    @Test
+    void testRedactAuthSettingsStripsSecretOfNonOauthToolSet() {
+        ToolSet toolSet = toolSetWithSecret(AuthenticationType.API_KEY);
+        ResourceDescriptor resource = resourceDescriptor();
+        doAnswer(invocation -> {
+            invocation.getArgument(2, ResourceAuthSettings.class).setClientSecret("plaintext-secret");
+            return null;
+        }).when(resourceAuthSettingsEncryptionService).decrypt(any(), any(), any());
+
+        toolSetService.redactAuthSettings(resource, toolSet, true);
+
+        assertNull(toolSet.getAuthSettings().getClientSecret());
+        assertNull(toolSet.getAuthSettings().getCodeVerifier());
+        assertEquals("cret", toolSet.getAuthSettings().getClientSecretHint());
+    }
+
+    @Test
+    void testRedactAuthSettingsWithoutManageAccessNeitherDecryptsNorHints() {
+        ToolSet toolSet = toolSetWithSecret(AuthenticationType.OAUTH);
+        ResourceDescriptor resource = mock(ResourceDescriptor.class);
+
+        toolSetService.redactAuthSettings(resource, toolSet, false);
+
+        assertNull(toolSet.getAuthSettings().getClientSecret());
+        assertNull(toolSet.getAuthSettings().getClientSecretHint());
+        verifyNoInteractions(resourceAuthSettingsEncryptionService);
+    }
+
+    @Test
+    void testRedactAuthSettingsOmitsHintWhenSecretCannotBeDecrypted() {
+        ToolSet toolSet = toolSetWithSecret(AuthenticationType.OAUTH);
+        ResourceDescriptor resource = resourceDescriptor();
+        doThrow(new RuntimeException("boom"))
+                .when(resourceAuthSettingsEncryptionService).decrypt(any(), any(), any());
+
+        toolSetService.redactAuthSettings(resource, toolSet, true);
+
+        assertNull(toolSet.getAuthSettings().getClientSecret());
+        assertNull(toolSet.getAuthSettings().getClientSecretHint());
+    }
 
     @Test
     void testPutToolSet_ShouldEncryptAuthSettings() {
@@ -152,78 +200,6 @@ class ToolSetServiceTest {
         assertEquals("ENCRYPTED_CLIENT_SECRET", actualToolSet.getAuthSettings().getClientSecret());
 
         proxyUtil.close();
-    }
-
-    @Test
-    void testSetResourceAuthStatuses() {
-        // Given
-        String toolSetId = "toolsets/test-toolset";
-        ToolSet toolSet = createToolSet();
-        toolSet.setName(toolSetId);
-
-        ResourceAuthSettings resourceAuthSettings = ResourceAuthSettings.builder()
-                .authenticationType(AuthenticationType.OAUTH)
-                .clientId("clientId")
-                .clientSecret("clientSecret")
-                .build();
-
-        toolSet.setAuthSettings(resourceAuthSettings);
-
-        when(context.getProxy()).thenReturn(proxy);
-        when(proxy.getEncryptionService()).thenReturn(encryptionService);
-        when(context.getConfig()).thenReturn(mock(Config.class));
-        when(context.getApiKeyData()).thenReturn(mock(ApiKeyData.class));
-        when(context.getUserId()).thenReturn("user-123");
-        when(encryptionService.encrypt("Users/user-123/")).thenReturn("encrypted-user-123");
-
-        // When
-        toolSetService.setResourceAuthStatuses(context, toolSet, toolSetId);
-
-        // Then
-        assertNotNull(toolSet.getAuthSettings().getClientId());
-        assertEquals("clientSecret", toolSet.getAuthSettings().getClientSecret());
-
-        ArgumentCaptor<CredentialsLocator> credentialsLocatorCaptor = ArgumentCaptor.forClass(CredentialsLocator.class);
-        verify(resourceAuthSettingsService).setResourceAuthStatuses(credentialsLocatorCaptor.capture(), any(), any());
-        CredentialsLocator credentialsLocator = credentialsLocatorCaptor.getValue();
-        assertEquals(toolSetId, credentialsLocator.getResourceId());
-        assertEquals(2, credentialsLocator.getBuckets().size());
-        Set<String> bucketNames = credentialsLocator.getBuckets().values().stream()
-                .map(BucketInfo::name)
-                .collect(Collectors.toSet());
-        assertEquals(Set.of("public", "encrypted-user-123"), bucketNames);
-    }
-
-    @Test
-    void testSetResourceAuthStatuses_doesNotMutateClientSecret() {
-        // Given
-        String toolSetId = "toolsets/test-toolset";
-        ToolSet toolSet = createToolSet();
-        toolSet.setName(toolSetId);
-
-        ResourceAuthSettings resourceAuthSettings = ResourceAuthSettings.builder()
-                .authenticationType(AuthenticationType.OAUTH)
-                .clientId("clientId")
-                .clientSecret("clientSecret")
-                .codeVerifier("codeVerifier")
-                .build();
-
-        toolSet.setAuthSettings(resourceAuthSettings);
-
-        when(context.getProxy()).thenReturn(proxy);
-        when(proxy.getEncryptionService()).thenReturn(encryptionService);
-        when(context.getConfig()).thenReturn(mock(Config.class));
-        when(context.getApiKeyData()).thenReturn(mock(ApiKeyData.class));
-        when(context.getUserId()).thenReturn("user-123");
-        when(encryptionService.encrypt("Users/user-123/")).thenReturn("encrypted-user-123");
-
-        // When - call setResourceAuthStatuses multiple times (simulating multiple API requests)
-        toolSetService.setResourceAuthStatuses(context, toolSet, toolSetId);
-        toolSetService.setResourceAuthStatuses(context, toolSet, toolSetId);
-
-        // Then - clientSecret and codeVerifier must be preserved after multiple calls
-        assertEquals("clientSecret", toolSet.getAuthSettings().getClientSecret());
-        assertEquals("codeVerifier", toolSet.getAuthSettings().getCodeVerifier());
     }
 
     private static ToolSet createToolSet() {

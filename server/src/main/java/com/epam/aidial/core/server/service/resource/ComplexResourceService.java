@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
+import com.epam.aidial.core.storage.data.ComplexResourceItemMetadata;
 import com.epam.aidial.core.storage.data.FileMetadata;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.NodeType;
@@ -487,6 +488,15 @@ public class ComplexResourceService {
     }
 
     /**
+     * Checks whether the given complex resource (e.g. a {@code SKILL}) exists, i.e. has an
+     * active {@code .dial-resource} marker. Complex resources have no blob at their bare URL
+     * key, so this must be used instead of a plain blob/Redis existence check.
+     */
+    public boolean hasResource(ResourceDescriptor resource) {
+        return getMarker(resource) != null;
+    }
+
+    /**
      * Resolves the {@code .dial-resource} marker for a whole-resource GET. Returns {@code null} if the path
      * is absent or in the {@code deleting} state (→ 404), or throws {@code 400} if the path is a DIAL folder
      * (clients must use the metadata listing for folders).
@@ -546,6 +556,38 @@ public class ComplexResourceService {
     }
 
     /**
+     * Resolves metadata for the v2 metadata route's target path. If the path is itself an active DIAL
+     * resource (a skill), returns its metadata as a single {@code ITEM}; otherwise treats it as a grouping
+     * level and lists its children via {@link #listChildren}.
+     */
+    public MetadataBase getMetadata(ResourceDescriptor resource, String token, int limit, boolean recursive) {
+        FolderResourceMarker marker = getMarker(resource);
+        if (marker != null) {
+            return itemMetadata(resource, marker);
+        }
+        return listChildren(asFolder(resource), token, limit, recursive);
+    }
+
+    // The v2 metadata route's target path may be requested without a trailing slash regardless of
+    // whether it names an item or a grouping folder, since the caller can't know which it is in advance.
+    // Once getMarker rules out an item, the resource must be folder-shaped for listChildren.
+    private static ResourceDescriptor asFolder(ResourceDescriptor resource) {
+        return resource.isFolder() ? resource
+                : new ResourceDescriptor(resource.getType(), resource.getName(), resource.getParentFolders(),
+                        resource.getBucketName(), resource.getBucketLocation(), true);
+    }
+
+    private static ResourceItemMetadata itemMetadata(ResourceDescriptor resource, FolderResourceMarker marker) {
+        ComplexResourceItemMetadata metadata = new ComplexResourceItemMetadata(resource);
+        metadata.setCreatedAt(marker.getCreatedAt());
+        metadata.setUpdatedAt(marker.getUpdatedAt());
+        metadata.setEtag(marker.getEtag());
+        metadata.setAuthor(marker.getAuthor());
+        metadata.setAttributes(marker.getMetadata());
+        return metadata;
+    }
+
+    /**
      * Lists DIAL resources and grouping folders at a grouping level. A node is classified by the presence
      * of its marker file ({@code .dial-resource} → {@code ITEM}, {@code .dial-folder} → {@code FOLDER}).
      * A {@code .dial-resource} marker is additionally read to exclude a tombstoned ({@code deleting})
@@ -589,10 +631,12 @@ public class ComplexResourceService {
             }
             // A folder marker has no tombstone lifecycle, but a resource marker does: its file can still
             // exist in a `deleting` state until the sweep reclaims it, so presence alone isn't enough.
-            if (nodeType == NodeType.ITEM && !isActive(readMarker(item.getDescriptor(), false))) {
+            FolderResourceMarker itemMarker = nodeType == NodeType.ITEM ? readMarker(item.getDescriptor(), false) : null;
+            if (nodeType == NodeType.ITEM && !isActive(itemMarker)) {
                 continue;
             }
-            items.add(nodeMetadata(item.getDescriptor().getParent(), nodeType, (ResourceItemMetadata) item));
+            items.add(nodeMetadata(item.getDescriptor().getParent(), nodeType, (ResourceItemMetadata) item,
+                    itemMarker == null ? null : itemMarker.getMetadata()));
         }
         return new ResourceFolderMetadata(groupingFolder, items, raw.getNextToken());
     }
@@ -620,7 +664,12 @@ public class ComplexResourceService {
         for (MetadataBase item : raw.getItems()) {
             boolean folder = item.getNodeType() == NodeType.FOLDER;
             String relativePath = versionFolder.getRelativePath(item.getDescriptor());
-            ResourceItemMetadata file = new ResourceItemMetadata(displayFileDescriptor(resource, relativePath, folder));
+            ResourceDescriptor descriptor = displayFileDescriptor(resource, relativePath, folder);
+            if (folder) {
+                items.add(new ResourceFolderMetadata(descriptor));
+                continue;
+            }
+            ResourceItemMetadata file = new ResourceItemMetadata(descriptor);
             if (item instanceof ResourceItemMetadata source) {
                 file.setEtag(source.getEtag());
                 file.setCreatedAt(source.getCreatedAt());
@@ -713,13 +762,17 @@ public class ComplexResourceService {
     }
 
     /**
-     * Builds a listing item for a DIAL node from its marker's listing metadata (timestamps/author), without
-     * reading the marker file content. The {@code nodeType} ({@code ITEM} for a resource, {@code FOLDER} for a
-     * grouping folder) already conveys the kind. The aggregate etag is not included: it lives inside the marker
-     * and is available via a whole-resource GET.
+     * Builds a listing item for a DIAL node from its marker's listing metadata (timestamps/author) and,
+     * for an {@code ITEM}, its manifest-derived attributes (e.g. a skill's name/description/version).
+     * The {@code nodeType} ({@code ITEM} for a resource, {@code FOLDER} for a grouping folder) already
+     * conveys the kind. The aggregate etag is not included: it lives inside the marker and is available
+     * via a whole-resource GET.
      */
-    private static ResourceItemMetadata nodeMetadata(ResourceDescriptor node, NodeType nodeType, ResourceItemMetadata marker) {
-        ResourceItemMetadata metadata = new ResourceItemMetadata(node);
+    private static ResourceItemMetadata nodeMetadata(ResourceDescriptor node, NodeType nodeType, ResourceItemMetadata marker,
+            @Nullable Map<String, Object> attributes) {
+        ResourceItemMetadata metadata = attributes == null
+                ? new ResourceItemMetadata(node)
+                : new ComplexResourceItemMetadata(node).setAttributes(attributes);
         metadata.setNodeType(nodeType);
         metadata.setCreatedAt(marker.getCreatedAt());
         metadata.setUpdatedAt(marker.getUpdatedAt());
@@ -948,7 +1001,7 @@ public class ComplexResourceService {
 
     private String readAggregateEtag(ResourceDescriptor marker) {
         FolderResourceMarker document = readMarker(marker, false);
-        return document == null ? null : document.getEtag();
+        return isActive(document) ? document.getEtag() : null;
     }
 
     private FolderResourceMarker readMarker(ResourceDescriptor marker, boolean lock) {

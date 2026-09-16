@@ -29,12 +29,38 @@ class ApiKeyAuthSettingsValidatorTest {
                 ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES));
     }
 
+    @Test
+    void testValidateCreate_BlankForbiddenFieldsAreTreatedAsNotProvided() {
+        assertDoesNotThrow(() -> validator.validate(
+                ResourceAuthSettings.builder()
+                        .authenticationType(AuthenticationType.API_KEY)
+                        .apiKeyHeader("Api-Key")
+                        .clientId("")
+                        .clientSecret("  ")
+                        .redirectUri("")
+                        .scopesSupported(List.of())
+                        .build(),
+                ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES));
+    }
+
     static Stream<Arguments> provideInvalidResourceAuthSettingsForUpdate() {
         return Stream.of(
                 // Invalid API_KEY cases
                 Arguments.of(ResourceAuthSettings.builder()
                                 .authenticationType(AuthenticationType.API_KEY)
                                 .apiKeyHeader(null)
+                                .build(),
+                        "Field 'API_KEY_HEADER' is required for API_KEY authentication."),
+
+                Arguments.of(ResourceAuthSettings.builder()
+                                .authenticationType(AuthenticationType.API_KEY)
+                                .apiKeyHeader("")
+                                .build(),
+                        "Field 'API_KEY_HEADER' is required for API_KEY authentication."),
+
+                Arguments.of(ResourceAuthSettings.builder()
+                                .authenticationType(AuthenticationType.API_KEY)
+                                .apiKeyHeader("   ")
                                 .build(),
                         "Field 'API_KEY_HEADER' is required for API_KEY authentication."),
 

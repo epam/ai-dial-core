@@ -57,11 +57,12 @@ public class ExternalServiceService {
             application.setExternalServices(existing == null ? new LinkedHashMap<>() : existing.getExternalServices());
             return List.of();
         }
-        validate(application, existing);
-        clearAuthStatuses(application);
+        // Decrypt first: validation exempts a secret handed back unchanged, which it can only see in plaintext.
         if (existing != null) {
             decryptSecrets(resource, existing);
         }
+        validate(application, existing);
+        clearAuthStatuses(application);
         preserveOmittedSecrets(application, existing);
         encryptSecrets(resource, application);
         return findPurgeableServiceIds(application, existing);
@@ -119,9 +120,14 @@ public class ExternalServiceService {
         return new CredentialsLocator(resourceId, buckets);
     }
 
+    /**
+     * Writes the definition and returns it as persisted, {@code clientSecret} in plaintext — the caller must
+     * redact it before it leaves the process.
+     */
     public ExternalService putExternalService(ResourceDescriptor resource, String serviceId, ExternalService service, String author) {
         verifyApplication(resource);
         MutableBoolean typeChanged = new MutableBoolean(false);
+        PersistedSecret persisted = new PersistedSecret();
         resourceService.computeResource(resource, EtagHeader.ANY, author, json -> {
             Application app = ProxyUtil.convertToObject(json, Application.class);
             if (app == null) {
@@ -132,7 +138,7 @@ public class ExternalServiceService {
                 app.setExternalServices(new LinkedHashMap<>());
             }
             ExternalService existing = app.getExternalServices().get(serviceId);
-            validateOne(serviceId, service, existing == null);
+            ExternalServiceValidation.validate(serviceId, service, existing == null, existing);
             clearAuthStatuses(service);
             typeChanged.setValue(authTypeChanged(existing, service));
             if (existing != null && !typeChanged.booleanValue() && existing.getAuthSettings() != null
@@ -141,9 +147,11 @@ public class ExternalServiceService {
                 service.getAuthSettings().setClientSecret(existing.getAuthSettings().getClientSecret());
             }
             app.getExternalServices().put(serviceId, service);
+            persisted.capture(service);
             encryptSecrets(resource, app);
             return ProxyUtil.convertToString(app);
         });
+        persisted.restoreOn(service);
         // After commit, like the application write path: the old-type record must not survive under the new type.
         if (typeChanged.booleanValue()) {
             purgeApplicationCredentials(resource, List.of(serviceId));
@@ -173,6 +181,36 @@ public class ExternalServiceService {
         processSecrets(resource, application, false);
     }
 
+    /**
+     * Decrypts in place for a read that wants the {@code clientSecretHint}. A secret that fails to decrypt
+     * (legacy plaintext, rotated key) is dropped rather than left as ciphertext, so it yields no hint while
+     * the read still succeeds and every other service keeps its own.
+     */
+    public void decryptSecretsForResponse(ResourceDescriptor resource, Application application) {
+        eachServiceWithSecret(resource, application,
+                (serviceId, authSettings, bucketInfo) -> decryptForResponse(resource, serviceId, authSettings, bucketInfo));
+    }
+
+    /** As {@link #decryptSecretsForResponse}, for a read that serves a single service. */
+    public void decryptSecretForResponse(ResourceDescriptor resource, String serviceId, ExternalService service) {
+        if (!hasSecret(service)) {
+            return;
+        }
+        decryptForResponse(resource, serviceId, service.getAuthSettings(),
+                new BucketInfo(resource.getBucketName(), resource.getBucketLocation()));
+    }
+
+    private void decryptForResponse(ResourceDescriptor resource, String serviceId,
+                                    ResourceAuthSettings authSettings, BucketInfo bucketInfo) {
+        try {
+            encryptionService.decrypt(secretAad(resource, serviceId), bucketInfo, authSettings);
+        } catch (RuntimeException e) {
+            log.warn("Can't decrypt secret of external service '{}' on {}, omitting its client secret hint: {}",
+                    serviceId, resource.getUrl(), e.getMessage());
+            authSettings.setClientSecret(null);
+        }
+    }
+
     private void validate(Application application, Application existing) {
         Map<String, ExternalService> services = application.getExternalServices();
         if (services == null || services.isEmpty()) {
@@ -181,15 +219,23 @@ public class ExternalServiceService {
         Map<String, ExternalService> existingServices = existing == null || existing.getExternalServices() == null
                 ? Map.of() : existing.getExternalServices();
         for (Map.Entry<String, ExternalService> entry : services.entrySet()) {
-            validateOne(entry.getKey(), entry.getValue(), !existingServices.containsKey(entry.getKey()));
+            ExternalServiceValidation.validate(entry.getKey(), entry.getValue(),
+                    !existingServices.containsKey(entry.getKey()), existingServices.get(entry.getKey()));
         }
     }
 
-    private void validateOne(String serviceId, ExternalService service, boolean isCreate) {
-        ExternalServiceValidation.validate(serviceId, service, isCreate);
+    private void processSecrets(ResourceDescriptor resource, Application application, boolean encrypt) {
+        eachServiceWithSecret(resource, application, (serviceId, authSettings, bucketInfo) -> {
+            String aad = secretAad(resource, serviceId);
+            if (encrypt) {
+                encryptionService.encrypt(aad, bucketInfo, authSettings);
+            } else {
+                encryptionService.decrypt(aad, bucketInfo, authSettings);
+            }
+        });
     }
 
-    private void processSecrets(ResourceDescriptor resource, Application application, boolean encrypt) {
+    private void eachServiceWithSecret(ResourceDescriptor resource, Application application, SecretAction action) {
         Map<String, ExternalService> services = application.getExternalServices();
         if (services == null || services.isEmpty()) {
             return;
@@ -197,16 +243,21 @@ public class ExternalServiceService {
         BucketInfo bucketInfo = new BucketInfo(resource.getBucketName(), resource.getBucketLocation());
         for (Map.Entry<String, ExternalService> entry : services.entrySet()) {
             ExternalService service = entry.getValue();
-            if (service == null || service.getAuthSettings() == null || service.getAuthSettings().getClientSecret() == null) {
+            if (!hasSecret(service)) {
                 continue;
             }
-            String aad = secretAad(resource, entry.getKey());
-            if (encrypt) {
-                encryptionService.encrypt(aad, bucketInfo, service.getAuthSettings());
-            } else {
-                encryptionService.decrypt(aad, bucketInfo, service.getAuthSettings());
-            }
+            action.apply(entry.getKey(), service.getAuthSettings(), bucketInfo);
         }
+    }
+
+    private static boolean hasSecret(ExternalService service) {
+        return service != null && service.getAuthSettings() != null
+                && service.getAuthSettings().getClientSecret() != null;
+    }
+
+    @FunctionalInterface
+    private interface SecretAction {
+        void apply(String serviceId, ResourceAuthSettings authSettings, BucketInfo bucketInfo);
     }
 
     // AAD binds each secret to its owning application resource and external-service id.
@@ -244,9 +295,7 @@ public class ExternalServiceService {
     private static void clearAuthStatuses(ExternalService service) {
         ResourceAuthSettings authSettings = service == null ? null : service.getAuthSettings();
         if (authSettings != null) {
-            authSettings.setUserLevelAuthStatus(null);
-            authSettings.setAppLevelAuthStatus(null);
-            authSettings.setGlobalAuthStatus(null);
+            authSettings.clearComputedFields();
         }
     }
 

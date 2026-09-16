@@ -95,7 +95,7 @@ public class MessagesController extends MessagesBaseController {
 
     @Override
     protected Future<Void> verifyLimit() {
-        return proxy.getRateLimiter().limit(context, context.getDeployment())
+        return checkLimits(context.getDeployment())
                 .map(rateLimit -> {
                     rateLimit.throwIfError();
                     return null;
@@ -177,5 +177,10 @@ public class MessagesController extends MessagesBaseController {
             return context.getTokenUsage();
         }
         return MessagesTokenUsageParser.parse(responseBody);
+    }
+
+    @Override
+    protected InterfaceType interfaceType() {
+        return InterfaceType.ANTHROPIC_MESSAGES;
     }
 }

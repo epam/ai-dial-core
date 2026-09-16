@@ -63,7 +63,7 @@ public class ConfigResourceConditionalHeaderTest extends ResourceBaseTest {
         Response stale = send(HttpMethod.GET, "/v1/models/platform/cond-stale", null, "",
                 "authorization", "admin", "If-None-Match", "\"stale-etag\"");
         verify(stale, 200);
-        assertTrue(stale.body().contains("\"name\":\"models/platform/cond-stale\""),
+        assertTrue(stale.body().contains("\"name\":\"cond-stale\""),
                 () -> "Expected full body on stale If-None-Match: " + stale.body());
     }
 

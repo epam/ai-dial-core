@@ -40,6 +40,7 @@ public class FeaturesData {
     private boolean maxTokensSupported = true;
     private boolean maxCompletionTokensSupported = false;
     private boolean customTemperatureSupported = true;
+    private boolean skillsSupported = false;
     private List<String> reasoningEfforts = List.of();
 
     /**
@@ -49,7 +50,16 @@ public class FeaturesData {
      */
     @JsonIgnore
     public static FeaturesData createDeploymentFeatures(Deployment deployment) {
-        FeaturesData data = createFeatures(deployment.getFeatures());
+        return createDeploymentFeatures(deployment, deployment.getFeatures());
+    }
+
+    @JsonIgnore
+    public static FeaturesData createDeploymentFeatures(Deployment deployment, InterfaceType type) {
+        return createDeploymentFeatures(deployment, deployment.resolveFeatures(type));
+    }
+
+    private static FeaturesData createDeploymentFeatures(Deployment deployment, Features features) {
+        FeaturesData data = createFeatures(features);
         data.setChatCompletion(DeploymentEndpointUtil.isInterfaceDeclared(deployment, InterfaceType.OPENAI_CHAT_COMPLETIONS));
         data.setResponsesApi(DeploymentEndpointUtil.isInterfaceDeclared(deployment, InterfaceType.OPENAI_RESPONSES));
         return data;
@@ -130,6 +140,10 @@ public class FeaturesData {
 
         if (features.getCustomTemperatureSupported() != null) {
             data.setCustomTemperatureSupported(features.getCustomTemperatureSupported());
+        }
+
+        if (features.getSkillsSupported() != null) {
+            data.setSkillsSupported(features.getSkillsSupported());
         }
 
         if (features.getReasoningEfforts() != null && !features.getReasoningEfforts().isEmpty()) {

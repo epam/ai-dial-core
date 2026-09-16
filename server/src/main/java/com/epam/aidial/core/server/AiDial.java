@@ -45,7 +45,9 @@ import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
+import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
@@ -76,6 +78,8 @@ import com.epam.aidial.core.server.service.VertxTimerService;
 import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.service.clientchannel.ClientChannelService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
+import com.epam.aidial.core.server.service.config.ConfigApplyService;
+import com.epam.aidial.core.server.service.config.ConfigValidationService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceSweepService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
@@ -255,7 +259,18 @@ public class AiDial {
             mergedConfigStore.init(fileConfigStore);
             ConfigStore configStore = mergedConfigStore;
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
-            ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(resourceService, configStore, encryptionService, httpProxySelector);
+
+            // Hoisted ahead of ApplicationSchemaService construction: SKILL resource existence
+            // checks in ApplicationSchemaService.getApplicationResources need ComplexResourceService
+            // (skills are complex/versioned resources, not single-blob resources). storage and
+            // lockService are already available above, so hoisting this construction earlier is safe.
+            ComplexResourceService.Settings complexResourceSettings = Json.decodeValue(
+                    settings("complexResource").toBuffer(), ComplexResourceService.Settings.class);
+            ComplexResourceService complexResourceService = new ComplexResourceService(
+                    resourceService, lockService, storage, complexResourceSettings);
+
+            ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(
+                    resourceService, configStore, complexResourceService, encryptionService, httpProxySelector);
             CatalogSchemaService catalogSchemaService = new CatalogSchemaService(resourceService, configStore, encryptionService);
 
             ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
@@ -283,9 +298,17 @@ public class AiDial {
             RuleService ruleService = new RuleService(resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
-            RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService);
+            RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService, configStore);
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,
                     accessService, encryptionService, operatorService, generator, settings("codeInterpreter"));
+
+            ConfigAuthorizationService configAuthService = new AdminRoleAuthorizationService(accessService);
+
+            ConfigApplyService configApplyService = new ConfigApplyService(
+                    mergedConfigStore, resourceService, secretFieldProcessor, mergedConfigStore.isSoftValidation(),
+                    apiKeyStore, applicationService, toolSetService);
+            ConfigValidationService configValidationService = new ConfigValidationService(
+                    resourceService, mergedConfigStore.isSoftValidation());
 
             TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, resourceService);
 
@@ -294,11 +317,6 @@ public class AiDial {
 
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
-
-            ComplexResourceService.Settings complexResourceSettings = Json.decodeValue(
-                    settings("complexResource").toBuffer(), ComplexResourceService.Settings.class);
-            ComplexResourceService complexResourceService = new ComplexResourceService(
-                    resourceService, lockService, storage, complexResourceSettings);
 
             ResourceOperationService resourceOperationService = new ResourceOperationService(applicationService,
                     toolSetService, resourceService, invitationService, shareService, lockService, complexResourceService);
@@ -354,7 +372,8 @@ public class AiDial {
                     resourceAuthSettingsService, resourceCredentialsService,
                     perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
                     printAuthorizationHeader,
-                    responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator);
+                    responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
+                    configAuthService, configApplyService, configValidationService);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

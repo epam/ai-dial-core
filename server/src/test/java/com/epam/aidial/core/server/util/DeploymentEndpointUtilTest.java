@@ -3,8 +3,12 @@ package com.epam.aidial.core.server.util;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
+import com.epam.aidial.core.config.InterfaceMode;
+import com.epam.aidial.core.config.InterfacePathMapping;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
+import com.epam.aidial.core.config.Translator;
+import com.epam.aidial.core.config.TranslatorRef;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -13,8 +17,11 @@ import static com.epam.aidial.core.config.InterfaceType.ANTHROPIC_MESSAGES;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_CHAT_COMPLETIONS;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_EMBEDDINGS;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_RESPONSES;
+import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.hasRoutingInterface;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.isInterfaceDeclared;
+import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveMode;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveRequestUri;
+import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveResponseItemUri;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveResponsesBaseUri;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveServingEndpoint;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -24,15 +31,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class DeploymentEndpointUtilTest {
 
+    private static final Map<String, Translator> NO_TRANSLATORS = Map.of();
+
     @Test
     void legacyOnlyChatCompletions() {
         Model model = new Model();
         model.setEndpoint("http://host/chat/completions");
 
-        assertEquals("http://host/chat/completions", resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS));
+        assertEquals("http://host/chat/completions", resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
         assertTrue(isInterfaceDeclared(model, OPENAI_CHAT_COMPLETIONS));
 
-        assertNull(resolveServingEndpoint(model, OPENAI_RESPONSES));
+        assertNull(resolveServingEndpoint(model, OPENAI_RESPONSES, NO_TRANSLATORS));
         assertFalse(isInterfaceDeclared(model, OPENAI_RESPONSES));
     }
 
@@ -41,7 +50,7 @@ public class DeploymentEndpointUtilTest {
         Model model = new Model();
         model.setResponsesEndpoint("http://host/openai/v1/responses");
 
-        assertEquals("http://host/openai/v1/responses", resolveServingEndpoint(model, OPENAI_RESPONSES));
+        assertEquals("http://host/openai/v1/responses", resolveServingEndpoint(model, OPENAI_RESPONSES, NO_TRANSLATORS));
         assertTrue(isInterfaceDeclared(model, OPENAI_RESPONSES));
         assertFalse(isInterfaceDeclared(model, OPENAI_CHAT_COMPLETIONS));
     }
@@ -52,8 +61,137 @@ public class DeploymentEndpointUtilTest {
         model.setInterfaces(Map.of(
                 OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://adapter:5000/")));
 
-        assertEquals("http://adapter:5000", resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS));
+        assertEquals("http://adapter:5000", resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
         assertTrue(isInterfaceDeclared(model, OPENAI_CHAT_COMPLETIONS));
+    }
+
+    @Test
+    void interfacesFallBackToTheDeploymentBaseUrl() {
+        Model model = new Model();
+        model.setBaseUrl("http://adapter:5000/");
+        model.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface(),
+                OPENAI_RESPONSES.getValue(), new DeploymentInterface()));
+
+        assertEquals("http://adapter:5000", resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
+        assertEquals("http://adapter:5000", resolveServingEndpoint(model, OPENAI_RESPONSES, NO_TRANSLATORS));
+        assertTrue(isInterfaceDeclared(model, OPENAI_CHAT_COMPLETIONS));
+        assertTrue(isInterfaceDeclared(model, OPENAI_RESPONSES));
+    }
+
+    @Test
+    void interfaceBaseUrlOverridesTheDeploymentOne() {
+        Model model = new Model();
+        model.setBaseUrl("http://openai-adapter");
+        model.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface(),
+                ANTHROPIC_MESSAGES.getValue(), new DeploymentInterface("http://bedrock-adapter/")));
+
+        assertEquals("http://openai-adapter", resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
+        assertEquals("http://bedrock-adapter", resolveServingEndpoint(model, ANTHROPIC_MESSAGES, NO_TRANSLATORS));
+    }
+
+    @Test
+    void deploymentBaseUrlServesOnlyDeclaredInterfaces() {
+        Model model = new Model();
+        model.setBaseUrl("http://adapter");
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), new DeploymentInterface()));
+
+        // interfaces is the whitelist; a base url alone declares nothing
+        assertNull(resolveServingEndpoint(model, OPENAI_RESPONSES, NO_TRANSLATORS));
+        assertFalse(isInterfaceDeclared(model, OPENAI_RESPONSES));
+        // an undeclared type still reads the legacy field, which the base url never stands in for
+        assertEquals("http://legacy/chat/completions", resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
+    }
+
+    @Test
+    void interfaceWithoutAnyBaseUrlIsNotServed() {
+        Model model = new Model();
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), new DeploymentInterface()));
+
+        assertNull(resolveServingEndpoint(model, ANTHROPIC_MESSAGES, NO_TRANSLATORS));
+        assertFalse(isInterfaceDeclared(model, ANTHROPIC_MESSAGES));
+    }
+
+    @Test
+    void translatedInterfaceIsServedByItsTranslator() {
+        Model model = new Model();
+        model.setName("gpt-5.5");
+        model.setBaseUrl("http://openai-service");
+        model.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface(),
+                ANTHROPIC_MESSAGES.getValue(), translated(TranslatorRef.inline(
+                        new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://translator/to-chat-completions/")))));
+
+        // the deployment base url serves the pass-through interface, the translator serves the translated one
+        assertEquals("http://openai-service", resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
+        assertEquals("http://translator/to-chat-completions", resolveServingEndpoint(model, ANTHROPIC_MESSAGES, NO_TRANSLATORS));
+        assertTrue(isInterfaceDeclared(model, ANTHROPIC_MESSAGES));
+        assertEquals("http://translator/to-chat-completions/anthropic/v1/messages",
+                resolveRequestUri(model, ANTHROPIC_MESSAGES, NO_TRANSLATORS, "/anthropic/v1/messages", null));
+    }
+
+    @Test
+    void translatedInterfaceIsServedByNoBaseUrl() {
+        // mode alone decides, so what a request is routed to and what it is charged for cannot disagree
+        Model model = new Model();
+        model.setBaseUrl("http://openai-service");
+        DeploymentInterface anthropic = translated(TranslatorRef.inline(
+                new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://translator")));
+        anthropic.setBaseUrl("http://ignored");
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), anthropic));
+
+        assertEquals("http://translator", resolveServingEndpoint(model, ANTHROPIC_MESSAGES, NO_TRANSLATORS));
+    }
+
+    @Test
+    void namedTranslatorServesTheInterfaceOnceRegistered() {
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(),
+                translated(TranslatorRef.named("anthropicMessagesToOpenaiChatCompletions"))));
+
+        // the reference alone declares the interface; whether the name resolves is a serving-time
+        // question, so a name with no registry entry is advertised and serves nothing — callers answer 503
+        assertTrue(isInterfaceDeclared(model, ANTHROPIC_MESSAGES));
+        assertNull(resolveServingEndpoint(model, ANTHROPIC_MESSAGES, NO_TRANSLATORS));
+
+        // registering the entry serves the interface, with nothing relinked on the model
+        Map<String, Translator> translators = Map.of("anthropicMessagesToOpenaiChatCompletions",
+                new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://translator"));
+        assertEquals("http://translator", resolveServingEndpoint(model, ANTHROPIC_MESSAGES, translators));
+
+        // and an edit to the entry is what the next request reads, never a copy frozen into the model
+        Map<String, Translator> edited = Map.of("anthropicMessagesToOpenaiChatCompletions",
+                new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://translator-v2"));
+        assertEquals("http://translator-v2", resolveServingEndpoint(model, ANTHROPIC_MESSAGES, edited));
+    }
+
+    @Test
+    void translatedInterfaceDoesNotFallBackToTheLegacyEndpoint() {
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), translated(TranslatorRef.named("missing"))));
+
+        assertNull(resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
+    }
+
+    @Test
+    void modeDefaultsToPassthrough() {
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        DeploymentInterface translated = new DeploymentInterface("http://translator");
+        translated.setMode(InterfaceMode.TRANSLATOR);
+        model.setInterfaces(Map.of(
+                OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://adapter"),
+                ANTHROPIC_MESSAGES.getValue(), translated));
+
+        assertEquals(InterfaceMode.TRANSLATOR, resolveMode(model, ANTHROPIC_MESSAGES));
+        // declared without a mode, and served by the legacy endpoint, are both pass-through
+        assertEquals(InterfaceMode.PASSTHROUGH, resolveMode(model, OPENAI_RESPONSES));
+        assertEquals(InterfaceMode.PASSTHROUGH, resolveMode(model, OPENAI_CHAT_COMPLETIONS));
     }
 
     @Test
@@ -63,17 +201,17 @@ public class DeploymentEndpointUtilTest {
         model.setInterfaces(Map.of(
                 OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://adapter")));
 
-        assertEquals("http://adapter", resolveServingEndpoint(model, OPENAI_RESPONSES));
+        assertEquals("http://adapter", resolveServingEndpoint(model, OPENAI_RESPONSES, NO_TRANSLATORS));
     }
 
     @Test
     void neitherDeclared() {
         Model model = new Model();
 
-        assertNull(resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS));
-        assertNull(resolveServingEndpoint(model, OPENAI_RESPONSES));
-        assertNull(resolveServingEndpoint(model, OPENAI_EMBEDDINGS));
-        assertNull(resolveServingEndpoint(model, ANTHROPIC_MESSAGES));
+        assertNull(resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
+        assertNull(resolveServingEndpoint(model, OPENAI_RESPONSES, NO_TRANSLATORS));
+        assertNull(resolveServingEndpoint(model, OPENAI_EMBEDDINGS, NO_TRANSLATORS));
+        assertNull(resolveServingEndpoint(model, ANTHROPIC_MESSAGES, NO_TRANSLATORS));
         assertFalse(isInterfaceDeclared(model, OPENAI_CHAT_COMPLETIONS));
     }
 
@@ -84,11 +222,11 @@ public class DeploymentEndpointUtilTest {
         model.setInterfaces(Map.of(
                 OPENAI_EMBEDDINGS.getValue(), new DeploymentInterface("http://adapter:5000/")));
 
-        assertEquals("http://adapter:5000", resolveServingEndpoint(model, OPENAI_EMBEDDINGS));
+        assertEquals("http://adapter:5000", resolveServingEndpoint(model, OPENAI_EMBEDDINGS, NO_TRANSLATORS));
         assertTrue(isInterfaceDeclared(model, OPENAI_EMBEDDINGS));
 
         // declaring embeddings alone does not make it a chat-completions deployment
-        assertNull(resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS));
+        assertNull(resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
     }
 
     @Test
@@ -98,7 +236,7 @@ public class DeploymentEndpointUtilTest {
                 OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://adapter:5000")));
 
         // the typed map is strict: a chat-only declaration does not serve /embeddings
-        assertNull(resolveServingEndpoint(model, OPENAI_EMBEDDINGS));
+        assertNull(resolveServingEndpoint(model, OPENAI_EMBEDDINGS, NO_TRANSLATORS));
         assertFalse(isInterfaceDeclared(model, OPENAI_EMBEDDINGS));
     }
 
@@ -108,11 +246,11 @@ public class DeploymentEndpointUtilTest {
         model.setType(ModelType.EMBEDDING);
         model.setEndpoint("http://host/openai/deployments/ada/embeddings");
 
-        assertEquals("http://host/openai/deployments/ada/embeddings", resolveServingEndpoint(model, OPENAI_EMBEDDINGS));
+        assertEquals("http://host/openai/deployments/ada/embeddings", resolveServingEndpoint(model, OPENAI_EMBEDDINGS, NO_TRANSLATORS));
         assertTrue(isInterfaceDeclared(model, OPENAI_EMBEDDINGS));
         // an embedding model is not a chat-completions one, whatever its single endpoint also serves
         assertFalse(isInterfaceDeclared(model, OPENAI_CHAT_COMPLETIONS));
-        assertEquals("http://host/openai/deployments/ada/embeddings", resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS));
+        assertEquals("http://host/openai/deployments/ada/embeddings", resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
     }
 
     @Test
@@ -129,7 +267,7 @@ public class DeploymentEndpointUtilTest {
             assertTrue(isInterfaceDeclared(model, OPENAI_CHAT_COMPLETIONS));
             assertFalse(isInterfaceDeclared(model, OPENAI_EMBEDDINGS));
             // the untyped endpoint still serves the whole deployments-POST family
-            assertEquals(model.getEndpoint(), resolveServingEndpoint(model, OPENAI_EMBEDDINGS));
+            assertEquals(model.getEndpoint(), resolveServingEndpoint(model, OPENAI_EMBEDDINGS, NO_TRANSLATORS));
         }
     }
 
@@ -146,6 +284,59 @@ public class DeploymentEndpointUtilTest {
     }
 
     @Test
+    void legacyFieldsAloneAreNoRoutingInterface() {
+        Application application = new Application();
+        application.setEndpoint("http://host/chat/completions");
+
+        assertTrue(isInterfaceDeclared(application, OPENAI_CHAT_COMPLETIONS));
+        assertFalse(hasRoutingInterface(application));
+    }
+
+    @Test
+    void anInterfacesEntryClaimingAnyBaseUrlRoutes() {
+        Application fromDeploymentBaseUrl = new Application();
+        fromDeploymentBaseUrl.setBaseUrl("http://adapter:5000");
+        fromDeploymentBaseUrl.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface()));
+        assertTrue(hasRoutingInterface(fromDeploymentBaseUrl));
+
+        Application fromOwnBaseUrl = new Application();
+        DeploymentInterface entry = new DeploymentInterface();
+        entry.setBaseUrl("http://adapter:5000/v1");
+        fromOwnBaseUrl.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), entry));
+        assertTrue(hasRoutingInterface(fromOwnBaseUrl));
+    }
+
+    @Test
+    void interfacesEntryWithoutAnyUrlIsNoRoutingInterface() {
+        Application application = new Application();
+        application.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface()));
+
+        assertFalse(isInterfaceDeclared(application, OPENAI_CHAT_COMPLETIONS));
+        assertFalse(hasRoutingInterface(application));
+    }
+
+    @Test
+    void translatedEntryRoutesByItsReferenceAlone() {
+        Application withReference = new Application();
+        withReference.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(),
+                translated(TranslatorRef.named("anthropicMessagesToOpenaiChatCompletions"))));
+        assertTrue(hasRoutingInterface(withReference));
+
+        Application withoutReference = new Application();
+        withoutReference.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), translated(null)));
+        assertFalse(hasRoutingInterface(withoutReference));
+    }
+
+    @Test
+    void legacyResponsesFieldServesTheDeclaredResponsesEntry() {
+        Application application = new Application();
+        application.setResponsesEndpoint("http://host/openai/v1/responses");
+        application.setInterfaces(Map.of(OPENAI_RESPONSES.getValue(), new DeploymentInterface()));
+
+        assertTrue(hasRoutingInterface(application));
+    }
+
+    @Test
     void embeddingsPreferLegacyEndpointOverChatInterface() {
         Model model = new Model();
         model.setEndpoint("http://host/openai/deployments/ada/embeddings");
@@ -153,8 +344,8 @@ public class DeploymentEndpointUtilTest {
                 OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://chat-adapter")));
 
         // the chat-completions interface never serves embeddings; the untyped legacy endpoint does
-        assertEquals("http://chat-adapter", resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS));
-        assertEquals("http://host/openai/deployments/ada/embeddings", resolveServingEndpoint(model, OPENAI_EMBEDDINGS));
+        assertEquals("http://chat-adapter", resolveServingEndpoint(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
+        assertEquals("http://host/openai/deployments/ada/embeddings", resolveServingEndpoint(model, OPENAI_EMBEDDINGS, NO_TRANSLATORS));
     }
 
     @Test
@@ -162,8 +353,8 @@ public class DeploymentEndpointUtilTest {
         Model model = new Model();
         model.setEndpoint("http://host/chat/completions");
 
-        assertEquals("http://host/chat/completions", resolveServingEndpoint(model, OPENAI_EMBEDDINGS));
-        assertNull(resolveServingEndpoint(model, OPENAI_RESPONSES));
+        assertEquals("http://host/chat/completions", resolveServingEndpoint(model, OPENAI_EMBEDDINGS, NO_TRANSLATORS));
+        assertNull(resolveServingEndpoint(model, OPENAI_RESPONSES, NO_TRANSLATORS));
     }
 
     @Test
@@ -175,9 +366,9 @@ public class DeploymentEndpointUtilTest {
                 OPENAI_EMBEDDINGS.getValue(), new DeploymentInterface("http://embeddings-adapter")));
 
         assertEquals("http://embeddings-adapter/openai/deployments/embedding-ada/embeddings",
-                resolveRequestUri(model, OPENAI_EMBEDDINGS, "/openai/deployments/embedding-ada/embeddings", null));
+                resolveRequestUri(model, OPENAI_EMBEDDINGS, NO_TRANSLATORS, "/openai/deployments/embedding-ada/embeddings", null));
         assertEquals("http://chat-adapter/openai/deployments/embedding-ada/chat/completions",
-                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, "/openai/deployments/embedding-ada/chat/completions", null));
+                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS, "/openai/deployments/embedding-ada/chat/completions", null));
     }
 
     @Test
@@ -185,12 +376,12 @@ public class DeploymentEndpointUtilTest {
         Model interfaced = new Model();
         interfaced.setInterfaces(Map.of(
                 OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://adapter/")));
-        assertEquals("http://adapter/openai/v1/responses", resolveResponsesBaseUri(interfaced));
+        assertEquals("http://adapter/openai/v1/responses", resolveResponsesBaseUri(interfaced, NO_TRANSLATORS));
 
         Model legacy = new Model();
         legacy.setResponsesEndpoint("http://legacy/custom/responses");
         // a pre-interfaces endpoint is a complete url, so nothing is appended to it
-        assertEquals("http://legacy/custom/responses", resolveResponsesBaseUri(legacy));
+        assertEquals("http://legacy/custom/responses", resolveResponsesBaseUri(legacy, NO_TRANSLATORS));
     }
 
     @Test
@@ -201,7 +392,7 @@ public class DeploymentEndpointUtilTest {
                 OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://localhost:6001/")));
 
         assertEquals("http://localhost:6001/openai/deployments/als-2/chat/completions",
-                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, "/openai/deployments/als-2/chat/completions", null));
+                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS, "/openai/deployments/als-2/chat/completions", null));
     }
 
     @Test
@@ -213,7 +404,7 @@ public class DeploymentEndpointUtilTest {
                 OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://localhost:5025")));
 
         assertEquals("http://localhost:5025/openai/deployments/essay-assistant-gpt/chat/completions?api-version=2024-08-06",
-                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS,
+                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
                         "/openai/deployments/interceptor/chat/completions", "api-version=2024-08-06"));
     }
 
@@ -227,7 +418,7 @@ public class DeploymentEndpointUtilTest {
                 OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://dial-vertexai.dial.svc.cluster.local")));
 
         assertEquals("http://dial-vertexai.dial.svc.cluster.local/openai/deployments/gemini-3.1-pro-preview/chat/completions?api-version=2025-01-01-preview",
-                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS,
+                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
                         "/openai/deployments/models/platform/gemini-3.1-pro-preview/chat/completions",
                         "api-version=2025-01-01-preview"));
     }
@@ -243,7 +434,7 @@ public class DeploymentEndpointUtilTest {
                 OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://localhost:5025")));
 
         assertEquals("http://localhost:5025/openai/deployments/essay-assistant-gpt/chat/completions",
-                resolveRequestUri(application, OPENAI_CHAT_COMPLETIONS, "/openai/deployments/app-tst/chat/completions", null));
+                resolveRequestUri(application, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS, "/openai/deployments/app-tst/chat/completions", null));
     }
 
     @Test
@@ -256,7 +447,7 @@ public class DeploymentEndpointUtilTest {
 
         // overrideName is plain configuration text, so it is escaped to stay inside one path segment
         assertEquals("http://adapter/openai/deployments/gpt%205.4%20mini/chat/completions",
-                resolveRequestUri(overridden, OPENAI_CHAT_COMPLETIONS, "/openai/deployments/openai-gpt/chat/completions", null));
+                resolveRequestUri(overridden, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS, "/openai/deployments/openai-gpt/chat/completions", null));
 
         // a name is already in url form: a custom application carries its encoded resource url as its name
         Application application = new Application();
@@ -265,7 +456,7 @@ public class DeploymentEndpointUtilTest {
                 OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://adapter")));
 
         assertEquals("http://adapter/openai/deployments/applications/bucket/My%20App/chat/completions",
-                resolveRequestUri(application, OPENAI_CHAT_COMPLETIONS,
+                resolveRequestUri(application, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
                         "/openai/deployments/applications%2Fbucket%2FMy%20App/chat/completions", null));
     }
 
@@ -279,8 +470,15 @@ public class DeploymentEndpointUtilTest {
         model.setEndpoint("http://localhost:6001/openai/deployments/gpt-5.4-mini/chat/completions");
 
         assertEquals("http://localhost:6001/openai/deployments/gpt-5.4-mini/chat/completions?api-version=2025-01-01-preview",
-                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS,
+                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
                         "/openai/deployments/openai-gpt-5.4-mini/chat/completions", "api-version=2025-01-01-preview"));
+    }
+
+    private static DeploymentInterface translated(TranslatorRef translator) {
+        DeploymentInterface declared = new DeploymentInterface();
+        declared.setMode(InterfaceMode.TRANSLATOR);
+        declared.setTranslator(translator);
+        return declared;
     }
 
     @Test
@@ -291,6 +489,167 @@ public class DeploymentEndpointUtilTest {
                 OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://adapter")));
 
         assertEquals("http://adapter/some/other/path",
-                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, "/some/other/path", null));
+                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS, "/some/other/path", null));
+    }
+
+    private static DeploymentInterface interfaceWithOverrides(String baseUrl, Map<String, String> overridePaths) {
+        DeploymentInterface deploymentInterface = new DeploymentInterface(baseUrl);
+        deploymentInterface.setOverridePaths(overridePaths);
+        return deploymentInterface;
+    }
+
+    @Test
+    void overridePathReplacesTheChatCompletionsIngressPath() {
+        Model model = new Model();
+        model.setName("foo-bar");
+        model.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), interfaceWithOverrides("http://switchyard/",
+                Map.of("postAzureOpenaiChatCompletions", "/v1/chat/completions"))));
+
+        assertEquals("http://switchyard/v1/chat/completions",
+                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
+                        "/openai/deployments/foo-bar/chat/completions", null));
+    }
+
+    @Test
+    void overridePathRendersIdAndOverrideName() {
+        Model model = new Model();
+        model.setName("foo-bar");
+        model.setOverrideName("tst-name");
+        model.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), interfaceWithOverrides("http://switchyard",
+                Map.of("postAzureOpenaiChatCompletions", "/openai/deployments/{overrideName}/v1/{id}/chat"))));
+
+        assertEquals("http://switchyard/openai/deployments/tst-name/v1/foo-bar/chat?api-version=1",
+                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
+                        "/openai/deployments/foo-bar/chat/completions", "api-version=1"));
+    }
+
+    @Test
+    void overrideNameVariableFallsBackToTheDeploymentName() {
+        Model model = new Model();
+        model.setName("foo-bar");
+        model.setInterfaces(Map.of(OPENAI_EMBEDDINGS.getValue(), interfaceWithOverrides("http://switchyard",
+                Map.of("postAzureOpenaiEmbeddings", "/openai/deployments/{overrideName}/v1/embeddings"))));
+
+        assertEquals("http://switchyard/openai/deployments/foo-bar/v1/embeddings",
+                resolveRequestUri(model, OPENAI_EMBEDDINGS, NO_TRANSLATORS,
+                        "/openai/deployments/foo-bar/embeddings", null));
+    }
+
+    @Test
+    void overridePathSelectsTheAnthropicKeyByPath() {
+        Model model = new Model();
+        model.setName("claude");
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), interfaceWithOverrides("http://switchyard",
+                Map.of("postAnthropicMessages", "/v1/messages",
+                        "postAnthropicMessagesCountTokens", "/v1/messages/count_tokens"))));
+
+        assertEquals("http://switchyard/v1/messages",
+                resolveRequestUri(model, ANTHROPIC_MESSAGES, NO_TRANSLATORS, "/anthropic/v1/messages", null));
+        assertEquals("http://switchyard/v1/messages/count_tokens",
+                resolveRequestUri(model, ANTHROPIC_MESSAGES, NO_TRANSLATORS, "/anthropic/v1/messages/count_tokens", null));
+    }
+
+    @Test
+    void overridePathAppliesToTheResponsesCreate() {
+        Model model = new Model();
+        model.setName("resp");
+        model.setInterfaces(Map.of(OPENAI_RESPONSES.getValue(), interfaceWithOverrides("http://switchyard",
+                Map.of("postOpenaiResponses", "/v1/responses"))));
+
+        assertEquals("http://switchyard/v1/responses",
+                resolveRequestUri(model, OPENAI_RESPONSES, NO_TRANSLATORS, "/openai/v1/responses", null));
+    }
+
+    @Test
+    void legacyCompletionsActionIsNeverOverridden() {
+        Model model = new Model();
+        model.setName("foo-bar");
+        model.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), interfaceWithOverrides("http://switchyard",
+                Map.of("postAzureOpenaiChatCompletions", "/v1/chat/completions"))));
+
+        assertEquals("http://switchyard/openai/deployments/foo-bar/completions",
+                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
+                        "/openai/deployments/foo-bar/completions", null));
+    }
+
+    @Test
+    void unmatchedKeyFallsBackToTheIngressPath() {
+        Model model = new Model();
+        model.setName("foo-bar");
+        model.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), interfaceWithOverrides("http://switchyard",
+                Map.of("postAnthropicMessages", "/v1/messages"))));
+
+        assertEquals("http://switchyard/openai/deployments/foo-bar/chat/completions",
+                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
+                        "/openai/deployments/foo-bar/chat/completions", null));
+    }
+
+    @Test
+    void overridePathDoesNotApplyToTheLegacyEndpointFlow() {
+        Model model = new Model();
+        model.setName("foo-bar");
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), interfaceWithOverrides("http://switchyard",
+                Map.of("postAnthropicMessages", "/v1/messages"))));
+
+        // chat completions is served by the legacy endpoint: the anthropic override plays no part in it
+        assertEquals("http://legacy/chat/completions",
+                resolveRequestUri(model, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
+                        "/openai/deployments/foo-bar/chat/completions", null));
+    }
+
+    @Test
+    void overridePathDoesNotApplyToTranslatedInterfaces() {
+        Model model = new Model();
+        model.setName("gpt-5.5");
+        model.setBaseUrl("http://openai-service");
+        DeploymentInterface anthropic = translated(TranslatorRef.inline(
+                new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://translator/to-chat-completions/")));
+        anthropic.setOverridePaths(Map.of("postAnthropicMessages", "/v1/messages"));
+        model.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface(),
+                ANTHROPIC_MESSAGES.getValue(), anthropic));
+
+        assertEquals("http://translator/to-chat-completions/anthropic/v1/messages",
+                resolveRequestUri(model, ANTHROPIC_MESSAGES, NO_TRANSLATORS, "/anthropic/v1/messages", null));
+    }
+
+    @Test
+    void responseItemUriWithoutOverrideAppendsIdAndSuffix() {
+        Model model = new Model();
+        model.setName("resp");
+        model.setInterfaces(Map.of(OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://adapter/")));
+
+        assertEquals("http://adapter/openai/v1/responses/resp_1",
+                resolveResponseItemUri(model, NO_TRANSLATORS, InterfacePathMapping.GET_OPENAI_RESPONSES_BY_ID, "resp_1", null));
+        assertEquals("http://adapter/openai/v1/responses/resp_1/cancel?a=b",
+                resolveResponseItemUri(model, NO_TRANSLATORS, InterfacePathMapping.POST_OPENAI_RESPONSES_CANCEL, "resp_1", "a=b"));
+    }
+
+    @Test
+    void responseItemUriWithoutOverrideHangsOffTheLegacyEndpoint() {
+        Model model = new Model();
+        model.setResponsesEndpoint("http://host/openai/v1/responses");
+
+        assertEquals("http://host/openai/v1/responses/resp_1",
+                resolveResponseItemUri(model, NO_TRANSLATORS, InterfacePathMapping.DELETE_OPENAI_RESPONSES_BY_ID, "resp_1", null));
+        assertNull(resolveResponseItemUri(new Model(), NO_TRANSLATORS, InterfacePathMapping.GET_OPENAI_RESPONSES_BY_ID, "resp_1", null));
+    }
+
+    @Test
+    void responseItemUriRendersTheResponseId() {
+        Model model = new Model();
+        model.setName("resp");
+        model.setInterfaces(Map.of(OPENAI_RESPONSES.getValue(), interfaceWithOverrides("http://switchyard/",
+                Map.of("getOpenaiResponsesById", "/v1/responses/{id}",
+                        "postOpenaiResponsesCancel", "/v1/responses/{id}/cancel"))));
+
+        assertEquals("http://switchyard/v1/responses/1234",
+                resolveResponseItemUri(model, NO_TRANSLATORS, InterfacePathMapping.GET_OPENAI_RESPONSES_BY_ID, "1234", null));
+        assertEquals("http://switchyard/v1/responses/1234/cancel",
+                resolveResponseItemUri(model, NO_TRANSLATORS, InterfacePathMapping.POST_OPENAI_RESPONSES_CANCEL, "1234", null));
+        // DELETE declares no override here, so it keeps the default path
+        assertEquals("http://switchyard/openai/v1/responses/1234",
+                resolveResponseItemUri(model, NO_TRANSLATORS, InterfacePathMapping.DELETE_OPENAI_RESPONSES_BY_ID, "1234", null));
     }
 }

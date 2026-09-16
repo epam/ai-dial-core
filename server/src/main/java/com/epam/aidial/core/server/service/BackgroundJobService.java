@@ -2,7 +2,10 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfacePathMapping;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
@@ -19,6 +22,7 @@ import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -187,24 +191,30 @@ public class BackgroundJobService {
     }
 
     @VisibleForTesting
-    Future<ResponsesApiClient.TerminalResult> poll(ResponseMapping mapping) {
+    Future<ResponsesApiClient.TerminalResult> poll(ResponseMapping mapping, String apiKey) {
         Config config = configStore.get();
         Deployment deployment = config.selectDeployment(mapping.getDeploymentName());
         if (deployment == null) {
             return Future.failedFuture("Deployment {} not found");
         }
-        if (deployment.getResponsesEndpoint() == null) {
+        Map<String, Translator> translators = config.getTranslators();
+        String targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment, translators,
+                InterfacePathMapping.GET_OPENAI_RESPONSES_BY_ID, mapping.getUpstreamResponseId(), null);
+        if (targetUrl == null) {
             return Future.failedFuture("Deployment " + deployment.getName() + " does not have a responses endpoint");
         }
         Upstream upstream;
         try {
-            upstream = upstreamRouteProvider.get(deployment, null, mapping.getUpstreamKey()).next();
+            // resolved the way the original request was routed, so that a deployment declaring no upstreams of
+            // its own builds the same synthetic upstream the mapping's key was issued against
+            upstream = upstreamRouteProvider.get(deployment, null,
+                    dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES, translators),
+                    mapping.getUpstreamKey()).next();
         } catch (Exception e) {
             return Future.failedFuture("Failed to get upstream for deployment " + deployment.getName()
                     + " and upstream key " + mapping.getUpstreamKey() + ": " + e.getMessage());
         }
-        String targetUrl = deployment.getResponsesEndpoint() + "/" + mapping.getUpstreamResponseId();
-        return client.send(targetUrl, HttpMethod.GET, upstream)
+        return client.send(targetUrl, HttpMethod.GET, upstream, apiKey)
                 .compose(response -> {
                     int statusCode = response.statusCode();
                     if (statusCode != 200) {
@@ -234,8 +244,11 @@ public class BackgroundJobService {
                     Future<Void> limitFuture = Future.succeededFuture();
                     if (deployment instanceof Model && hasUsage) {
                         Buffer requestBody = Buffer.buffer(jobRecord.requestBody());
+                        // null liveUsageNode: this poller never streams, result.body() is a single
+                        // buffered document, so ModelCostCalculator parses it directly.
                         limitFuture = rateLimiter.increase(
-                                deployment, responseMapping.getInitiatorBucket(), usage, requestBody, result.body())
+                                deployment, responseMapping.getInitiatorBucket(), usage, requestBody, result.body(),
+                                InterfaceType.OPENAI_RESPONSES, null)
                                 .transform(limitResult -> {
                                     if (limitResult.failed()) {
                                         log.warn("Failed to increase limit", limitResult.cause());
@@ -334,7 +347,8 @@ public class BackgroundJobService {
         private final ResponseMapping mapping;
 
         public Future<Boolean> poll() {
-            return BackgroundJobService.this.poll(mapping)
+            String apiKey = decryptKey(ResponseIdUtil.getBackgroundJobDescriptor(dialId), record.perRequestKey());
+            return BackgroundJobService.this.poll(mapping, apiKey)
                     .compose(result -> {
                                 if (result != null) {
                                     return completeAndProcess(dialId, record, mapping, result)

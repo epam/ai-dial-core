@@ -6,7 +6,6 @@ import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ToolSet;
-import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiOperations;
@@ -24,9 +23,9 @@ import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
-import com.epam.aidial.core.server.service.ExternalServiceStatusEnricher;
 import com.epam.aidial.core.server.service.ExternalServicesWriteMode;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
@@ -55,7 +54,6 @@ import org.apache.commons.lang3.tuple.Pair;
 import java.net.ConnectException;
 import java.net.http.HttpConnectTimeoutException;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -558,9 +556,15 @@ public class ResourceController extends AccessControlBaseController {
             ResourceItemMetadata meta = result.getKey();
 
             Application application = result.getValue();
+            // Decrypt before the overlay so inline and (already plaintext) user-authored services both reach
+            // clearExternalServiceSecrets below with a hintable value.
+            if (hasWriteAccess) {
+                proxy.getExternalServiceService().decryptSecretsForResponse(descriptor, application);
+            }
             overlayUserAuthoredServices(descriptor, application);
-            enrichExternalServiceStatuses(descriptor, application);
-            clearExternalServiceSecrets(application);
+            new ResourceAuthStatusEnricher(context, proxy.getResourceAuthSettingsService())
+                    .enrichApplication(descriptor.getDecodedUrl(), application.getExternalServices());
+            clearExternalServiceSecrets(application, hasWriteAccess);
 
             if (!accessService.hasAdminAccess(context)) {
                 application.setAppIdentity(null);
@@ -586,36 +590,17 @@ public class ResourceController extends AccessControlBaseController {
         application.setExternalServices(merged);
     }
 
-    private void enrichExternalServiceStatuses(ResourceDescriptor descriptor, Application application) {
-        Map<String, ExternalService> services = application.getExternalServices();
-        if (services == null || services.isEmpty()) {
-            return;
-        }
-        ExternalServiceStatusEnricher enricher = new ExternalServiceStatusEnricher(
-                context, proxy.getResourceAuthSettingsService());
-        for (Map.Entry<String, ExternalService> entry : services.entrySet()) {
-            ResourceAuthSettings authSettings = entry.getValue() == null ? null : entry.getValue().getAuthSettings();
-            if (authSettings == null) {
-                continue;
-            }
-            try {
-                String scopeId = descriptor.getUrl() + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + entry.getKey();
-                CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
-                enricher.enrich(locator, authSettings);
-            } catch (RuntimeException e) {
-                log.warn("Failed to compute external-service status for '{}' on '{}'", entry.getKey(), descriptor.getUrl(), e);
-            }
-        }
-    }
-
-    private static void clearExternalServiceSecrets(Application application) {
+    private static void clearExternalServiceSecrets(Application application, boolean hasWriteAccess) {
         Map<String, ExternalService> services = application.getExternalServices();
         if (services == null) {
             return;
         }
         for (ExternalService service : services.values()) {
             if (service != null && service.getAuthSettings() != null) {
-                service.setAuthSettings(service.getAuthSettings().withoutSecrets());
+                ResourceAuthSettings authSettings = service.getAuthSettings();
+                service.setAuthSettings(hasWriteAccess
+                        ? authSettings.withoutSecretsKeepingHint()
+                        : authSettings.withoutSecrets());
             }
         }
     }
@@ -661,8 +646,9 @@ public class ResourceController extends AccessControlBaseController {
             Pair<ResourceItemMetadata, ToolSet> result = toolSetService.getToolSet(descriptor, etagHeader);
             ResourceItemMetadata meta = result.getKey();
             ToolSet toolSet = result.getValue();
-            toolSetService.setResourceAuthStatuses(context, toolSet, descriptor.getUrl());
-            toolSet.clearAuthSettings();
+            new ResourceAuthStatusEnricher(context, proxy.getResourceAuthSettingsService())
+                    .enrichToolSet(descriptor.getDecodedUrl(), toolSet);
+            toolSetService.redactAuthSettings(descriptor, toolSet, hasWriteAccess);
             if (!hasWriteAccess) {
                 toolSet.setEndpoint(null);
             }

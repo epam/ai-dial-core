@@ -130,6 +130,26 @@ public class ConfigResourceMetadataController implements Controller {
     )
     @ApiOperation(
             method = "GET",
+            path = "/v1/metadata/translators/{bucket}/{path}",
+            operationId = "getTranslatorMetadata",
+            tags = {"Translators"},
+            parameters = {
+                @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_APPLICATIONS),
+                @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
+                @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
+                @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
+            },
+            responses = {
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                @ApiResponse(code = 400),
+                @ApiResponse(code = 403),
+                @ApiResponse(code = 404),
+                @ApiResponse(code = 500)
+            }
+    )
+    @ApiOperation(
+            method = "GET",
             path = "/v1/metadata/roles/{bucket}/{path}",
             operationId = "getRoleMetadata",
             tags = {"Roles"},

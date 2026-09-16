@@ -305,4 +305,79 @@ public class ResourceDescriptorFactoryTest {
         assertTrue(resourceDescriptor.isFolder());
 
     }
+
+    /**
+     * A deployment name is plain configuration text, not a url. {@code [} and {@code ]} are illegal in a URI
+     * path, so validating one as a URI is what made {@code GET /v1/user/usage} fail for a model named
+     * {@code anthropic.claude-opus-4-8[1m]}.
+     */
+    @Test
+    public void testFromEntityPath_NameThatIsNotUriSafe() {
+        ResourceDescriptor resource = ResourceDescriptorFactory.fromEntityPath(
+                ResourceTypes.LIMIT, "buckets/location/", "buckets/location/", "anthropic.claude-opus-4-8[1m]/tokens");
+        assertEquals("tokens", resource.getName());
+        assertEquals("anthropic.claude-opus-4-8[1m]", resource.getParentPath());
+        assertEquals("buckets/location/limits/anthropic.claude-opus-4-8[1m]/tokens", resource.getAbsoluteFilePath());
+        assertFalse(resource.isFolder());
+
+        // what the incident hit: the same path through the strict factory fails its URI check. Note the name
+        // passes isValidFilename - brackets are not in INVALID_FILE_NAME_CHARS - so the URI check is the whole
+        // of the defect, and relaxing anything else would be gratuitous
+        assertThrows(RuntimeException.class, () -> ResourceDescriptorFactory.fromEncoded(
+                ResourceTypes.LIMIT, "buckets/location/", "buckets/location/", "anthropic.claude-opus-4-8[1m]/tokens"));
+    }
+
+    /**
+     * Why the decode step is kept: a custom application reports an already encoded resource url as its name,
+     * so dropping the decode would move every stored record of such a deployment to a new key. A spot check of
+     * representative shapes, not a proof - the guarantee comes from both factories sharing the decode call, and
+     * differing only in whether it may throw.
+     *
+     * <p>The non-ASCII case pins that the two agree; it says nothing about which bytes are correct, since both
+     * sides route through {@code Charset.defaultCharset()}.
+     */
+    @Test
+    public void testFromEntityPath_KeepsTheKeyFromEncodedBuilds() {
+        for (String path : List.of("model/tokens", "applications/buck/my%20app/tokens", "модель/tokens", "costs")) {
+            assertEquals(
+                    ResourceDescriptorFactory.fromEncoded(ResourceTypes.LIMIT, "b", "location/", path).getAbsoluteFilePath(),
+                    ResourceDescriptorFactory.fromEntityPath(ResourceTypes.LIMIT, "b", "location/", path).getAbsoluteFilePath(),
+                    path);
+        }
+    }
+
+    /**
+     * Only the URI check is relaxed. The file name charset is not: a brace lets the caller pick the Redis
+     * Cluster hash slot, and a double quote is rejected on purpose (see commit bc971243) because it cannot be
+     * stored by every provider.
+     */
+    @Test
+    public void testFromEntityPath_KeepsTheFileNameCharset() {
+        for (String path : List.of("gpt{4}/tokens", "gpt}4/tokens", "gpt\"4/tokens", "%7Bgpt%7D/tokens")) {
+            assertThrows(IllegalArgumentException.class, () -> ResourceDescriptorFactory.fromEntityPath(
+                    ResourceTypes.LIMIT, "b", "location/", path), path);
+        }
+    }
+
+    /**
+     * A name that is not valid percent encoding is kept verbatim instead of failing to decode.
+     */
+    @Test
+    public void testFromEntityPath_KeepsBrokenPercentEncodingVerbatim() {
+        assertEquals("location/limits/100% off/tokens", ResourceDescriptorFactory.fromEntityPath(
+                ResourceTypes.LIMIT, "b", "location/", "100% off/tokens").getAbsoluteFilePath());
+    }
+
+    @Test
+    public void testFromEntityPath_StillRejectsUnstorableElements() {
+        // an encoded separator decodes after the split, so it would silently add a path level
+        assertThrows(IllegalArgumentException.class, () -> ResourceDescriptorFactory.fromEntityPath(
+                ResourceTypes.LIMIT, "b", "location/", "a%2Fb/tokens"));
+        assertThrows(IllegalArgumentException.class, () -> ResourceDescriptorFactory.fromEntityPath(
+                ResourceTypes.LIMIT, "b", "location/", "a%00b/tokens"));
+        assertThrows(IllegalArgumentException.class, () -> ResourceDescriptorFactory.fromEntityPath(
+                ResourceTypes.LIMIT, "b", "location/", "//tokens"));
+        assertThrows(IllegalArgumentException.class, () -> ResourceDescriptorFactory.fromEntityPath(
+                ResourceTypes.LIMIT, "b", "location/", "x".repeat(1000) + "/tokens"));
+    }
 }

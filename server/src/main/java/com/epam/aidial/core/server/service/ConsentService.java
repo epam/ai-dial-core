@@ -1,13 +1,14 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.consent.Consent;
 import com.epam.aidial.core.server.data.consent.ReviewConsentResponse;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
-import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -75,7 +76,15 @@ public class ConsentService {
     }
 
     public void verifyUserConsent(ProxyContext context, Deployment deployment) {
-        if (!isConsentRequired(deployment)) {
+        verifyUserConsent(context, deployment, isConsentRequired(deployment.getFeatures()));
+    }
+
+    public void verifyUserConsent(ProxyContext context, Deployment deployment, InterfaceType requestedInterface) {
+        verifyUserConsent(context, deployment, isConsentRequired(deployment.resolveFeatures(requestedInterface)));
+    }
+
+    private void verifyUserConsent(ProxyContext context, Deployment deployment, boolean consentRequired) {
+        if (!consentRequired) {
             return;
         }
         String currentDeploymentId = deployment.getName();
@@ -121,12 +130,30 @@ public class ConsentService {
     }
 
     private static boolean isConsentRequired(Deployment deployment) {
-        return deployment.getFeatures() != null
-                && Boolean.TRUE.equals(deployment.getFeatures().getConsentRequired());
+        if (isConsentRequired(deployment.getFeatures())) {
+            return true;
+        }
+        // Consent is accepted for a deployment, so the review must include requirements of its interfaces.
+        if (deployment.getInterfaces() != null) {
+            for (InterfaceType type : InterfaceType.values()) {
+                if (isConsentRequired(deployment.resolveFeatures(type))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
+    private static boolean isConsentRequired(Features features) {
+        return features != null && Boolean.TRUE.equals(features.getConsentRequired());
+    }
+
+    /**
+     * The id is already decoded - a deployment name from the config, or a path parameter the route decoded -
+     * so it is not a url and cannot be validated as one.
+     */
     private static ResourceDescriptor getResourceDescription(ProxyContext context, String deploymentId) {
         String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
-        return ResourceDescriptorFactory.fromEncoded(ResourceTypes.USER_CONSENT, bucketLocation, bucketLocation, deploymentId);
+        return ResourceDescriptorFactory.fromEntityPath(ResourceTypes.USER_CONSENT, bucketLocation, bucketLocation, deploymentId);
     }
 }

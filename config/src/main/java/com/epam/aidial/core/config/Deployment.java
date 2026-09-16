@@ -9,6 +9,7 @@ import lombok.EqualsAndHashCode;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -16,6 +17,14 @@ public abstract class Deployment extends RoleBasedEntity {
 
     private String endpoint;
     private String responsesEndpoint;
+    /**
+     * Root url shared by every {@link #interfaces} entry declaring no {@code base_url} of its own — in the
+     * common case a single root serves all of them and only the ingress path differs. It stands for no
+     * interface by itself: {@code interfaces} alone says which ones the deployment serves.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonAlias({"baseUrl", "base_url"})
+    private String baseUrl;
     /**
      * Supported LLM API interfaces keyed by interface-type value. Peer of endpoint/responsesEndpoint.
      */
@@ -54,13 +63,25 @@ public abstract class Deployment extends RoleBasedEntity {
     @JsonAlias({"maxInputAttachments", "max_input_attachments"})
     private Integer maxInputAttachments;
     /**
-     * Default parameters are applied if a request doesn't contain them in OpenAI chat/completions API call.
+     * Default parameters applied to an OpenAI chat/completions or embeddings request that does not carry
+     * them. Used only where the interface entry declares no {@code defaults} of its own, see
+     * {@link #resolveDefaults}.
      */
     private Map<String, Object> defaults = Map.of();
     /**
-     * Default parameters are applied if a request doesn't contain them in OpenAI Responses API call.
+     * Default parameters applied to an OpenAI Responses API request that does not carry them. Used only
+     * where {@code interfaces.openaiResponses} declares no {@code defaults} of its own, see
+     * {@link #resolveDefaults}.
      */
     private Map<String, Object> responsesDefaults = Map.of();
+    /**
+     * Headers added to a request that carries none under that name, for every interface the deployment
+     * serves. Overlaid per interface by {@code interfaces.<type>.defaultHeaders}, see
+     * {@link #resolveDefaultHeaders}.
+     */
+    @JsonAlias({"defaultHeaders", "default_headers"})
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private Map<String, String> defaultHeaders = Map.of();
     /**
      * List of interceptors to be called for the deployment
      */
@@ -117,5 +138,56 @@ public abstract class Deployment extends RoleBasedEntity {
     @JsonIgnore
     public String getTargetName() {
         return overrideName != null ? overrideName : getName();
+    }
+
+    /**
+     * Overlays this interface's non-null feature fields on the deployment-level features without
+     * modifying either configuration. False values and empty lists override inherited values.
+     */
+    public Features resolveFeatures(InterfaceType type) {
+        DeploymentInterface declared = interfaces == null ? null : interfaces.get(type.getValue());
+        return Features.merge(features, declared == null ? null : declared.getFeatures());
+    }
+
+    /**
+     * The default headers in force for the interface type: the deployment-level {@link #defaultHeaders}
+     * with {@code interfaces.<type>.defaultHeaders} laid over them. Names are compared case-insensitively,
+     * so an interface entry overrides a deployment-level header however either spells it.
+     */
+    public Map<String, String> resolveDefaultHeaders(InterfaceType type) {
+        DeploymentInterface declared = interfaces == null ? null : interfaces.get(type.getValue());
+        Map<String, String> interfaceHeaders = declared == null ? Map.of() : declared.getDefaultHeaders();
+        if (interfaceHeaders.isEmpty()) {
+            return defaultHeaders;
+        }
+        // TreeMap for its case-insensitive comparator, not for ordering: an interface entry has to override a deployment-level header spelled in another case
+        Map<String, String> merged = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        merged.putAll(defaultHeaders);
+        merged.putAll(interfaceHeaders);
+        return merged;
+    }
+
+    /**
+     * The default body parameters in force for the interface type: {@code interfaces.<type>.defaults} when
+     * the entry declares any, and the deployment-level defaults serving that interface otherwise. One set
+     * or the other, never both — an interface declaring its own replaces the deployment-level set rather
+     * than adding to it.
+     *
+     * <p>Which deployment-level field serves an interface is fixed per type, and Anthropic has none:
+     * {@link #defaults} and {@link #responsesDefaults} hold OpenAI parameters, so a deployment defaults an
+     * Anthropic parameter on the interface entry or nowhere.
+     */
+    public Map<String, Object> resolveDefaults(InterfaceType type) {
+        DeploymentInterface declared = interfaces == null ? null : interfaces.get(type.getValue());
+        Map<String, Object> interfaceDefaults = declared == null ? Map.of() : declared.getDefaults();
+        if (!interfaceDefaults.isEmpty()) {
+            return interfaceDefaults;
+        }
+        return switch (type) {
+            // an embeddings request is an OpenAI one, and predates the split into typed interfaces
+            case OPENAI_CHAT_COMPLETIONS, OPENAI_EMBEDDINGS -> defaults;
+            case OPENAI_RESPONSES -> responsesDefaults;
+            case ANTHROPIC_MESSAGES -> Map.of();
+        };
     }
 }

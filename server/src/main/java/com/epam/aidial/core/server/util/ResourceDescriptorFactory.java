@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.function.UnaryOperator;
 import javax.annotation.Nullable;
 
 public class ResourceDescriptorFactory {
@@ -26,17 +27,48 @@ public class ResourceDescriptorFactory {
      * @param path           url encoded relative path; if url path is null or empty we treat it as user home
      */
     public static ResourceDescriptor fromEncoded(ResourceType type, String bucketName, String bucketLocation, String path) {
+        return build(type, bucketName, bucketLocation, path, UrlUtil::decodePath);
+    }
+
+    /**
+     * Same as {@link #fromEncoded}, but for an internal path assembled from an identifier that is not a url:
+     * a deployment name defined in the config, or the resource url a custom application reports as its name.
+     * Such a path is percent decoded exactly the way {@link #fromEncoded} decodes one, so it resolves to the
+     * same storage key, but it is not required to be a valid URI - {@code claude-opus-4-8[1m]} is a legal
+     * deployment name, and brackets are illegal in a URI path. A segment that is not valid percent encoding
+     * is kept verbatim rather than rejected.
+     *
+     * <p>Only the URI check is relaxed. Every element must still be a valid file name, because the resulting
+     * key has to be storable by each blob provider, and because such a path can come from a request - a
+     * consent deployment id does.
+     *
+     * @param type           resource type
+     * @param bucketName     bucket name (encrypted)
+     * @param bucketLocation bucket location on blob storage; bucket location must end with /
+     * @param path           relative path built from an entity name; if null or empty we treat it as user home
+     */
+    public static ResourceDescriptor fromEntityPath(ResourceType type, String bucketName, String bucketLocation, String path) {
+        return build(type, bucketName, bucketLocation, path, UrlUtil::tryDecodePath);
+    }
+
+    /**
+     * The two differ in one thing only: whether a segment that is not a valid URI is rejected or decoded as
+     * best it can be. Every other check, and the decode itself, is shared - which is what makes both resolve
+     * any path they both accept to the same storage key.
+     */
+    private static ResourceDescriptor build(ResourceType type, String bucketName, String bucketLocation, String path,
+                                           UnaryOperator<String> decoder) {
         // in case empty path - treat it as a home folder
-        String urlEncodedRelativePath = StringUtils.isBlank(path) ? ResourceDescriptor.PATH_SEPARATOR : path;
+        String relativePath = StringUtils.isBlank(path) ? ResourceDescriptor.PATH_SEPARATOR : path;
         verify(bucketLocation.endsWith(ResourceDescriptor.PATH_SEPARATOR), "Bucket location must end with /");
 
-        String[] encodedElements = urlEncodedRelativePath.split(ResourceDescriptor.PATH_SEPARATOR);
-        List<String> elements = Arrays.stream(encodedElements).map(UrlUtil::decodePath).toList();
+        String[] rawElements = relativePath.split(ResourceDescriptor.PATH_SEPARATOR);
+        List<String> elements = Arrays.stream(rawElements).map(decoder).toList();
         elements.forEach(element ->
-                verify(isValidFilename(element), "Invalid path provided " + urlEncodedRelativePath)
+                verify(isValidFilename(element), "Invalid path provided " + relativePath)
         );
 
-        ResourceDescriptor resource = from(type, bucketName, bucketLocation, elements, ResourceUtil.isFolder(urlEncodedRelativePath));
+        ResourceDescriptor resource = from(type, bucketName, bucketLocation, elements, ResourceUtil.isFolder(relativePath));
         verify(resource.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8).length <= MAX_PATH_SIZE,
                 "Resource path exceeds max allowed size: " + MAX_PATH_SIZE);
 

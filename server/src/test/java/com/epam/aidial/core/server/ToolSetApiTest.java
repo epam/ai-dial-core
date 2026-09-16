@@ -212,6 +212,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
+                           "skills_supported": false,
                            "reasoning_efforts": []
                       },
                      "description_keywords" : [ ],
@@ -258,6 +259,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
+                           "skills_supported": false,
                            "reasoning_efforts": []
                         },
                         "description_keywords" : [ ],
@@ -305,6 +307,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
+                           "skills_supported": false,
                            "reasoning_efforts": []
                         },
                         "description_keywords" : [ ],
@@ -361,6 +364,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
+                           "skills_supported": false,
                            "reasoning_efforts": []
                       },
                      "description_keywords" : [ ],
@@ -501,6 +505,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
+                           "skills_supported": false,
                            "reasoning_efforts": []
                   },
                   "description_keywords": [],
@@ -556,6 +561,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
+                           "skills_supported": false,
                            "reasoning_efforts": []
                           },
                       "description_keywords" : [ ],
@@ -604,6 +610,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
+                           "skills_supported": false,
                            "reasoning_efforts": []
                           },
                         "description_keywords" : [ ],
@@ -1524,6 +1531,24 @@ public class ToolSetApiTest extends ResourceBaseTest {
         // admin can sign out with Global creds
         response = send(HttpMethod.POST, "/v1/ops/toolset/signout", null, globalSignOutRequestJson, "authorization", "admin");
         verify(response, 200, "true");
+    }
+
+    @Test
+    void testCreateToolSetWithBlankApiKeyHeader() {
+        for (String apiKeyHeader : List.of("", "   ")) {
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset@", null, """
+                    {
+                        "endpoint": "http://localhost:9876",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "API_KEY",
+                            "api_key_header": "%s"
+                        }
+                    }
+                    """.formatted(apiKeyHeader), "authorization", "admin");
+            verify(response, 400, "Field 'API_KEY_HEADER' is required for API_KEY authentication.");
+        }
     }
 
     @Test
@@ -3662,5 +3687,144 @@ public class ToolSetApiTest extends ResourceBaseTest {
         response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/secure-toolset", null, null, "authorization", "user");
         verify(response, 200);
         assertNull(ProxyUtil.MAPPER.readTree(response.body()).get("endpoint"));
+    }
+
+    @Test
+    void testToolsetClientSecretHintForWriterAndRoundTrip() throws JsonProcessingException {
+        String tokenResponse = """
+                {
+                    "access_token": "test-access-token",
+                    "refresh_token": "test-refresh-token",
+                    "expires_in": 3600
+                }
+                """;
+        java.util.concurrent.atomic.AtomicReference<String> bodyRef = new java.util.concurrent.atomic.AtomicReference<>();
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+            server.map(HttpMethod.POST, "/token", request -> {
+                bodyRef.set(request.getBody().readUtf8());
+                return new MockResponse().setBody(tokenResponse).setHeader("Content-Type", "application/json");
+            });
+
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-hint@", null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "client_secret": "my-client-secret",
+                            "redirect_uri": "http://admin/callback",
+                            "authorization_endpoint": "http://localhost:9876/authorize",
+                            "token_endpoint": "http://localhost:9876/token",
+                            "token_endpoint_auth_method": "client_secret_post"
+                        }
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-hint@",
+                    null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            JsonNode authSettings = ProxyUtil.MAPPER.readTree(response.body()).get("auth_settings");
+            assertEquals("cret", authSettings.get("client_secret_hint").asText(),
+                    "writer must see the trailing characters of the stored secret");
+            assertNull(authSettings.get("client_secret"), "GET must never return the secret itself");
+            assertFalse(response.body().contains("my-client-secret"), "secret leaked: " + response.body());
+
+            // A client that GETs and PUTs the body back unchanged must not overwrite the stored secret with
+            // the hint — client_secret_hint is read-only and client_secret stays absent, meaning "preserve".
+            response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-hint@",
+                    null, response.body(), "authorization", "admin");
+            assertEquals(200, response.status());
+
+            response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset-hint@",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+            assertTrue(bodyRef.get().contains("client_secret=my-client-secret"),
+                    "round-tripped PUT must preserve the original secret, token request was: " + bodyRef.get());
+        }
+    }
+
+    @Test
+    void testToolsetClientSecretHintHiddenForReadOnlyUser() throws JsonProcessingException {
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-hint-shared", null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "client_secret": "my-client-secret",
+                            "redirect_uri": "http://admin/callback",
+                            "authorization_endpoint": "http://localhost:9876/authorize",
+                            "token_endpoint": "http://localhost:9876/token"
+                        }
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200);
+
+            response = send(HttpMethod.POST, "/v1/ops/resource/share/create", null, """
+                    {
+                      "invitationType": "link",
+                      "resources": [
+                        {
+                          "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset-hint-shared"
+                        }
+                      ]
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200);
+            InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+            assertNotNull(invitationLink);
+
+            response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "authorization", "user");
+            verify(response, 200);
+
+            response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-hint-shared",
+                    null, null, "authorization", "user");
+            verify(response, 200);
+            JsonNode authSettings = ProxyUtil.MAPPER.readTree(response.body()).get("auth_settings");
+            assertNull(authSettings.get("client_secret_hint"),
+                    "read-only caller must not see the hint: " + response.body());
+            assertNull(authSettings.get("client_secret"));
+        }
+    }
+
+    @Test
+    void testCreateToolSetWithTooShortClientSecret() {
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-short-secret", null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "client_secret": "short",
+                            "redirect_uri": "http://admin/callback",
+                            "authorization_endpoint": "http://localhost:9876/authorize",
+                            "token_endpoint": "http://localhost:9876/token"
+                        }
+                    }
+                    """, "authorization", "admin");
+            assertEquals(400, response.status());
+            assertTrue(response.body().contains("CLIENT_SECRET"), () -> response.body());
+        }
     }
 }

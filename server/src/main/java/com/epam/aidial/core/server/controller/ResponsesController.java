@@ -68,11 +68,16 @@ public class ResponsesController extends BaseDeploymentPostController {
         super(proxy, context);
         this.enhancementFunctions = List.of(
                 new CollectRequestStandardAttachmentsFn(proxy, context),
-                new ApplyDefaultDeploymentSettingsFn(proxy, context),
+                new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.OPENAI_RESPONSES),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
                 new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_RESPONSES),
                 new CollectDeploymentsFn(proxy, context));
+    }
+
+    @Override
+    protected InterfaceType interfaceType() {
+        return InterfaceType.OPENAI_RESPONSES;
     }
 
     @ApiOperation(
@@ -150,9 +155,9 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     private Void setupDeployment(String model) {
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, model);
-        proxy.getConsentService().verifyUserConsent(context, deployment);
+        proxy.getConsentService().verifyUserConsent(context, deployment, InterfaceType.OPENAI_RESPONSES);
 
-        Features features = deployment.getFeatures();
+        Features features = deployment.resolveFeatures(InterfaceType.OPENAI_RESPONSES);
         boolean isPerRequestKey = !context.isOriginalRequest();
         if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
             throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", model, context.getApiKeyData().getSourceDeployment()));
@@ -162,7 +167,8 @@ public class ResponsesController extends BaseDeploymentPostController {
             deployment = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
         }
 
-        if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES) == null) {
+        if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES,
+                context.getConfig().getTranslators()) == null) {
             throw new HttpException(
                     HttpStatus.SERVICE_UNAVAILABLE,
                     "OpenAI responses not supported for this deployment type"
@@ -178,7 +184,7 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private Future<Void> verifyLimit() {
-        return proxy.getRateLimiter().limit(context, context.getDeployment())
+        return checkLimits(context.getDeployment())
                 .map(rateLimit -> {
                     rateLimit.throwIfError();
                     return null;
@@ -243,7 +249,8 @@ public class ResponsesController extends BaseDeploymentPostController {
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
                 .get(deployment, context.getCacheBreakpointContext(),
-                        dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES), upstreamId);
+                        dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES,
+                                context.getConfig().getTranslators()), upstreamId);
 
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);
@@ -273,7 +280,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        sendProxyRequest(proxyRequest, Upstream::getResponsesEndpoint)
+        sendProxyRequest(proxyRequest, InterfaceType.OPENAI_RESPONSES)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyResponseError);
     }

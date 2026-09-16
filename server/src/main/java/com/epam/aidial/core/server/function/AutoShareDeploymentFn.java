@@ -53,6 +53,7 @@ public class AutoShareDeploymentFn extends BaseRequestFunction<RequestObject> {
             if (deployment instanceof Application app && app.hasApplicationTypeSchemaId()) {
                 shareApplicationFiles(app);
                 shareApplicationPrompts(app);
+                shareApplicationSkills(app);
                 shareApplicationDeployments(app);
             }
             return false;

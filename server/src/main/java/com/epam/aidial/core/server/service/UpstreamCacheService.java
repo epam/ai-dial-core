@@ -65,7 +65,7 @@ public class UpstreamCacheService {
 
     public CacheBreakpointContext buildCacheBreakpointContext(RequestObject request, CachePolicy policy, Model model,
                                                                 InterfaceType interfaceType) {
-        boolean autoCaching = isAutoCaching(model);
+        boolean autoCaching = isAutoCaching(model, interfaceType);
         List<String> fieldsOrder = interfaceType.getFieldsHashingOrder();
         List<String> breakpoints = new ArrayList<>();
         Map<String, String> prefixToHash = new HashMap<>();
@@ -125,7 +125,10 @@ public class UpstreamCacheService {
     public void updateEntry(String hash, CachedUpstreamEntry entry, Model model, String expireAtStr) {
         String key = getEntryKey(model.getName(), hash);
         Map<String, String> fields = new HashMap<>();
-        fields.put(UPSTREAM_ENDPOINT_FIELD, entry.endpoint());
+        // an upstream configured through interfaces carries no legacy endpoint, and Redis rejects a null value
+        if (entry.endpoint() != null) {
+            fields.put(UPSTREAM_ENDPOINT_FIELD, entry.endpoint());
+        }
         fields.put(PREFIX_PATH_FIELD, entry.prefixPath());
         if (entry.id() != null) {
             fields.put(UPSTREAM_ID_FIELD, entry.id());
@@ -152,8 +155,8 @@ public class UpstreamCacheService {
         }
     }
 
-    private boolean isAutoCaching(Model model) {
-        Features features = model.getFeatures();
+    private boolean isAutoCaching(Model model, InterfaceType interfaceType) {
+        Features features = model.resolveFeatures(interfaceType);
         if (features == null) {
             return false;
         }

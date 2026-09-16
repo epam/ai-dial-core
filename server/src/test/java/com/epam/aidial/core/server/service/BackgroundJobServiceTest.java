@@ -2,6 +2,9 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.DeploymentInterface;
+import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.server.ProxyContext;
@@ -39,6 +42,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.Redisson;
@@ -50,7 +54,9 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -239,7 +245,7 @@ class BackgroundJobServiceTest {
     @Test
     void saveJobStartsPollingAndCompletesJob(VertxTestContext ctx) throws Throwable {
         doReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), new TokenUsage())))
-                .when(service).poll(any());
+                .when(service).poll(any(), any());
         Config config = mock(Config.class);
         when(configStore.get()).thenReturn(config);
         when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
@@ -261,7 +267,7 @@ class BackgroundJobServiceTest {
         doReturn(Future.succeededFuture(null))
                 .doReturn(Future.succeededFuture(null))
                 .doReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), new TokenUsage())))
-                .when(service).poll(any());
+                .when(service).poll(any(), any());
         when(configStore.get()).thenReturn(mock(Config.class));
         when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
         when(apiKeyStore.invalidatePerRequestApiKey(any()))
@@ -273,13 +279,13 @@ class BackgroundJobServiceTest {
         service.saveJob(JOB_ID, proxyContext).onFailure(ctx::failNow);
 
         await(ctx);
-        verify(service, times(3)).poll(any());
+        verify(service, times(3)).poll(any(), any());
     }
 
     @Test
     void pollingAbandonedAfterMaxSequentialFailures(Vertx vertx, VertxTestContext ctx) throws Throwable {
         var bundle = buildServiceBundle(vertx, 3);
-        doAnswer(inv -> Future.failedFuture("upstream error")).when(bundle.service()).poll(any());
+        doAnswer(inv -> Future.failedFuture("upstream error")).when(bundle.service()).poll(any(), any());
         when(configStore.get()).thenReturn(mock(Config.class));
         when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
         when(apiKeyStore.invalidatePerRequestApiKey(any()))
@@ -292,7 +298,7 @@ class BackgroundJobServiceTest {
         bundle.service().saveJob(JOB_ID, proxyContext).onFailure(ctx::failNow);
 
         await(ctx);
-        verify(bundle.service(), times(3)).poll(any());
+        verify(bundle.service(), times(3)).poll(any(), any());
     }
 
     @Test
@@ -306,7 +312,7 @@ class BackgroundJobServiceTest {
                 .doReturn(Future.failedFuture("upstream error"))
                 .doReturn(Future.failedFuture("upstream error"))
                 .doReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), new TokenUsage())))
-                .when(bundle.service()).poll(any());
+                .when(bundle.service()).poll(any(), any());
         when(configStore.get()).thenReturn(mock(Config.class));
         when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
         when(apiKeyStore.invalidatePerRequestApiKey(any()))
@@ -319,7 +325,7 @@ class BackgroundJobServiceTest {
         bundle.service().saveJob(JOB_ID, proxyContext).onFailure(ctx::failNow);
 
         await(ctx);
-        verify(bundle.service(), times(6)).poll(any());
+        verify(bundle.service(), times(6)).poll(any(), any());
     }
 
     @Test
@@ -359,7 +365,7 @@ class BackgroundJobServiceTest {
         setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
         setupDeploymentMocks();
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(result -> ctx.verify(() -> {
                     assertNotNull(result);
                     ctx.completeNow();
@@ -373,7 +379,7 @@ class BackgroundJobServiceTest {
         setupHttpMocks("{\"status\":\"in_progress\"}");
         setupDeploymentMocks();
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(result -> ctx.verify(() -> {
                     assertNull(result);
                     ctx.completeNow();
@@ -387,7 +393,7 @@ class BackgroundJobServiceTest {
         setupHttpMocks("{\"status\":\"queued\"}");
         setupDeploymentMocks();
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(result -> ctx.verify(() -> {
                     assertNull(result);
                     ctx.completeNow();
@@ -402,7 +408,7 @@ class BackgroundJobServiceTest {
         when(configStore.get()).thenReturn(config);
         when(config.selectDeployment(anyString())).thenReturn(null);
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("not found"));
@@ -419,7 +425,7 @@ class BackgroundJobServiceTest {
         when(httpRequest.send()).thenReturn(Future.succeededFuture(httpResponse));
         when(httpResponse.statusCode()).thenReturn(500);
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("500"));
@@ -433,7 +439,7 @@ class BackgroundJobServiceTest {
         setupDeploymentMocks();
         setupHttpMocks("not valid json {{{");
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.completeNow());
         await(ctx);
@@ -444,7 +450,7 @@ class BackgroundJobServiceTest {
         setupDeploymentMocks();
         setupHttpMocks("[1, 2, 3]");
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("not a JSON object"));
@@ -460,10 +466,10 @@ class BackgroundJobServiceTest {
         when(configStore.get()).thenReturn(config);
         when(config.selectDeployment(anyString())).thenReturn(deployment);
         when(deployment.getResponsesEndpoint()).thenReturn("http://test-upstream/responses");
-        when(upstreamRouteProvider.get(any(), any(), anyString()))
+        when(upstreamRouteProvider.get(any(), any(), any(), anyString()))
                 .thenThrow(new RuntimeException("No available upstream"));
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("Failed to get upstream"));
@@ -481,7 +487,7 @@ class BackgroundJobServiceTest {
         when(deployment.getResponsesEndpoint()).thenReturn(null);
         when(deployment.getName()).thenReturn(DEPLOYMENT_NAME);
 
-        poller.poll(buildMapping())
+        poller.poll(buildMapping(), "test-per-request-key")
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("responses endpoint"));
@@ -490,12 +496,88 @@ class BackgroundJobServiceTest {
         await(ctx);
     }
 
+    @Test
+    void pollResolvesResponsesEndpointFromInterfaces(VertxTestContext ctx) throws Throwable {
+        Model model = new Model();
+        model.setName(DEPLOYMENT_NAME);
+        model.setInterfaces(Map.of(InterfaceType.OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://adapter")));
+        setupDeploymentMocks(model);
+        setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
+
+        poller.poll(buildMapping(), "test-per-request-key")
+                .onSuccess(result -> ctx.verify(() -> {
+                    assertNotNull(result);
+                    assertEquals("http://adapter/openai/v1/responses/" + UPSTREAM_RESPONSE_ID, capturePolledUrl());
+                    // the upstream is looked up by the endpoint the mapping's key was issued against
+                    assertEquals("http://adapter", captureEndpointSupplier().apply(model));
+                    ctx.completeNow();
+                }))
+                .onFailure(ctx::failNow);
+        await(ctx);
+    }
+
+    @Test
+    void pollUsesOverriddenGetPathAndUpstreamResponseId(VertxTestContext ctx) throws Throwable {
+        Model model = new Model();
+        model.setName(DEPLOYMENT_NAME);
+        DeploymentInterface responses = new DeploymentInterface("http://adapter/");
+        responses.setOverridePaths(Map.of("postOpenaiResponses", "/create", "getOpenaiResponsesById", "/poll/{id}"));
+        model.setInterfaces(Map.of(InterfaceType.OPENAI_RESPONSES.getValue(), responses));
+        setupDeploymentMocks(model);
+        setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
+
+        poller.poll(buildMapping(), "test-per-request-key")
+                .onSuccess(result -> ctx.verify(() -> {
+                    assertNotNull(result);
+                    assertEquals("http://adapter/poll/" + UPSTREAM_RESPONSE_ID, capturePolledUrl());
+                    // the upstream is looked up by the endpoint the mapping's key was issued against
+                    assertEquals("http://adapter", captureEndpointSupplier().apply(model));
+                    ctx.completeNow();
+                }))
+                .onFailure(ctx::failNow);
+        await(ctx);
+    }
+
+    @Test
+    void pollResolvesResponsesEndpointFromDeploymentBaseUrl(VertxTestContext ctx) throws Throwable {
+        Model model = new Model();
+        model.setName(DEPLOYMENT_NAME);
+        model.setBaseUrl("http://adapter/");
+        model.setInterfaces(Map.of(InterfaceType.OPENAI_RESPONSES.getValue(), new DeploymentInterface()));
+        setupDeploymentMocks(model);
+        setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
+
+        poller.poll(buildMapping(), "test-per-request-key")
+                .onSuccess(result -> ctx.verify(() -> {
+                    assertEquals("http://adapter/openai/v1/responses/" + UPSTREAM_RESPONSE_ID, capturePolledUrl());
+                    ctx.completeNow();
+                }))
+                .onFailure(ctx::failNow);
+        await(ctx);
+    }
+
+    private String capturePolledUrl() {
+        ArgumentCaptor<RequestOptions> options = ArgumentCaptor.forClass(RequestOptions.class);
+        verify(httpClient).request(options.capture());
+        return "http://" + options.getValue().getHost() + options.getValue().getURI();
+    }
+
+    private Function<Deployment, String> captureEndpointSupplier() {
+        ArgumentCaptor<Function<Deployment, String>> endpointSupplier = ArgumentCaptor.forClass(Function.class);
+        verify(upstreamRouteProvider).get(any(Deployment.class), isNull(), endpointSupplier.capture(), anyString());
+        return endpointSupplier.getValue();
+    }
+
     private void setupDeploymentMocks() {
-        Config config = mock(Config.class);
         Deployment deployment = mock(Deployment.class);
+        when(deployment.getResponsesEndpoint()).thenReturn("http://test-upstream/responses");
+        setupDeploymentMocks(deployment);
+    }
+
+    private void setupDeploymentMocks(Deployment deployment) {
+        Config config = mock(Config.class);
         when(configStore.get()).thenReturn(config);
         when(config.selectDeployment(anyString())).thenReturn(deployment);
-        when(deployment.getResponsesEndpoint()).thenReturn("http://test-upstream/responses");
 
         Upstream upstream = mock(Upstream.class);
         when(upstream.getKey()).thenReturn("api-key");
@@ -504,7 +586,7 @@ class BackgroundJobServiceTest {
 
         UpstreamRoute route = mock(UpstreamRoute.class);
         when(route.next()).thenReturn(upstream);
-        when(upstreamRouteProvider.get(any(Deployment.class), isNull(), anyString())).thenReturn(route);
+        when(upstreamRouteProvider.get(any(Deployment.class), isNull(), any(), anyString())).thenReturn(route);
     }
 
     private void setupHttpMocks(String responseJson) {

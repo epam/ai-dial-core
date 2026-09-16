@@ -9,12 +9,12 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceService;
-import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceEvent;
@@ -47,6 +47,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import javax.annotation.Nullable;
+
+import static com.epam.aidial.core.server.service.config.ConfigEntityCodec.BLOB_MAPPER;
 
 /**
  * {@link ConfigStore} implementation that builds the runtime {@link Config} as the
@@ -65,6 +68,11 @@ import java.util.function.Function;
  * initial rebuild, flips {@code initialized}) → {@link #requestRebuild} fires on
  * every subsequent file-poll callback (debounced 500 ms) and {@link #reload}
  * runs synchronously for the admin reload endpoint.
+ *
+ * <p>{@code mapKey} (threaded through most methods below) is the key an entity lives under
+ * in its {@code Config} type-map — the short name for models/interceptors/roles/applications/
+ * toolsets, the {@code $id} for schema types, and the canonical id for all other types (keys,
+ * routes). See {@link #resolveMapKeyFor} / {@link #resolveMapKeyForSchema} for the exact derivation.
  */
 @Slf4j
 public final class MergedConfigStore implements ConfigStore {
@@ -83,6 +91,7 @@ public final class MergedConfigStore implements ConfigStore {
             ResourceTypes.APP_TYPE_SCHEMA,
             ResourceTypes.CATALOG_SCHEMA,
             ResourceTypes.INTERCEPTOR,
+            ResourceTypes.TRANSLATOR,
             ResourceTypes.ROLE,
             ResourceTypes.PROJECT_KEY,
             ResourceTypes.ROUTE,
@@ -287,8 +296,9 @@ public final class MergedConfigStore implements ConfigStore {
             return;
         }
         ResourceEvent.Action action = event.getAction();
+        Map<String, String> eventMetadata = event.getMetadata();
         taskExecutor.submit(() -> {
-            applyReplicaEvent(descriptor, action);
+            applyReplicaEvent(descriptor, action, eventMetadata);
             return null;
         }).onFailure(error -> {
             log.warn("Replica event dispatch failed for {}; falling back to full rebuild",
@@ -331,20 +341,23 @@ public final class MergedConfigStore implements ConfigStore {
      * <p>Package-private for direct test invocation; production callsite is
      * {@link #onResourceEvent} via {@link AsyncTaskExecutor#submit}.
      */
-    void applyReplicaEvent(ResourceDescriptor descriptor, ResourceEvent.Action action) {
+    void applyReplicaEvent(ResourceDescriptor descriptor, ResourceEvent.Action action,
+                           @Nullable Map<String, String> eventMetadata) {
         try {
             ResourceTypes type = (ResourceTypes) descriptor.getType();
-            String canonicalId = canonicalId(descriptor);
+            boolean isSchema = type == ResourceTypes.APP_TYPE_SCHEMA || type == ResourceTypes.CATALOG_SCHEMA;
+
             if (action == ResourceEvent.Action.DELETE) {
-                applyReplicaDelete(type, canonicalId);
+                applyReplicaEventDelete(type, descriptor, isSchema, eventMetadata);
                 return;
             }
             String body = resourceService.getResource(descriptor);
             if (body == null) {
-                applyReplicaDelete(type, canonicalId);
+                // Body race: writer deleted the resource before this replica fetched it.
+                applyReplicaEventDelete(type, descriptor, isSchema, eventMetadata);
                 return;
             }
-            JsonNode node = ProxyUtil.BLOB_MAPPER.readTree(body);
+            JsonNode node = BLOB_MAPPER.readTree(body);
             // Blob fetch + readTree above stay OUTSIDE the lock (IO). Everything that reads or
             // mutates shared in-memory state — the GLOBAL_SETTINGS dispatch, entity deserialization,
             // the prior-secret snapshot, and the ApiKeyStore/Config mutations — runs under a single
@@ -354,7 +367,7 @@ public final class MergedConfigStore implements ConfigStore {
             rebuildLock.lock();
             try {
                 if (type == ResourceTypes.GLOBAL_SETTINGS) {
-                    GlobalSettings settings = ProxyUtil.BLOB_MAPPER.treeToValue(node, GlobalSettings.class);
+                    GlobalSettings settings = BLOB_MAPPER.treeToValue(node, GlobalSettings.class);
                     applySettingsWrite(settings);
                     return;
                 }
@@ -362,6 +375,7 @@ public final class MergedConfigStore implements ConfigStore {
                 if (!(entity instanceof String)) {
                     decryptManagedEntity(type, entity, descriptor);
                 }
+                String mapKey = resolveReplicaMapKey(descriptor, node, isSchema, eventMetadata);
                 if (type == ResourceTypes.PROJECT_KEY) {
                     Key key = (Key) entity;
                     String secret = key.getKey();
@@ -369,7 +383,7 @@ public final class MergedConfigStore implements ConfigStore {
                     // applyReplicaDelete). On rotation (secret changed) the old auth bearer must be
                     // revoked so the previous secret no longer authenticates (FINDING #2).
                     Config snapshot = this.config;
-                    Key prior = snapshot == null ? null : snapshot.getKeys().get(canonicalId);
+                    Key prior = snapshot == null ? null : snapshot.getKeys().get(mapKey);
                     String oldSecret = prior == null ? null : prior.getKey();
                     if (secret != null && !secret.isBlank()) {
                         ApiKeyData data = new ApiKeyData();
@@ -380,7 +394,7 @@ public final class MergedConfigStore implements ConfigStore {
                         apiKeyStore.removeKey(oldSecret);
                     }
                 }
-                applyEntityWrite(type, canonicalId, entity);
+                applyEntityWrite(type, mapKey, entity);
             } finally {
                 rebuildLock.unlock();
             }
@@ -391,7 +405,31 @@ public final class MergedConfigStore implements ConfigStore {
         }
     }
 
-    private void applyReplicaDelete(ResourceTypes type, String canonicalId) {
+    private void applyReplicaEventDelete(ResourceTypes type, ResourceDescriptor descriptor,
+                                         boolean isSchema, @Nullable Map<String, String> eventMetadata) {
+        if (isSchema) {
+            applyReplicaSchemaDelete(type, eventMetadata);
+        } else {
+            applyReplicaDelete(type, resolveMapKeyFor(descriptor));
+        }
+    }
+
+    /**
+     * Handles a schema-type replica delete, using the {@code $id} carried in {@code eventMetadata}
+     * when available. Falls back to a full rebuild when the metadata is absent — the blob body is
+     * gone at delete time so the map key cannot be derived any other way.
+     */
+    private void applyReplicaSchemaDelete(ResourceTypes type, @Nullable Map<String, String> eventMetadata) {
+        String schemaId = eventMetadata != null ? eventMetadata.get("$id") : null;
+        if (schemaId == null) {
+            log.warn("Schema $id is missing in delete event metadata: {}. Will proceed with full rebuild", eventMetadata);
+            requestRebuild();
+            return;
+        }
+        applyReplicaDelete(type, schemaId);
+    }
+
+    private void applyReplicaDelete(ResourceTypes type, String mapKey) {
         if (type == ResourceTypes.GLOBAL_SETTINGS) {
             applySettingsDelete();
             return;
@@ -404,13 +442,13 @@ public final class MergedConfigStore implements ConfigStore {
         try {
             if (type == ResourceTypes.PROJECT_KEY) {
                 Config snapshot = this.config;
-                Key existing = snapshot == null ? null : snapshot.getKeys().get(canonicalId);
+                Key existing = snapshot == null ? null : snapshot.getKeys().get(mapKey);
                 String secret = existing == null ? null : existing.getKey();
                 if (secret != null && !secret.isBlank()) {
                     apiKeyStore.removeKey(secret);
                 }
             }
-            applyEntityDelete(type, canonicalId);
+            applyEntityDelete(type, mapKey);
         } finally {
             rebuildLock.unlock();
         }
@@ -419,13 +457,14 @@ public final class MergedConfigStore implements ConfigStore {
     private static Object deserializeReplicaEntity(ResourceTypes type, JsonNode node)
             throws com.fasterxml.jackson.core.JsonProcessingException {
         return switch (type) {
-            case MODEL -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Model.class);
-            case INTERCEPTOR -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Interceptor.class);
-            case ROLE -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Role.class);
-            case PROJECT_KEY -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Key.class);
-            case ROUTE -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Route.class);
-            case APPLICATION -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Application.class);
-            case TOOL_SET -> ProxyUtil.BLOB_MAPPER.treeToValue(node, ToolSet.class);
+            case MODEL -> BLOB_MAPPER.treeToValue(node, Model.class);
+            case INTERCEPTOR -> BLOB_MAPPER.treeToValue(node, Interceptor.class);
+            case TRANSLATOR -> BLOB_MAPPER.treeToValue(node, Translator.class);
+            case ROLE -> BLOB_MAPPER.treeToValue(node, Role.class);
+            case PROJECT_KEY -> BLOB_MAPPER.treeToValue(node, Key.class);
+            case ROUTE -> BLOB_MAPPER.treeToValue(node, Route.class);
+            case APPLICATION -> BLOB_MAPPER.treeToValue(node, Application.class);
+            case TOOL_SET -> BLOB_MAPPER.treeToValue(node, ToolSet.class);
             case APP_TYPE_SCHEMA, CATALOG_SCHEMA -> node.toString();
             default -> throw new IllegalArgumentException("Unsupported replica type: " + type);
         };
@@ -594,7 +633,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     /**
      * Partial-update fast path for the API write controller (slice 4S.4 / OQ-32). Mutates the
-     * single entity at {@code canonicalId} of the given {@code type} in the merged {@link Config}
+     * single entity at {@code mapKey} of the given {@code type} in the merged {@link Config}
      * without re-scanning blob storage. {@code decryptedEntity} is the post-decryption Java entity
      * (or the JSON-string body for {@code APP_TYPE_SCHEMA}) — the controller has already validated
      * cross-references in strict mode and called {@code apiKeyStore.addOrUpdateKey} for keys.
@@ -603,10 +642,10 @@ public final class MergedConfigStore implements ConfigStore {
      * resurrected when the new interceptor satisfies their references. For other types no transitive
      * effect runs.
      */
-    public Config applyEntityWrite(ResourceTypes type, String canonicalId, Object decryptedEntity) {
+    public Config applyEntityWrite(ResourceTypes type, String mapKey, Object decryptedEntity) {
         rebuildLock.lock();
         try {
-            return applyEntityWriteLocked(type, canonicalId, decryptedEntity);
+            return applyEntityWriteLocked(type, mapKey, decryptedEntity);
         } finally {
             rebuildLock.unlock();
         }
@@ -617,10 +656,10 @@ public final class MergedConfigStore implements ConfigStore {
      * cross-reference revalidation across the model map and routes newly-orphaned models through
      * the {@code invalidEntities} sibling store. Other types have no transitive effect.
      */
-    public Config applyEntityDelete(ResourceTypes type, String canonicalId) {
+    public Config applyEntityDelete(ResourceTypes type, String mapKey) {
         rebuildLock.lock();
         try {
-            return applyEntityDeleteLocked(type, canonicalId);
+            return applyEntityDeleteLocked(type, mapKey);
         } finally {
             rebuildLock.unlock();
         }
@@ -634,7 +673,7 @@ public final class MergedConfigStore implements ConfigStore {
      * <p>Each touched type-map is cloned <strong>once</strong> at the top of the batch and mutated
      * in place across all entries — avoids the {@code O(batch × map)} clone cost that would arise
      * from cloning the map per entry. Per-entry failures roll back the entity slot at
-     * {@code (type, canonicalId)} so subsequent entries observe the pre-change state, matching
+     * {@code (type, mapKey)} so subsequent entries observe the pre-change state, matching
      * single-entity atomicity.
      */
     public Map<String, String> applyBatch(List<EntityChange> changes) {
@@ -663,7 +702,7 @@ public final class MergedConfigStore implements ConfigStore {
                 try {
                     applyChangeInPlace(next, nextInvalid, change, onSkip);
                 } catch (Exception error) {
-                    failures.put(change.canonicalId(), error.getMessage());
+                    failures.put(change.mapKey(), error.getMessage());
                 }
             }
 
@@ -677,7 +716,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     /**
      * In-place per-entry apply for {@link #applyBatch}. Snapshots the entity slot at
-     * {@code (type, canonicalId)} and the matching invalid-entity record so a validation/coercion
+     * {@code (type, mapKey)} and the matching invalid-entity record so a validation/coercion
      * throw rolls back the per-entry mutation, leaving prior-entry effects intact in {@code next}.
      * Cross-type mutations (resurrection / cascade) cannot partial-fail — the validate helper
      * throws before the cross-type step runs.
@@ -687,42 +726,45 @@ public final class MergedConfigStore implements ConfigStore {
                                     EntityChange change,
                                     BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
         ResourceTypes type = change.type();
-        String canonicalId = change.canonicalId();
+        String mapKey = change.mapKey();
         Object decryptedEntity = change.decryptedEntity();
 
-        Object previousEntity = peekEntity(next, type, canonicalId);
+        Object previousEntity = peekEntity(next, type, mapKey);
         Map<String, InvalidEntityRecord> perType = nextInvalid.get(type);
-        InvalidEntityRecord previousInvalid = perType == null ? null : perType.get(canonicalId);
+        InvalidEntityRecord previousInvalid = perType == null ? null : perType.get(mapKey);
 
         try {
-            clearInvalid(nextInvalid, type, canonicalId);
+            clearInvalid(nextInvalid, type, mapKey);
             if (decryptedEntity == null) {
-                removeEntityInPlace(next, type, canonicalId);
+                removeEntityInPlace(next, type, mapKey);
                 if (type == ResourceTypes.INTERCEPTOR) {
                     ConfigPostProcessor.cascadeInterceptorDelete(next, onSkip);
                 }
                 return;
             }
-            putEntityInPlace(next, type, canonicalId, decryptedEntity);
+            putEntityInPlace(next, type, mapKey, decryptedEntity);
             switch (type) {
-                case MODEL -> ConfigPostProcessor.validateSingleModel(next, canonicalId, onSkip);
+                case MODEL -> ConfigPostProcessor.validateSingleModel(next, mapKey, onSkip);
                 case INTERCEPTOR -> {
-                    ConfigPostProcessor.validateSingleInterceptor(next, canonicalId);
+                    ConfigPostProcessor.validateSingleInterceptor(next, mapKey, onSkip);
                     resurrectInvalidModels(next, nextInvalid);
                 }
-                case ROLE -> ConfigPostProcessor.validateSingleRole(next, canonicalId);
-                case PROJECT_KEY, APP_TYPE_SCHEMA, CATALOG_SCHEMA, APPLICATION, TOOL_SET -> { /* no post-processing */ }
+                case TRANSLATOR -> ConfigPostProcessor.validateSingleTranslator(next, mapKey, onSkip);
+                case ROLE -> ConfigPostProcessor.setRoleNameAsMapKey(next.getRoles(), mapKey);
+                case APPLICATION -> ConfigPostProcessor.validateSingleApplication(next, mapKey, onSkip);
+                case TOOL_SET -> ConfigPostProcessor.setNameAsMapKey(next.getToolsets(), mapKey);
+                case PROJECT_KEY, APP_TYPE_SCHEMA, CATALOG_SCHEMA -> { /* no post-processing */ }
                 case ROUTE -> ConfigPostProcessor.sortRoutesInPlace(next);
                 default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
             }
         } catch (RuntimeException error) {
             if (previousEntity == null) {
-                removeEntityInPlace(next, type, canonicalId);
+                removeEntityInPlace(next, type, mapKey);
             } else {
-                putEntityInPlace(next, type, canonicalId, previousEntity);
+                putEntityInPlace(next, type, mapKey, previousEntity);
             }
             if (previousInvalid != null) {
-                nextInvalid.computeIfAbsent(type, k -> new HashMap<>()).put(canonicalId, previousInvalid);
+                nextInvalid.computeIfAbsent(type, k -> new HashMap<>()).put(mapKey, previousInvalid);
             }
             throw error;
         }
@@ -769,7 +811,7 @@ public final class MergedConfigStore implements ConfigStore {
         }
     }
 
-    private Config applyEntityWriteLocked(ResourceTypes type, String canonicalId, Object decryptedEntity) {
+    private Config applyEntityWriteLocked(ResourceTypes type, String mapKey, Object decryptedEntity) {
         Config next = shallowClone(this.config);
         Map<ResourceTypes, Map<String, InvalidEntityRecord>> nextInvalid = cloneInvalidDeep(this.invalidEntities);
 
@@ -782,7 +824,7 @@ public final class MergedConfigStore implements ConfigStore {
         }
 
         BiConsumer<ResourceTypes, InvalidEntityException> onSkip = skipRouter(nextInvalid);
-        EntityChange change = new EntityChange(type, canonicalId, decryptedEntity);
+        EntityChange change = new EntityChange(type, mapKey, decryptedEntity);
         applyChangeInPlace(next, nextInvalid, change, onSkip);
 
         this.config = next;
@@ -790,7 +832,7 @@ public final class MergedConfigStore implements ConfigStore {
         return next;
     }
 
-    private Config applyEntityDeleteLocked(ResourceTypes type, String canonicalId) {
+    private Config applyEntityDeleteLocked(ResourceTypes type, String mapKey) {
         Config next = shallowClone(this.config);
         Map<ResourceTypes, Map<String, InvalidEntityRecord>> nextInvalid = cloneInvalidDeep(this.invalidEntities);
 
@@ -801,7 +843,7 @@ public final class MergedConfigStore implements ConfigStore {
         }
 
         BiConsumer<ResourceTypes, InvalidEntityException> onSkip = skipRouter(nextInvalid);
-        EntityChange change = new EntityChange(type, canonicalId, null);
+        EntityChange change = new EntityChange(type, mapKey, null);
         applyChangeInPlace(next, nextInvalid, change, onSkip);
 
         this.config = next;
@@ -814,24 +856,27 @@ public final class MergedConfigStore implements ConfigStore {
         if (!MODE_SKIP.equals(onInvalidEntity)) {
             return null;
         }
-        return (skippedType, error) -> recordSkippedByMapKey(nextInvalid, skippedType, error, id -> null);
+        // Partial-update writes are always API-sourced — this path never touches file config.
+        return (skippedType, error) -> recordSkippedByMapKey(nextInvalid, skippedType, error, id -> null, true);
     }
 
     /**
-     * Records a {@link InvalidEntityException} routed via {@code onSkip}, classifying the source the
-     * same way the full {@code rebuild()} path does: a map key carrying a {@code '/'} is an API-sourced
-     * canonical id, while a bare key is a file-defined simple name that we expand to its canonical id.
+     * Records a {@link InvalidEntityException} routed via {@code onSkip}. The map key's shape still
+     * tells us the canonical id and display name: a key carrying a {@code '/'} already is the
+     * canonical id, while a bare key is a short name we expand via {@code type/platform/name}. That
+     * derivation is independent of source, but the {@code source} label itself needs an explicit
+     * {@code fromApi} — for the five short-name-keyed types a file entry and a blob entry now share
+     * the identical (bare) key shape, so the caller must supply real provenance instead of guessing.
      * {@code payloadByCanonicalId} supplies the parsed blob body (rebuild) or {@code null} (partial update).
      */
     private void recordSkippedByMapKey(Map<ResourceTypes, Map<String, InvalidEntityRecord>> nextInvalid,
                                        ResourceTypes type, InvalidEntityException error,
-                                       Function<String, JsonNode> payloadByCanonicalId) {
+                                       Function<String, JsonNode> payloadByCanonicalId, boolean fromApi) {
         String mapKey = error.getMapKey();
-        boolean fromApi = mapKey.contains("/");
-        String canonicalId = fromApi
+        String canonicalId = mapKey.contains("/")
                 ? mapKey
                 : canonicalId(type, locationStrategy.resolveBucket(type, EntityLocationStrategy.PLATFORM_SCOPE), mapKey);
-        String simpleName = fromApi ? lastSegment(mapKey) : mapKey;
+        String simpleName = lastSegment(mapKey);
         recordInvalid(nextInvalid, type, canonicalId, simpleName, error.getMessage(), error.getWarnings(),
                 payloadByCanonicalId.apply(canonicalId), REASON_VALIDATION, fromApi ? "api" : "file");
     }
@@ -850,7 +895,7 @@ public final class MergedConfigStore implements ConfigStore {
                 continue; // parse-error case — body unavailable for resurrection
             }
             try {
-                Model candidate = ProxyUtil.BLOB_MAPPER.treeToValue(payload, Model.class);
+                Model candidate = BLOB_MAPPER.treeToValue(payload, Model.class);
                 ResourceDescriptor descriptor = descriptorFromCanonicalId(ResourceTypes.MODEL, canonicalId);
                 secretFieldProcessor.decryptFields(candidate, descriptor);
                 List<ValidationWarning> warnings = new ArrayList<>();
@@ -886,6 +931,7 @@ public final class MergedConfigStore implements ConfigStore {
         next.setToolsets(base.getToolsets());
         next.setRetriableErrorCodes(base.getRetriableErrorCodes());
         next.setGlobalInterceptors(base.getGlobalInterceptors());
+        next.setTranslators(base.getTranslators());
         return next;
     }
 
@@ -899,10 +945,10 @@ public final class MergedConfigStore implements ConfigStore {
     }
 
     private static void clearInvalid(Map<ResourceTypes, Map<String, InvalidEntityRecord>> invalid,
-                                     ResourceTypes type, String canonicalId) {
+                                     ResourceTypes type, String mapKey) {
         Map<String, InvalidEntityRecord> perType = invalid.get(type);
         if (perType != null) {
-            perType.remove(canonicalId);
+            perType.remove(mapKey);
         }
     }
 
@@ -921,6 +967,7 @@ public final class MergedConfigStore implements ConfigStore {
         switch (type) {
             case MODEL -> config.setModels(new LinkedHashMap<>(config.getModels()));
             case INTERCEPTOR -> config.setInterceptors(new LinkedHashMap<>(config.getInterceptors()));
+            case TRANSLATOR -> config.setTranslators(new LinkedHashMap<>(config.getTranslators()));
             case ROLE -> config.setRoles(new HashMap<>(config.getRoles()));
             case PROJECT_KEY -> config.setKeys(new HashMap<>(config.getKeys()));
             case ROUTE -> config.setRoutes(new LinkedHashMap<>(config.getRoutes()));
@@ -932,49 +979,96 @@ public final class MergedConfigStore implements ConfigStore {
         }
     }
 
-    private static Object peekEntity(Config config, ResourceTypes type, String canonicalId) {
+    private static Object peekEntity(Config config, ResourceTypes type, String mapKey) {
         return switch (type) {
-            case MODEL -> config.getModels().get(canonicalId);
-            case INTERCEPTOR -> config.getInterceptors().get(canonicalId);
-            case ROLE -> config.getRoles().get(canonicalId);
-            case PROJECT_KEY -> config.getKeys().get(canonicalId);
-            case ROUTE -> config.getRoutes().get(canonicalId);
-            case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas().get(canonicalId);
-            case CATALOG_SCHEMA -> config.getCatalogSchemas().get(canonicalId);
-            case APPLICATION -> config.getApplications().get(canonicalId);
-            case TOOL_SET -> config.getToolsets().get(canonicalId);
+            case MODEL -> config.getModels().get(mapKey);
+            case INTERCEPTOR -> config.getInterceptors().get(mapKey);
+            case TRANSLATOR -> config.getTranslators().get(mapKey);
+            case ROLE -> config.getRoles().get(mapKey);
+            case PROJECT_KEY -> config.getKeys().get(mapKey);
+            case ROUTE -> config.getRoutes().get(mapKey);
+            case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas().get(mapKey);
+            case CATALOG_SCHEMA -> config.getCatalogSchemas().get(mapKey);
+            case APPLICATION -> config.getApplications().get(mapKey);
+            case TOOL_SET -> config.getToolsets().get(mapKey);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         };
     }
 
-    private static void putEntityInPlace(Config config, ResourceTypes type, String canonicalId, Object entity) {
+    private static void putEntityInPlace(Config config, ResourceTypes type, String mapKey, Object entity) {
         switch (type) {
-            case MODEL -> config.getModels().put(canonicalId, (Model) entity);
-            case INTERCEPTOR -> config.getInterceptors().put(canonicalId, (Interceptor) entity);
-            case ROLE -> config.getRoles().put(canonicalId, (Role) entity);
-            case PROJECT_KEY -> config.getKeys().put(canonicalId, (Key) entity);
-            case ROUTE -> config.getRoutes().put(canonicalId, (Route) entity);
-            case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas().put(canonicalId, schemaBody(entity));
-            case CATALOG_SCHEMA -> config.getCatalogSchemas().put(canonicalId, schemaBody(entity));
-            case APPLICATION -> config.getApplications().put(canonicalId, (Application) entity);
-            case TOOL_SET -> config.getToolsets().put(canonicalId, (ToolSet) entity);
+            case MODEL -> config.getModels().put(mapKey, (Model) entity);
+            case INTERCEPTOR -> config.getInterceptors().put(mapKey, (Interceptor) entity);
+            case TRANSLATOR -> config.getTranslators().put(mapKey, (Translator) entity);
+            case ROLE -> config.getRoles().put(mapKey, (Role) entity);
+            case PROJECT_KEY -> config.getKeys().put(mapKey, (Key) entity);
+            case ROUTE -> config.getRoutes().put(mapKey, (Route) entity);
+            case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas().put(mapKey, schemaBody(entity));
+            case CATALOG_SCHEMA  -> config.getCatalogSchemas().put(mapKey, schemaBody(entity));
+            case APPLICATION -> config.getApplications().put(mapKey, (Application) entity);
+            case TOOL_SET -> config.getToolsets().put(mapKey, (ToolSet) entity);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
     }
 
-    private static void removeEntityInPlace(Config config, ResourceTypes type, String canonicalId) {
+    private static void removeEntityInPlace(Config config, ResourceTypes type, String mapKey) {
         switch (type) {
-            case MODEL -> config.getModels().remove(canonicalId);
-            case INTERCEPTOR -> config.getInterceptors().remove(canonicalId);
-            case ROLE -> config.getRoles().remove(canonicalId);
-            case PROJECT_KEY -> config.getKeys().remove(canonicalId);
-            case ROUTE -> config.getRoutes().remove(canonicalId);
-            case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas().remove(canonicalId);
-            case CATALOG_SCHEMA -> config.getCatalogSchemas().remove(canonicalId);
-            case APPLICATION -> config.getApplications().remove(canonicalId);
-            case TOOL_SET -> config.getToolsets().remove(canonicalId);
+            case MODEL -> config.getModels().remove(mapKey);
+            case INTERCEPTOR -> config.getInterceptors().remove(mapKey);
+            case TRANSLATOR -> config.getTranslators().remove(mapKey);
+            case ROLE -> config.getRoles().remove(mapKey);
+            case PROJECT_KEY -> config.getKeys().remove(mapKey);
+            case ROUTE -> config.getRoutes().remove(mapKey);
+            case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas().remove(mapKey);
+            case CATALOG_SCHEMA -> config.getCatalogSchemas().remove(mapKey);
+            case APPLICATION -> config.getApplications().remove(mapKey);
+            case TOOL_SET -> config.getToolsets().remove(mapKey);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
+    }
+
+    public static String extractSchemaId(JsonNode node) {
+        JsonNode id = node.get("$id");
+        return id != null && id.isTextual() ? id.asText() : null;
+    }
+
+    public static Map<String, String> getSchemaMapOf(Config config, ResourceTypes type) {
+        return switch (type) {
+            case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas();
+            case CATALOG_SCHEMA -> config.getCatalogSchemas();
+            default -> throw new IllegalArgumentException("Unexpected schema type: " + type);
+        };
+    }
+
+    /**
+     * Validates a Schema/CatalogSchema write's {@code $id} against the target's current state.
+     * Shared by the admin bulk-apply path ({@code AdminApplyController}) and the single-entity PUT
+     * path ({@code ConfigResourceController}), which otherwise duplicated this rule.
+     *
+     * @param schemaMap the {@code $id -> blob} map to check for a create-time collision (the batch
+     *                   scratch Config, or the live merged Config snapshot)
+     * @param isUpdate whether a resource already exists at the target location — note this can be
+     *                  true even when {@code oldSchemaId} is null (existing blob present but its
+     *                  $id could not be read), which still rejects rather than falling through to
+     *                  the create-time uniqueness check
+     * @param newSchemaId the $id from the incoming write
+     * @param oldSchemaId the $id of the resource being replaced, or null if unknown/not an update
+     * @return an error message if the write should be rejected, or null if it's valid
+     */
+    @Nullable
+    public static String validateSchemaId(Map<String, String> schemaMap, boolean isUpdate,
+                                          String newSchemaId, @Nullable String oldSchemaId) {
+        if (isUpdate) {
+            if (!newSchemaId.equals(oldSchemaId)) {
+                return "Schema $id cannot be changed after creation (existing: '" + oldSchemaId
+                        + "', requested: '" + newSchemaId + "')";
+            }
+            return null;
+        }
+        if (schemaMap.containsKey(newSchemaId)) {
+            return "Schema $id is already in use: " + newSchemaId;
+        }
+        return null;
     }
 
     private static String schemaBody(Object entity) {
@@ -1016,8 +1110,23 @@ public final class MergedConfigStore implements ConfigStore {
         Map<String, String> catalogSchemas = new LinkedHashMap<>(base.getCatalogSchemas());
         Map<String, Application> applications = new LinkedHashMap<>(base.getApplications());
         Map<String, ToolSet> toolsets = new LinkedHashMap<>(base.getToolsets());
+        Map<String, Translator> translators = new LinkedHashMap<>(base.getTranslators());
         merged.setRetriableErrorCodes(base.getRetriableErrorCodes());
         merged.setGlobalInterceptors(base.getGlobalInterceptors());
+        // Wire the (still-being-populated) local maps onto merged now rather than after the blob
+        // scan below — same references either way, but it lets addBlobEntity/removeAddedEntity
+        // dispatch off a single Config parameter instead of a positional map per type (they used
+        // to take 9-11 map parameters each).
+        merged.setModels(models);
+        merged.setInterceptors(interceptors);
+        merged.setTranslators(translators);
+        merged.setRoles(roles);
+        merged.setKeys(keys);
+        merged.setRoutes(routes);
+        merged.setApplicationTypeSchemas(schemas);
+        merged.setCatalogSchemas(catalogSchemas);
+        merged.setApplications(applications);
+        merged.setToolsets(toolsets);
 
         Map<String, JsonNode> blobBodies = new HashMap<>();
         Map<ResourceTypes, Map<String, InvalidEntityRecord>> pendingInvalid = new EnumMap<>(ResourceTypes.class);
@@ -1026,6 +1135,13 @@ public final class MergedConfigStore implements ConfigStore {
         // can classify the source without inferring from map-key shape — file secrets may be Base64
         // and contain '/' (OQ-12). The merged keys map itself still folds both for config consumers.
         Map<String, Key> apiKeysByCanonicalId = new HashMap<>();
+        // For models/interceptors/roles/applications/toolsets, a blob entry's map key (its short
+        // name) is indistinguishable in shape from a file entry's — both are bare, slash-free names.
+        // Track which (type, mapKey) pairs came from a blob this rebuild so the semantic pass can
+        // classify a skipped entity as "api" vs "file" correctly. Only models, applications,
+        // interceptors, translators, and toolsets actually trigger onSkip (roles, schemas, keys,
+        // routes do not), but we track all short-name-keyed types for completeness.
+        Map<ResourceTypes, Set<String>> apiSourcedKeys = new EnumMap<>(ResourceTypes.class);
 
         for (ResourceTypes type : MANAGED_TYPES) {
             for (String scope : locationStrategy.listScopes(type)) {
@@ -1049,7 +1165,7 @@ public final class MergedConfigStore implements ConfigStore {
                     try {
                         // Parse once into JsonNode; reused below for typed deserialization and as the
                         // payload echoed back through the invalid-entity sibling store on semantic failures.
-                        node = ProxyUtil.BLOB_MAPPER.readTree(body);
+                        node = BLOB_MAPPER.readTree(body);
                     } catch (Exception parseError) {
                         recordInvalid(pendingInvalid, type, canonicalId, name,
                                 "JSON parse failure: " + parseError.getMessage(),
@@ -1060,11 +1176,15 @@ public final class MergedConfigStore implements ConfigStore {
 
                     ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                             type, bucket, bucketLocation, name);
-                    AddedEntity added;
+
+                    // Schemas are keyed by their JSON-Schema $id, not by blob name or canonical id.
+                    String mapKey = resolveRebuildMapKey(pendingInvalid, descriptor, node, canonicalId, name);
+                    if (mapKey == null) {
+                        continue;
+                    }
+                    BlobPutResult putResult;
                     try {
-                        added = addBlobEntity(type, canonicalId, node,
-                                models, interceptors, roles, keys, routes, schemas, catalogSchemas,
-                                applications, toolsets);
+                        putResult = addBlobEntity(merged, type, mapKey, node);
                     } catch (Exception parseError) {
                         recordInvalid(pendingInvalid, type, canonicalId, name,
                                 "JSON parse failure: " + parseError.getMessage(),
@@ -1072,15 +1192,16 @@ public final class MergedConfigStore implements ConfigStore {
                                 node, REASON_PARSE, "api");
                         continue;
                     }
+                    Object added = putResult.added();
 
-                    if (added != null && added.entity() != null) {
+                    if (added != null) {
                         try {
-                            decryptManagedEntity(type, added.entity(), descriptor);
+                            decryptManagedEntity(type, added, descriptor);
                         } catch (Exception decryptError) {
                             // Roll back the partial insertion so decryption-failure entities never
-                            // reach addProjectKeys (locked 2S.9 invariant).
-                            removeAddedEntity(type, canonicalId, models, interceptors, roles, keys, routes, schemas, catalogSchemas,
-                                    applications, toolsets);
+                            // reach addProjectKeys (locked 2S.9 invariant) — restoring whatever entry
+                            // (possibly a file-sourced one) the blob entry had shadowed, if any.
+                            removeAddedEntity(merged, type, mapKey, putResult.previous());
                             recordInvalid(pendingInvalid, type, canonicalId, name,
                                     "Decryption failure: " + decryptError.getMessage(),
                                     List.of(new ValidationWarning("body", decryptError.getMessage())),
@@ -1088,23 +1209,16 @@ public final class MergedConfigStore implements ConfigStore {
                             continue;
                         }
                         if (type == ResourceTypes.PROJECT_KEY) {
-                            apiKeysByCanonicalId.put(canonicalId, (Key) added.entity());
+                            apiKeysByCanonicalId.put(canonicalId, (Key) added);
+                        }
+                        if (isShortNameKeyed(type)) {
+                            apiSourcedKeys.computeIfAbsent(type, t -> new HashSet<>()).add(mapKey);
                         }
                     }
                     blobBodies.put(canonicalId, node);
                 }
             }
         }
-
-        merged.setModels(models);
-        merged.setInterceptors(interceptors);
-        merged.setRoles(roles);
-        merged.setKeys(keys);
-        merged.setRoutes(routes);
-        merged.setApplicationTypeSchemas(schemas);
-        merged.setCatalogSchemas(catalogSchemas);
-        merged.setApplications(applications);
-        merged.setToolsets(toolsets);
 
         // Semantic pass — under MODE_SKIP, route per-entity violations to invalidEntities and
         // continue; under MODE_ABORT, the post-processor throws and the rebuild aborts (this.config
@@ -1122,7 +1236,11 @@ public final class MergedConfigStore implements ConfigStore {
                                 error.getMapKey(), error.getMessage());
                         return;
                     }
-                    recordSkippedByMapKey(pendingInvalid, type, error, blobBodies::get);
+                    // For the short-name-keyed types, key shape no longer tells file from blob
+                    // (see apiSourcedKeys above); everything else still resolves via shape alone.
+                    boolean fromApi = error.getMapKey().contains("/")
+                            || apiSourcedKeys.getOrDefault(type, Set.of()).contains(error.getMapKey());
+                    recordSkippedByMapKey(pendingInvalid, type, error, blobBodies::get, fromApi);
                 }
                 : null;
         // File partition = base file keys (keyed by secret); API partition = PROJECT_KEY blob entries
@@ -1130,11 +1248,10 @@ public final class MergedConfigStore implements ConfigStore {
         // consumers, but the ApiKeyStore feed stays explicitly source-classified (FINDING #7).
         ConfigPostProcessor.processSemantic(merged, apiKeyStore, base.getKeys(), apiKeysByCanonicalId, onSkip);
 
-        // ConfigPostProcessor sets entity.name = mapKey: canonical ID for API entries
-        // ("models/platform/foo"), simple name for file entries ("gpt-4"). This is the OQ-23 contract:
-        // canonical IDs surface on legacy /openai/models, /openai/deployments, and rate-limit
-        // role-limit lookups for API-managed deployments. The new admin Configuration API listing
-        // controller projects simpleName(mapKey) independently per design 03 §4.
+        // ConfigPostProcessor sets entity.name = mapKey. For models/interceptors/roles/
+        // applications/toolsets the map key is the short name ("gpt-4"); for schemas it is
+        // the $id — in both cases file- and blob-sourced entries share the same map key.
+        // Keys and routes are unaffected — their map key stays the canonical id, as before.
 
         boolean overlayFromApi = applySettingsOverlay(merged, pendingInvalid);
         Map<ResourceTypes, Map<String, InvalidEntityRecord>> finalInvalid =
@@ -1167,7 +1284,7 @@ public final class MergedConfigStore implements ConfigStore {
         String canonicalId = canonicalId(ResourceTypes.GLOBAL_SETTINGS, ResourceDescriptor.PLATFORM_BUCKET, "global");
         JsonNode payload;
         try {
-            payload = ProxyUtil.BLOB_MAPPER.readTree(body);
+            payload = BLOB_MAPPER.readTree(body);
         } catch (Exception parseError) {
             log.warn("Failed to parse settings singleton blob as JSON", parseError);
             recordInvalid(pendingInvalid, ResourceTypes.GLOBAL_SETTINGS, canonicalId, "global",
@@ -1177,7 +1294,7 @@ public final class MergedConfigStore implements ConfigStore {
             return false;
         }
         try {
-            GlobalSettings settings = ProxyUtil.BLOB_MAPPER.treeToValue(payload, GlobalSettings.class);
+            GlobalSettings settings = BLOB_MAPPER.treeToValue(payload, GlobalSettings.class);
             merged.setGlobalInterceptors(
                     settings.getGlobalInterceptors() == null ? List.of() : settings.getGlobalInterceptors());
             merged.setRetriableErrorCodes(
@@ -1237,60 +1354,155 @@ public final class MergedConfigStore implements ConfigStore {
                 descriptor.getBucketName(), descriptor.getName());
     }
 
-    private static AddedEntity addBlobEntity(ResourceTypes type, String canonicalId, JsonNode node,
-                                             Map<String, Model> models, Map<String, Interceptor> interceptors,
-                                             Map<String, Role> roles, Map<String, Key> keys,
-                                             LinkedHashMap<String, Route> routes, Map<String, String> schemas,
-                                             Map<String, String> catalogSchemas,
-                                             Map<String, Application> applications, Map<String, ToolSet> toolsets)
+    /**
+     * The Config map key for non-schema types.
+     * <ul>
+     *   <li>Models/interceptors/roles/applications/toolsets → short name (last path segment)</li>
+     *   <li>Every other non-schema type → canonical id</li>
+     * </ul>
+     * Throws {@link IllegalArgumentException} if called for a schema type — use
+     * {@link #resolveMapKeyForSchema(JsonNode)} for {@code APP_TYPE_SCHEMA} / {@code CATALOG_SCHEMA}.
+     */
+    public static String resolveMapKeyFor(ResourceDescriptor descriptor) {
+        ResourceTypes type = (ResourceTypes) descriptor.getType();
+        if (type == ResourceTypes.APP_TYPE_SCHEMA || type == ResourceTypes.CATALOG_SCHEMA) {
+            throw new IllegalArgumentException(
+                    "Use mapKeyForSchema(JsonNode) for schema types; descriptor: " + descriptor.getUrl());
+        }
+        return isShortNameKeyed(type) ? descriptor.getName() : canonicalId(descriptor);
+    }
+
+    /**
+     * Resolves the Config map key for a blob entry during a full rebuild. For non-schema types,
+     * delegates to {@link #resolveMapKeyFor(ResourceDescriptor)}, which cannot fail. For schema
+     * types, extracts the {@code $id} from the blob body, or — since a missing/non-textual
+     * {@code $id} is the only way schema resolution can fail — records the invalid entity itself
+     * and returns {@code null} so the caller doesn't have to assume the failure reason.
+     */
+    @Nullable
+    private String resolveRebuildMapKey(Map<ResourceTypes, Map<String, InvalidEntityRecord>> pendingInvalid,
+                                         ResourceDescriptor descriptor, JsonNode node,
+                                         String canonicalId, String name) {
+        ResourceTypes type = (ResourceTypes) descriptor.getType();
+        if (type != ResourceTypes.APP_TYPE_SCHEMA && type != ResourceTypes.CATALOG_SCHEMA) {
+            return resolveMapKeyFor(descriptor);
+        }
+        String schemaId = extractSchemaId(node);
+        if (schemaId == null) {
+            recordInvalid(pendingInvalid, type, canonicalId, name,
+                    "Missing or non-textual $id field",
+                    List.of(new ValidationWarning("$id", "missing or non-textual $id field")),
+                    node, REASON_VALIDATION, "api");
+        }
+        return schemaId;
+    }
+
+    /**
+     * Resolves the Config map key for a replica CREATE/UPDATE event. For schema types, prefers the
+     * {@code $id} carried in {@code eventMetadata} (set by the writer) and falls back to extracting
+     * it from the blob body when metadata is absent (older-pod delivery). For all other types,
+     * delegates to {@link #resolveMapKeyFor(ResourceDescriptor)}.
+     */
+    private static String resolveReplicaMapKey(ResourceDescriptor descriptor, JsonNode node,
+                                               boolean isSchema,
+                                               @Nullable Map<String, String> eventMetadata) {
+        if (!isSchema) {
+            return resolveMapKeyFor(descriptor);
+        }
+        String metaId = eventMetadata != null ? eventMetadata.get("$id") : null;
+        return metaId != null ? metaId : resolveMapKeyForSchema(node);
+    }
+
+    /**
+     * The Config map key for schema types ({@code APP_TYPE_SCHEMA}, {@code CATALOG_SCHEMA}):
+     * the JSON-Schema {@code $id} field extracted from the blob body.
+     * Throws {@link IllegalArgumentException} when {@code body} has no textual {@code $id}.
+     */
+    private static String resolveMapKeyForSchema(JsonNode body) {
+        String schemaId = extractSchemaId(body);
+        if (schemaId == null) {
+            throw new IllegalArgumentException(
+                    "Schema body must contain a non-null textual $id field");
+        }
+        return schemaId;
+    }
+
+    public static boolean isShortNameKeyed(ResourceTypes type) {
+        return switch (type) {
+            case MODEL, INTERCEPTOR, TRANSLATOR, ROLE, APPLICATION, TOOL_SET -> true;
+            default -> false;
+        };
+    }
+
+    /**
+     * Reads the type-map to mutate off {@code config} rather than taking one map parameter per
+     * managed type — {@code config}'s maps are wired up by {@link #rebuild} before the blob scan
+     * that calls this runs, so they're already the right (still being populated) instances.
+     */
+    private static BlobPutResult addBlobEntity(Config config, ResourceTypes type, String mapKey, JsonNode node)
             throws JsonProcessingException {
         switch (type) {
             case MODEL -> {
-                Model entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Model.class);
-                warnIfReplaced(type, canonicalId, models.put(canonicalId, entity));
-                return new AddedEntity(entity);
+                Model entity = BLOB_MAPPER.treeToValue(node, Model.class);
+                Object previous = config.getModels().put(mapKey, entity);
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(entity, previous);
             }
             case INTERCEPTOR -> {
-                Interceptor entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Interceptor.class);
-                warnIfReplaced(type, canonicalId, interceptors.put(canonicalId, entity));
-                return new AddedEntity(entity);
+                Interceptor entity = BLOB_MAPPER.treeToValue(node, Interceptor.class);
+                Object previous = config.getInterceptors().put(mapKey, entity);
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(entity, previous);
+            }
+            case TRANSLATOR -> {
+                Translator entity = BLOB_MAPPER.treeToValue(node, Translator.class);
+                Object previous = config.getTranslators().put(mapKey, entity);
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(entity, previous);
             }
             case ROLE -> {
-                Role entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Role.class);
-                warnIfReplaced(type, canonicalId, roles.put(canonicalId, entity));
-                return new AddedEntity(entity);
+                Role entity = BLOB_MAPPER.treeToValue(node, Role.class);
+                Object previous = config.getRoles().put(mapKey, entity);
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(entity, previous);
             }
             case PROJECT_KEY -> {
-                Key entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Key.class);
-                warnIfReplaced(type, canonicalId, keys.put(canonicalId, entity));
-                return new AddedEntity(entity);
+                Key entity = BLOB_MAPPER.treeToValue(node, Key.class);
+                Object previous = config.getKeys().put(mapKey, entity);
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(entity, previous);
             }
             case ROUTE -> {
-                Route entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Route.class);
-                warnIfReplaced(type, canonicalId, routes.put(canonicalId, entity));
-                return new AddedEntity(entity);
+                Route entity = BLOB_MAPPER.treeToValue(node, Route.class);
+                Object previous = config.getRoutes().put(mapKey, entity);
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(entity, previous);
             }
             case APP_TYPE_SCHEMA -> {
-                warnIfReplaced(type, canonicalId, schemas.put(canonicalId, node.toString()));
-                return null;
+                Object previous = config.getApplicationTypeSchemas().put(mapKey, node.toString());
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(null, previous);
             }
             case CATALOG_SCHEMA -> {
-                warnIfReplaced(type, canonicalId, catalogSchemas.put(canonicalId, node.toString()));
-                return null;
+                Object previous = config.getCatalogSchemas().put(mapKey, node.toString());
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(null, previous);
             }
             case APPLICATION -> {
-                Application entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Application.class);
-                warnIfReplaced(type, canonicalId, applications.put(canonicalId, entity));
-                return new AddedEntity(entity);
+                Application entity = BLOB_MAPPER.treeToValue(node, Application.class);
+                Object previous = config.getApplications().put(mapKey, entity);
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(entity, previous);
             }
             case TOOL_SET -> {
-                ToolSet entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, ToolSet.class);
-                warnIfReplaced(type, canonicalId, toolsets.put(canonicalId, entity));
-                return new AddedEntity(entity);
+                ToolSet entity = BLOB_MAPPER.treeToValue(node, ToolSet.class);
+                Object previous = config.getToolsets().put(mapKey, entity);
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(entity, previous);
             }
             default -> {
                 /* GLOBAL_SETTINGS is a singleton — design 02 §4 leaves union-by-key out of scope. */
-                return null;
+                return new BlobPutResult(null, null);
             }
         }
     }
@@ -1302,25 +1514,38 @@ public final class MergedConfigStore implements ConfigStore {
         }
     }
 
-    private static void removeAddedEntity(ResourceTypes type, String canonicalId,
-                                          Map<String, Model> models, Map<String, Interceptor> interceptors,
-                                          Map<String, Role> roles, Map<String, Key> keys,
-                                          LinkedHashMap<String, Route> routes, Map<String, String> schemas,
-                                          Map<String, String> catalogSchemas,
-                                          Map<String, Application> applications, Map<String, ToolSet> toolsets) {
+    /**
+     * Undoes {@link #addBlobEntity}'s {@code put()} on decrypt failure: restores whatever entry it
+     * shadowed ({@code previous}), or removes the map key entirely if it shadowed nothing.
+     */
+    private static void removeAddedEntity(Config config, ResourceTypes type, String mapKey, Object previous) {
         switch (type) {
-            case MODEL -> models.remove(canonicalId);
-            case INTERCEPTOR -> interceptors.remove(canonicalId);
-            case ROLE -> roles.remove(canonicalId);
-            case PROJECT_KEY -> keys.remove(canonicalId);
-            case ROUTE -> routes.remove(canonicalId);
-            case APP_TYPE_SCHEMA -> schemas.remove(canonicalId);
-            case CATALOG_SCHEMA -> catalogSchemas.remove(canonicalId);
-            case APPLICATION -> applications.remove(canonicalId);
-            case TOOL_SET -> toolsets.remove(canonicalId);
+            case MODEL -> restore(config.getModels(), mapKey, (Model) previous);
+            case INTERCEPTOR -> restore(config.getInterceptors(), mapKey, (Interceptor) previous);
+            case TRANSLATOR -> restore(config.getTranslators(), mapKey, (Translator) previous);
+            case ROLE -> restore(config.getRoles(), mapKey, (Role) previous);
+            case PROJECT_KEY -> restore(config.getKeys(), mapKey, (Key) previous);
+            case ROUTE -> restore(config.getRoutes(), mapKey, (Route) previous);
+            case APP_TYPE_SCHEMA -> restore(config.getApplicationTypeSchemas(), mapKey, (String) previous);
+            case CATALOG_SCHEMA -> restore(config.getCatalogSchemas(), mapKey, (String) previous);
+            case APPLICATION -> restore(config.getApplications(), mapKey, (Application) previous);
+            case TOOL_SET -> restore(config.getToolsets(), mapKey, (ToolSet) previous);
             default -> { /* no-op */ }
         }
     }
 
-    private record AddedEntity(Object entity) { }
+    private static <T> void restore(Map<String, T> map, String mapKey, T previous) {
+        if (previous == null) {
+            map.remove(mapKey);
+        } else {
+            map.put(mapKey, previous);
+        }
+    }
+
+    /**
+     * {@code previous} is whatever the blob entry's {@code put()} shadowed in the map (e.g. a
+     * file-sourced entry seeded into {@code merged} before the blob scan), or {@code null} if it
+     * shadowed nothing — needed so a later rollback can restore it instead of leaving a hole.
+     */
+    private record BlobPutResult(Object added, Object previous) {}
 }

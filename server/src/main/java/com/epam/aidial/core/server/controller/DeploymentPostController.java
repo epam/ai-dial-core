@@ -19,8 +19,10 @@ import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BaseResponseFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
+import com.epam.aidial.core.server.function.CollectChatCompletionUsageFn;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
+import com.epam.aidial.core.server.function.CollectRequestSkillsFn;
 import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.StripUsagePerModelFn;
@@ -62,15 +64,22 @@ import static com.epam.aidial.core.server.Proxy.HEADER_UPSTREAM_ID;
 
 @Slf4j
 public class DeploymentPostController extends BaseDeploymentPostController {
-    private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
 
     public DeploymentPostController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
-        this.enhancementFunctions = List.of(new CollectRequestStandardAttachmentsFn(proxy, context),
-                new ApplyDefaultDeploymentSettingsFn(proxy, context),
+    }
+
+    /**
+     * Built when the request body is handled rather than at construction: the chain is parameterized by
+     * {@link #requestedInterface()}, which reads the request path.
+     */
+    private List<BaseRequestFunction<RequestObject>> buildEnhancementFunctions() {
+        return List.of(new CollectRequestStandardAttachmentsFn(proxy, context),
+                new CollectRequestSkillsFn(proxy, context),
+                new ApplyDefaultDeploymentSettingsFn(proxy, context, requestedInterface()),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
-                new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_CHAT_COMPLETIONS),
+                new BuildUpstreamCacheFn(proxy, context, requestedInterface()),
                 new CollectDeploymentsFn(proxy, context));
     }
 
@@ -177,11 +186,11 @@ public class DeploymentPostController extends BaseDeploymentPostController {
     private Future<?> handleDeployment(String deploymentId) {
         return proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findDeployment(context, deploymentId))
                 .compose(dep -> proxy.getTaskExecutor().submit(() -> {
-                    proxy.getConsentService().verifyUserConsent(context, dep);
+                    proxy.getConsentService().verifyUserConsent(context, dep, requestedInterface());
                     return dep;
                 }))
                 .map(dep -> {
-                    Features features = dep.getFeatures();
+                    Features features = dep.resolveFeatures(requestedInterface());
                     boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
                     if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
                         throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", deploymentId, context.getApiKeyData().getSourceDeployment()));
@@ -191,7 +200,8 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                         dep = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(app);
                     }
 
-                    if (DeploymentEndpointUtil.resolveServingEndpoint(dep, requestedInterface()) == null) {
+                    if (DeploymentEndpointUtil.resolveServingEndpoint(dep, requestedInterface(),
+                            context.getConfig().getTranslators()) == null) {
                         throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
                     }
 
@@ -203,7 +213,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                 })
                 .compose(dep -> {
                     if (dep instanceof Model && !context.hasNextInterceptor()) {
-                        return proxy.getRateLimiter().limit(context, dep);
+                        return checkLimits(dep);
                     } else {
                         return Future.succeededFuture(RateLimitResult.SUCCESS);
                     }
@@ -232,7 +242,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
     private Future<?> handleInterceptor(int interceptorIndex) {
         List<String> interceptors = context.getInterceptors();
         if (interceptorIndex < interceptors.size()) {
-            return new ChatCompletionInterceptorController(proxy, context, interceptorIndex).handle();
+            return new ChatCompletionInterceptorController(proxy, context, interceptorIndex, requestedInterface()).handle();
         } else { // all interceptors are completed we should call the initial deployment
             return handleDeployment(context.getApiKeyData().getInitialDeployment());
         }
@@ -296,6 +306,11 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                 : InterfaceType.OPENAI_CHAT_COMPLETIONS;
     }
 
+    @Override
+    protected InterfaceType interfaceType() {
+        return requestedInterface();
+    }
+
     @SneakyThrows
     private void sendRequest() {
         if (nextUpstream()) {
@@ -317,7 +332,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         try {
             RequestObject request = new ChatCompletionRequest(ProxyUtil.parseObject(requestBody));
             context.setStreamingRequest(request.isStreaming());
-            if (ProxyUtil.processChain(request, enhancementFunctions)) {
+            if (ProxyUtil.processChain(request, buildEnhancementFunctions())) {
                 context.setRequestBody(Buffer.buffer(request.serialize()));
             }
             proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
@@ -336,7 +351,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         UpstreamRoute upstreamRoute;
         try {
             upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext(),
-                    dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, type), upstreamId);
+                    dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, type, context.getConfig().getTranslators()), upstreamId);
         } catch (HttpException e) {
             respond(e.getStatus(), e.getMessage());
             return;
@@ -354,7 +369,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        sendProxyRequest(proxyRequest, Upstream::getEndpoint)
+        sendProxyRequest(proxyRequest, requestedInterface())
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyResponseError);
     }
@@ -401,7 +416,8 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
         Supplier<BufferingReadStream.BaseEventListener> eventListenerSupplier = () ->
                 new ChatCompletionSseListener(isChatCompletionsPath()
-                        ? List.of(new StripUsagePerModelFn(proxy, context), new CollectResponseChatCompletionAttachmentsFn(proxy, context))
+                        ? List.of(new StripUsagePerModelFn(proxy, context), new CollectResponseChatCompletionAttachmentsFn(proxy, context),
+                                new CollectChatCompletionUsageFn(proxy, context))
                         : List.of(new CollectResponseChatCompletionAttachmentsFn(proxy, context)));
         BufferingReadStream responseStream = createResponseStream(proxyResponse, eventListenerSupplier);
 

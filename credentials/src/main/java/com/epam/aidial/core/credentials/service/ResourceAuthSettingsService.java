@@ -13,6 +13,7 @@ import com.epam.aidial.core.credentials.service.registration.ResourceRegistratio
 import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactory;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
+import com.epam.aidial.core.credentials.validation.ClientSecretValidation;
 import com.nimbusds.oauth2.sdk.pkce.CodeChallenge;
 import com.nimbusds.oauth2.sdk.pkce.CodeChallengeMethod;
 import com.nimbusds.oauth2.sdk.pkce.CodeVerifier;
@@ -50,6 +51,9 @@ public class ResourceAuthSettingsService {
             throw new IllegalArgumentException("ResourceAuthSettings is not defined for Resource: " + updatedResource.getName());
         }
 
+        // Statuses and the secret hint are computed per read; a client echoing them back must not persist them.
+        resourceAuthSettings.clearComputedFields();
+
         if (updatedResource.isForwardPerRequestKey() && resourceAuthSettings.getAuthenticationType() == AuthenticationType.API_KEY) {
             throw new IllegalArgumentException("Forward per request API key can't be along with authentication type %s"
                     .formatted(AuthenticationType.API_KEY.name()));
@@ -60,7 +64,9 @@ public class ResourceAuthSettingsService {
 
         ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode = getResourceAuthSettingsChangeMode(
                 requiresClientRegistration, requiresDynamicClientRegistration);
-        validateResourceAuthSettings(resourceAuthSettings, resourceAuthSettingsChangeMode);
+        validateResourceAuthSettings(resourceAuthSettings, resourceAuthSettingsChangeMode,
+                existingResource == null || existingResource.getAuthSettings() == null
+                        ? null : existingResource.getAuthSettings().getClientSecret());
 
         if (resourceAuthSettingsChangeMode == ResourceAuthSettingsChangeMode.CREATE_DYNAMIC_CLIENT
                 || resourceAuthSettingsChangeMode == ResourceAuthSettingsChangeMode.CREATE_STATIC_CLIENT) {
@@ -121,9 +127,13 @@ public class ResourceAuthSettingsService {
      * @param resourceAuthSettingsChangeMode The mode of authentication changes (e.g., CREATE_DYNAMIC_CLIENT)
      */
     private void validateResourceAuthSettings(ResourceAuthSettings resourceAuthSettings,
-                                              ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode) {
+                                              ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode,
+                                              String storedClientSecret) {
         AuthSettingsValidator authSettingsValidator = validatorFactory.getValidator(resourceAuthSettings.getAuthenticationType());
         authSettingsValidator.validate(resourceAuthSettings, resourceAuthSettingsChangeMode);
+        // Runs before enrichResourceAuthSettings, so a secret a dynamic registration is about to return is
+        // never checked — only the caller's own.
+        ClientSecretValidation.validate(resourceAuthSettings.getClientSecret(), storedClientSecret);
     }
 
     /**

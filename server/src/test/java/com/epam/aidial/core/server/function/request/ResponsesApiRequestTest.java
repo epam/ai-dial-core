@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.function.request;
 
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -108,7 +109,7 @@ class ResponsesApiRequestTest {
                         "another-field", "added-value"));
 
         ResponsesApiRequest request = request(body);
-        request.applyDefaults(model);
+        request.applyDefaults(model.resolveDefaults(InterfaceType.OPENAI_RESPONSES));
         String expected = """
                 {"field":"kept-value","another-field":"added-value"}""";
 

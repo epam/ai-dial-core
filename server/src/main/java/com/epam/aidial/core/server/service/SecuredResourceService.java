@@ -1,10 +1,12 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.AuthenticationType;
+import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.SecuredResource;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
+import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
@@ -29,6 +31,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 
 import java.time.Duration;
+import java.util.Objects;
 
 @Slf4j
 @AllArgsConstructor
@@ -41,13 +44,57 @@ public class SecuredResourceService {
     private final McpHttpClientBuilder mcpHttpClientBuilder;
 
     public void signIn(ProxyContext context, SecuredResource securedResource, ResourceSignInRequest request) {
-        if (AuthenticationType.API_KEY.equals(request.getAuthenticationType())) {
-            validateApiKey(securedResource, request.getApiKey());
+        boolean apiKeyAuth = AuthenticationType.API_KEY.equals(request.getAuthenticationType());
+        if (apiKeyAuth) {
+            validateApiKeyFormat(request.getApiKey());
         }
         CredentialsLocator credentialsLocator = createCredentialsLocator(context, securedResource, request.getUrl());
         CredentialsDescriptor credentialsDescriptor = credentialsLocator.getCredentialsDescriptors().get(request.getCredentialsLevel());
+        if (apiKeyAuth) {
+            if (isStoredApiKeyUnchanged(credentialsDescriptor, securedResource, request, context.getInitiatorId())) {
+                log.debug("Skipping API key sign-in for resourceId={}: the submitted key matches the stored one",
+                        credentialsDescriptor.getResourceId());
+                return;
+            }
+            probeApiKey(securedResource, request.getApiKey());
+        }
         resourceCredentialsService.addResourceCredentials(credentialsDescriptor, securedResource.getAuthSettings(),
                 request, context.getInitiatorId());
+    }
+
+    /**
+     * True when re-storing the submitted key would be a no-op: the record already held at this level is an
+     * API_KEY record with the same key, the same header, and (for USER level) the same owner and offline-usage
+     * consent. Anything else — including an unreadable record — must go through the normal store path (#1843).
+     */
+    private boolean isStoredApiKeyUnchanged(CredentialsDescriptor credentialsDescriptor,
+                                            SecuredResource securedResource,
+                                            ResourceSignInRequest request,
+                                            String userId) {
+        if (credentialsDescriptor == null) {
+            return false;
+        }
+        ResourceCredentials stored;
+        try {
+            stored = resourceCredentialsService.getResourceCredentials(credentialsDescriptor);
+        } catch (RuntimeException e) {
+            // Best-effort: a record that cannot be read (undecryptable, malformed, storage hiccup) must still be
+            // overwritable by sign-in, as it was before this pre-check existed.
+            log.warn("Cannot read stored credentials for resourceId={}: {}", credentialsDescriptor.getResourceId(), e.getMessage());
+            return false;
+        }
+        if (stored == null
+                || !AuthenticationType.API_KEY.equals(stored.getAuthenticationType())
+                || !request.getCredentialsLevel().equals(stored.getCredentialsLevel())
+                || !Objects.equals(securedResource.getAuthSettings().getApiKeyHeader(), stored.getApiKeyHeader())
+                || !Objects.equals(request.getApiKey(), stored.getApiKey())) {
+            return false;
+        }
+        if (CredentialsLevel.USER.equals(request.getCredentialsLevel())) {
+            return Objects.equals(userId, stored.getUserId())
+                    && stored.isOfflineUsageConsent() == request.isOfflineUsageConsent();
+        }
+        return true;
     }
 
     public boolean signOut(ProxyContext context, SecuredResource securedResource, ResourceSignOutRequest request) {
@@ -67,21 +114,22 @@ public class SecuredResourceService {
         throw new IllegalArgumentException("Unsupported secured resource type: " + resource.getClass().getSimpleName());
     }
 
-    /**
-     * Validates an API key before it is stored at sign-in: rejects blank/malformed keys, then probes
-     * the resource endpoint, assuming it speaks MCP (initialize + tools/list). Rejects only when the
-     * server explicitly refuses the request (HTTP 401/403 or a JSON-RPC error); connectivity issues
-     * and non-MCP endpoints are tolerated because the key may be provisioned before the server is
-     * reachable (#1698).
-     */
-    private void validateApiKey(SecuredResource securedResource, String apiKey) {
+    private static void validateApiKeyFormat(String apiKey) {
         if (StringUtils.isBlank(apiKey)) {
             throw new HttpException(HttpStatus.BAD_REQUEST, "api_key must not be blank");
         }
         if (containsIllegalHeaderChars(apiKey)) {
             throw new HttpException(HttpStatus.BAD_REQUEST, "api_key contains illegal control characters");
         }
+    }
 
+    /**
+     * Validates an API key before it is stored at sign-in by probing the resource endpoint, assuming it
+     * speaks MCP (initialize + tools/list). Rejects only when the server explicitly refuses the request
+     * (HTTP 401/403 or a JSON-RPC error); connectivity issues and non-MCP endpoints are tolerated because
+     * the key may be provisioned before the server is reachable (#1698).
+     */
+    private void probeApiKey(SecuredResource securedResource, String apiKey) {
         String endpoint = securedResource.getEndpoint();
         String apiKeyHeader = securedResource.getAuthSettings().getApiKeyHeader();
         if (StringUtils.isBlank(endpoint) || StringUtils.isBlank(apiKeyHeader)) {

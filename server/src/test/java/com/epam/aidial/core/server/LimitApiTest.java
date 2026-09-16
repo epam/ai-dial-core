@@ -1,5 +1,8 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.RateLimitSchedule;
+import com.epam.aidial.core.server.limiter.CalendarPeriod;
+import com.epam.aidial.core.server.limiter.CalendarWindowCalculator;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
@@ -7,6 +10,9 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,6 +25,15 @@ public class LimitApiTest extends ResourceBaseTest {
 
     @Test
     public void testGetLimitStats_Success() {
+        // the default (unconfigured) rateLimitSchedule - UTC, Monday, 00:00 - is what every dial-config
+        // fixture here relies on; resetsAt is a pure function of "now" against that schedule, computed
+        // the same way here and by the server, so it lands on the same instant unless the test happens
+        // to straddle a period boundary at the exact millisecond
+        RateLimitSchedule schedule = new RateLimitSchedule();
+        String dayResetsAt = resetsAt(CalendarPeriod.DAY, schedule);
+        String weekResetsAt = resetsAt(CalendarPeriod.WEEK, schedule);
+        String monthResetsAt = resetsAt(CalendarPeriod.MONTH, schedule);
+
         Response response = send(HttpMethod.GET, "/v1/deployments/test-model-v1/limits", null, null);
         verifyJson(response, 200, """
                 {
@@ -28,15 +43,18 @@ public class LimitApiTest extends ResourceBaseTest {
                   },
                   "dayTokenStats": {
                     "total": %d,
-                    "used": %d
+                    "used": %d,
+                    "resetsAt": "%s"
                   },
                   "weekTokenStats": {
                     "total": %d,
-                    "used": %d
+                    "used": %d,
+                    "resetsAt": "%s"
                   },
                   "monthTokenStats": {
                     "total": %d,
-                    "used": %d
+                    "used": %d,
+                    "resetsAt": "%s"
                   },
                   "hourRequestStats": {
                     "total": %d,
@@ -44,7 +62,8 @@ public class LimitApiTest extends ResourceBaseTest {
                   },
                   "dayRequestStats": {
                     "total": %d,
-                    "used": %d
+                    "used": %d,
+                    "resetsAt": "%s"
                   },
                   "minuteCostStats": {
                     "total": %d,
@@ -52,21 +71,37 @@ public class LimitApiTest extends ResourceBaseTest {
                   },
                   "dayCostStats": {
                     "total": %d,
-                    "used": %d
+                    "used": %d,
+                    "resetsAt": "%s"
                   },
                   "weekCostStats": {
                     "total": %d,
-                    "used": %d
+                    "used": %d,
+                    "resetsAt": "%s"
                   },
                   "monthCostStats": {
                     "total": %d,
-                    "used": %d
+                    "used": %d,
+                    "resetsAt": "%s"
                   }
                 }
                 """.formatted(
-                        Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0,
-                        Long.MAX_VALUE, 0, Long.MAX_VALUE, 0,
-                        Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0));
+                        Long.MAX_VALUE, 0,
+                        Long.MAX_VALUE, 0, dayResetsAt,
+                        Long.MAX_VALUE, 0, weekResetsAt,
+                        Long.MAX_VALUE, 0, monthResetsAt,
+                        Long.MAX_VALUE, 0,
+                        Long.MAX_VALUE, 0, dayResetsAt,
+                        Long.MAX_VALUE, 0,
+                        Long.MAX_VALUE, 0, dayResetsAt,
+                        Long.MAX_VALUE, 0, weekResetsAt,
+                        Long.MAX_VALUE, 0, monthResetsAt));
+    }
+
+    private static String resetsAt(CalendarPeriod period, RateLimitSchedule schedule) {
+        long resetsAtMillis = CalendarWindowCalculator.nextPeriodStart(period, System.currentTimeMillis(), schedule);
+        return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(
+                Instant.ofEpochMilli(resetsAtMillis).atZone(ZoneId.of(schedule.getTimezone())));
     }
 
     @Test
@@ -187,7 +222,37 @@ public class LimitApiTest extends ResourceBaseTest {
         }
     }
 
+    /**
+     * A model name only has to be legal configuration, and brackets are - but they are illegal in a URI path, so
+     * a single such model used to fail the whole report with 500 for every user who could access it.
+     */
+    @Test
+    @DialConfigLocation("dial-config/bracket-named-model.json")
+    public void testGetUserLimits_DeploymentNameThatIsNotUriSafe() {
+        String deployment = "anthropic.claude-opus-4-8[1m]";
+        String encodedId = "anthropic.claude-opus-4-8%5B1m%5D";
+
+        assertEquals(List.of(), deploymentIds(getUserUsage()));
+        assertNotNull(deployment(getUserLimits(), deployment));
+
+        completion(deployment, encodedId);
+
+        JsonNode used = deployment(getUserUsage(), deployment);
+        assertEquals(100, used.get("minuteTokenStats").get("total").asLong());
+        assertEquals(30, used.get("minuteTokenStats").get("used").asLong());
+        assertEquals(1000, used.get("dayTokenStats").get("total").asLong());
+        assertEquals(1, used.get("hourRequestStats").get("used").asLong());
+
+        // the per-deployment endpoint agrees; its id is percent encoded in the request path
+        JsonNode single = readJson(send(HttpMethod.GET, "/v1/deployments/" + encodedId + "/limits", null, null));
+        assertEquals(30, single.get("minuteTokenStats").get("used").asLong());
+    }
+
     private void completion(String deployment) {
+        completion(deployment, deployment);
+    }
+
+    private void completion(String deployment, String encodedId) {
         String answer = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"model\":\"" + deployment + "\","
                 + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}],"
                 + "\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":20,\"total_tokens\":30}}";
@@ -195,7 +260,7 @@ public class LimitApiTest extends ResourceBaseTest {
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/chat/completions", 200, answer);
 
-            Response response = send(HttpMethod.POST, "/openai/deployments/" + deployment + "/chat/completions", null,
+            Response response = send(HttpMethod.POST, "/openai/deployments/" + encodedId + "/chat/completions", null,
                     "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
                     "content-type", "application/json");
             verify(response, 200);

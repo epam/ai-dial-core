@@ -3,8 +3,10 @@ package com.epam.aidial.core.server.config;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -19,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -154,6 +157,65 @@ class SecretFieldProcessorTest {
 
         assertEquals("plain-up-cipher", model.getUpstreams().get(0).getKey());
         assertEquals("plain-xd-cipher", model.getUpstreams().get(0).getSecretExtraData());
+    }
+
+    @Test
+    void decryptFields_walksIntoUpstreamInterfaces() {
+        UpstreamInterface anthropic = new UpstreamInterface();
+        anthropic.setKey("ENC[" + Base64.getEncoder().encodeToString("iface-cipher".getBytes(StandardCharsets.UTF_8)) + "]");
+        Upstream up = new Upstream();
+        up.setInterfaces(Map.of("anthropicMessages", anthropic));
+        Model model = new Model();
+        model.setUpstreams(List.of(up));
+        when(encryptionService.decrypt(eq(BUCKET), any(byte[].class), any(byte[].class)))
+                .thenAnswer(inv -> {
+                    byte[] in = inv.getArgument(1);
+                    return ("plain-" + new String(in, StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8);
+                });
+
+        processor.decryptFields(model, descriptor);
+
+        assertEquals("plain-iface-cipher",
+                model.getUpstreams().get(0).getInterfaces().get("anthropicMessages").getKey());
+    }
+
+    @Test
+    void stripEncryptedFields_dropsSecretsNestedInUpstreamInterfaces() {
+        ObjectNode payload = ProxyUtil.MAPPER.createObjectNode();
+        ObjectNode upstream = payload.putArray("upstreams").addObject();
+        upstream.put("key", "ENC[up]");
+        ObjectNode anthropic = upstream.putObject("interfaces").putObject("anthropicMessages");
+        anthropic.put("endpoint", "http://anthropic/v1/messages");
+        anthropic.put("key", "ENC[iface]");
+        anthropic.put("secretExtraData", "ENC[iface-xd]");
+
+        ObjectNode stripped = SecretFieldProcessor.stripEncryptedFields(payload, Model.class);
+
+        ObjectNode strippedInterface = (ObjectNode) stripped.get("upstreams").get(0)
+                .get("interfaces").get("anthropicMessages");
+        assertFalse(strippedInterface.has("key"));
+        assertFalse(strippedInterface.has("secretExtraData"));
+        // non-secret members survive
+        assertEquals("http://anthropic/v1/messages", strippedInterface.get("endpoint").asText());
+    }
+
+    @Test
+    void mergePreservingOmittedSecrets_preservesSecretsNestedInUpstreamInterfaces() {
+        ObjectNode existing = ProxyUtil.MAPPER.createObjectNode();
+        ObjectNode existingUpstream = existing.putArray("upstreams").addObject();
+        existingUpstream.put("endpoint", "http://provider");
+        existingUpstream.putObject("interfaces").putObject("anthropicMessages").put("key", "ENC[prior]");
+
+        ObjectNode request = ProxyUtil.MAPPER.createObjectNode();
+        ObjectNode requestUpstream = request.putArray("upstreams").addObject();
+        requestUpstream.put("endpoint", "http://provider");
+        requestUpstream.putObject("interfaces").putObject("anthropicMessages")
+                .put("endpoint", "http://anthropic/v1/messages");
+
+        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+
+        assertEquals("ENC[prior]", merged.get("upstreams").get(0)
+                .get("interfaces").get("anthropicMessages").get("key").asText());
     }
 
     @Test

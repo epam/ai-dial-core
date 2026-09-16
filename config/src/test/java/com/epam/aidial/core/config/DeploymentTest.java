@@ -1,14 +1,18 @@
 package com.epam.aidial.core.config;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
+import static com.epam.aidial.core.config.InterfaceType.ANTHROPIC_MESSAGES;
+import static com.epam.aidial.core.config.InterfaceType.OPENAI_CHAT_COMPLETIONS;
+import static com.epam.aidial.core.config.InterfaceType.OPENAI_EMBEDDINGS;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_RESPONSES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -20,9 +24,73 @@ public class DeploymentTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Test
-    void baseUrlIsRequired() {
-        assertThrows(IllegalArgumentException.class, () -> new DeploymentInterface(null));
-        assertThrows(IllegalArgumentException.class, () -> new DeploymentInterface(""));
+    void interfaceParsesWithoutBaseUrl() throws Exception {
+        String json = """
+                {
+                    "baseUrl": "http://adapter",
+                    "interfaces": {
+                        "openaiChatCompletions": {"mode": "passthrough"},
+                        "anthropicMessages": {"mode": "translator", "base_url": "http://translator"}
+                    }
+                }
+                """;
+        Model model = MAPPER.readValue(json, Model.class);
+
+        assertEquals("http://adapter", model.getBaseUrl());
+        // the deployment-level base url is not copied into the entry: it is resolved per request
+        assertNull(model.getInterfaces().get(OPENAI_CHAT_COMPLETIONS.getValue()).getBaseUrl());
+        assertEquals(InterfaceMode.PASSTHROUGH, model.getInterfaces().get(OPENAI_CHAT_COMPLETIONS.getValue()).getMode());
+        assertEquals("http://translator", model.getInterfaces().get(ANTHROPIC_MESSAGES.getValue()).getBaseUrl());
+        assertEquals(InterfaceMode.TRANSLATOR, model.getInterfaces().get(ANTHROPIC_MESSAGES.getValue()).getMode());
+    }
+
+    @Test
+    void interfaceMappedToNullParses() throws Exception {
+        String json = """
+                {
+                    "baseUrl": "http://adapter",
+                    "interfaces": {
+                        "openaiChatCompletions": {},
+                        "openaiResponses": null
+                    }
+                }
+                """;
+        Model model = MAPPER.readValue(json, Model.class);
+
+        // an explicit null declares the interface unsupported, exactly as leaving it out does
+        assertTrue(model.getInterfaces().containsKey(OPENAI_RESPONSES.getValue()));
+        assertNull(model.getInterfaces().get(OPENAI_RESPONSES.getValue()));
+        assertNull(model.getInterfaces().get(OPENAI_CHAT_COMPLETIONS.getValue()).getMode());
+    }
+
+    @Test
+    void modeIsOmittedWhenAbsentAndBaseUrlKeepsItsSnakeCaseName() throws Exception {
+        Model model = new Model();
+        model.setBaseUrl("http://adapter");
+        model.setInterfaces(Map.of(OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://responses-adapter")));
+
+        String json = MAPPER.writeValueAsString(model);
+
+        assertTrue(json.contains("\"base_url\":\"http://responses-adapter\""), json);
+        assertTrue(json.contains("\"baseUrl\":\"http://adapter\""), json);
+        assertFalse(json.contains("\"mode\""), json);
+    }
+
+    @Test
+    void baseUrlIsOmittedWhenUnset() throws Exception {
+        Model model = new Model();
+        model.setEndpoint("http://host/chat/completions");
+
+        assertFalse(MAPPER.writeValueAsString(model).contains("baseUrl"));
+    }
+
+    @Test
+    void applicationCopyConstructorPreservesBaseUrl() {
+        Application source = new Application();
+        source.setName("app1");
+        source.setBaseUrl("http://adapter");
+
+        assertEquals("http://adapter", new Application(source).getBaseUrl());
     }
 
     @Test
@@ -78,6 +146,184 @@ public class DeploymentTest {
 
         assertEquals(source.getInterfaces(), copy.getInterfaces());
         assertEquals("http://adapter", copy.getInterfaces().get(OPENAI_RESPONSES.getValue()).getBaseUrl());
+    }
+
+    @Test
+    void defaultsServeTheOpenAiInterfacesTheyBelongTo() {
+        Model model = new Model();
+        model.setDefaults(Map.of("temperature", 1));
+        model.setResponsesDefaults(Map.of("store", false));
+
+        // chat completions and embeddings share the field that predates the split into typed interfaces
+        assertEquals(Map.of("temperature", 1), model.resolveDefaults(OPENAI_CHAT_COMPLETIONS));
+        assertEquals(Map.of("temperature", 1), model.resolveDefaults(OPENAI_EMBEDDINGS));
+        assertEquals(Map.of("store", false), model.resolveDefaults(OPENAI_RESPONSES));
+        // neither holds Anthropic parameters, so neither reaches the Anthropic interface
+        assertEquals(Map.of(), model.resolveDefaults(ANTHROPIC_MESSAGES));
+    }
+
+    @Test
+    void interfaceDefaultsReplaceTheDeploymentLevelRatherThanAddingToIt() {
+        DeploymentInterface chatCompletions = new DeploymentInterface("http://openai");
+        chatCompletions.setDefaults(Map.of("temperature", 0.5));
+        Model model = new Model();
+        model.setDefaults(Map.of("temperature", 1, "custom_fields", Map.of("configuration", "foo.baz")));
+        model.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), chatCompletions));
+
+        // the entry declares defaults, so they are the whole set: custom_fields is not laid under them
+        assertEquals(Map.of("temperature", 0.5), model.resolveDefaults(OPENAI_CHAT_COMPLETIONS));
+        // and it speaks for its own interface alone, so embeddings still take the deployment level
+        assertEquals(
+                Map.of("temperature", 1, "custom_fields", Map.of("configuration", "foo.baz")),
+                model.resolveDefaults(OPENAI_EMBEDDINGS));
+    }
+
+    @Test
+    void anthropicDefaultsComeFromTheInterfaceEntryAlone() {
+        DeploymentInterface anthropic = new DeploymentInterface("http://anthropic");
+        anthropic.setDefaults(Map.of("temperature", 0.5));
+        Model model = new Model();
+        model.setDefaults(Map.of("temperature", 1));
+        model.setResponsesDefaults(Map.of("store", false));
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), anthropic));
+
+        // nothing of the deployment level is laid under it
+        assertEquals(Map.of("temperature", 0.5), model.resolveDefaults(ANTHROPIC_MESSAGES));
+    }
+
+    @Test
+    void defaultsFallBackToDeploymentLevelForAnInterfaceDeclaringNone() {
+        Model model = new Model();
+        model.setDefaults(Map.of("temperature", 1));
+        model.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://openai")));
+
+        // declared without defaults of its own, and not declared at all, resolve alike
+        assertEquals(Map.of("temperature", 1), model.resolveDefaults(OPENAI_CHAT_COMPLETIONS));
+        assertEquals(Map.of("temperature", 1), model.resolveDefaults(OPENAI_EMBEDDINGS));
+    }
+
+    @Test
+    void roundTripInterfaceDefaults() throws Exception {
+        String json = """
+                {
+                    "endpoint": "http://host/chat/completions",
+                    "defaults": {"temperature": 1},
+                    "interfaces": {
+                        "anthropicMessages": {
+                            "base_url": "http://anthropic",
+                            "defaults": {"temperature": 0.5, "max_tokens": 1024}
+                        }
+                    }
+                }
+                """;
+
+        Model restored = MAPPER.readValue(MAPPER.writeValueAsString(MAPPER.readValue(json, Model.class)), Model.class);
+
+        assertEquals(Map.of("temperature", 0.5, "max_tokens", 1024), restored.resolveDefaults(ANTHROPIC_MESSAGES));
+        assertEquals(Map.of("temperature", 1), restored.resolveDefaults(OPENAI_CHAT_COMPLETIONS));
+    }
+
+    @Test
+    void interfaceDefaultsAreOmittedWhenEmpty() throws Exception {
+        Model model = new Model();
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), new DeploymentInterface("http://anthropic")));
+
+        JsonNode declared = MAPPER.readTree(MAPPER.writeValueAsString(model))
+                .path("interfaces").path(ANTHROPIC_MESSAGES.getValue());
+
+        // the deployment-level defaults serialize either way, so the check has to be scoped to the entry
+        assertFalse(declared.has("defaults"), declared.toString());
+    }
+
+    @Test
+    void defaultHeadersFallBackToDeploymentLevelForEveryInterface() {
+        Model model = new Model();
+        model.setDefaultHeaders(Map.of("x-dial-cache-policy", "cache-priority"));
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), new DeploymentInterface("http://anthropic")));
+
+        // declared without headers of its own, and not declared at all, resolve alike
+        assertEquals(Map.of("x-dial-cache-policy", "cache-priority"), model.resolveDefaultHeaders(ANTHROPIC_MESSAGES));
+        assertEquals(Map.of("x-dial-cache-policy", "cache-priority"), model.resolveDefaultHeaders(OPENAI_RESPONSES));
+    }
+
+    @Test
+    void interfaceDefaultHeadersOverrideAndExtendDeploymentLevel() {
+        DeploymentInterface anthropic = new DeploymentInterface("http://anthropic");
+        anthropic.setDefaultHeaders(Map.of("x-dial-custom-header", "foo-bar-2", "x-dial-custom-header-2", "some-value"));
+        Model model = new Model();
+        model.setDefaultHeaders(Map.of("x-dial-cache-policy", "cache-priority", "x-dial-custom-header", "foo-bar"));
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), anthropic));
+
+        assertEquals(
+                Map.of("x-dial-cache-policy", "cache-priority",
+                        "x-dial-custom-header", "foo-bar-2",
+                        "x-dial-custom-header-2", "some-value"),
+                model.resolveDefaultHeaders(ANTHROPIC_MESSAGES));
+        // the overlay is scoped to its own interface
+        assertEquals(
+                Map.of("x-dial-cache-policy", "cache-priority", "x-dial-custom-header", "foo-bar"),
+                model.resolveDefaultHeaders(OPENAI_RESPONSES));
+    }
+
+    @Test
+    void interfaceDefaultHeadersOverrideDeploymentLevelSpelledInAnotherCase() {
+        DeploymentInterface anthropic = new DeploymentInterface("http://anthropic");
+        anthropic.setDefaultHeaders(Map.of("x-dial-custom-header", "foo-bar-2"));
+        Model model = new Model();
+        model.setDefaultHeaders(Map.of("X-Dial-Custom-Header", "foo-bar"));
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), anthropic));
+
+        Map<String, String> resolved = model.resolveDefaultHeaders(ANTHROPIC_MESSAGES);
+
+        assertEquals(1, resolved.size());
+        assertEquals("foo-bar-2", resolved.get("X-DIAL-CUSTOM-HEADER"));
+    }
+
+    @Test
+    void roundTripDefaultHeaders() throws Exception {
+        String json = """
+                {
+                    "endpoint": "http://host/chat/completions",
+                    "defaultHeaders": {"x-dial-cache-policy": "cache-priority"},
+                    "interfaces": {
+                        "anthropicMessages": {
+                            "base_url": "http://anthropic",
+                            "default_headers": {"x-dial-custom-header": "foo-bar-2"}
+                        }
+                    }
+                }
+                """;
+
+        Model restored = MAPPER.readValue(MAPPER.writeValueAsString(MAPPER.readValue(json, Model.class)), Model.class);
+
+        assertEquals(Map.of("x-dial-cache-policy", "cache-priority"), restored.getDefaultHeaders());
+        assertEquals(
+                Map.of("x-dial-cache-policy", "cache-priority", "x-dial-custom-header", "foo-bar-2"),
+                restored.resolveDefaultHeaders(ANTHROPIC_MESSAGES));
+    }
+
+    @Test
+    void defaultHeadersAreOmittedWhenEmpty() throws Exception {
+        Model model = new Model();
+        model.setEndpoint("http://host/chat/completions");
+        model.setInterfaces(Map.of(OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://adapter")));
+
+        String json = MAPPER.writeValueAsString(model);
+
+        assertFalse(json.contains("defaultHeaders"), json);
+    }
+
+    @Test
+    void applicationCopyConstructorPreservesDefaultHeaders() {
+        Application source = new Application();
+        source.setName("app1");
+        source.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://adapter")));
+        source.setDefaultHeaders(Map.of("x-dial-cache-policy", "cache-priority"));
+
+        Application copy = new Application(source);
+
+        assertEquals(Map.of("x-dial-cache-policy", "cache-priority"), copy.getDefaultHeaders());
     }
 
     @Test

@@ -217,7 +217,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
         when(resourceService.getResource(descriptor)).thenReturn(KEY_JSON);
 
-        store.applyReplicaEvent(descriptor, ResourceEvent.Action.CREATE);
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.CREATE, null);
 
         Key applied = store.get().getKeys().get(KEY_ID);
         assertEquals("secret-A", applied.getKey());
@@ -236,7 +236,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
         when(resourceService.getResource(descriptor)).thenReturn(KEY_JSON);
 
-        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE);
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE, null);
 
         assertTrue(store.get().getKeys().containsKey(KEY_ID));
         verify(apiKeyStore).addOrUpdateKey(eq("secret-A"), any(ApiKeyData.class));
@@ -255,7 +255,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
         when(resourceService.getResource(descriptor)).thenReturn(KEY_JSON_NEW_SECRET);
 
-        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE);
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE, null);
 
         verify(apiKeyStore).addOrUpdateKey(eq("secret-NEW"), any(ApiKeyData.class));
         verify(apiKeyStore).removeKey("secret-OLD");
@@ -274,7 +274,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
         when(resourceService.getResource(descriptor)).thenReturn(KEY_JSON);
 
-        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE);
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE, null);
 
         verify(apiKeyStore).addOrUpdateKey(eq("secret-A"), any(ApiKeyData.class));
         verify(apiKeyStore, never()).removeKey(any());
@@ -291,7 +291,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         Mockito.reset(apiKeyStore, resourceService);
 
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
-        store.applyReplicaEvent(descriptor, ResourceEvent.Action.DELETE);
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.DELETE, null);
 
         verify(apiKeyStore).removeKey("secret-A");
         assertFalse(store.get().getKeys().containsKey(KEY_ID));
@@ -308,7 +308,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(SETTINGS_ID, null);
         when(resourceService.getResource(descriptor)).thenReturn(SETTINGS_JSON);
 
-        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE);
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE, null);
 
         assertEquals(List.of("api-overlay"), store.get().getGlobalInterceptors());
         assertEquals(Set.of(503), store.get().getRetriableErrorCodes());
@@ -331,7 +331,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         Mockito.reset(resourceService);
 
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(SETTINGS_ID, null);
-        store.applyReplicaEvent(descriptor, ResourceEvent.Action.DELETE);
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.DELETE, null);
 
         assertEquals(List.of("file-default"), store.get().getGlobalInterceptors());
         assertEquals(Set.of(500), store.get().getRetriableErrorCodes());
@@ -352,7 +352,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
         when(resourceService.getResource(descriptor)).thenReturn(null);
 
-        store.applyReplicaEvent(descriptor, ResourceEvent.Action.CREATE);
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.CREATE, null);
 
         assertFalse(store.get().getKeys().containsKey(KEY_ID));
         verify(apiKeyStore).removeKey("secret-A");
@@ -368,9 +368,9 @@ public class MergedConfigStoreReplicaUpdateTest {
         when(resourceService.getResource(descriptor))
                 .thenReturn("{\"displayName\":\"GPT-4\",\"type\":\"chat\"}");
 
-        store.applyReplicaEvent(descriptor, ResourceEvent.Action.CREATE);
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.CREATE, null);
 
-        Model applied = store.get().getModels().get(MODEL_ID);
+        Model applied = store.get().getModels().get(descriptor.getName());
         assertEquals("GPT-4", applied.getDisplayName().getPlainValue());
         verify(secretFieldProcessor).decryptFields(any(Model.class), eq(descriptor));
         verifyNoInteractions(apiKeyStore);
@@ -385,7 +385,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         when(resourceService.getResource(descriptor))
                 .thenThrow(new RuntimeException("blob storage offline"));
 
-        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE);
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE, null);
 
         // requestRebuild() schedules via vertx.setTimer
         verify(vertx, atLeastOnce()).setTimer(anyLong(), any());
@@ -420,7 +420,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
         when(resourceService.getResource(descriptor)).thenReturn(KEY_JSON_NEW_SECRET);
 
-        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE);
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE, null);
 
         assertTrue(heldOnAdd[0], "rebuildLock must be held by current thread during addOrUpdateKey");
         assertTrue(heldOnRemove[0], "rebuildLock must be held by current thread during removeKey");
@@ -445,7 +445,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         }).when(apiKeyStore).removeKey("secret-A");
 
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
-        store.applyReplicaEvent(descriptor, ResourceEvent.Action.DELETE);
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.DELETE, null);
 
         assertTrue(heldOnRemove[0], "rebuildLock must be held by current thread during removeKey");
         assertFalse(mutationLock.isLocked(), "rebuildLock must be released after applyReplicaDelete");

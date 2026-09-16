@@ -1,10 +1,12 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
+import com.epam.aidial.core.server.util.UpstreamInterfaceUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -17,25 +19,26 @@ import io.vertx.core.http.RequestOptions;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 
-import javax.annotation.Nullable;
-
 @RequiredArgsConstructor
 public class ResponsesApiClient {
     private final HttpClient httpClient;
     private final HttpClientOptions clientOptions;
 
-    public Future<HttpClientResponse> send(String url, HttpMethod method, Upstream upstream) {
+    public Future<HttpClientResponse> send(String url, HttpMethod method, Upstream upstream, String apiKey) {
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(url)
                 .setMethod(method)
                 .setConnectTimeout(clientOptions.getConnectTimeout())
                 .setIdleTimeout(clientOptions.getIdleTimeout());
         return httpClient.request(options)
-                .compose(request -> request
-                        .putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey())
-                        .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getResponsesEndpoint())
-                        .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, UpstreamExtraDataMerger.merge(upstream))
-                        .send());
+                .compose(request -> request.putHeader(Proxy.HEADER_API_KEY, apiKey)
+                            .putHeader(Proxy.HEADER_UPSTREAM_KEY,
+                                    UpstreamInterfaceUtil.resolveKey(upstream, InterfaceType.OPENAI_RESPONSES))
+                            .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT,
+                                    UpstreamInterfaceUtil.resolveEndpoint(upstream, InterfaceType.OPENAI_RESPONSES))
+                            .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA,
+                                    UpstreamExtraDataMerger.merge(upstream, InterfaceType.OPENAI_RESPONSES))
+                            .send());
     }
 
     private static boolean isTerminal(String status) {

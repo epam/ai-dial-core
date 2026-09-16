@@ -34,6 +34,7 @@ An object containing deployed DIAL Interceptors and their [parameters](#intercep
 An object containing parameters for each [interceptor](#interceptors).
 
 * `endpoint`: The URL of the interceptor service. This URL is used to handle requests and responses for the interceptor. **Required** unless `interfaces` is used instead.
+* `baseUrl`: The interceptor service root shared by every `interfaces` entry that declares no `base_url` of its own.
 * `interfaces`: A typed alternative to the flat `endpoint` field for declaring the interceptor service target. For interceptors, only the `openaiChatCompletions` interface is supported; the Responses API and other interfaces are not. Refer to [interceptors.<interceptor_name>.interfaces](#interceptorsinterceptor_nameinterfaces).
 * `overrideName`: If set, the interceptor is called under this name: the outgoing chat completion request body's `model` field (and the `X-DIAL-OVERRIDE-NAME` header) are rewritten to this value before the request reaches the interceptor's endpoint. Only applied when the interceptor is invoked as part of a chat-completions request; interceptors are also invoked when processing Responses API requests, but that flow ignores `overrideName`. Doesn't change routing — only the value the endpoint receives.
 * `iconUrl`: A string with the URL with the icon location to display for the interceptor on UI.
@@ -45,7 +46,8 @@ An object containing parameters for each [interceptor](#interceptors).
 * `updatedAt`: The date of the last interceptor update.
 * `features`: Features supported by the interceptors.
 *  `configurationEndpoint`: The URL that exposes the configuration of the interceptor.
-*  `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call.
+*  `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call. Used only where the interface entry declares no `defaults` of its own. Refer to [interceptors.<interceptor_name>.interfaces](#interceptorsinterceptor_nameinterfaces).
+*  `defaultHeaders`: HTTP headers DIAL Core adds to a request that doesn't already carry them, on the hop that calls this interceptor. Refer to [interceptors.<interceptor_name>.defaultHeaders](#interceptorsinterceptor_namedefaultheaders).
 
 ### interceptors.<interceptor_name>.interfaces
 
@@ -59,9 +61,12 @@ Interceptors support only one interface type:
 
 > The Responses API (`openaiResponses`) and any other interface types are **not** supported for interceptors. If declared, they are dropped on config read with a warning.
 
-Each value is an object with a single field:
+Each value is an object with the following fields:
 
-* `base_url`: The interceptor service root that the matching ingress path is appended to.
+* `base_url`: The interceptor service root that the matching ingress path is appended to. Optional — the interceptor-level `baseUrl` serves an entry that omits it.
+* `defaultHeaders`: Headers applied to requests for this interface only, laid over the interceptor-level `defaultHeaders`. Refer to [interceptors.<interceptor_name>.defaultHeaders](#interceptorsinterceptor_namedefaultheaders).
+* `defaults`: Body parameters applied to requests for this interface only. Unlike `defaultHeaders`, the two levels are **not** merged: an entry declaring `defaults` states the whole set and **replaces** the interceptor-level `defaults`, so a key it does not name is not defaulted at all. The interceptor-level `defaults` applies only where the entry declares none. Whatever the source, a default is only a fallback — a parameter the request body already carries is never replaced.
+* `overridePaths`: Per-operation upstream paths that replace the default routing for the hop that calls this interceptor, working exactly as they do for models — for interceptors the applicable key is `postAzureOpenaiChatCompletions`, and `{id}` renders the interceptor's own name. See [Override paths per interface](models.md#override-paths-per-interface).
 
 **Example**
 
@@ -70,6 +75,29 @@ Each value is an object with a single field:
     "interceptor-via-interfaces": {
         "interfaces": {
             "openaiChatCompletions": { "base_url": "http://localhost:4088" }
+        }
+    }
+}
+```
+
+### interceptors.<interceptor_name>.defaultHeaders
+
+An object of HTTP header names and values DIAL Core adds to a request that does not already carry a header of that name, on the hop that calls this interceptor. A header sent by the client always wins, and so does one DIAL Core sets itself (`Api-Key`, `X-DIAL-DEPLOYMENT-ID`, ...). Names are matched case-insensitively.
+
+A default header behaves exactly as if the client had sent it: DIAL Core reads it as part of the incoming request and forwards it to the interceptor under the same rules as a client header. That cuts both ways: a name DIAL Core strips on the way to the interceptor — a hop-by-hop header, `Api-Key`/`x-api-key`, or `traceparent`/`tracestate` — is stripped when it comes from `defaultHeaders` too, even though DIAL Core itself still sees it on the incoming request.
+
+The interceptor-level `defaultHeaders` apply to every interface the interceptor serves. `interfaces.openaiChatCompletions.defaultHeaders` is laid over them for that interface only: a name it repeats is overridden, a new name is added, and every other interceptor-level header still applies.
+
+The `defaultHeaders` of the model or application the interceptor fronts are applied at the first interceptor of the chain and travel down it from there. Where both declare the same name, the interceptor's value wins.
+
+**Example**
+
+```json
+"interceptors": {
+    "interceptor-with-default-headers": {
+        "endpoint": "http://localhost:4088/api/v1/interceptor/handle",
+        "defaultHeaders": {
+            "x-dial-custom-header": "foo-bar"
         }
     }
 }

@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.util.UrlUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -75,6 +76,9 @@ public class ProxyContext {
     private String userHash;
     private TokenUsage tokenUsage;
     private List<UsagePerModel> usagePerModel;
+    // Raw usage JSON accumulated live from SSE events, for pricing decision-tree evaluation. Null
+    // for non-streaming requests, where ModelCostCalculator parses responseBody directly instead.
+    private JsonNode pricingUsageNode;
     private Route route;
     private UpstreamRoute upstreamRoute;
     private HttpClientRequest proxyRequest;
@@ -143,7 +147,7 @@ public class ProxyContext {
     }
 
     public Future<?> respond(HttpStatus status) {
-        return respond(status, Buffer.buffer());
+        return respond(status, null);
     }
 
     @SneakyThrows
@@ -159,17 +163,17 @@ public class ProxyContext {
     }
 
     public Future<?> respond(HttpStatus status, String body) {
-        return respond(status, body == null ? null : Buffer.buffer(body));
+        return respond(status.getCode(), body == null ? null : Buffer.buffer(body));
     }
 
-    public Future<?> respond(HttpStatus status, Buffer body) {
+    public Future<?> respond(int status, Buffer body) {
         if (body == null) {
             body = Buffer.buffer();
         }
 
-        response.setStatusCode(status.getCode()).end(body);
+        response.setStatusCode(status).end(body);
 
-        if (!status.is2xx()) {
+        if (status < 200 || status >= 300) {
             log.warn("Responding with error. Body: {}", body);
         }
 
@@ -243,7 +247,9 @@ public class ProxyContext {
 
     public boolean hasNextInterceptor() {
         // initial call to the deployment or the interceptor calls another deployment
-        String decodedName = UrlUtil.decodePath(deployment.getName());
+        // a name is url form for an application and plain config text for a model, so it is decoded the same
+        // lenient way as the source deployment above - a model named "claude-opus-4-8[1m]" is not a valid URI
+        String decodedName = UrlUtil.tryDecodePath(deployment.getName());
         if (apiKeyData.getInterceptors() == null || !decodedName.equals(getInitialDeployment())) {
             return !interceptors.isEmpty();
         } else { // make sure if a next interceptor is available from the list

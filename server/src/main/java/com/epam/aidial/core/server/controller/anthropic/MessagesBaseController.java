@@ -69,7 +69,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     protected List<BaseRequestFunction<RequestObject>> buildEnhancementFunctions() {
         return List.of(
                 new CollectRequestStandardAttachmentsFn(proxy, context),
-                new ApplyDefaultDeploymentSettingsFn(proxy, context),
+                new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
                 new CollectDeploymentsFn(proxy, context));
@@ -125,9 +125,9 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
 
     protected Void setupDeployment(String model) {
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, model);
-        proxy.getConsentService().verifyUserConsent(context, deployment);
+        proxy.getConsentService().verifyUserConsent(context, deployment, InterfaceType.ANTHROPIC_MESSAGES);
 
-        Features features = deployment.getFeatures();
+        Features features = deployment.resolveFeatures(InterfaceType.ANTHROPIC_MESSAGES);
         boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
         if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
             throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", model, context.getApiKeyData().getSourceDeployment()));
@@ -137,7 +137,8 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
             deployment = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
         }
 
-        if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.ANTHROPIC_MESSAGES) == null) {
+        if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.ANTHROPIC_MESSAGES,
+                context.getConfig().getTranslators()) == null) {
             throw new HttpException(
                     HttpStatus.SERVICE_UNAVAILABLE,
                     "Anthropic messages not supported for this deployment type"
@@ -170,7 +171,8 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
                 .get(deployment, context.getCacheBreakpointContext(),
-                        dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.ANTHROPIC_MESSAGES), upstreamId);
+                        dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.ANTHROPIC_MESSAGES,
+                                context.getConfig().getTranslators()), upstreamId);
 
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);
@@ -193,7 +195,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        sendProxyRequest(proxyRequest, Upstream::getEndpoint)
+        sendProxyRequest(proxyRequest, InterfaceType.ANTHROPIC_MESSAGES)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyResponseError);
     }

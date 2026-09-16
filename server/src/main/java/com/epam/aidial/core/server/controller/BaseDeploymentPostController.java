@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
@@ -12,6 +13,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
+import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -23,6 +25,7 @@ import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
+import com.epam.aidial.core.server.util.UpstreamInterfaceUtil;
 import com.epam.aidial.core.server.util.UsagePerModelInjector;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -187,10 +190,8 @@ public class BaseDeploymentPostController {
                 tokenUsage = new TokenUsage();
             }
             context.setTokenUsage(tokenUsage);
-            String bucket = BucketBuilder.buildInitiatorBucket(context);
             TokenUsage usage = context.getTokenUsage();
-            return proxy.getRateLimiter().increase(
-                    context.getDeployment(), bucket, usage, context.getRequestBody(), context.getResponseBody())
+            return increaseLimits(usage)
                     .transform(result -> {
                         if (result.failed()) {
                             log.warn("Failed to increase limit", result.cause());
@@ -208,6 +209,37 @@ public class BaseDeploymentPostController {
         // capture it alongside whatever its descendant Model spans already reported.
         TokenUsage ownUsage = parseTokenUsage(responseBody);
         return trackDeploymentStats(context.getDeployment().getName(), ownUsage, true);
+    }
+
+    private boolean subjectToLimits(Deployment deployment) {
+        return DeploymentEndpointUtil.resolveMode(deployment, interfaceType()).isSubjectToLimits();
+    }
+
+    /**
+     * Checks the initiator's limits before the request is forwarded. A translated request is not one the
+     * initiator is accountable for: the call the translator makes back to Core is, so a caller over quota
+     * is rejected on that one rather than on this.
+     */
+    protected Future<RateLimitResult> checkLimits(Deployment deployment) {
+        if (!subjectToLimits(deployment)) {
+            return Future.succeededFuture(RateLimitResult.SUCCESS);
+        }
+        return proxy.getRateLimiter().limit(context, deployment);
+    }
+
+    /**
+     * Charges the request's usage to the initiator's token and cost limits. Skipped on the same terms
+     * {@link #checkLimits} is, so the two can never disagree about what a mode exempts.
+     */
+    private Future<Void> increaseLimits(TokenUsage usage) {
+        Deployment deployment = context.getDeployment();
+        if (!subjectToLimits(deployment)) {
+            return Future.succeededFuture();
+        }
+        return proxy.getRateLimiter().increase(
+                deployment, BucketBuilder.buildInitiatorBucket(context), usage,
+                context.getRequestBody(), context.getResponseBody(), interfaceType(), context.getPricingUsageNode()
+        );
     }
 
     /**
@@ -255,6 +287,18 @@ public class BaseDeploymentPostController {
     }
 
     /**
+     * Which upstream interface shape this controller's response is in, for pricing decision-tree
+     * evaluation. Overridable so provider-specific controllers (Anthropic Messages, OpenAI Responses)
+     * can report their own shape; the default covers the OpenAI Chat Completions path. A controller
+     * that serves more than one shape from the same class (e.g. {@code DeploymentPostController}
+     * also handling {@code /embeddings}) must override this to report the actual per-request shape -
+     * otherwise a non-chat-completions response silently gets evaluated against the wrong alias table.
+     */
+    protected InterfaceType interfaceType() {
+        return InterfaceType.OPENAI_CHAT_COMPLETIONS;
+    }
+
+    /**
      * Rewrites {@code body}'s {@code statistics.usage_per_model} to Core's own value, or strips it
      * entirely when Core has nothing to report - a deployment's own response is never trusted to
      * carry this field through untouched, the same guarantee {@code StripUsagePerModelFn} gives the
@@ -296,14 +340,14 @@ public class BaseDeploymentPostController {
         return createProxyRequest(
                 DeploymentEndpointUtil.resolveRequestUri(
                         context.getDeployment(),
-                        type, request.path(),
+                        type, context.getConfig().getTranslators(),
+                        request.path(),
                         request.query()
                 )
         );
     }
 
-    protected Future<HttpClientResponse> sendProxyRequest(
-            HttpClientRequest proxyRequest, Function<Upstream, String> upstreamSelector) {
+    protected Future<HttpClientResponse> sendProxyRequest(HttpClientRequest proxyRequest, InterfaceType type) {
         log.info("Connected to origin. Deployment: {}. Address: {}",
                 context.getDeployment().getName(),
                 proxyRequest.connection().remoteAddress());
@@ -321,13 +365,13 @@ public class BaseDeploymentPostController {
         proxyRequest.headers().add(Proxy.HEADER_API_KEY, context.getProxyApiKeyData().getPerRequestKey());
 
         proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_FEATURES,
-                ProxyUtil.convertToString(FeaturesData.createDeploymentFeatures(context.getDeployment())));
+                ProxyUtil.convertToString(FeaturesData.createDeploymentFeatures(context.getDeployment(), type)));
 
         if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
             Upstream upstream = Objects.requireNonNull(context.getUpstreamRoute().get());
-            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstreamSelector.apply(upstream))
-                    .putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey())
-                    .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, UpstreamExtraDataMerger.merge(upstream))
+            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, UpstreamInterfaceUtil.resolveEndpoint(upstream, type))
+                    .putHeader(Proxy.HEADER_UPSTREAM_KEY, UpstreamInterfaceUtil.resolveKey(upstream, type))
+                    .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, UpstreamExtraDataMerger.merge(upstream, type))
                     .putHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH, context.getUpstreamRoute().getBreakpointPath())
                     .putHeader(Proxy.HEADER_CACHE_EXTRA_METADATA, context.getUpstreamRoute().getExtraMetadata());
         }
@@ -341,6 +385,13 @@ public class BaseDeploymentPostController {
                     proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, propsString);
                 }
             });
+        }
+
+        // a translator has to know which deployment to call Core back for, and by the time it reads the body
+        // the model may already have been rewritten to overrideName. MessagesBaseController carries the id
+        // the client itself wrote and overrides this below; every other interface has only the deployment.
+        if (DeploymentEndpointUtil.resolveMode(context.getDeployment(), type) == InterfaceMode.TRANSLATOR) {
+            proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, context.getDeployment().getName());
         }
 
         enrichProxyRequestHeaders(proxyRequest);

@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.controller.route;
 
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -177,8 +178,11 @@ class RouteRequestBodyHandler {
         if (responseStatusCode == 200) {
             context.getUpstreamRoute().succeed();
             String bucket = BucketBuilder.buildInitiatorBucket(context);
+            // interfaceType/liveUsageNode are inert here: context.getRoute() is never a Model, so
+            // ModelCostCalculator returns before either is consulted.
             proxy.getRateLimiter()
-                    .increase(context.getRoute(), bucket, context.getTokenUsage(), context.getRequestBody(), context.getResponseBody())
+                    .increase(context.getRoute(), bucket, context.getTokenUsage(), context.getRequestBody(), context.getResponseBody(),
+                            InterfaceType.OPENAI_CHAT_COMPLETIONS, null)
                     .onFailure(error -> log.warn("Failed to increase limit", error));
         }
 

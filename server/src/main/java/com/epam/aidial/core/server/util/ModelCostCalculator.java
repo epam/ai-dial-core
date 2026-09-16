@@ -1,13 +1,19 @@
 package com.epam.aidial.core.server.util;
 
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
+import com.epam.aidial.core.config.PricingRate;
 import com.epam.aidial.core.config.RoleBasedEntity;
+import com.epam.aidial.core.config.StandardField;
+import com.epam.aidial.core.server.pricing.PricingRateEvaluator;
+import com.epam.aidial.core.server.pricing.UsageEvalContext;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.buffer.Buffer;
@@ -23,7 +29,8 @@ import java.util.Scanner;
 public class ModelCostCalculator {
 
     public static BigDecimal calculate(
-            RoleBasedEntity roleBasedEntity, TokenUsage tokenUsage, Buffer requestBody, Buffer responseBody) {
+            RoleBasedEntity roleBasedEntity, TokenUsage tokenUsage, Buffer requestBody, Buffer responseBody,
+            InterfaceType interfaceType, JsonNode liveUsageNode) {
         if (!(roleBasedEntity instanceof Model model)) {
             return null;
         }
@@ -34,29 +41,34 @@ public class ModelCostCalculator {
         }
 
         return switch (pricing.getUnit()) {
-            case "token" -> calculate(tokenUsage, pricing);
+            case "token" -> calculate(tokenUsage, pricing, interfaceType, responseBody, liveUsageNode);
             case "char_without_whitespace" ->
                     calculate(model.getType(), requestBody, responseBody, pricing.getPrompt(), pricing.getCompletion());
             default -> null;
         };
     }
 
-    private static BigDecimal calculate(TokenUsage tokenUsage, Pricing pricing) {
+    private static BigDecimal calculate(TokenUsage tokenUsage, Pricing pricing, InterfaceType interfaceType,
+            Buffer responseBody, JsonNode liveUsageNode) {
         if (tokenUsage == null) {
             return null;
         }
         String promptRate = pricing.getPrompt();
         String completionRate = pricing.getCompletion();
-        String cacheReadRate = pricing.getCacheRead() != null ? pricing.getCacheRead() : promptRate;
-        String cacheWriteRate = pricing.getCacheWrite() != null ? pricing.getCacheWrite() : promptRate;
 
-        long cachedTokens = 0;
-        long cacheWriteTokens = 0;
+        // streaming: already accumulated live by a per-event Fn; non-streaming: one cheap whole-body parse
+        JsonNode nativeRoot = liveUsageNode != null ? liveUsageNode
+                : responseBody == null ? MissingNode.getInstance() : JsonUtil.tryParse(responseBody.getBytes());
+        UsageEvalContext evalContext = UsageEvalContext.build(interfaceType, nativeRoot);
+
         PromptTokensDetails details = tokenUsage.getPromptTokensDetails();
-        if (details != null) {
-            cachedTokens = details.getCachedTokens();
-            cacheWriteTokens = details.getCacheWriteTokens();
-        }
+        long cachedTokens = evalContext.resolveCounter(StandardField.CACHED_READ_TOKENS)
+                .orElseGet(() -> details == null ? 0 : details.getCachedTokens());
+        long cacheWriteTokens = evalContext.resolveCounter(StandardField.CACHED_WRITE_TOKENS)
+                .orElseGet(() -> details == null ? 0 : details.getCacheWriteTokens());
+
+        String cacheReadRate = resolveRate(pricing.getCacheRead(), evalContext, promptRate);
+        String cacheWriteRate = resolveRate(pricing.getCacheWrite(), evalContext, promptRate);
 
         BigDecimal cost = null;
         if (promptRate != null) {
@@ -89,6 +101,13 @@ public class ModelCostCalculator {
             }
         }
         return cost;
+    }
+
+    private static String resolveRate(PricingRate pricingRate, UsageEvalContext evalContext, String promptRate) {
+        if (pricingRate == null) {
+            return promptRate;
+        }
+        return PricingRateEvaluator.evaluate(pricingRate, evalContext).orElse(promptRate);
     }
 
     private static BigDecimal addCost(BigDecimal cost, String rate, long tokens) {

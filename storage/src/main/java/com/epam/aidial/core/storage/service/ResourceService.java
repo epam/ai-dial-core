@@ -16,7 +16,6 @@ import com.epam.aidial.core.storage.util.Compression;
 import com.epam.aidial.core.storage.util.EtagBuilder;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.epam.aidial.core.storage.util.RedisUtil;
-import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
@@ -57,7 +56,6 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
-import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -278,9 +276,9 @@ public class ResourceService implements AutoCloseable {
                 : getResourceMetadata(descriptor);
     }
 
-    public ResourceFolderMetadata getFolderMetadata(ResourceDescriptor descriptor, String token, int limit, boolean recursive) {
+    public ResourceFolderMetadata getFolderMetadata(ResourceDescriptor descriptor, String afterMarker, int limit, boolean recursive) {
         String blobKey = blobKey(descriptor);
-        PageSet<? extends StorageMetadata> set = blobStore.list(blobKey, token, limit, recursive);
+        PageSet<? extends StorageMetadata> set = blobStore.list(blobKey, decodeNextMarker(afterMarker), limit, recursive);
 
         if (set.isEmpty() && !descriptor.isRootFolder()) {
             return null;
@@ -290,10 +288,32 @@ public class ResourceService implements AutoCloseable {
                 // blob store never returns folder however local FS provider may return
                 .filter(meta -> !recursive || meta.getType() == StorageType.BLOB)
                 .map(meta -> storageToResourceMetadata(meta, descriptor)).toList();
-        // marker can be a percent encoded or decoded string
-        // we should encode the marker any way to get back the original string from a query parameter
-        String nextMarker = UrlUtil.encodePath(set.getNextMarker());
+        String nextMarker = encodeNextMarker(set.getNextMarker());
         return new ResourceFolderMetadata(descriptor, resources, nextMarker);
+    }
+
+    /**
+     * The marker returned by the blob store can contain arbitrary characters (spaces, "+", "%", ...).
+     * Percent-encoding it is not enough to make it safely reusable as an opaque query parameter: some
+     * callers re-encode the value before resending it, others resend it exactly as received, and the two
+     * expectations conflict for a percent-encoded value ("+" is read back as a space by the query
+     * parser, "%" sequences get decoded again). Encoding the marker with a URL-safe Base58 alphabet
+     * avoids both "+" and "%" entirely, so the token round-trips correctly either way.
+     */
+    @Nullable
+    private static String encodeNextMarker(@Nullable String marker) {
+        if (marker == null) {
+            return null;
+        }
+        return Base58.encode(marker.getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Nullable
+    private static String decodeNextMarker(@Nullable String marker) {
+        if (marker == null) {
+            return null;
+        }
+        return new String(Base58.decode(marker), StandardCharsets.UTF_8);
     }
 
     @SneakyThrows
@@ -481,7 +501,8 @@ public class ResourceService implements AutoCloseable {
 
     private static FileMetadata toFileMetadata(
             ResourceDescriptor resource, Result result) {
-        return (FileMetadata) new FileMetadata(resource, result.contentLength(), result.contentType())
+        long contentLength = result.contentLength() == null ? 0L : result.contentLength();
+        return (FileMetadata) new FileMetadata(resource, contentLength, result.contentType())
                 .setCreatedAt(result.createdAt)
                 .setUpdatedAt(result.updatedAt)
                 .setAuthor(result.author)
@@ -586,7 +607,7 @@ public class ResourceService implements AutoCloseable {
             String contentType = metadata.getContentMetadata().getContentType();
             Long length = metadata.getContentMetadata().getContentLength();
 
-            if (length <= maxSizeToCache) {
+            if (length == null || length <= maxSizeToCache) {
                 result = blobToResult(blob, metadata);
                 redisPut(key, result);
                 return ResourceStream.fromResult(result, etagHeader);
@@ -609,8 +630,14 @@ public class ResourceService implements AutoCloseable {
 
     public ResourceItemMetadata putResource(
             ResourceDescriptor descriptor, String body, EtagHeader etag, String author, boolean lock) {
+        return putResource(descriptor, body, etag, author, lock, null);
+    }
+
+    public ResourceItemMetadata putResource(
+            ResourceDescriptor descriptor, String body, EtagHeader etag, String author, boolean lock,
+            @Nullable Map<String, String> eventMetadata) {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-        return putResource(descriptor, bytes, etag, "application/json", author, lock);
+        return putResource(descriptor, bytes, etag, "application/json", author, lock, eventMetadata);
     }
 
     private ResourceItemMetadata putResource(
@@ -620,6 +647,17 @@ public class ResourceService implements AutoCloseable {
             String contentType,
             String author,
             boolean lock) {
+        return putResource(descriptor, body, etagHeader, contentType, author, lock, null);
+    }
+
+    private ResourceItemMetadata putResource(
+            ResourceDescriptor descriptor,
+            byte[] body,
+            EtagHeader etagHeader,
+            String contentType,
+            String author,
+            boolean lock,
+            @Nullable Map<String, String> eventMetadata) {
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lock ? lockService.lock(redisKey) : null) {
@@ -655,7 +693,7 @@ public class ResourceService implements AutoCloseable {
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
                     : ResourceEvent.Action.UPDATE;
-            publishEvent(descriptor, action, updatedAt, newEtag);
+            publishEvent(descriptor, action, updatedAt, newEtag, eventMetadata);
             return descriptor.getType().requireCompression()
                     ? toResourceItemMetadata(descriptor, result)
                     : toFileMetadata(descriptor, result);
@@ -871,6 +909,11 @@ public class ResourceService implements AutoCloseable {
     }
 
     public boolean deleteResource(ResourceDescriptor descriptor, EtagHeader etag, boolean lock) {
+        return deleteResource(descriptor, etag, lock, null);
+    }
+
+    public boolean deleteResource(ResourceDescriptor descriptor, EtagHeader etag, boolean lock,
+            @Nullable Map<String, String> eventMetadata) {
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lock ? lockService.lock(redisKey) : null) {
@@ -886,7 +929,7 @@ public class ResourceService implements AutoCloseable {
             blobDelete(blobKey(descriptor));
             redisSync(redisKey);
 
-            publishEvent(descriptor, ResourceEvent.Action.DELETE, time(), null);
+            publishEvent(descriptor, ResourceEvent.Action.DELETE, time(), null, eventMetadata);
             return true;
         }
     }
@@ -937,12 +980,18 @@ public class ResourceService implements AutoCloseable {
     }
 
     private void publishEvent(ResourceDescriptor descriptor, ResourceEvent.Action action, long timestamp, String etag) {
+        publishEvent(descriptor, action, timestamp, etag, null);
+    }
+
+    private void publishEvent(ResourceDescriptor descriptor, ResourceEvent.Action action, long timestamp, String etag,
+            @Nullable Map<String, String> metadata) {
         ResourceEvent event = new ResourceEvent()
                 .setUrl(descriptor.getUrl())
                 .setAction(action)
                 .setTimestamp(timestamp)
                 .setEtag(etag)
-                .setSenderPodId(senderPodIdSupplier.get());
+                .setSenderPodId(senderPodIdSupplier.get())
+                .setMetadata(metadata);
 
         topic.publish(event);
     }

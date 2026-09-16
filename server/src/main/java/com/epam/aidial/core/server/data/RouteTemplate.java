@@ -19,6 +19,14 @@ public enum RouteTemplate {
             "^/+anthropic/v1/messages$",
             "/anthropic/v1/messages"
     ),
+    LLM_ANTHROPIC_MODEL(
+            "^/+anthropic/v1/models/(?<id>.+?)$",
+            "/anthropic/v1/models/{id}"
+    ),
+    LLM_ANTHROPIC_MODELS(
+            "^/+anthropic/v1/models$",
+            "/anthropic/v1/models"
+    ),
 
     // OpenAI API routes
     LLM_RESPONSES_API(
@@ -130,12 +138,12 @@ public enum RouteTemplate {
     ),
 
     CONFIG_RESOURCE(
-            "^/v1/(models|interceptors|roles|keys|routes|schemas|catalog_schemas|settings)/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
+            "^/v1/(models|interceptors|translators|roles|keys|routes|schemas|catalog_schemas|settings)/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
             "/v1/{resourceType}/{bucket}/{path}"
     ),
 
     CONFIG_RESOURCE_METADATA(
-            "^/v1/metadata/(models|interceptors|roles|keys|routes|schemas|catalog_schemas|settings)/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
+            "^/v1/metadata/(models|interceptors|translators|roles|keys|routes|schemas|catalog_schemas|settings)/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
             "/v1/metadata/{resourceType}/{bucket}/{path}"
     ),
 
@@ -145,8 +153,13 @@ public enum RouteTemplate {
     ),
 
     ADMIN_FILE_CONFIG(
-            "^/v1/admin/config/file/(?<type>models|interceptors|roles|keys|routes|schemas|catalog_schemas|settings|applications|toolsets)(?:/(?<name>.+))?$",
+            "^/v1/admin/config/file/(?<type>models|interceptors|translators|roles|keys|routes|schemas|catalog_schemas|settings|applications|toolsets)(?:/(?<name>.+))?$",
             "/v1/admin/config/file/{type}/{name}"
+    ),
+
+    CONFIG_FILE_MIGRATE(
+            "^/v1/admin/config/file/migrate$",
+            "/v1/admin/config/file/migrate"
     ),
 
     CONFIG_VALIDATE(
@@ -351,7 +364,16 @@ public enum RouteTemplate {
             "/v1/ops/resource/per-request-permissions/{operation}"),
 
     CLIENT_CHANNEL("^/v1/ops/client-channel/(subscribe|report|unsubscribe|interact)",
-            "/v1/ops/client-channel/{operation}");
+            "/v1/ops/client-channel/{operation}"),
+
+    // Declared last: {id} spans slashes (resource-backed deployments are addressed by their url), so this
+    // template also matches every /v1/deployments/{id}/... path. Path normalization returns the first
+    // matching template, hence the more specific ones must stay ahead of it - as must their routes in
+    // ControllerSelector.
+    DEPLOYMENT_INFO(
+            "^/+v1/deployments/(?<id>.+?)$",
+            "/v1/deployments/{id}"
+    );
 
     private final Pattern pattern;
     private final String template;

@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.data;
 
+import com.epam.aidial.core.config.PricingRate;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
@@ -12,6 +13,6 @@ public class PricingData {
     private String unit;
     private String prompt;
     private String completion;
-    private String cacheRead;
-    private String cacheWrite;
+    private PricingRate cacheRead;
+    private PricingRate cacheWrite;
 }

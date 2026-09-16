@@ -28,7 +28,8 @@ An object containing parameters for each [application](#applications).
 * `applications.<application_name>.applicationTypeSchemaId`: The identifier of a JSON schema that application is based upon. The shema ID must exist in the DIAL Core config property `applicationTypeSchemas`. Refer to [DIAL Documentation](https://docs.dialx.ai/platform/core/apps#application-types) to learn more about schema-rich apps.
 * `applications.<application_name>.applicationProperties`: Properties of a schema-rich application. Specified properties must conform to the JSON schema referenced by `applicationTypeSchemaId`. Refer to [DIAL Documentation](https://docs.dialx.ai/platform/core/apps#application-types) to learn more about schema-rich apps.
 * `endpoint`: The application's API endpoint for chat completion requests.
-* `interfaces`: A typed alternative to the flat `endpoint` field for declaring the routing target. For applications, only the `openaiChatCompletions` interface is supported; the Responses API and other interfaces are not. Refer to [applications.<application_name>.interfaces](#applicationsapplication_nameinterfaces).
+* `baseUrl`: The root URL shared by every `interfaces` entry that declares no `base_url` of its own.
+* `interfaces`: A typed alternative to the flat `endpoint`/`responsesEndpoint` fields for declaring routing targets, keyed by interface type. Refer to [applications.<application_name>.interfaces](#applicationsapplication_nameinterfaces).
 * `overrideName`: If set, the application is called under this name: the outgoing chat completion request body's `model` field (and the `X-DIAL-OVERRIDE-NAME` header) are rewritten to this value before the request reaches the application's endpoint. Doesn't change routing — only the value the endpoint receives.
 * `iconUrl`: A string with URL of the icon to display for the app in the UI.
 * `description`: A string with a brief description of the application.
@@ -47,7 +48,8 @@ An object containing parameters for each [application](#applications).
 * `dependencies`: A list of dependent deployments (applications, AI models) which the application may use. Refer to [Managing Authorization in Complex Application Ecosystems](https://docs.dialx.ai/tutorials/developers/apps-development/auth-matrix) to learn more about dependencies.
 * `viewerUrl`: A string with URL of the application's [custom viewer UI](https://github.com/epam/ai-dial-chat/tree/development/docs). A custom UI, if enabled, will override the standard DIAL Chat UI.
 * `editorUrl`: A string with URL of the application's custom builder UI. Application builder allows DIAL Chat end-users to create instances of apps using a [UI wizards](https://docs.dialx.ai/tutorials/user-guide#application-builder).
-* `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call.         
+* `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call. Used only where the interface entry declares no `defaults` of its own. Refer to [applications.<application_name>.interfaces](#applicationsapplication_nameinterfaces).
+* `defaultHeaders`: HTTP headers DIAL Core adds to a request that doesn't already carry them. Refer to [applications.<application_name>.defaultHeaders](#applicationsapplication_namedefaultheaders).
 * `interceptors`: A list of local interceptors to be triggered for the given application. Refer to [Interceptors](./interceptors.md) to learn more.
 * `mcp`: MCP configuration. Refer to [MCP](#applicationsapplication_namemcp) to learn more.
 * `features`: A list of features supported by the application. Refer to [Features](#applicationsapplication_namefeatures) for more details.
@@ -145,15 +147,21 @@ An optional, typed alternative to the flat `endpoint` field. Both shapes are fir
 
 Unlike `endpoint`, which is forwarded **verbatim**, an `interfaces` entry declares a `base_url` and DIAL Core forwards each request to `base_url` + **the exact ingress path it was received on**. A trailing slash on `base_url` is normalized. If both `interfaces` and `endpoint` are declared for the chat completions interface, `interfaces` takes precedence.
 
-Applications support only one interface type:
+Applications serve the following interface types:
 
-* `openaiChatCompletions`: the OpenAI chat completions interface. Peer of `endpoint`.
+* `openaiChatCompletions`: the Azure OpenAI ChatCompletions API. Peer of `endpoint`.
+* `openaiResponses`: the OpenAI Responses API. Peer of `responsesEndpoint`.
+* `anthropicMessages`: the Anthropic Messages API.
 
-> The Responses API (`openaiResponses`) and any other interface types are **not** supported for applications. If declared, they are dropped on config read with a warning.
+`interfaces` is the whitelist of what the application serves: an interface it declares with no base URL — and that no legacy field serves — is answered with `503`.
 
 Each value is an object with the following fields:
 
-* `base_url`: The application adapter root that the matching ingress path is appended to.
+* `base_url`: The root URL that the matching ingress path is appended to. Optional — the application-level `baseUrl` serves an entry that omits it.
+* `features`: Non-null fields override application-level `features` for this interface only; all other fields inherit, then Core defaults apply. Explicit `false` and empty arrays override inherited values. See [Features per interface](models.md#features-per-interface).
+* `defaultHeaders`: Headers applied to requests for this interface only, laid over the application-level `defaultHeaders`. Refer to [applications.<application_name>.defaultHeaders](#applicationsapplication_namedefaultheaders).
+* `defaults`: Body parameters applied to requests for this interface only. Unlike `defaultHeaders`, the two levels are **not** merged: an entry declaring `defaults` states the whole set and **replaces** the application-level `defaults`, so a key it does not name is not defaulted at all. The application-level `defaults` applies only where the entry declares none. Whatever the source, a default is only a fallback — a parameter the request body already carries is never replaced.
+* `overridePaths`: Per-operation upstream paths that replace the default "base URL + ingress path" routing, working exactly as they do for models. See [Override paths per interface](models.md#override-paths-per-interface).
 
 **Example**
 
@@ -161,7 +169,32 @@ Each value is an object with the following fields:
 "applications": {
     "app-via-interfaces": {
         "interfaces": {
-            "openaiChatCompletions": { "base_url": "http://localhost:7005" }
+            "openaiChatCompletions": { "base_url": "http://localhost:7005" },
+            "openaiResponses": { "base_url": "http://localhost:7005" }
+        }
+    }
+}
+```
+
+#### applications.<application_name>.defaultHeaders
+
+An object of HTTP header names and values DIAL Core adds to a request that does not already carry a header of that name. A header sent by the client always wins, and so does one DIAL Core sets itself (`Api-Key`, `X-DIAL-DEPLOYMENT-ID`, ...). Names are matched case-insensitively.
+
+A default header behaves exactly as if the client had sent it: DIAL Core reads it as part of the incoming request and forwards it to the application under the same rules as a client header. That cuts both ways: a name DIAL Core strips on the way to the application — a hop-by-hop header, `Api-Key`/`x-api-key`, `traceparent`/`tracestate`, or `Authorization` unless `forwardAuthToken` is set — is stripped when it comes from `defaultHeaders` too, even though DIAL Core itself still sees it on the incoming request.
+
+The application-level `defaultHeaders` apply to every interface the application serves. `interfaces.openaiChatCompletions.defaultHeaders` is laid over them for that interface only: a name it repeats is overridden, a new name is added, and every other application-level header still applies.
+
+They are applied once per request, when it enters the application: with `interceptors` configured that is the hop to the first interceptor, from where they travel down the chain. An interceptor's own `defaultHeaders` are applied on the hop that calls it and take precedence over the application's.
+
+**Example**
+
+```json
+"applications": {
+    "app-with-default-headers": {
+        "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+        "defaultHeaders": {
+            "x-dial-cache-policy": "cache-priority",
+            "x-dial-custom-header": "foo-bar"
         }
     }
 }

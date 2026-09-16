@@ -195,6 +195,16 @@ public class SkillResourceApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testRecreateAfterDeleteWithIfNoneMatch() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+
+        verify(uploadSkill("/recreate-me", files), 200);
+        verify(deleteSkill("/recreate-me"), 200);
+        // path is free again -> create-only PUT must succeed, not 412
+        verify(uploadSkill("/recreate-me", files, "if-none-match", "*"), 200);
+    }
+
+    @Test
     void testInvisibleToV1FilesApi() {
         Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
         verify(uploadSkill("/hidden", files), 200);
@@ -374,6 +384,25 @@ public class SkillResourceApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testMetadataOfSkillItselfIsItem() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/cat/skill-a", files), 200);
+        verify(createFolder("/cat/sub/"), 200);
+
+        // requesting the skill's own path (not its parent) must report the skill itself as an ITEM,
+        // not an (empty) FOLDER
+        Response skillMetadata = listMetadata("cat/skill-a");
+        verify(skillMetadata, 200);
+        assertEquals("ITEM", nodeType(skillMetadata));
+        assertEquals("Does something useful", attributes(skillMetadata).get("description").asText());
+
+        // a grouping folder's own path must still report itself as a FOLDER
+        Response folderMetadata = listMetadata("cat/sub");
+        verify(folderMetadata, 200);
+        assertEquals("FOLDER", nodeType(folderMetadata));
+    }
+
+    @Test
     void testMetadataListingRecursive() {
         Map<String, byte[]> files = new LinkedHashMap<>();
         files.put("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
@@ -382,7 +411,10 @@ public class SkillResourceApiTest extends ResourceBaseTest {
         verify(uploadSkill("/tree/sub/nested", files), 200);
 
         // non-recursive: only the immediate children (a resource and a grouping folder)
-        assertEquals(Set.of("skill-a", "sub"), childNodeTypes(listMetadata("tree")).keySet());
+        Response listing = listMetadata("tree");
+        assertEquals(Set.of("skill-a", "sub"), childNodeTypes(listing).keySet());
+        // a listed skill child must also carry its manifest-derived attributes
+        assertEquals("Does something useful", childAttributes(listing, "skill-a").get("description").asText());
 
         // recursive: every DIAL resource/folder in the subtree, and never the files inside a resource
         Set<String> urls = childUrls(send(HttpMethod.GET,
@@ -413,9 +445,15 @@ public class SkillResourceApiTest extends ResourceBaseTest {
         verify(uploadSkill("/files-skill", files), 200);
 
         // non-recursive: immediate entries of the version, under a clean .../files/ url (version prefix hidden)
-        Set<String> immediate = childUrls(listSkillFiles("/files-skill"));
+        Response listing = listSkillFiles("/files-skill");
+        Set<String> immediate = childUrls(listing);
         assertTrue(immediate.contains("skills/" + bucket + "/files-skill/files/SKILL.md"), immediate.toString());
         assertTrue(immediate.contains("skills/" + bucket + "/files-skill/files/scripts/"), immediate.toString());
+
+        // nodeType must distinguish files from subfolders, just like the v1 metadata API
+        Map<String, String> nodeTypes = childNodeTypes(listing);
+        assertEquals("ITEM", nodeTypes.get("SKILL.md"));
+        assertEquals("FOLDER", nodeTypes.get("scripts"));
 
         // recursive: all files flattened
         Set<String> all = childUrls(send(HttpMethod.GET,
@@ -594,6 +632,35 @@ public class SkillResourceApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testItemShareInheritsMetadataAccess() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/shared-item/skill-a", files), 200);
+
+        // before sharing, an unrelated user has no access to the item's metadata
+        assertEquals(403, listMetadata("shared-item/skill-a", "Api-key", "proxyKey2").status());
+
+        // share the skill item itself, not its containing folder
+        Response share = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    { "url": "skills/%s/shared-item/skill-a" }
+                  ]
+                }
+                """.formatted(bucket));
+        verify(share, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(share.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        verify(send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2"), 200);
+
+        // the item's own metadata is now visible to the invited user, correctly classified as an ITEM
+        Response metadata = listMetadata("shared-item/skill-a", "Api-key", "proxyKey2");
+        verify(metadata, 200);
+        assertEquals("ITEM", nodeType(metadata));
+    }
+
+    @Test
     void testCleanUpShareAccessWhenOnResourceDeletion() {
         Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
         verify(uploadSkill("/delete-cleanup-skill", files), 200);
@@ -637,6 +704,26 @@ public class SkillResourceApiTest extends ResourceBaseTest {
 
     private Response deleteFolder(String folderPath, String... headers) {
         return send(HttpMethod.DELETE, "/v2/skills/" + bucket + folderPath, null, "", headers);
+    }
+
+    @SneakyThrows
+    private static String nodeType(Response metadata) {
+        return ProxyUtil.MAPPER.readTree(metadata.body()).get("nodeType").asText();
+    }
+
+    @SneakyThrows
+    private static JsonNode attributes(Response metadata) {
+        return ProxyUtil.MAPPER.readTree(metadata.body()).get("attributes");
+    }
+
+    @SneakyThrows
+    private static JsonNode childAttributes(Response listing, String name) {
+        for (JsonNode item : ProxyUtil.MAPPER.readTree(listing.body()).get("items")) {
+            if (item.get("name").asText().equals(name)) {
+                return item.get("attributes");
+            }
+        }
+        throw new AssertionError("No child named " + name + " in listing: " + listing.body());
     }
 
     @SneakyThrows

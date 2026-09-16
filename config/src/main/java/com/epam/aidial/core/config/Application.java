@@ -179,6 +179,7 @@ public class Application extends Deployment {
         this.setInvalid(source.getInvalid());
         this.setName(source.getName());
         this.setEndpoint(source.getEndpoint());
+        this.setBaseUrl(source.getBaseUrl());
         this.setInterfaces(source.getInterfaces());
         this.setDisplayName(source.getDisplayName());
         this.setDisplayVersion(source.getDisplayVersion());
@@ -194,6 +195,7 @@ public class Application extends Deployment {
         this.setMaxInputAttachments(source.getMaxInputAttachments());
         this.setDefaults(source.getDefaults());
         this.setResponsesDefaults(source.getResponsesDefaults());
+        this.setDefaultHeaders(source.getDefaultHeaders());
         this.setInterceptors(source.getInterceptors());
         this.setDescriptionKeywords(source.getDescriptionKeywords());
         this.setFunction(source.getFunction());

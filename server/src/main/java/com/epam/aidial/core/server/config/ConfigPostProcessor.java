@@ -2,20 +2,32 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.Interceptor;
+import com.epam.aidial.core.config.InterfaceMode;
+import com.epam.aidial.core.config.InterfacePathMapping;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.Role;
+import com.epam.aidial.core.config.RoleBasedEntity;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.Translator;
+import com.epam.aidial.core.config.TranslatorRef;
+import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
+import com.epam.aidial.core.server.util.PathTemplateUtil;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import lombok.extern.slf4j.Slf4j;
 
@@ -37,9 +49,11 @@ import javax.annotation.Nullable;
  * <ul>
  *   <li><b>Structural</b> — drops file-defined entries whose map key contains
  *       {@code /} (cross-entity reserved path separator). Always run; cannot
- *       fail per-entity. Only applied to file-sourced maps —
- *       {@link MergedConfigStore} skips this pass for the merged config because
- *       blob entries legitimately key by canonical ID.</li>
+ *       fail per-entity. Only applied to file-sourced maps — {@link MergedConfigStore}
+ *       skips this pass for the merged config: blob-sourced models/applications/
+ *       interceptors/roles/toolsets key by short name (never contains {@code /}), schemas
+ *       key by their {@code $id} field value (which contains {@code /} legitimately), and keys/routes
+ *       key by canonical id legitimately.</li>
  *   <li><b>Semantic</b> — name back-fill, deployment-id uniqueness, ToolSet
  *       resource-key validation, route ordering, {@link ApiKeyStore} hookup.
  *       Each per-entity violation either throws (default {@code abort} mode,
@@ -67,7 +81,7 @@ public final class ConfigPostProcessor {
 
     /**
      * Drops file-defined entries with slash-keyed names across models, applications,
-     * interceptors, roles, routes, and toolsets. Warn + drop, not warn + skip-record:
+     * interceptors, translators, roles, routes, and toolsets. Warn + drop, not warn + skip-record:
      * the entries never reach {@link Config} and are not surfaced through the
      * invalid-entity sibling store.
      */
@@ -75,6 +89,7 @@ public final class ConfigPostProcessor {
         rejectSlashKeyedNames(config.getModels(), "models");
         rejectSlashKeyedNames(config.getApplications(), "applications");
         rejectSlashKeyedNames(config.getInterceptors(), "interceptors");
+        rejectSlashKeyedNames(config.getTranslators(), "translators");
         rejectSlashKeyedNames(config.getRoles(), "roles");
         rejectSlashKeyedNames(config.getRoutes(), "routes");
         rejectSlashKeyedNames(config.getToolsets(), "toolsets");
@@ -90,6 +105,7 @@ public final class ConfigPostProcessor {
                                        @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
         Set<String> deploymentIds = new HashSet<>();
         sortRoutes(config);
+        processTranslators(config, onSkip);
         processModels(config, deploymentIds, onSkip);
         processApplications(config, deploymentIds, onSkip);
         processRoles(config);
@@ -120,15 +136,17 @@ public final class ConfigPostProcessor {
      * only — {@code onSkip == null} means cross-refs are not validated (matches file-loaded
      * abort path in {@link #processModels}).
      */
-    static void validateSingleModel(Config config, String canonicalId,
+    static void validateSingleModel(Config config, String mapKey,
                                     @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
-        Model model = config.getModels().get(canonicalId);
+        Model model = config.getModels().get(mapKey);
         if (model == null) {
             return;
         }
-        model.setName(canonicalId);
+        model.setName(mapKey);
         List<ValidationWarning> warnings = new ArrayList<>();
         validatePricing(model, warnings);
+        validateUpstreamInterfaces(model, warnings);
+        validateDeploymentInterfaces(model, config.getTranslators(), warnings);
         if (onSkip != null) {
             validateCrossReferences(model, config, warnings);
         }
@@ -136,20 +154,82 @@ public final class ConfigPostProcessor {
             return;
         }
         if (onSkip == null) {
-            throw new InvalidEntityException(ResourceTypes.MODEL, canonicalId, warnings);
+            throw new InvalidEntityException(ResourceTypes.MODEL, mapKey, warnings);
         }
-        config.getModels().remove(canonicalId);
-        onSkip.accept(ResourceTypes.MODEL, new InvalidEntityException(ResourceTypes.MODEL, canonicalId, warnings));
+        config.getModels().remove(mapKey);
+        onSkip.accept(ResourceTypes.MODEL, new InvalidEntityException(ResourceTypes.MODEL, mapKey, warnings));
     }
 
     /**
-     * Targeted per-type helper. Sets {@code interceptor.name} from the map key. No cross-ref
-     * validation — interceptors have no outbound refs.
+     * Targeted per-type helper for {@link MergedConfigStore}'s partial-update path — validates the
+     * single written entry via {@link #validateTranslator}. {@link Translator} has no name field to
+     * back-fill, unlike Interceptor/Role/Application.
      */
-    static void validateSingleInterceptor(Config config, String canonicalId) {
-        Interceptor interceptor = config.getInterceptors().get(canonicalId);
-        if (interceptor != null) {
-            interceptor.setName(canonicalId);
+    static void validateSingleTranslator(Config config, String mapKey,
+                                         @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Translator translator = config.getTranslators().get(mapKey);
+        if (translator == null) {
+            return;
+        }
+        List<ValidationWarning> warnings = new ArrayList<>();
+        validateTranslator(translator, warnings);
+        if (warnings.isEmpty()) {
+            return;
+        }
+        if (onSkip == null) {
+            throw new InvalidEntityException(ResourceTypes.TRANSLATOR, mapKey, warnings);
+        }
+        config.getTranslators().remove(mapKey);
+        onSkip.accept(ResourceTypes.TRANSLATOR, new InvalidEntityException(ResourceTypes.TRANSLATOR, mapKey, warnings));
+    }
+
+    /**
+     * Targeted per-type helpers for {@link MergedConfigStore}'s partial-update path. Set the name from
+     * the map key and validate {@code overridePaths} — the one semantic check these types carry — so a
+     * write cannot accept an entity the next full rebuild would reject.
+     */
+    static void validateSingleApplication(Config config, String mapKey,
+                                          @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Application application = config.getApplications().get(mapKey);
+        if (application == null) {
+            return;
+        }
+        application.setName(mapKey);
+        List<ValidationWarning> warnings = new ArrayList<>();
+        validateOverridePaths(application, warnings);
+        if (warnings.isEmpty()) {
+            return;
+        }
+        if (onSkip == null) {
+            throw new InvalidEntityException(ResourceTypes.APPLICATION, mapKey, warnings);
+        }
+        config.getApplications().remove(mapKey);
+        onSkip.accept(ResourceTypes.APPLICATION, new InvalidEntityException(ResourceTypes.APPLICATION, mapKey, warnings));
+    }
+
+    static void validateSingleInterceptor(Config config, String mapKey,
+                                          @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Interceptor interceptor = config.getInterceptors().get(mapKey);
+        if (interceptor == null) {
+            return;
+        }
+        interceptor.setName(mapKey);
+        List<ValidationWarning> warnings = new ArrayList<>();
+        validateOverridePaths(interceptor, warnings);
+        if (warnings.isEmpty()) {
+            return;
+        }
+        if (onSkip == null) {
+            throw new InvalidEntityException(ResourceTypes.INTERCEPTOR, mapKey, warnings);
+        }
+        config.getInterceptors().remove(mapKey);
+        onSkip.accept(ResourceTypes.INTERCEPTOR, new InvalidEntityException(ResourceTypes.INTERCEPTOR, mapKey, warnings));
+    }
+
+    static <T extends RoleBasedEntity> void setNameAsMapKey(Map<String, T> entities, String mapKey) {
+        T entity = entities.get(mapKey);
+        if (entity != null) {
+            entity.setName(mapKey);
         }
     }
 
@@ -157,10 +237,10 @@ public final class ConfigPostProcessor {
      * Targeted per-type helper. Sets {@code role.name} from the map key. {@code Role.limits}
      * keys are loose-refs (warning-only today) so no cross-ref validation runs.
      */
-    static void validateSingleRole(Config config, String canonicalId) {
-        Role role = config.getRoles().get(canonicalId);
+    static void setRoleNameAsMapKey(Map<String, Role> roles, String mapKey) {
+        Role role = roles.get(mapKey);
         if (role != null) {
-            role.setName(canonicalId);
+            role.setName(mapKey);
         }
     }
 
@@ -183,10 +263,10 @@ public final class ConfigPostProcessor {
             List<ValidationWarning> warnings = new ArrayList<>();
             validateCrossReferences(model, config, warnings);
             if (!warnings.isEmpty()) {
-                String canonicalId = entry.getKey();
+                String mapKey = entry.getKey();
                 iterator.remove();
                 onSkip.accept(ResourceTypes.MODEL,
-                        new InvalidEntityException(ResourceTypes.MODEL, canonicalId, warnings));
+                        new InvalidEntityException(ResourceTypes.MODEL, mapKey, warnings));
             }
         }
     }
@@ -229,6 +309,8 @@ public final class ConfigPostProcessor {
             log.debug("Loading {}", model);
             List<ValidationWarning> warnings = new ArrayList<>();
             validatePricing(model, warnings);
+            validateUpstreamInterfaces(model, warnings);
+            validateDeploymentInterfaces(model, config.getTranslators(), warnings);
             // Cross-ref check is skip-mode-only — file-loaded abort-mode path (onSkip == null)
             // preserves design 02 §4.2's allowance for pre-existing file-side inconsistency.
             // Strict-mode 422 is enforced at the write controller, not here. Pricing validation
@@ -248,10 +330,10 @@ public final class ConfigPostProcessor {
 
     /**
      * Validates that every interceptor reference on the supplied model resolves
-     * within the merged {@code config.interceptors} map. {@link MergedConfigStore}
-     * keys file entries by simple name and API entries by canonical ID; either
-     * shape is accepted via {@code containsKey}. Returns {@code true} when every
-     * reference resolves (no warnings appended).
+     * within the merged {@code config.interceptors} map — file- and blob-sourced
+     * interceptors alike key by short name, so a plain {@code containsKey} against
+     * that one map key shape is enough. Returns {@code true} when every reference
+     * resolves (no warnings appended).
      */
     public static boolean validateCrossReferences(Model model, Config config, List<ValidationWarning> warnings) {
         List<String> refs = model.getInterceptors();
@@ -287,6 +369,232 @@ public final class ConfigPostProcessor {
         }
     }
 
+    /**
+     * Validates an upstream declaring {@code interfaces}. Every entry must resolve to a provider url —
+     * an entry with no {@code endpoint} of its own needs the upstream's {@code baseUrl} to complete it,
+     * or it declares an interface the upstream cannot serve and silently sends no
+     * {@code X-UPSTREAM-ENDPOINT}. The upstream must also carry an {@code id}: {@code endpoint} is what
+     * identifies an upstream to {@code X-UPSTREAM-ID} routing and to prompt-cache pinning, and this
+     * shape does not have one.
+     */
+    public static void validateUpstreamInterfaces(Model model, List<ValidationWarning> warnings) {
+        List<Upstream> upstreams = model.getUpstreams();
+        for (int i = 0; i < upstreams.size(); i++) {
+            Upstream upstream = upstreams.get(i);
+            Map<String, UpstreamInterface> interfaces = upstream.getInterfaces();
+            if (interfaces == null || interfaces.isEmpty()) {
+                continue;
+            }
+            if (upstream.getId() == null || upstream.getId().isBlank()) {
+                warnings.add(new ValidationWarning("upstreams[" + i + "].id",
+                        "An upstream declaring interfaces requires an id"));
+            }
+            if (upstream.getBaseUrl() != null) {
+                continue;
+            }
+            for (Map.Entry<String, UpstreamInterface> entry : interfaces.entrySet()) {
+                if (entry.getValue().getEndpoint() == null) {
+                    warnings.add(new ValidationWarning("upstreams[" + i + "].interfaces." + entry.getKey(),
+                            "Interface '" + entry.getKey() + "' declares no endpoint and the upstream "
+                                    + "declares no baseUrl")
+                    );
+                }
+            }
+        }
+    }
+
+    private static void processTranslators(Config config,
+                                           @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Iterator<Map.Entry<String, Translator>> iterator = config.getTranslators().entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, Translator> entry = iterator.next();
+            String name = entry.getKey();
+            List<ValidationWarning> warnings = new ArrayList<>();
+            validateTranslator(entry.getValue(), warnings);
+            if (warnings.isEmpty()) {
+                continue;
+            }
+            if (onSkip == null) {
+                throw new InvalidEntityException(ResourceTypes.TRANSLATOR, name, warnings);
+            }
+            iterator.remove();
+            onSkip.accept(ResourceTypes.TRANSLATOR, new InvalidEntityException(ResourceTypes.TRANSLATOR, name, warnings));
+        }
+    }
+
+    /**
+     * A {@code translators} entry has to say what it converts from: unlike a definition written inline it is
+     * declared under no interface, so {@code in} is the only thing tying it to one. {@code out} and
+     * {@code baseUrl} need no check here — {@link Translator} rejects an entry missing either as it is read.
+     * Shared by every write surface (full load, partial-update, admin apply/validate) so a translator is
+     * held to the same rule everywhere.
+     */
+    public static void validateTranslator(@Nullable Translator translator, List<ValidationWarning> warnings) {
+        if (translator == null) {
+            warnings.add(new ValidationWarning("translator", "Translator is empty"));
+            return;
+        }
+        if (translator.getIn() == null) {
+            warnings.add(new ValidationWarning("in", "Translator declares no in"));
+        }
+    }
+
+    /**
+     * Validates a model's {@code interfaces}. An entry is served either by a base url or by a translator,
+     * never by both and never by neither, and {@code mode} is what says which — routing and limits both
+     * read it, so a config where it disagrees with the fields around it is rejected rather than resolved.
+     * Named translator references are resolved against {@code translators} — the registry of the config the
+     * model is entering — exactly as the request path resolves them.
+     */
+    public static void validateDeploymentInterfaces(Model model, Map<String, Translator> translators,
+                                                    List<ValidationWarning> warnings) {
+        Map<String, DeploymentInterface> interfaces = model.getInterfaces();
+        if (interfaces == null) {
+            return;
+        }
+        for (Map.Entry<String, DeploymentInterface> entry : interfaces.entrySet()) {
+            DeploymentInterface declared = entry.getValue();
+            // an interface mapped to null declares itself unserved and carries nothing to validate
+            if (declared == null) {
+                continue;
+            }
+            String field = "interfaces." + entry.getKey();
+            if (declared.getMode() == InterfaceMode.TRANSLATOR) {
+                validateTranslatedInterface(model, entry.getKey(), declared, translators, field, warnings);
+            } else if (declared.getTranslator() != null) {
+                warnings.add(new ValidationWarning(field, "A translator requires mode 'translator'"));
+            } else if (declared.getBaseUrl() == null && model.getBaseUrl() == null) {
+                warnings.add(new ValidationWarning(field,
+                        "Interface '" + entry.getKey() + "' declares no base_url and the model declares no baseUrl"));
+            }
+            validateOverridePaths(entry.getKey(), declared, field, warnings);
+        }
+    }
+
+    /**
+     * Validates every interface entry's {@code overridePaths} on a deployment whose interfaces get no
+     * other semantic validation — applications and interceptors. Models run the same per-entry check
+     * inside {@link #validateDeploymentInterfaces}. Shared by every write surface, each of which turns
+     * the warnings into its own layer's failure: a result object for the admin services, a response
+     * status for the controllers.
+     */
+    public static void validateOverridePaths(Deployment deployment, List<ValidationWarning> warnings) {
+        Map<String, DeploymentInterface> interfaces = deployment.getInterfaces();
+        if (interfaces == null) {
+            return;
+        }
+        for (Map.Entry<String, DeploymentInterface> entry : interfaces.entrySet()) {
+            DeploymentInterface declared = entry.getValue();
+            if (declared == null) {
+                continue;
+            }
+            validateOverridePaths(entry.getKey(), declared, "interfaces." + entry.getKey(), warnings);
+        }
+    }
+
+    /**
+     * Validates an interface entry's {@code overridePaths}. A key this Core does not know is tolerated —
+     * exactly as an unknown interface type is — but a known key under an interface that does not own it,
+     * a template that does not parse, and a variable the operation cannot render are config contradicting
+     * itself. A translated interface routes to its translator, so overrides on it are dead config.
+     */
+    private static void validateOverridePaths(String type, DeploymentInterface declared, String field,
+                                              List<ValidationWarning> warnings) {
+        Map<String, String> overridePaths = declared.getOverridePaths();
+        if (overridePaths == null || overridePaths.isEmpty()) {
+            return;
+        }
+        if (declared.getMode() == InterfaceMode.TRANSLATOR) {
+            warnings.add(new ValidationWarning(field,
+                    "A translated interface is served by its translator: overridePaths has no effect"));
+            return;
+        }
+        for (Map.Entry<String, String> entry : overridePaths.entrySet()) {
+            InterfacePathMapping pathMapping = InterfacePathMapping.find(entry.getKey());
+            if (pathMapping == null) {
+                continue;
+            }
+            String keyField = field + ".overridePaths." + entry.getKey();
+            if (pathMapping.getInterfaceType() != InterfaceType.find(type)) {
+                warnings.add(new ValidationWarning(keyField, "Override path key '" + entry.getKey()
+                        + "' belongs to interface '" + pathMapping.getInterfaceType().getValue() + "'"));
+                continue;
+            }
+            validateOverridePathTemplate(pathMapping, entry.getValue(), keyField, warnings);
+        }
+    }
+
+    private static void validateOverridePathTemplate(InterfacePathMapping pathMapping, @Nullable String template,
+                                                     String keyField, List<ValidationWarning> warnings) {
+        if (template == null || template.isBlank()) {
+            warnings.add(new ValidationWarning(keyField, "Override path is empty"));
+            return;
+        }
+        if (!pathMapping.isIdApplicable() && PathTemplateUtil.referencesId(template)) {
+            warnings.add(new ValidationWarning(keyField, "The operation carries no id: {id} cannot render"));
+        }
+    }
+
+    private static void validateTranslatedInterface(Model model, String type, DeploymentInterface declared,
+                                                    Map<String, Translator> translators,
+                                                    String field, List<ValidationWarning> warnings) {
+        if (declared.getBaseUrl() != null) {
+            warnings.add(new ValidationWarning(field,
+                    "An interface is served either by a translator or by a base_url, not by both"));
+        }
+        TranslatorRef translator = declared.getTranslator();
+        if (translator == null) {
+            warnings.add(new ValidationWarning(field, "Mode 'translator' requires a translator"));
+            return;
+        }
+        // a name with no entry to resolve to leaves the interface unserved rather than the model invalid:
+        // the request path answers 503 for it, exactly as it does for an application or interceptor, and
+        // registering the entry serves it with no edit here. A registry entry that exists is always
+        // complete — Translator sees to that — so what is rejected here is only config contradicting
+        // itself, which no reload will fix.
+        Translator definition = translator.resolve(translators);
+        if (definition == null) {
+            return;
+        }
+        if (definition.getIn() != null && definition.getIn() != InterfaceType.find(type)) {
+            warnings.add(new ValidationWarning(field,
+                    "Translator converts from '" + definition.getIn().getValue() + "', not from '" + type + "'"));
+        }
+        // a definition written inline names no in: the interface it sits under is what it converts from
+        String in = definition.getIn() != null ? definition.getIn().getValue() : type;
+        if (in.equals(definition.getOut().getValue())) {
+            warnings.add(new ValidationWarning(field,
+                    "A translator cannot convert '" + in + "' to itself: its output would arrive back on the interface it came from"));
+            return;
+        }
+        validateTranslatorOutput(model, definition, translators, field, warnings);
+    }
+
+    /**
+     * The interface a translator converts to has to be one the model serves itself, and serves pass-through:
+     * the translator calls Core back on it to have the completion served.
+     *
+     * <p>This is what bounds a chain of translators to the single hop a request already makes. An
+     * {@code out} landing on a second translated interface is rejected here, so no such chain can be
+     * configured, and with none there is no cycle to detect: the interface converting back to the first one
+     * would have to be the second hop of a chain this rule already refuses. Which leaves the one-interface
+     * cycle, a translator converting an interface to itself, rejected by the caller.
+     */
+    private static void validateTranslatorOutput(Model model, Translator definition, Map<String, Translator> translators,
+                                                 String field, List<ValidationWarning> warnings) {
+        InterfaceType out = definition.getOut();
+        if (DeploymentEndpointUtil.resolveMode(model, out) == InterfaceMode.TRANSLATOR) {
+            warnings.add(new ValidationWarning(field,
+                    "The model serves '" + out.getValue() + "' through a translator of its own, which the translator here converts to: "
+                            + "the callback would arrive on a translated interface and be handed to a translator again"));
+            return;
+        }
+        if (DeploymentEndpointUtil.resolveServingEndpoint(model, out, translators) == null) {
+            warnings.add(new ValidationWarning(field,
+                    "The model does not serve '" + out.getValue() + "', which the translator converts to"));
+        }
+    }
+
     private static void processApplications(Config config, Set<String> deploymentIds,
                                             @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
         Iterator<Map.Entry<String, Application>> iterator = config.getApplications().entrySet().iterator();
@@ -299,6 +607,16 @@ public final class ConfigPostProcessor {
             Application application = entry.getValue();
             application.setName(name);
             validateExternalServices(application);
+            List<ValidationWarning> warnings = new ArrayList<>();
+            validateOverridePaths(application, warnings);
+            if (!warnings.isEmpty()) {
+                if (onSkip == null) {
+                    throw new InvalidEntityException(ResourceTypes.APPLICATION, name, warnings);
+                }
+                iterator.remove();
+                onSkip.accept(ResourceTypes.APPLICATION, new InvalidEntityException(ResourceTypes.APPLICATION, name, warnings));
+                continue;
+            }
             log.debug("Loading {}", application);
         }
     }
@@ -353,8 +671,11 @@ public final class ConfigPostProcessor {
             Role role = entry.getValue();
             role.setName(name);
             log.debug("Start loading role `{}`", role.getName());
-            for (Map.Entry<String, Limit> limitEntry : role.getLimits().entrySet()) {
-                log.debug("Loading {} for deployment `{}`", limitEntry.getValue(), limitEntry.getKey());
+            Map<String, Limit> roleLimits = role.getLimits();
+            if (roleLimits != null && !roleLimits.isEmpty()) {
+                for (Map.Entry<String, Limit> limitEntry : roleLimits.entrySet()) {
+                    log.debug("Loading {} for deployment `{}`", limitEntry.getValue(), limitEntry.getKey());
+                }
             }
             log.debug("End loading role `{}`", role.getName());
         }
@@ -371,6 +692,16 @@ public final class ConfigPostProcessor {
             }
             Interceptor interceptor = entry.getValue();
             interceptor.setName(name);
+            List<ValidationWarning> warnings = new ArrayList<>();
+            validateOverridePaths(interceptor, warnings);
+            if (!warnings.isEmpty()) {
+                if (onSkip == null) {
+                    throw new InvalidEntityException(ResourceTypes.INTERCEPTOR, name, warnings);
+                }
+                iterator.remove();
+                onSkip.accept(ResourceTypes.INTERCEPTOR, new InvalidEntityException(ResourceTypes.INTERCEPTOR, name, warnings));
+                continue;
+            }
             log.debug("Loading {}", interceptor);
         }
     }
@@ -416,6 +747,26 @@ public final class ConfigPostProcessor {
         return true;
     }
 
+    /**
+     * Returns {@code true} if {@code shortName} is already claimed by a MODEL, APPLICATION,
+     * TOOL_SET, or INTERCEPTOR other than {@code type} — those four entity types share one
+     * flat deployment-id namespace.
+     */
+    public static boolean isDeploymentIdTakenByAnotherDeploymentType(Config config,
+                                                                     ResourceTypes type,
+                                                                     String shortName) {
+        Map<ResourceTypes, Map<String, ?>> deploymentIdSpaces = Map.of(
+                ResourceTypes.MODEL, config.getModels(),
+                ResourceTypes.APPLICATION, config.getApplications(),
+                ResourceTypes.TOOL_SET, config.getToolsets(),
+                ResourceTypes.INTERCEPTOR, config.getInterceptors());
+        if (!deploymentIdSpaces.containsKey(type)) {
+            throw new IllegalArgumentException("Not a deployment type: " + type);
+        }
+        return deploymentIdSpaces.entrySet().stream()
+                .anyMatch(entry -> entry.getKey() != type && entry.getValue().containsKey(shortName));
+    }
+
     private static boolean isValidResourceKey(String resourceKey) {
         return RESOURCE_KEY_PATTERN.matcher(resourceKey).matches();
     }
@@ -425,14 +776,10 @@ public final class ConfigPostProcessor {
         return RESOURCE_KEY_PATTERN.pattern();
     }
 
-    // Bare file-sourced toolset names have no '/'; API-managed toolsets are keyed by their canonical
-    // id ("toolsets/platform/name") — validate only the trailing short-name segment in that case, same
-    // as the plain-name case would validate the whole (slash-free) string. Only ToolSet map keys are
-    // ever canonical-id-shaped this way — other RESOURCE_KEY_PATTERN callers (e.g. external-service
-    // ids) must keep going through the strict isValidResourceKey above.
+    // ToolSet map keys are always short names now, file- and blob-sourced alike — same check as
+    // isValidResourceKey. Kept as its own named entry point since ToolSet call sites reason about
+    // it as "the toolset key check" rather than the generic one.
     public static boolean isValidToolSetKey(String resourceKey) {
-        int slash = resourceKey.lastIndexOf('/');
-        String candidate = slash < 0 ? resourceKey : resourceKey.substring(slash + 1);
-        return RESOURCE_KEY_PATTERN.matcher(candidate).matches();
+        return isValidResourceKey(resourceKey);
     }
 }

@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
@@ -20,6 +21,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
 import org.redisson.config.ConfigSupport;
@@ -43,6 +46,29 @@ public class UpstreamCacheServiceTest {
     private LockService lockService;
 
     private UpstreamCacheService service;
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void interfaceCanEnableOrDisableAutomaticBreakpoints(boolean enabled) throws Exception {
+        service = new UpstreamCacheService(redissonClient, lockService, System::currentTimeMillis, null);
+        Model model = new Model();
+        Features features = new Features();
+        features.setAutoCachingSupported(!enabled);
+        model.setFeatures(features);
+        Features overrides = new Features();
+        overrides.setAutoCachingSupported(enabled);
+        DeploymentInterface declared = new DeploymentInterface();
+        declared.setFeatures(overrides);
+        model.setInterfaces(Map.of(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(), declared));
+        RequestObject request = new ChatCompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree("""
+                {"messages":[{"role":"user","content":"hello"}]}
+                """));
+
+        CacheBreakpointContext cache = service.buildCacheBreakpointContext(
+                request, CachePolicy.AVAILABILITY_PRIORITY, model, InterfaceType.OPENAI_CHAT_COMPLETIONS);
+
+        assertEquals(enabled ? List.of("prefix.body.messages[0]") : List.of(), cache.breakpoints());
+    }
 
     @BeforeAll
     public static void beforeAll() throws IOException {
@@ -87,6 +113,41 @@ public class UpstreamCacheServiceTest {
         service.updateEntry("hash", new CachedUpstreamEntry("http://localhost:8080/chat", null, "prefix.body.messages[1]", null), new Model(), null);
 
         assertTrue(redissonClient.getKeys().getKeys().iterator().hasNext());
+    }
+
+    @Test
+    public void testUpdateEntryWithoutEndpointPinsById() throws JsonProcessingException {
+        // an upstream configured through interfaces carries no legacy endpoint; Redis rejects a null value,
+        // so the field is omitted and the id alone identifies the pinned upstream
+        service = new UpstreamCacheService(redissonClient, lockService, System::currentTimeMillis, null);
+        String body = """
+                {
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": "hello",
+                            "custom_fields": {
+                                "cache_breakpoint": {}
+                            }
+                        }
+                    ]
+                }
+                """;
+        RequestObject request = new ChatCompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
+        Model model = new Model();
+        model.setName("interfaces-model");
+
+        CacheBreakpointContext context = service.buildCacheBreakpointContext(
+                request, CachePolicy.AVAILABILITY_PRIORITY, model, InterfaceType.OPENAI_CHAT_COMPLETIONS);
+        String breakpoint = context.breakpoints().get(context.breakpoints().size() - 1);
+
+        service.updateEntry(context.prefixToHash().get(breakpoint),
+                new CachedUpstreamEntry(null, "up-1", breakpoint, null), model, null);
+
+        CachedUpstreamEntry entry = service.getCacheEntry(context, model);
+        assertNotNull(entry);
+        assertNull(entry.endpoint());
+        assertEquals("up-1", entry.id());
     }
 
     @Test

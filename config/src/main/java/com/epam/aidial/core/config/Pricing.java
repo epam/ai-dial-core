@@ -14,9 +14,10 @@ public class Pricing {
     @JsonDeserialize(using = DoubleStringDeserializer.class)
     private String completion;
 
-    @JsonDeserialize(using = DoubleStringDeserializer.class)
-    private String cacheRead;
+    // Generated OpenAPI schema documents this as PricingRate's own object shape only; the
+    // generator has no field-level oneOf hook, so the flat-rate-string alternative doesn't
+    // render here even though the deserializer accepts it (PricingRateDeserializer).
+    private PricingRate cacheRead;
 
-    @JsonDeserialize(using = DoubleStringDeserializer.class)
-    private String cacheWrite;
+    private PricingRate cacheWrite;
 }

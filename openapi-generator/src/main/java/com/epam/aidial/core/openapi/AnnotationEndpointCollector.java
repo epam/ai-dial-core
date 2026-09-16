@@ -17,6 +17,7 @@ import com.epam.aidial.core.server.controller.CodeInterpreterController;
 import com.epam.aidial.core.server.controller.ComplexResourceController;
 import com.epam.aidial.core.server.controller.ComplexResourceMetadataController;
 import com.epam.aidial.core.server.controller.ConfigController;
+import com.epam.aidial.core.server.controller.ConfigFileMigrateController;
 import com.epam.aidial.core.server.controller.ConfigResourceController;
 import com.epam.aidial.core.server.controller.ConfigResourceMetadataController;
 import com.epam.aidial.core.server.controller.ConsentController;
@@ -49,6 +50,7 @@ import com.epam.aidial.core.server.controller.ToolSetRepairController;
 import com.epam.aidial.core.server.controller.ToolSetToolsController;
 import com.epam.aidial.core.server.controller.UploadFileController;
 import com.epam.aidial.core.server.controller.UserInfoController;
+import com.epam.aidial.core.server.controller.anthropic.AnthropicModelController;
 import com.epam.aidial.core.server.controller.anthropic.MessagesController;
 import com.epam.aidial.core.server.controller.anthropic.MessagesCountTokensController;
 import lombok.extern.slf4j.Slf4j;
@@ -65,6 +67,7 @@ public final class AnnotationEndpointCollector {
             AdminApplyController.class,
             AdminHealthConfigController.class,
             AdminValidateController.class,
+            AnthropicModelController.class,
             ApplicationController.class,
             ApplicationMcpProxyController.class,
             McpResourceController.class,
@@ -74,6 +77,7 @@ public final class AnnotationEndpointCollector {
             ClientChannelController.class,
             CodeInterpreterController.class,
             ConfigController.class,
+            ConfigFileMigrateController.class,
             ConfigResourceController.class,
             ConfigResourceMetadataController.class,
             ConsentController.class,
