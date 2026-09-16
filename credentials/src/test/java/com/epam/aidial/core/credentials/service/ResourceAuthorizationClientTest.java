@@ -543,7 +543,7 @@ class ResourceAuthorizationClientTest {
      * diagnostic a failed probe produces - abandoning the body must not cost it.
      */
     @Test
-    void probeKeepsTheErrorBodyExplainingARejection() throws Exception {
+    void probeKeepsTheErrorBodyExplainingTheRejection() throws Exception {
         String explanation = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Missing session ID\"}}";
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/mcp", exchange -> {
@@ -563,5 +563,29 @@ class ResourceAuthorizationClientTest {
         } finally {
             server.stop(0);
         }
+    }
+
+    /**
+     * On HTTP/2 cancelling the body subscription resets the stream synchronously and reports the
+     * reset through onError before cancel returns. A local test server only speaks HTTP/1.1, so this
+     * models that contract directly: the abandoned body must still complete normally.
+     */
+    @Test
+    void abandonedBodyCompletesWhenCancellingReportsAnErrorSynchronously() {
+        HttpResponse.BodySubscriber<byte[]> subscriber = ResourceAuthorizationClient.abandonBody();
+
+        subscriber.onSubscribe(new java.util.concurrent.Flow.Subscription() {
+            @Override
+            public void request(long n) {
+                // the body is never requested
+            }
+
+            @Override
+            public void cancel() {
+                subscriber.onError(new java.io.IOException("Stream 1 cancelled"));
+            }
+        });
+
+        assertEquals(0, subscriber.getBody().toCompletableFuture().join().length);
     }
 }

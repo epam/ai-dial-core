@@ -152,10 +152,15 @@ public class ResourceAuthorizationClient {
     }
 
     /**
-     * A body handler that completes as soon as the response headers are in and cancels the body
+     * A body subscriber that completes as soon as the response headers are in and cancels the body
      * subscription, so no part of the response body is read or buffered.
+     *
+     * <p>The body completes <em>before</em> the subscription is cancelled. On HTTP/2 cancelling resets
+     * the stream synchronously and reports it through {@code onError}, so cancelling first fails
+     * every successful probe with "Stream N cancelled".
      */
-    private static HttpResponse.BodySubscriber<byte[]> abandonBody() {
+    @VisibleForTesting
+    static HttpResponse.BodySubscriber<byte[]> abandonBody() {
         return new HttpResponse.BodySubscriber<>() {
             private final CompletableFuture<byte[]> body = new CompletableFuture<>();
 
@@ -166,8 +171,8 @@ public class ResourceAuthorizationClient {
 
             @Override
             public void onSubscribe(Flow.Subscription subscription) {
-                subscription.cancel();
                 body.complete(EMPTY_BODY);
+                subscription.cancel();
             }
 
             @Override
