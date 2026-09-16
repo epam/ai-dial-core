@@ -56,6 +56,7 @@ public class StaticResourceRegistrationStrategy implements ResourceRegistrationS
     public ClientRegistration register(String resourceId, String resourceEndpoint, ResourceAuthSettings resourceAuthSettings) {
         log.info("Start static registration for Resource: {}", resourceId);
 
+        AuthorizationServerProtectedResourceMetadata discoveredResourceMetadata = null;
         String authorizationEndpoint = resourceAuthSettings.getAuthorizationEndpoint();
         String tokenEndpoint = resourceAuthSettings.getTokenEndpoint();
         String codeChallengeMethod = resourceAuthSettings.getCodeChallengeMethod();
@@ -69,6 +70,7 @@ public class StaticResourceRegistrationStrategy implements ResourceRegistrationS
 
             AuthorizationServerProtectedResourceMetadata protectedResourceMetadata =
                     protectedResourceMetadataService.getProtectedResourceMetadata(resourceId, resourceEndpoint);
+            discoveredResourceMetadata = protectedResourceMetadata;
 
             AuthorizationServerMetadata authServerMetadata = authorizationServerMetadataService.getAuthorizationServerMetadata(
                     resourceId, resourceEndpoint, protectedResourceMetadata, false);
@@ -98,6 +100,7 @@ public class StaticResourceRegistrationStrategy implements ResourceRegistrationS
                 .redirectUri(resourceAuthSettings.getRedirectUri())
                 .authorizationEndpoint(authorizationEndpoint)
                 .tokenEndpoint(tokenEndpoint)
+                .resource(canonicalResource(discoveredResourceMetadata, resourceEndpoint))
                 .codeChallengeMethod(codeChallengeMethod)
                 .scopesSupported(supportedScopes)
                 .tokenEndpointAuthMethod(resourceAuthSettings.getTokenEndpointAuthMethod())

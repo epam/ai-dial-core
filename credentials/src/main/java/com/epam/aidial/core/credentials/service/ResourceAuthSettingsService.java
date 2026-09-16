@@ -155,6 +155,7 @@ public class ResourceAuthSettingsService {
         resourceAuthSettings.setClientSecret(clientRegistration.getClientSecret());
         resourceAuthSettings.setAuthorizationEndpoint(clientRegistration.getAuthorizationEndpoint());
         resourceAuthSettings.setTokenEndpoint(clientRegistration.getTokenEndpoint());
+        resourceAuthSettings.setResource(clientRegistration.getResource());
         resourceAuthSettings.setRedirectUri(clientRegistration.getRedirectUri());
         resourceAuthSettings.setScopesSupported(clientRegistration.getScopesSupported());
         resourceAuthSettings.setTokenEndpointAuthMethod(clientRegistration.getTokenEndpointAuthMethod());
@@ -251,6 +252,7 @@ public class ResourceAuthSettingsService {
         authSettings.setClientSecret(registration.getClientSecret());
         authSettings.setAuthorizationEndpoint(registration.getAuthorizationEndpoint());
         authSettings.setTokenEndpoint(registration.getTokenEndpoint());
+        authSettings.setResource(registration.getResource());
         authSettings.setRedirectUri(registration.getRedirectUri());
         authSettings.setScopesSupported(registration.getScopesSupported());
         authSettings.setTokenEndpointAuthMethod(registration.getTokenEndpointAuthMethod());

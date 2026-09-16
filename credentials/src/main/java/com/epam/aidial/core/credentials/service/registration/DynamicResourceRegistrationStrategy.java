@@ -100,6 +100,7 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
                 .redirectUri(clientRegistrationResponse.getRedirectUris().getFirst())
                 .authorizationEndpoint(authServerMetadata.getAuthorizationEndpoint())
                 .tokenEndpoint(authServerMetadata.getTokenEndpoint())
+                .resource(canonicalResource(protectedResourceMetadata, resourceEndpoint))
                 .scopesSupported(supportedScopes)
                 .tokenEndpointAuthMethod(tokenEndpointAuthMethod)
                 .build();

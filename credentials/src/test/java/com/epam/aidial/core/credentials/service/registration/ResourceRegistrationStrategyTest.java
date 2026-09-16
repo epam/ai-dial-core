@@ -1,7 +1,9 @@
 package com.epam.aidial.core.credentials.service.registration;
 
 import com.epam.aidial.core.credentials.data.registration.AuthorizationServerMetadata;
+import com.epam.aidial.core.credentials.data.registration.AuthorizationServerProtectedResourceMetadata;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -60,5 +62,25 @@ class ResourceRegistrationStrategyTest {
             this.expectedResult = expectedResult;
             this.exceptionMessage = exceptionMessage;
         }
+    }
+
+    /**
+     * The resource indicator identifies the MCP server the token will be used against. The server's
+     * own metadata is authoritative - it may differ from the configured endpoint - and the endpoint
+     * stands in only when the server publishes no metadata.
+     */
+    @Test
+    void canonicalResourcePrefersTheServersOwnMetadata() {
+        ResourceRegistrationStrategy strategy = (id, endpoint, settings) -> null;
+
+        AuthorizationServerProtectedResourceMetadata metadata = new AuthorizationServerProtectedResourceMetadata();
+        metadata.setResource("https://mcp.example.com/mcp/productA");
+
+        Assertions.assertEquals("https://mcp.example.com/mcp/productA",
+                strategy.canonicalResource(metadata, "https://mcp.example.com/mcp/productA?tenant=1"));
+        Assertions.assertEquals("https://mcp.example.com/mcp/productA",
+                strategy.canonicalResource(new AuthorizationServerProtectedResourceMetadata(), "https://mcp.example.com/mcp/productA"));
+        Assertions.assertEquals("https://mcp.example.com/mcp/productA",
+                strategy.canonicalResource(null, "https://mcp.example.com/mcp/productA"));
     }
 }
