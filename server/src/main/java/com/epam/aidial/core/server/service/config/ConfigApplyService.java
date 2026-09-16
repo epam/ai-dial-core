@@ -296,7 +296,6 @@ public class ConfigApplyService {
         secretFieldProcessor.encryptFields(model, descriptor);
         String blobBody = ConfigEntityCodec.serializeForBlob(model);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
-        // Slice 4S.4: decrypt-in-place so partial-update receives plaintext upstream secrets.
         secretFieldProcessor.decryptFields(model, descriptor);
         pending.add(new EntityChange(ResourceTypes.MODEL, MergedConfigStore.resolveMapKeyFor(descriptor), model));
         return new EntityResult(id, invalid ? AdminApplyStatus.APPLIED_INVALID : AdminApplyStatus.APPLIED, null);
