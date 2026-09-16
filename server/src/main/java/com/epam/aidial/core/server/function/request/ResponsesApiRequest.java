@@ -22,6 +22,9 @@ import javax.annotation.Nullable;
 public class ResponsesApiRequest implements RequestObject {
     private final ObjectNode tree;
 
+    @Nullable
+    private String upstreamConfigId;
+
     @Override
     public String getModel() {
         return tree.path("model").asText();
@@ -105,6 +108,17 @@ public class ResponsesApiRequest implements RequestObject {
     @Override
     public boolean isBackground() {
         return tree.path("background").asBoolean(false);
+    }
+
+    @Nullable
+    @Override
+    public String getUpstreamConfigId() {
+        return upstreamConfigId;
+    }
+
+    @Override
+    public void setUpstreamConfigId(String upstreamConfigId) {
+        this.upstreamConfigId = upstreamConfigId;
     }
 
     /**

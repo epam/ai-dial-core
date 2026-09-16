@@ -65,18 +65,16 @@ import static com.epam.aidial.core.server.Proxy.HEADER_CACHE_POLICY;
 @Slf4j
 public class ResponsesController extends BaseDeploymentPostController {
 
-    private final ResolveEncryptedContentAffinityFn resolveEncryptedContentAffinityFn;
     private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
 
     public ResponsesController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
-        this.resolveEncryptedContentAffinityFn = new ResolveEncryptedContentAffinityFn(proxy, context);
         this.enhancementFunctions = List.of(
                 new CollectRequestStandardAttachmentsFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.OPENAI_RESPONSES),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
-                resolveEncryptedContentAffinityFn,
+                new ResolveEncryptedContentAffinityFn(proxy, context),
                 new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_RESPONSES),
                 new CollectDeploymentsFn(proxy, context));
     }
@@ -254,7 +252,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         Deployment deployment = context.getDeployment();
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
         if (upstreamId == null) {
-            upstreamId = resolveEncryptedContentAffinityFn.getUpstreamConfigId();
+            upstreamId = request.getUpstreamConfigId();
         }
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
                 .get(deployment, context.getCacheBreakpointContext(),
