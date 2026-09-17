@@ -1405,8 +1405,9 @@ public class ConfigResourceController implements Controller {
             // are validated; re-serialize so the blob is canonical (locked field set, no extras).
             GlobalSettings settings = ConfigEntityCodec.treeToEntity(requestNode, GlobalSettings.class);
             // BLOB_MAPPER (unlike the file-config load path) does not run bean validation, so
-            // rateLimitSchedule's @ValidTimezone/@Pattern constraints need an explicit check here.
-            ValidationUtil.validate(settings.getRateLimitSchedule());
+            // GlobalSettings' constraints (rateLimitSchedule's @ValidTimezone/@Pattern, no-null
+            // elements in globalInterceptors/retriableErrorCodes) need an explicit check here.
+            ValidationUtil.validate(settings);
             String blobBody = ConfigEntityCodec.serializeForBlob(settings);
             String author = context.getUserDisplayName();
             return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
