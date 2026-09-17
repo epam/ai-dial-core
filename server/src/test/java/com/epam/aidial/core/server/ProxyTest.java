@@ -223,6 +223,7 @@ public class ProxyTest {
             SpanContext spanContext = mock(SpanContext.class);
             TraceFlags traceFlags = mock(TraceFlags.class);
             when(span.getSpanContext()).thenReturn(spanContext);
+            when(spanContext.isValid()).thenReturn(true);
             when(spanContext.getTraceId()).thenReturn("11111111111111111111111111111111");
             when(spanContext.getSpanId()).thenReturn("2222222222222222");
             when(spanContext.getTraceFlags()).thenReturn(traceFlags);
@@ -233,6 +234,61 @@ public class ProxyTest {
 
             verify(response).putHeader(Proxy.HEADER_DIAL_TRACE_ID, "11111111111111111111111111111111");
             verify(response).putHeader(Proxy.HEADER_DIAL_SPAN_ID, "2222222222222222");
+            verify(response).putHeader(Proxy.HEADER_TRACEPARENT,
+                    "00-11111111111111111111111111111111-2222222222222222-01");
+            verify(response).putHeader(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
+                    "traceparent, X-DIAL-TRACE-ID, X-DIAL-SPAN-ID");
+        }
+    }
+
+    @Test
+    public void testHandle_TraceHeadersCoverShortCircuitedPaths() {
+        // /health returns before the request ever reaches a controller, and used to carry no trace id
+        when(tracingSettings.responseTraceHeaders()).thenReturn(true);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        when(request.path()).thenReturn(Proxy.HEALTH_CHECK_PATH);
+
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            SpanContext spanContext = mock(SpanContext.class);
+            TraceFlags traceFlags = mock(TraceFlags.class);
+            when(span.getSpanContext()).thenReturn(spanContext);
+            when(spanContext.isValid()).thenReturn(true);
+            when(spanContext.getTraceId()).thenReturn("11111111111111111111111111111111");
+            when(spanContext.getSpanId()).thenReturn("2222222222222222");
+            when(spanContext.getTraceFlags()).thenReturn(traceFlags);
+            when(traceFlags.asHex()).thenReturn("01");
+            when(Span.current()).thenReturn(span);
+
+            proxy.handle(request);
+
+            verify(response).putHeader(Proxy.HEADER_TRACEPARENT,
+                    "00-11111111111111111111111111111111-2222222222222222-01");
+        }
+    }
+
+    @Test
+    public void testHandle_TraceHeadersAreOmittedWithoutValidSpanContext() {
+        // no SDK attached: the ids are all-zeros and a traceparent built from them would be malformed
+        when(tracingSettings.responseTraceHeaders()).thenReturn(true);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(request.path()).thenReturn("/foo");
+
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            SpanContext spanContext = mock(SpanContext.class);
+            when(span.getSpanContext()).thenReturn(spanContext);
+            when(spanContext.isValid()).thenReturn(false);
+            when(Span.current()).thenReturn(span);
+
+            proxy.handle(request);
+
+            verify(response, never()).putHeader(eq(Proxy.HEADER_TRACEPARENT), anyString());
+            verify(response, never()).putHeader(eq(Proxy.HEADER_DIAL_TRACE_ID), anyString());
         }
     }
 

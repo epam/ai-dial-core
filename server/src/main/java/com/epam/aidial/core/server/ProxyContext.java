@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -178,6 +179,9 @@ public class ProxyContext {
             body = Buffer.buffer();
         }
 
+        // the one funnel every short and error response passes through, and the only place on those paths
+        // that knows the status: the controllers finalize the request before it is set
+        GenAiTraceAttributes.setFailureStatus(this, status);
         response.setStatusCode(status).end(body);
 
         if (status < 200 || status >= 300) {

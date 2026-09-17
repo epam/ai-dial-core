@@ -124,6 +124,8 @@ public class BaseDeploymentPostController {
     }
 
     protected void finalizeRequest() {
+        // every terminal path of all four LLM surfaces reaches here, including the respond(...) helpers above
+        GenAiTraceAttributes.setLatencyAttributes(context);
         proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData != null) {

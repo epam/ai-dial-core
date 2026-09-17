@@ -18,8 +18,11 @@ These are static settings, so they are read once at startup: changing them needs
 
 * `genAiSpanAttributes`: Defaults to `false`. When `true`, Core adds `gen_ai.*` and `dial.*`
   attributes to the request span and to OTel log records. See [Attributes](#attributes).
-* `responseTraceHeaders`: Defaults to `false`. When `true`, every response carries
-  `X-DIAL-TRACE-ID` and `X-DIAL-SPAN-ID` of Core's own root span.
+* `responseTraceHeaders`: Defaults to `false`. When `true`, every response carries the W3C
+  `traceparent` of Core's own root span, plus `X-DIAL-TRACE-ID` and `X-DIAL-SPAN-ID` for existing
+  consumers. All three are listed in `Access-Control-Expose-Headers`, so a browser client can read
+  them. Nothing is emitted when Core has no valid span context — with no OpenTelemetry SDK attached
+  the ids are all zeros, and a `traceparent` built from those is malformed.
 * `conversationIdHeaders`: Request headers, in priority order, that may carry a conversation or
   session id. The first non-blank one present is published as `gen_ai.conversation.id`. Matching is
   case-insensitive and values are trimmed; a value longer than 256 characters is ignored rather than
@@ -70,6 +73,7 @@ present — a missing value is omitted, never written as `null` or `""`.
 | `dial.upstream.attempts`                | The `X-UPSTREAM-ATTEMPTS` the client receives — how many upstream attempts the load balancer spent on the request                                          |
 | `dial.upstream.cache.breakpoint_path`   | The prefix path the upstream reported caching via `X-DIAL-CACHE-BREAKPOINT-PATH`. Absent when the upstream reported none                                   |
 | `dial.upstream.cache.stored`            | Whether Core matched a hash for that path and submitted the cache entry. Only present alongside `breakpoint_path`; the Redis write itself is async         |
+| `dial.latency.*`                        | `client_body_ms` (reading the client request body), `upstream_connect_ms`, `upstream_header_ms` (to the upstream's response headers — **not** to its first token: a DIAL application or interceptor flushes headers before it generates), `upstream_body_ms`. A phase that never happened is omitted rather than reported as zero |
 | `gen_ai.conversation.id`                | Resolved from `conversationIdHeaders`; set regardless of the API surface                                                                                  |
 | `dial.request.parent_span.id`           | Parent span id of a valid incoming W3C `traceparent`. The header itself is still not forwarded upstream                                                   |
 

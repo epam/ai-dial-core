@@ -314,6 +314,80 @@ class GenAiTraceAttributesTest {
     }
 
     @Test
+    void enrichmentFailureNeverPropagatesToTheRequest() {
+        // the headline safety property: this runs before the client response is completed
+        ProxyContext context = context(proxy(enabledSettings()));
+        UpstreamRoute route = mock(UpstreamRoute.class);
+        when(route.getCacheBreakpointPath()).thenThrow(new IllegalStateException("boom"));
+        context.setUpstreamRoute(route);
+
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
+                Buffer.buffer("{\"id\":\"chat-1\"}"));
+
+        // contained, not skipped: what was set before the throw survives
+        assertEquals("chat-1", context.getTracingAttributes().get("gen_ai.response.id"));
+    }
+
+    @Test
+    void setResponseAttributesReadsStreamsWhoseFramesCarryNoEventName() {
+        // a translator emitting bare data: lines must not silently lose its response attributes
+        ProxyContext context = streamingContext();
+        Buffer body = Buffer.buffer("""
+                data: {"type":"response.output_text.delta","delta":"hi"}
+
+                data: {"type":"response.completed","response":{"id":"resp-1","model":"gpt-4","status":"completed"}}
+                """);
+
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body);
+
+        assertEquals("resp-1", context.getTracingAttributes().get("gen_ai.response.id"));
+        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
+    }
+
+    @Test
+    void setLatencyAttributesPublishesEachPhase() {
+        ProxyContext context = context(proxy(enabledSettings()));
+        context.setRequestTimestamp(1_000L);
+        context.setRequestBodyTimestamp(1_030L);
+        context.setProxyConnectTimestamp(1_050L);
+        context.setProxyResponseTimestamp(1_400L);
+        context.setResponseBodyTimestamp(2_600L);
+
+        GenAiTraceAttributes.setLatencyAttributes(context);
+
+        assertEquals(30L, context.getTracingAttributes().get("dial.latency.client_body_ms"));
+        assertEquals(20L, context.getTracingAttributes().get("dial.latency.upstream_connect_ms"));
+        assertEquals(350L, context.getTracingAttributes().get("dial.latency.upstream_header_ms"));
+        assertEquals(1200L, context.getTracingAttributes().get("dial.latency.upstream_body_ms"));
+    }
+
+    @Test
+    void setLatencyAttributesOmitsPhasesThatNeverHappened() {
+        // a request rejected before any upstream: connect and response bounds are still 0
+        ProxyContext context = context(proxy(enabledSettings()));
+        context.setRequestTimestamp(1_000L);
+        context.setRequestBodyTimestamp(1_030L);
+
+        GenAiTraceAttributes.setLatencyAttributes(context);
+
+        assertEquals(30L, context.getTracingAttributes().get("dial.latency.client_body_ms"));
+        assertFalse(context.getTracingAttributes().containsKey("dial.latency.upstream_connect_ms"));
+        assertFalse(context.getTracingAttributes().containsKey("dial.latency.upstream_header_ms"));
+        assertFalse(context.getTracingAttributes().containsKey("dial.latency.upstream_body_ms"));
+    }
+
+    @Test
+    void setLatencyAttributesOmitsPhasesWhoseClockSteppedBackwards() {
+        ProxyContext context = context(proxy(enabledSettings()));
+        context.setRequestTimestamp(1_000L);
+        context.setRequestBodyTimestamp(900L);
+
+        GenAiTraceAttributes.setLatencyAttributes(context);
+
+        assertFalse(context.getTracingAttributes().containsKey("dial.latency.client_body_ms"));
+    }
+
+    @Test
     void setUpstreamAttemptsMirrorsTheResponseHeader() {
         ProxyContext context = context(proxy(enabledSettings()));
 
@@ -359,14 +433,33 @@ class GenAiTraceAttributesTest {
     }
 
     @Test
-    void setResponseAttributesReportsFailedWhenNoUpstreamWasReached() {
+    void setFailureStatusReportsFailedWhenNoUpstreamWasReached() {
+        // a rate-limit rejection never reaches setResponseAttributes, so this is the only outcome it gets
         ProxyContext context = context(proxy(enabledSettings()));
-        when(context.getResponse().getStatusCode()).thenReturn(429);
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
-                Buffer.buffer("{}"));
+        GenAiTraceAttributes.setFailureStatus(context, 429);
 
         assertEquals("failed", context.getTracingAttributes().get("gen_ai.response.status"));
+    }
+
+    @Test
+    void setFailureStatusKeepsTheStatusAlreadyPublished() {
+        ProxyContext context = context(proxy(enabledSettings()));
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES,
+                Buffer.buffer("{\"id\":\"resp-1\",\"status\":\"incomplete\"}"));
+
+        GenAiTraceAttributes.setFailureStatus(context, 500);
+
+        assertEquals("incomplete", context.getTracingAttributes().get("gen_ai.response.status"));
+    }
+
+    @Test
+    void setFailureStatusIgnoresSuccessfulResponses() {
+        ProxyContext context = context(proxy(enabledSettings()));
+
+        GenAiTraceAttributes.setFailureStatus(context, 200);
+
+        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.status"));
     }
 
     @Test
@@ -401,7 +494,25 @@ class GenAiTraceAttributesTest {
         GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body);
 
         assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.id"));
-        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
+        // DIAL streamed the body successfully, so the client-facing 200 would read as "completed" -
+        // only the terminal event type knows the run failed
+        assertEquals("failed", context.getTracingAttributes().get("gen_ai.response.status"));
+    }
+
+    @Test
+    void setResponseAttributesDerivesEachTerminalResponsesEventStatus() {
+        for (String event : List.of("failed", "cancelled", "incomplete")) {
+            ProxyContext context = streamingContext();
+            Buffer body = Buffer.buffer("""
+                    event: response.%s
+                    data: {"type":"response.%s","response":{"id":"resp-1"}}
+                    """.formatted(event, event));
+
+            GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body);
+
+            assertEquals(event, context.getTracingAttributes().get("gen_ai.response.status"));
+            assertEquals("resp-1", context.getTracingAttributes().get("gen_ai.response.id"));
+        }
     }
 
     @Test

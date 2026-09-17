@@ -24,6 +24,8 @@ import org.apache.commons.lang3.Strings;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -39,6 +41,12 @@ public final class GenAiTraceAttributes {
             "00-(?!0{32})([0-9a-f]{32})-(?!0{16})([0-9a-f]{16})-([0-9a-f]{2})");
     private static final String CONVERSATION_ID_ATTRIBUTE = "gen_ai.conversation.id";
     private static final String PARENT_SPAN_ATTRIBUTE = "dial.request.parent_span.id";
+    private static final String RESPONSE_STATUS_ATTRIBUTE = "gen_ai.response.status";
+    private static final String RESPONSES_EVENT_PREFIX = "response.";
+    private static final String DEFAULT_SSE_EVENT = "message";
+    private static final Set<String> TERMINAL_RESPONSES_EVENTS =
+            Set.of("response.completed", "response.incomplete", "response.failed", "response.cancelled");
+    private static final Set<String> ANTHROPIC_ATTRIBUTE_EVENTS = Set.of("message_start", "message_delta");
     private static final int MAX_ATTRIBUTE_LENGTH = 256;
     private static final int MAX_ATTRIBUTE_VALUES = 32;
     private static final int SSE_LINE_BUFFER_SIZE = 1024;
@@ -120,7 +128,7 @@ public final class GenAiTraceAttributes {
         set(context, stringKey("gen_ai.response.id"), responseId == null ? text(response.get("id")) : clamp(responseId));
         set(context, stringKey("gen_ai.response.model"), text(response.get("model")));
         set(context, stringArrayKey("gen_ai.response.finish_reasons"), finishReasons(response, type));
-        set(context, stringKey("gen_ai.response.status"), responseStatus(context, response));
+        set(context, stringKey(RESPONSE_STATUS_ATTRIBUTE), responseStatus(context, response));
     }
 
     /**
@@ -149,6 +157,50 @@ public final class GenAiTraceAttributes {
             setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, response, responseId);
             collectUsageAttributes(context, tokenUsage(response.get("usage")));
         });
+    }
+
+    /**
+     * The outcome of a request that ended before any upstream response was collected - a rate-limit rejection,
+     * a connect failure, a rejected body. Those paths never reach {@link #setResponseAttributes}, so without this
+     * the span carries request attributes and no outcome at all, which reads the same as a request that never
+     * finished. A status published from a real response always wins.
+     */
+    public static void setFailureStatus(ProxyContext context, int statusCode) {
+        if (statusCode >= 200 && statusCode < 300) {
+            return;
+        }
+        enrich(context, () -> {
+            if (!context.getTracingAttributes().containsKey(RESPONSE_STATUS_ATTRIBUTE)) {
+                set(context, stringKey(RESPONSE_STATUS_ATTRIBUTE), "failed");
+            }
+        });
+    }
+
+    /**
+     * The phases Core already times per request. {@code upstream_header_ms} is time to the upstream's response
+     * headers, not to its first token - a DIAL application or interceptor flushes headers immediately and only
+     * then starts generating, so the two differ exactly where it matters. Real time-to-first-chunk would need
+     * the first SSE data frame timed, and belongs in {@code gen_ai.response.time_to_first_chunk}.
+     */
+    public static void setLatencyAttributes(ProxyContext context) {
+        enrich(context, () -> {
+            set(context, longKey("dial.latency.client_body_ms"),
+                    phaseMs(context.getRequestTimestamp(), context.getRequestBodyTimestamp()));
+            set(context, longKey("dial.latency.upstream_connect_ms"),
+                    phaseMs(context.getRequestBodyTimestamp(), context.getProxyConnectTimestamp()));
+            set(context, longKey("dial.latency.upstream_header_ms"),
+                    phaseMs(context.getProxyConnectTimestamp(), context.getProxyResponseTimestamp()));
+            set(context, longKey("dial.latency.upstream_body_ms"),
+                    phaseMs(context.getProxyResponseTimestamp(), context.getResponseBodyTimestamp()));
+        });
+    }
+
+    /**
+     * @return null when the phase never happened - a request rejected before an upstream leaves its bound at 0 -
+     *         or when the clock stepped backwards, as {@code calculateOperationDurationMs} also guards against.
+     */
+    private static Long phaseMs(long from, long to) {
+        return from == 0 || to == 0 || to < from ? null : to - from;
     }
 
     /**
@@ -243,20 +295,39 @@ public final class GenAiTraceAttributes {
     }
 
     private static JsonNode responsesEvent(Buffer responseBody) {
-        for (JsonNode event : sseEvents(responseBody)) {
-            String type = text(event.get("type"));
-            if ("response.completed".equals(type) || "response.incomplete".equals(type)
-                    || "response.failed".equals(type) || "response.cancelled".equals(type)) {
-                // path, not get: a truncated or error-only terminal frame carries no response object
-                return event.path("response");
+        JsonNode[] terminal = new JsonNode[1];
+        forEachSseEvent(responseBody, (name, data) -> {
+            if (terminal[0] != null || !(isUnlabelled(name) || TERMINAL_RESPONSES_EVENTS.contains(name))) {
+                return;
             }
+            JsonNode event = JsonUtil.tryParse(data.getBytes(StandardCharsets.UTF_8));
+            String type = text(event.get("type"));
+            if (type != null && TERMINAL_RESPONSES_EVENTS.contains(type)) {
+                terminal[0] = terminalResponse(event, type);
+            }
+        });
+        return terminal[0] == null ? ProxyUtil.MAPPER.createObjectNode() : terminal[0];
+    }
+
+    private static JsonNode terminalResponse(JsonNode event, String type) {
+        // path, not get: a truncated or error-only terminal frame carries no response object
+        JsonNode response = event.path("response");
+        if (text(response.get("status")) != null) {
+            return response;
         }
-        return ProxyUtil.MAPPER.createObjectNode();
+        // the client-facing status is 200 - DIAL did stream a body - so the event type is the only
+        // thing left that can tell a failed or cancelled run from a completed one
+        ObjectNode derived = response instanceof ObjectNode object ? object : ProxyUtil.MAPPER.createObjectNode();
+        return derived.put("status", type.substring(RESPONSES_EVENT_PREFIX.length()));
     }
 
     private static JsonNode anthropicResponse(Buffer responseBody) {
         ObjectNode result = ProxyUtil.MAPPER.createObjectNode();
-        for (JsonNode event : sseEvents(responseBody)) {
+        forEachSseEvent(responseBody, (name, data) -> {
+            if (!isUnlabelled(name) && !ANTHROPIC_ATTRIBUTE_EVENTS.contains(name)) {
+                return;
+            }
+            JsonNode event = JsonUtil.tryParse(data.getBytes(StandardCharsets.UTF_8));
             String type = text(event.get("type"));
             if ("message_start".equals(type)) {
                 // path, not get: a truncated frame carries no message object
@@ -266,18 +337,29 @@ public final class GenAiTraceAttributes {
             } else if ("message_delta".equals(type)) {
                 result.set("stop_reason", event.path("delta").get("stop_reason"));
             }
-        }
+        });
         return result;
     }
 
-    private static List<JsonNode> sseEvents(Buffer responseBody) {
-        List<JsonNode> result = new ArrayList<>();
+    /**
+     * An upstream that labels its frames lets the scan skip the JSON parse on everything but the two or three
+     * frames that carry attributes; one that emits bare {@code data:} lines forces a parse to find out.
+     */
+    private static boolean isUnlabelled(String eventName) {
+        return eventName == null || DEFAULT_SSE_EVENT.equals(eventName);
+    }
+
+    /**
+     * Hands each frame to the consumer and retains nothing. Collecting the whole stream instead would allocate
+     * a JsonNode per frame, on the event loop, to read one or two fields out of the last of them.
+     */
+    private static void forEachSseEvent(Buffer responseBody, BiConsumer<String, String> consumer) {
         SseParser parser = new SseParser(SSE_LINE_BUFFER_SIZE, new SseEventListener() {
             @Override
             public void onEvent(SseEvent event) {
                 String data = event.getData();
                 if (data != null && !data.isBlank() && !"[DONE]".equals(data.trim())) {
-                    result.add(JsonUtil.tryParse(data.getBytes(StandardCharsets.UTF_8)));
+                    consumer.accept(event.getEvent(), data);
                 }
             }
 
@@ -295,9 +377,9 @@ public final class GenAiTraceAttributes {
             parser.parse(responseBody);
             parser.finish();
         } finally {
+            // pooled Netty buffer
             parser.close();
         }
-        return result;
     }
 
     private static boolean isEventStream(ProxyContext context) {
