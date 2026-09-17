@@ -57,6 +57,24 @@ public class BucketMigration {
     }
 
     /**
+     * A bucket that has already moved must not be prepared again. Sealing it sends resolution back to the
+     * legacy tree while everything written since the promotion is in the tenant one: the drain then matches
+     * none of those pending writes and drops them, and the copy that follows puts the stale legacy tree back
+     * over the live one. Going back is a rollback, which seals and reverts rather than seals and copies.
+     *
+     * <p>Separate from {@link #prepare} so a caller can ask before it has sealed anything — a refusal is a
+     * precondition, and undoing a migration on the strength of one would be worse than the request.
+     */
+    public void requireNotAlreadyMigrated(String bucketLocation) {
+        BucketMigrationState state = states.resolve(bucketLocation);
+        if (state == BucketMigrationState.MIGRATED) {
+            throw new IllegalStateException(("%s has already migrated. Copying it again would restore the "
+                    + "bucket to how it looked before it moved; roll it back first if that is the intent")
+                    .formatted(bucketLocation));
+        }
+    }
+
+    /**
      * Seals everything the copy will touch, waits for the seal to reach every pod, then drains each bucket's
      * pending writes to the blob store.
      */
@@ -66,13 +84,7 @@ public class BucketMigration {
         // matches none of those pending writes and drops them, and the copy that follows puts the stale
         // legacy tree back over the live one. Going back is a rollback, which seals and reverts rather than
         // seals and copies.
-        BucketMigrationState state = states.resolve(bucketLocation);
-        if (state == BucketMigrationState.MIGRATED) {
-            throw new IllegalStateException(("%s has already migrated. Copying it again would restore the "
-                    + "bucket to how it looked before it moved; roll it back first if that is the intent")
-                    .formatted(bucketLocation));
-        }
-
+        requireNotAlreadyMigrated(bucketLocation);
         Set<String> locations = covered(bucketLocation);
         for (String location : locations) {
             states.seal(location);
@@ -159,14 +171,25 @@ public class BucketMigration {
      * it.
      */
     public BucketMigrator.Result migrate(String bucketLocation) throws InterruptedException {
-        prepare(bucketLocation);
+        // Asked before the try, because a refusal here means nothing has been sealed and there is nothing to
+        // undo — and undoing a healthy migration because someone asked for it twice would be worse than the
+        // request was.
+        requireNotAlreadyMigrated(bucketLocation);
+
         try {
+            prepare(bucketLocation);
             BucketMigrator.Result result = copy(bucketLocation);
             finish(bucketLocation);
             return result;
         } catch (RuntimeException | InterruptedException e) {
             log.warn("Migration of {} failed, returning it to the legacy layout", bucketLocation, e);
-            revert(bucketLocation);
+            try {
+                revert(bucketLocation);
+            } catch (RuntimeException | InterruptedException cleanup) {
+                // Keep the failure that started this. Reporting only the cleanup's would send whoever reads
+                // it after the wrong problem entirely.
+                e.addSuppressed(cleanup);
+            }
             throw e;
         }
     }

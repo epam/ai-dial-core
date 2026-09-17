@@ -262,6 +262,40 @@ public class BucketMigrationTest {
                 "a second migration copied the stale legacy tree over live data");
     }
 
+    @Test
+    public void testMigrateUnsealsWhenTheDrainFails() {
+        Map<String, BucketMigrationState> actual = useRealTransitions();
+        put("Users/u1/conversations/chat", "{}");
+        Mockito.doThrow(new IllegalStateException("redis is unwell"))
+                .when(resources).flushBucket("Users/u1/");
+
+        assertThrows(IllegalStateException.class, () -> migration.migrate("Users/u1/"));
+
+        // The drain is inside prepare, which used to sit outside the cleanup: a failure there left the
+        // bucket sealed and refusing writes with nothing to end it.
+        assertEquals(BucketMigrationState.LEGACY, actual.get("Users/u1/"));
+    }
+
+    @Test
+    public void testMigrateKeepsTheOriginalFailureWhenTheCleanupAlsoFails() {
+        useRealTransitions();
+        put("Users/u1/conversations/chat", "{}");
+        BucketMigrator failing = Mockito.mock(BucketMigrator.class);
+        Mockito.when(failing.locations("Users/u1/")).thenReturn(Set.of("Users/u1/"));
+        Mockito.when(failing.copyBucket("Users/u1/")).thenThrow(new IllegalStateException("copy died"));
+        // And the rollback that follows fails too.
+        Mockito.doThrow(new IllegalStateException("and so did the rollback"))
+                .when(states).revert(Mockito.anyString());
+        BucketMigration migrating = new BucketMigration(states, failing, resources, waited::add);
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> migrating.migrate("Users/u1/"));
+
+        // Whoever reads this needs the failure that started it, not the one that happened while tidying up.
+        assertEquals("copy died", error.getMessage());
+        assertEquals("and so did the rollback", error.getSuppressed()[0].getMessage());
+    }
+
     private String body(String path) {
         org.jclouds.blobstore.domain.Blob blob = storage.load(path);
         if (blob == null) {
