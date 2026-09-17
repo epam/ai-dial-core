@@ -45,10 +45,9 @@
       "softValidation": false
     }
   },
-  "identityProviders": {
-  },
+  "identityProviders": {},
   "storage": {
-    "provider" : "filesystem",
+    "provider": "filesystem",
     "bucket": "dial",
     "createBucket": true,
     "overrides": {
@@ -58,12 +57,13 @@
       "tenantRooted": false,
       "defaultTenant": "default",
       "migration": {
+        "enabled": false,
         "refreshPeriodSeconds": 10
       }
     }
   },
   "resources": {
-    "maxSize" : 67108864,
+    "maxSize": 67108864,
     "maxSizeToCache": 1048576,
     "syncPeriod": 60000,
     "syncDelay": 120000,
@@ -100,7 +100,9 @@
         {
           "function": "CONTAIN",
           "source": "roles",
-          "targets": ["admin"]
+          "targets": [
+            "admin"
+          ]
         }
       ]
     },
@@ -109,7 +111,9 @@
         {
           "function": "CONTAIN",
           "source": "roles",
-          "targets": ["global-reader"]
+          "targets": [
+            "global-reader"
+          ]
         }
       ]
     }
@@ -124,7 +128,12 @@
     "collectClaims": false,
     "claimsAllowlist": [],
     "collectHeaders": false,
-    "headersBlacklist": ["authorization", "api-key", "cookie", "proxy-authorization"]
+    "headersBlacklist": [
+      "authorization",
+      "api-key",
+      "cookie",
+      "proxy-authorization"
+    ]
   },
   "backgroundJob": {
     "initialPollIntervalMs": 10000,

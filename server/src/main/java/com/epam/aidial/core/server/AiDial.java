@@ -93,6 +93,7 @@ import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.cache.CacheClientFactory;
 import com.epam.aidial.core.storage.migration.BucketMigrationRegistry;
 import com.epam.aidial.core.storage.migration.BucketMigrationStates;
+import com.epam.aidial.core.storage.resource.LegacyStorageLayout;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.resource.StorageLayouts;
@@ -533,8 +534,18 @@ public class AiDial {
             return BucketMigrationStates.ALL_LEGACY;
         }
 
-        long refreshPeriod = settings.getJsonObject("migration", new JsonObject())
-                .getLong("refreshPeriodSeconds", 10L) * 1000;
+        JsonObject migration = settings.getJsonObject("migration", new JsonObject());
+        if (!migration.getBoolean("enabled", false)) {
+            // No registry, and so no polling. The state document is read on a timer whose period is what
+            // bounds how long a change takes to reach every pod, so it cannot be slowed down when nothing is
+            // happening without also weakening that bound. A deployment that is not migrating therefore does
+            // not read it at all, and turning this on — which a rolling restart can do safely, since every
+            // pod resolves the legacy layout either way — is a prerequisite for moving a bucket.
+            StorageLayouts.useLayout(LegacyStorageLayout.INSTANCE);
+            return BucketMigrationStates.ALL_LEGACY;
+        }
+
+        long refreshPeriod = migration.getLong("refreshPeriodSeconds", 10L) * 1000;
         bucketMigrationRegistry = new BucketMigrationRegistry(storage, lockService, timerService, refreshPeriod);
         StorageLayouts.useLayoutPerBucket(new TenantRootedStorageLayout(tenantId), bucketMigrationRegistry);
         return bucketMigrationRegistry;
