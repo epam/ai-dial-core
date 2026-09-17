@@ -244,6 +244,36 @@ public class BucketMigrationTest {
         assertEquals(BucketMigrationState.LEGACY, actual.get("Users/u1/"));
     }
 
+    @Test
+    public void testMigratingBucketTwiceIsRefusedSoLiveDataSurvives() throws InterruptedException {
+        useRealTransitions();
+        put("Users/u1/conversations/chat", "before the move");
+
+        migration.migrate("Users/u1/");
+        assertEquals("before the move", body(".org/acme/.users/u1/.conversations/chat"));
+
+        // Everything written once the bucket is migrated goes to the tenant tree.
+        put(".org/acme/.users/u1/.conversations/chat", "written after the move");
+
+        // Refused rather than repeated: a second copy would put the legacy tree back over the live one.
+        assertThrows(IllegalStateException.class, () -> migration.migrate("Users/u1/"));
+
+        assertEquals("written after the move", body(".org/acme/.users/u1/.conversations/chat"),
+                "a second migration copied the stale legacy tree over live data");
+    }
+
+    private String body(String path) {
+        org.jclouds.blobstore.domain.Blob blob = storage.load(path);
+        if (blob == null) {
+            throw new AssertionError("Nothing at " + path);
+        }
+        try (java.io.InputStream stream = blob.getPayload().openStream()) {
+            return new String(stream.readAllBytes());
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
     private void put(String path, String body) {
         storage.store(path, "application/json", null, Map.of("author", "u1"), body.getBytes());
     }

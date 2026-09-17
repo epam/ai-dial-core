@@ -61,6 +61,18 @@ public class BucketMigration {
      * pending writes to the blob store.
      */
     public Set<String> prepare(String bucketLocation) throws InterruptedException {
+        // A bucket that has already moved must not be prepared again. Sealing it sends resolution back to
+        // the legacy tree while everything written since the promotion is in the tenant one: the drain then
+        // matches none of those pending writes and drops them, and the copy that follows puts the stale
+        // legacy tree back over the live one. Going back is a rollback, which seals and reverts rather than
+        // seals and copies.
+        BucketMigrationState state = states.resolve(bucketLocation);
+        if (state == BucketMigrationState.MIGRATED) {
+            throw new IllegalStateException(("%s has already migrated. Copying it again would restore the "
+                    + "bucket to how it looked before it moved; roll it back first if that is the intent")
+                    .formatted(bucketLocation));
+        }
+
         Set<String> locations = covered(bucketLocation);
         for (String location : locations) {
             states.seal(location);
