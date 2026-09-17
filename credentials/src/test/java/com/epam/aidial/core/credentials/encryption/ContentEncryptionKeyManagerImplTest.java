@@ -120,7 +120,7 @@ class ContentEncryptionKeyManagerImplTest {
         CekEncryptionException error = assertThrows(CekEncryptionException.class,
                 () -> contentEncryptionKeyManager.getOrCreateKey(resourceDescriptor));
 
-        assertTrue(error.getMessage().contains("Refusing to create one"), error.getMessage());
+        assertTrue(error.getMessage().contains("the copy has not delivered it yet"), error.getMessage());
         verifyNoInteractions(keyGenerator);
     }
 
@@ -129,6 +129,8 @@ class ContentEncryptionKeyManagerImplTest {
         ResourceDescriptor resourceDescriptor = mock(ResourceDescriptor.class);
         when(resourceDescriptor.getBucketLocation()).thenReturn("Users/u1/");
         when(migrationStates.resolve("Users/u1/")).thenReturn(BucketMigrationState.MIGRATED);
+        // Nothing at the legacy path either, so the bucket never held encrypted content.
+        when(resourceService.hasResourceAtLegacyPath(resourceDescriptor)).thenReturn(false);
         byte[] generatedCek = new byte[]{7, 8, 9};
         byte[] encryptedCek = new byte[]{10, 11, 12};
 
@@ -159,5 +161,39 @@ class ContentEncryptionKeyManagerImplTest {
 
         verifyNoInteractions(keyGenerator);
         verify(resourceService, never()).computeResourceBytes(any(), any());
+    }
+
+    @Test
+    void testGetOrCreateKey_NoCek_ButLegacyTreeHasOne_RefusesToCreate() {
+        ResourceDescriptor resourceDescriptor = mock(ResourceDescriptor.class);
+        when(resourceDescriptor.getBucketLocation()).thenReturn("Users/u1/");
+        when(migrationStates.resolve("Users/u1/")).thenReturn(BucketMigrationState.MIGRATED);
+        // The copy is over and there is no key here, but the legacy tree — which a migration copies rather
+        // than moves — still has one. So the bucket did hold encrypted content and the key did not arrive.
+        when(resourceService.hasResourceAtLegacyPath(resourceDescriptor)).thenReturn(true);
+
+        CekEncryptionException error = assertThrows(CekEncryptionException.class,
+                () -> contentEncryptionKeyManager.getOrCreateKey(resourceDescriptor));
+
+        assertTrue(error.getMessage().contains("the copy did not deliver it"), error.getMessage());
+        verifyNoInteractions(keyGenerator);
+    }
+
+    @Test
+    void testGetOrCreateKey_UndecryptableCek_WhileMigrating_SaysSo() {
+        ResourceDescriptor resourceDescriptor = mock(ResourceDescriptor.class);
+        when(resourceDescriptor.getBucketLocation()).thenReturn("Users/u1/");
+        when(migrationStates.resolve("Users/u1/")).thenReturn(BucketMigrationState.MIGRATING);
+        byte[] encryptedCek = new byte[]{1, 2, 3};
+        when(resourceService.getResourceBytes(resourceDescriptor)).thenReturn(encryptedCek);
+        when(keyManagementService.decrypt(encryptedCek)).thenThrow(new CekEncryptionException("no"));
+
+        CekEncryptionException error = assertThrows(CekEncryptionException.class,
+                () -> contentEncryptionKeyManager.getOrCreateKey(resourceDescriptor));
+
+        // A key that will not decrypt is a different problem from a key that is not there, and sends whoever
+        // reads this somewhere else entirely.
+        assertTrue(error.getMessage().contains("cannot be decrypted"), error.getMessage());
+        verifyNoInteractions(keyGenerator);
     }
 }

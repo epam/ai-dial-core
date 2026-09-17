@@ -526,6 +526,19 @@ public class ResourceService implements AutoCloseable {
                 .setEtag(result.etag);
     }
 
+    /**
+     * Whether the resource is present where the legacy layout would have put it, whatever layout it resolves
+     * to now. A migration copies rather than moves, so the legacy tree outlives the move and can be asked
+     * whether a bucket ever held something — which is how a key that failed to arrive is told apart from a
+     * key that never existed.
+     *
+     * <p>Reads the blob store rather than the cache: a bucket is drained before it is copied, so by the time
+     * this distinction matters the blob store is the authority.
+     */
+    public boolean hasResourceAtLegacyPath(ResourceDescriptor descriptor) {
+        return blobStore.exists(descriptor.getLegacyFilePath());
+    }
+
     public boolean hasResource(ResourceDescriptor descriptor) {
         String redisKey = redisKey(descriptor);
         Result result = redisGet(redisKey, false);

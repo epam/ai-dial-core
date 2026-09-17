@@ -47,7 +47,7 @@ public class ContentEncryptionKeyManagerImpl implements ContentEncryptionKeyMana
             }
         }
 
-        requireKeyIsNotExpected(cekDescriptor);
+        requireCreationIsSafe(cekDescriptor, existing != null);
 
         MutableObject<byte[]> cekHolder = new MutableObject<>();
         resourceService.computeResourceBytes(cekDescriptor, encryptedCek -> {
@@ -83,7 +83,7 @@ public class ContentEncryptionKeyManagerImpl implements ContentEncryptionKeyMana
      * untouched — the last of those matters most, since a migrated bucket stays migrated and would otherwise
      * never be able to store its first credential.
      */
-    private void requireKeyIsNotExpected(ResourceDescriptor cekDescriptor) {
+    private void requireCreationIsSafe(ResourceDescriptor cekDescriptor, boolean unreadableKeyPresent) {
         String bucketLocation = cekDescriptor.getBucketLocation();
         BucketMigrationState state = migrationStates.resolve(bucketLocation);
         // Exhaustive rather than "anything but LEGACY": a state added later has to be classified here
@@ -93,17 +93,29 @@ public class ContentEncryptionKeyManagerImpl implements ContentEncryptionKeyMana
             case LEGACY -> false;
             // Being copied, and the migrator copies encryption_keys first, so it should already be here.
             case MIGRATING -> true;
-            // The copy is finished. A key missing now was missing before, because the bucket never had
-            // encrypted content — refusing here would block the first credential a bucket ever stores, for
-            // as long as the bucket stays migrated, which is forever.
-            case MIGRATED -> false;
+            // The copy is over, so a key could be missing for either of two reasons, and they need opposite
+            // answers: the bucket never had encrypted content, or the copy failed to bring its key across.
+            // The legacy tree still holds the answer, because a migration copies rather than moves — a key
+            // there and not here is one that did not arrive, and minting over it would strand every
+            // ciphertext in the bucket.
+            case MIGRATED -> resourceService.hasResourceAtLegacyPath(cekDescriptor);
         };
 
         if (keyShouldAlreadyExist) {
-            throw new CekEncryptionException(("No content encryption key for %s, which is %s. Refusing to "
-                    + "create one: the bucket's existing content is encrypted with the key the migration "
-                    + "should have copied, and a new key would make it unreadable")
-                    .formatted(bucketLocation, state));
+            // Say which of the two it is. They look identical from here and lead an operator to entirely
+            // different places: one is a copy that has not delivered, the other is key material that will
+            // not open.
+            String problem = unreadableKeyPresent
+                    ? "its content encryption key cannot be decrypted"
+                    : "it has no content encryption key";
+            String reason = state == BucketMigrationState.MIGRATING
+                    ? "the copy has not delivered it yet"
+                    : "one is present at its legacy path, so the copy did not deliver it";
+
+            throw new CekEncryptionException(("Refusing to create a content encryption key for %s: %s, the "
+                    + "bucket is %s, and %s. The bucket's content is encrypted with the key that should be "
+                    + "there, and a new one would make all of it unreadable")
+                    .formatted(bucketLocation, problem, state, reason));
         }
     }
 
