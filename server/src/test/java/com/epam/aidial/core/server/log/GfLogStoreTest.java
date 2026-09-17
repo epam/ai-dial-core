@@ -72,6 +72,34 @@ public class GfLogStoreTest {
         assertNull(result);
     }
 
+    @Test
+    public void testShouldLogErrorResponseIsFalseByDefault() {
+        GfLogStore store = new GfLogStore(errorResponseSettings(false));
+
+        assertFalse(store.shouldLogErrorResponse(429));
+        assertFalse(store.shouldLogErrorResponse(502));
+        assertFalse(store.shouldLogErrorResponse(503));
+        assertFalse(store.shouldLogErrorResponse(504));
+    }
+
+    @Test
+    public void testShouldLogErrorResponseWhenEnabled() {
+        GfLogStore store = new GfLogStore(errorResponseSettings(true));
+
+        assertTrue(store.shouldLogErrorResponse(429));
+        assertTrue(store.shouldLogErrorResponse(502));
+        assertTrue(store.shouldLogErrorResponse(503));
+        assertTrue(store.shouldLogErrorResponse(504));
+    }
+
+    @Test
+    public void testShouldLogErrorResponseIgnoresUnrelatedStatuses() {
+        assertFalse(new GfLogStore(errorResponseSettings(false)).shouldLogErrorResponse(200));
+        assertFalse(new GfLogStore(errorResponseSettings(false)).shouldLogErrorResponse(400));
+        assertFalse(new GfLogStore(errorResponseSettings(true)).shouldLogErrorResponse(200));
+        assertFalse(new GfLogStore(errorResponseSettings(true)).shouldLogErrorResponse(400));
+    }
+
     @SneakyThrows
     @Test
     public void testAppendAndEscape() {
@@ -599,6 +627,10 @@ public class GfLogStoreTest {
         return AnalyticsSettings.from(new JsonObject()
                 .put("collectClaims", collectClaims)
                 .put("claimsAllowlist", new JsonArray(List.of(claimPaths))));
+    }
+
+    private static AnalyticsSettings errorResponseSettings(boolean collectErrorResponses) {
+        return AnalyticsSettings.from(new JsonObject().put("collectErrorResponses", collectErrorResponses));
     }
 
     /**

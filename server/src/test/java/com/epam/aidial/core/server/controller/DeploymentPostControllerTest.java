@@ -1234,4 +1234,34 @@ public class DeploymentPostControllerTest {
 
         verify(proxyRequest, never()).putHeader(eq(HEADER_APPLICATION_PROPERTIES), anyString());
     }
+
+    @Test
+    public void testRespondHttpException_LogsExactlyOnceWhenErrorResponseLoggingEnabled() {
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.BAD_GATEWAY.getCode());
+        when(context.getRequest()).thenReturn(request);
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.uri()).thenReturn("/test");
+        when(proxy.getLogStore()).thenReturn(logStore);
+        when(logStore.shouldLogErrorResponse(HttpStatus.BAD_GATEWAY.getCode())).thenReturn(true);
+
+        controller.respond(new HttpException(HttpStatus.BAD_GATEWAY, "No route"));
+
+        verify(context, times(1)).respond(any(HttpException.class));
+        verify(logStore, times(1)).save(any(AnalyticsLogContext.class));
+    }
+
+    @Test
+    public void testRespondHttpException_DoesNotLogWhenErrorResponseLoggingDisabled() {
+        when(proxy.getLogStore()).thenReturn(logStore);
+        when(logStore.shouldLogErrorResponse(HttpStatus.BAD_GATEWAY.getCode())).thenReturn(false);
+
+        controller.respond(new HttpException(HttpStatus.BAD_GATEWAY, "No route"));
+
+        verify(context, times(1)).respond(any(HttpException.class));
+        verify(logStore, never()).save(any(AnalyticsLogContext.class));
+    }
 }

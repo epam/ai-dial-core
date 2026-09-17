@@ -20,11 +20,14 @@ import javax.annotation.Nullable;
  *                         so log entries list claims once, in the order the operator declared them.
  * @param headersBlacklist never null; empty means block nothing.
  * @param headersAllowlist null means the allowlist is disabled, i.e. collect all non-blocked headers.
+ * @param collectErrorResponses true to also log a 429/502/503/504 response that reaches the client only via a
+ *                              {@code respond(...)} error exit (rate limit hit, retries exhausted, connection
+ *                              failure) - see {@code GfLogStore#shouldLogErrorResponse}.
  */
 @Slf4j
 public record AnalyticsSettings(boolean collectClaims, boolean collectAllClaims, List<ClaimPath> claimsAllowlist,
                                 boolean collectHeaders, List<Pattern> headersBlacklist,
-                                @Nullable List<Pattern> headersAllowlist) {
+                                @Nullable List<Pattern> headersAllowlist, boolean collectErrorResponses) {
 
     private static final String ALL_CLAIMS = "*";
 
@@ -58,7 +61,8 @@ public record AnalyticsSettings(boolean collectClaims, boolean collectAllClaims,
                 settings.getBoolean("collectHeaders", false),
                 // default is defined in the bundled aidial.settings.json and always merged in
                 parseHeaderPatterns(settings.getJsonArray("headersBlacklist")),
-                parseHeaderPatterns(settings.getJsonArray("headersAllowlist")));
+                parseHeaderPatterns(settings.getJsonArray("headersAllowlist")),
+                settings.getBoolean("collectErrorResponses", false));
     }
 
     private static List<String> parseClaimPaths(JsonArray value) {

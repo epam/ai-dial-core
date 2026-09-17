@@ -94,22 +94,33 @@ public class BaseDeploymentPostController {
 
     protected Future<?> respond(HttpStatus status, String errorMessage) {
         finalizeRequest();
-        return context.respond(status, errorMessage);
+        Future<?> future = context.respond(status, errorMessage);
+        logErrorResponseIfEnabled(status.getCode());
+        return future;
     }
 
     protected void respond(HttpException exception) {
         finalizeRequest();
         context.respond(exception);
+        logErrorResponseIfEnabled(exception.getStatus().getCode());
     }
 
     protected void respond(HttpStatus status) {
         finalizeRequest();
         context.respond(status);
+        logErrorResponseIfEnabled(status.getCode());
     }
 
     protected void respond(HttpStatus status, Object result) {
         finalizeRequest();
         context.respond(status, result);
+        logErrorResponseIfEnabled(status.getCode());
+    }
+
+    private void logErrorResponseIfEnabled(int statusCode) {
+        if (proxy.getLogStore().shouldLogErrorResponse(statusCode)) {
+            proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
+        }
     }
 
     protected void finalizeRequest() {

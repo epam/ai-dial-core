@@ -242,16 +242,25 @@ abstract class BaseRouteController implements Controller {
     void respond(HttpStatus status, String result) {
         finalizeRequest();
         context.respond(status, result);
+        logErrorResponseIfEnabled(status.getCode());
     }
 
     void respond(HttpException exception) {
         finalizeRequest();
         context.respond(exception);
+        logErrorResponseIfEnabled(exception.getStatus().getCode());
     }
 
     void respond(HttpStatus status) {
         finalizeRequest();
         context.respond(status);
+        logErrorResponseIfEnabled(status.getCode());
+    }
+
+    private void logErrorResponseIfEnabled(int statusCode) {
+        if (proxy.getLogStore().shouldLogErrorResponse(statusCode)) {
+            proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
+        }
     }
 
     void finalizeRequest() {

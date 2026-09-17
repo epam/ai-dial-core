@@ -342,11 +342,19 @@ public class DeploymentFeatureController {
     private void respond(HttpStatus status, String errorMessage) {
         finalizeRequest();
         context.respond(status, errorMessage);
+        logErrorResponseIfEnabled(status.getCode());
     }
 
     private void respond(HttpStatus status) {
         finalizeRequest();
         context.respond(status);
+        logErrorResponseIfEnabled(status.getCode());
+    }
+
+    private void logErrorResponseIfEnabled(int statusCode) {
+        if (proxy.getLogStore().shouldLogErrorResponse(statusCode)) {
+            proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
+        }
     }
 
     private void finalizeRequest() {
