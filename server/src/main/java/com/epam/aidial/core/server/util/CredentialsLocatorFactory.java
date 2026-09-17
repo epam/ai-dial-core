@@ -62,6 +62,19 @@ public class CredentialsLocatorFactory {
         return new CredentialsLocator(resourceId, bucketInfo);
     }
 
+    /**
+     * Builds a {@link CredentialsLocator} for one external service from its parts. {@code appId} is the
+     * decoded app segment of the credential scope — a bare name for config-sourced/platform apps, or
+     * the full decoded {@code applications/{bucket}/{path}} url for dynamic ones.
+     */
+    public static CredentialsLocator fromExternalService(String appId, String externalServiceId, ProxyContext proxyContext) {
+        String appSegment = appId.startsWith(APPLICATIONS_PREFIX)
+                ? appId.substring(APPLICATIONS_PREFIX.length()) : appId;
+        String scopeId = APPLICATIONS_PREFIX + UrlUtil.encodePath(appSegment)
+                + EXTERNAL_SERVICES_SEPARATOR + UrlUtil.encodePath(externalServiceId);
+        return fromExternalServiceScope(scopeId, proxyContext);
+    }
+
     // Storage path a credential is read from / written to. Static-config apps normalize to
     // applications/config/{appName}/...; dynamic apps preserve the app path.
     private static String normalizeResourceId(boolean configApp, String appPart, String externalServiceId) {
