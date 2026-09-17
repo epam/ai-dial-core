@@ -39,32 +39,38 @@ public class ContentEncryptionKeyManagerImpl implements ContentEncryptionKeyMana
         // serving reads.
         byte[] existing = resourceService.getResourceBytes(cekDescriptor);
         if (existing != null) {
-            try {
-                return keyManagementService.decrypt(existing);
-            } catch (CekEncryptionException e) {
-                log.warn("Could not decrypt the content encryption key at {}, replacing it",
-                        cekDescriptor.getAbsoluteFilePath(), e);
-            }
+            return decrypt(cekDescriptor, existing);
         }
 
-        requireCreationIsSafe(cekDescriptor, existing != null);
+        requireCreationIsSafe(cekDescriptor);
 
         MutableObject<byte[]> cekHolder = new MutableObject<>();
         resourceService.computeResourceBytes(cekDescriptor, encryptedCek -> {
             // Re-read under the lock: another caller may have created the key since the read above.
             if (encryptedCek != null) {
-                try {
-                    byte[] cek = keyManagementService.decrypt(encryptedCek);
-                    cekHolder.setValue(cek);
-                    return encryptedCek;
-                } catch (CekEncryptionException e) {
-                    return createKey(cekHolder);
-                }
-            } else {
-                return createKey(cekHolder);
+                cekHolder.setValue(decrypt(cekDescriptor, encryptedCek));
+                return encryptedCek;
             }
+            return createKey(cekHolder);
         });
         return cekHolder.get();
+    }
+
+    /**
+     * A key that will not open is not a key that is absent, and it is never replaced. Every KMS reports
+     * whatever went wrong — a rotated key, a network fault, a throttled call — as the same failure, so
+     * minting over it would re-key the bucket under whoever happened to call during a KMS hiccup, and every
+     * ciphertext in the bucket would be lost, silently, since the new key is stored. Abandoning content is
+     * an operator's decision, made by deleting the key resource explicitly.
+     */
+    private byte[] decrypt(ResourceDescriptor cekDescriptor, byte[] encryptedCek) {
+        try {
+            return keyManagementService.decrypt(encryptedCek);
+        } catch (CekEncryptionException e) {
+            throw new CekEncryptionException(("The content encryption key for %s cannot be decrypted, and it "
+                    + "will not be replaced: the bucket's content is encrypted with it, and a new key would "
+                    + "make all of it unreadable").formatted(cekDescriptor.getBucketLocation()), e);
+        }
     }
 
     /**
@@ -83,39 +89,31 @@ public class ContentEncryptionKeyManagerImpl implements ContentEncryptionKeyMana
      * untouched — the last of those matters most, since a migrated bucket stays migrated and would otherwise
      * never be able to store its first credential.
      */
-    private void requireCreationIsSafe(ResourceDescriptor cekDescriptor, boolean unreadableKeyPresent) {
+    private void requireCreationIsSafe(ResourceDescriptor cekDescriptor) {
         String bucketLocation = cekDescriptor.getBucketLocation();
         BucketMigrationState state = migrationStates.resolve(bucketLocation);
         // Exhaustive rather than "anything but LEGACY": a state added later has to be classified here
         // instead of quietly falling on whichever side the condition happened to put it.
-        boolean keyShouldAlreadyExist = switch (state) {
+        String reason = switch (state) {
             // Not migrating: a missing key is the first key, which is how every bucket gets one.
-            case LEGACY -> false;
+            case LEGACY -> null;
             // Being copied, and the migrator copies encryption_keys first, so it should already be here.
-            case MIGRATING -> true;
+            case MIGRATING -> "the copy has not delivered it yet";
             // The copy is over, so a key could be missing for either of two reasons, and they need opposite
             // answers: the bucket never had encrypted content, or the copy failed to bring its key across.
             // The legacy tree still holds the answer, because a migration copies rather than moves — a key
             // there and not here is one that did not arrive, and minting over it would strand every
             // ciphertext in the bucket.
-            case MIGRATED -> resourceService.hasResourceAtLegacyPath(cekDescriptor);
+            case MIGRATED -> resourceService.hasResourceAtLegacyPath(cekDescriptor)
+                    ? "one is present at its legacy path, so the copy did not deliver it"
+                    : null;
         };
 
-        if (keyShouldAlreadyExist) {
-            // Say which of the two it is. They look identical from here and lead an operator to entirely
-            // different places: one is a copy that has not delivered, the other is key material that will
-            // not open.
-            String problem = unreadableKeyPresent
-                    ? "its content encryption key cannot be decrypted"
-                    : "it has no content encryption key";
-            String reason = state == BucketMigrationState.MIGRATING
-                    ? "the copy has not delivered it yet"
-                    : "one is present at its legacy path, so the copy did not deliver it";
-
-            throw new CekEncryptionException(("Refusing to create a content encryption key for %s: %s, the "
-                    + "bucket is %s, and %s. The bucket's content is encrypted with the key that should be "
-                    + "there, and a new one would make all of it unreadable")
-                    .formatted(bucketLocation, problem, state, reason));
+        if (reason != null) {
+            throw new CekEncryptionException(("Refusing to create a content encryption key for %s: it has no "
+                    + "content encryption key, the bucket is %s, and %s. The bucket's content is encrypted "
+                    + "with the key that should be there, and a new one would make all of it unreadable")
+                    .formatted(bucketLocation, state, reason));
         }
     }
 

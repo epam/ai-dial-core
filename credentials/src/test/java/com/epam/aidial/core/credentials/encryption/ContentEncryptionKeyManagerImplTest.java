@@ -59,30 +59,40 @@ class ContentEncryptionKeyManagerImplTest {
     }
 
     @Test
-    void testGetOrCreateKey_CekExists_DecryptionFails() {
+    void testGetOrCreateKey_CekExists_DecryptionFails_RefusesToReplaceIt() {
         ResourceDescriptor resourceDescriptor = mock(ResourceDescriptor.class);
-        // Replacing an undecryptable key is still a write, so it answers to the same guard.
+        when(resourceDescriptor.getBucketLocation()).thenReturn("Users/u1/");
+        byte[] encryptedCek = new byte[]{1, 2, 3};
+        when(resourceService.getResourceBytes(resourceDescriptor)).thenReturn(encryptedCek);
+        // Every KMS wraps whatever went wrong — a rotated key, a network fault, a throttled call — as this.
+        when(keyManagementService.decrypt(encryptedCek)).thenThrow(new CekEncryptionException("fail"));
+
+        CekEncryptionException error = assertThrows(CekEncryptionException.class,
+                () -> contentEncryptionKeyManager.getOrCreateKey(resourceDescriptor));
+
+        // A key that will not open is not a key that is absent. Minting over it would re-key the bucket
+        // under whoever was unlucky enough to call during a KMS hiccup, and every ciphertext in it would be
+        // lost — silently, since the new key is stored. Whatever the bucket's migration state.
+        assertTrue(error.getMessage().contains("cannot be decrypted"), error.getMessage());
+        verifyNoInteractions(keyGenerator);
+        verify(resourceService, never()).computeResourceBytes(any(), any());
+    }
+
+    @Test
+    void testGetOrCreateKey_CekAppearsUnderTheLock_ButWillNotDecrypt_RefusesToReplaceIt() {
+        ResourceDescriptor resourceDescriptor = mock(ResourceDescriptor.class);
         when(migrationStates.resolve(any())).thenReturn(BucketMigrationState.LEGACY);
         byte[] encryptedCek = new byte[]{1, 2, 3};
-        byte[] newCek = new byte[]{7, 8, 9};
-        byte[] encryptedNewCek = new byte[]{10, 11, 12};
-
+        // Nothing to read, then another caller's key is there by the time the lock is held.
         doAnswer(invocation -> {
             Function<byte[], byte[]> function = invocation.getArgument(1);
             function.apply(encryptedCek);
             return null;
         }).when(resourceService).computeResourceBytes(eq(resourceDescriptor), any());
-
         when(keyManagementService.decrypt(encryptedCek)).thenThrow(new CekEncryptionException("fail"));
-        when(keyGenerator.generate()).thenReturn(newCek);
-        when(keyManagementService.encrypt(newCek)).thenReturn(encryptedNewCek);
 
-        byte[] result = contentEncryptionKeyManager.getOrCreateKey(resourceDescriptor);
-
-        assertArrayEquals(newCek, result);
-        verify(keyManagementService).decrypt(encryptedCek);
-        verify(keyGenerator).generate();
-        verify(keyManagementService).encrypt(newCek);
+        assertThrows(CekEncryptionException.class, () -> contentEncryptionKeyManager.getOrCreateKey(resourceDescriptor));
+        verifyNoInteractions(keyGenerator);
     }
 
     @Test
@@ -176,24 +186,6 @@ class ContentEncryptionKeyManagerImplTest {
                 () -> contentEncryptionKeyManager.getOrCreateKey(resourceDescriptor));
 
         assertTrue(error.getMessage().contains("the copy did not deliver it"), error.getMessage());
-        verifyNoInteractions(keyGenerator);
-    }
-
-    @Test
-    void testGetOrCreateKey_UndecryptableCek_WhileMigrating_SaysSo() {
-        ResourceDescriptor resourceDescriptor = mock(ResourceDescriptor.class);
-        when(resourceDescriptor.getBucketLocation()).thenReturn("Users/u1/");
-        when(migrationStates.resolve("Users/u1/")).thenReturn(BucketMigrationState.MIGRATING);
-        byte[] encryptedCek = new byte[]{1, 2, 3};
-        when(resourceService.getResourceBytes(resourceDescriptor)).thenReturn(encryptedCek);
-        when(keyManagementService.decrypt(encryptedCek)).thenThrow(new CekEncryptionException("no"));
-
-        CekEncryptionException error = assertThrows(CekEncryptionException.class,
-                () -> contentEncryptionKeyManager.getOrCreateKey(resourceDescriptor));
-
-        // A key that will not decrypt is a different problem from a key that is not there, and sends whoever
-        // reads this somewhere else entirely.
-        assertTrue(error.getMessage().contains("cannot be decrypted"), error.getMessage());
         verifyNoInteractions(keyGenerator);
     }
 }
