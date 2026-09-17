@@ -17,6 +17,7 @@ import redis.embedded.RedisServer;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -187,6 +188,67 @@ public class BucketMigrationRegistryTest {
         // Tolerating a repeated step must not tolerate a missing one: a bucket cannot be promoted without
         // having been sealed, whatever else has happened to it.
         assertThrows(IllegalStateException.class, () -> registry.promote("Users/u2/"));
+    }
+
+    @Test
+    public void testCompleteIsRefusedWhileSomeBucketIsStillMoving() {
+        registry.seal("Users/u1/");
+
+        assertThrows(IllegalStateException.class, registry::complete);
+        assertEquals(BucketMigrationState.LEGACY, registry.resolve("Users/u2/"),
+                "a refused completion changes nothing");
+    }
+
+    @Test
+    public void testCompleteMakesEveryBucketMigratedAndSurvivesRestart() {
+        registry.seal("Users/u1/");
+        registry.promote("Users/u1/");
+
+        registry.complete();
+
+        // Compaction: the default flips and the per-bucket entries go, so a bucket the document has never
+        // heard of — one born after the migration — resolves to the tenant tree with everyone else.
+        assertEquals(BucketMigrationState.MIGRATED, registry.resolve("Users/u1/"));
+        assertEquals(BucketMigrationState.MIGRATED, registry.resolve("Users/u2/"));
+        assertEquals(BucketMigrationState.MIGRATED, registry.resolve("public/deployments/born-later/"));
+
+        registry.close();
+        registry = newRegistry();
+        assertEquals(BucketMigrationState.MIGRATED, registry.resolve("Users/u2/"));
+        assertTrue(BucketMigrationRegistry.hasMigratedBuckets(storage));
+    }
+
+    @Test
+    public void testCompleteIsRepeatable() {
+        registry.complete();
+        registry.complete();
+        assertEquals(BucketMigrationState.MIGRATED, registry.resolve("Users/u1/"));
+    }
+
+    @Test
+    public void testTenantRootedLayoutIsRefusedUntilTheMigrationIsComplete() {
+        // An empty store is a greenfield deployment, which serves the tenant-rooted layout from day one.
+        BucketMigrationRegistry.requireReadyForTenantRootedLayout(storage);
+
+        // Data on the legacy layout and no migration state: the flip would point every bucket at a tree
+        // with none of its data.
+        storage.store("Users/u1/conversations/chat", "application/json", null, Map.of(), "{}".getBytes());
+        IllegalStateException untouched = assertThrows(IllegalStateException.class,
+                () -> BucketMigrationRegistry.requireReadyForTenantRootedLayout(storage));
+        assertTrue(untouched.getMessage().contains("Users/"), untouched.getMessage());
+
+        // Part way through: the same, whether the bucket is being copied or has already moved.
+        registry.seal("Users/u1/");
+        assertThrows(IllegalStateException.class,
+                () -> BucketMigrationRegistry.requireReadyForTenantRootedLayout(storage));
+        registry.promote("Users/u1/");
+        assertThrows(IllegalStateException.class,
+                () -> BucketMigrationRegistry.requireReadyForTenantRootedLayout(storage));
+
+        // Declared complete: the legacy tree is still there, because a migration copies rather than
+        // moves, and that is no longer a reason to refuse.
+        registry.complete();
+        BucketMigrationRegistry.requireReadyForTenantRootedLayout(storage);
     }
 
     @Test

@@ -65,4 +65,22 @@ public class StorageLayoutsTest {
     private static BucketMigrationStates states(Map<String, BucketMigrationState> stateByBucket) {
         return bucketLocation -> stateByBucket.getOrDefault(bucketLocation, BucketMigrationState.LEGACY);
     }
+
+    @Test
+    public void testLocationTheStateDocumentHasNeverHeardOfFollowsTheDefault() {
+        // Resolution is an exact match on the location, not a prefix search: it runs on every physical path
+        // composition, on an event loop. So a public function app published while public/ is migrated would
+        // synthesize public/deployments/<id>/ as a location the document does not list, and it would resolve
+        // to the legacy tree beside a parent that has left it. That is why nothing is created while a
+        // migration runs — the environment is closed for its duration — and why completing one flips the
+        // document's default rather than listing every bucket: afterwards the same unknown location resolves
+        // to the tenant tree with everything else.
+        StorageLayouts.useLayoutPerBucket(new TenantRootedStorageLayout("acme"), states(Map.of(
+                "public/", BucketMigrationState.MIGRATED)));
+        assertSame(LegacyStorageLayout.INSTANCE, StorageLayouts.resolveFor("public/deployments/published-later/"));
+
+        StorageLayout migrated = new TenantRootedStorageLayout("acme");
+        StorageLayouts.useLayoutPerBucket(migrated, bucketLocation -> BucketMigrationState.MIGRATED);
+        assertSame(migrated, StorageLayouts.resolveFor("public/deployments/published-later/"));
+    }
 }

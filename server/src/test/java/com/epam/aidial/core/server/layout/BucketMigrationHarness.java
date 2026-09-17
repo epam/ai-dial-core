@@ -31,6 +31,8 @@ import java.nio.file.Path;
  *
  * <p>{@code migrate} is seal → wait → flush → copy → promote → wait; each step is also a command of its own,
  * for a run that stops to inspect the store between them, and {@code revert} is the rollback drill.
+ * {@code complete}, once every bucket has been migrated, declares the store migrated so that the deployment
+ * can be switched to {@code storage.layout.tenantRooted}.
  *
  * <p>It reads the same settings file the core does, so it addresses the same blob store, the same Redis and
  * the same prefix. Its {@link ResourceService} is built on a timer service that never fires: the harness must
@@ -53,7 +55,7 @@ public final class BucketMigrationHarness {
     @SneakyThrows
     public static void main(String[] args) {
         if (args.length < 2) {
-            System.err.println("usage: <settings.json> <state|window|covered|seal|flush|copy|promote|revert|prepare|finish|rollback|migrate> [bucketLocation]");
+            System.err.println("usage: <settings.json> <state|window|covered|seal|flush|copy|promote|revert|prepare|finish|rollback|migrate|complete> [bucketLocation]");
             System.exit(2);
         }
 
@@ -133,6 +135,10 @@ public final class BucketMigrationHarness {
                     BucketMigrator.Result result = migration.migrate(require(bucketLocation));
                     System.out.println("migrated " + bucketLocation + " — " + result.objects()
                             + " objects, " + result.bytes() + " bytes, covering " + result.locations());
+                }
+                case "complete" -> {
+                    migration.complete();
+                    System.out.println("declared the store migrated; storage.layout.tenantRooted can be enabled");
                 }
                 default -> throw new IllegalArgumentException("Unknown command: " + command);
             }

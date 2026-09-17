@@ -66,6 +66,9 @@ public class BucketMigrationMatrixTest {
                     "a rollback of a bucket that never moved leaves it where it is"),
             new Cell(BucketMigrationState.LEGACY, "migrate", Outcome.ACCEPTED, BucketMigrationState.MIGRATED,
                     "the whole sequence, which is the point of the mechanism"),
+            new Cell(BucketMigrationState.LEGACY, "complete", Outcome.REFUSED, BucketMigrationState.LEGACY,
+                    "a bucket is still on the legacy layout; declaring the store migrated would point it at "
+                            + "a tree with none of its data"),
 
             // ---- from MIGRATING: the copy is in flight; every step of it must be repeatable.
             new Cell(BucketMigrationState.MIGRATING, "seal", Outcome.ACCEPTED, BucketMigrationState.MIGRATING,
@@ -84,6 +87,8 @@ public class BucketMigrationMatrixTest {
                     "the drill: stop writes, wait, go back"),
             new Cell(BucketMigrationState.MIGRATING, "migrate", Outcome.ACCEPTED, BucketMigrationState.MIGRATED,
                     "resuming an interrupted migration from wherever it stopped"),
+            new Cell(BucketMigrationState.MIGRATING, "complete", Outcome.REFUSED, BucketMigrationState.MIGRATING,
+                    "a copy is in flight"),
 
             // ---- from MIGRATED: the bucket has moved and is being written to at its new paths. Anything
             // that would copy the legacy tree again is destructive, because that tree is now stale.
@@ -103,7 +108,39 @@ public class BucketMigrationMatrixTest {
             new Cell(BucketMigrationState.MIGRATED, "rollback", Outcome.ACCEPTED, BucketMigrationState.LEGACY,
                     "the supported way back, which seals before it reverts"),
             new Cell(BucketMigrationState.MIGRATED, "migrate", Outcome.REFUSED, BucketMigrationState.MIGRATED,
-                    "same as copy: it would restore the bucket to how it looked before it moved"));
+                    "same as copy: it would restore the bucket to how it looked before it moved"),
+            new Cell(BucketMigrationState.MIGRATED, "complete", Outcome.ACCEPTED, BucketMigrationState.MIGRATED,
+                    "every bucket has moved, so the store as a whole can be declared migrated"));
+
+    /**
+     * The same question for a bucket that contains another. {@code public/} holds the sub-buckets the platform
+     * synthesizes under it, and one copy carries them all — so the two destructive operations have to answer
+     * to the state of everything they cover, not only to the location they were named with. A migrated
+     * sub-bucket walked back to MIGRATING and copied over is the twice-migrated bug one level down.
+     */
+    private record NestedCell(BucketMigrationState parent, BucketMigrationState sub, String operation, Outcome outcome) {
+    }
+
+    private static final String PARENT = "public/";
+    private static final String SUB = "public/deployments/app1/";
+
+    private static final List<NestedCell> NESTED = nested();
+
+    private static List<NestedCell> nested() {
+        List<NestedCell> cells = new ArrayList<>();
+        for (String operation : List.of("prepare", "migrate")) {
+            for (BucketMigrationState parent : BucketMigrationState.values()) {
+                for (BucketMigrationState sub : BucketMigrationState.values()) {
+                    // Refused if anything the copy would reach has already moved: its legacy tree is stale,
+                    // and the copy would put it back over live data. Otherwise both halves are still on the
+                    // legacy tree and the operation carries them together.
+                    boolean moved = parent == BucketMigrationState.MIGRATED || sub == BucketMigrationState.MIGRATED;
+                    cells.add(new NestedCell(parent, sub, operation, moved ? Outcome.REFUSED : Outcome.ACCEPTED));
+                }
+            }
+        }
+        return List.copyOf(cells);
+    }
 
     private BlobStorage storage;
     private Path testDir;
@@ -195,21 +232,76 @@ public class BucketMigrationMatrixTest {
         }
     }
 
+    @Test
+    public void testTheNestedMatrixHolds() {
+        storage.store(PARENT + "rules/rules", "application/json", null, Map.of(), "{}".getBytes());
+        storage.store(SUB + "files/source.py", "text/plain", null, Map.of(), "print(1)".getBytes());
+
+        List<String> wrong = new ArrayList<>();
+        for (NestedCell cell : NESTED) {
+            String label = "parent %s, sub %s / %s".formatted(cell.parent(), cell.sub(), cell.operation());
+            reset(BucketMigrationState.LEGACY);
+            actual.put(PARENT, cell.parent());
+            actual.put(SUB, cell.sub());
+
+            Outcome outcome;
+            try {
+                operations(PARENT).get(cell.operation()).run();
+                outcome = Outcome.ACCEPTED;
+            } catch (IllegalStateException e) {
+                outcome = Outcome.REFUSED;
+            } catch (Exception e) {
+                wrong.add("%s threw %s: %s".formatted(label, e.getClass().getSimpleName(), e.getMessage()));
+                continue;
+            }
+
+            if (outcome != cell.outcome()) {
+                wrong.add("%s expected %s, got %s".formatted(label, cell.outcome(), outcome));
+                continue;
+            }
+
+            // A refusal is a precondition: nothing may have been sealed on the strength of a request that
+            // was turned down. An accepted operation leaves both halves in the same state.
+            Map<String, BucketMigrationState> expected = switch (outcome) {
+                case REFUSED -> Map.of(PARENT, cell.parent(), SUB, cell.sub());
+                case ACCEPTED -> {
+                    BucketMigrationState to = cell.operation().equals("prepare")
+                            ? BucketMigrationState.MIGRATING
+                            : BucketMigrationState.MIGRATED;
+                    yield Map.of(PARENT, to, SUB, to);
+                }
+            };
+            Map<String, BucketMigrationState> ended = Map.of(PARENT, actual.get(PARENT), SUB, actual.get(SUB));
+            if (!expected.equals(ended)) {
+                wrong.add("%s expected states %s, got %s".formatted(label, expected, ended));
+            }
+        }
+
+        if (!wrong.isEmpty()) {
+            fail("%d nested cell(s) disagree with the code:%n  %s".formatted(wrong.size(), String.join("\n  ", wrong)));
+        }
+    }
+
     @FunctionalInterface
     private interface Invocation {
         void run() throws Exception;
     }
 
     private Map<String, Invocation> operations() {
+        return operations(BUCKET);
+    }
+
+    private Map<String, Invocation> operations(String bucket) {
         Map<String, Invocation> operations = new LinkedHashMap<>();
-        operations.put("seal", () -> states.seal(BUCKET));
-        operations.put("promote", () -> states.promote(BUCKET));
-        operations.put("revert", () -> states.revert(BUCKET));
-        operations.put("prepare", () -> migration.prepare(BUCKET));
-        operations.put("copy", () -> migration.copy(BUCKET));
-        operations.put("finish", () -> migration.finish(BUCKET));
-        operations.put("rollback", () -> migration.revert(BUCKET));
-        operations.put("migrate", () -> migration.migrate(BUCKET));
+        operations.put("seal", () -> states.seal(bucket));
+        operations.put("promote", () -> states.promote(bucket));
+        operations.put("revert", () -> states.revert(bucket));
+        operations.put("prepare", () -> migration.prepare(bucket));
+        operations.put("copy", () -> migration.copy(bucket));
+        operations.put("finish", () -> migration.finish(bucket));
+        operations.put("rollback", () -> migration.revert(bucket));
+        operations.put("migrate", () -> migration.migrate(bucket));
+        operations.put("complete", () -> migration.complete());
         return operations;
     }
 
@@ -230,6 +322,15 @@ public class BucketMigrationMatrixTest {
                 .when(states).promote(Mockito.anyString());
         Mockito.doAnswer(call -> transition(call.getArgument(0), BucketMigrationState.LEGACY))
                 .when(states).revert(Mockito.anyString());
+        Mockito.doAnswer(call -> {
+            // The real registry compacts the document once nothing listed in it is short of MIGRATED.
+            for (Map.Entry<String, BucketMigrationState> entry : actual.entrySet()) {
+                if (entry.getValue() != BucketMigrationState.MIGRATED) {
+                    throw new IllegalStateException(entry.getKey() + " is " + entry.getValue());
+                }
+            }
+            return null;
+        }).when(states).complete();
         migration = new BucketMigration(states, new BucketMigrator(storage, TENANT),
                 Mockito.mock(ResourceService.class), millis -> { });
     }

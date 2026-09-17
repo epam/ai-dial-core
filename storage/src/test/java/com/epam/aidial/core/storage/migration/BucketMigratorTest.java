@@ -193,6 +193,24 @@ public class BucketMigratorTest {
     }
 
     @Test
+    public void testLegacyBucketsEnumeratesEveryBucketInTheStore() {
+        put("Users/u1/conversations/chat", "{}");
+        put("Users/u2/prompts/p", "{}");
+        put("Keys/p1/files/f", "{}");
+        put("public/rules/rules", "{}");
+        put("public/deployments/app1/files/source.py", "print(1)");
+        put("platform/models/m", "{}");
+        put("background_jobs/background_jobs/job1", "job");
+        // Not buckets: the tenant tree a copy produced, the migration's own state, and the staging area.
+        put(".org/acme/.users/u3/.conversations/chat", "{}");
+        put(".dial-migration/bucket-states.json", "{}");
+        put(".dial-tmp/2026/upload", "x");
+
+        assertEquals(Set.of("Users/u1/", "Users/u2/", "Keys/p1/", "public/", "public/deployments/app1/",
+                "platform/", "background_jobs/"), migrator.legacyBuckets());
+    }
+
+    @Test
     public void testCopyIsRepeatable() {
         put("Users/u1/conversations/chat1", "one");
 

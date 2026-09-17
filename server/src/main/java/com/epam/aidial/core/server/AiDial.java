@@ -530,6 +530,10 @@ public class AiDial {
     private BucketMigrationStates installStorageLayout(JsonObject settings, LockService lockService, TimerService timerService) {
         String tenantId = settings.getString("defaultTenant", "default");
         if (settings.getBoolean("tenantRooted", false)) {
+            // Only an empty store or a completed migration can be served this way. Anything else — legacy
+            // data nothing has moved, a migration part way through — would resolve every bucket to a tree
+            // with none of its data, and refusing to start is the recoverable outcome.
+            BucketMigrationRegistry.requireReadyForTenantRootedLayout(storage);
             StorageLayouts.useLayout(new TenantRootedStorageLayout(tenantId));
             return BucketMigrationStates.ALL_LEGACY;
         }
@@ -550,7 +554,8 @@ public class AiDial {
             if (BucketMigrationRegistry.hasMigratedBuckets(storage)) {
                 throw new IllegalStateException("This store has buckets on the tenant-rooted layout, but "
                         + "storage.layout.migration.enabled is not set. Serving them would show their "
-                        + "contents from before they moved and write new data where nothing will find it");
+                        + "contents from before they moved and write new data where nothing will find it. "
+                        + "Enable the migration, or enable storage.layout.tenantRooted if it is complete");
             }
 
             StorageLayouts.useLayout(LegacyStorageLayout.INSTANCE);

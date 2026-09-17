@@ -4,6 +4,7 @@ import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.resource.SystemResourceRegistry;
 import com.epam.aidial.core.storage.resource.TenantLayoutTransformer;
 import lombok.extern.slf4j.Slf4j;
 import org.jclouds.blobstore.domain.BlobMetadata;
@@ -45,6 +46,24 @@ public class BucketMigrator {
 
     private static final String ENCRYPTION_KEYS = ResourceTypes.ENCRYPTION_KEYS.group();
 
+    /**
+     * Where the legacy layout keeps buckets: two roots that hold one bucket per principal, and the roots that
+     * are a bucket each. Everything else at the top of the store — the tenant tree, the migration state, the
+     * upload staging area — is not a bucket to migrate.
+     */
+    private static final Set<String> PRINCIPAL_ROOTS = Set.of(
+            ResourceDescriptor.USERS_LOCATION_PREFIX, ResourceDescriptor.KEYS_LOCATION_PREFIX);
+    private static final Set<String> SINGLE_BUCKET_ROOTS = singleBucketRoots();
+
+    private static Set<String> singleBucketRoots() {
+        Set<String> roots = new TreeSet<>();
+        roots.add(ResourceDescriptor.PLATFORM_LOCATION);
+        for (SystemResourceRegistry system : SystemResourceRegistry.values()) {
+            roots.add(system.location());
+        }
+        return Set.copyOf(roots);
+    }
+
     private final BlobStorage blobStore;
     private final String tenantId;
 
@@ -67,6 +86,29 @@ public class BucketMigrator {
         Set<String> locations = new TreeSet<>();
         walk(bucketLocation, metadata -> locations.add(split(bucketLocation, metadata.getName()).location()));
         return locations;
+    }
+
+    /**
+     * Every bucket the legacy layout holds in this store, walked from its roots. This is what a migration has
+     * to have moved before the store can be declared migrated, and it is found by looking rather than by
+     * asking the state document, which only knows the buckets someone told it about.
+     */
+    public Set<String> legacyBuckets() {
+        Set<String> buckets = new TreeSet<>();
+        for (String root : PRINCIPAL_ROOTS) {
+            walk(root, metadata -> {
+                String[] segments = metadata.getName().split(SEPARATOR);
+                if (segments.length > 2) {
+                    buckets.add(root + segments[1] + SEPARATOR);
+                }
+            });
+        }
+        walk(ResourceDescriptor.PUBLIC_LOCATION, metadata ->
+                buckets.add(split(ResourceDescriptor.PUBLIC_LOCATION, metadata.getName()).location()));
+        for (String root : SINGLE_BUCKET_ROOTS) {
+            walk(root, metadata -> buckets.add(root));
+        }
+        return buckets;
     }
 
     /**

@@ -263,6 +263,103 @@ public class BucketMigrationTest {
     }
 
     @Test
+    public void testMigrateIsRefusedWhenOneSubBucketHasAlreadyMoved() {
+        Map<String, BucketMigrationState> actual = useRealTransitions();
+        put("public/rules/rules", "{}");
+        put("public/deployments/app1/files/source.py", "print(1)");
+        // The sub-bucket was migrated on its own first. Its legacy tree is now stale.
+        actual.put("public/deployments/app1/", BucketMigrationState.MIGRATED);
+
+        assertThrows(IllegalStateException.class, () -> migration.migrate("public/"));
+
+        // Refused as a precondition: had public/ been sealed first, the sub-bucket would have been walked
+        // back to MIGRATING with it and copied over.
+        assertEquals(Map.of("public/deployments/app1/", BucketMigrationState.MIGRATED), actual);
+        Mockito.verify(states, Mockito.never()).seal(Mockito.anyString());
+        assertEquals(List.of(), waited);
+    }
+
+    @Test
+    public void testMigrateSkipsTheRollbackWhenNothingWasSealed() {
+        Map<String, BucketMigrationState> actual = useRealTransitions();
+        put("Users/u1/conversations/chat", "{}");
+        Mockito.doThrow(new IllegalStateException("the document would not write"))
+                .when(states).seal("Users/u1/");
+
+        assertThrows(IllegalStateException.class, () -> migration.migrate("Users/u1/"));
+
+        // Nothing moved, so there is nothing to undo — and undoing it would have cost two propagation
+        // windows of refused writes on a bucket the failure never touched.
+        assertEquals(Map.of(), actual);
+        Mockito.verify(states, Mockito.never()).revert(Mockito.anyString());
+        assertEquals(List.of(), waited);
+    }
+
+    @Test
+    public void testMigrateKeepsTheInterruptWhenTheCleanupIsInterrupted() {
+        useRealTransitions();
+        put("Users/u1/conversations/chat", "{}");
+        BucketMigrator failing = Mockito.mock(BucketMigrator.class);
+        Mockito.when(failing.locations("Users/u1/")).thenReturn(Set.of("Users/u1/"));
+        Mockito.when(failing.copyBucket("Users/u1/")).thenThrow(new IllegalStateException("copy died"));
+        // The first wait is prepare's; the rollback's is where the interrupt lands.
+        BucketMigration.Delay interruptedOnRollback = new BucketMigration.Delay() {
+            private int waits;
+
+            @Override
+            public void await(long millis) throws InterruptedException {
+                if (++waits > 1) {
+                    throw new InterruptedException("stop");
+                }
+            }
+        };
+        BucketMigration migrating = new BucketMigration(states, failing, resources, interruptedOnRollback);
+
+        try {
+            IllegalStateException error = assertThrows(IllegalStateException.class,
+                    () -> migrating.migrate("Users/u1/"));
+
+            assertEquals("copy died", error.getMessage());
+            assertTrue(Thread.currentThread().isInterrupted(),
+                    "an interrupt swallowed into a suppressed exception is an interrupt the caller never sees");
+        } finally {
+            assertTrue(Thread.interrupted());
+        }
+    }
+
+    @Test
+    public void testCompleteIsRefusedWhileSomeBucketInTheStoreIsNotMigrated() {
+        Map<String, BucketMigrationState> actual = useRealTransitions();
+        put("Users/u1/conversations/chat", "{}");
+        put("Users/u2/conversations/chat", "{}");
+        actual.put("Users/u1/", BucketMigrationState.MIGRATED);
+
+        // u2 is in the store and has never been touched: the document cannot know about it, only a walk of
+        // the store can. Declaring the store migrated would send u2's reads to an empty tenant tree.
+        IllegalStateException error = assertThrows(IllegalStateException.class, () -> migration.complete());
+        assertTrue(error.getMessage().contains("Users/u2/"), error.getMessage());
+        Mockito.verify(states, Mockito.never()).complete();
+    }
+
+    @Test
+    public void testCompleteCompactsOnceEveryBucketHasMoved() {
+        Map<String, BucketMigrationState> actual = useRealTransitions();
+        put("Users/u1/conversations/chat", "{}");
+        put("public/rules/rules", "{}");
+        put("public/deployments/app1/files/source.py", "print(1)");
+        // The tenant tree the copies produced, and the state document itself, are not buckets to migrate.
+        put(".org/acme/.users/u1/.conversations/chat", "{}");
+        put(".dial-migration/bucket-states.json", "{}");
+        for (String location : List.of("Users/u1/", "public/", "public/deployments/app1/")) {
+            actual.put(location, BucketMigrationState.MIGRATED);
+        }
+
+        migration.complete();
+
+        Mockito.verify(states).complete();
+    }
+
+    @Test
     public void testMigrateUnsealsWhenTheDrainFails() {
         Map<String, BucketMigrationState> actual = useRealTransitions();
         put("Users/u1/conversations/chat", "{}");
