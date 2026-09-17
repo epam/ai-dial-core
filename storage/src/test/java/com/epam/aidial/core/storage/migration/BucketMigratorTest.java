@@ -132,6 +132,19 @@ public class BucketMigratorTest {
     }
 
     @Test
+    public void testSubBucketEncryptionKeysAreCopied() {
+        put("public/deployments/app1/encryption_keys/cek", "the key");
+        put("public/deployments/app1/files/source.py", "print(1)");
+
+        migrator.copyBucket("public/");
+
+        // locations() reports this sub-bucket, so it gets sealed and promoted. Arriving there without its
+        // key would leave the reader to mint a fresh one over content the old key encrypted.
+        assertEquals("the key", body(".org/acme/deployments/app1/.encryption_keys/cek"));
+        assertEquals("print(1)", body(".org/acme/deployments/app1/.files/source.py"));
+    }
+
+    @Test
     public void testLocationsReportsThePublicSubBucketsTheCopyWouldReach() {
         put("public/rules/rules", "{}");
         put("public/deployments/app1/files/source.py", "print(1)");

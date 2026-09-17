@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
@@ -73,20 +74,26 @@ public class BucketMigrator {
      * rather than failing, which orphans the ciphertext permanently.
      */
     public Result copyBucket(String bucketLocation) {
-        Result keys = copy(bucketLocation, bucketLocation + ENCRYPTION_KEYS + SEPARATOR, null);
-        Result rest = copy(bucketLocation, bucketLocation, ENCRYPTION_KEYS);
+        // Two passes over the same listing, split by resource type rather than by prefix. An earlier version
+        // narrowed the first pass to <bucket>/encryption_keys/ while the second excluded the type folder at
+        // any depth, so a key belonging to a synthesized sub-bucket — public/deployments/<id>/encryption_keys
+        // — was copied by neither. The bucket then arrived migrated with no key, and the reader that found
+        // none minted a fresh one, which is the orphaning this ordering exists to prevent. Listing twice is
+        // the price of ordering the copy without holding the bucket in memory.
+        Result keys = copy(bucketLocation, ENCRYPTION_KEYS::equals);
+        Result rest = copy(bucketLocation, typeFolder -> !ENCRYPTION_KEYS.equals(typeFolder));
         Result total = keys.plus(rest);
 
         log.info("Copied {} ({} objects, {} bytes) to the tenant-rooted layout", bucketLocation, total.objects(), total.bytes());
         return total;
     }
 
-    private Result copy(String bucketLocation, String listPrefix, String excludedTypeFolder) {
+    private Result copy(String bucketLocation, Predicate<String> typeFolder) {
         Counter counter = new Counter();
-        walk(listPrefix, metadata -> {
+        walk(bucketLocation, metadata -> {
             String source = metadata.getName();
             Split split = split(bucketLocation, source);
-            if (split.typeFolder().equals(excludedTypeFolder)) {
+            if (!typeFolder.test(split.typeFolder())) {
                 return;
             }
 
