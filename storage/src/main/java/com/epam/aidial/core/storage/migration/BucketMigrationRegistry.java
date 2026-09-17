@@ -123,8 +123,23 @@ public class BucketMigrationRegistry implements BucketMigrationStates, Closeable
         }
     }
 
+    /**
+     * Whether any bucket in this store has left the legacy layout. Reads the document once and starts
+     * nothing, so a node can ask before deciding whether it is equipped to serve the store at all.
+     */
+    public static boolean hasMigratedBuckets(BlobStorage blobStore) {
+        Document document = load(blobStore);
+        return document.defaultState() != BucketMigrationState.LEGACY
+                || document.stateByBucket().values().stream().anyMatch(state -> state != BucketMigrationState.LEGACY);
+    }
+
     @SneakyThrows
     private Document load() {
+        return load(blobStore);
+    }
+
+    @SneakyThrows
+    private static Document load(BlobStorage blobStore) {
         Blob blob = blobStore.load(DOCUMENT_PATH);
         if (blob == null) {
             return Document.ALL_LEGACY;

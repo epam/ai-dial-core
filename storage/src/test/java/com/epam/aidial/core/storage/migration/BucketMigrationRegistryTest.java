@@ -19,7 +19,9 @@ import java.io.IOException;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class BucketMigrationRegistryTest {
 
@@ -185,5 +187,19 @@ public class BucketMigrationRegistryTest {
         // Tolerating a repeated step must not tolerate a missing one: a bucket cannot be promoted without
         // having been sealed, whatever else has happened to it.
         assertThrows(IllegalStateException.class, () -> registry.promote("Users/u2/"));
+    }
+
+    @Test
+    public void testHasMigratedBucketsReadsTheStoreWithoutStartingAnything() {
+        assertFalse(BucketMigrationRegistry.hasMigratedBuckets(storage),
+                "a store nobody has migrated has nothing to report");
+
+        registry.seal("Users/u1/");
+
+        // What a node asks before deciding whether it can serve this store at all.
+        assertTrue(BucketMigrationRegistry.hasMigratedBuckets(storage));
+
+        registry.revert("Users/u1/");
+        assertFalse(BucketMigrationRegistry.hasMigratedBuckets(storage));
     }
 }

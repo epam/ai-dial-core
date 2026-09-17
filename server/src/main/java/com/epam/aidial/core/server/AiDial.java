@@ -541,6 +541,18 @@ public class AiDial {
             // happening without also weakening that bound. A deployment that is not migrating therefore does
             // not read it at all, and turning this on — which a rolling restart can do safely, since every
             // pod resolves the legacy layout either way — is a prerequisite for moving a bucket.
+            //
+            // Read once first, though. Serving a store whose buckets have moved from the legacy layout
+            // means showing their pre-migration contents and forking new writes into a tree nothing will
+            // reconcile, and the ways to arrive here are ordinary: a config template reset, a value dropped
+            // on redeploy, one node left behind in a rolling restart. Refusing to start is recoverable;
+            // serving stale data quietly is not.
+            if (BucketMigrationRegistry.hasMigratedBuckets(storage)) {
+                throw new IllegalStateException("This store has buckets on the tenant-rooted layout, but "
+                        + "storage.layout.migration.enabled is not set. Serving them would show their "
+                        + "contents from before they moved and write new data where nothing will find it");
+            }
+
             StorageLayouts.useLayout(LegacyStorageLayout.INSTANCE);
             return BucketMigrationStates.ALL_LEGACY;
         }
