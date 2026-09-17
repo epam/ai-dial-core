@@ -14,6 +14,9 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.migration.BucketMigrationStates;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceType;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.resource.StorageLayout;
 import com.epam.aidial.core.storage.resource.StorageLayouts;
 import com.epam.aidial.core.storage.util.Base58;
 import com.epam.aidial.core.storage.util.Compression;
@@ -64,6 +67,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -1051,26 +1055,29 @@ public class ResourceService implements AutoCloseable {
      * until it syncs, so a copy taken without this would capture stale bytes; {@link #sync()} cannot be used
      * instead, being timer-driven and store-wide.
      *
-     * <p>Costs a scan of the whole write-behind queue, which is shared by every bucket. Call it on a sealed
-     * bucket: a write admitted after the flush is a lost update, not merely a late one.
+     * <p>Costs a scan of the whole write-behind queue, which is shared by every bucket. For a migration, call
+     * it on a sealed bucket: a write admitted after the flush is a lost update, not merely a late one.
+     *
+     * <p>Drains exactly this bucket's resources, which a prefix alone does not pick out. Bucket locations nest
+     * in the tenant-rooted layout — {@code public/} becomes {@code .org/<tenant>/}, which holds every user
+     * bucket, and {@code platform/} becomes the root of the store — and in the legacy one {@code public/} holds
+     * the sub-buckets the platform synthesizes under it. What sets a bucket's own resources apart is the
+     * segment after its prefix: one of the layout's resource-type folders, where a nested bucket has a
+     * location segment instead.
      */
     public void flushBucket(String bucketLocation) {
-        String pathPrefix = StorageLayouts.resolveFor(bucketLocation).resolveLocationPrefix(bucketLocation);
-        if (pathPrefix.isEmpty()) {
-            // The platform bucket sits at the root of the tenant-rooted tree, so once it has moved its
-            // prefix is empty and every queued key in the store starts with it. Draining one bucket would
-            // then lock and flush all of them. A migration never reaches this — it drains while the bucket
-            // is sealed, and a sealed bucket still resolves to the legacy layout, where the prefix is
-            // "platform/" — but the method is callable on its own and must not do that when it is.
-            throw new IllegalArgumentException(
-                    "Cannot drain %s: it resolves to the root of the store, which is every bucket"
-                            .formatted(bucketLocation));
+        StorageLayout layout = StorageLayouts.resolveFor(bucketLocation);
+        String pathPrefix = layout.resolveLocationPrefix(bucketLocation);
+        Set<String> typeFolders = new HashSet<>();
+        for (ResourceType type : ResourceTypes.values()) {
+            typeFolders.add(layout.resolveTypeFolder(type.group()) + ResourceDescriptor.PATH_SEPARATOR);
         }
 
         RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
 
         for (String redisKey : set.valueRange(0, -1)) {
-            if (!blobKeyFromRedisKey(redisKey).startsWith(pathPrefix)) {
+            String blobKey = blobKeyFromRedisKey(redisKey);
+            if (!blobKey.startsWith(pathPrefix) || !startsWithAny(blobKey.substring(pathPrefix.length()), typeFolders)) {
                 continue;
             }
 
@@ -1079,6 +1086,15 @@ public class ResourceService implements AutoCloseable {
                 flushToBlobStore(redisKey);
             }
         }
+    }
+
+    private static boolean startsWithAny(String path, Set<String> prefixes) {
+        for (String prefix : prefixes) {
+            if (path.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Void sync() {

@@ -208,12 +208,50 @@ public class ResourceServiceMigrationTest {
     }
 
     @Test
-    public void testDrainingBucketThatResolvesToTheRootIsRefused() {
-        StorageLayouts.useLayout(new TenantRootedStorageLayout("acme"));
+    public void testDrainingPublicLeavesItsSubBucketsPending() {
+        ResourceDescriptor rules = resource("public/", "rules");
+        ResourceDescriptor source = resource("public/deployments/app1/", "source");
+        service.putResource(rules, "public body", EtagHeader.ANY);
+        service.putResource(source, "sub-bucket body", EtagHeader.ANY);
+        seal("public/");
+        seal("public/deployments/app1/");
+
+        // A prefix would take both. The sub-bucket is its own bucket, sealed and drained on its own.
+        service.flushBucket("public/");
+        assertEquals("public body", blobBody(rules));
+        assertEquals("", blobBody(source));
+
+        service.flushBucket("public/deployments/app1/");
+        assertEquals("sub-bucket body", blobBody(source));
+    }
+
+    @Test
+    public void testDrainingMigratedBucketsStaysWithinEachOfThem() {
+        StorageLayouts.useLayoutPerBucket(new TenantRootedStorageLayout("acme"),
+                bucketLocation -> stateByBucket.getOrDefault(bucketLocation, BucketMigrationState.LEGACY));
         try {
-            // platform/ maps to the root of the tenant tree, so its prefix is empty and would match every
-            // queued key in the store.
-            assertThrows(IllegalArgumentException.class, () -> service.flushBucket("platform/"));
+            ResourceDescriptor rules = resource("public/", "rules");
+            ResourceDescriptor model = resource("platform/", "model");
+            ResourceDescriptor chat = resource(OPEN_BUCKET, "chat");
+            for (String location : List.of("public/", "platform/", OPEN_BUCKET)) {
+                stateByBucket.put(location, BucketMigrationState.MIGRATED);
+            }
+            service.putResource(rules, "public body", EtagHeader.ANY);
+            service.putResource(model, "platform body", EtagHeader.ANY);
+            service.putResource(chat, "user body", EtagHeader.ANY);
+
+            // In the tenant-rooted layout public/ is .org/acme/, which holds every user bucket, and platform/
+            // is the root of the store. A prefix drain of either would take the user's pending write with it.
+            service.flushBucket("public/");
+            assertEquals("public body", blobBody(rules));
+            assertEquals("", blobBody(chat));
+
+            service.flushBucket("platform/");
+            assertEquals("platform body", blobBody(model));
+            assertEquals("", blobBody(chat));
+
+            service.flushBucket(OPEN_BUCKET);
+            assertEquals("user body", blobBody(chat));
         } finally {
             StorageLayouts.useLayout(LegacyStorageLayout.INSTANCE);
         }
