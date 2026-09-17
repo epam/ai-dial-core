@@ -123,7 +123,7 @@ public final class ConfigPostProcessor {
      * about. Null-safe: {@code name} is unset at a few call sites whose warnings are already tagged
      * with the entity's id one level up, so those get the message unprefixed, exactly as before.
      */
-    private static String withEntityPrefix(String typeLabel, @Nullable String name, String message) {
+    private static String messageWithEntityPrefix(String typeLabel, @Nullable String name, String message) {
         return (name == null || name.isBlank()) ? message : typeLabel + " '" + name + "': " + message;
     }
 
@@ -355,7 +355,7 @@ public final class ConfigPostProcessor {
             String ref = refs.get(i);
             if (ref == null || !interceptors.containsKey(ref)) {
                 warnings.add(new ValidationWarning("interceptors[" + i + "]",
-                        withEntityPrefix("Model", model.getName(), "Interceptor '" + ref + "' not found in config")));
+                        messageWithEntityPrefix("Model", model.getName(), "Interceptor '" + ref + "' not found in config")));
             }
         }
         return warnings.isEmpty();
@@ -375,7 +375,7 @@ public final class ConfigPostProcessor {
         boolean hasCacheRate = pricing.getCacheRead() != null || pricing.getCacheWrite() != null;
         if (hasCacheRate && !"token".equals(pricing.getUnit())) {
             warnings.add(new ValidationWarning("pricing",
-                    withEntityPrefix("Model", model.getName(), "cacheRead/cacheWrite pricing requires pricing.unit = \"token\"")));
+                    messageWithEntityPrefix("Model", model.getName(), "cacheRead/cacheWrite pricing requires pricing.unit = \"token\"")));
         }
     }
 
@@ -397,7 +397,7 @@ public final class ConfigPostProcessor {
             }
             if (upstream.getId() == null || upstream.getId().isBlank()) {
                 warnings.add(new ValidationWarning("upstreams[" + i + "].id",
-                        withEntityPrefix("Model", model.getName(), "An upstream declaring interfaces requires an id")));
+                        messageWithEntityPrefix("Model", model.getName(), "An upstream declaring interfaces requires an id")));
             }
             if (upstream.getBaseUrl() != null) {
                 continue;
@@ -405,7 +405,7 @@ public final class ConfigPostProcessor {
             for (Map.Entry<String, UpstreamInterface> entry : interfaces.entrySet()) {
                 if (entry.getValue().getEndpoint() == null) {
                     warnings.add(new ValidationWarning("upstreams[" + i + "].interfaces." + entry.getKey(),
-                            withEntityPrefix("Model", model.getName(), "Interface '" + entry.getKey() + "' declares no endpoint and the upstream "
+                            messageWithEntityPrefix("Model", model.getName(), "Interface '" + entry.getKey() + "' declares no endpoint and the upstream "
                                     + "declares no baseUrl"))
                     );
                 }
@@ -441,11 +441,11 @@ public final class ConfigPostProcessor {
      */
     public static void validateTranslator(@Nullable String name, @Nullable Translator translator, List<ValidationWarning> warnings) {
         if (translator == null) {
-            warnings.add(new ValidationWarning("translator", withEntityPrefix("Translator", name, "Translator is empty")));
+            warnings.add(new ValidationWarning("translator", messageWithEntityPrefix("Translator", name, "Translator is empty")));
             return;
         }
         if (translator.getIn() == null) {
-            warnings.add(new ValidationWarning("in", withEntityPrefix("Translator", name, "Translator declares no in")));
+            warnings.add(new ValidationWarning("in", messageWithEntityPrefix("Translator", name, "Translator declares no in")));
         }
     }
 
@@ -472,10 +472,10 @@ public final class ConfigPostProcessor {
             if (declared.getMode() == InterfaceMode.TRANSLATOR) {
                 validateTranslatedInterface(model, entry.getKey(), declared, translators, field, warnings);
             } else if (declared.getTranslator() != null) {
-                warnings.add(new ValidationWarning(field, withEntityPrefix("Model", model.getName(), "A translator requires mode 'translator'")));
+                warnings.add(new ValidationWarning(field, messageWithEntityPrefix("Model", model.getName(), "A translator requires mode 'translator'")));
             } else if (declared.getBaseUrl() == null && model.getBaseUrl() == null) {
                 warnings.add(new ValidationWarning(field,
-                        withEntityPrefix("Model", model.getName(), "Interface '" + entry.getKey() + "' declares no base_url and the model declares no baseUrl")));
+                        messageWithEntityPrefix("Model", model.getName(), "Interface '" + entry.getKey() + "' declares no base_url and the model declares no baseUrl")));
             }
             validateOverridePaths(model, entry.getKey(), declared, field, warnings);
         }
@@ -517,7 +517,7 @@ public final class ConfigPostProcessor {
         String entityLabel = deployment.getClass().getSimpleName();
         if (declared.getMode() == InterfaceMode.TRANSLATOR) {
             warnings.add(new ValidationWarning(field,
-                    withEntityPrefix(entityLabel, deployment.getName(), "A translated interface is served by its translator: overridePaths has no effect")));
+                    messageWithEntityPrefix(entityLabel, deployment.getName(), "A translated interface is served by its translator: overridePaths has no effect")));
             return;
         }
         for (Map.Entry<String, String> entry : overridePaths.entrySet()) {
@@ -527,7 +527,7 @@ public final class ConfigPostProcessor {
             }
             String keyField = field + ".overridePaths." + entry.getKey();
             if (pathMapping.getInterfaceType() != InterfaceType.find(type)) {
-                warnings.add(new ValidationWarning(keyField, withEntityPrefix(entityLabel, deployment.getName(), "Override path key '" + entry.getKey()
+                warnings.add(new ValidationWarning(keyField, messageWithEntityPrefix(entityLabel, deployment.getName(), "Override path key '" + entry.getKey()
                         + "' belongs to interface '" + pathMapping.getInterfaceType().getValue() + "'")));
                 continue;
             }
@@ -539,11 +539,11 @@ public final class ConfigPostProcessor {
                                                      String keyField, List<ValidationWarning> warnings) {
         String entityLabel = deployment.getClass().getSimpleName();
         if (template == null || template.isBlank()) {
-            warnings.add(new ValidationWarning(keyField, withEntityPrefix(entityLabel, deployment.getName(), "Override path is empty")));
+            warnings.add(new ValidationWarning(keyField, messageWithEntityPrefix(entityLabel, deployment.getName(), "Override path is empty")));
             return;
         }
         if (!pathMapping.isIdApplicable() && PathTemplateUtil.referencesId(template)) {
-            warnings.add(new ValidationWarning(keyField, withEntityPrefix(entityLabel, deployment.getName(), "The operation carries no id: {id} cannot render")));
+            warnings.add(new ValidationWarning(keyField, messageWithEntityPrefix(entityLabel, deployment.getName(), "The operation carries no id: {id} cannot render")));
         }
     }
 
@@ -552,11 +552,11 @@ public final class ConfigPostProcessor {
                                                     String field, List<ValidationWarning> warnings) {
         if (declared.getBaseUrl() != null) {
             warnings.add(new ValidationWarning(field,
-                    withEntityPrefix("Model", model.getName(), "An interface is served either by a translator or by a base_url, not by both")));
+                    messageWithEntityPrefix("Model", model.getName(), "An interface is served either by a translator or by a base_url, not by both")));
         }
         TranslatorRef translator = declared.getTranslator();
         if (translator == null) {
-            warnings.add(new ValidationWarning(field, withEntityPrefix("Model", model.getName(), "Mode 'translator' requires a translator")));
+            warnings.add(new ValidationWarning(field, messageWithEntityPrefix("Model", model.getName(), "Mode 'translator' requires a translator")));
             return;
         }
         // a name with no entry to resolve to leaves the interface unserved rather than the model invalid:
@@ -570,13 +570,13 @@ public final class ConfigPostProcessor {
         }
         if (definition.getIn() != null && definition.getIn() != InterfaceType.find(type)) {
             warnings.add(new ValidationWarning(field,
-                    withEntityPrefix("Model", model.getName(), "Translator converts from '" + definition.getIn().getValue() + "', not from '" + type + "'")));
+                    messageWithEntityPrefix("Model", model.getName(), "Translator converts from '" + definition.getIn().getValue() + "', not from '" + type + "'")));
         }
         // a definition written inline names no in: the interface it sits under is what it converts from
         String in = definition.getIn() != null ? definition.getIn().getValue() : type;
         if (in.equals(definition.getOut().getValue())) {
             warnings.add(new ValidationWarning(field,
-                    withEntityPrefix("Model", model.getName(), "A translator cannot convert '" + in + "' to itself: its output would arrive back on the interface it came from")));
+                    messageWithEntityPrefix("Model", model.getName(), "A translator cannot convert '" + in + "' to itself: its output would arrive back on the interface it came from")));
             return;
         }
         validateTranslatorOutput(model, definition, translators, field, warnings);
@@ -597,13 +597,13 @@ public final class ConfigPostProcessor {
         InterfaceType out = definition.getOut();
         if (DeploymentEndpointUtil.resolveMode(model, out) == InterfaceMode.TRANSLATOR) {
             warnings.add(new ValidationWarning(field,
-                    withEntityPrefix("Model", model.getName(), "The model serves '" + out.getValue() + "' through a translator of its own, which the translator here converts to: "
+                    messageWithEntityPrefix("Model", model.getName(), "The model serves '" + out.getValue() + "' through a translator of its own, which the translator here converts to: "
                             + "the callback would arrive on a translated interface and be handed to a translator again")));
             return;
         }
         if (DeploymentEndpointUtil.resolveServingEndpoint(model, out, translators) == null) {
             warnings.add(new ValidationWarning(field,
-                    withEntityPrefix("Model", model.getName(), "The model does not serve '" + out.getValue() + "', which the translator converts to")));
+                    messageWithEntityPrefix("Model", model.getName(), "The model does not serve '" + out.getValue() + "', which the translator converts to")));
         }
     }
 
