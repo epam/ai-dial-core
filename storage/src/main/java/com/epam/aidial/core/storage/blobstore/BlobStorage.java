@@ -179,6 +179,20 @@ public class BlobStorage implements Closeable {
         blobStore.removeBlob(bucketName, storageLocation);
     }
 
+    /**
+     * Copies with metadata the caller has already read, saving a second fetch. Named apart from
+     * {@link #copy} rather than overloading it: the two differ only in the type of their last argument,
+     * which makes a mocked {@code any()} ambiguous at every call site.
+     */
+    public boolean copyWithSourceMetadata(String fromPath, String toPath, BlobMetadata sourceMetadata) {
+        CopyOptions copyOptions = CopyOptions.builder()
+                .contentMetadata(sourceMetadata.getContentMetadata())
+                .userMetadata(sourceMetadata.getUserMetadata())
+                .build();
+        blobStore.copyBlob(bucketName, getStorageLocation(fromPath), bucketName, getStorageLocation(toPath), copyOptions);
+        return true;
+    }
+
     public boolean copy(String fromPath, String toPath, Map<String, String> userMetadata) {
         CopyOptions copyOptions;
         if (userMetadata == null) {

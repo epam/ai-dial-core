@@ -113,7 +113,7 @@ public class BucketMigratorTest {
         Mockito.doAnswer(invocation -> {
             order.add(invocation.getArgument(1));
             return invocation.callRealMethod();
-        }).when(recording).copy(Mockito.anyString(), Mockito.anyString(), Mockito.any());
+        }).when(recording).copyWithSourceMetadata(Mockito.anyString(), Mockito.anyString(), Mockito.any());
 
         new BucketMigrator(recording, TENANT).copyBucket("Users/u1/");
 

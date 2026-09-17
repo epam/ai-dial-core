@@ -6,6 +6,7 @@ import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.resource.TenantLayoutTransformer;
 import lombok.extern.slf4j.Slf4j;
+import org.jclouds.blobstore.domain.BlobMetadata;
 import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.domain.StorageType;
@@ -136,8 +137,18 @@ public class BucketMigrator {
      * checksum both still pass.
      */
     private void copyObject(String source, String destination) {
-        Map<String, String> userMetadata = blobStore.meta(source).getUserMetadata();
-        blobStore.copy(source, destination, userMetadata);
+        // Read once and hand it over: asking BlobStorage.copy to carry user metadata makes it fetch the
+        // same metadata again, which is a second HEAD per object across the whole store.
+        BlobMetadata metadata = blobStore.meta(source);
+        if (metadata == null) {
+            // Gone between the listing and the copy. The bucket is sealed, so this should not happen; it is
+            // logged and skipped rather than thrown because one racing object should not end a migration of
+            // millions, and the inventory check afterwards reports anything that genuinely failed to arrive.
+            log.warn("Skipped {}: it disappeared between the listing and the copy", source);
+            return;
+        }
+
+        blobStore.copyWithSourceMetadata(source, destination, metadata);
     }
 
     private String destination(Split split) {
