@@ -313,6 +313,11 @@ public class ConfigFileMigrateController {
             // serialization regardless of the Java object's field state — inject it directly.
             ObjectNode specNode = ProxyUtil.MAPPER.valueToTree(fileKey);
             specNode.put("key", secret);
+            // The duplicate-secret guard rejects a key write whose secret is already used by a
+            // different scratch entry. Since scratch starts as a copy of the merged/live config,
+            // the file-sourced key being migrated still sits under its raw secret there — remove
+            // the shadow so validation sees a genuinely new blob entry, not a collision with itself.
+            scratch.getKeys().remove(secret);
             collect(new AdminManifest("Key", canonicalId, specNode), null, scratch, dryRun, toApply, results);
         }
     }

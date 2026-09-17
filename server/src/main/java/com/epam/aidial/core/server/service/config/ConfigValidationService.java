@@ -5,6 +5,8 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
+import com.epam.aidial.core.server.config.KeyValidator;
+import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.data.config.manifest.AdminApplicationManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminCatalogSchemaManifest;
@@ -24,7 +26,6 @@ import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
-import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -102,15 +103,16 @@ public class ConfigValidationService {
                 case AdminRouteManifest routeManifest -> { }
                 case AdminKeyManifest keyManifest -> {
                     Key key = keyManifest.spec();
-                    if (StringUtils.isBlank(key.getKey())) {
-                        return new ValidationResult(id, ValidationStatus.FAILED, "Key.key must be provided explicitly");
+                    String error = KeyValidator.validateRequiredFields(key);
+                    if (error == null) {
+                        String canonicalId = MergedConfigStore.canonicalId(
+                                ResourceTypes.PROJECT_KEY, parsed.name().bucket(), parsed.name().name());
+                        Key prior = scratch.getKeys().get(canonicalId);
+                        String oldSecret = prior == null ? null : prior.getKey();
+                        error = KeyValidator.validateSecretNotTaken(scratch, canonicalId, key, oldSecret);
                     }
-                    if (StringUtils.isBlank(key.getProject())) {
-                        return new ValidationResult(id, ValidationStatus.FAILED, "Project key is undefined");
-                    }
-                    if (StringUtils.isBlank(key.getRole()) && (key.getRoles() == null || key.getRoles().isEmpty())) {
-                        return new ValidationResult(id, ValidationStatus.FAILED,
-                                "Invalid key: at least one role must be assigned to the key " + key.getProject());
+                    if (error != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, error);
                     }
                 }
                 case AdminApplicationManifest applicationManifest -> {

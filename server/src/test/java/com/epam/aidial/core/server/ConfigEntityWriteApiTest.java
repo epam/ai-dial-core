@@ -3,6 +3,7 @@ package com.epam.aidial.core.server;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -501,10 +502,106 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testKeyPutCreate409OnDuplicateSecret() {
+        String bodyA = """
+                {
+                  "key": "secret-dup-409",
+                  "project": "projA",
+                  "roles": ["admin"]
+                }
+                """;
+        String bodyB = """
+                {
+                  "key": "secret-dup-409",
+                  "project": "projB",
+                  "roles": ["admin"]
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/keys/platform/test-key-dup-a", null,
+                bodyA, "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response put = send(HttpMethod.PUT, "/v1/keys/platform/test-key-dup-b", null,
+                bodyB, "authorization", "admin", "If-None-Match", "*");
+        verify(put, 409);
+        assertFalse(put.body().contains("secret-dup-409"),
+                () -> "Response must not echo the secret: " + put.body());
+        verify(send(HttpMethod.GET, "/v1/keys/platform/test-key-dup-b", null, "",
+                "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "",
+                "Api-key", "secret-dup-409"), 200);
+    }
+
+    @Test
+    void testKeyPutRotateToExistingSecret409KeepsBoth() {
+        String bodyA = """
+                {
+                  "key": "secret-rotate-dup-a",
+                  "project": "projA",
+                  "roles": ["admin"]
+                }
+                """;
+        String bodyB = """
+                {
+                  "key": "secret-rotate-dup-b",
+                  "project": "projB",
+                  "roles": ["admin"]
+                }
+                """;
+        String bodyRotate = """
+                {
+                  "key": "secret-rotate-dup-b",
+                  "project": "projA",
+                  "roles": ["admin"]
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/keys/platform/test-key-rotate-dup-a", null,
+                bodyA, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.PUT, "/v1/keys/platform/test-key-rotate-dup-b", null,
+                bodyB, "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response put = send(HttpMethod.PUT, "/v1/keys/platform/test-key-rotate-dup-a", null,
+                bodyRotate, "authorization", "admin");
+        verify(put, 409);
+
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "",
+                "Api-key", "secret-rotate-dup-a"), 200);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "",
+                "Api-key", "secret-rotate-dup-b"), 200);
+    }
+
+    @Test
+    void testKeyPutCreate409OnFileKeySecret() {
+        // A file-sourced key occupies its raw secret in the folded config, so a blob key claiming
+        // the same secret would collapse with it in ApiKeyStore's secret-indexed map. The
+        // file→blob handoff goes through the migration endpoint, not a direct PUT.
+        String body = """
+                {
+                  "key": "proxyKey1",
+                  "project": "someone-else",
+                  "roles": ["admin"]
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/keys/platform/test-key-file-secret", null,
+                body, "authorization", "admin", "If-None-Match", "*");
+        verify(put, 409);
+        assertFalse(put.body().contains("proxyKey1"),
+                () -> "Response must not echo the secret: " + put.body());
+        verify(send(HttpMethod.GET, "/v1/keys/platform/test-key-file-secret", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
     void testKeyPutBareUpsertCreatesOnMissing() {
         // Bare PUT against missing — upsert creates (was 404 pre-U.0).
+        String body = """
+                {
+                  "key": "secret-bare-upsert",
+                  "project": "projA",
+                  "roles": ["admin"]
+                }
+                """;
         Response put = send(HttpMethod.PUT, "/v1/keys/platform/no-such-key-create", null,
-                KEY_BODY_PROJECT_A, "authorization", "admin");
+                body, "authorization", "admin");
         verify(put, 200);
     }
 
