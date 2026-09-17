@@ -207,7 +207,9 @@ public class ProxyContext {
     }
 
     public TracingSettings getTracingSettings() {
-        return proxy.getTracingSettings();
+        // respond(...) enriches the span on the error path, and a context can reach it without a proxy -
+        // an NPE from tracing there would turn an error response into a failure to respond at all
+        return proxy == null ? null : proxy.getTracingSettings();
     }
 
     public String getProject() {
