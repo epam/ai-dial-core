@@ -576,7 +576,8 @@ public final class ConfigPostProcessor {
         String in = definition.getIn() != null ? definition.getIn().getValue() : type;
         if (in.equals(definition.getOut().getValue())) {
             warnings.add(new ValidationWarning(field,
-                    messageWithEntityPrefix("Model", model.getName(), "A translator cannot convert '" + in + "' to itself: its output would arrive back on the interface it came from")));
+                    messageWithEntityPrefix("Model", model.getName(), "A translator cannot convert '" + in
+                            + "' to itself: its output would arrive back on the interface it came from")));
             return;
         }
         validateTranslatorOutput(model, definition, translators, field, warnings);
@@ -597,7 +598,8 @@ public final class ConfigPostProcessor {
         InterfaceType out = definition.getOut();
         if (DeploymentEndpointUtil.resolveMode(model, out) == InterfaceMode.TRANSLATOR) {
             warnings.add(new ValidationWarning(field,
-                    messageWithEntityPrefix("Model", model.getName(), "The model serves '" + out.getValue() + "' through a translator of its own, which the translator here converts to: "
+                    messageWithEntityPrefix("Model", model.getName(), "The model serves '" + out.getValue()
+                            + "' through a translator of its own, which the translator here converts to: "
                             + "the callback would arrive on a translated interface and be handed to a translator again")));
             return;
         }
