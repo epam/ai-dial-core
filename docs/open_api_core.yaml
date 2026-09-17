@@ -17421,11 +17421,6 @@ components:
       additionalProperties: true
     ResponsesApiRequest:
       type: object
-      properties:
-        upstreamConfigId:
-          type: string
-        encryptedUpstreamId:
-          type: string
     ReviewConsentResponse:
       type: object
       properties:
