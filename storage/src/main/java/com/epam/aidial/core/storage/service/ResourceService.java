@@ -1056,6 +1056,17 @@ public class ResourceService implements AutoCloseable {
      */
     public void flushBucket(String bucketLocation) {
         String pathPrefix = StorageLayouts.resolveFor(bucketLocation).resolveLocationPrefix(bucketLocation);
+        if (pathPrefix.isEmpty()) {
+            // The platform bucket sits at the root of the tenant-rooted tree, so once it has moved its
+            // prefix is empty and every queued key in the store starts with it. Draining one bucket would
+            // then lock and flush all of them. A migration never reaches this — it drains while the bucket
+            // is sealed, and a sealed bucket still resolves to the legacy layout, where the prefix is
+            // "platform/" — but the method is callable on its own and must not do that when it is.
+            throw new IllegalArgumentException(
+                    "Cannot drain %s: it resolves to the root of the store, which is every bucket"
+                            .formatted(bucketLocation));
+        }
+
         RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
 
         for (String redisKey : set.valueRange(0, -1)) {

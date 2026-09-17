@@ -6,8 +6,11 @@ import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.migration.BucketMigrationState;
+import com.epam.aidial.core.storage.resource.LegacyStorageLayout;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.resource.StorageLayouts;
+import com.epam.aidial.core.storage.resource.TenantRootedStorageLayout;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -201,6 +204,18 @@ public class ResourceServiceMigrationTest {
             return new String(stream.readAllBytes());
         } catch (IOException e) {
             throw new UncheckedIOException(e);
+        }
+    }
+
+    @Test
+    public void testDrainingBucketThatResolvesToTheRootIsRefused() {
+        StorageLayouts.useLayout(new TenantRootedStorageLayout("acme"));
+        try {
+            // platform/ maps to the root of the tenant tree, so its prefix is empty and would match every
+            // queued key in the store.
+            assertThrows(IllegalArgumentException.class, () -> service.flushBucket("platform/"));
+        } finally {
+            StorageLayouts.useLayout(LegacyStorageLayout.INSTANCE);
         }
     }
 }
