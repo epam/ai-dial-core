@@ -7,6 +7,7 @@ import com.epam.aidial.core.storage.migration.BucketMigrationStates;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.mutable.MutableObject;
 
 /**
@@ -20,6 +21,7 @@ import org.apache.commons.lang3.mutable.MutableObject;
  * it in the {@link ResourceService} — unless the bucket is being migrated, where a missing key means the
  * migration has not put it there yet rather than that the bucket never had one.
  */
+@Slf4j
 @RequiredArgsConstructor
 public class ContentEncryptionKeyManagerImpl implements ContentEncryptionKeyManager {
 
@@ -30,8 +32,26 @@ public class ContentEncryptionKeyManagerImpl implements ContentEncryptionKeyMana
 
     @Override
     public byte[] getOrCreateKey(ResourceDescriptor cekDescriptor) {
+        // Read first, and only fall through to the read-modify-write when there is nothing to read.
+        // Reading a key that already exists is a read, and routing it through computeResourceBytes made it
+        // a write as far as the migration's write barrier is concerned: sealing a bucket then refused every
+        // decrypt of its content for as long as the copy took, though a sealed bucket is supposed to keep
+        // serving reads.
+        byte[] existing = resourceService.getResourceBytes(cekDescriptor);
+        if (existing != null) {
+            try {
+                return keyManagementService.decrypt(existing);
+            } catch (CekEncryptionException e) {
+                log.warn("Could not decrypt the content encryption key at {}, replacing it",
+                        cekDescriptor.getAbsoluteFilePath(), e);
+            }
+        }
+
+        requireKeyIsNotExpected(cekDescriptor);
+
         MutableObject<byte[]> cekHolder = new MutableObject<>();
         resourceService.computeResourceBytes(cekDescriptor, encryptedCek -> {
+            // Re-read under the lock: another caller may have created the key since the read above.
             if (encryptedCek != null) {
                 try {
                     byte[] cek = keyManagementService.decrypt(encryptedCek);
@@ -41,7 +61,6 @@ public class ContentEncryptionKeyManagerImpl implements ContentEncryptionKeyMana
                     return createKey(cekHolder);
                 }
             } else {
-                requireKeyIsNotExpected(cekDescriptor);
                 return createKey(cekHolder);
             }
         });
@@ -54,6 +73,9 @@ public class ContentEncryptionKeyManagerImpl implements ContentEncryptionKeyMana
      * the migrator copies {@code encryption_keys} before anything else in the bucket. Finding none there
      * means the copy did not run or did not finish — and creating one would write a fresh key over a bucket
      * whose content was encrypted with the old one, silently and unrecoverably, since the new key is stored.
+     *
+     * <p>Reached only when there is no key to read, which is why the read above comes first: during a copy
+     * this is the diagnostic, while a plain decrypt of an existing key is never blocked at all.
      *
      * <p>Deliberately narrow, and narrow to the window rather than to the outcome: only a bucket that is
      * being copied right now expects a key it cannot find. A store that has never been migrated, a greenfield

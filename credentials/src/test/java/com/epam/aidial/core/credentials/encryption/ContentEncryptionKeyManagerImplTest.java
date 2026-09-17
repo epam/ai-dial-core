@@ -21,6 +21,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -47,12 +48,7 @@ class ContentEncryptionKeyManagerImplTest {
         byte[] encryptedCek = new byte[]{1, 2, 3};
         byte[] decryptedCek = new byte[]{4, 5, 6};
 
-        doAnswer(invocation -> {
-            Function<byte[], byte[]> function = invocation.getArgument(1);
-            function.apply(encryptedCek);
-            return null;
-        }).when(resourceService).computeResourceBytes(eq(resourceDescriptor), any());
-
+        when(resourceService.getResourceBytes(resourceDescriptor)).thenReturn(encryptedCek);
         when(keyManagementService.decrypt(encryptedCek)).thenReturn(decryptedCek);
 
         byte[] result = contentEncryptionKeyManager.getOrCreateKey(resourceDescriptor);
@@ -65,6 +61,8 @@ class ContentEncryptionKeyManagerImplTest {
     @Test
     void testGetOrCreateKey_CekExists_DecryptionFails() {
         ResourceDescriptor resourceDescriptor = mock(ResourceDescriptor.class);
+        // Replacing an undecryptable key is still a write, so it answers to the same guard.
+        when(migrationStates.resolve(any())).thenReturn(BucketMigrationState.LEGACY);
         byte[] encryptedCek = new byte[]{1, 2, 3};
         byte[] newCek = new byte[]{7, 8, 9};
         byte[] encryptedNewCek = new byte[]{10, 11, 12};
@@ -116,11 +114,6 @@ class ContentEncryptionKeyManagerImplTest {
         when(resourceDescriptor.getBucketLocation()).thenReturn("Users/u1/");
         when(migrationStates.resolve("Users/u1/")).thenReturn(BucketMigrationState.MIGRATING);
 
-        doAnswer(invocation -> {
-            Function<byte[], byte[]> function = invocation.getArgument(1);
-            function.apply(null);
-            return null;
-        }).when(resourceService).computeResourceBytes(eq(resourceDescriptor), any());
 
         // The migrator copies encryption_keys first, so a missing key here means the copy did not finish.
         // Creating one would write a fresh key over content encrypted with the old one.
@@ -150,5 +143,21 @@ class ContentEncryptionKeyManagerImplTest {
         // The copy is over: a key missing now was missing before it, because the bucket never had encrypted
         // content. A bucket stays migrated, so refusing here would block its first credential forever.
         assertArrayEquals(generatedCek, contentEncryptionKeyManager.getOrCreateKey(resourceDescriptor));
+    }
+
+    @Test
+    void testGetOrCreateKey_CekExists_BucketIsSealed_StillReads() {
+        ResourceDescriptor resourceDescriptor = mock(ResourceDescriptor.class);
+        byte[] encryptedCek = new byte[]{1, 2, 3};
+        byte[] decryptedCek = new byte[]{4, 5, 6};
+        when(resourceService.getResourceBytes(resourceDescriptor)).thenReturn(encryptedCek);
+        when(keyManagementService.decrypt(encryptedCek)).thenReturn(decryptedCek);
+
+        // A sealed bucket refuses writes and keeps serving reads. Reading an existing key must not go
+        // through computeResourceBytes, which the write barrier rejects for the whole duration of a copy.
+        assertArrayEquals(decryptedCek, contentEncryptionKeyManager.getOrCreateKey(resourceDescriptor));
+
+        verifyNoInteractions(keyGenerator);
+        verify(resourceService, never()).computeResourceBytes(any(), any());
     }
 }
