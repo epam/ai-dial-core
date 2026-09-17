@@ -34,6 +34,9 @@ public class EncryptedContentAffinityUtil {
     private static final Base64.Decoder DECODER = Base64.getUrlDecoder();
 
     public boolean hasConfiguredUpstreams(Deployment deployment) {
+        // Even though there is no ambiguity when there is only one upstream,
+        // we still require the upstream to be explicitly configured
+        // in case the upstream list grows.
         return deployment instanceof Model model && !model.getUpstreams().isEmpty();
     }
 
