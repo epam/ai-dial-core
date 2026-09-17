@@ -235,11 +235,12 @@ public class ResponseItemController implements Controller {
     }
 
     private Future<Void> sendResponse(HttpClientResponse proxyResponse, Buffer body) {
-        if (operation == Operation.GET) {
-            GenAiTraceAttributes.setFetchResponseAttributes(context, body, dialResponseId);
-        }
         HttpServerResponse serverResponse = context.getResponse();
         serverResponse.setStatusCode(proxyResponse.statusCode());
+        if (operation == Operation.GET) {
+            // after setStatusCode: the status fallback reads the client-facing code, still 200 by default before it
+            GenAiTraceAttributes.setFetchResponseAttributes(context, body, dialResponseId);
+        }
         String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
         if (contentType != null) {
             serverResponse.putHeader(HttpHeaders.CONTENT_TYPE, contentType);

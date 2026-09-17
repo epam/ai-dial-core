@@ -331,7 +331,7 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(upstreamRoute.getAttemptCount()));
+        putUpstreamAttempts(response, upstreamRoute.getAttemptCount());
 
         responseStream.pipe()
                 .endOnFailure(false)
@@ -352,7 +352,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                     ProxyUtil.copyResponse(response, proxyResponse);
                     response.setChunked(false);
                     response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
-                    response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
+                    putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
                     if (context.isBackgroundJob() && dialId != null) {
                         return proxy.getBackgroundJobService().saveJob(dialId, context)
@@ -429,9 +429,10 @@ public class ResponsesController extends BaseDeploymentPostController {
         Future<Void> completionFuture;
         if (context.isBackgroundJob() && dialId != null) {
             completionFuture = proxy.getBackgroundJobService().deleteJob(dialId)
-                    .compose(deleted -> deleted ? collectTokenUsage(responseBody) : Future.succeededFuture());
+                    .compose(deleted -> deleted ? collectTokenUsage(responseBody, dialId) : Future.succeededFuture());
         } else {
-            completionFuture = collectTokenUsage(responseBody);
+            // the buffered bytes are the raw upstream frames, so the id has to come from us
+            completionFuture = collectTokenUsage(responseBody, dialId);
         }
 
         completionFuture.onComplete(result -> {

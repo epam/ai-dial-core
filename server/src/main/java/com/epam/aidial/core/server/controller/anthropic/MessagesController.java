@@ -129,7 +129,7 @@ public class MessagesController extends MessagesBaseController {
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
+        putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
         responseStream.pipe()
                 .endOnFailure(false)
@@ -145,7 +145,7 @@ public class MessagesController extends MessagesBaseController {
         HttpServerResponse response = context.getResponse();
         ProxyUtil.copyResponse(response, proxyResponse);
         response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
+        putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
         return collectTokenUsage(body)
                 .transform(result -> {
                     if (result.failed()) {

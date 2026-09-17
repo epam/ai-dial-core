@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.sse.SseParser;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -97,9 +98,18 @@ public final class GenAiTraceAttributes {
     }
 
     public static void setResponseAttributes(ProxyContext context, InterfaceType type, Buffer responseBody) {
+        setResponseAttributes(context, type, responseBody, null);
+    }
+
+    /**
+     * @param responseId DIAL's own response id, or null to keep the body's. A streamed body is buffered before
+     *                   {@code ReplaceResponseIdFn} rewrites it, so the buffered bytes still carry the upstream id.
+     */
+    public static void setResponseAttributes(ProxyContext context, InterfaceType type, Buffer responseBody, String responseId) {
         enrich(context, () -> {
             setOperationAttributes(context, type, operationName(type));
-            setResponseAttributes(context, type, responseTree(context, type, responseBody), null);
+            setResponseAttributes(context, type, responseTree(context, type, responseBody), responseId);
+            collectUpstreamCacheAttributes(context);
         });
     }
 
@@ -114,6 +124,21 @@ public final class GenAiTraceAttributes {
     }
 
     /**
+     * What the upstream asked Core to cache, and whether Core acted on it. The upstream reporting a breakpoint path
+     * is not enough on its own - Core also has to hold a hash for that path, so the two are separate facts.
+     */
+    private static void collectUpstreamCacheAttributes(ProxyContext context) {
+        UpstreamRoute route = context.getUpstreamRoute();
+        String breakpointPath = route == null ? null : route.getCacheBreakpointPath();
+        if (breakpointPath == null) {
+            // the upstream asked for nothing to be cached, so "stored" would be noise rather than a false
+            return;
+        }
+        set(context, stringKey("dial.upstream.cache.breakpoint_path"), clamp(breakpointPath));
+        set(context, booleanKey("dial.upstream.cache.stored"), route.isCacheEntryStored());
+    }
+
+    /**
      * @param responseId DIAL's own response id. A streamed body is buffered before {@code ReplaceResponseIdFn}
      *                   rewrites it, so the buffered bytes still carry the upstream id.
      */
@@ -124,6 +149,14 @@ public final class GenAiTraceAttributes {
             setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, response, responseId);
             collectUsageAttributes(context, tokenUsage(response.get("usage")));
         });
+    }
+
+    /**
+     * Mirrors the {@code X-UPSTREAM-ATTEMPTS} response header onto Core's own span, so a retried request is
+     * visible in a trace without correlating it back to the client's headers.
+     */
+    public static void setUpstreamAttempts(ProxyContext context, int attemptCount) {
+        enrich(context, () -> set(context, longKey("dial.upstream.attempts"), (long) attemptCount));
     }
 
     public static void setUsageAttributes(ProxyContext context, TokenUsage usage) {

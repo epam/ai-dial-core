@@ -424,7 +424,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(upstreamRoute.getAttemptCount()));
+        putUpstreamAttempts(response, upstreamRoute.getAttemptCount());
 
         responseStream.pipe()
                 .endOnFailure(false)
@@ -457,7 +457,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         HttpServerResponse response = context.getResponse();
         ProxyUtil.copyResponse(response, proxyResponse);
         response.setChunked(false);
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
+        putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
         return collectTokenUsage(body)
                 .transform(result -> {

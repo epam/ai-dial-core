@@ -41,6 +41,7 @@ import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -113,6 +114,15 @@ public class BaseDeploymentPostController {
         context.respond(status, result);
     }
 
+    /**
+     * Publishes the upstream attempt count to the client as {@code X-UPSTREAM-ATTEMPTS}, and onto Core's own
+     * span when span enrichment is on.
+     */
+    protected void putUpstreamAttempts(HttpServerResponse response, int attemptCount) {
+        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(attemptCount));
+        GenAiTraceAttributes.setUpstreamAttempts(context, attemptCount);
+    }
+
     protected void finalizeRequest() {
         proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
@@ -172,11 +182,18 @@ public class BaseDeploymentPostController {
     }
 
     protected Future<Void> collectTokenUsage(Buffer responseBody) {
+        return collectTokenUsage(responseBody, null);
+    }
+
+    /**
+     * @param responseId DIAL's own response id when the caller knows it, null to take the id from the body.
+     */
+    protected Future<Void> collectTokenUsage(Buffer responseBody, String responseId) {
         if (GenAiTraceAttributes.isEnabled(context)) {
             try {
                 // interfaceType() reads the request path, which not every deployment kind reaching here has,
                 // and this runs before the client response is completed - tracing must not fail the request
-                GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseBody);
+                GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseBody, responseId);
             } catch (Throwable e) {
                 log.warn("Failed to set GenAI response trace attributes", e);
             }

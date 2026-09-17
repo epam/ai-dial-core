@@ -67,6 +67,9 @@ present — a missing value is omitted, never written as `null` or `""`.
 | `gen_ai.response.*`                     | `id` (always the id the client sees — for Responses that is DIAL's own, not the upstream's), `model`, `finish_reasons`, `status` (from the body, else derived from the status the client receives) |
 | `gen_ai.usage.*`                        | `input_tokens`, `output_tokens`, `cache_read.input_tokens`, `cache_write.input_tokens`, `reasoning.output_tokens`                                          |
 | `dial.usage.total_tokens`               | Core's own total, not the upstream's                                                                                                                      |
+| `dial.upstream.attempts`                | The `X-UPSTREAM-ATTEMPTS` the client receives — how many upstream attempts the load balancer spent on the request                                          |
+| `dial.upstream.cache.breakpoint_path`   | The prefix path the upstream reported caching via `X-DIAL-CACHE-BREAKPOINT-PATH`. Absent when the upstream reported none                                   |
+| `dial.upstream.cache.stored`            | Whether Core matched a hash for that path and submitted the cache entry. Only present alongside `breakpoint_path`; the Redis write itself is async         |
 | `gen_ai.conversation.id`                | Resolved from `conversationIdHeaders`; set regardless of the API surface                                                                                  |
 | `dial.request.parent_span.id`           | Parent span id of a valid incoming W3C `traceparent`. The header itself is still not forwarded upstream                                                   |
 

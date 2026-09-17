@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.opentelemetry.api.trace.Span;
@@ -267,6 +268,67 @@ class GenAiTraceAttributesTest {
 
         assertEquals("resp-1", context.getTracingAttributes().get("gen_ai.response.id"));
         assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
+    }
+
+    @Test
+    void setResponseAttributesPublishesTheClientFacingIdNotTheUpstreamOne() {
+        ProxyContext context = streamingContext();
+        // the buffered frames are the raw upstream ones, so they still carry the upstream id
+        Buffer body = Buffer.buffer("""
+                event: response.completed
+                data: {"type":"response.completed","response":{"id":"upstream-1","model":"gpt-4","status":"completed"}}
+                """);
+
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body, "dial-1");
+
+        assertEquals("dial-1", context.getTracingAttributes().get("gen_ai.response.id"));
+        assertEquals("gpt-4", context.getTracingAttributes().get("gen_ai.response.model"));
+    }
+
+    @Test
+    void setResponseAttributesPublishesWhatTheUpstreamAskedToCacheAndWhetherCoreStoredIt() {
+        ProxyContext context = context(proxy(enabledSettings()));
+        UpstreamRoute route = mock(UpstreamRoute.class);
+        when(route.getCacheBreakpointPath()).thenReturn("prefix.body.messages[1]");
+        when(route.isCacheEntryStored()).thenReturn(true);
+        context.setUpstreamRoute(route);
+
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
+                Buffer.buffer("{\"id\":\"chat-1\"}"));
+
+        assertEquals("prefix.body.messages[1]", context.getTracingAttributes().get("dial.upstream.cache.breakpoint_path"));
+        assertEquals(true, context.getTracingAttributes().get("dial.upstream.cache.stored"));
+    }
+
+    @Test
+    void setResponseAttributesOmitsCacheAttributesWhenTheUpstreamAskedForNoCache() {
+        ProxyContext context = context(proxy(enabledSettings()));
+        context.setUpstreamRoute(mock(UpstreamRoute.class));
+
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
+                Buffer.buffer("{\"id\":\"chat-1\"}"));
+
+        // "stored: false" against a path the upstream never reported would read as a failure to cache
+        assertFalse(context.getTracingAttributes().containsKey("dial.upstream.cache.breakpoint_path"));
+        assertFalse(context.getTracingAttributes().containsKey("dial.upstream.cache.stored"));
+    }
+
+    @Test
+    void setUpstreamAttemptsMirrorsTheResponseHeader() {
+        ProxyContext context = context(proxy(enabledSettings()));
+
+        GenAiTraceAttributes.setUpstreamAttempts(context, 3);
+
+        assertEquals(3L, context.getTracingAttributes().get("dial.upstream.attempts"));
+    }
+
+    @Test
+    void setUpstreamAttemptsDoesNothingWhenDisabled() {
+        ProxyContext context = context(proxy(TracingSettings.from(new JsonObject())));
+
+        GenAiTraceAttributes.setUpstreamAttempts(context, 3);
+
+        assertTrue(context.getTracingAttributes().isEmpty());
     }
 
     @Test
