@@ -9,10 +9,8 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.google.common.annotations.VisibleForTesting;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.hc.core5.http.ContentType;
 
 import java.util.LinkedHashSet;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -38,41 +36,20 @@ public class ProtectedResourceMetadataService {
 
     private static final String WELL_KNOWN_SUFFIX = "oauth-protected-resource";
 
-    /**
-     * Streamable HTTP requires clients to accept both response shapes; a server that streams its
-     * replies rejects an {@code Accept: application/json} request outright, and a rejection is not
-     * the 401 challenge the pointer travels on.
-     */
-    private static final Map<String, String> MCP_PROBE_HEADERS =
-            Map.of("Accept", "application/json, text/event-stream");
-
-    /**
-     * A real {@code initialize} call, because the probe only yields a pointer if the server
-     * recognises it as an MCP request and answers with its 401 challenge rather than a protocol
-     * error. The negotiated version travels in the body: sending an {@code MCP-Protocol-Version}
-     * header here would instead force a 400 from any server that does not support that exact
-     * version, which is the failure this probe exists to avoid.
-     */
-    private static final Object MCP_INITIALIZE_PROBE = Map.of(
-            "jsonrpc", "2.0",
-            "id", 1,
-            "method", "initialize",
-            "params", Map.of(
-                    "protocolVersion", "2025-06-18",
-                    "capabilities", Map.of(),
-                    "clientInfo", Map.of("name", "DIAL", "version", "1.0")));
-
     private final ResourceAuthorizationClient resourceAuthorizationClient;
     private final ProtectedResourceMetadataValidator protectedResourceMetadataValidator;
     private final HttpHeadersHandler httpHeadersHandler;
+    private final AuthorizationChallengeProvider authorizationChallengeProvider;
 
 
     public ProtectedResourceMetadataService(ResourceAuthorizationClient resourceAuthorizationClient,
                                             ProtectedResourceMetadataValidator protectedResourceMetadataValidator,
-                                            HttpHeadersHandler httpHeadersHandler) {
+                                            HttpHeadersHandler httpHeadersHandler,
+                                            AuthorizationChallengeProvider authorizationChallengeProvider) {
         this.resourceAuthorizationClient = resourceAuthorizationClient;
         this.protectedResourceMetadataValidator = protectedResourceMetadataValidator;
         this.httpHeadersHandler = httpHeadersHandler;
+        this.authorizationChallengeProvider = authorizationChallengeProvider;
     }
 
     @VisibleForTesting
@@ -80,6 +57,7 @@ public class ProtectedResourceMetadataService {
         this.resourceAuthorizationClient = new ResourceAuthorizationClient(null);
         this.protectedResourceMetadataValidator = new ProtectedResourceMetadataValidator();
         this.httpHeadersHandler = new HttpHeadersHandler();
+        this.authorizationChallengeProvider = resourceEndpoint -> Optional.empty();
     }
 
     /**
@@ -119,34 +97,22 @@ public class ProtectedResourceMetadataService {
     }
 
     /**
-     * Attempts to fetch metadata using the `WWW-Authenticate` header.
-     *
-     * <p>
-     * This method sends a POST request to the resource endpoint. If the response contains
-     * a 401 Unauthorized status code, the method extracts the `WWW-Authenticate` header
-     * to locate the metadata URL and fetch the metadata from that endpoint.
-     * </p>
+     * Attempts to fetch metadata from the pointer in the MCP server's authorization challenge.
      *
      * @param resourceEndpoint The base URL of the resource endpoint.
-     * @return The {@link AuthorizationServerProtectedResourceMetadata}, or {@code null} if metadata cannot be resolved.
+     * @return The {@link AuthorizationServerProtectedResourceMetadata}, or {@code null} if the server
+     *         issues no challenge or the challenge carries no pointer.
      */
     private AuthorizationServerProtectedResourceMetadata tryFetchMetadataUsingHeader(String resourceEndpoint) {
-        try {
-            log.debug("Resolving Resource Metadata endpoint for resource: {}", resourceEndpoint);
-            resourceAuthorizationClient.executeProbe(resourceEndpoint, MCP_INITIALIZE_PROBE,
-                    ContentType.APPLICATION_JSON.toString(), MCP_PROBE_HEADERS);
-        } catch (HttpException e) {
-            HttpStatus httpExceptionStatus = e.getStatus();
-            if (httpExceptionStatus.equals(HttpStatus.UNAUTHORIZED)) {
-                Optional<String> metadataUrl = httpHeadersHandler.extractMetadataUrl(e.getHeaders());
-                if (metadataUrl.isPresent()) {
-                    log.debug("Retrieved metadata URL from WWW-Authenticate header: {}", metadataUrl.get());
-                    return tryFetchMetadata(metadataUrl.get());
-                }
-            }
-            log.debug("{} at endpoint: {}. Proceeding to next fallback.", httpExceptionStatus.getCode(), resourceEndpoint);
+        log.debug("Resolving Resource Metadata endpoint for resource: {}", resourceEndpoint);
+        Optional<String> metadataUrl = authorizationChallengeProvider.challenge(resourceEndpoint)
+                .flatMap(httpHeadersHandler::extractMetadataUrl);
+        if (metadataUrl.isEmpty()) {
+            log.debug("No resource metadata pointer from endpoint: {}. Proceeding to next fallback.", resourceEndpoint);
+            return null;
         }
-        return null;
+        log.debug("Retrieved metadata URL from WWW-Authenticate header: {}", metadataUrl.get());
+        return tryFetchMetadata(metadataUrl.get());
     }
 
     /**

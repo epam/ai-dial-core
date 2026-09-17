@@ -16,24 +16,15 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.ByteBuffer;
 import java.nio.channels.UnresolvedAddressException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Flow;
 import javax.annotation.Nullable;
 
 @Slf4j
 public class ResourceAuthorizationClient {
-
-    private static final String MCP_SESSION_HEADER = "Mcp-Session-Id";
-    private static final Duration SESSION_CLEANUP_TIMEOUT = Duration.ofSeconds(5);
-    private static final byte[] EMPTY_BODY = new byte[0];
 
     private final HttpClient httpClient;
     private final HttpHeadersHandler httpHeadersHandler;
@@ -70,10 +61,6 @@ public class ResourceAuthorizationClient {
 
     public <R> R executePost(String url, Object requestPayload, String contentType,
                              Map<String, String> extraHeaders, Class<R> responseType) {
-        return execute(buildPost(url, requestPayload, contentType, extraHeaders), responseType);
-    }
-
-    private HttpRequest buildPost(String url, Object requestPayload, String contentType, Map<String, String> extraHeaders) {
         String stringPayload;
         if (contentType.equals(ContentType.APPLICATION_JSON.toString())) {
             stringPayload = JsonMapperUtil.convertToString(requestPayload);
@@ -87,145 +74,37 @@ public class ResourceAuthorizationClient {
                 .timeout(createRequestConfig())
                 .header("Content-Type", contentType)
                 .header("Accept", ContentType.APPLICATION_JSON.toString());
-        // setHeader, not header: these replace the defaults above rather than appending a second value
-        extraHeaders.forEach(requestBuilder::setHeader);
-        return requestBuilder
+        extraHeaders.forEach(requestBuilder::header);
+        HttpRequest request = requestBuilder
                 .POST(HttpRequest.BodyPublishers.ofString(stringPayload, StandardCharsets.UTF_8))
                 .build();
-    }
 
-    /**
-     * Sends a request to observe its status and headers, abandoning the body of a successful reply.
-     *
-     * <p>Discovery probes an MCP endpoint to draw out its 401 challenge. A probe that instead
-     * succeeds may be answered with an SSE stream the server holds open indefinitely, and
-     * {@link HttpRequest#timeout} does not bound that: it stops once the response headers arrive,
-     * long before the body. Reading such a body would hang the calling thread for as long as the
-     * peer keeps the stream open.
-     *
-     * <p>Only a success can be that stream, so error bodies are still read: a strict server
-     * explains its rejection there, which is the whole diagnostic for a probe that fails.
-     */
-    public void executeProbe(String url, Object requestPayload, String contentType, Map<String, String> extraHeaders) {
-        HttpRequest request = buildPost(url, requestPayload, contentType, extraHeaders);
-        HttpResponse<byte[]> response = exchange(request, probeBody());
-        response.headers().firstValue(MCP_SESSION_HEADER)
-                .ifPresent(sessionId -> terminateProbeSession(url, sessionId));
-        int status = response.statusCode();
-        if (status != 200 && status != 201) {
-            throw errorFor(request, status, response.headers(), decodeBody(response));
-        }
-    }
-
-    /** Abandons the body of a 2xx - the only reply that can be an endless stream - and reads any other. */
-    private static HttpResponse.BodyHandler<byte[]> probeBody() {
-        return responseInfo -> responseInfo.statusCode() / 100 == 2
-                ? abandonBody()
-                : HttpResponse.BodySubscribers.ofByteArray();
-    }
-
-    /**
-     * A probe that reaches a stateful MCP server opens a session there, and the probe never becomes
-     * a real connection - so it closes the session again rather than leaving one behind on every
-     * toolset create, update and repair.
-     *
-     * <p>Best-effort and off the caller's path: nothing depends on the result, so it is sent
-     * asynchronously under a short timeout rather than charging a toolset create or repair for a
-     * server that accepts the request and never answers.
-     */
-    private void terminateProbeSession(String url, String sessionId) {
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(SESSION_CLEANUP_TIMEOUT)
-                    .header(MCP_SESSION_HEADER, sessionId)
-                    .DELETE()
-                    .build();
-            httpClient.sendAsync(request, probeBody())
-                    .exceptionally(e -> {
-                        log.debug("Could not close the MCP session opened by the discovery probe at {}: {}", url, e.getMessage());
-                        return null;
-                    });
-        } catch (Exception e) {
-            log.debug("Could not close the MCP session opened by the discovery probe at {}: {}", url, e.getMessage());
-        }
-    }
-
-    /**
-     * A body subscriber that completes as soon as the response headers are in and cancels the body
-     * subscription, so no part of the response body is read or buffered.
-     *
-     * <p>The body completes <em>before</em> the subscription is cancelled. On HTTP/2 cancelling resets
-     * the stream synchronously and reports it through {@code onError}, so cancelling first fails
-     * every successful probe with "Stream N cancelled".
-     */
-    @VisibleForTesting
-    static HttpResponse.BodySubscriber<byte[]> abandonBody() {
-        return new HttpResponse.BodySubscriber<>() {
-            private final CompletableFuture<byte[]> body = new CompletableFuture<>();
-
-            @Override
-            public CompletionStage<byte[]> getBody() {
-                return body;
-            }
-
-            @Override
-            public void onSubscribe(Flow.Subscription subscription) {
-                body.complete(EMPTY_BODY);
-                subscription.cancel();
-            }
-
-            @Override
-            public void onNext(List<ByteBuffer> item) {
-                // never requested
-            }
-
-            @Override
-            public void onError(Throwable throwable) {
-                body.completeExceptionally(throwable);
-            }
-
-            @Override
-            public void onComplete() {
-                body.complete(EMPTY_BODY);
-            }
-        };
+        return execute(request, responseType);
     }
 
     @SneakyThrows
     private <R> R execute(HttpRequest request, Class<R> responseType) {
-        String body = send(request);
-        checkOauthError(body, request.uri());
-        return JsonMapperUtil.convertToObject(body, responseType);
-    }
-
-    private String send(HttpRequest request) {
-        HttpResponse<byte[]> response = exchange(request, HttpResponse.BodyHandlers.ofByteArray());
-
-        int status = response.statusCode();
-        String body = decodeBody(response);
-
-        if (status != 200 && status != 201) {
-            throw errorFor(request, status, response.headers(), body);
-        }
-
-        return body;
-    }
-
-    private HttpException errorFor(HttpRequest request, int status, java.net.http.HttpHeaders headers, String body) {
-        log.warn("Error executing request {}: status {}, response {}", request.uri(), status, body);
-        if (status == 401) {
-            return new HttpException(HttpStatus.UNAUTHORIZED, "Authorization server returns 401 error code",
-                    httpHeadersHandler.convertHttpHeadersToMap(headers), body);
-        }
-        return new HttpException(HttpStatus.fromStatusCode(status, HttpStatus.INTERNAL_SERVER_ERROR),
-                "Authorization server returns error code", Map.of(), body);
-    }
-
-    @SneakyThrows
-    private <T> HttpResponse<T> exchange(HttpRequest request, HttpResponse.BodyHandler<T> bodyHandler) {
         try {
-            return httpClient.send(request, bodyHandler);
+            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+
+            int status = response.statusCode();
+            String body = decodeBody(response);
+
+            if (status != 200 && status != 201) {
+                log.warn("Error executing request {}: status {}, response {}",
+                        request.uri(), response.statusCode(), body);
+                if (status == 401) {
+                    throw new HttpException(HttpStatus.UNAUTHORIZED, "Authorization server returns 401 error code",
+                            httpHeadersHandler.convertHttpHeadersToMap(response.headers()), body);
+                } else {
+                    throw new HttpException(HttpStatus.fromStatusCode(status, HttpStatus.INTERNAL_SERVER_ERROR),
+                            "Authorization server returns error code", Map.of(), body);
+                }
+            }
+
+            checkOauthError(body, request.uri());
+
+            return JsonMapperUtil.convertToObject(body, responseType);
         } catch (ConnectException e) {
             if (hasUnresolvedAddressException(e)) {
                 throw new IllegalArgumentException(
