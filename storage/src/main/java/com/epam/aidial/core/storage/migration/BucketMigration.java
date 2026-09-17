@@ -136,10 +136,26 @@ public class BucketMigration {
         return locations;
     }
 
+    /**
+     * The whole sequence, and an unseal if any of it fails. Without that a failed copy leaves every location
+     * it sealed refusing writes indefinitely, with nothing but an operator noticing to end it.
+     *
+     * <p>The unseal is the rollback rather than a bare state change, because a failure during the promotion
+     * may have moved some locations across already, and a pod that observed one of those is writing to the
+     * tenant tree; it has to be stopped and waited out before the bucket goes back to the legacy one. What
+     * the copy left behind is harmless — the legacy tree was never touched, and a later attempt overwrites
+     * it.
+     */
     public BucketMigrator.Result migrate(String bucketLocation) throws InterruptedException {
         prepare(bucketLocation);
-        BucketMigrator.Result result = copy(bucketLocation);
-        finish(bucketLocation);
-        return result;
+        try {
+            BucketMigrator.Result result = copy(bucketLocation);
+            finish(bucketLocation);
+            return result;
+        } catch (RuntimeException | InterruptedException e) {
+            log.warn("Migration of {} failed, returning it to the legacy layout", bucketLocation, e);
+            revert(bucketLocation);
+            throw e;
+        }
     }
 }

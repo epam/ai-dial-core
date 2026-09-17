@@ -14,6 +14,7 @@ import org.mockito.Mockito;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -157,6 +158,90 @@ public class BucketMigrationTest {
         order.verify(resources).flushBucket("Users/u1/");
         order.verify(states).promote("Users/u1/");
         assertEquals(List.of(WINDOW, WINDOW), waited);
+    }
+
+    /**
+     * Makes the mocked registry behave like the real one: state per location, and transitions checked with
+     * the production rule rather than with whatever a stub was told to allow. Re-runnability cannot be
+     * judged against a registry that accepts every call.
+     */
+    private Map<String, BucketMigrationState> useRealTransitions() {
+        Map<String, BucketMigrationState> actual = new HashMap<>();
+        Mockito.when(states.resolve(Mockito.anyString()))
+                .thenAnswer(call -> actual.getOrDefault(call.getArgument(0), BucketMigrationState.LEGACY));
+        Mockito.doAnswer(call -> transition(actual, call.getArgument(0), BucketMigrationState.MIGRATING))
+                .when(states).seal(Mockito.anyString());
+        Mockito.doAnswer(call -> transition(actual, call.getArgument(0), BucketMigrationState.MIGRATED))
+                .when(states).promote(Mockito.anyString());
+        Mockito.doAnswer(call -> transition(actual, call.getArgument(0), BucketMigrationState.LEGACY))
+                .when(states).revert(Mockito.anyString());
+        return actual;
+    }
+
+    /**
+     * Mirrors {@link BucketMigrationRegistry}'s own transition, including its tolerance of a step that has
+     * already taken effect. {@code BucketMigrationRegistryTest} pins that against the real registry — this
+     * one only has to agree with it.
+     */
+    private static Object transition(Map<String, BucketMigrationState> actual, String location, BucketMigrationState next) {
+        BucketMigrationState current = actual.getOrDefault(location, BucketMigrationState.LEGACY);
+        if (current == next) {
+            return null;
+        }
+
+        if (!current.canTransitionTo(next)) {
+            throw new IllegalStateException("Bucket %s cannot go from %s to %s".formatted(location, current, next));
+        }
+        actual.put(location, next);
+        return null;
+    }
+
+    @Test
+    public void testPrepareCanBeRerunAfterPartialFailure() throws InterruptedException {
+        Map<String, BucketMigrationState> actual = useRealTransitions();
+        put("Users/u1/conversations/chat", "{}");
+
+        migration.prepare("Users/u1/");
+        // A prepare that died after sealing some of its locations has to be retryable, or a half-sealed
+        // bucket can only be finished by hand.
+        migration.prepare("Users/u1/");
+
+        assertEquals(BucketMigrationState.MIGRATING, actual.get("Users/u1/"));
+    }
+
+    @Test
+    public void testFinishCanBeRerunAfterPartialFailure() throws InterruptedException {
+        Map<String, BucketMigrationState> actual = useRealTransitions();
+        put("Users/u1/conversations/chat", "{}");
+        migration.prepare("Users/u1/");
+        migration.finish("Users/u1/");
+
+        migration.finish("Users/u1/");
+
+        assertEquals(BucketMigrationState.MIGRATED, actual.get("Users/u1/"));
+    }
+
+    @Test
+    public void testPromotingUnsealedBucketIsStillRefused() {
+        useRealTransitions();
+        put("Users/u1/conversations/chat", "{}");
+
+        // Idempotence is about repeating a step, not about skipping one.
+        assertThrows(IllegalStateException.class, () -> migration.finish("Users/u1/"));
+    }
+
+    @Test
+    public void testMigrateUnsealsTheBucketWhenTheCopyFails() {
+        Map<String, BucketMigrationState> actual = useRealTransitions();
+        BucketMigrator failing = Mockito.mock(BucketMigrator.class);
+        Mockito.when(failing.locations("Users/u1/")).thenReturn(Set.of("Users/u1/"));
+        Mockito.when(failing.copyBucket("Users/u1/")).thenThrow(new IllegalStateException("copy died"));
+        BucketMigration migrating = new BucketMigration(states, failing, resources, waited::add);
+
+        assertThrows(IllegalStateException.class, () -> migrating.migrate("Users/u1/"));
+
+        // Left sealed, the bucket would answer 503 to every write until an operator noticed.
+        assertEquals(BucketMigrationState.LEGACY, actual.get("Users/u1/"));
     }
 
     private void put(String path, String body) {

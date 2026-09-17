@@ -168,4 +168,22 @@ public class BucketMigrationRegistryTest {
                 .thenReturn(Mockito.mock(TimerService.Timer.class));
         return new BucketMigrationRegistry(storage, lockService, timerService, REFRESH_PERIOD);
     }
+
+    @Test
+    public void testRepeatedTransitionIsAccepted() {
+        registry.seal("Users/u1/");
+        registry.seal("Users/u1/");
+        assertEquals(BucketMigrationState.MIGRATING, registry.resolve("Users/u1/"));
+
+        registry.promote("Users/u1/");
+        registry.promote("Users/u1/");
+        assertEquals(BucketMigrationState.MIGRATED, registry.resolve("Users/u1/"));
+    }
+
+    @Test
+    public void testSkippedStepIsStillRefused() {
+        // Tolerating a repeated step must not tolerate a missing one: a bucket cannot be promoted without
+        // having been sealed, whatever else has happened to it.
+        assertThrows(IllegalStateException.class, () -> registry.promote("Users/u2/"));
+    }
 }

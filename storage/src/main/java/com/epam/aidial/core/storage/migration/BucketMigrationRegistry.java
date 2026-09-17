@@ -89,6 +89,15 @@ public class BucketMigrationRegistry implements BucketMigrationStates, Closeable
         lockService.underBucketLock(DOCUMENT_PATH, () -> {
             Document stored = load();
             BucketMigrationState current = stored.resolve(bucketLocation);
+            if (current == next) {
+                // Asking for the state a bucket is already in is how an interrupted migration resumes. A
+                // step covers several locations and writes one document per location, so a failure part way
+                // leaves some of them done; refusing the ones already done would mean the remainder could
+                // only be finished by hand.
+                log.debug("Bucket {} is already {}", bucketLocation, next);
+                return null;
+            }
+
             if (!current.canTransitionTo(next)) {
                 throw new IllegalStateException(
                         "Bucket %s cannot go from %s to %s".formatted(bucketLocation, current, next));
