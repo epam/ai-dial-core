@@ -16,10 +16,10 @@ import java.util.Base64;
 import javax.annotation.Nullable;
 
 /**
- * Cross-upstream affinity for OpenAI Responses API encrypted content. When a deployment has at least one
- * explicitly configured upstream, a follow-up turn that echoes an earlier turn's {@code encrypted_content}
- * item (e.g. a {@code reasoning} item) must be routed back to the exact upstream that produced it, otherwise
- * the provider rejects the whole request. Outgoing items are stamped with the originating
+ * Cross-upstream affinity for OpenAI Responses API {@code reasoning} items. When a deployment has at least
+ * one explicitly configured upstream, a follow-up turn that echoes an earlier turn's {@code reasoning} item
+ * (by its {@code id}, its {@code encrypted_content}, or both) must be routed back to the exact upstream that
+ * produced it, otherwise the provider rejects the whole request. Outgoing items are stamped with the originating
  * {@link Model#getUpstreams()} entry's {@link com.epam.aidial.core.config.Upstream#getId()} ("upstream config
  * id" below - not to be confused with the provider's own response id string); incoming items are decoded back
  * to that id to force routing, then restored to their original, provider-native shape before forwarding
@@ -41,19 +41,27 @@ public class EncryptedContentAffinityUtil {
         return item != null && item.isObject() && item.path("encrypted_content").isTextual();
     }
 
+    public boolean isReasoningItem(JsonNode item) {
+        return item != null && item.isObject() && "reasoning".equals(item.path("type").asText());
+    }
+
     /**
-     * Wraps both the {@code id} and {@code encrypted_content} fields of an output item in place. No-op if
-     * the item is not an encrypted item.
+     * Wraps the {@code id} of a reasoning output item in place, and its {@code encrypted_content} too when
+     * present. The {@code id} is wrapped even without {@code encrypted_content} (e.g. when
+     * {@code include=reasoning.encrypted_content} was not requested) so a later turn that echoes the item back
+     * by id alone still carries affinity. No-op if the item is not a reasoning item.
      */
     public void wrapOutputItem(JsonNode item, String encryptedUpstreamId) {
-        if (!isEncryptedItem(item) || !(item instanceof ObjectNode object)) {
+        if (!isReasoningItem(item) || !(item instanceof ObjectNode object)) {
             return;
         }
         JsonNode idNode = object.path("id");
         if (idNode.isTextual()) {
             object.put("id", wrapId(encryptedUpstreamId, idNode.asText()));
         }
-        object.put("encrypted_content", wrapContent(encryptedUpstreamId, object.path("encrypted_content").asText()));
+        if (isEncryptedItem(object)) {
+            object.put("encrypted_content", wrapContent(encryptedUpstreamId, object.path("encrypted_content").asText()));
+        }
     }
 
     public void wrapOutputArray(JsonNode output, String encryptedUpstreamId) {

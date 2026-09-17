@@ -59,7 +59,7 @@ public class EncryptedContentAffinityUtilTest {
     }
 
     @Test
-    void wrapIsNoOpForNonEncryptedItems() {
+    void wrapIsNoOpForNonReasoningItems() {
         ObjectNode item = ProxyUtil.MAPPER.createObjectNode();
         item.put("type", "message");
         item.put("id", "msg_1");
@@ -67,6 +67,24 @@ public class EncryptedContentAffinityUtilTest {
         EncryptedContentAffinityUtil.wrapOutputItem(item, "upstream-a");
 
         assertEquals("msg_1", item.path("id").asText());
+    }
+
+    @Test
+    void wrapsReasoningItemIdWithoutEncryptedContent() {
+        ObjectNode item = ProxyUtil.MAPPER.createObjectNode();
+        item.put("type", "reasoning");
+        item.put("id", "rs_original");
+
+        EncryptedContentAffinityUtil.wrapOutputItem(item, "upstream-a");
+        assertTrue(item.path("id").asText().startsWith("dialenc_"));
+        assertFalse(item.has("encrypted_content"));
+
+        ArrayNode input = ProxyUtil.MAPPER.createArrayNode();
+        input.add(item);
+
+        String resolved = EncryptedContentAffinityUtil.resolveAndUnwrap(input);
+        assertEquals("upstream-a", resolved);
+        assertEquals("rs_original", item.path("id").asText());
     }
 
     @Test
