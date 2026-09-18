@@ -24,7 +24,6 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -81,7 +80,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
         context.getRequest().body()
-                .map(MessagesBaseController::parseBody)
+                .map(this::parseBody)
                 .compose(request -> {
                     String model = request.getModel();
                     deploymentId = model;
@@ -113,11 +112,10 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         return null;
     }
 
-    protected static MessagesApiRequest parseBody(Buffer body) {
+    protected MessagesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
-            ObjectNode tree = ProxyUtil.parseObject(body);
-            return new MessagesApiRequest(tree);
+            return new MessagesApiRequest(ProxyUtil.parseObject(body));
         } catch (IOException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
         }

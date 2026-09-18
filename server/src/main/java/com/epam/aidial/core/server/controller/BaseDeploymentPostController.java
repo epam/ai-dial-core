@@ -19,6 +19,7 @@ import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
@@ -40,6 +41,7 @@ import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -112,7 +114,18 @@ public class BaseDeploymentPostController {
         context.respond(status, result);
     }
 
+    /**
+     * Publishes the upstream attempt count to the client as {@code X-UPSTREAM-ATTEMPTS}, and onto Core's own
+     * span when span enrichment is on.
+     */
+    protected void putUpstreamAttempts(HttpServerResponse response, int attemptCount) {
+        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(attemptCount));
+        GenAiTraceAttributes.setUpstreamAttempts(context, attemptCount);
+    }
+
     protected void finalizeRequest() {
+        // every terminal path of all four LLM surfaces reaches here, including the respond(...) helpers above
+        GenAiTraceAttributes.setLatencyAttributes(context);
         proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData != null) {
@@ -171,6 +184,22 @@ public class BaseDeploymentPostController {
     }
 
     protected Future<Void> collectTokenUsage(Buffer responseBody) {
+        return collectTokenUsage(responseBody, null);
+    }
+
+    /**
+     * @param responseId DIAL's own response id when the caller knows it, null to take the id from the body.
+     */
+    protected Future<Void> collectTokenUsage(Buffer responseBody, String responseId) {
+        if (GenAiTraceAttributes.isEnabled(context)) {
+            try {
+                // interfaceType() reads the request path, which not every deployment kind reaching here has,
+                // and this runs before the client response is completed - tracing must not fail the request
+                GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseBody, responseId);
+            } catch (Throwable e) {
+                log.warn("Failed to set GenAI response trace attributes", e);
+            }
+        }
         if (context.getDeployment() instanceof Model model) {
             if (context.getResponse().getStatusCode() != HttpStatus.OK.getCode()) {
                 return Future.succeededFuture();
@@ -190,6 +219,7 @@ public class BaseDeploymentPostController {
                 tokenUsage = new TokenUsage();
             }
             context.setTokenUsage(tokenUsage);
+            GenAiTraceAttributes.setUsageAttributes(context, tokenUsage);
             TokenUsage usage = context.getTokenUsage();
             return increaseLimits(usage)
                     .transform(result -> {
@@ -273,6 +303,7 @@ public class BaseDeploymentPostController {
                     forLog.setAggCost(stats.total().getAggCost());
                 }
                 context.setTokenUsage(forLog);
+                GenAiTraceAttributes.setUsageAttributes(context, forLog);
             }
             return Future.<Void>succeededFuture();
         });

@@ -6,9 +6,12 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
+import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -30,9 +33,11 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -105,6 +110,9 @@ public class ProxyContext {
     private ServerWebSocket serverWebSocket;
     private boolean isStoreResponse;
     private boolean isBackgroundJob;
+    // read from the log layout, which AsyncTaskExecutor may run on a virtual thread sharing this Vert.x context
+    private final Map<String, Object> tracingAttributes = new ConcurrentHashMap<>();
+    private String assembledStreamingResponse;
 
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {
@@ -171,6 +179,9 @@ public class ProxyContext {
             body = Buffer.buffer();
         }
 
+        // the one funnel every short and error response passes through, and the only place on those paths
+        // that knows the status: the controllers finalize the request before it is set
+        GenAiTraceAttributes.setFailureStatus(this, status);
         response.setStatusCode(status).end(body);
 
         if (status < 200 || status >= 300) {
@@ -193,6 +204,12 @@ public class ProxyContext {
 
     public Config getConfig() {
         return proxy.getConfigStore().get();
+    }
+
+    public TracingSettings getTracingSettings() {
+        // respond(...) enriches the span on the error path, and a context can reach it without a proxy -
+        // an NPE from tracing there would turn an error response into a failure to respond at all
+        return proxy == null ? null : proxy.getTracingSettings();
     }
 
     public String getProject() {
@@ -300,5 +317,16 @@ public class ProxyContext {
 
     public boolean isOriginalRequest() {
         return apiKeyData.getPerRequestKey() == null;
+    }
+
+    /**
+     * Assembles the streamed chat completions body at most once per request. Both the analytics log and
+     * the GenAI trace attributes read it, and assembling it twice doubles a full-body scan and merge.
+     */
+    public String assembledStreamingResponse(Buffer response) {
+        if (assembledStreamingResponse == null) {
+            assembledStreamingResponse = AnalyticsLogContext.assembleStreamingChatCompletionsResponse(response);
+        }
+        return assembledStreamingResponse;
     }
 }

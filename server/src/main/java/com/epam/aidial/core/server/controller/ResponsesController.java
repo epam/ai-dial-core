@@ -32,6 +32,7 @@ import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
@@ -115,7 +116,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
         context.getRequest().body()
-                .map(ResponsesController::parseBody)
+                .map(this::parseBody)
                 .compose(this::dispatch)
                 .onFailure(this::handleRequestBodyError);
         return Future.succeededFuture();
@@ -195,7 +196,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 });
     }
 
-    private static ResponsesApiRequest parseBody(Buffer body) {
+    private ResponsesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
             ObjectNode tree = ProxyUtil.parseObject(body);
@@ -205,6 +206,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             if (tree.has("conversation")) {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "conversation is not supported");
             }
+            GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.OPENAI_RESPONSES, tree);
             return new ResponsesApiRequest(tree);
         } catch (IOException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
@@ -337,7 +339,7 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(upstreamRoute.getAttemptCount()));
+        putUpstreamAttempts(response, upstreamRoute.getAttemptCount());
 
         responseStream.pipe()
                 .endOnFailure(false)
@@ -358,7 +360,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                     ProxyUtil.copyResponse(response, proxyResponse);
                     response.setChunked(false);
                     response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
-                    response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
+                    putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
                     if (context.isBackgroundJob() && dialId != null) {
                         return proxy.getBackgroundJobService().saveJob(dialId, context)
@@ -438,9 +440,10 @@ public class ResponsesController extends BaseDeploymentPostController {
         Future<Void> completionFuture;
         if (context.isBackgroundJob() && dialId != null) {
             completionFuture = proxy.getBackgroundJobService().deleteJob(dialId)
-                    .compose(deleted -> deleted ? collectTokenUsage(responseBody) : Future.succeededFuture());
+                    .compose(deleted -> deleted ? collectTokenUsage(responseBody, dialId) : Future.succeededFuture());
         } else {
-            completionFuture = collectTokenUsage(responseBody);
+            // the buffered bytes are the raw upstream frames, so the id has to come from us
+            completionFuture = collectTokenUsage(responseBody, dialId);
         }
 
         completionFuture.onComplete(result -> {
