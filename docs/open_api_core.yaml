@@ -16290,15 +16290,15 @@ components:
     InterfaceMode:
       type: string
       enum:
-      - PASSTHROUGH
-      - TRANSLATOR
+      - passthrough
+      - translator
     InterfaceType:
       type: string
       enum:
-      - OPENAI_CHAT_COMPLETIONS
-      - OPENAI_EMBEDDINGS
-      - OPENAI_RESPONSES
-      - ANTHROPIC_MESSAGES
+      - openaiChatCompletions
+      - openaiEmbeddings
+      - openaiResponses
+      - anthropicMessages
     Invitation:
       type: object
       properties:
@@ -16880,12 +16880,12 @@ components:
     Operator:
       type: string
       enum:
-      - EQ
-      - NE
-      - GT
-      - LT
-      - GE
-      - LE
+      - ==
+      - '!='
+      - '>'
+      - <
+      - '>='
+      - <=
     ParallelToolCalls:
       type: boolean
       description: Whether to enable parallel `function` calling during the `tool` use.
