@@ -35,6 +35,7 @@ import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -330,7 +331,9 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         context.setRequestBodyTimestamp(System.currentTimeMillis());
 
         try {
-            RequestObject request = new ChatCompletionRequest(ProxyUtil.parseObject(requestBody));
+            ObjectNode requestTree = ProxyUtil.parseObject(requestBody);
+            RequestObject request = new ChatCompletionRequest(requestTree);
+            GenAiTraceAttributes.setRequestAttributes(context, requestedInterface(), requestTree);
             context.setStreamingRequest(request.isStreaming());
             if (ProxyUtil.processChain(request, buildEnhancementFunctions())) {
                 context.setRequestBody(Buffer.buffer(request.serialize()));
@@ -423,7 +426,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(upstreamRoute.getAttemptCount()));
+        putUpstreamAttempts(response, upstreamRoute.getAttemptCount());
 
         responseStream.pipe()
                 .endOnFailure(false)
@@ -456,7 +459,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         HttpServerResponse response = context.getResponse();
         ProxyUtil.copyResponse(response, proxyResponse);
         response.setChunked(false);
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
+        putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
         return collectTokenUsage(body)
                 .transform(result -> {
@@ -522,7 +525,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
         String assembledStreamingResponse = null;
         if (isEventStreamResponse(context.getProxyResponse())) {
-            assembledStreamingResponse = AnalyticsLogContext.assembleStreamingChatCompletionsResponse(context.getResponseBody());
+            assembledStreamingResponse = context.assembledChatCompletionsResponse();
         }
         finishAndLog(assembledStreamingResponse);
     }

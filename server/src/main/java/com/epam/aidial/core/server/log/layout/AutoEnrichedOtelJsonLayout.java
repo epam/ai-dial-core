@@ -68,6 +68,11 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         // Enrich OpenTelemetry span
         enrichOpenTelemetrySpan(event, attributes);
 
+        // after the span pass: GenAiTraceAttributes already set these on the span, typed
+        if (proxyContext != null) {
+            attributes.putAll(proxyContext.getTracingAttributes());
+        }
+
         Map<String, Object> resource = new HashMap<>();
         resource.put("service.name", serviceName);
         resource.put("service.version", serviceVersion);
