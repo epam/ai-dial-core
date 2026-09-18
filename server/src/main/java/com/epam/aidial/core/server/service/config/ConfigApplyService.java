@@ -208,8 +208,11 @@ public class ConfigApplyService {
                 return new EntityResult(id, AdminApplyStatus.FAILED, dupError);
             }
         }
+        secretFieldProcessor.encryptFields(entity, descriptor);
         String blobBody = ConfigEntityCodec.serializeForBlob(entity);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+        // decrypt-in-place so partial-update receives plaintext upstream secrets.
+        secretFieldProcessor.decryptFields(entity, descriptor);
         pending.add(new EntityChange(type, MergedConfigStore.resolveMapKeyFor(descriptor), entity));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
@@ -267,7 +270,7 @@ public class ConfigApplyService {
         if (oldSecret != null && !oldSecret.isBlank() && !oldSecret.equals(secret)) {
             apiKeyStore.removeKey(oldSecret);
         }
-        // Slice 4S.4: decrypt-in-place after blob put so the partial-update path receives a
+        // decrypt-in-place after blob put so the partial-update path receives a
         // fully-plaintext Key. decryptValue is idempotent on plaintext fields.
         secretFieldProcessor.decryptFields(key, descriptor);
         pending.add(new EntityChange(ResourceTypes.PROJECT_KEY, MergedConfigStore.canonicalId(descriptor), key));
@@ -295,7 +298,7 @@ public class ConfigApplyService {
         secretFieldProcessor.encryptFields(model, descriptor);
         String blobBody = ConfigEntityCodec.serializeForBlob(model);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
-        // Slice 4S.4: decrypt-in-place so partial-update receives plaintext upstream secrets.
+        // decrypt-in-place so partial-update receives plaintext upstream secrets.
         secretFieldProcessor.decryptFields(model, descriptor);
         pending.add(new EntityChange(ResourceTypes.MODEL, MergedConfigStore.resolveMapKeyFor(descriptor), model));
         return new EntityResult(id, invalid ? AdminApplyStatus.APPLIED_INVALID : AdminApplyStatus.APPLIED, null);

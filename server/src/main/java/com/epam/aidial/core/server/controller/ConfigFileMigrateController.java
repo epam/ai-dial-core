@@ -272,7 +272,7 @@ public class ConfigFileMigrateController {
                 results.add(new ConfigFileMigrateResult(spec.kind(), resourceUrl(canonicalId), shortName, skippedStatus(dryRun), "already in blob"));
                 continue;
             }
-            JsonNode specNode = ProxyUtil.MAPPER.valueToTree(entry.getValue());
+            JsonNode specNode = BLOB_MAPPER.valueToTree(entry.getValue());
             collect(new AdminManifest(spec.kind(), canonicalId, specNode), shortName, scratch, dryRun, toApply, results);
         }
     }
