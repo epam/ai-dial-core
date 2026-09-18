@@ -34,6 +34,7 @@ import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.config.ConfigManifestSupport.ParsedName;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
+import com.epam.aidial.core.server.validation.ValidationUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -159,6 +160,7 @@ public class ConfigApplyService {
         if (!ConfigManifestSupport.SETTINGS_SINGLETON_NAME.equals(parsed.name())) {
             return new EntityResult(id, AdminApplyStatus.FAILED, "Settings name must be 'global'");
         }
+        ValidationUtil.validate(settings);
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.GLOBAL_SETTINGS, parsed.bucket(), parsed.location(), parsed.name());
         String blobBody = ConfigEntityCodec.serializeForBlob(settings);
