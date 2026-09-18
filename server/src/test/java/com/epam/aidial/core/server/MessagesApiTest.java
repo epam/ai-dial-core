@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -313,6 +314,62 @@ public class MessagesApiTest extends ResourceBaseTest {
 
             assertEquals(200, response.status());
             assertNotNull(captured.get().getHeader("X-DIAL-DEPLOYMENT-FEATURES"));
+        }
+    }
+
+    @Test
+    public void testInterfaceDefaultHeadersOverrideDeploymentLevelOnes() throws IOException {
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> {
+                captured.set(request);
+                return TestWebServer.createResponse(200, NON_STREAM_RESPONSE, "Content-Type", "application/json");
+            });
+
+            Response response = post(client, MESSAGES_PATH, requestBody("default-headers-model", false),
+                    "api-key", "proxyKey1");
+
+            assertEquals(200, response.status());
+            RecordedRequest upstream = captured.get();
+            // inherited from the deployment level ...
+            assertEquals("cache-priority", upstream.getHeader("x-dial-cache-policy"));
+            // ... overridden by the anthropicMessages overlay ...
+            assertEquals("foo-bar-2", upstream.getHeader("x-dial-custom-header"));
+            // ... and added by it
+            assertEquals("some-value", upstream.getHeader("x-dial-custom-header-2"));
+        }
+    }
+
+    @Test
+    public void testDefaultHeadersCannotOverrideTheHeadersCoreSetsItself() throws IOException {
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> {
+                captured.set(request);
+                return TestWebServer.createResponse(200, NON_STREAM_RESPONSE, "Content-Type", "application/json");
+            });
+
+            // claude-header-spoof declares a defaultHeader for every header the core sets on the way out
+            Response response = post(client, MESSAGES_PATH, requestBody("claude-header-spoof", false),
+                    "api-key", "proxyKey1");
+
+            assertEquals(200, response.status());
+            RecordedRequest upstream = captured.get();
+            // the defaults were in force for this request ...
+            assertEquals("applied", upstream.getHeader("x-dial-custom-header"));
+            // ... and none of them displaced a header the core owns
+            assertEquals("http://messages-upstream/v1/messages", upstream.getHeader("X-UPSTREAM-ENDPOINT"));
+            assertEquals("modelKey", upstream.getHeader("X-UPSTREAM-KEY"));
+            assertEquals("{\"a\":1}", upstream.getHeader("X-UPSTREAM-EXTRA-DATA"));
+            assertEquals("claude-header-spoof", upstream.getHeader("X-DIAL-DEPLOYMENT-ID"));
+            assertEquals("claude-sonnet-4-5-20250929", upstream.getHeader("X-DIAL-OVERRIDE-NAME"));
+            assertNotNull(ProxyUtil.convertToObject(upstream.getHeader("X-DIAL-DEPLOYMENT-FEATURES"), FeaturesData.class));
+            // the per-request key is the only Api-Key upstream sees, and it is not the spoofed one
+            assertEquals(1, upstream.getHeaders().values("Api-Key").size());
+            assertNotEquals("spoofed-api-key", upstream.getHeader("Api-Key"));
+            // single-valued throughout: a default never lands next to the core's value
+            assertEquals(1, upstream.getHeaders().values("X-UPSTREAM-KEY").size());
+            assertEquals(1, upstream.getHeaders().values("X-DIAL-OVERRIDE-NAME").size());
         }
     }
 
