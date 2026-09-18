@@ -26,6 +26,14 @@ public class AnalyticsSettingsTest {
         assertTrue(settings.headersBlacklist().isEmpty());
         // the allowlist is disabled unless the key is present
         assertNull(settings.headersAllowlist());
+        assertFalse(settings.collectErrorResponses());
+    }
+
+    @Test
+    public void testCollectErrorResponsesCanBeEnabled() {
+        AnalyticsSettings settings = AnalyticsSettings.from(new JsonObject().put("collectErrorResponses", true));
+
+        assertTrue(settings.collectErrorResponses());
     }
 
     @Test

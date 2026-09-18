@@ -117,7 +117,8 @@
     "collectClaims": false,
     "claimsAllowlist": [],
     "collectHeaders": false,
-    "headersBlacklist": ["authorization", "api-key", "cookie", "proxy-authorization"]
+    "headersBlacklist": ["authorization", "api-key", "cookie", "proxy-authorization"],
+    "collectErrorResponses": false
   },
   "backgroundJob": {
     "initialPollIntervalMs": 10000,

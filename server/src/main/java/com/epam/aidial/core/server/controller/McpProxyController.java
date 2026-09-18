@@ -547,11 +547,19 @@ public class McpProxyController implements Controller {
     private void respond(HttpStatus status, String result) {
         finalizeRequest();
         context.respond(status, result);
+        logErrorResponseIfEnabled(status.getCode());
     }
 
     private void respond(HttpException exception) {
         finalizeRequest();
         context.respond(exception);
+        logErrorResponseIfEnabled(exception.getStatus().getCode());
+    }
+
+    private void logErrorResponseIfEnabled(int statusCode) {
+        if (logStore.shouldLogErrorResponse(statusCode)) {
+            logStore.save(AnalyticsLogContext.from(context, null));
+        }
     }
 
     protected void finalizeRequest() {

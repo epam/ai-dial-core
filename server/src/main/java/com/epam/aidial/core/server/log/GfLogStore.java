@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.deltix.gflog.api.Log;
 import com.epam.deltix.gflog.api.LogEntry;
 import com.epam.deltix.gflog.api.LogFactory;
@@ -44,6 +45,13 @@ public class GfLogStore implements LogStore {
     // Max allowed size for a single collected claim value, matching the header limit
     private static final int MAX_CLAIM_VALUE_LENGTH = 4 * 1024;
 
+    // statuses that reach the client only via a respond(...) error exit (rate limit hit, retries exhausted,
+    // connection failure) and therefore carry no analytics log entry today; logged additionally when
+    // analytics.collectErrorResponses is set - see LogStore#shouldLogErrorResponse
+    private static final Set<Integer> LOGGABLE_ERROR_STATUS_CODES = Set.of(
+            HttpStatus.TOO_MANY_REQUESTS.getCode(), HttpStatus.BAD_GATEWAY.getCode(),
+            HttpStatus.SERVICE_UNAVAILABLE.getCode(), HttpStatus.GATEWAY_TIMEOUT.getCode());
+
     private static final String[] CONTROL_SYMBOLS = new String[0x1F + 1];
 
     static {
@@ -73,6 +81,11 @@ public class GfLogStore implements LogStore {
         // run the process of saving analytics logs in a single thread in order to reduce memory footprint.
         // Gflog allocates a buffer per thread: the more threads the more buffers need to be allocated.
         executor.submit(() -> doSave(logContext));
+    }
+
+    @Override
+    public boolean shouldLogErrorResponse(int statusCode) {
+        return settings.collectErrorResponses() && LOGGABLE_ERROR_STATUS_CODES.contains(statusCode);
     }
 
     private Void doSave(AnalyticsLogContext logContext) {
