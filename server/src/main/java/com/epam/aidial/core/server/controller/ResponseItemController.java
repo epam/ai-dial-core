@@ -289,10 +289,9 @@ public class ResponseItemController implements Controller {
                 .endOnSuccess(false)
                 .to(response)
                 .onSuccess(ignored -> {
-                    if (operation == Operation.GET) {
-                        // the buffered bytes are the raw upstream frames, so the id has to come from us
-                        GenAiTraceAttributes.setFetchResponseAttributes(context, responseStream.getContent(), dialResponseId);
-                    }
+                    // GET only, by the branch that got here: the buffered bytes are the raw upstream frames,
+                    // so the id has to come from us
+                    GenAiTraceAttributes.setFetchResponseAttributes(context, responseStream.getContent(), dialResponseId);
                     responseStream.end(response);
                 })
                 .onFailure(error -> {

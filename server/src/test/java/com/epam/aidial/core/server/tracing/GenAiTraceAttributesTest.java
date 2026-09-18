@@ -120,7 +120,8 @@ class GenAiTraceAttributesTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"00-invalid", "00-00000000000000000000000000000000-2222222222222222-01"})
+    @ValueSource(strings = {"00-invalid", "00-00000000000000000000000000000000-2222222222222222-01",
+            "ff-11111111111111111111111111111111-2222222222222222-01"})
     void initializeOmitsInvalidTraceparent(String traceparent) {
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         MultiMap headers = MultiMap.caseInsensitiveMultiMap();
@@ -230,6 +231,7 @@ class GenAiTraceAttributesTest {
 
                 data: [DONE]
                 """);
+        context.setResponseBody(body);
 
         GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
 
@@ -436,6 +438,8 @@ class GenAiTraceAttributesTest {
     void setFailureStatusReportsFailedWhenNoUpstreamWasReached() {
         // a rate-limit rejection never reaches setResponseAttributes, so this is the only outcome it gets
         ProxyContext context = context(proxy(enabledSettings()));
+        GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
+                ProxyUtil.MAPPER.createObjectNode());
 
         GenAiTraceAttributes.setFailureStatus(context, 429);
 
@@ -586,6 +590,74 @@ class GenAiTraceAttributesTest {
             verify(span).setAttribute(longKey("gen_ai.usage.reasoning.output_tokens"), 4L);
             verify(span).setAttribute(longKey("dial.usage.total_tokens"), 30L);
         }
+    }
+
+    @Test
+    void setFailureStatusIgnoresRequestsWithoutGenAiOperation() {
+        // every endpoint shares respond(...) - a resource 404 is not a failed GenAI operation
+        ProxyContext context = context(proxy(enabledSettings()));
+
+        GenAiTraceAttributes.setFailureStatus(context, 404);
+
+        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.status"));
+    }
+
+    @Test
+    void initializeFallsThroughAnOversizedConversationHeader() {
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
+        headers.add("thread-id", "x".repeat(257));
+        headers.add("x-session-id", "session-1");
+        when(request.headers()).thenReturn(headers);
+        ProxyContext context = context(proxy(enabledSettings()), request);
+
+        GenAiTraceAttributes.initialize(context);
+
+        assertEquals("session-1", context.getTracingAttributes().get("gen_ai.conversation.id"));
+    }
+
+    @Test
+    void initializeReadsTraceparentOfUnknownVersion() {
+        // a higher version still carries the ids in the first three fields, and may append more
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(request.headers()).thenReturn(MultiMap.caseInsensitiveMultiMap());
+        when(request.getHeader("traceparent"))
+                .thenReturn("02-11111111111111111111111111111111-2222222222222222-01-what-comes-next");
+        ProxyContext context = context(proxy(enabledSettings()), request);
+
+        GenAiTraceAttributes.initialize(context);
+
+        assertEquals("2222222222222222", context.getTracingAttributes().get("dial.request.parent_span.id"));
+    }
+
+    @Test
+    void setResponseAttributesReusesTheTerminalResponsesFrameAlreadyExtracted() {
+        ProxyContext context = streamingContext();
+        // ExtractTerminalResponseFn kept this while streaming; the buffered frames are never scanned again
+        context.setAssembledStreamingResponse("{\"id\":\"resp-1\",\"model\":\"gpt-4\",\"status\":\"incomplete\"}");
+        Buffer body = Buffer.buffer("""
+                event: response.completed
+                data: {"type":"response.completed","response":{"id":"scanned","status":"completed"}}
+                """);
+
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body);
+
+        assertEquals("resp-1", context.getTracingAttributes().get("gen_ai.response.id"));
+        assertEquals("gpt-4", context.getTracingAttributes().get("gen_ai.response.model"));
+        assertEquals("incomplete", context.getTracingAttributes().get("gen_ai.response.status"));
+    }
+
+    @Test
+    void setResponseAttributesSkipsBodyTooLargeToTrace() {
+        // an embeddings body of vectors is not worth a parse of its own - the outcome still is
+        ProxyContext context = context(proxy(enabledSettings()));
+        Buffer body = Buffer.buffer("{\"model\":\"embed\",\"data\":\"" + "0".repeat(600 * 1024) + "\"}");
+
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_EMBEDDINGS, body);
+
+        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.model"));
+        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
+        assertEquals("openai_embeddings", context.getTracingAttributes().get("dial.api"));
     }
 
     private static ProxyContext context(Proxy proxy, HttpServerRequest request) {
