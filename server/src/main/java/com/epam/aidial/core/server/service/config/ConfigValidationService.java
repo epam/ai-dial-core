@@ -96,7 +96,7 @@ public class ConfigValidationService {
                 case AdminTranslatorManifest translatorManifest -> {
                     Translator translator = translatorManifest.spec();
                     List<ValidationWarning> warnings = new ArrayList<>();
-                    ConfigPostProcessor.validateTranslator(translator, warnings);
+                    ConfigPostProcessor.validateTranslator(id, translator, warnings);
                     if (!warnings.isEmpty()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }

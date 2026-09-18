@@ -1936,7 +1936,7 @@ public class ConfigResourceController implements Controller {
      */
     private void checkTranslator(Translator entity) {
         List<ValidationWarning> warnings = new ArrayList<>();
-        ConfigPostProcessor.validateTranslator(entity, warnings);
+        ConfigPostProcessor.validateTranslator(path, entity, warnings);
         if (warnings.isEmpty()) {
             return;
         }
