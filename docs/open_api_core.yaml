@@ -51,7 +51,7 @@ info:
     The value is a JSON object with the features of the deployment: the flags configured in `features` of the model or application in the DIAL Core config.
 
     DIAL Core always sets this header itself, so a value sent by a client is overwritten and never reaches the deployment.
-  version: 0.0.0
+  version: 0.48.0-rc.0
   license:
     name: Apache-2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
