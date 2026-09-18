@@ -3,21 +3,28 @@ package com.epam.aidial.core.server.mcp;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Flow;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -231,6 +238,150 @@ class RedirectSafeHttpClientTest {
         verify(delegate).shutdownNow();
     }
 
+    /**
+     * A followed redirect's body is never read, so a server that announces one and never sends it must not stall
+     * the request: the redirect is followed as soon as its headers are in.
+     */
+    @Test
+    void followsRedirectWithoutWaitingForItsBody() {
+        HttpClient delegate = mock(HttpClient.class);
+        HttpClient client = new RedirectSafeHttpClient(delegate);
+        HttpResponse<String> redirectResponse = mockResponse(307, headersOf("Location", "http://localhost/redirected"));
+        HttpResponse<String> finalResponse = mockResponse(200, noHeaders());
+        AtomicInteger calls = new AtomicInteger();
+        when(delegate.<String>sendAsync(any(), any())).thenAnswer(invocation -> {
+            if (calls.getAndIncrement() > 0) {
+                return CompletableFuture.completedFuture(finalResponse);
+            }
+            HttpResponse.BodySubscriber<String> subscriber = invocation.<HttpResponse.BodyHandler<String>>getArgument(1)
+                    .apply(mockResponseInfo(307, headersOf("Location", "http://localhost/redirected")));
+            subscriber.onSubscribe(new Flow.Subscription() {
+                @Override
+                public void request(long n) {
+                    // the announced body never arrives
+                }
+
+                @Override
+                public void cancel() {
+                    // nothing to release
+                }
+            });
+            return subscriber.getBody().thenApply(body -> redirectResponse);
+        });
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost/mcp")).GET().build();
+
+        HttpResponse<String> response = assertTimeoutPreemptively(Duration.ofSeconds(5),
+                () -> client.sendAsync(request, HttpResponse.BodyHandlers.ofString()).join());
+
+        assertEquals(200, response.statusCode());
+    }
+
+    /**
+     * Abandoning the body cancels the exchange, and a client may report that as a failure even though the redirect
+     * was received - that failure is self-inflicted, so the redirect is still followed.
+     */
+    @Test
+    void followsRedirectWhenAbandoningItsBodyFailsTheExchange() {
+        HttpClient delegate = mock(HttpClient.class);
+        HttpClient client = new RedirectSafeHttpClient(delegate);
+        HttpResponse<String> finalResponse = mockResponse(200, noHeaders());
+        AtomicInteger calls = new AtomicInteger();
+        when(delegate.<String>sendAsync(any(), any())).thenAnswer(invocation -> {
+            if (calls.getAndIncrement() > 0) {
+                return CompletableFuture.completedFuture(finalResponse);
+            }
+            HttpResponse.BodySubscriber<String> subscriber = invocation.<HttpResponse.BodyHandler<String>>getArgument(1)
+                    .apply(mockResponseInfo(307, headersOf("Location", "http://localhost/redirected")));
+            IOException reset = new IOException("Stream 1 cancelled");
+            subscriber.onSubscribe(new Flow.Subscription() {
+                @Override
+                public void request(long n) {
+                    // never delivers
+                }
+
+                @Override
+                public void cancel() {
+                    subscriber.onError(reset);
+                }
+            });
+            return CompletableFuture.failedFuture(reset);
+        });
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost/mcp")).GET().build();
+
+        assertEquals(200, client.sendAsync(request, HttpResponse.BodyHandlers.ofString()).join().statusCode());
+    }
+
+    /** A failure before any redirect arrived is a real failure and must reach the caller unchanged. */
+    @Test
+    void propagatesFailureWhenNoRedirectArrived() {
+        HttpClient delegate = mock(HttpClient.class);
+        HttpClient client = new RedirectSafeHttpClient(delegate);
+        IOException reset = new IOException("Connection reset");
+        when(delegate.<String>sendAsync(any(), any())).thenReturn(CompletableFuture.failedFuture(reset));
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost/mcp")).GET().build();
+
+        CompletionException e = assertThrows(CompletionException.class,
+                () -> client.sendAsync(request, HttpResponse.BodyHandlers.ofString()).join());
+        assertSame(reset, e.getCause());
+    }
+
+    /**
+     * A request's timeout bounds the request as a whole: a redirect gets only what is left of it, rather
+     * than restarting the clock on every hop.
+     */
+    @Test
+    void redirectGetsOnlyWhatIsLeftOfTheTimeout() {
+        HttpClient delegate = mock(HttpClient.class);
+        HttpClient client = new RedirectSafeHttpClient(delegate);
+        HttpResponse<String> redirectResponse = mockResponse(307, headersOf("Location", "http://localhost/redirected"));
+        HttpResponse<String> finalResponse = mockResponse(200, noHeaders());
+        stubSlowFirstResponse(delegate, Duration.ofMillis(300), redirectResponse, finalResponse);
+
+        Duration timeout = Duration.ofSeconds(10);
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost/mcp")).timeout(timeout).GET().build();
+
+        client.sendAsync(request, HttpResponse.BodyHandlers.ofString()).join();
+
+        Duration redirectTimeout = capturedRequests(delegate, 2).get(1).timeout().orElseThrow();
+        assertTrue(redirectTimeout.compareTo(timeout.minusMillis(300)) <= 0,
+                "the redirect restarted the timeout: " + redirectTimeout);
+    }
+
+    @Test
+    void failsOnceTheTimeoutIsSpentOnRedirects() {
+        HttpClient delegate = mock(HttpClient.class);
+        HttpClient client = new RedirectSafeHttpClient(delegate);
+        HttpResponse<String> redirectResponse = mockResponse(307, headersOf("Location", "http://localhost/redirected"));
+        stubSlowFirstResponse(delegate, Duration.ofMillis(300), redirectResponse, redirectResponse);
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost/mcp"))
+                .timeout(Duration.ofMillis(200)).GET().build();
+
+        CompletionException e = assertThrows(CompletionException.class,
+                () -> client.sendAsync(request, HttpResponse.BodyHandlers.ofString()).join());
+
+        assertInstanceOf(HttpTimeoutException.class, e.getCause());
+        capturedRequests(delegate, 1);
+    }
+
+    @Test
+    void redirectOfRequestWithoutTimeoutStaysWithoutTimeout() {
+        HttpClient delegate = mock(HttpClient.class);
+        HttpClient client = new RedirectSafeHttpClient(delegate);
+        HttpResponse<String> redirectResponse = mockResponse(307, headersOf("Location", "http://localhost/redirected"));
+        HttpResponse<String> finalResponse = mockResponse(200, noHeaders());
+        stubResponses(delegate, redirectResponse, finalResponse);
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost/mcp")).GET().build();
+
+        client.sendAsync(request, HttpResponse.BodyHandlers.ofString()).join();
+
+        assertEquals(Optional.empty(), capturedRequests(delegate, 2).get(1).timeout());
+    }
+
     @SuppressWarnings("unchecked")
     private static HttpResponse<String> mockResponse(int statusCode, HttpHeaders headers) {
         HttpResponse<String> response = mock(HttpResponse.class);
@@ -264,6 +415,19 @@ class RedirectSafeHttpClientTest {
         when(delegate.<String>sendAsync(any(), any())).thenAnswer(invocation -> {
             int index = Math.min(callIndex.getAndIncrement(), responses.length - 1);
             return CompletableFuture.completedFuture(responses[index]);
+        });
+    }
+
+    /** Like {@link #stubResponses}, but the first response only arrives after {@code delay}. */
+    private static void stubSlowFirstResponse(HttpClient delegate, Duration delay,
+                                              HttpResponse<String> first, HttpResponse<String> rest) {
+        AtomicInteger callIndex = new AtomicInteger();
+        when(delegate.<String>sendAsync(any(), any())).thenAnswer(invocation -> {
+            if (callIndex.getAndIncrement() > 0) {
+                return CompletableFuture.completedFuture(rest);
+            }
+            Thread.sleep(delay.toMillis());
+            return CompletableFuture.completedFuture(first);
         });
     }
 

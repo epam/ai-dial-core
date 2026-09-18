@@ -18,6 +18,7 @@ import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.credentials.service.TokenService;
+import com.epam.aidial.core.credentials.service.metadata.AuthorizationChallengeProvider;
 import com.epam.aidial.core.credentials.service.metadata.AuthorizationServerMetadataService;
 import com.epam.aidial.core.credentials.service.metadata.HttpHeadersHandler;
 import com.epam.aidial.core.credentials.service.metadata.ProtectedResourceMetadataService;
@@ -42,6 +43,7 @@ import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.AnalyticsSettings;
 import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
+import com.epam.aidial.core.server.mcp.McpAuthorizationChallengeProvider;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
@@ -173,6 +175,7 @@ public class AiDial {
     private ResourceService resourceService;
     private ComplexResourceSweepService complexResourceSweepService;
     private McpHttpClientBuilder mcpHttpClientBuilder;
+    private McpHttpClientBuilder discoveryMcpHttpClientBuilder;
     private EncryptionService encryptionService;
 
     private LongSupplier clock = System::currentTimeMillis;
@@ -238,7 +241,13 @@ public class AiDial {
             ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient(httpProxySelector);
             List<String> allowedRedirectUris = getAllowedRedirectUris();
             TokenService tokenService = new TokenService(resourceAuthorizationClient, allowedRedirectUris);
-            ResourceRegistrationService resourceRegistrationService = getResourceRegistrationService(resourceAuthorizationClient, allowedRedirectUris);
+            McpHttpClientBuilder.Settings mcpHttpClientBuilderSettings = Json.decodeValue(
+                    settings("mcpHttpClient").toBuffer(), McpHttpClientBuilder.Settings.class);
+            // Discovery reaches MCP servers the way its other OAuth calls reach authorization servers:
+            // through the outbound proxy, which the shared MCP client used for tool calls does not apply
+            discoveryMcpHttpClientBuilder = new McpHttpClientBuilder(mcpHttpClientBuilderSettings, httpProxySelector);
+            ResourceRegistrationService resourceRegistrationService = getResourceRegistrationService(resourceAuthorizationClient,
+                    new McpAuthorizationChallengeProvider(discoveryMcpHttpClientBuilder), allowedRedirectUris);
             ResourceCredentialsService resourceCredentialsService = getResourceCredentialsService(
                     tokenRefreshStrategyFactory, credentialEncryptionService, timeProvider, tokenService);
             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService = new ResourceAuthSettingsEncryptionService(
@@ -280,8 +289,6 @@ public class AiDial {
                     encryptionService, resourceAuthSettingsEncryptionService);
             ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
                     resourceAuthSettingsEncryptionService, resourceCredentialsService, catalogSchemaService);
-            McpHttpClientBuilder.Settings mcpHttpClientBuilderSettings = Json.decodeValue(
-                    settings("mcpHttpClient").toBuffer(), McpHttpClientBuilder.Settings.class);
             mcpHttpClientBuilder = new McpHttpClientBuilder(mcpHttpClientBuilderSettings);
             SecuredResourceService securedResourceService = new SecuredResourceService(resourceCredentialsService, mcpHttpClientBuilder);
             ToolSetRepairService toolSetRepairService = new ToolSetRepairService(resourceService,
@@ -405,11 +412,12 @@ public class AiDial {
     }
 
     private static ResourceRegistrationService getResourceRegistrationService(ResourceAuthorizationClient resourceAuthorizationClient,
+                                                                                AuthorizationChallengeProvider authorizationChallengeProvider,
                                                                                 List<String> allowedRedirectUris) {
         ProtectedResourceMetadataValidator protectedResourceMetadataValidator = new ProtectedResourceMetadataValidator();
         HttpHeadersHandler httpHeadersHandler = new HttpHeadersHandler();
         ProtectedResourceMetadataService protectedResourceMetadataService = new ProtectedResourceMetadataService(
-                resourceAuthorizationClient, protectedResourceMetadataValidator, httpHeadersHandler);
+                resourceAuthorizationClient, protectedResourceMetadataValidator, httpHeadersHandler, authorizationChallengeProvider);
 
         AuthorizationServerMetadataValidator authorizationServerMetadataValidator = new AuthorizationServerMetadataValidator();
         AuthorizationServerMetadataService authorizationServerMetadataService = new AuthorizationServerMetadataService(
@@ -469,6 +477,7 @@ public class AiDial {
             close(resourceService);
             close(complexResourceSweepService);
             close(mcpHttpClientBuilder);
+            close(discoveryMcpHttpClientBuilder);
             // Unhook from the global composite before vertx.close() so its shutdown metrics
             // stop flowing here; close the registries only after vertx has flushed its own.
             if (prometheusRegistry != null) {
