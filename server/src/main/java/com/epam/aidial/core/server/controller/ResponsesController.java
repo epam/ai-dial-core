@@ -22,10 +22,12 @@ import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
+import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
 import com.epam.aidial.core.server.function.ExtractTerminalResponseFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
+import com.epam.aidial.core.server.function.enhancement.ResolveEncryptedContentAffinityFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
@@ -33,6 +35,7 @@ import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
+import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
@@ -71,6 +74,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
+                new ResolveEncryptedContentAffinityFn(proxy, context),
                 new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_RESPONSES),
                 new CollectDeploymentsFn(proxy, context));
     }
@@ -241,6 +245,9 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         Deployment deployment = context.getDeployment();
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
+        if (upstreamId == null) {
+            upstreamId = request.getEncryptedUpstreamId();
+        }
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
                 .get(deployment, context.getCacheBreakpointContext(),
                         dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES), upstreamId);
@@ -315,9 +322,10 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         ExtractTerminalResponseFn extractFn = new ExtractTerminalResponseFn(proxy, context);
         ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context);
+        EncryptedContentWrapFn wrapFn = new EncryptedContentWrapFn(proxy, context);
         BufferingReadStream responseStream = createResponseStream(proxyResponse, () -> {
             CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
-            return new ResponsesSseListener(List.of(attachmentsFn, replaceIdFn, extractFn));
+            return new ResponsesSseListener(List.of(wrapFn, attachmentsFn, replaceIdFn, extractFn));
         });
 
         HttpServerResponse response = context.getResponse();
@@ -392,12 +400,15 @@ public class ResponsesController extends BaseDeploymentPostController {
         }
 
         String upstreamId = idNode.asText();
+        Upstream upstream = context.getUpstreamRoute().get();
+        if (EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
+            EncryptedContentAffinityUtil.wrapOutputArray(object.path("output"), upstream.getId());
+        }
         if (!context.isStoreResponse()) {
             String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
             object.put("id", dialId);
             return Future.succeededFuture(Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object))));
         }
-        Upstream upstream = context.getUpstreamRoute().get();
         ResponseMapping mapping = ResponseMapping.builder()
                 .upstreamResponseId(upstreamId)
                 .upstreamKey(upstream.getId())
