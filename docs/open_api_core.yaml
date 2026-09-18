@@ -16195,6 +16195,8 @@ components:
           type: array
           items:
             type: integer
+        rateLimitSchedule:
+          $ref: "#/components/schemas/RateLimitSchedule"
     HealthResponse:
       type: object
       properties:
