@@ -214,7 +214,7 @@ public class ConfigApplyService {
 
     private EntityResult applyTranslator(Translator translator, String id, ParsedName parsed, List<EntityChange> pending) {
         List<ValidationWarning> warnings = new ArrayList<>();
-        ConfigPostProcessor.validateTranslator(translator, warnings);
+        ConfigPostProcessor.validateTranslator(id, translator, warnings);
         if (!warnings.isEmpty()) {
             return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
         }
