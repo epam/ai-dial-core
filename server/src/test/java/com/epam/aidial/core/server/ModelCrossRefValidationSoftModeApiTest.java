@@ -123,7 +123,12 @@ public class ModelCrossRefValidationSoftModeApiTest extends ResourceBaseTest {
         Response put = send(HttpMethod.PUT, "/v1/models/platform/soft-unserved-interface", null, body,
                 "authorization", "admin", "If-None-Match", "*");
         verify(put, 422);
+        assertTrue(put.body().contains("interfaces.openaiChatCompletions"),
+                () -> "Expected the offending field in the body: " + put.body());
+        assertTrue(put.body().contains("declares no base_url"),
+                () -> "Expected the rebuild's own message: " + put.body());
 
+        // the blob must never have been written — otherwise it poisons the next rebuild
         verify(send(HttpMethod.GET, "/v1/models/platform/soft-unserved-interface", null, "",
                 "authorization", "admin"), 404);
     }
@@ -140,6 +145,8 @@ public class ModelCrossRefValidationSoftModeApiTest extends ResourceBaseTest {
         Response put = send(HttpMethod.PUT, "/v1/models/platform/soft-bad-pricing", null, body,
                 "authorization", "admin", "If-None-Match", "*");
         verify(put, 422);
+        verify(send(HttpMethod.GET, "/v1/models/platform/soft-bad-pricing", null, "",
+                "authorization", "admin"), 404);
     }
 
     private JsonNode waitForGetMatching(String url, Predicate<JsonNode> predicate) {
