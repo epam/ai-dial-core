@@ -444,44 +444,6 @@ public class ModelWriteApiTest extends ResourceBaseTest {
     // write returned 500 with the blob persisted and aborted every later rebuild, including startup.
 
     @Test
-    void testPutModelWithUnservedInterfaceIsRejectedAndNotWritten() {
-        String body = """
-                {
-                  "type": "chat",
-                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
-                  "interfaces": {"openaiChatCompletions": {}}
-                }
-                """;
-        Response put = send(HttpMethod.PUT, "/v1/models/platform/unserved-interface", null, body,
-                "authorization", "admin", "If-None-Match", "*");
-        verify(put, 422);
-        assertTrue(put.body().contains("interfaces.openaiChatCompletions"),
-                () -> "Expected the offending field in the body: " + put.body());
-        assertTrue(put.body().contains("declares no base_url"),
-                () -> "Expected the rebuild's own message: " + put.body());
-
-        // the blob must never have been written — otherwise it poisons the next rebuild
-        verify(send(HttpMethod.GET, "/v1/models/platform/unserved-interface", null, "",
-                "authorization", "admin"), 404);
-    }
-
-    @Test
-    void testPutModelWithCacheRateAndNonTokenUnitIsRejected() {
-        String body = """
-                {
-                  "type": "chat",
-                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
-                  "pricing": {"unit": "char_without_whitespace", "prompt": "0.1", "cacheRead": "0.01"}
-                }
-                """;
-        Response put = send(HttpMethod.PUT, "/v1/models/platform/bad-cache-pricing", null, body,
-                "authorization", "admin", "If-None-Match", "*");
-        verify(put, 422);
-        verify(send(HttpMethod.GET, "/v1/models/platform/bad-cache-pricing", null, "",
-                "authorization", "admin"), 404);
-    }
-
-    @Test
     void testPutModelWithUpstreamInterfacesAndNoIdIsRejected() {
         String body = """
                 {

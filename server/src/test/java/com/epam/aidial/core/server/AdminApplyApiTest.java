@@ -175,6 +175,8 @@ public class AdminApplyApiTest extends ResourceBaseTest {
     @Test
     @SneakyThrows
     void testApplyRejectsModelWithUnservedInterface() {
+        // Hard mode rejects the whole batch with a 422 envelope; the soft-mode twin
+        // testApplySoftValidationStillRejectsUnservedInterface pins the 200-envelope shape.
         String body = """
                 {
                   "manifests": [
@@ -1014,6 +1016,8 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                       ]
                     }
                     """;
+            // Soft mode reports the failure in the result row with a 200 envelope; the hard-mode
+            // twin testApplyRejectsModelWithUnservedInterface pins the 422 envelope.
             Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
             JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
             assertEquals("FAILED", parsed.get("results").get(0).get("status").asText(),

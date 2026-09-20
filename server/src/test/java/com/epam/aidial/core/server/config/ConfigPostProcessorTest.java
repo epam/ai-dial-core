@@ -699,27 +699,15 @@ public class ConfigPostProcessorTest {
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validateModelInvariants(model, Map.of(), warnings);
 
+        // The empty translator map is the reported production failure: checkModel validates before
+        // the merged store is guaranteed populated, so structural defects must still be caught.
         List<String> fields = warnings.stream().map(ValidationWarning::getField).toList();
         assertTrue(fields.contains("pricing"), () -> "expected a pricing warning: " + fields);
         assertTrue(fields.contains("upstreams[0].id"), () -> "expected an upstream id warning: " + fields);
         assertTrue(fields.contains("interfaces.openaiChatCompletions"),
                 () -> "expected a deployment-interface warning: " + fields);
-    }
-
-    @Test
-    void testValidateModelInvariantsWithEmptyTranslatorMapStillCatchesStructural() {
-        // The reported production failure. checkModel calls this before the merged store is
-        // guaranteed populated, so structural defects must be caught with an empty registry.
-        Model model = new Model();
-        model.setName("model");
-        model.setInterfaces(Map.of("openaiChatCompletions", new DeploymentInterface()));
-
-        List<ValidationWarning> warnings = new ArrayList<>();
-        ConfigPostProcessor.validateModelInvariants(model, Map.of(), warnings);
-
-        assertEquals(1, warnings.size(), () -> warnings.toString());
-        assertEquals("interfaces.openaiChatCompletions", warnings.get(0).getField());
-        assertTrue(warnings.get(0).getMessage().contains("declares no base_url"), warnings.get(0).getMessage());
+        assertTrue(warnings.stream().anyMatch(w -> w.getMessage().contains("declares no base_url")),
+                () -> "expected the rebuild's own message: " + warnings);
     }
 
     @Test

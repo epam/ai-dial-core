@@ -1903,20 +1903,14 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * Collects validation warnings for Model writes. Everything
-     * {@link ConfigPostProcessor#validateModelInvariants} reports aborts with HTTP 422, because the
-     * rebuild rejects it unconditionally — admitting it here would write a blob that the next reload
-     * discards, and under {@code onInvalidEntity=abort} would stop the pod from starting.
-     * Cross-reference warnings alone may proceed in soft mode: a later write of the missing
-     * interceptor repairs them, and the next merged-config rebuild records the entity in
-     * {@link MergedConfigStore#getInvalidEntities()} meanwhile.
+     * Collects validation warnings for Model writes. Rebuild invariants abort with HTTP 422 even in
+     * soft mode; cross-reference warnings alone may proceed, recorded in
+     * {@link MergedConfigStore#getInvalidEntities()} until a later write repairs them.
+     *
+     * @see ConfigPostProcessor#validateModelInvariants
      */
     private void checkModel(Model entity) {
         Config snapshot = mergedConfigStore.get();
-        // A named translator with no registry entry resolves to null and is deliberately not a
-        // warning, so a partial map yields fewer warnings, never spurious ones — safe to validate
-        // even before the store is populated, which keeps the structural checks (notably "interface
-        // declares no base_url") live during the startup window.
         Map<String, Translator> translators = snapshot != null ? snapshot.getTranslators() : Map.of();
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validateModelInvariants(entity, translators, warnings);

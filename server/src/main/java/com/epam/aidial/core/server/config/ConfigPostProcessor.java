@@ -359,25 +359,19 @@ public final class ConfigPostProcessor {
 
     /**
      * The checks every model must pass to survive a merged-config rebuild — the set
-     * {@link #processModels} runs unconditionally in both abort and skip mode. Every
-     * pre-write surface calls this exact method, so a write can never be accepted that the
-     * next rebuild would reject; hand-copying a subset at each call site is what let a model
-     * with an unserved interface reach the blob store and abort every later rebuild.
+     * {@link #processModels} runs unconditionally. Every pre-write surface calls this exact
+     * method, so a write can never be accepted that the next rebuild would reject; hand-copying
+     * a subset at each call site is what let a model with an unserved interface reach the blob
+     * store and abort every later rebuild. Cross-references are deliberately not in the set —
+     * the rebuild tolerates them, so a write surface may admit them under soft validation.
      *
-     * <p>Cross-references are deliberately NOT part of the set: the rebuild tolerates them
-     * (abort mode does not run them at all, skip mode records and later resurrects the model
-     * via {@code MergedConfigStore#resurrectInvalidModels}), so a write surface may admit
-     * them under soft validation.
+     * <p>{@code translators} may be a partial view (the live snapshot, a batch scratch): a name
+     * with no entry is deliberately not a warning, so a smaller map yields fewer warnings, never
+     * spurious ones.
      *
-     * <p>{@code translators} may be a partial view — the live snapshot or a batch scratch
-     * rather than the fully merged config. That is safe: a named translator with no entry
-     * resolves to {@code null} and is deliberately not a warning, so a smaller map yields
-     * fewer warnings, never spurious ones.
-     *
-     * <p>Note this already covers {@code overridePaths} for models —
-     * {@link #validateDeploymentInterfaces} runs the per-entry check on every interface — so
-     * callers must not additionally call {@link #validateOverridePaths(Deployment, List)} or
-     * every override-path warning is reported twice.
+     * <p>Covers {@code overridePaths} already — {@link #validateDeploymentInterfaces} runs the
+     * per-entry check — so callers must not also call
+     * {@link #validateOverridePaths(Deployment, List)} or every such warning is reported twice.
      */
     public static void validateModelInvariants(Model model, Map<String, Translator> translators,
                                                List<ValidationWarning> warnings) {

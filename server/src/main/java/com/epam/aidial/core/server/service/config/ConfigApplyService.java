@@ -279,9 +279,8 @@ public class ConfigApplyService {
 
     private EntityResult applyModel(Model model, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {
         List<ValidationWarning> warnings = new ArrayList<>();
+        // Never soft-tolerable — see ConfigPostProcessor#validateModelInvariants.
         ConfigPostProcessor.validateModelInvariants(model, scratch.getTranslators(), warnings);
-        // Everything the rebuild rejects unconditionally — never soft-tolerable, or the blob written
-        // below is one the next reload discards. Only cross-references may pass under soft validation.
         boolean hardFailure = !warnings.isEmpty();
         ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
         UpstreamExtraDataMerger.validateNoOverlap(model);

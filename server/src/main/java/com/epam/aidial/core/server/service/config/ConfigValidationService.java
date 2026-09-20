@@ -70,8 +70,7 @@ public class ConfigValidationService {
                     ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
                     UpstreamExtraDataMerger.validateNoOverlap(model);
                     // Rebuild invariants stay fatal in soft mode, matching ConfigApplyService#applyModel — otherwise
-                    // precheck greenlights a batch whose real-apply phase refuses the model mid-write. Only
-                    // cross-references are soft-tolerable: they are the one class the rebuild itself tolerates.
+                    // precheck greenlights a batch whose real-apply phase refuses the model mid-write.
                     if (!warnings.isEmpty() && (hardFailure || !softValidation)) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
