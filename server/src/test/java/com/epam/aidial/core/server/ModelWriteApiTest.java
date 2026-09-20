@@ -437,4 +437,104 @@ public class ModelWriteApiTest extends ResourceBaseTest {
                 "authorization", "admin");
         verify(get, 404);
     }
+
+    // --- pre-write rebuild-invariant validation ---------------------------------------------------
+    // checkModel now runs the same set the rebuild runs (ConfigPostProcessor#validateModelInvariants),
+    // so a model the next rebuild would reject can no longer reach the blob store. Before this, such a
+    // write returned 500 with the blob persisted and aborted every later rebuild, including startup.
+
+    @Test
+    void testPutModelWithUnservedInterfaceIsRejectedAndNotWritten() {
+        String body = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "interfaces": {"openaiChatCompletions": {}}
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/unserved-interface", null, body,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 422);
+        assertTrue(put.body().contains("interfaces.openaiChatCompletions"),
+                () -> "Expected the offending field in the body: " + put.body());
+        assertTrue(put.body().contains("declares no base_url"),
+                () -> "Expected the rebuild's own message: " + put.body());
+
+        // the blob must never have been written — otherwise it poisons the next rebuild
+        verify(send(HttpMethod.GET, "/v1/models/platform/unserved-interface", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    void testPutModelWithCacheRateAndNonTokenUnitIsRejected() {
+        String body = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "pricing": {"unit": "char_without_whitespace", "prompt": "0.1", "cacheRead": "0.01"}
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/bad-cache-pricing", null, body,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 422);
+        verify(send(HttpMethod.GET, "/v1/models/platform/bad-cache-pricing", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    void testPutModelWithUpstreamInterfacesAndNoIdIsRejected() {
+        String body = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "upstreams": [
+                    {"interfaces": {"openaiChatCompletions": {"endpoint": "http://localhost:7001/v1/chat"}}}
+                  ]
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/upstream-no-id", null, body,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 422);
+        verify(send(HttpMethod.GET, "/v1/models/platform/upstream-no-id", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    void testPutModelWithTranslatorButNoTranslatorModeIsRejected() {
+        String body = """
+                {
+                  "type": "chat",
+                  "baseUrl": "http://localhost:7001",
+                  "interfaces": {
+                    "anthropicMessages": {"translator": {"out": "openaiChatCompletions", "baseUrl": "http://translator"}}
+                  }
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/translator-no-mode", null, body,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 422);
+        assertTrue(put.body().contains("requires mode 'translator'"),
+                () -> "Expected the mode message: " + put.body());
+        verify(send(HttpMethod.GET, "/v1/models/platform/translator-no-mode", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    void testPutModelNamingAnUnregisteredTranslatorIsAccepted() {
+        // Guards against over-tightening: a name with no registry entry leaves the interface
+        // unserved (503 at request time), not the model invalid — the rebuild tolerates it, so the
+        // write surface must too. Registering the translator later serves it with no edit here.
+        String body = """
+                {
+                  "type": "chat",
+                  "baseUrl": "http://localhost:7001",
+                  "interfaces": {
+                    "anthropicMessages": {"mode": "translator", "translator": "not-registered-yet"}
+                  }
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/unregistered-translator", null, body,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 200);
+    }
 }

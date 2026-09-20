@@ -1903,15 +1903,24 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * Collects override-path and cross-reference warnings for Model writes. Override-path errors
-     * always abort with HTTP 422; cross-reference warnings alone may proceed in soft mode, with the
-     * next merged-config rebuild recording the entity in {@link MergedConfigStore#getInvalidEntities()}.
+     * Collects validation warnings for Model writes. Everything
+     * {@link ConfigPostProcessor#validateModelInvariants} reports aborts with HTTP 422, because the
+     * rebuild rejects it unconditionally — admitting it here would write a blob that the next reload
+     * discards, and under {@code onInvalidEntity=abort} would stop the pod from starting.
+     * Cross-reference warnings alone may proceed in soft mode: a later write of the missing
+     * interceptor repairs them, and the next merged-config rebuild records the entity in
+     * {@link MergedConfigStore#getInvalidEntities()} meanwhile.
      */
     private void checkModel(Model entity) {
-        List<ValidationWarning> warnings = new ArrayList<>();
-        ConfigPostProcessor.validateOverridePaths(entity, warnings);
-        boolean invalidOverridePaths = !warnings.isEmpty();
         Config snapshot = mergedConfigStore.get();
+        // A named translator with no registry entry resolves to null and is deliberately not a
+        // warning, so a partial map yields fewer warnings, never spurious ones — safe to validate
+        // even before the store is populated, which keeps the structural checks (notably "interface
+        // declares no base_url") live during the startup window.
+        Map<String, Translator> translators = snapshot != null ? snapshot.getTranslators() : Map.of();
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateModelInvariants(entity, translators, warnings);
+        boolean hardFailure = !warnings.isEmpty();
         if (snapshot != null) {
             ConfigPostProcessor.validateCrossReferences(entity, snapshot, warnings);
             UpstreamExtraDataMerger.validateNoOverlap(entity);
@@ -1919,7 +1928,7 @@ public class ConfigResourceController implements Controller {
         if (warnings.isEmpty()) {
             return;
         }
-        if (softValidation && !invalidOverridePaths) {
+        if (softValidation && !hardFailure) {
             log.warn("Soft-mode cross-ref warnings for model '{}': {}", path, warnings);
             return;
         }

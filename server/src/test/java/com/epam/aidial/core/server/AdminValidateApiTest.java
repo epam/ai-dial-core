@@ -182,6 +182,73 @@ public class AdminValidateApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testValidateRejectsModelWithUnservedInterface() {
+        // Precheck must agree with ConfigApplyService#applyModel, or it greenlights a batch whose
+        // real-apply phase refuses the model mid-write, after earlier blobs have landed.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/validate-unserved-interface",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "interfaces": {"openaiChatCompletions": {}}
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("failed").asInt());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateRejectsModelWhoseInBatchTranslatorDisagrees() {
+        // Proves the in-batch translator is actually consulted, not merely tolerated: the model
+        // attaches it to anthropicMessages while the translator converts from openaiResponses.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/validate-translator-mismatch",
+                      "spec": {
+                        "type": "chat",
+                        "baseUrl": "http://localhost:7001",
+                        "interfaces": {
+                          "openaiChatCompletions": {},
+                          "anthropicMessages": {"mode": "translator", "translator": "mismatch-translator"}
+                        }
+                      }
+                    },
+                    {
+                      "kind": "Translator",
+                      "name": "translators/platform/mismatch-translator",
+                      "spec": {
+                        "in": "openaiResponses",
+                        "out": "openaiChatCompletions",
+                        "baseUrl": "http://localhost:7001/translate"
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertTrue(response.body().contains("Translator converts from"),
+                () -> "Expected the translator mismatch message: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt());
+    }
+
+    @Test
+    @SneakyThrows
     void testV04PrecheckTrueMixedBatch422Atomic() {
         String body = """
                 {
@@ -876,9 +943,12 @@ public class AdminValidateApiTest extends ResourceBaseTest {
 
         @Test
         @SneakyThrows
-        void testV19SoftValidationAdmitsCacheRateWithoutTokenUnit() {
-            // Same admission logic as testV17SoftValidationModePerEntityValid: softValidation
-            // downgrades the pricing violation to "valid" at validate-time too.
+        void testV19SoftValidationStillRejectsCacheRateWithoutTokenUnit() {
+            // Contrast with testV17SoftValidationModePerEntityValid. Soft mode admits only what the
+            // rebuild itself tolerates — cross-references, which a later write repairs. Pricing is a
+            // rebuild invariant (processModels validates it unconditionally in both abort and skip
+            // mode), so admitting it here would greenlight a blob the next reload discards, and under
+            // onInvalidEntity=abort would stop the pod from starting.
             String body = """
                     {
                       "precheck": false,
@@ -902,11 +972,10 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                     """;
             Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body,
                     "authorization", "admin");
-            verify(response, 200);
             JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
-            assertEquals(1, parsed.get("valid").asInt(), () -> "Body: " + response.body());
-            assertEquals(0, parsed.get("failed").asInt());
-            assertEquals("VALID", parsed.get("results").get(0).get("status").asText());
+            assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+            assertEquals(1, parsed.get("failed").asInt());
+            assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
             verify(send(HttpMethod.GET, "/v1/models/platform/validate-soft-cache-pricing", null, "",
                     "authorization", "admin"), 404);
         }

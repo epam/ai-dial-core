@@ -65,15 +65,14 @@ public class ConfigValidationService {
                 case AdminModelManifest modelManifest -> {
                     Model model = modelManifest.spec();
                     List<ValidationWarning> warnings = new ArrayList<>();
-                    ConfigPostProcessor.validateOverridePaths(model, warnings);
-                    boolean invalidOverridePaths = !warnings.isEmpty();
-                    ConfigPostProcessor.validatePricing(model, warnings);
-                    ConfigPostProcessor.validateUpstreamInterfaces(model, warnings);
+                    ConfigPostProcessor.validateModelInvariants(model, scratch.getTranslators(), warnings);
+                    boolean hardFailure = !warnings.isEmpty();
                     ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
                     UpstreamExtraDataMerger.validateNoOverlap(model);
-                    // Override paths stay fatal in soft mode, matching ConfigApplyService#applyModel — otherwise
-                    // precheck greenlights a batch whose real-apply phase refuses the model mid-write.
-                    if (!warnings.isEmpty() && (invalidOverridePaths || !softValidation)) {
+                    // Rebuild invariants stay fatal in soft mode, matching ConfigApplyService#applyModel — otherwise
+                    // precheck greenlights a batch whose real-apply phase refuses the model mid-write. Only
+                    // cross-references are soft-tolerable: they are the one class the rebuild itself tolerates.
+                    if (!warnings.isEmpty() && (hardFailure || !softValidation)) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
                     String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(scratch, ResourceTypes.MODEL, parsed.name());
