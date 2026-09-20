@@ -209,10 +209,6 @@ An entity whose blob body is not valid JSON is always skipped per-entity, in eve
 the `config.files` file itself are validated when that file is loaded, before any mode applies: a violation
 there fails the load, and at startup that fails the pod regardless of `config.onInvalidEntity`.
 
-> [!NOTE]
-> As a static setting, this is `config.onInvalidEntity` — as an environment variable,
-> `aidial.config.onInvalidEntity`. `aidial.onInvalidEntity` sets an unrelated top-level key and is ignored.
-
 </details>
 
 <details> 
