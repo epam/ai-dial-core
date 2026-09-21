@@ -1,10 +1,7 @@
 package com.epam.aidial.core.server;
 
-import com.epam.aidial.core.storage.resource.LegacyStorageLayout;
-import com.epam.aidial.core.storage.resource.StorageLayouts;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -30,11 +27,6 @@ public class TenantRootedLayoutApiTest extends ResourceBaseTest {
         return new JsonObject().put("storage", new JsonObject().put("layout", new JsonObject()
                 .put("tenantRooted", true)
                 .put("defaultTenant", TENANT)));
-    }
-
-    @AfterEach
-    public void restoreLegacyLayout() {
-        StorageLayouts.useLayout(LegacyStorageLayout.INSTANCE);
     }
 
     @Test
