@@ -1,0 +1,273 @@
+{
+  "name": "access-seed",
+  "description": "Leaves behind the state the access matrix asks about. Unlike the replay corpus these scenarios deliberately do not clean up: a revoked share or a deleted resource would make every cell answer 'denied', and a matrix of denials would compare equal under both layouts while proving nothing.",
+  "steps": [
+    {
+      "name": "create-own",
+      "method": "PUT",
+      "path": "/v1/conversations/${bucket1}/access/own",
+      "body": {
+        "id": "own",
+        "name": "own",
+        "model": {
+          "id": "model_id"
+        },
+        "prompt": "p",
+        "temperature": 1,
+        "folderId": "access",
+        "messages": [],
+        "assistantModelId": "a",
+        "lastActivityDate": 1
+      }
+    },
+    {
+      "name": "create-to-share",
+      "method": "PUT",
+      "path": "/v1/conversations/${bucket1}/access/shared",
+      "body": {
+        "id": "shared",
+        "name": "shared",
+        "model": {
+          "id": "model_id"
+        },
+        "prompt": "p",
+        "temperature": 1,
+        "folderId": "access",
+        "messages": [],
+        "assistantModelId": "a",
+        "lastActivityDate": 2
+      }
+    },
+    {
+      "name": "share-read",
+      "method": "POST",
+      "path": "/v1/ops/resource/share/create",
+      "body": {
+        "invitationType": "link",
+        "resources": [
+          {
+            "url": "conversations/${bucket1}/access/shared"
+          }
+        ]
+      },
+      "capture": {
+        "readInvitationId": {
+          "at": "/invitationLink",
+          "extract": "/v1/invitations/(.+)$"
+        }
+      }
+    },
+    {
+      "name": "accept-read-share",
+      "method": "GET",
+      "path": "/v1/invitations/${readInvitationId}",
+      "query": "accept=true",
+      "headers": {
+        "api-key": "proxyKey2"
+      }
+    },
+    {
+      "name": "create-to-share-write",
+      "method": "PUT",
+      "path": "/v1/conversations/${bucket1}/access/writable",
+      "body": {
+        "id": "writable",
+        "name": "writable",
+        "model": {
+          "id": "model_id"
+        },
+        "prompt": "p",
+        "temperature": 1,
+        "folderId": "access",
+        "messages": [],
+        "assistantModelId": "a",
+        "lastActivityDate": 3
+      }
+    },
+    {
+      "name": "share-write",
+      "method": "POST",
+      "path": "/v1/ops/resource/share/create",
+      "body": {
+        "invitationType": "link",
+        "resources": [
+          {
+            "url": "conversations/${bucket1}/access/writable",
+            "permissions": [
+              "READ",
+              "WRITE"
+            ]
+          }
+        ]
+      },
+      "capture": {
+        "writeInvitationId": {
+          "at": "/invitationLink",
+          "extract": "/v1/invitations/(.+)$"
+        }
+      }
+    },
+    {
+      "name": "accept-write-share",
+      "method": "GET",
+      "path": "/v1/invitations/${writeInvitationId}",
+      "query": "accept=true",
+      "headers": {
+        "api-key": "proxyKey2"
+      }
+    },
+    {
+      "name": "create-application",
+      "method": "PUT",
+      "path": "/v1/applications/${bucket1}/access/app",
+      "body": {
+        "display_name": "app",
+        "display_version": "1.0",
+        "endpoint": "http://localhost:9999/completions",
+        "description": "access matrix"
+      }
+    },
+    {
+      "name": "create-to-publish",
+      "method": "PUT",
+      "path": "/v1/conversations/${bucket1}/access/publishable",
+      "body": {
+        "id": "publishable",
+        "name": "publishable",
+        "model": {
+          "id": "model_id"
+        },
+        "prompt": "p",
+        "temperature": 1,
+        "folderId": "access",
+        "messages": [],
+        "assistantModelId": "a",
+        "lastActivityDate": 4
+      }
+    },
+    {
+      "name": "publish",
+      "method": "POST",
+      "path": "/v1/ops/publication/create",
+      "body": {
+        "name": "access matrix publication",
+        "targetFolder": "public/access/",
+        "resources": [
+          {
+            "action": "ADD",
+            "sourceUrl": "conversations/${bucket1}/access/publishable",
+            "targetUrl": "conversations/public/access/published"
+          }
+        ],
+        "rules": [
+          {
+            "source": "roles",
+            "function": "TRUE"
+          }
+        ]
+      },
+      "capture": {
+        "approvedPublicationUrl": {
+          "at": "/url"
+        }
+      }
+    },
+    {
+      "name": "approve",
+      "method": "POST",
+      "path": "/v1/ops/publication/approve",
+      "body": {
+        "url": "${approvedPublicationUrl}"
+      },
+      "headers": {
+        "authorization": "admin"
+      }
+    },
+    {
+      "name": "create-to-review",
+      "method": "PUT",
+      "path": "/v1/conversations/${bucket1}/access/reviewable",
+      "body": {
+        "id": "reviewable",
+        "name": "reviewable",
+        "model": {
+          "id": "model_id"
+        },
+        "prompt": "p",
+        "temperature": 1,
+        "folderId": "access",
+        "messages": [],
+        "assistantModelId": "a",
+        "lastActivityDate": 5
+      }
+    },
+    {
+      "name": "submit-for-review",
+      "method": "POST",
+      "path": "/v1/ops/publication/create",
+      "body": {
+        "name": "access matrix review",
+        "targetFolder": "public/review/",
+        "resources": [
+          {
+            "action": "ADD",
+            "sourceUrl": "conversations/${bucket1}/access/reviewable",
+            "targetUrl": "conversations/public/review/reviewed"
+          }
+        ],
+        "rules": [
+          {
+            "source": "roles",
+            "function": "TRUE"
+          }
+        ]
+      },
+      "capture": {
+        "reviewedUrl": {
+          "at": "/resources/0/reviewUrl"
+        }
+      }
+    },
+    {
+      "name": "create-appdata",
+      "method": "PUT",
+      "path": "/v1/files/${bucket1}/appdata/testapp/data.txt",
+      "body": "application scoped data",
+      "multipart": {
+        "filename": "data.txt",
+        "contentType": "text/plain"
+      }
+    },
+    {
+      "name": "create-other-app-data",
+      "method": "PUT",
+      "path": "/v1/files/${bucket1}/appdata/otherapp/data.txt",
+      "body": "another application's data",
+      "multipart": {
+        "filename": "data.txt",
+        "contentType": "text/plain"
+      }
+    },
+    {
+      "name": "second-key-creates-own",
+      "method": "PUT",
+      "path": "/v1/conversations/${bucket2}/access/second",
+      "headers": {
+        "api-key": "proxyKey2"
+      },
+      "body": {
+        "id": "second",
+        "name": "second",
+        "model": {
+          "id": "model_id"
+        },
+        "prompt": "p",
+        "temperature": 1,
+        "folderId": "access",
+        "messages": [],
+        "assistantModelId": "a",
+        "lastActivityDate": 6
+      }
+    }
+  ]
+}

@@ -29,6 +29,7 @@ import java.util.regex.Pattern;
 public class CorpusRunner {
 
     public static final String REPLAY_CORPUS = "layout-diff/corpus";
+    public static final String ACCESS_CORPUS = "layout-diff/access-corpus";
 
     private static final String API_KEY_1 = "proxyKey1";
     private static final String API_KEY_2 = "proxyKey2";
@@ -69,9 +70,12 @@ public class CorpusRunner {
      * runs must agree on it before any response comparison means anything — buckets thread through nearly every
      * url in the corpus, so a difference there would make every other difference unreadable. {@code captures}
      * holds what each scenario captured, by scenario name: normalisation replaces a captured value with its
-     * role name wherever it appears, so the values themselves are only comparable here.
+     * role name wherever it appears, so the values themselves are only comparable here. {@code variables} is
+     * the flat view of the same — buckets plus every capture — which the access matrix resolves its
+     * templates with.
      */
     public record Run(Map<String, String> buckets,
+                      Map<String, String> variables,
                       Map<String, Map<String, String>> captures,
                       Map<StepKey, RecordedResponse> responses) {
     }
@@ -88,6 +92,7 @@ public class CorpusRunner {
 
         Map<StepKey, RecordedResponse> recorded = new LinkedHashMap<>();
         Map<String, Map<String, String>> captures = new LinkedHashMap<>();
+        Map<String, String> allVariables = new LinkedHashMap<>(buckets);
         for (Scenario scenario : scenarios) {
             Map<String, String> variables = new HashMap<>(buckets);
             Map<StepKey, RecordedResponse> raw = new LinkedHashMap<>();
@@ -116,8 +121,9 @@ public class CorpusRunner {
             Map<String, String> captured = new LinkedHashMap<>(variables);
             captured.keySet().removeAll(buckets.keySet());
             captures.put(scenario.name(), captured);
+            allVariables.putAll(variables);
         }
-        return new Run(buckets, captures, recorded);
+        return new Run(buckets, allVariables, captures, recorded);
     }
 
     private static void capture(Scenario.Step step, RecordedResponse response, Map<String, String> variables) {
