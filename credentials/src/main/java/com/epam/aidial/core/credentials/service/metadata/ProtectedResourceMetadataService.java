@@ -7,7 +7,6 @@ import com.epam.aidial.core.credentials.util.ResourceEndpointUtil;
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.google.common.annotations.VisibleForTesting;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.LinkedHashSet;
@@ -50,14 +49,6 @@ public class ProtectedResourceMetadataService {
         this.protectedResourceMetadataValidator = protectedResourceMetadataValidator;
         this.httpHeadersHandler = httpHeadersHandler;
         this.authorizationChallengeProvider = authorizationChallengeProvider;
-    }
-
-    @VisibleForTesting
-    private ProtectedResourceMetadataService() {
-        this.resourceAuthorizationClient = new ResourceAuthorizationClient(null);
-        this.protectedResourceMetadataValidator = new ProtectedResourceMetadataValidator();
-        this.httpHeadersHandler = new HttpHeadersHandler();
-        this.authorizationChallengeProvider = resourceEndpoint -> Optional.empty();
     }
 
     /**
