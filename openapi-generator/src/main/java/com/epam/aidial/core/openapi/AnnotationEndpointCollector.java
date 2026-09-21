@@ -12,6 +12,7 @@ import com.epam.aidial.core.server.controller.ApplicationMcpProxyController;
 import com.epam.aidial.core.server.controller.ApplicationTypeSchemaController;
 import com.epam.aidial.core.server.controller.BucketController;
 import com.epam.aidial.core.server.controller.CatalogSchemaController;
+import com.epam.aidial.core.server.controller.ChatCompletionsController;
 import com.epam.aidial.core.server.controller.ClientChannelController;
 import com.epam.aidial.core.server.controller.CodeInterpreterController;
 import com.epam.aidial.core.server.controller.ComplexResourceController;
@@ -74,6 +75,7 @@ public final class AnnotationEndpointCollector {
             ApplicationTypeSchemaController.class,
             BucketController.class,
             CatalogSchemaController.class,
+            ChatCompletionsController.class,
             ClientChannelController.class,
             CodeInterpreterController.class,
             ConfigController.class,
