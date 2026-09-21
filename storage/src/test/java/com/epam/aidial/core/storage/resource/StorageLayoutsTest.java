@@ -10,12 +10,13 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class StorageLayoutsTest {
 
     @AfterEach
-    public void restoreDefaultLayout() {
-        StorageLayouts.useLayout(LegacyStorageLayout.INSTANCE);
+    public void resetLayout() {
+        StorageLayouts.resetForTesting();
     }
 
     @Test
@@ -24,11 +25,48 @@ public class StorageLayoutsTest {
     }
 
     @Test
-    public void testActiveLayoutIsReplaceable() {
-        StorageLayout tenantRooted = new TenantRootedStorageLayout("acme");
-        StorageLayouts.useLayout(tenantRooted);
+    public void testInstalledLayoutCannotChange() {
+        StorageLayouts.install(new TenantRootedStorageLayout("acme"));
 
-        assertSame(tenantRooted, StorageLayouts.resolveFor("Users/u1/"));
+        assertThrows(IllegalStateException.class, () -> StorageLayouts.install(LegacyStorageLayout.INSTANCE));
+        // An equal but distinct layout is a change too: no layout implements equals, so the no-op case
+        // below is the same instance, not an equivalent one.
+        assertThrows(IllegalStateException.class, () -> StorageLayouts.install(new TenantRootedStorageLayout("acme")));
+        // Migrating a store is not something a running deployment can decide to start either.
+        assertThrows(IllegalStateException.class, () -> StorageLayouts.installPerBucket(
+                new TenantRootedStorageLayout("acme"), BucketMigrationStates.ALL_LEGACY));
+    }
+
+    /**
+     * Every start-up in one JVM installs, so installing what is already installed is a no-op rather than an
+     * error — that is what lets the legacy test suite boot repeatedly.
+     */
+    @Test
+    public void testSameLayoutReinstallIsNoOp() {
+        StorageLayouts.install(LegacyStorageLayout.INSTANCE);
+        StorageLayouts.install(LegacyStorageLayout.INSTANCE);
+
+        assertSame(LegacyStorageLayout.INSTANCE, StorageLayouts.resolveFor("Users/u1/"));
+
+        StorageLayouts.resetForTesting();
+
+        StorageLayout migrated = new TenantRootedStorageLayout("acme");
+        BucketMigrationStates states = bucketLocation -> BucketMigrationState.MIGRATED;
+        StorageLayouts.installPerBucket(migrated, states);
+        StorageLayouts.installPerBucket(migrated, states);
+
+        assertSame(migrated, StorageLayouts.resolveFor("Users/u1/"));
+    }
+
+    @Test
+    public void testResetMakesSecondInstallLegal() {
+        StorageLayouts.install(new TenantRootedStorageLayout("acme"));
+        StorageLayouts.resetForTesting();
+
+        StorageLayout other = new TenantRootedStorageLayout("umbrella");
+        StorageLayouts.install(other);
+
+        assertSame(other, StorageLayouts.resolveFor("Users/u1/"));
     }
 
     @Test
@@ -38,14 +76,14 @@ public class StorageLayoutsTest {
 
         assertEquals("Users/u1/files/documents/notes.txt", file.getAbsoluteFilePath());
 
-        StorageLayouts.useLayout(new TenantRootedStorageLayout("acme"));
+        StorageLayouts.install(new TenantRootedStorageLayout("acme"));
 
         assertEquals(".org/acme/.users/u1/.files/documents/notes.txt", file.getAbsoluteFilePath());
     }
 
     @Test
     public void testOnlyMigratedBucketsFollowTheNewLayout() {
-        StorageLayouts.useLayoutPerBucket(new TenantRootedStorageLayout("acme"), states(Map.of(
+        StorageLayouts.installPerBucket(new TenantRootedStorageLayout("acme"), states(Map.of(
                 "Users/moved/", BucketMigrationState.MIGRATED,
                 "Users/copying/", BucketMigrationState.MIGRATING)));
 
@@ -57,15 +95,6 @@ public class StorageLayoutsTest {
         assertEquals("Users/waiting/files/notes.txt", path("Users/waiting/"));
     }
 
-    private static String path(String bucketLocation) {
-        return new ResourceDescriptor(ResourceTypes.FILE, "notes.txt", List.of(), "bucket", bucketLocation, false)
-                .getAbsoluteFilePath();
-    }
-
-    private static BucketMigrationStates states(Map<String, BucketMigrationState> stateByBucket) {
-        return bucketLocation -> stateByBucket.getOrDefault(bucketLocation, BucketMigrationState.LEGACY);
-    }
-
     @Test
     public void testLocationTheStateDocumentHasNeverHeardOfFollowsTheDefault() {
         // Resolution is an exact match on the location, not a prefix search: it runs on every physical path
@@ -75,12 +104,25 @@ public class StorageLayoutsTest {
         // migration runs — the environment is closed for its duration — and why completing one flips the
         // document's default rather than listing every bucket: afterwards the same unknown location resolves
         // to the tenant tree with everything else.
-        StorageLayouts.useLayoutPerBucket(new TenantRootedStorageLayout("acme"), states(Map.of(
+        StorageLayouts.installPerBucket(new TenantRootedStorageLayout("acme"), states(Map.of(
                 "public/", BucketMigrationState.MIGRATED)));
         assertSame(LegacyStorageLayout.INSTANCE, StorageLayouts.resolveFor("public/deployments/published-later/"));
 
+        // A deployment that comes up after the migration was completed, not a second installation into this
+        // one: the layout cannot change under a running process.
+        StorageLayouts.resetForTesting();
+
         StorageLayout migrated = new TenantRootedStorageLayout("acme");
-        StorageLayouts.useLayoutPerBucket(migrated, bucketLocation -> BucketMigrationState.MIGRATED);
+        StorageLayouts.installPerBucket(migrated, bucketLocation -> BucketMigrationState.MIGRATED);
         assertSame(migrated, StorageLayouts.resolveFor("public/deployments/published-later/"));
+    }
+
+    private static String path(String bucketLocation) {
+        return new ResourceDescriptor(ResourceTypes.FILE, "notes.txt", List.of(), "bucket", bucketLocation, false)
+                .getAbsoluteFilePath();
+    }
+
+    private static BucketMigrationStates states(Map<String, BucketMigrationState> stateByBucket) {
+        return bucketLocation -> stateByBucket.getOrDefault(bucketLocation, BucketMigrationState.LEGACY);
     }
 }

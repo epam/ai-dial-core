@@ -6,9 +6,9 @@ import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.migration.BucketMigrationState;
-import com.epam.aidial.core.storage.resource.LegacyStorageLayout;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.resource.StorageLayoutTestAccess;
 import com.epam.aidial.core.storage.resource.StorageLayouts;
 import com.epam.aidial.core.storage.resource.TenantRootedStorageLayout;
 import com.epam.aidial.core.storage.util.EtagHeader;
@@ -227,7 +227,7 @@ public class ResourceServiceMigrationTest {
 
     @Test
     public void testDrainingMigratedBucketsStaysWithinEachOfThem() {
-        StorageLayouts.useLayoutPerBucket(new TenantRootedStorageLayout("acme"),
+        StorageLayouts.installPerBucket(new TenantRootedStorageLayout("acme"),
                 bucketLocation -> stateByBucket.getOrDefault(bucketLocation, BucketMigrationState.LEGACY));
         try {
             ResourceDescriptor rules = resource("public/", "rules");
@@ -253,7 +253,7 @@ public class ResourceServiceMigrationTest {
             service.flushBucket(OPEN_BUCKET);
             assertEquals("user body", blobBody(chat));
         } finally {
-            StorageLayouts.useLayout(LegacyStorageLayout.INSTANCE);
+            StorageLayoutTestAccess.reset();
         }
     }
 }

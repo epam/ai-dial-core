@@ -534,7 +534,7 @@ public class AiDial {
             // data nothing has moved, a migration part way through — would resolve every bucket to a tree
             // with none of its data, and refusing to start is the recoverable outcome.
             BucketMigrationRegistry.requireReadyForTenantRootedLayout(storage);
-            StorageLayouts.useLayout(new TenantRootedStorageLayout(tenantId));
+            StorageLayouts.install(new TenantRootedStorageLayout(tenantId));
             return BucketMigrationStates.ALL_LEGACY;
         }
 
@@ -558,13 +558,13 @@ public class AiDial {
                         + "Enable the migration, or enable storage.layout.tenantRooted if it is complete");
             }
 
-            StorageLayouts.useLayout(LegacyStorageLayout.INSTANCE);
+            StorageLayouts.install(LegacyStorageLayout.INSTANCE);
             return BucketMigrationStates.ALL_LEGACY;
         }
 
         long refreshPeriod = migration.getLong("refreshPeriodSeconds", 10L) * 1000;
         bucketMigrationRegistry = new BucketMigrationRegistry(storage, lockService, timerService, refreshPeriod);
-        StorageLayouts.useLayoutPerBucket(new TenantRootedStorageLayout(tenantId), bucketMigrationRegistry);
+        StorageLayouts.installPerBucket(new TenantRootedStorageLayout(tenantId), bucketMigrationRegistry);
         return bucketMigrationRegistry;
     }
 

@@ -14,7 +14,7 @@ public class TenantRootedStorageLayoutTest {
 
     @AfterEach
     public void restoreLegacyLayout() {
-        StorageLayouts.useLayout(LegacyStorageLayout.INSTANCE);
+        StorageLayouts.resetForTesting();
     }
 
     @Test
@@ -44,7 +44,7 @@ public class TenantRootedStorageLayoutTest {
      */
     @Test
     public void testSystemBucketPath() {
-        StorageLayouts.useLayout(layout);
+        StorageLayouts.install(layout);
 
         ResourceDescriptor job = new ResourceDescriptor(ResourceTypes.BACKGROUND_JOB, "job-1",
                 List.of(), SystemResourceRegistry.BACKGROUND_JOBS.bucket(),
@@ -60,7 +60,7 @@ public class TenantRootedStorageLayoutTest {
      */
     @Test
     public void testResolveByPathUnderTenantRootedLayout() {
-        StorageLayouts.useLayout(layout);
+        StorageLayouts.install(layout);
 
         ResourceDescriptor folder = new ResourceDescriptor(ResourceTypes.CONVERSATION, null,
                 List.of(), "bucket", "Users/u1/", true);

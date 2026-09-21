@@ -1,9 +1,9 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
-import com.epam.aidial.core.storage.resource.LegacyStorageLayout;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.resource.StorageLayoutTestAccess;
 import com.epam.aidial.core.storage.resource.StorageLayouts;
 import com.epam.aidial.core.storage.resource.TenantRootedStorageLayout;
 import org.junit.jupiter.api.AfterEach;
@@ -22,12 +22,12 @@ public class ApplicationDeploymentLayoutTest {
 
     @BeforeEach
     public void useTenantRootedLayout() {
-        StorageLayouts.useLayout(new TenantRootedStorageLayout("acme"));
+        StorageLayouts.install(new TenantRootedStorageLayout("acme"));
     }
 
     @AfterEach
     public void restoreLegacyLayout() {
-        StorageLayouts.useLayout(LegacyStorageLayout.INSTANCE);
+        StorageLayoutTestAccess.reset();
     }
 
     @Test

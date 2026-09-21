@@ -7,9 +7,9 @@ import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyService;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.credentials.encryption.DataEncryptionService;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
-import com.epam.aidial.core.storage.resource.LegacyStorageLayout;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.resource.StorageLayoutTestAccess;
 import com.epam.aidial.core.storage.resource.StorageLayouts;
 import com.epam.aidial.core.storage.resource.TenantRootedStorageLayout;
 import org.junit.jupiter.api.AfterEach;
@@ -63,7 +63,7 @@ public class SecretFieldProcessorLayoutTest {
 
     @AfterEach
     public void restoreLegacyLayout() {
-        StorageLayouts.useLayout(LegacyStorageLayout.INSTANCE);
+        StorageLayoutTestAccess.reset();
     }
 
     @Test
@@ -73,7 +73,7 @@ public class SecretFieldProcessorLayoutTest {
         processor.encryptFields(key, descriptor);
         assertTrue(key.getKey().startsWith(SecretFieldProcessor.ENC_PREFIX));
 
-        StorageLayouts.useLayout(new TenantRootedStorageLayout("acme"));
+        StorageLayouts.install(new TenantRootedStorageLayout("acme"));
         processor.decryptFields(key, descriptor);
 
         assertEquals("plain-secret", key.getKey());
@@ -85,7 +85,7 @@ public class SecretFieldProcessorLayoutTest {
     // it, the round-trip test above would pass for any path.
     @Test
     public void testPhysicalPathAadDoesNotMatchTheLegacyAad() {
-        StorageLayouts.useLayout(new TenantRootedStorageLayout("acme"));
+        StorageLayouts.install(new TenantRootedStorageLayout("acme"));
 
         byte[] physicalPathAad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
         byte[] cipher = encryptionService.encrypt(BUCKET, "plain-secret".getBytes(StandardCharsets.UTF_8), physicalPathAad);

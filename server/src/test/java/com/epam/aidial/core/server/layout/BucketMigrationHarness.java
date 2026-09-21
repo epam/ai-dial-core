@@ -89,7 +89,7 @@ public final class BucketMigrationHarness {
             registry = new BucketMigrationRegistry(blobStore, lockService, INERT_TIMERS, refreshPeriod);
             String tenantId = tenantId(layout);
             // The same composition the core does, so a flush resolves the bucket's paths exactly as it will.
-            StorageLayouts.useLayoutPerBucket(new TenantRootedStorageLayout(tenantId), registry);
+            StorageLayouts.installPerBucket(new TenantRootedStorageLayout(tenantId), registry);
 
             resources = new ResourceService(INERT_TIMERS, redis, blobStore, lockService,
                     MAPPER.treeToValue(settings.get("resources"), ResourceService.Settings.class),
