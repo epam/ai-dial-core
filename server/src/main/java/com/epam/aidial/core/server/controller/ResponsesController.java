@@ -425,6 +425,9 @@ public class ResponsesController extends BaseDeploymentPostController {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
+        // the terminal frame ExtractTerminalResponseFn already kept: the trace attributes read it instead of
+        // scanning the buffered stream a second time. Null for a run that failed or was cancelled.
+        context.setAssembledStreamingResponse(assembledStreamingResponse);
 
         Future<Void> completionFuture;
         if (context.isBackgroundJob() && dialId != null) {

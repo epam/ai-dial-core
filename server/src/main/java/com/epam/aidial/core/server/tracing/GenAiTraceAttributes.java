@@ -12,6 +12,7 @@ import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
@@ -24,6 +25,7 @@ import org.apache.commons.lang3.Strings;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
@@ -37,11 +39,16 @@ import static io.opentelemetry.api.common.AttributeKey.stringKey;
 
 @Slf4j
 public final class GenAiTraceAttributes {
+    /**
+     * Any version but the invalid {@code ff}: a version Core does not know still carries the trace and the
+     * parent id in the first three fields, and W3C requires a parser to read those and ignore what follows.
+     */
     private static final Pattern TRACEPARENT_PATTERN = Pattern.compile(
-            "00-(?!0{32})([0-9a-f]{32})-(?!0{16})([0-9a-f]{16})-([0-9a-f]{2})");
+            "(?!ff)[0-9a-f]{2}-(?!0{32})([0-9a-f]{32})-(?!0{16})([0-9a-f]{16})-[0-9a-f]{2}(?:-.*)?");
     private static final String CONVERSATION_ID_ATTRIBUTE = "gen_ai.conversation.id";
     private static final String PARENT_SPAN_ATTRIBUTE = "dial.request.parent_span.id";
     private static final String RESPONSE_STATUS_ATTRIBUTE = "gen_ai.response.status";
+    private static final String API_ATTRIBUTE = "dial.api";
     private static final String RESPONSES_EVENT_PREFIX = "response.";
     private static final String DEFAULT_SSE_EVENT = "message";
     private static final Set<String> TERMINAL_RESPONSES_EVENTS =
@@ -49,6 +56,11 @@ public final class GenAiTraceAttributes {
     private static final Set<String> ANTHROPIC_ATTRIBUTE_EVENTS = Set.of("message_start", "message_delta");
     private static final int MAX_ATTRIBUTE_LENGTH = 256;
     private static final int MAX_ATTRIBUTE_VALUES = 32;
+    /**
+     * Above this a response body is not parsed for attributes. Tracing's parse is its own, on top of the one
+     * token accounting already does, and an embeddings body is dominated by vectors that carry no attribute.
+     */
+    private static final int MAX_TRACED_BODY_BYTES = 512 * 1024;
     private static final int SSE_LINE_BUFFER_SIZE = 1024;
 
     private GenAiTraceAttributes() {
@@ -160,17 +172,22 @@ public final class GenAiTraceAttributes {
     }
 
     /**
-     * The outcome of a request that ended before any upstream response was collected - a rate-limit rejection,
-     * a connect failure, a rejected body. Those paths never reach {@link #setResponseAttributes}, so without this
-     * the span carries request attributes and no outcome at all, which reads the same as a request that never
+     * The outcome of a GenAI request that ended before any upstream response was collected - a rate-limit
+     * rejection, a connect failure. Those paths never reach {@link #setResponseAttributes}, so without this the
+     * span carries request attributes and no outcome at all, which reads the same as a request that never
      * finished. A status published from a real response always wins.
+     *
+     * <p>Gated on {@code dial.api}, which is published as soon as the request body is parsed: every endpoint
+     * shares {@code respond}, and a {@code gen_ai.response.status} on a resource 404 or on a request rejected
+     * before its GenAI surface was known describes an operation that never existed.</p>
      */
     public static void setFailureStatus(ProxyContext context, int statusCode) {
         if (statusCode >= 200 && statusCode < 300) {
             return;
         }
         enrich(context, () -> {
-            if (!context.getTracingAttributes().containsKey(RESPONSE_STATUS_ATTRIBUTE)) {
+            Map<String, Object> attributes = context.getTracingAttributes();
+            if (attributes.containsKey(API_ATTRIBUTE) && !attributes.containsKey(RESPONSE_STATUS_ATTRIBUTE)) {
                 set(context, stringKey(RESPONSE_STATUS_ATTRIBUTE), "failed");
             }
         });
@@ -235,7 +252,7 @@ public final class GenAiTraceAttributes {
 
     private static void setOperationAttributes(ProxyContext context, InterfaceType type, String operation) {
         set(context, stringKey("gen_ai.operation.name"), operation);
-        set(context, stringKey("dial.api"), switch (type) {
+        set(context, stringKey(API_ATTRIBUTE), switch (type) {
             case OPENAI_CHAT_COMPLETIONS -> "openai_chat_completions";
             case OPENAI_EMBEDDINGS -> "openai_embeddings";
             case OPENAI_RESPONSES -> "openai_responses";
@@ -282,16 +299,34 @@ public final class GenAiTraceAttributes {
 
     private static JsonNode responseTree(ProxyContext context, InterfaceType type, Buffer responseBody) {
         if (!isEventStream(context)) {
-            return JsonUtil.tryParse(responseBody.getBytes());
+            return parse(responseBody);
         }
+        String assembled = context.getAssembledStreamingResponse();
         return switch (type) {
-            // shared with the analytics log, which assembles the same body once per streamed request
-            case OPENAI_CHAT_COMPLETIONS -> JsonUtil.tryParse(context.assembledStreamingResponse(responseBody)
-                    .getBytes(StandardCharsets.UTF_8));
-            case OPENAI_RESPONSES -> responsesEvent(responseBody);
+            // shared with the analytics log, which merges the same body once per streamed request
+            case OPENAI_CHAT_COMPLETIONS -> parse(context.assembledChatCompletionsResponse());
+            // the terminal frame ExtractTerminalResponseFn already kept while streaming; a run that failed or
+            // was cancelled leaves none, and only then is the buffered stream scanned for it
+            case OPENAI_RESPONSES -> assembled == null ? responsesEvent(responseBody) : parse(assembled);
             case ANTHROPIC_MESSAGES -> anthropicResponse(responseBody);
-            case OPENAI_EMBEDDINGS -> JsonUtil.tryParse(responseBody.getBytes());
+            case OPENAI_EMBEDDINGS -> parse(responseBody);
         };
+    }
+
+    /**
+     * @return {@link MissingNode} for a body too large to be worth tracing's own parse - every attribute it
+     *         carries is optional, and the status fallback needs no body at all.
+     */
+    private static JsonNode parse(Buffer body) {
+        return body == null || body.length() > MAX_TRACED_BODY_BYTES
+                ? MissingNode.getInstance()
+                : JsonUtil.tryParse(body.getBytes());
+    }
+
+    private static JsonNode parse(String body) {
+        return body == null || body.length() > MAX_TRACED_BODY_BYTES
+                ? MissingNode.getInstance()
+                : JsonUtil.tryParse(body);
     }
 
     private static JsonNode responsesEvent(Buffer responseBody) {
@@ -394,7 +429,11 @@ public final class GenAiTraceAttributes {
             String value = context.getRequest().headers().get(header);
             if (value != null && !value.isBlank()) {
                 String conversationId = value.trim();
-                return conversationId.length() <= MAX_ATTRIBUTE_LENGTH ? conversationId : null;
+                if (conversationId.length() <= MAX_ATTRIBUTE_LENGTH) {
+                    return conversationId;
+                }
+                // an oversized value is no usable id, and truncating one would correlate unrelated requests,
+                // so the next header on the priority list still gets its turn
             }
         }
         return null;
