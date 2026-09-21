@@ -23,7 +23,7 @@ public record TracingSettings(boolean genAiSpanAttributes, boolean responseTrace
      * Header names whose value must never be published as a conversation id - naming one here
      * would put a credential on the span and on every log record of the request.
      */
-    private static final Set<String> CREDENTIAL_HEADERS = Set.of(
+    private static final Set<String> SENSITIVE_HEADERS = Set.of(
             "authorization",
             "proxy-authorization",
             "cookie",
@@ -60,7 +60,7 @@ public record TracingSettings(boolean genAiSpanAttributes, boolean responseTrace
                 continue;
             }
             String header = s.trim();
-            if (CREDENTIAL_HEADERS.contains(header.toLowerCase(Locale.ROOT))) {
+            if (SENSITIVE_HEADERS.contains(header.toLowerCase(Locale.ROOT))) {
                 log.warn("Ignoring conversation id header {}: credential headers are never published", header);
                 continue;
             }
