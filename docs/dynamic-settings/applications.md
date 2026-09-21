@@ -29,7 +29,7 @@ An object containing parameters for each [application](#applications).
 * `applications.<application_name>.applicationProperties`: Properties of a schema-rich application. Specified properties must conform to the JSON schema referenced by `applicationTypeSchemaId`. Refer to [DIAL Documentation](https://docs.dialx.ai/platform/core/apps#application-types) to learn more about schema-rich apps.
 * `endpoint`: The application's API endpoint for chat completion requests.
 * `baseUrl`: The root URL shared by every `interfaces` entry that declares no `base_url` of its own.
-* `interfaces`: A typed alternative to the flat `endpoint` field for declaring the routing target. For applications, only the `openaiChatCompletions` interface is supported; the Responses API and other interfaces are not. Refer to [applications.<application_name>.interfaces](#applicationsapplication_nameinterfaces).
+* `interfaces`: A typed alternative to the flat `endpoint`/`responsesEndpoint` fields for declaring routing targets, keyed by interface type. Refer to [applications.<application_name>.interfaces](#applicationsapplication_nameinterfaces).
 * `overrideName`: If set, the application is called under this name: the outgoing chat completion request body's `model` field (and the `X-DIAL-OVERRIDE-NAME` header) are rewritten to this value before the request reaches the application's endpoint. Doesn't change routing — only the value the endpoint receives.
 * `iconUrl`: A string with URL of the icon to display for the app in the UI.
 * `description`: A string with a brief description of the application.
@@ -147,17 +147,21 @@ An optional, typed alternative to the flat `endpoint` field. Both shapes are fir
 
 Unlike `endpoint`, which is forwarded **verbatim**, an `interfaces` entry declares a `base_url` and DIAL Core forwards each request to `base_url` + **the exact ingress path it was received on**. A trailing slash on `base_url` is normalized. If both `interfaces` and `endpoint` are declared for the chat completions interface, `interfaces` takes precedence.
 
-Applications support only one interface type:
+Applications serve the following interface types:
 
-* `openaiChatCompletions`: the OpenAI chat completions interface. Peer of `endpoint`.
+* `openaiChatCompletions`: the Azure OpenAI ChatCompletions API. Peer of `endpoint`.
+* `openaiResponses`: the OpenAI Responses API. Peer of `responsesEndpoint`.
+* `anthropicMessages`: the Anthropic Messages API.
 
-> The Responses API (`openaiResponses`) and any other interface types are **not** supported for applications. If declared, they are dropped on config read with a warning.
+`interfaces` is the whitelist of what the application serves: an interface it declares with no base URL — and that no legacy field serves — is answered with `503`.
 
 Each value is an object with the following fields:
 
 * `base_url`: The root URL that the matching ingress path is appended to. Optional — the application-level `baseUrl` serves an entry that omits it.
+* `features`: Non-null fields override application-level `features` for this interface only; all other fields inherit, then Core defaults apply. Explicit `false` and empty arrays override inherited values. See [Features per interface](models.md#features-per-interface).
 * `defaultHeaders`: Headers applied to requests for this interface only, laid over the application-level `defaultHeaders`. Refer to [applications.<application_name>.defaultHeaders](#applicationsapplication_namedefaultheaders).
 * `defaults`: Body parameters applied to requests for this interface only. Unlike `defaultHeaders`, the two levels are **not** merged: an entry declaring `defaults` states the whole set and **replaces** the application-level `defaults`, so a key it does not name is not defaulted at all. The application-level `defaults` applies only where the entry declares none. Whatever the source, a default is only a fallback — a parameter the request body already carries is never replaced.
+* `overridePaths`: Per-operation upstream paths that replace the default "base URL + ingress path" routing, working exactly as they do for models. See [Override paths per interface](models.md#override-paths-per-interface).
 
 **Example**
 
@@ -165,7 +169,8 @@ Each value is an object with the following fields:
 "applications": {
     "app-via-interfaces": {
         "interfaces": {
-            "openaiChatCompletions": { "base_url": "http://localhost:7005" }
+            "openaiChatCompletions": { "base_url": "http://localhost:7005" },
+            "openaiResponses": { "base_url": "http://localhost:7005" }
         }
     }
 }

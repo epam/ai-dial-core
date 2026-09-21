@@ -7,10 +7,7 @@ import lombok.experimental.Accessors;
 @Accessors(fluent = true)
 public enum RateWindow {
     MINUTE(60L * 1000, 60),
-    HOUR(60 * 60 * 1000, 60),
-    DAY(24L * 60 * 60 * 1000, 24),
-    WEEK(7L * 24 * 60 * 60 * 1000, 7),
-    MONTH(30L * 24 * 60 * 60 * 1000, 30);
+    HOUR(60 * 60 * 1000, 60);
 
     private final long window;
     private final long interval;

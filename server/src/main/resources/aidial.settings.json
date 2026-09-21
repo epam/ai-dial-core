@@ -130,6 +130,9 @@
     "collectHeaders": false,
     "headersBlacklist": ["authorization", "api-key", "cookie", "proxy-authorization"]
   },
+  "proxy": {
+    "additionalHopByHopHeaders": []
+  },
   "backgroundJob": {
     "initialPollIntervalMs": 10000,
     "maxPollIntervalMs": 300000,

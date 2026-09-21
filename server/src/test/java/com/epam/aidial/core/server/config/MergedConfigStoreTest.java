@@ -88,8 +88,8 @@ public class MergedConfigStoreTest {
 
     @Test
     public void testRebuildKeepsTranslatorsSoNamedReferencesResolve() {
-        // the merged Config is assembled field by field, and a translators map dropped there leaves every
-        // deployment referencing one by name serving nothing on that interface
+        // translators are a managed, blob-scanned type like models/interceptors — dropped here, every
+        // deployment referencing one by name would serve nothing on that interface
         Config fileConfig = new Config();
         fileConfig.setTranslators(Map.of("anthropicMessagesToOpenaiChatCompletions",
                 new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://localhost:5002/to-chat-completions")));

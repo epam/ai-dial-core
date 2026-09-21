@@ -6,9 +6,11 @@ import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -90,6 +92,7 @@ public final class MergedConfigStore implements ConfigStore {
             ResourceTypes.APP_TYPE_SCHEMA,
             ResourceTypes.CATALOG_SCHEMA,
             ResourceTypes.INTERCEPTOR,
+            ResourceTypes.TRANSLATOR,
             ResourceTypes.ROLE,
             ResourceTypes.PROJECT_KEY,
             ResourceTypes.ROUTE,
@@ -457,6 +460,7 @@ public final class MergedConfigStore implements ConfigStore {
         return switch (type) {
             case MODEL -> BLOB_MAPPER.treeToValue(node, Model.class);
             case INTERCEPTOR -> BLOB_MAPPER.treeToValue(node, Interceptor.class);
+            case TRANSLATOR -> BLOB_MAPPER.treeToValue(node, Translator.class);
             case ROLE -> BLOB_MAPPER.treeToValue(node, Role.class);
             case PROJECT_KEY -> BLOB_MAPPER.treeToValue(node, Key.class);
             case ROUTE -> BLOB_MAPPER.treeToValue(node, Route.class);
@@ -525,8 +529,8 @@ public final class MergedConfigStore implements ConfigStore {
     }
 
     /**
-     * Whether the {@code globalInterceptors} / {@code retriableErrorCodes} fields in the
-     * current {@link Config} were sourced from the API-managed settings singleton blob
+     * Whether the {@code globalInterceptors} / {@code retriableErrorCodes} / {@code rateLimitSchedule}
+     * fields in the current {@link Config} were sourced from the API-managed settings singleton blob
      * ({@code platform/settings/global}) rather than from the file-defined defaults.
      * Drives the blob-only {@code 404} path on {@code GET /v1/settings/platform/global}
      * (slice U.1): when {@code false}, the per-entity endpoint returns {@code 404} and
@@ -743,11 +747,12 @@ public final class MergedConfigStore implements ConfigStore {
             switch (type) {
                 case MODEL -> ConfigPostProcessor.validateSingleModel(next, mapKey, onSkip);
                 case INTERCEPTOR -> {
-                    ConfigPostProcessor.setNameAsMapKey(next.getInterceptors(), mapKey);
+                    ConfigPostProcessor.validateSingleInterceptor(next, mapKey, onSkip);
                     resurrectInvalidModels(next, nextInvalid);
                 }
+                case TRANSLATOR -> ConfigPostProcessor.validateSingleTranslator(next, mapKey, onSkip);
                 case ROLE -> ConfigPostProcessor.setRoleNameAsMapKey(next.getRoles(), mapKey);
-                case APPLICATION -> ConfigPostProcessor.setNameAsMapKey(next.getApplications(), mapKey);
+                case APPLICATION -> ConfigPostProcessor.validateSingleApplication(next, mapKey, onSkip);
                 case TOOL_SET -> ConfigPostProcessor.setNameAsMapKey(next.getToolsets(), mapKey);
                 case PROJECT_KEY, APP_TYPE_SCHEMA, CATALOG_SCHEMA -> { /* no post-processing */ }
                 case ROUTE -> ConfigPostProcessor.sortRoutesInPlace(next);
@@ -768,8 +773,8 @@ public final class MergedConfigStore implements ConfigStore {
 
     /**
      * Settings singleton overlay write (slice 4S.4). Applies {@code globalInterceptors} +
-     * {@code retriableErrorCodes} fields from the supplied {@link GlobalSettings}, flips
-     * {@code settingsFromApi} to {@code true}.
+     * {@code retriableErrorCodes} + {@code rateLimitSchedule} fields from the supplied
+     * {@link GlobalSettings}, flips {@code settingsFromApi} to {@code true}.
      */
     public Config applySettingsWrite(GlobalSettings settings) {
         rebuildLock.lock();
@@ -779,6 +784,8 @@ public final class MergedConfigStore implements ConfigStore {
                     ? List.of() : settings.getGlobalInterceptors());
             next.setRetriableErrorCodes(settings.getRetriableErrorCodes() == null
                     ? Set.of() : settings.getRetriableErrorCodes());
+            next.setRateLimitSchedule(settings.getRateLimitSchedule() == null
+                    ? new RateLimitSchedule() : settings.getRateLimitSchedule());
             this.config = next;
             this.settingsFromApi = true;
             return next;
@@ -789,8 +796,8 @@ public final class MergedConfigStore implements ConfigStore {
 
     /**
      * Settings singleton overlay delete (slice 4S.4). Restores {@code globalInterceptors} +
-     * {@code retriableErrorCodes} from the file-derived {@link Config} and flips
-     * {@code settingsFromApi} to {@code false}.
+     * {@code retriableErrorCodes} + {@code rateLimitSchedule} from the file-derived {@link Config}
+     * and flips {@code settingsFromApi} to {@code false}.
      */
     public Config applySettingsDelete() {
         rebuildLock.lock();
@@ -799,6 +806,7 @@ public final class MergedConfigStore implements ConfigStore {
             Config next = shallowClone(this.config);
             next.setGlobalInterceptors(base.getGlobalInterceptors());
             next.setRetriableErrorCodes(base.getRetriableErrorCodes());
+            next.setRateLimitSchedule(base.getRateLimitSchedule());
             this.config = next;
             this.settingsFromApi = false;
             return next;
@@ -927,6 +935,7 @@ public final class MergedConfigStore implements ConfigStore {
         next.setToolsets(base.getToolsets());
         next.setRetriableErrorCodes(base.getRetriableErrorCodes());
         next.setGlobalInterceptors(base.getGlobalInterceptors());
+        next.setRateLimitSchedule(base.getRateLimitSchedule());
         next.setTranslators(base.getTranslators());
         return next;
     }
@@ -963,6 +972,7 @@ public final class MergedConfigStore implements ConfigStore {
         switch (type) {
             case MODEL -> config.setModels(new LinkedHashMap<>(config.getModels()));
             case INTERCEPTOR -> config.setInterceptors(new LinkedHashMap<>(config.getInterceptors()));
+            case TRANSLATOR -> config.setTranslators(new LinkedHashMap<>(config.getTranslators()));
             case ROLE -> config.setRoles(new HashMap<>(config.getRoles()));
             case PROJECT_KEY -> config.setKeys(new HashMap<>(config.getKeys()));
             case ROUTE -> config.setRoutes(new LinkedHashMap<>(config.getRoutes()));
@@ -978,6 +988,7 @@ public final class MergedConfigStore implements ConfigStore {
         return switch (type) {
             case MODEL -> config.getModels().get(mapKey);
             case INTERCEPTOR -> config.getInterceptors().get(mapKey);
+            case TRANSLATOR -> config.getTranslators().get(mapKey);
             case ROLE -> config.getRoles().get(mapKey);
             case PROJECT_KEY -> config.getKeys().get(mapKey);
             case ROUTE -> config.getRoutes().get(mapKey);
@@ -993,6 +1004,7 @@ public final class MergedConfigStore implements ConfigStore {
         switch (type) {
             case MODEL -> config.getModels().put(mapKey, (Model) entity);
             case INTERCEPTOR -> config.getInterceptors().put(mapKey, (Interceptor) entity);
+            case TRANSLATOR -> config.getTranslators().put(mapKey, (Translator) entity);
             case ROLE -> config.getRoles().put(mapKey, (Role) entity);
             case PROJECT_KEY -> config.getKeys().put(mapKey, (Key) entity);
             case ROUTE -> config.getRoutes().put(mapKey, (Route) entity);
@@ -1008,6 +1020,7 @@ public final class MergedConfigStore implements ConfigStore {
         switch (type) {
             case MODEL -> config.getModels().remove(mapKey);
             case INTERCEPTOR -> config.getInterceptors().remove(mapKey);
+            case TRANSLATOR -> config.getTranslators().remove(mapKey);
             case ROLE -> config.getRoles().remove(mapKey);
             case PROJECT_KEY -> config.getKeys().remove(mapKey);
             case ROUTE -> config.getRoutes().remove(mapKey);
@@ -1102,19 +1115,17 @@ public final class MergedConfigStore implements ConfigStore {
         Map<String, String> catalogSchemas = new LinkedHashMap<>(base.getCatalogSchemas());
         Map<String, Application> applications = new LinkedHashMap<>(base.getApplications());
         Map<String, ToolSet> toolsets = new LinkedHashMap<>(base.getToolsets());
+        Map<String, Translator> translators = new LinkedHashMap<>(base.getTranslators());
         merged.setRetriableErrorCodes(base.getRetriableErrorCodes());
         merged.setGlobalInterceptors(base.getGlobalInterceptors());
-        // file-only, and never mutated here: no resource type contributes translators, so the file map
-        // is shared rather than copied. Deployments reference its entries by name and are linked to them
-        // by the semantic pass below, so a merged config that dropped it would leave every named
-        // reference dangling.
-        merged.setTranslators(base.getTranslators());
+        merged.setRateLimitSchedule(base.getRateLimitSchedule());
         // Wire the (still-being-populated) local maps onto merged now rather than after the blob
         // scan below — same references either way, but it lets addBlobEntity/removeAddedEntity
         // dispatch off a single Config parameter instead of a positional map per type (they used
         // to take 9-11 map parameters each).
         merged.setModels(models);
         merged.setInterceptors(interceptors);
+        merged.setTranslators(translators);
         merged.setRoles(roles);
         merged.setKeys(keys);
         merged.setRoutes(routes);
@@ -1134,8 +1145,8 @@ public final class MergedConfigStore implements ConfigStore {
         // name) is indistinguishable in shape from a file entry's — both are bare, slash-free names.
         // Track which (type, mapKey) pairs came from a blob this rebuild so the semantic pass can
         // classify a skipped entity as "api" vs "file" correctly. Only models, applications,
-        // interceptors, and toolsets actually trigger onSkip (roles, schemas, keys, routes do not),
-        // but we track all five short-name-keyed types for completeness.
+        // interceptors, translators, and toolsets actually trigger onSkip (roles, schemas, keys,
+        // routes do not), but we track all short-name-keyed types for completeness.
         Map<ResourceTypes, Set<String>> apiSourcedKeys = new EnumMap<>(ResourceTypes.class);
 
         for (ResourceTypes type : MANAGED_TYPES) {
@@ -1260,7 +1271,8 @@ public final class MergedConfigStore implements ConfigStore {
     /**
      * Singleton overlay (design 02 §4): when the API-managed settings blob exists at
      * {@code platform/settings/global}, its fields replace the file-derived
-     * {@code globalInterceptors} / {@code retriableErrorCodes} on the merged {@link Config}.
+     * {@code globalInterceptors} / {@code retriableErrorCodes} / {@code rateLimitSchedule} on the
+     * merged {@link Config}.
      * GlobalSettings is intentionally NOT in {@link #MANAGED_TYPES} — it is a singleton overlay,
      * not a union-by-key like other types. Returns {@code true} iff the blob is present and
      * parses; on parse failure records an {@link InvalidEntityRecord} under {@code GLOBAL_SETTINGS}
@@ -1294,6 +1306,8 @@ public final class MergedConfigStore implements ConfigStore {
                     settings.getGlobalInterceptors() == null ? List.of() : settings.getGlobalInterceptors());
             merged.setRetriableErrorCodes(
                     settings.getRetriableErrorCodes() == null ? Set.of() : settings.getRetriableErrorCodes());
+            merged.setRateLimitSchedule(
+                    settings.getRateLimitSchedule() == null ? new RateLimitSchedule() : settings.getRateLimitSchedule());
             return true;
         } catch (Exception parseError) {
             log.warn("Failed to bind settings singleton blob to GlobalSettings", parseError);
@@ -1424,7 +1438,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     public static boolean isShortNameKeyed(ResourceTypes type) {
         return switch (type) {
-            case MODEL, INTERCEPTOR, ROLE, APPLICATION, TOOL_SET -> true;
+            case MODEL, INTERCEPTOR, TRANSLATOR, ROLE, APPLICATION, TOOL_SET -> true;
             default -> false;
         };
     }
@@ -1446,6 +1460,12 @@ public final class MergedConfigStore implements ConfigStore {
             case INTERCEPTOR -> {
                 Interceptor entity = BLOB_MAPPER.treeToValue(node, Interceptor.class);
                 Object previous = config.getInterceptors().put(mapKey, entity);
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(entity, previous);
+            }
+            case TRANSLATOR -> {
+                Translator entity = BLOB_MAPPER.treeToValue(node, Translator.class);
+                Object previous = config.getTranslators().put(mapKey, entity);
                 warnIfReplaced(type, mapKey, previous);
                 return new BlobPutResult(entity, previous);
             }
@@ -1511,6 +1531,7 @@ public final class MergedConfigStore implements ConfigStore {
         switch (type) {
             case MODEL -> restore(config.getModels(), mapKey, (Model) previous);
             case INTERCEPTOR -> restore(config.getInterceptors(), mapKey, (Interceptor) previous);
+            case TRANSLATOR -> restore(config.getTranslators(), mapKey, (Translator) previous);
             case ROLE -> restore(config.getRoles(), mapKey, (Role) previous);
             case PROJECT_KEY -> restore(config.getKeys(), mapKey, (Key) previous);
             case ROUTE -> restore(config.getRoutes(), mapKey, (Route) previous);

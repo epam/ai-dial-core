@@ -9,15 +9,29 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.ValidationWarning;
-import com.epam.aidial.core.server.data.AdminManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminApplicationManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminCatalogSchemaManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminInterceptorManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminKeyManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminModelManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminRoleManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminRouteManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminSchemaManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminSettingsManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminToolSetManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminTranslatorManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminTypedManifest;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.experimental.UtilityClass;
 import org.apache.commons.lang3.StringUtils;
 
@@ -38,17 +52,18 @@ public class ConfigManifestSupport {
 
     static final String SETTINGS_SINGLETON_NAME = "global";
 
-    public static final Map<String, Integer> DEPENDENCY_ORDER = Map.of(
-            "Settings", 0,
-            "Schema", 1,
-            "CatalogSchema", 1,
-            "Interceptor", 2,
-            "Role", 3,
-            "Key", 4,
-            "Route", 5,
-            "Model", 6,
-            "ToolSet", 7,
-            "Application", 8);
+    public static final Map<String, Integer> DEPENDENCY_ORDER = Map.ofEntries(
+            Map.entry("Settings", 0),
+            Map.entry("Schema", 1),
+            Map.entry("CatalogSchema", 1),
+            Map.entry("Translator", 2),
+            Map.entry("Interceptor", 3),
+            Map.entry("Role", 4),
+            Map.entry("Key", 5),
+            Map.entry("Route", 6),
+            Map.entry("Model", 7),
+            Map.entry("ToolSet", 8),
+            Map.entry("Application", 9));
 
     /**
      * Sorts a manifest list so a kind that other kinds can reference (e.g. {@code Interceptor})
@@ -59,17 +74,18 @@ public class ConfigManifestSupport {
     public static final Comparator<AdminManifest> DEPENDENCY_ORDER_COMPARATOR =
             Comparator.comparingInt(entry -> DEPENDENCY_ORDER.getOrDefault(entry.kind(), 99));
 
-    public static final Map<String, String> KIND_URL_SEGMENT = Map.of(
-            "Settings", "settings",
-            "Schema", "schemas",
-            "CatalogSchema", "catalog_schemas",
-            "Interceptor", "interceptors",
-            "Role", "roles",
-            "Key", "keys",
-            "Route", "routes",
-            "Model", "models",
-            "ToolSet", "toolsets",
-            "Application", "applications");
+    public static final Map<String, String> KIND_URL_SEGMENT = Map.ofEntries(
+            Map.entry("Settings", "settings"),
+            Map.entry("Schema", "schemas"),
+            Map.entry("CatalogSchema", "catalog_schemas"),
+            Map.entry("Interceptor", "interceptors"),
+            Map.entry("Translator", "translators"),
+            Map.entry("Role", "roles"),
+            Map.entry("Key", "keys"),
+            Map.entry("Route", "routes"),
+            Map.entry("Model", "models"),
+            Map.entry("ToolSet", "toolsets"),
+            Map.entry("Application", "applications"));
 
     public static Config newScratch(MergedConfigStore mergedConfigStore) {
         Config live = mergedConfigStore.get();
@@ -77,6 +93,7 @@ public class ConfigManifestSupport {
         if (live != null) {
             scratch.setModels(new HashMap<>(live.getModels()));
             scratch.setInterceptors(new HashMap<>(live.getInterceptors()));
+            scratch.setTranslators(new HashMap<>(live.getTranslators()));
             scratch.setApplicationTypeSchemas(new HashMap<>(live.getApplicationTypeSchemas()));
             scratch.setCatalogSchemas(new HashMap<>(live.getCatalogSchemas()));
             scratch.setApplications(new HashMap<>(live.getApplications()));
@@ -86,77 +103,59 @@ public class ConfigManifestSupport {
             scratch.getRoutes().putAll(live.getRoutes());
             scratch.setGlobalInterceptors(live.getGlobalInterceptors());
             scratch.setRetriableErrorCodes(live.getRetriableErrorCodes());
-            scratch.setTranslators(live.getTranslators());
         }
         return scratch;
     }
 
     public static void mutateScratch(Config scratch, AdminManifest entry) {
         try {
-            switch (entry.kind()) {
-                case "Settings" -> {
-                    GlobalSettings settings = ConfigEntityCodec.treeToEntity(entry.spec(), GlobalSettings.class);
-                    scratch.setGlobalInterceptors(settings.getGlobalInterceptors());
-                    scratch.setRetriableErrorCodes(settings.getRetriableErrorCodes());
+            ParsedManifest parsed = parseManifest(entry);
+            switch (parsed.manifest()) {
+                case AdminSettingsManifest settings -> {
+                    scratch.setGlobalInterceptors(settings.spec().getGlobalInterceptors());
+                    scratch.setRetriableErrorCodes(settings.spec().getRetriableErrorCodes());
                 }
-                case "Interceptor" -> {
-                    Interceptor interceptor = ConfigEntityCodec.treeToEntity(entry.spec(), Interceptor.class);
-                    scratch.getInterceptors().put(parseName(entry).name(), interceptor);
-                }
-                case "Role" -> {
-                    Role role = ConfigEntityCodec.treeToEntity(entry.spec(), Role.class);
-                    scratch.getRoles().put(parseName(entry).name(), role);
-                }
-                case "Route" -> {
-                    Route route = ConfigEntityCodec.treeToEntity(entry.spec(), Route.class);
-                    scratch.getRoutes().put(entry.name(), route);
-                }
-                case "Key" -> {
-                    Key key = ConfigEntityCodec.treeToEntity(entry.spec(), Key.class);
-                    scratch.getKeys().put(entry.name(), key);
-                }
-                case "Model" -> {
-                    Model model = ConfigEntityCodec.treeToEntity(entry.spec(), Model.class);
-                    scratch.getModels().put(parseName(entry).name(), model);
-                }
-                case "Application" -> {
-                    ParsedName parsed = parseName(entry);
-                    if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket())) {
-                        Application application = ConfigEntityCodec.treeToEntity(entry.spec(), Application.class);
-                        scratch.getApplications().put(parsed.name(), application);
+                case AdminInterceptorManifest interceptor ->
+                        scratch.getInterceptors().put(parsed.name().name(), interceptor.spec());
+                case AdminTranslatorManifest translator ->
+                        scratch.getTranslators().put(parsed.name().name(), translator.spec());
+                case AdminRoleManifest role ->
+                        scratch.getRoles().put(parsed.name().name(), role.spec());
+                case AdminRouteManifest route ->
+                        scratch.getRoutes().put(route.name(), route.spec());
+                case AdminKeyManifest key ->
+                        scratch.getKeys().put(key.name(), key.spec());
+                case AdminModelManifest model ->
+                        scratch.getModels().put(parsed.name().name(), model.spec());
+                case AdminApplicationManifest application -> {
+                    if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.name().bucket())) {
+                        scratch.getApplications().put(parsed.name().name(), application.spec());
                     }
                 }
-                case "ToolSet" -> {
-                    ParsedName parsed = parseName(entry);
-                    if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket())) {
-                        ToolSet toolSet = ConfigEntityCodec.treeToEntity(entry.spec(), ToolSet.class);
-                        scratch.getToolsets().put(parsed.name(), toolSet);
+                case AdminToolSetManifest toolSet -> {
+                    if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.name().bucket())) {
+                        scratch.getToolsets().put(parsed.name().name(), toolSet.spec());
                     }
                 }
-                case "Schema" -> {
-                    String schemaId = MergedConfigStore.extractSchemaId(entry.spec());
-                    if (schemaId != null && !schemaId.isBlank()) {
-                        try {
-                            scratch.getApplicationTypeSchemas().put(schemaId, BLOB_MAPPER.writeValueAsString(entry.spec()));
-                        } catch (JsonProcessingException e) {
-                            return;
-                        }
-                    }
-                }
-                case "CatalogSchema" -> {
-                    String schemaId = MergedConfigStore.extractSchemaId(entry.spec());
-                    if (schemaId != null && !schemaId.isBlank()) {
-                        try {
-                            scratch.getCatalogSchemas().put(schemaId, BLOB_MAPPER.writeValueAsString(entry.spec()));
-                        } catch (JsonProcessingException e) {
-                            return;
-                        }
-                    }
-                }
-                default -> { /* unknown kinds never reach this code path */ }
+                case AdminSchemaManifest schema ->
+                        putSchema(scratch.getApplicationTypeSchemas(), schema.spec());
+                case AdminCatalogSchemaManifest catalogSchema ->
+                        putSchema(scratch.getCatalogSchemas(), catalogSchema.spec());
             }
         } catch (IllegalArgumentException ignored) {
             // Already accounted for in apply path; scratch update is best-effort.
+        }
+    }
+
+    private static void putSchema(Map<String, String> schemaMap, JsonNode spec) {
+        String schemaId = MergedConfigStore.extractSchemaId(spec);
+        if (schemaId == null || schemaId.isBlank()) {
+            return;
+        }
+        try {
+            schemaMap.put(schemaId, BLOB_MAPPER.writeValueAsString(spec));
+        } catch (JsonProcessingException ignored) {
+            // Best-effort scratch update, same as the callers above.
         }
     }
 
@@ -179,17 +178,17 @@ public class ConfigManifestSupport {
      * and, if it's well-formed, checks its {@code $id} for an in-place change or a collision
      * against a different blob via {@link MergedConfigStore#validateSchemaId}.
      */
-    static String validateSchema(AdminManifest entry, ParsedName parsed, Config scratch,
+    static String validateSchema(JsonNode spec, ParsedName parsed, Config scratch,
                                  ResourceTypes type, ResourceService resourceService) {
         String kindLabel = switch (type) {
             case APP_TYPE_SCHEMA -> "Schema";
             case CATALOG_SCHEMA -> "CatalogSchema";
             default -> throw new IllegalArgumentException("Unexpected schema type: " + type);
         };
-        if (!entry.spec().isObject()) {
+        if (!spec.isObject()) {
             return kindLabel + " spec must be a JSON object";
         }
-        String schemaId = MergedConfigStore.extractSchemaId(entry.spec());
+        String schemaId = MergedConfigStore.extractSchemaId(spec);
         if (schemaId == null || schemaId.isBlank()) {
             return kindLabel + " spec must contain a non-blank $id field";
         }
@@ -219,6 +218,41 @@ public class ConfigManifestSupport {
         }
     }
 
+    record ParsedManifest(AdminTypedManifest manifest, ParsedName name) {
+    }
+
+    /**
+     * Converts a wire-level {@link AdminManifest} into its typed {@link AdminTypedManifest}
+     * counterpart: name parsing first, then entity-spec binding.
+     */
+    static ParsedManifest parseManifest(AdminManifest entry) {
+        ParsedName name = parseName(entry);
+        AdminTypedManifest manifest = switch (entry.kind()) {
+            case "Settings" -> new AdminSettingsManifest(entry.kind(), entry.name(),
+                    ConfigEntityCodec.treeToEntity(entry.spec(), GlobalSettings.class));
+            case "Schema" -> new AdminSchemaManifest(entry.kind(), entry.name(), entry.spec());
+            case "CatalogSchema" -> new AdminCatalogSchemaManifest(entry.kind(), entry.name(), entry.spec());
+            case "Interceptor" -> new AdminInterceptorManifest(entry.kind(), entry.name(),
+                    ConfigEntityCodec.treeToEntity(entry.spec(), Interceptor.class));
+            case "Translator" -> new AdminTranslatorManifest(entry.kind(), entry.name(),
+                    ConfigEntityCodec.treeToEntity(entry.spec(), Translator.class));
+            case "Role" -> new AdminRoleManifest(entry.kind(), entry.name(),
+                    ConfigEntityCodec.treeToEntity(entry.spec(), Role.class));
+            case "Key" -> new AdminKeyManifest(entry.kind(), entry.name(),
+                    ConfigEntityCodec.treeToEntity(entry.spec(), Key.class));
+            case "Route" -> new AdminRouteManifest(entry.kind(), entry.name(),
+                    ConfigEntityCodec.treeToEntity(entry.spec(), Route.class));
+            case "Model" -> new AdminModelManifest(entry.kind(), entry.name(),
+                    ConfigEntityCodec.treeToEntity(entry.spec(), Model.class));
+            case "ToolSet" -> new AdminToolSetManifest(entry.kind(), entry.name(),
+                    ConfigEntityCodec.treeToEntity(entry.spec(), ToolSet.class));
+            case "Application" -> new AdminApplicationManifest(entry.kind(), entry.name(),
+                    ConfigEntityCodec.treeToEntity(entry.spec(), Application.class));
+            default -> throw new IllegalArgumentException("Unknown kind: " + entry.kind());
+        };
+        return new ParsedManifest(manifest, name);
+    }
+
     /**
      * {@code name} is the canonical resource id ({@code <kind-segment>/<bucket>/<name>}), e.g.
      * {@code models/platform/gpt-4} or {@code applications/public/my-app} — the client picks the
@@ -226,7 +260,7 @@ public class ConfigManifestSupport {
      */
     record ParsedName(String bucket, String location, String name) {}
 
-    static ParsedName parseName(AdminManifest entry) {
+    private static ParsedName parseName(AdminManifest entry) {
         String segment = KIND_URL_SEGMENT.get(entry.kind());
         if (segment == null) {
             throw new IllegalArgumentException("Unknown kind: " + entry.kind());

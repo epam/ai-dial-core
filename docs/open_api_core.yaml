@@ -90,6 +90,7 @@ tags:
 - name: Sharing
 - name: Skills
 - name: Toolsets
+- name: Translators
 - name: User Consent
 paths:
   /anthropic/v1/messages:
@@ -1590,6 +1591,100 @@ paths:
       - lang: cURL
         label: CURL
         source: "curl https://chat.<company>.com/openai/toolsets/my-toolset \\\n  -H \"Api-Key: DIAL_API_KEY\"          \n"
+  /openai/v1/chat/completions:
+    post:
+      tags:
+      - LLM
+      summary: /openai/v1/chat/completions
+      operationId: createChatCompletion
+      parameters:
+      - name: Content-Type
+        in: header
+        description: Must be application/json
+        required: true
+        schema:
+          type: string
+      - name: X-DIAL-CACHE-POLICY
+        in: header
+        description: Upstream selection policy for prompt-caching deployments (availability-priority or cache-priority).
+        required: false
+        schema:
+          type: string
+          enum:
+          - availability-priority
+          - cache-priority
+      - name: X-UPSTREAM-ID
+        in: header
+        description: "Pin the request to one configured upstream, matched by upstream id"
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateChatCompletionResponse"
+            text/event-stream:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CreateChatCompletionStreamResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "415":
+          description: Unsupported Media Type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Bad Gateway - failed to connect to upstream server
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "503":
+          description: "The engine is currently overloaded, please try again later."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /openai/v1/responses:
     post:
       tags:
@@ -1932,7 +2027,7 @@ paths:
             application/json:
               schema:
                 allOf:
-                - $ref: "#/components/schemas/Model"
+                - $ref: "#/components/schemas/Application"
                 - $ref: "#/components/schemas/EntityMetadata"
         "403":
           description: Forbidden
@@ -2163,7 +2258,7 @@ paths:
             application/json:
               schema:
                 allOf:
-                - $ref: "#/components/schemas/Model"
+                - $ref: "#/components/schemas/Key"
                 - $ref: "#/components/schemas/EntityMetadata"
         "403":
           description: Forbidden
@@ -2663,7 +2758,84 @@ paths:
             application/json:
               schema:
                 allOf:
-                - $ref: "#/components/schemas/Model"
+                - $ref: "#/components/schemas/ToolSet"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/translators:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/translators
+      operationId: listFileConfigTranslators
+      responses:
+        "200":
+          description: List of file-sourced translators
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/translators/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/translators/{name}"
+      operationId: getFileConfigTranslator
+      parameters:
+      - name: name
+        in: path
+        description: Translator name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Translator"
                 - $ref: "#/components/schemas/EntityMetadata"
         "403":
           description: Forbidden
@@ -3988,7 +4160,7 @@ paths:
             application/json:
               schema:
                 allOf:
-                - $ref: "#/components/schemas/ProxyResponse"
+                - $ref: "#/components/schemas/CatalogSchema"
                 - $ref: "#/components/schemas/EntityMetadata"
         "304":
           description: Not Modified
@@ -4055,7 +4227,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ProxyRequest"
+              $ref: "#/components/schemas/CatalogSchema"
         required: true
       responses:
         "200":
@@ -4637,6 +4809,50 @@ paths:
       - lang: cURL
         label: CURL
         source: "curl https://chat.<company>.com/deployments?interface_type={interface_type} \\\n  -H \"Api-Key: DIAL_API_KEY\"          \n"
+  /v1/deployments/{deployment_name}:
+    get:
+      tags:
+      - Deployment listing
+      summary: "/v1/deployments/{deployment_name}"
+      operationId: getDeploymentInfo
+      parameters:
+      - name: deployment_name
+        in: path
+        description: The name of the deployment.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeploymentData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/deployments/{deployment_name}/configuration:
     get:
       summary: "/v1/deployments/{deployment_name}/configuration"
@@ -7172,6 +7388,74 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/translators/{bucket}/{path}:
+    get:
+      tags:
+      - Translators
+      summary: "/v1/metadata/translators/{bucket}/{path}"
+      operationId: getTranslatorMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "The parameter specifies path to the requested directory or application, for example: `folder1/folder2/` or `folder1/application_name/`. Note, it could be empty if you want to list the root folder."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
           content:
             application/json:
               schema:
@@ -11068,7 +11352,7 @@ paths:
             application/json:
               schema:
                 allOf:
-                - $ref: "#/components/schemas/ProxyResponse"
+                - $ref: "#/components/schemas/ApplicationTypeSchema"
                 - $ref: "#/components/schemas/EntityMetadata"
         "304":
           description: Not Modified
@@ -11147,7 +11431,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ProxyRequest"
+              $ref: "#/components/schemas/ApplicationTypeSchema"
         required: true
       responses:
         "200":
@@ -12343,6 +12627,217 @@ paths:
     - lang: cURL
       label: CURL
       source: "curl -X DELETE https://chat.<company>.com/v1/toolsets/ENCRYPTED_BUCKET/my-toolset \\\n  -H \"Api-Key: DIAL_API_KEY\"    \n"
+  /v1/translators/{bucket}/{path}:
+    get:
+      tags:
+      - Translators
+      summary: "/v1/translators/{bucket}/{path}"
+      operationId: getTranslator
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Translator name
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the translator
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Translator"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Translators
+      summary: "/v1/translators/{bucket}/{path}"
+      operationId: saveTranslator
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Translator name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Translator"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved translator
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Translators
+      summary: "/v1/translators/{bucket}/{path}"
+      operationId: deleteTranslator
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Translator name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/user/info:
     get:
       summary: /v1/user/info
@@ -12390,7 +12885,7 @@ paths:
       summary: /v1/user/limits
       operationId: getUserLimits
       description: |
-        Returns limits and current rolling usage for every deployment available to the authenticated caller -
+        Returns limits and current usage for every deployment available to the authenticated caller -
         a JWT user or an API-key project. It replaces calling `/v1/deployments/{deployment_name}/limits` once
         per deployment, and one response labels an entire model picker, so switching model needs no refetch.
 
@@ -12413,11 +12908,20 @@ paths:
            (`Long.MAX_VALUE`), meaning unlimited. That value exceeds JavaScript's `Number.MAX_SAFE_INTEGER`
            (`9007199254740991`), so treat any `total` at or above 2^53 as unlimited rather than rendering it
            as a `used / total` ratio.
-        5. **Every window is trailing, not calendar-aligned.** `day` is the last 24 hours, `week` the last 7
-           days, `month` the last 30 days - never "since midnight" or "since the 1st". As a result `used`
-           decreases on its own as older activity ages out; there is no refund and no periodic reset.
-           Eviction happens in steps on UTC boundaries at each window's granularity (1 hour for `day`, 1 day
-           for `week` and `month`).
+        5. **`minute` and `hour` windows are trailing; `day`, `week` and `month` are calendar-aligned.**
+           `minuteTokenStats`/`minuteCostStats` and `hourRequestStats` are a trailing window - the last 60
+           seconds or 60 minutes - so their `used` decreases on its own as older activity ages out, with no
+           periodic reset. `day`/`week`/`month` windows instead reset all at once at a deterministic
+           boundary (e.g. "since midnight" or "since the 1st") anchored to the deployment-wide
+           `rateLimitSchedule` config setting (default: UTC, Monday, 00:00) - `used` only ever grows within a
+           period, then drops to zero at the next boundary.
+        6. **`resetsAt` names that boundary, only for calendar-aligned windows.** `dayTokenStats`,
+           `weekTokenStats`, `monthTokenStats`, `dayRequestStats`, `dayCostStats`, `weekCostStats` and
+           `monthCostStats` carry a `resetsAt` field - an absolute ISO-8601 instant (e.g.
+           `"2026-10-01T00:00:00+02:00"`), not a countdown - for when that window's usage resets next.
+           `minuteTokenStats`, `minuteCostStats` and `hourRequestStats` omit the field entirely rather than
+           serializing it as `null`: a trailing window has no single reset instant to report, so clients
+           should treat a missing `resetsAt` as a permanent, expected omission rather than poll for it.
 
         Per-deployment spend does not reconcile to the global figure. Attribution starts at rollout and does
         not back-fill, and a model without `pricing` never contributes while still consuming tokens, so the
@@ -12445,30 +12949,37 @@ paths:
                         dayTokenStats:
                           total: 10000000
                           used: 42000
+                          resetsAt: 2026-09-10T00:00:00Z
                         weekTokenStats:
                           total: 9223372036854775807
                           used: 180000
+                          resetsAt: 2026-09-14T00:00:00Z
                         monthTokenStats:
                           total: 9223372036854775807
                           used: 640000
+                          resetsAt: 2026-10-01T00:00:00Z
                         hourRequestStats:
                           total: 9223372036854775807
                           used: 3
                         dayRequestStats:
                           total: 9223372036854775807
                           used: 12
+                          resetsAt: 2026-09-10T00:00:00Z
                         minuteCostStats:
                           total: 9223372036854775807
                           used: 0.02
                         dayCostStats:
                           total: 9223372036854775807
                           used: 1.85
+                          resetsAt: 2026-09-10T00:00:00Z
                         weekCostStats:
                           total: 9223372036854775807
                           used: 6.2
+                          resetsAt: 2026-09-14T00:00:00Z
                         monthCostStats:
                           total: 9223372036854775807
                           used: 21.4
+                          resetsAt: 2026-10-01T00:00:00Z
                       gpt-4:
                         minuteTokenStats:
                           total: 100000
@@ -12661,30 +13172,37 @@ paths:
                         dayTokenStats:
                           total: 10000000
                           used: 42000
+                          resetsAt: 2026-09-10T00:00:00Z
                         weekTokenStats:
                           total: 9223372036854775807
                           used: 180000
+                          resetsAt: 2026-09-14T00:00:00Z
                         monthTokenStats:
                           total: 9223372036854775807
                           used: 640000
+                          resetsAt: 2026-10-01T00:00:00Z
                         hourRequestStats:
                           total: 9223372036854775807
                           used: 3
                         dayRequestStats:
                           total: 9223372036854775807
                           used: 12
+                          resetsAt: 2026-09-10T00:00:00Z
                         minuteCostStats:
                           total: 9223372036854775807
                           used: 0.02
                         dayCostStats:
                           total: 9223372036854775807
                           used: 1.85
+                          resetsAt: 2026-09-10T00:00:00Z
                         weekCostStats:
                           total: 9223372036854775807
                           used: 6.2
+                          resetsAt: 2026-09-14T00:00:00Z
                         monthCostStats:
                           total: 9223372036854775807
                           used: 21.4
+                          resetsAt: 2026-10-01T00:00:00Z
                     minuteCostStats:
                       total: 10.0
                       used: 0.4
@@ -12830,7 +13348,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MetadataBase"
+                oneOf:
+                - $ref: "#/components/schemas/ResourceFolderMetadata"
+                - $ref: "#/components/schemas/ComplexResourceItemMetadata"
         "400":
           description: Bad request - limit out of range
         "403":
@@ -13494,6 +14014,15 @@ components:
       properties:
         consent:
           $ref: "#/components/schemas/Consent"
+    AdminApplicationManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Application"
     AdminApplyRequest:
       type: object
       properties:
@@ -13530,7 +14059,7 @@ components:
       - APPLIED_INVALID
       - FAILED
       - SKIPPED
-    AdminManifest:
+    AdminCatalogSchemaManifest:
       type: object
       properties:
         kind:
@@ -13538,7 +14067,117 @@ components:
         name:
           type: string
         spec:
-          $ref: "#/components/schemas/JsonNode"
+          $ref: "#/components/schemas/CatalogSchema"
+    AdminInterceptorManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Interceptor"
+    AdminKeyManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Key"
+    AdminManifest:
+      required:
+      - kind
+      discriminator:
+        propertyName: kind
+        mapping:
+          Settings: "#/components/schemas/AdminSettingsManifest"
+          Schema: "#/components/schemas/AdminSchemaManifest"
+          CatalogSchema: "#/components/schemas/AdminCatalogSchemaManifest"
+          Interceptor: "#/components/schemas/AdminInterceptorManifest"
+          Translator: "#/components/schemas/AdminTranslatorManifest"
+          Role: "#/components/schemas/AdminRoleManifest"
+          Key: "#/components/schemas/AdminKeyManifest"
+          Route: "#/components/schemas/AdminRouteManifest"
+          Model: "#/components/schemas/AdminModelManifest"
+          ToolSet: "#/components/schemas/AdminToolSetManifest"
+          Application: "#/components/schemas/AdminApplicationManifest"
+      oneOf:
+      - $ref: "#/components/schemas/AdminSettingsManifest"
+      - $ref: "#/components/schemas/AdminSchemaManifest"
+      - $ref: "#/components/schemas/AdminCatalogSchemaManifest"
+      - $ref: "#/components/schemas/AdminInterceptorManifest"
+      - $ref: "#/components/schemas/AdminTranslatorManifest"
+      - $ref: "#/components/schemas/AdminRoleManifest"
+      - $ref: "#/components/schemas/AdminKeyManifest"
+      - $ref: "#/components/schemas/AdminRouteManifest"
+      - $ref: "#/components/schemas/AdminModelManifest"
+      - $ref: "#/components/schemas/AdminToolSetManifest"
+      - $ref: "#/components/schemas/AdminApplicationManifest"
+    AdminModelManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Model"
+    AdminRoleManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Role"
+    AdminRouteManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Route"
+    AdminSchemaManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/ApplicationTypeSchema"
+    AdminSettingsManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/GlobalSettings"
+    AdminToolSetManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/ToolSet"
+    AdminTranslatorManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Translator"
     AdminValidateResponse:
       type: object
       properties:
@@ -13762,6 +14401,8 @@ components:
         catalog_schema_id:
           type: string
           format: uri
+        interface_configs:
+          $ref: "#/components/schemas/MapStringInterfaceConfigData"
     ApplicationFunction:
       type: object
       properties:
@@ -13819,6 +14460,17 @@ components:
       enum:
       - HEADER
       - META
+    ApplicationTypeSchema:
+      required:
+      - $id
+      type: object
+      properties:
+        $id:
+          type: string
+          format: uri-reference
+      additionalProperties: true
+      description: |
+        JSON Schema document describing a custom application type. Alongside standard JSON Schema keywords it carries `dial`-prefixed extension properties; `$id` is required and must be non-blank.
     AuthenticationType:
       type: string
       enum:
@@ -13857,6 +14509,17 @@ components:
           type: array
           items:
             type: string
+    CatalogSchema:
+      required:
+      - $id
+      type: object
+      properties:
+        $id:
+          type: string
+          format: uri-reference
+      additionalProperties: true
+      description: |
+        JSON Schema document describing a catalog entity type. Alongside standard JSON Schema keywords it carries `dial`-prefixed extension properties; `$id` is required and must be non-blank.
     ChatCompletionAddon:
       oneOf:
       - type: object
@@ -14220,6 +14883,11 @@ components:
           description: |-
             The JSON schema describing a form that the assistant prompts the user to fill in.
             Given this schema, the user is expected to provide a JSON value in the next message in the `custom_content.form_value` field.
+        skills:
+          type: array
+          description: List of skills referenced by the model as part of the response.
+          items:
+            $ref: "#/components/schemas/RequestSkill"
       description: The custom content of the assistant message.
     ChatCompletionRequestCustomFields:
       type: object
@@ -14463,6 +15131,11 @@ components:
         form_value:
           type: object
           description: The JSON value corresponding to the JSON schema sent by the assistant in the previous message in the `custom_content.form_schema` field.
+        skills:
+          type: array
+          description: List of skills used to supply an additional input for the model.
+          items:
+            $ref: "#/components/schemas/RequestSkill"
       description: The custom content of the user message.
     ChatCompletionResponseAttachment:
       required:
@@ -14803,6 +15476,43 @@ components:
       type: array
       items:
         $ref: "#/components/schemas/MetadataBase"
+    ComplexResourceItemMetadata:
+      type: object
+      properties:
+        attributes:
+          $ref: "#/components/schemas/MapStringObject"
+        author:
+          type: string
+        bucket:
+          type: string
+        createdAt:
+          type: integer
+        etag:
+          type: string
+        name:
+          type: string
+        nodeType:
+          $ref: "#/components/schemas/NodeType"
+        parentPath:
+          type: string
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceAccessType"
+        resourceType:
+          $ref: "#/components/schemas/ResourceType"
+        sharedBy:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShareMetadata"
+        sharedWith:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShareMetadata"
+        updatedAt:
+          type: integer
+        url:
+          type: string
     Condition:
       type: object
       properties:
@@ -14844,6 +15554,8 @@ components:
           type: string
         translators:
           $ref: "#/components/schemas/MapStringTranslator"
+        rateLimitSchedule:
+          $ref: "#/components/schemas/RateLimitSchedule"
     ConfigFileMigrateRequest:
       type: object
       properties:
@@ -14863,12 +15575,19 @@ components:
     ConfigFileMigrateResult:
       type: object
       properties:
-        id:
-          type: string
         reason:
           type: string
         status:
           $ref: "#/components/schemas/ConfigFileMigrateStatus"
+        resourceUrl:
+          type: string
+          description: "Percent-encoded admin API path (relative, no leading /v1/) at which the resulting entity is reachable, e.g. models/platform/gpt-4. Present once the entity exists in blob storage or a resource url could be derived for it; absent when no resource url could be determined."
+        key:
+          type: string
+          description: "Entity's identifier in the source file config (a short name, or a schema's $id). Absent when the entity has no safe file-side name to report - e.g. a key entity's file-side identity is its raw secret, which must never be echoed back, and global settings is a singleton with no name of its own."
+        kind:
+          type: string
+          description: "Entity kind being migrated (e.g. Model, Interceptor, Key, Schema, CatalogSchema, Settings)."
     ConfigFileMigrateStatus:
       type: string
       enum:
@@ -14962,6 +15681,8 @@ components:
           type: number
         used:
           type: number
+        resetsAt:
+          type: string
     CostLimit:
       type: object
       properties:
@@ -15145,6 +15866,10 @@ components:
           $ref: "#/components/schemas/TranslatorRef"
         defaults:
           $ref: "#/components/schemas/MapStringObject"
+        features:
+          $ref: "#/components/schemas/Features"
+        overridePaths:
+          $ref: "#/components/schemas/MapStringString"
     EmbeddingResponse:
       required:
       - data
@@ -15403,6 +16128,8 @@ components:
           type: string
         url_attachments_supported:
           type: boolean
+        skills_supported:
+          type: boolean
     FeaturesData:
       type: object
       properties:
@@ -15455,6 +16182,8 @@ components:
         truncate_prompt:
           type: boolean
         url_attachments:
+          type: boolean
+        skills_supported:
           type: boolean
     FileConfigControllerItemsResponseFileConfigControllerNamedEntity:
       type: object
@@ -15560,6 +16289,8 @@ components:
           type: array
           items:
             type: integer
+        rateLimitSchedule:
+          $ref: "#/components/schemas/RateLimitSchedule"
     HealthResponse:
       type: object
       properties:
@@ -15641,18 +16372,27 @@ components:
           $ref: "#/components/schemas/MapStringString"
         baseUrl:
           type: string
+    InterfaceConfigData:
+      type: object
+      properties:
+        defaults:
+          $ref: "#/components/schemas/MapStringObject"
+        features:
+          $ref: "#/components/schemas/FeaturesData"
+        default_headers:
+          $ref: "#/components/schemas/MapStringString"
     InterfaceMode:
       type: string
       enum:
-      - PASSTHROUGH
-      - TRANSLATOR
+      - passthrough
+      - translator
     InterfaceType:
       type: string
       enum:
-      - OPENAI_CHAT_COMPLETIONS
-      - OPENAI_EMBEDDINGS
-      - OPENAI_RESPONSES
-      - ANTHROPIC_MESSAGES
+      - openaiChatCompletions
+      - openaiEmbeddings
+      - openaiResponses
+      - anthropicMessages
     Invitation:
       type: object
       properties:
@@ -15716,6 +16456,8 @@ components:
           type: integer
         used:
           type: integer
+        resetsAt:
+          type: string
     JsonNode:
       type: object
     Key:
@@ -15886,6 +16628,10 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/Interceptor"
+    MapStringInterfaceConfigData:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/InterfaceConfigData"
     MapStringKey:
       type: object
       additionalProperties:
@@ -16143,6 +16889,8 @@ components:
         catalog_schema_id:
           type: string
           format: uri
+        interface_configs:
+          $ref: "#/components/schemas/MapStringInterfaceConfigData"
     ModelType:
       type: string
       enum:
@@ -16226,12 +16974,12 @@ components:
     Operator:
       type: string
       enum:
-      - EQ
-      - NE
-      - GT
-      - LT
-      - GE
-      - LE
+      - ==
+      - '!='
+      - '>'
+      - <
+      - '>='
+      - <=
     ParallelToolCalls:
       type: boolean
       description: Whether to enable parallel `function` calling during the `tool` use.
@@ -16364,6 +17112,15 @@ components:
       - PENDING
       - APPROVED
       - REJECTED
+    RateLimitSchedule:
+      type: object
+      properties:
+        resetTime:
+          type: string
+        timezone:
+          type: string
+        weekStartDay:
+          $ref: "#/components/schemas/WeekDay"
     RateRequest:
       required:
       - rate
@@ -16410,6 +17167,14 @@ components:
         reference_url:
           type: string
           description: "If `reference_type` is specified, the content of `reference_url` should follow the format described in the MIME standard for `reference_type`."
+    RequestSkill:
+      required:
+      - url
+      type: object
+      properties:
+        url:
+          type: string
+          description: "The URL of the skill resource, e.g. `skills/<bucket>/<path>`."
     ResourceAccessType:
       type: string
       enum:
@@ -16692,6 +17457,7 @@ components:
       - APP_TYPE_SCHEMA
       - CATALOG_SCHEMA
       - INTERCEPTOR
+      - TRANSLATOR
       - ROLE
       - PROJECT_KEY
       - ROUTE
@@ -17229,6 +17995,8 @@ components:
         catalog_schema_id:
           type: string
           format: uri
+        interface_configs:
+          $ref: "#/components/schemas/MapStringInterfaceConfigData"
     ToolSetRepairControllerRepairResponse:
       type: object
       properties:
@@ -17410,6 +18178,16 @@ components:
       - SKIPPED
     ValueNode:
       type: object
+    WeekDay:
+      type: string
+      enum:
+      - Mon
+      - Tue
+      - Wed
+      - Thu
+      - Fri
+      - Sat
+      - Sun
   securitySchemes:
     ApiKeyAuth:
       type: apiKey

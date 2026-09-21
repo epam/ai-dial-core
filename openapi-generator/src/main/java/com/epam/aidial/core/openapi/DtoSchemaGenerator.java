@@ -5,18 +5,26 @@ import com.epam.aidial.core.openapi.annotations.ApiSchemaType;
 import com.epam.aidial.core.openapi.annotations.ApiSubType;
 import com.epam.aidial.core.openapi.annotations.ApiSubTypes;
 import com.fasterxml.classmate.ResolvedType;
+import com.fasterxml.jackson.databind.BeanDescription;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.introspect.AnnotatedMember;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.github.victools.jsonschema.generator.CustomDefinition;
+import com.github.victools.jsonschema.generator.CustomPropertyDefinition;
+import com.github.victools.jsonschema.generator.FieldScope;
 import com.github.victools.jsonschema.generator.Option;
 import com.github.victools.jsonschema.generator.OptionPreset;
 import com.github.victools.jsonschema.generator.SchemaGenerationContext;
 import com.github.victools.jsonschema.generator.SchemaGenerator;
 import com.github.victools.jsonschema.generator.SchemaGeneratorConfig;
 import com.github.victools.jsonschema.generator.SchemaGeneratorConfigBuilder;
+import com.github.victools.jsonschema.generator.SchemaKeyword;
 import com.github.victools.jsonschema.generator.SchemaVersion;
+import com.github.victools.jsonschema.generator.impl.AttributeCollector;
 import com.github.victools.jsonschema.module.jackson.JacksonModule;
 import com.github.victools.jsonschema.module.jackson.JacksonOption;
 
@@ -66,7 +74,11 @@ public class DtoSchemaGenerator {
         configBuilder.without(Option.SCHEMA_VERSION_INDICATOR);
 
         configBuilder.forTypesInGeneral().withCustomDefinitionProvider((javaType, context) -> {
-            CustomDefinition definition = createMapSchemaDefinition(javaType, context);
+            CustomDefinition definition = createJsonValueEnumDefinition(javaType, context);
+            if (definition != null) {
+                return definition;
+            }
+            definition = createMapSchemaDefinition(javaType, context);
             if (definition != null) {
                 return definition;
             }
@@ -76,6 +88,7 @@ public class DtoSchemaGenerator {
             }
             return createPolymorphicDefinition(javaType, context);
         });
+        configBuilder.forFields().withCustomDefinitionProvider(this::createFieldOneOfDefinition);
 
         SchemaGeneratorConfig config = configBuilder.build();
         this.generator = new SchemaGenerator(config);
@@ -130,6 +143,41 @@ public class DtoSchemaGenerator {
         externalSchemaRegistry.register(schemaName);
     }
 
+    /**
+     * {@link JacksonOption#FLATTENED_ENUMS_FROM_JSONVALUE} only detects {@code @JsonValue} on a method
+     * (jsonschema-module-jackson's {@code CustomEnumDefinitionProvider} reads member <em>methods</em>
+     * exclusively); an enum whose {@code @JsonValue} sits on the backing field instead — the usual shape
+     * for a Lombok {@code @Getter} enum such as {@link com.epam.aidial.core.config.InterfaceType} — falls
+     * through to the default {@code Enum.name()}-based schema. Rather than re-implementing that
+     * field-vs-method lookup with raw reflection, this delegates to Jackson's own introspection
+     * ({@link BeanDescription#findJsonValueAccessor()}), which already resolves either shape.
+     */
+    private CustomDefinition createJsonValueEnumDefinition(ResolvedType javaType, SchemaGenerationContext context) {
+        Class<?> clazz = javaType.getErasedType();
+        Object[] enumConstants = clazz.getEnumConstants();
+        if (enumConstants == null || enumConstants.length == 0) {
+            return null;
+        }
+
+        ObjectMapper mapper = context.getGeneratorConfig().getObjectMapper();
+        BeanDescription beanDescription = mapper.getSerializationConfig().introspect(mapper.constructType(clazz));
+        AnnotatedMember accessor = beanDescription.findJsonValueAccessor();
+        if (accessor == null) {
+            return null;
+        }
+        accessor.fixAccess(mapper.getSerializationConfig().isEnabled(MapperFeature.OVERRIDE_PUBLIC_ACCESS_MODIFIERS));
+
+        List<Object> serializedValues = new ArrayList<>(enumConstants.length);
+        for (Object enumConstant : enumConstants) {
+            serializedValues.add(accessor.getValue(enumConstant));
+        }
+
+        ObjectNode schema = context.getGeneratorConfig().createObjectNode()
+                .put(context.getKeyword(SchemaKeyword.TAG_TYPE), context.getKeyword(SchemaKeyword.TAG_TYPE_STRING));
+        new AttributeCollector(mapper).setEnum(schema, serializedValues, context);
+        return new CustomDefinition(schema);
+    }
+
     private CustomDefinition createMapSchemaDefinition(ResolvedType javaType, SchemaGenerationContext context) {
         if (!javaType.isInstanceOf(Map.class)) {
             return null;
@@ -150,6 +198,17 @@ public class DtoSchemaGenerator {
     private CustomDefinition createExplicitOneOfDefinition(ResolvedType javaType, SchemaGenerationContext context) {
         Class<?> clazz = javaType.getErasedType();
         ApiSchema apiSchema = clazz.getAnnotation(ApiSchema.class);
+        ObjectNode schema = buildOneOfSchema(apiSchema, context);
+        return schema == null ? null : new CustomDefinition(schema);
+    }
+
+    private CustomPropertyDefinition createFieldOneOfDefinition(FieldScope field, SchemaGenerationContext context) {
+        ApiSchema apiSchema = field.getAnnotationConsideringFieldAndGetter(ApiSchema.class);
+        ObjectNode schema = buildOneOfSchema(apiSchema, context);
+        return schema == null ? null : new CustomPropertyDefinition(schema);
+    }
+
+    private ObjectNode buildOneOfSchema(ApiSchema apiSchema, SchemaGenerationContext context) {
         if (apiSchema == null) {
             return null;
         }
@@ -158,7 +217,7 @@ public class DtoSchemaGenerator {
                 || apiSchema.oneOfTypes().length > 0
                 || apiSchema.oneOfSchemaRefs().length > 0;
         if (!hasOneOf) {
-            return null;
+            return buildRefSchema(apiSchema.schemaRef(), context);
         }
 
         ObjectNode schema = context.getGeneratorConfig().createObjectNode();
@@ -174,12 +233,20 @@ public class DtoSchemaGenerator {
             oneOf.add(context.createDefinitionReference(resolvedEntry));
         }
         for (String ref : apiSchema.oneOfSchemaRefs()) {
-            ObjectNode refNode = context.getGeneratorConfig().createObjectNode();
-            refNode.put(REF_KEY, COMPONENTS_PREFIX + ref);
-            oneOf.add(refNode);
+            oneOf.add(buildRefSchema(ref, context));
         }
 
-        return new CustomDefinition(schema);
+        return schema;
+    }
+
+    private ObjectNode buildRefSchema(String schemaRef, SchemaGenerationContext context) {
+        if (schemaRef == null || schemaRef.isEmpty()) {
+            return null;
+        }
+        externalSchemaRegistry.register(schemaRef);
+        ObjectNode refNode = context.getGeneratorConfig().createObjectNode();
+        refNode.put(REF_KEY, COMPONENTS_PREFIX + schemaRef);
+        return refNode;
     }
 
     private CustomDefinition createPolymorphicDefinition(ResolvedType javaType, SchemaGenerationContext context) {
@@ -207,6 +274,10 @@ public class DtoSchemaGenerator {
         ArrayNode oneOf = context.getGeneratorConfig().createArrayNode();
 
         for (ApiSubType subtype : subTypes.value()) {
+            // Force generation of the subtype definition so it is registered even when the
+            // polymorphic type is only reached transitively; the returned node is discarded
+            // because cyclic subtype references resolve it to the main-schema placeholder "#".
+            context.createDefinitionReference(context.getTypeContext().resolve(subtype.type()));
             ObjectNode ref = context.getGeneratorConfig().createObjectNode();
             ref.put(REF_KEY, COMPONENTS_PREFIX + buildSchemaName(subtype.type()));
             oneOf.add(ref);

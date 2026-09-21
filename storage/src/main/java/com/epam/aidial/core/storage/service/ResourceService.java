@@ -501,7 +501,8 @@ public class ResourceService implements AutoCloseable {
 
     private static FileMetadata toFileMetadata(
             ResourceDescriptor resource, Result result) {
-        return (FileMetadata) new FileMetadata(resource, result.contentLength(), result.contentType())
+        long contentLength = result.contentLength() == null ? 0L : result.contentLength();
+        return (FileMetadata) new FileMetadata(resource, contentLength, result.contentType())
                 .setCreatedAt(result.createdAt)
                 .setUpdatedAt(result.updatedAt)
                 .setAuthor(result.author)
@@ -606,7 +607,7 @@ public class ResourceService implements AutoCloseable {
             String contentType = metadata.getContentMetadata().getContentType();
             Long length = metadata.getContentMetadata().getContentLength();
 
-            if (length <= maxSizeToCache) {
+            if (length == null || length <= maxSizeToCache) {
                 result = blobToResult(blob, metadata);
                 redisPut(key, result);
                 return ResourceStream.fromResult(result, etagHeader);

@@ -6,7 +6,6 @@ import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.controller.route.GlobalRouteController;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ApplicationService;
-import com.epam.aidial.core.server.service.ToolSetService;
 import io.vertx.core.Context;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpMethod;
@@ -480,11 +479,7 @@ public class ControllerSelectorTest {
     }
 
     private void stubConfigResourceControllerDependencies() {
-        when(proxy.getAccessService()).thenReturn(mock(AccessService.class));
-        MergedConfigStore mergedConfigStore = mock(MergedConfigStore.class);
-        when(proxy.getConfigStore()).thenReturn(mergedConfigStore);
-        when(proxy.getApplicationService()).thenReturn(mock(ApplicationService.class));
-        when(proxy.getToolSetService()).thenReturn(mock(ToolSetService.class));
+        when(proxy.getConfigStore()).thenReturn(mock(MergedConfigStore.class));
     }
 
     @Test
@@ -523,6 +518,56 @@ public class ControllerSelectorTest {
         assertNotNull(lambda);
         Object arg1 = lambda.getCapturedArg(0);
         assertInstanceOf(InvitationController.class, arg1);
+    }
+
+    @Test
+    public void testSelectGetDeploymentInfoController() {
+        when(request.path()).thenReturn("/v1/deployments/name");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        assertNotNull(controller);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        Object arg1 = lambda.getCapturedArg(0);
+        Object arg2 = lambda.getCapturedArg(1);
+        assertInstanceOf(DeploymentController.class, arg1);
+        assertEquals("name", arg2);
+    }
+
+    @Test
+    public void testSelectGetDeploymentInfoControllerWithCustomApplication() {
+        when(request.path()).thenReturn("/v1/deployments/applications/bucket/my-application");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        assertNotNull(controller);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        Object arg1 = lambda.getCapturedArg(0);
+        Object arg2 = lambda.getCapturedArg(1);
+        assertInstanceOf(DeploymentController.class, arg1);
+        assertEquals("applications/bucket/my-application", arg2);
+    }
+
+    // The {id} of the deployment info route spans slashes, so it matches the sub-resource paths as well
+    // and must stay the last registered route.
+    @Test
+    public void testDeploymentInfoRouteDoesNotShadowSubResources() {
+        when(request.method()).thenReturn(HttpMethod.GET);
+
+        when(request.path()).thenReturn("/v1/deployments/name/limits");
+        assertEquals("/v1/deployments/{id}/limits", ControllerSelector.select(request).pathTemplate());
+
+        when(request.path()).thenReturn("/v1/deployments/name/configuration");
+        assertEquals("/v1/deployments/{id}/configuration", ControllerSelector.select(request).pathTemplate());
+
+        when(request.path()).thenReturn("/v1/deployments/name/mcp");
+        assertEquals("/v1/deployments/{id}/mcp", ControllerSelector.select(request).pathTemplate());
+
+        when(request.path()).thenReturn("/v1/deployments/name/route/v1/search");
+        assertEquals("/v1/deployments/{id}/route{routePath}", ControllerSelector.select(request).pathTemplate());
+
+        when(request.path()).thenReturn("/v1/deployments/name");
+        assertEquals("/v1/deployments/{id}", ControllerSelector.select(request).pathTemplate());
     }
 
     @Test
