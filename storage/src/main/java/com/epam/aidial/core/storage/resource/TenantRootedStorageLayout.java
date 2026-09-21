@@ -2,7 +2,7 @@ package com.epam.aidial.core.storage.resource;
 
 /**
  * The tenant-rooted layout: every bucket location is placed under its tenant, and resource-type folders
- * are reserved names. Conversion rules live in {@link TenantLayoutTransform}.
+ * are reserved names. Conversion rules live in {@link TenantLayoutTransformer}.
  */
 public final class TenantRootedStorageLayout implements StorageLayout {
 
@@ -13,16 +13,18 @@ public final class TenantRootedStorageLayout implements StorageLayout {
             throw new IllegalArgumentException("Tenant id must not be blank");
         }
 
+        // Same rule the transform applies on every composition, but failing here fails at start-up.
+        TenantLayoutTransformer.requireTenantId(tenantId);
         this.tenantId = tenantId;
     }
 
     @Override
     public String resolveLocationPrefix(String bucketLocation) {
-        return TenantLayoutTransform.toTenantLocation(bucketLocation, tenantId);
+        return TenantLayoutTransformer.toTenantLocation(bucketLocation, tenantId);
     }
 
     @Override
-    public String resolveTypeFolder(String group) {
-        return TenantLayoutTransform.toTenantTypeFolder(group);
+    public String resolveTypeFolder(String typeGroup) {
+        return TenantLayoutTransformer.toTenantTypeFolder(typeGroup);
     }
 }

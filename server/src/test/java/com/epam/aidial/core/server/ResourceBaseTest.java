@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.resource.StorageLayoutTestAccess;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -296,6 +297,9 @@ public class ResourceBaseTest {
                 dial.stop();
             }
         } finally {
+            // First, so that a failure below cannot leave this JVM's layout installed for the next class.
+            StorageLayoutTestAccess.reset();
+
             if (redis != null) {
                 redis.stop();
             }

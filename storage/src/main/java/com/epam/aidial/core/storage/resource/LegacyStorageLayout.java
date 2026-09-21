@@ -16,7 +16,7 @@ public final class LegacyStorageLayout implements StorageLayout {
     }
 
     @Override
-    public String resolveTypeFolder(String group) {
-        return group;
+    public String resolveTypeFolder(String typeGroup) {
+        return typeGroup;
     }
 }
