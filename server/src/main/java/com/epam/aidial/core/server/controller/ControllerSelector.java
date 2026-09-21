@@ -321,6 +321,10 @@ public class ControllerSelector {
             DeploymentPostController controller = new DeploymentPostController(proxy, context);
             return () -> controller.handle(deploymentId);
         });
+        post(RouteTemplate.LLM_CHAT_COMPLETIONS_API, (proxy, context, pathMatcher) -> {
+            ChatCompletionsController controller = new ChatCompletionsController(proxy, context);
+            return controller::handle;
+        });
         post(RouteTemplate.LLM_RESPONSES_API, (proxy, context, pathMatcher) -> {
             ResponsesController controller = new ResponsesController(proxy, context);
             return controller::handle;
