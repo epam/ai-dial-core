@@ -5,8 +5,11 @@ import com.epam.aidial.core.openapi.annotations.ApiSchemaType;
 import com.epam.aidial.core.openapi.annotations.ApiSubType;
 import com.epam.aidial.core.openapi.annotations.ApiSubTypes;
 import com.fasterxml.classmate.ResolvedType;
-import com.fasterxml.jackson.annotation.JsonValue;
+import com.fasterxml.jackson.databind.BeanDescription;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.introspect.AnnotatedMember;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
@@ -25,11 +28,9 @@ import com.github.victools.jsonschema.generator.impl.AttributeCollector;
 import com.github.victools.jsonschema.module.jackson.JacksonModule;
 import com.github.victools.jsonschema.module.jackson.JacksonOption;
 
-import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,7 +74,7 @@ public class DtoSchemaGenerator {
         configBuilder.without(Option.SCHEMA_VERSION_INDICATOR);
 
         configBuilder.forTypesInGeneral().withCustomDefinitionProvider((javaType, context) -> {
-            CustomDefinition definition = createFieldJsonValueEnumDefinition(javaType, context);
+            CustomDefinition definition = createJsonValueEnumDefinition(javaType, context);
             if (definition != null) {
                 return definition;
             }
@@ -147,37 +148,33 @@ public class DtoSchemaGenerator {
      * (jsonschema-module-jackson's {@code CustomEnumDefinitionProvider} reads member <em>methods</em>
      * exclusively); an enum whose {@code @JsonValue} sits on the backing field instead — the usual shape
      * for a Lombok {@code @Getter} enum such as {@link com.epam.aidial.core.config.InterfaceType} — falls
-     * through to the default {@code Enum.name()}-based schema. This mirrors that provider's own logic, one
-     * step earlier: reading the field directly instead of invoking a method.
+     * through to the default {@code Enum.name()}-based schema. Rather than re-implementing that
+     * field-vs-method lookup with raw reflection, this delegates to Jackson's own introspection
+     * ({@link BeanDescription#findJsonValueAccessor()}), which already resolves either shape.
      */
-    private CustomDefinition createFieldJsonValueEnumDefinition(ResolvedType javaType, SchemaGenerationContext context) {
+    private CustomDefinition createJsonValueEnumDefinition(ResolvedType javaType, SchemaGenerationContext context) {
         Class<?> clazz = javaType.getErasedType();
         Object[] enumConstants = clazz.getEnumConstants();
         if (enumConstants == null || enumConstants.length == 0) {
             return null;
         }
 
-        List<Field> jsonValueFields = Arrays.stream(clazz.getDeclaredFields())
-                .filter(field -> field.isAnnotationPresent(JsonValue.class))
-                .toList();
-        if (jsonValueFields.size() != 1) {
+        ObjectMapper mapper = context.getGeneratorConfig().getObjectMapper();
+        BeanDescription beanDescription = mapper.getSerializationConfig().introspect(mapper.constructType(clazz));
+        AnnotatedMember accessor = beanDescription.findJsonValueAccessor();
+        if (accessor == null) {
             return null;
         }
-        Field jsonValueField = jsonValueFields.get(0);
-        jsonValueField.setAccessible(true);
+        accessor.fixAccess(mapper.getSerializationConfig().isEnabled(MapperFeature.OVERRIDE_PUBLIC_ACCESS_MODIFIERS));
 
         List<Object> serializedValues = new ArrayList<>(enumConstants.length);
-        try {
-            for (Object enumConstant : enumConstants) {
-                serializedValues.add(jsonValueField.get(enumConstant));
-            }
-        } catch (IllegalAccessException e) {
-            return null;
+        for (Object enumConstant : enumConstants) {
+            serializedValues.add(accessor.getValue(enumConstant));
         }
 
         ObjectNode schema = context.getGeneratorConfig().createObjectNode()
                 .put(context.getKeyword(SchemaKeyword.TAG_TYPE), context.getKeyword(SchemaKeyword.TAG_TYPE_STRING));
-        new AttributeCollector(context.getGeneratorConfig().getObjectMapper()).setEnum(schema, serializedValues, context);
+        new AttributeCollector(mapper).setEnum(schema, serializedValues, context);
         return new CustomDefinition(schema);
     }
 
