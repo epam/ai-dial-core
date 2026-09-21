@@ -113,7 +113,7 @@ public class ResourceDescriptor {
      * Returns an absolute path to the resource in a persistent storage.
      */
     public String getAbsoluteFilePath() {
-        return getStoragePrefix(StorageLayouts.resolveActive()) + getPathWithinType();
+        return getStoragePrefix(StorageLayouts.resolveFor(bucketLocation)) + getPathWithinType();
     }
 
     /**
@@ -232,7 +232,7 @@ public class ResourceDescriptor {
      * @param path - to the resource with decrypted bucket
      */
     public ResourceDescriptor resolveByPath(String path) {
-        String prefix = getStoragePrefix(StorageLayouts.resolveActive());
+        String prefix = getStoragePrefix(StorageLayouts.resolveFor(bucketLocation));
         if (!isFolder) {
             throw new IllegalStateException("Resource must be a folder");
         }

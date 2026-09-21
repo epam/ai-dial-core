@@ -10,7 +10,14 @@ import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.data.ResourceUpload;
 import com.epam.aidial.core.storage.data.UserMetadata;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.migration.BucketMigrationStates;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceType;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.resource.StorageLayout;
+import com.epam.aidial.core.storage.resource.StorageLayouts;
 import com.epam.aidial.core.storage.util.Base58;
 import com.epam.aidial.core.storage.util.Compression;
 import com.epam.aidial.core.storage.util.EtagBuilder;
@@ -60,6 +67,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -155,6 +163,7 @@ public class ResourceService implements AutoCloseable {
     private final String resourceQueue;
     private final Map<String, Long> resourceTypeExpiration;
     private final Supplier<String> senderPodIdSupplier;
+    private final BucketMigrationStates migrationStates;
 
     public ResourceService(TimerService timerService,
                            RedissonClient redis,
@@ -172,6 +181,19 @@ public class ResourceService implements AutoCloseable {
                            Settings settings,
                            String prefix,
                            Supplier<String> senderPodIdSupplier) {
+        this(timerService, redis, blobStore, lockService, settings, prefix, senderPodIdSupplier,
+                BucketMigrationStates.ALL_LEGACY);
+    }
+
+    public ResourceService(TimerService timerService,
+                           RedissonClient redis,
+                           BlobStorage blobStore,
+                           LockService lockService,
+                           Settings settings,
+                           String prefix,
+                           Supplier<String> senderPodIdSupplier,
+                           BucketMigrationStates migrationStates) {
+        this.migrationStates = migrationStates;
         this.redis = redis;
         this.blobStore = blobStore;
         this.lockService = lockService;
@@ -508,6 +530,19 @@ public class ResourceService implements AutoCloseable {
                 .setEtag(result.etag);
     }
 
+    /**
+     * Whether the resource is present where the legacy layout would have put it, whatever layout it resolves
+     * to now. A migration copies rather than moves, so the legacy tree outlives the move and can be asked
+     * whether a bucket ever held something — which is how a key that failed to arrive is told apart from a
+     * key that never existed.
+     *
+     * <p>Reads the blob store rather than the cache: a bucket is drained before it is copied, so by the time
+     * this distinction matters the blob store is the authority.
+     */
+    public boolean hasResourceAtLegacyPath(ResourceDescriptor descriptor) {
+        return blobStore.exists(descriptor.getLegacyFilePath());
+    }
+
     public boolean hasResource(ResourceDescriptor descriptor) {
         String redisKey = redisKey(descriptor);
         Result result = redisGet(redisKey, false);
@@ -657,6 +692,7 @@ public class ResourceService implements AutoCloseable {
             String author,
             boolean lock,
             @Nullable Map<String, String> eventMetadata) {
+        requireWritable(descriptor);
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lock ? lockService.lock(redisKey) : null) {
@@ -718,6 +754,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     public ResourceUpload initFileUpload(ResourceDescriptor resource, String contentType, EtagHeader etagHeader, String author) {
+        requireWritable(resource);
         String redisKey = redisKey(resource);
         try (var ignore = lockService.lock(redisKey)) {
             ResourceItemMetadata metadata = getResourceMetadata(resource);
@@ -810,6 +847,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     public FileMetadata finishFileUpload(ResourceDescriptor descriptor, ResourceUpload resourceUpload, EtagHeader etagHeader) {
+        requireWritable(descriptor);
         String redisKey = redisKey(descriptor);
         try (var ignore = lockService.lock(redisKey)) {
             ResourceItemMetadata metadata = getResourceMetadata(descriptor);
@@ -878,6 +916,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     public ResourceItemMetadata computeResourceBytes(ResourceDescriptor descriptor, EtagHeader etag, String author, Function<byte[], byte[]> fn) {
+        requireWritable(descriptor);
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lockService.lock(redisKey)) {
@@ -913,6 +952,7 @@ public class ResourceService implements AutoCloseable {
 
     public boolean deleteResource(ResourceDescriptor descriptor, EtagHeader etag, boolean lock,
             @Nullable Map<String, String> eventMetadata) {
+        requireWritable(descriptor);
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lock ? lockService.lock(redisKey) : null) {
@@ -942,6 +982,10 @@ public class ResourceService implements AutoCloseable {
             return overwrite;
         }
 
+        // The source is sealed too: the copy flushes its pending writes, which would land in a bucket the
+        // migrator has already enumerated.
+        requireWritable(from);
+        requireWritable(to);
         String fromRedisKey = redisKey(from);
         String toRedisKey = redisKey(to);
         Pair<String, String> sortedPair = toOrderedPair(fromRedisKey, toRedisKey);
@@ -997,6 +1041,60 @@ public class ResourceService implements AutoCloseable {
 
     private Pair<String, String> toOrderedPair(String a, String b) {
         return a.compareTo(b) > 0 ? Pair.of(a, b) : Pair.of(b, a);
+    }
+
+    private void requireWritable(ResourceDescriptor descriptor) {
+        if (!migrationStates.resolve(descriptor.getBucketLocation()).isWritable()) {
+            throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "The resource is being migrated to a new storage layout, please retry shortly");
+        }
+    }
+
+    /**
+     * Writes every pending change for one bucket out to the blob store. Redis holds the authoritative body
+     * until it syncs, so a copy taken without this would capture stale bytes; {@link #sync()} cannot be used
+     * instead, being timer-driven and store-wide.
+     *
+     * <p>Costs a scan of the whole write-behind queue, which is shared by every bucket. For a migration, call
+     * it on a sealed bucket: a write admitted after the flush is a lost update, not merely a late one.
+     *
+     * <p>Drains exactly this bucket's resources, which a prefix alone does not pick out. Bucket locations nest
+     * in the tenant-rooted layout — {@code public/} becomes {@code .org/<tenant>/}, which holds every user
+     * bucket, and {@code platform/} becomes the root of the store — and in the legacy one {@code public/} holds
+     * the sub-buckets the platform synthesizes under it. What sets a bucket's own resources apart is the
+     * segment after its prefix: one of the layout's resource-type folders, where a nested bucket has a
+     * location segment instead.
+     */
+    public void flushBucket(String bucketLocation) {
+        StorageLayout layout = StorageLayouts.resolveFor(bucketLocation);
+        String pathPrefix = layout.resolveLocationPrefix(bucketLocation);
+        Set<String> typeFolders = new HashSet<>();
+        for (ResourceType type : ResourceTypes.values()) {
+            typeFolders.add(layout.resolveTypeFolder(type.group()) + ResourceDescriptor.PATH_SEPARATOR);
+        }
+
+        RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
+
+        for (String redisKey : set.valueRange(0, -1)) {
+            String blobKey = blobKeyFromRedisKey(redisKey);
+            if (!blobKey.startsWith(pathPrefix) || !startsWithAny(blobKey.substring(pathPrefix.length()), typeFolders)) {
+                continue;
+            }
+
+            // Blocking, unlike the sweep in sync(): a resource skipped here is one the copy gets wrong.
+            try (var ignore = lockService.lock(redisKey)) {
+                flushToBlobStore(redisKey);
+            }
+        }
+    }
+
+    private static boolean startsWithAny(String path, Set<String> prefixes) {
+        for (String prefix : prefixes) {
+            if (path.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Void sync() {

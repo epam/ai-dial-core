@@ -91,10 +91,11 @@ import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.cache.CacheClientFactory;
+import com.epam.aidial.core.storage.migration.BucketMigrationRegistry;
+import com.epam.aidial.core.storage.migration.BucketMigrationStates;
 import com.epam.aidial.core.storage.resource.LegacyStorageLayout;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
-import com.epam.aidial.core.storage.resource.StorageLayout;
 import com.epam.aidial.core.storage.resource.StorageLayouts;
 import com.epam.aidial.core.storage.resource.TenantRootedStorageLayout;
 import com.epam.aidial.core.storage.service.LockService;
@@ -174,6 +175,7 @@ public class AiDial {
     private AccessTokenValidator accessTokenValidator;
 
     private BlobStorage storage;
+    private BucketMigrationRegistry bucketMigrationRegistry;
     private ResourceService resourceService;
     private ComplexResourceSweepService complexResourceSweepService;
     private McpHttpClientBuilder mcpHttpClientBuilder;
@@ -210,9 +212,6 @@ public class AiDial {
                 accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, taskExecutor, client, clientOptions, claimsLogLevel);
             }
 
-            StorageLayouts.install(createStorageLayout(
-                    settings("storage").getJsonObject("layout", new JsonObject())));
-
             if (storage == null) {
                 // The layout block configures path composition, not the blob store; it is stripped
                 // before the decode because the codec rejects unknown properties.
@@ -227,13 +226,18 @@ public class AiDial {
 
             LockService lockService = new LockService(redis, storage.getPrefix());
             TimerService timerService = new VertxTimerService(vertx, taskExecutor);
+
+            // Before any resource is addressed: ResourceDescriptor composes every physical path through it.
+            BucketMigrationStates migrationStates = installStorageLayout(
+                    settings("storage").getJsonObject("layout", new JsonObject()), lockService, timerService);
+
             ResourceService.Settings resourceServiceSettings = getResourceSettings();
             String podId = UUID.randomUUID().toString();
-            resourceService = new ResourceService(
-                    timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix(), () -> podId);
+            resourceService = new ResourceService(timerService, redis, storage, lockService, resourceServiceSettings,
+                    storage.getPrefix(), () -> podId, migrationStates);
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"));
-            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
+            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService(migrationStates);
             SecretFieldProcessor secretFieldProcessor = new SecretFieldProcessor(
                     credentialEncryptionService,
                     new BucketInfo(ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION));
@@ -422,7 +426,7 @@ public class AiDial {
         return new ResourceRegistrationService(authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService, allowedRedirectUris);
     }
 
-    private CredentialEncryptionService getCredentialEncryptionService() {
+    private CredentialEncryptionService getCredentialEncryptionService(BucketMigrationStates migrationStates) {
         JsonObject toolsetSecurity = settings("toolsets").getJsonObject("security", new JsonObject());
         KmsSettings kmsSettings = Json.decodeValue(toolsetSecurity
                 .getJsonObject("kms", new JsonObject()).toBuffer(), KmsSettings.class);
@@ -431,7 +435,8 @@ public class AiDial {
         ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator(encryptionSettings);
         KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings);
         ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
-                resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache());
+                resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache(),
+                migrationStates);
         ContentEncryptionKeyService contentEncryptionKeyService = getContentEncryptionKeyService(contentEncryptionKeyManager);
         DataEncryptionService dataEncryptionService = new DataEncryptionService(encryptionSettings, new SecureRandom());
         return new CredentialEncryptionService(contentEncryptionKeyService, dataEncryptionService);
@@ -472,6 +477,7 @@ public class AiDial {
             close(server, HttpServer::close);
             close(client, HttpClient::close);
             close(resourceService);
+            close(bucketMigrationRegistry);
             close(complexResourceSweepService);
             close(mcpHttpClientBuilder);
             // Unhook from the global composite before vertx.close() so its shutdown metrics
@@ -513,12 +519,53 @@ public class AiDial {
         return settings.getJsonObject(key, new JsonObject());
     }
 
-    private static StorageLayout createStorageLayout(JsonObject settings) {
-        if (!settings.getBoolean("tenantRooted", false)) {
-            return LegacyStorageLayout.INSTANCE;
+    /**
+     * Installs the layout every physical path is composed with, and returns the migration state the resource
+     * write path guards on.
+     *
+     * <p>With {@code tenantRooted} on, the whole store is served from the tenant-rooted layout — a greenfield
+     * deployment, where there is nothing to migrate. Otherwise each bucket is served from the layout its data
+     * is in, which for a store that has never been migrated is the legacy one, for every bucket.
+     */
+    private BucketMigrationStates installStorageLayout(JsonObject settings, LockService lockService, TimerService timerService) {
+        String tenantId = settings.getString("defaultTenant", "default");
+        if (settings.getBoolean("tenantRooted", false)) {
+            // Only an empty store or a completed migration can be served this way. Anything else — legacy
+            // data nothing has moved, a migration part way through — would resolve every bucket to a tree
+            // with none of its data, and refusing to start is the recoverable outcome.
+            BucketMigrationRegistry.requireReadyForTenantRootedLayout(storage);
+            StorageLayouts.install(new TenantRootedStorageLayout(tenantId));
+            return BucketMigrationStates.ALL_LEGACY;
         }
 
-        return new TenantRootedStorageLayout(settings.getString("defaultTenant", "default"));
+        JsonObject migration = settings.getJsonObject("migration", new JsonObject());
+        if (!migration.getBoolean("enabled", false)) {
+            // No registry, and so no polling. The state document is read on a timer whose period is what
+            // bounds how long a change takes to reach every pod, so it cannot be slowed down when nothing is
+            // happening without also weakening that bound. A deployment that is not migrating therefore does
+            // not read it at all, and turning this on — which a rolling restart can do safely, since every
+            // pod resolves the legacy layout either way — is a prerequisite for moving a bucket.
+            //
+            // Read once first, though. Serving a store whose buckets have moved from the legacy layout
+            // means showing their pre-migration contents and forking new writes into a tree nothing will
+            // reconcile, and the ways to arrive here are ordinary: a config template reset, a value dropped
+            // on redeploy, one node left behind in a rolling restart. Refusing to start is recoverable;
+            // serving stale data quietly is not.
+            if (BucketMigrationRegistry.hasMigratedBuckets(storage)) {
+                throw new IllegalStateException("This store has buckets on the tenant-rooted layout, but "
+                        + "storage.layout.migration.enabled is not set. Serving them would show their "
+                        + "contents from before they moved and write new data where nothing will find it. "
+                        + "Enable the migration, or enable storage.layout.tenantRooted if it is complete");
+            }
+
+            StorageLayouts.install(LegacyStorageLayout.INSTANCE);
+            return BucketMigrationStates.ALL_LEGACY;
+        }
+
+        long refreshPeriod = migration.getLong("refreshPeriodSeconds", 10L) * 1000;
+        bucketMigrationRegistry = new BucketMigrationRegistry(storage, lockService, timerService, refreshPeriod);
+        StorageLayouts.installPerBucket(new TenantRootedStorageLayout(tenantId), bucketMigrationRegistry);
+        return bucketMigrationRegistry;
     }
 
     private List<String> getAllowedRedirectUris() {
