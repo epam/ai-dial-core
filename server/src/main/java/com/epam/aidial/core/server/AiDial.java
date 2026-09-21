@@ -210,7 +210,7 @@ public class AiDial {
                 accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, taskExecutor, client, clientOptions, claimsLogLevel);
             }
 
-            StorageLayouts.useLayout(createStorageLayout(
+            StorageLayouts.install(createStorageLayout(
                     settings("storage").getJsonObject("layout", new JsonObject())));
 
             if (storage == null) {

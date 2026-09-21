@@ -1,8 +1,8 @@
 package com.epam.aidial.core.server.util;
 
-import com.epam.aidial.core.storage.resource.LegacyStorageLayout;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.resource.StorageLayoutTestAccess;
 import com.epam.aidial.core.storage.resource.StorageLayouts;
 import com.epam.aidial.core.storage.resource.SystemResourceRegistry;
 import com.epam.aidial.core.storage.resource.TenantRootedStorageLayout;
@@ -25,12 +25,12 @@ public class SystemBucketLayoutTest {
 
     @BeforeEach
     public void useTenantRootedLayout() {
-        StorageLayouts.useLayout(new TenantRootedStorageLayout(TENANT));
+        StorageLayouts.install(new TenantRootedStorageLayout(TENANT));
     }
 
     @AfterEach
     public void restoreLegacyLayout() {
-        StorageLayouts.useLayout(LegacyStorageLayout.INSTANCE);
+        StorageLayoutTestAccess.reset();
     }
 
     @Test
