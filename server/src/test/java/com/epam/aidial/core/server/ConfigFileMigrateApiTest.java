@@ -1,8 +1,15 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.controller.ConfigFileMigrateController;
 import com.epam.aidial.core.server.util.HashUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import lombok.SneakyThrows;
@@ -63,6 +70,77 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
             }
         }
         assertEquals(1, occurrences, () -> "Expected exactly one 'test-model-v1' entry: " + models.body());
+    }
+
+    @Test
+    @SneakyThrows
+    @DialConfigLocation("dial-config/config-file-migrate.json")
+    void testMigrateModelPreservesUpstreamSecrets() {
+        String body = """
+                {"types": ["models"]}
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, body,
+                "authorization", "admin");
+        verify(response, 200);
+        JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+        assertTrue(idsWithStatus(results, "migrated").contains("models/platform/chat-gpt-35-turbo"),
+                () -> "Body: " + response.body());
+
+        // Raw blob must never carry the plaintext secret — only its ENC[...] envelope.
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(ResourceTypes.MODEL,
+                ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, "chat-gpt-35-turbo");
+        String rawBlob = resourceService.getResource(descriptor);
+        assertNotNull(rawBlob, "Migrated model blob must exist");
+        assertTrue(rawBlob.contains("ENC["), () -> "Upstream secrets must be encrypted at rest: " + rawBlob);
+        for (String plaintext : new String[] {"modelKey1", "modelKey2", "modelKey3"}) {
+            assertFalse(rawBlob.contains(plaintext), () -> "Plaintext upstream key must not appear in blob: " + rawBlob);
+        }
+
+        // The merged in-memory Config (fed by the partial-update decrypt-in-place, slice 4S.4)
+        // must hold the plaintext — this is what the request-forwarding path actually reads.
+        MergedConfigStore store = (MergedConfigStore) dial.getProxy().getConfigStore();
+        Model model = store.get().getModels().get("chat-gpt-35-turbo");
+        assertNotNull(model, "Migrated model must be present in merged config");
+        assertEquals("modelKey1", model.getUpstreams().get(0).getKey());
+        assertEquals("modelKey2", model.getUpstreams().get(1).getKey());
+        assertEquals("modelKey3", model.getUpstreams().get(2).getKey());
+
+        // GET must never leak the secret, encrypted or plaintext (WRITE_ONLY suppresses the field).
+        Response get = send(HttpMethod.GET, "/v1/models/platform/chat-gpt-35-turbo", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertFalse(get.body().contains("modelKey1"), () -> "GET must never leak upstream secrets: " + get.body());
+        assertFalse(get.body().contains("ENC["), () -> "GET must never leak ciphertext: " + get.body());
+    }
+
+    @Test
+    @SneakyThrows
+    @DialConfigLocation("dial-config/config-file-migrate.json")
+    void testMigrateRoutePreservesAndEncryptsUpstreamSecret() {
+        String body = """
+                {"types": ["routes"]}
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, body,
+                "authorization", "admin");
+        verify(response, 200);
+        JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+        assertTrue(idsWithStatus(results, "migrated").contains("routes/platform/tasks"),
+                () -> "Body: " + response.body());
+
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROUTE,
+                ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, "tasks");
+        String rawBlob = resourceService.getResource(descriptor);
+        assertNotNull(rawBlob, "Migrated route blob must exist");
+        assertTrue(rawBlob.contains("ENC["), () -> "Upstream secret must be encrypted at rest: " + rawBlob);
+        assertFalse(rawBlob.contains("123456789"), () -> "Plaintext upstream key must not appear in blob: " + rawBlob);
+
+        MergedConfigStore store = (MergedConfigStore) dial.getProxy().getConfigStore();
+        String canonicalId = MergedConfigStore.canonicalId(ResourceTypes.ROUTE, ResourceDescriptor.PLATFORM_BUCKET, "tasks");
+        Route route = store.get().getRoutes().get(canonicalId);
+        assertNotNull(route, "Migrated route must be present in merged config");
+        assertEquals("123456789", route.getUpstreams().get(0).getKey());
     }
 
     @Test
@@ -276,6 +354,7 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
         JsonNode settings = ProxyUtil.MAPPER.readTree(get.body());
         assertTrue(settings.get("globalInterceptors").isArray());
         assertTrue(settings.get("retriableErrorCodes").isArray());
+        assertEquals("UTC", settings.get("rateLimitSchedule").get("timezone").asText());
     }
 
     @Test

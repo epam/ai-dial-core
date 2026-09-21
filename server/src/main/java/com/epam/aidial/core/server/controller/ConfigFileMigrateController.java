@@ -272,7 +272,7 @@ public class ConfigFileMigrateController {
                 results.add(new ConfigFileMigrateResult(spec.kind(), resourceUrl(canonicalId), shortName, skippedStatus(dryRun), "already in blob"));
                 continue;
             }
-            JsonNode specNode = ProxyUtil.MAPPER.valueToTree(entry.getValue());
+            JsonNode specNode = BLOB_MAPPER.valueToTree(entry.getValue());
             collect(new AdminManifest(spec.kind(), canonicalId, specNode), shortName, scratch, dryRun, toApply, results);
         }
     }
@@ -426,6 +426,7 @@ public class ConfigFileMigrateController {
         GlobalSettings settings = new GlobalSettings();
         settings.setGlobalInterceptors(fileConfig.getGlobalInterceptors());
         settings.setRetriableErrorCodes(fileConfig.getRetriableErrorCodes());
+        settings.setRateLimitSchedule(fileConfig.getRateLimitSchedule());
         JsonNode spec = ProxyUtil.MAPPER.valueToTree(settings);
         collect(new AdminManifest("Settings", canonicalId, spec), null, scratch, dryRun, toApply, results);
     }
