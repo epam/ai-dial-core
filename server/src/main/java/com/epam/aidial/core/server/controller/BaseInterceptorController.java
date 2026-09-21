@@ -147,6 +147,7 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
     @VisibleForTesting
     void handleProxyResponseError(Throwable error) {
         HttpClientRequest proxyRequest = context.getProxyRequest();
+        // N/A: send() has not set proxyRequest yet (tests / call before connect).
         log.warn("Proxy failed to receive response header from origin. Address: {}. Error:",
                 proxyRequest == null ? "N/A" : proxyRequest.connection().remoteAddress(),
                 error);
