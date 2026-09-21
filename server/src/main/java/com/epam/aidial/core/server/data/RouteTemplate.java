@@ -29,6 +29,10 @@ public enum RouteTemplate {
     ),
 
     // OpenAI API routes
+    LLM_CHAT_COMPLETIONS_API(
+            "^/+openai/v1/chat/completions$",
+            "/openai/v1/chat/completions"
+    ),
     LLM_RESPONSES_API(
             "^/+openai/v1/responses$",
             "/openai/v1/responses"
