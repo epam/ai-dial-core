@@ -3,7 +3,6 @@ package com.epam.aidial.core.server.mcp;
 import com.epam.aidial.core.credentials.service.metadata.AuthorizationChallengeProvider;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.google.common.annotations.VisibleForTesting;
 import io.modelcontextprotocol.client.transport.McpHttpClientTransportAuthorizationException;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -41,8 +40,10 @@ public class McpAuthorizationChallengeProvider implements AuthorizationChallenge
         this(httpClientBuilder, TIMEOUT);
     }
 
-    @VisibleForTesting
-    McpAuthorizationChallengeProvider(McpHttpClientBuilder httpClientBuilder, Duration timeout) {
+    /**
+     * @param timeout bounds every request discovery makes to the MCP server, redirects included
+     */
+    public McpAuthorizationChallengeProvider(McpHttpClientBuilder httpClientBuilder, Duration timeout) {
         this.httpClientBuilder = httpClientBuilder;
         this.timeout = timeout;
     }
