@@ -1,8 +1,7 @@
 package com.epam.aidial.core.server.layout;
 
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.storage.resource.LegacyStorageLayout;
-import com.epam.aidial.core.storage.resource.StorageLayouts;
+import com.epam.aidial.core.storage.resource.StorageLayoutTestAccess;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.AfterEach;
@@ -50,8 +49,8 @@ public class LayoutReplayDiffTest {
             "publication", Set.of("publicationUrl"));
 
     @AfterEach
-    public void restoreLegacyLayout() {
-        StorageLayouts.useLayout(LegacyStorageLayout.INSTANCE);
+    public void resetLayout() {
+        StorageLayoutTestAccess.reset();
     }
 
     @Test
@@ -86,10 +85,9 @@ public class LayoutReplayDiffTest {
     }
 
     private static CorpusRunner.Run run(String name, JsonObject layoutSettings, int redisPort, List<Scenario> corpus) {
+        // Closing the instance uninstalls its layout, which is what lets the next run install another.
         try (DialInstance instance = new DialInstance(name, layoutSettings, redisPort)) {
             return CorpusRunner.replay(instance, corpus);
-        } finally {
-            StorageLayouts.useLayout(LegacyStorageLayout.INSTANCE);
         }
     }
 

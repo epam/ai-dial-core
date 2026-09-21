@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.FileUtil;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.resource.StorageLayoutTestAccess;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.json.Json;
@@ -207,6 +208,9 @@ public class DialInstance implements AutoCloseable {
     }
 
     private void closeQuietly() {
+        // First, so that a failure below cannot leave this instance's layout installed for the next one.
+        StorageLayoutTestAccess.reset();
+
         try {
             if (client != null) {
                 client.close();
