@@ -1,56 +1,71 @@
 package com.epam.aidial.core.storage.cache;
 
-import com.google.cloud.iam.credentials.v1.GenerateAccessTokenResponse;
-import com.google.cloud.iam.credentials.v1.IamCredentialsClient;
-import com.google.cloud.iam.credentials.v1.IamCredentialsSettings;
-import com.google.protobuf.Duration;
-import com.google.protobuf.Timestamp;
+import com.google.auth.RequestMetadataCallback;
+import com.google.auth.oauth2.GoogleCredentials;
+import com.google.auth.oauth2.ImpersonatedCredentials;
+import com.google.common.annotations.VisibleForTesting;
 import lombok.SneakyThrows;
 import org.redisson.config.Credentials;
 import org.redisson.config.CredentialsResolver;
 
 import java.net.InetSocketAddress;
-import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class GcpCredentialsResolver implements CredentialsResolver {
 
-    private static final Duration LIFETIME = Duration.newBuilder().setSeconds(TimeUnit.MINUTES.toSeconds(15)).build();
+    private static final String AUTHORIZATION_HEADER = "Authorization";
+    private static final String BEARER_PREFIX = "Bearer ";
 
     private static final List<String> SCOPES = Collections.singletonList("https://www.googleapis.com/auth/cloud-platform");
 
-    private final IamCredentialsClient iamClient;
-    private final String accountName;
-
-    private volatile Timestamp expireTime;
-
-    private volatile CompletionStage<Credentials> future;
+    private final ImpersonatedCredentials credentials;
+    private final ExecutorService executor;
 
     @SneakyThrows
     public GcpCredentialsResolver(String accountName) {
-        this.accountName = accountName;
-        IamCredentialsSettings settings = IamCredentialsSettings.newHttpJsonBuilder().build();
-        this.iamClient = IamCredentialsClient.create(settings);
+        this.credentials = ImpersonatedCredentials.newBuilder()
+                .setSourceCredentials(GoogleCredentials.getApplicationDefault())
+                .setTargetPrincipal(accountName)
+                .setScopes(SCOPES)
+                .setLifetime((int) TimeUnit.MINUTES.toSeconds(15))
+                .build();
+        this.executor = Executors.newVirtualThreadPerTaskExecutor();
+    }
+
+    @VisibleForTesting
+    GcpCredentialsResolver(ImpersonatedCredentials credentials, ExecutorService executor) {
+        this.credentials = credentials;
+        this.executor = executor;
     }
 
     @Override
     public CompletionStage<Credentials> resolve(InetSocketAddress address) {
-        long now = Instant.now().getEpochSecond();
-        if (expireTime == null || now >= expireTime.getSeconds()) {
-            GenerateAccessTokenResponse response =
-                    this.iamClient.generateAccessToken(
-                            this.accountName,
-                            Collections.emptyList(),
-                            SCOPES,
-                            LIFETIME);
-            expireTime = response.getExpireTime();
-            String token = response.getAccessToken();
-            future = CompletableFuture.completedFuture(new Credentials(null, token));
-        }
+        CompletableFuture<Credentials> future = new CompletableFuture<>();
+        credentials.getRequestMetadata(null, executor, new RequestMetadataCallback() {
+            @Override
+            public void onSuccess(Map<String, List<String>> metadata) {
+                List<String> headers = metadata.get(AUTHORIZATION_HEADER);
+                if (headers == null || headers.isEmpty() || !headers.get(0).startsWith(BEARER_PREFIX)) {
+                    future.completeExceptionally(new IllegalStateException(
+                            "GCP request metadata is missing a valid " + AUTHORIZATION_HEADER + " header"));
+                    return;
+                }
+                String token = headers.get(0).substring(BEARER_PREFIX.length());
+                future.complete(new Credentials(null, token));
+            }
+
+            @Override
+            public void onFailure(Throwable throwable) {
+                future.completeExceptionally(throwable);
+            }
+        });
         return future;
     }
 }
