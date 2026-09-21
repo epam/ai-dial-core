@@ -135,8 +135,7 @@ Priority order:
 
 | Setting                                  |      Default       | Required | Description                                                                                                                                                                                                                                                                                                     |
 |------------------------------------------|:------------------:|:--------:|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| config.files                             | aidial.config.json |    No    | List of paths to dynamic settings. Refer to [example](sample/aidial.config.json) of the file with [dynamic settings](#dynamic-settings).                                                                                                                                                                        |
-| config.reload                            |       60000        |    No    | Config reload interval in milliseconds.                                                                                                                                                                                                                                                                         |
+| config.*                                 |         -          |    No    | Dynamic-config loading and validation settings. See the **Config Loading Configurations** block below.                                                                                                                                                                                                     |
 | vertx.*                                  |         -          |    No    | Vertx settings. Refer to [vertx.io](https://vertx.io/docs/apidocs/io/vertx/core/VertxOptions.html) to learn more.                                                                                                                                                                                               |
 | server.*                                 |         -          |    No    | Vertx HTTP server settings for incoming requests. Refer to [HTTP server options](https://vertx.io/docs/apidocs/io/vertx/core/http/HttpServerOptions.html) to learn more.                                                                                                                                        |
 | client.*                                 |         -          |    No    | Vertx HTTP client settings for outbound requests. Refer to [HTTP client options](https://vertx.io/docs/apidocs/io/vertx/core/http/HttpClientOptions.html) to learn more.                                                                                                                                        |
@@ -144,7 +143,6 @@ Priority order:
 | invitations.ttlInSeconds                 |       259200       |    No    | Invitation time to live in seconds.                                                                                                                                                                                                                                                                             |
 | perRequestApiKey.ttl                     |        1800        |    No    | The TTL in seconds of per request API key                                                                                                                                                                                                                                                                       |
 | asyncTaskExecutor.useVirtualThreads      |        true        |    No    | The flag determines if virtual threads are used to run blocking tasks or platform threads.                                                                                                                                                                                                                      |
-| config.jsonMergeStrategy.overwriteArrays |       false        |    No    | Specifies a merging strategy for JSON arrays. If it's set to `true`, arrays will be overwritten. Otherwise, they will be concatenated.                                                                                                                                                                          |
 | apiKeyValidation.proxyCount              |         0          | No | The count of trusted proxies between the client and DIAL Core server. See [selecting an IP address in HTTP header X-Forwarded-For](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For#selecting_an_ip_address) for more details. The default value means there are no proxies. |
 | printAuthorizationHeader                 |       false       | No | If `true`, logs the raw `Authorization` header value at `DEBUG` level for each request. Intended for debugging JWT/identity provider setup only. **Note**: the header may contain sensitive tokens; do not enable in production. |
 | mcpHttpClient.connectTimeout             |        10000        |    No    | Connect timeout in milliseconds for the shared `java.net.http.HttpClient` used when the server calls out to MCP servers (toolset tool listing/execution, API key sign-in validation).                                                                                                                          |
@@ -170,6 +168,49 @@ Prefer the hashed user id where you can: when `identityProviders.*.loggingKey` p
 `identityProviders.*.obfuscateUserEmail` is left enabled, `user.id` already identifies the same user as a salted hash,
 without putting the raw address in the log.
 
+
+<details> 
+<summary><b>Config Loading Configurations</b></summary>
+
+How the [dynamic settings](#dynamic-settings) file is read, merged and validated, and what happens to an
+entity that does not survive validation.
+
+| Setting                                  |      Default       | Required | Description                                                                                                                                                                                                                                                                                                                       |
+|------------------------------------------|:------------------:|:--------:|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| config.files                             | aidial.config.json |    No    | List of paths to dynamic settings. Refer to [example](sample/aidial.config.json) of the file with [dynamic settings](#dynamic-settings).                                                                                                                                                                                          |
+| config.reload                            |       60000        |    No    | Config reload interval in milliseconds.                                                                                                                                                                                                                                                                                           |
+| config.jsonMergeStrategy.overwriteArrays |       false        |    No    | Specifies a merging strategy for JSON arrays. If it's set to `true`, arrays will be overwritten. Otherwise, they will be concatenated.                                                                                                                                                                                             |
+| config.onInvalidEntity                   |       abort        |    No    | What an entity that fails validation does to the merged config: see **Invalid entities** below.                                |
+| config.write.softValidation              |       false        |    No    | If `true`, a Configuration API write whose entity has only cross-reference warnings (e.g. a model naming an interceptor that does not exist yet) is accepted instead of rejected with `422`; the entity then surfaces as invalid on the next rebuild. Invalid `overridePaths` stay fatal in both modes.                            |
+
+**Invalid entities**
+
+A model, application, interceptor, translator, role, route, key or toolset that violates a runtime invariant —
+an interface that resolves to no provider url, a reference to an interceptor that does not exist, a duplicate
+deployment id — is an *invalid entity*. `config.onInvalidEntity` decides what that costs:
+
+| Mode            | Startup (initial merge)                  | Every rebuild and Configuration API write after it                                            |
+|-----------------|------------------------------------------|-----------------------------------------------------------------------------------------------|
+| `abort`         | Core refuses to start                    | Rebuild aborts and the merged config stays at its previous state; the offending write fails   |
+| `skip`          | Entity dropped and recorded; core starts | Entity dropped and recorded                                                                    |
+| `skipOnStartup` | Entity dropped and recorded; core starts | Same as `abort`                                                                                |
+
+A dropped entity is not lost: it is kept in the invalid-entity store, reported by
+`GET /v1/admin/health/config` as `skipped[]` with a reason, returned with `"status": "invalid"` and its
+validation warnings by the admin `GET` for that entity, and counted by the `dial_config_skipped_entities`
+gauge and `dial_config_skip_events_total` counter. Fixing the entity clears it on the next rebuild.
+
+`skipOnStartup` trades a failed start for a stalled reload: while the offending entity is still there,
+every later rebuild aborts, so the pod keeps serving the config it booted with and stops picking up config
+changes made elsewhere (the file poll, another pod's write) until the entity is fixed or removed. Writes
+made through the Configuration API on this pod still apply, since they update the merged config in place.
+The invalid entity is listed by the health endpoint the whole time.
+
+An entity whose blob body is not valid JSON is always skipped per-entity, in every mode. Entities defined in
+the `config.files` file itself are validated when that file is loaded, before any mode applies: a violation
+there fails the load, and at startup that fails the pod regardless of `config.onInvalidEntity`.
+
+</details>
 
 <details> 
 <summary><b>Identity Providers Configurations</b></summary>
