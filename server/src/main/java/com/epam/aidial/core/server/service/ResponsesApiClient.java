@@ -14,6 +14,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpClientResponse;
+import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
 import lombok.RequiredArgsConstructor;
@@ -24,21 +25,26 @@ public class ResponsesApiClient {
     private final HttpClient httpClient;
     private final HttpClientOptions clientOptions;
 
-    public Future<HttpClientResponse> send(String url, HttpMethod method, Upstream upstream, String apiKey) {
+    public Future<HttpClientResponse> send(String url, HttpMethod method, Upstream upstream, String apiKey, Buffer body, String contentType) {
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(url)
                 .setMethod(method)
                 .setConnectTimeout(clientOptions.getConnectTimeout())
                 .setIdleTimeout(clientOptions.getIdleTimeout());
         return httpClient.request(options)
-                .compose(request -> request.putHeader(Proxy.HEADER_API_KEY, apiKey)
+                .compose(request -> {
+                    request.putHeader(Proxy.HEADER_API_KEY, apiKey)
                             .putHeader(Proxy.HEADER_UPSTREAM_KEY,
                                     UpstreamInterfaceUtil.resolveKey(upstream, InterfaceType.OPENAI_RESPONSES))
                             .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT,
                                     UpstreamInterfaceUtil.resolveEndpoint(upstream, InterfaceType.OPENAI_RESPONSES))
                             .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA,
-                                    UpstreamExtraDataMerger.merge(upstream, InterfaceType.OPENAI_RESPONSES))
-                            .send());
+                                    UpstreamExtraDataMerger.merge(upstream, InterfaceType.OPENAI_RESPONSES));
+                    if (contentType != null) {
+                        request.putHeader(HttpHeaders.CONTENT_TYPE, contentType);
+                    }
+                    return request.send(body);
+                });
     }
 
     private static boolean isTerminal(String status) {
