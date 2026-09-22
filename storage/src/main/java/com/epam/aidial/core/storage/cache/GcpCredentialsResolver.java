@@ -68,14 +68,10 @@ public class GcpCredentialsResolver implements CredentialsResolver {
     }
 
     private static String findBearerToken(List<String> headers) {
-        if (headers == null) {
+        if (headers == null || headers.size() != 1) {
             return null;
         }
-        for (String header : headers) {
-            if (header != null && header.startsWith(BEARER_PREFIX)) {
-                return header.substring(BEARER_PREFIX.length());
-            }
-        }
-        return null;
+        String header = headers.get(0);
+        return header.startsWith(BEARER_PREFIX) ? header.substring(BEARER_PREFIX.length()) : null;
     }
 }

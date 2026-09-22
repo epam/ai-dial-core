@@ -88,20 +88,19 @@ public class GcpCredentialsResolverTest {
     }
 
     @Test
-    public void testResolveMultipleAuthorizationValuesPicksBearerEntry() {
+    public void testResolveRejectsMultipleAuthorizationValues() {
         doAnswer(invocation -> {
             RequestMetadataCallback callback = invocation.getArgument(2);
-            callback.onSuccess(Map.of("Authorization", List.of("Digest ignored", "Bearer token1")));
+            callback.onSuccess(Map.of("Authorization", List.of("Bearer token1", "Bearer token2")));
             return null;
         }).when(credentials).getRequestMetadata(any(), any(Executor.class), any(RequestMetadataCallback.class));
 
         InetSocketAddress address = new InetSocketAddress(8080);
         CompletionStage<Credentials> stage = resolver.resolve(address);
         assertNotNull(stage);
-        stage.thenAccept(creds -> {
-            assertEquals("token1", creds.getPassword());
-            assertNull(creds.getUsername());
-        });
+        CompletionException thrown = assertThrows(CompletionException.class,
+                () -> stage.toCompletableFuture().join());
+        assertInstanceOf(IllegalStateException.class, thrown.getCause());
     }
 
     @Test
