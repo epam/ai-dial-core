@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.token;
 
+import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -221,5 +222,39 @@ class TokenUsageParserTest {
             actualReasoning = usage.getCompletionTokensDetails().getReasoningTokens();
         }
         Assertions.assertEquals(actualReasoning, reasoning);
+    }
+
+    @Test
+    void testParseFromTreeMatchesParseFromBufferForNonStreamingBody() throws Exception {
+        String body = """
+                {
+                  "id": "chatcmpl-7VfMTgj3ljKdGKS2BEIwloII3IoO0",
+                  "object": "chat.completion",
+                  "model": "gpt-35-turbo",
+                  "usage": {
+                    "completion_tokens": 33,
+                    "prompt_tokens": 19,
+                    "total_tokens": 52
+                  }
+                }
+                """;
+
+        TokenUsage fromTree = TokenUsageParser.parse(ProxyUtil.MAPPER.readTree(body));
+        TokenUsage fromBuffer = TokenUsageParser.parse(Buffer.buffer(body));
+
+        Assertions.assertNotNull(fromTree);
+        Assertions.assertEquals(fromBuffer.getCompletionTokens(), fromTree.getCompletionTokens());
+        Assertions.assertEquals(fromBuffer.getPromptTokens(), fromTree.getPromptTokens());
+        Assertions.assertEquals(fromBuffer.getTotalTokens(), fromTree.getTotalTokens());
+    }
+
+    @Test
+    void testParseFromTreeReturnsNullWhenNoUsageField() throws Exception {
+        Assertions.assertNull(TokenUsageParser.parse(ProxyUtil.MAPPER.readTree("{\"id\":\"chatcmpl-1\"}")));
+    }
+
+    @Test
+    void testParseFromTreeReturnsNullWhenUsageIsNotAnObject() throws Exception {
+        Assertions.assertNull(TokenUsageParser.parse(ProxyUtil.MAPPER.readTree("{\"usage\":null}")));
     }
 }

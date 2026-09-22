@@ -13,6 +13,9 @@ public class ExtractTerminalResponseFn extends BaseResponseFunction {
     @Getter
     @Nullable
     private String assembledStreamingResponse;
+    @Getter
+    @Nullable
+    private JsonNode assembledStreamingResponseTree;
 
     public ExtractTerminalResponseFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
@@ -24,6 +27,7 @@ public class ExtractTerminalResponseFn extends BaseResponseFunction {
         if ("response.completed".equals(type) || "response.incomplete".equals(type)) {
             JsonNode responseNode = tree.get("response");
             if (responseNode != null) {
+                assembledStreamingResponseTree = responseNode;
                 assembledStreamingResponse = ProxyUtil.convertToString(responseNode);
                 context.setPricingUsageNode(responseNode);
             }

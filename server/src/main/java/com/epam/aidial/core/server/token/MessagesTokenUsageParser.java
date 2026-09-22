@@ -27,15 +27,23 @@ public class MessagesTokenUsageParser {
      */
     public TokenUsage parse(Buffer body) {
         try {
-            JsonNode usage = ProxyUtil.MAPPER.readTree(body.getBytes()).get("usage");
-            if (usage == null || !usage.isObject()) {
-                return null;
-            }
-            return fromUsageNode(usage);
+            return parse(ProxyUtil.MAPPER.readTree(body.getBytes()));
         } catch (Throwable e) {
             log.warn("Can't parse Anthropic token usage: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * For a caller that already parsed the body into a tree for its own purposes - reads the top-level
+     * {@code usage} field directly instead of reparsing the same bytes.
+     */
+    public TokenUsage parse(JsonNode tree) {
+        JsonNode usage = tree.get("usage");
+        if (usage == null || !usage.isObject()) {
+            return null;
+        }
+        return fromUsageNode(usage);
     }
 
     /**

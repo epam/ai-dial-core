@@ -128,7 +128,21 @@ public final class GenAiTraceAttributes {
     public static void setResponseAttributes(ProxyContext context, InterfaceType type, Buffer responseBody, String responseId) {
         enrich(context, () -> {
             setOperationAttributes(context, type, operationName(type));
-            setResponseAttributes(context, type, responseTree(context, type, responseBody), responseId);
+            applyResponseFields(context, type, responseTree(context, type, responseBody), responseId);
+            collectUpstreamCacheAttributes(context);
+        });
+    }
+
+    /**
+     * For a caller that already parsed the body into a tree for its own purposes (id rewriting, terminal-result
+     * detection, token usage) - skips {@link #responseTree} entirely instead of reparsing the same bytes.
+     *
+     * @param responseId overrides the body's own id when the caller knows the client-facing id; null keeps the body's.
+     */
+    public static void setResponseAttributes(ProxyContext context, InterfaceType type, JsonNode responseTree, String responseId) {
+        enrich(context, () -> {
+            setOperationAttributes(context, type, operationName(type));
+            applyResponseFields(context, type, responseTree, responseId);
             collectUpstreamCacheAttributes(context);
         });
     }
@@ -136,7 +150,7 @@ public final class GenAiTraceAttributes {
     /**
      * @param responseId overrides the body's own id when the caller knows the client-facing id; null keeps the body's.
      */
-    private static void setResponseAttributes(ProxyContext context, InterfaceType type, JsonNode response, String responseId) {
+    private static void applyResponseFields(ProxyContext context, InterfaceType type, JsonNode response, String responseId) {
         set(context, stringKey("gen_ai.response.id"), responseId == null ? text(response.get("id")) : clamp(responseId));
         set(context, stringKey("gen_ai.response.model"), text(response.get("model")));
         set(context, stringArrayKey("gen_ai.response.finish_reasons"), finishReasons(response, type));
@@ -163,10 +177,21 @@ public final class GenAiTraceAttributes {
      *                   rewrites it, so the buffered bytes still carry the upstream id.
      */
     public static void setFetchResponseAttributes(ProxyContext context, Buffer responseBody, String responseId) {
+        enrich(context, () ->
+                setFetchResponseAttributes(context, responseTree(context, InterfaceType.OPENAI_RESPONSES, responseBody), responseId));
+    }
+
+    /**
+     * For a caller that already parsed the body (e.g. for id rewriting or terminal-result detection) -
+     * skips {@link #responseTree} entirely instead of reparsing the same bytes.
+     *
+     * @param responseId DIAL's own response id. A streamed body is buffered before {@code ReplaceResponseIdFn}
+     *                   rewrites it, so the buffered bytes still carry the upstream id.
+     */
+    public static void setFetchResponseAttributes(ProxyContext context, JsonNode response, String responseId) {
         enrich(context, () -> {
             setOperationAttributes(context, InterfaceType.OPENAI_RESPONSES, "fetch_response");
-            JsonNode response = responseTree(context, InterfaceType.OPENAI_RESPONSES, responseBody);
-            setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, response, responseId);
+            applyResponseFields(context, InterfaceType.OPENAI_RESPONSES, response, responseId);
             collectUsageAttributes(context, tokenUsage(response.get("usage")));
         });
     }
@@ -301,14 +326,26 @@ public final class GenAiTraceAttributes {
         if (!isEventStream(context)) {
             return parse(responseBody);
         }
-        String assembled = context.getAssembledStreamingResponse();
         return switch (type) {
-            // shared with the analytics log, which merges the same body once per streamed request
-            case OPENAI_CHAT_COMPLETIONS -> parse(context.assembledChatCompletionsResponse());
+            // the analytics log merges the same streamed body once per request and keeps the tree it built;
+            // reuse it instead of reparsing the string serialized from it for the log
+            case OPENAI_CHAT_COMPLETIONS -> {
+                context.assembledChatCompletionsResponse();
+                JsonNode tree = context.getAssembledStreamingResponseTree();
+                yield tree == null ? MissingNode.getInstance() : tree;
+            }
             // the terminal frame ExtractTerminalResponseFn already kept while streaming; a run that failed or
             // was cancelled leaves none, and only then is the buffered stream scanned for it
-            case OPENAI_RESPONSES -> assembled == null ? responsesEvent(responseBody) : parse(assembled);
-            case ANTHROPIC_MESSAGES -> anthropicResponse(responseBody);
+            case OPENAI_RESPONSES -> {
+                JsonNode tree = context.getAssembledStreamingResponseTree();
+                yield tree == null ? responsesEvent(responseBody) : tree;
+            }
+            // CollectMessagesTokenUsageFn already kept a running id/model/stop_reason view while streaming,
+            // from the same events; only a run that never reached message_start leaves none
+            case ANTHROPIC_MESSAGES -> {
+                JsonNode tree = context.getAssembledStreamingResponseTree();
+                yield tree == null ? anthropicResponse(responseBody) : tree;
+            }
             case OPENAI_EMBEDDINGS -> parse(responseBody);
         };
     }
@@ -321,12 +358,6 @@ public final class GenAiTraceAttributes {
         return body == null || body.length() > MAX_TRACED_BODY_BYTES
                 ? MissingNode.getInstance()
                 : JsonUtil.tryParse(body.getBytes());
-    }
-
-    private static JsonNode parse(String body) {
-        return body == null || body.length() > MAX_TRACED_BODY_BYTES
-                ? MissingNode.getInstance()
-                : JsonUtil.tryParse(body);
     }
 
     private static JsonNode responsesEvent(Buffer responseBody) {

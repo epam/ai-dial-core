@@ -55,7 +55,6 @@ import io.vertx.core.http.HttpServerResponse;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
-import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -345,15 +344,17 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .endOnFailure(false)
                 .endOnSuccess(false)
                 .to(response)
-                .onSuccess(ignored -> handleStreamingResponse(responseStream, replaceIdFn.getDialId(), extractFn.getAssembledStreamingResponse()))
+                .onSuccess(ignored -> handleStreamingResponse(responseStream, replaceIdFn.getDialId(),
+                        extractFn.getAssembledStreamingResponse(), extractFn.getAssembledStreamingResponseTree()))
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
     private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
         return rewriteResponseId(proxyResponse, body)
-                .compose(pair -> {
-                    String dialId = pair.getKey();
-                    Buffer rewritten = pair.getValue();
+                .compose(rewrite -> {
+                    String dialId = rewrite.dialId();
+                    Buffer rewritten = rewrite.body();
+                    ObjectNode tree = rewrite.tree();
                     context.setResponseBody(rewritten);
                     context.setResponseBodyTimestamp(System.currentTimeMillis());
                     HttpServerResponse response = context.getResponse();
@@ -371,12 +372,14 @@ public class ResponsesController extends BaseDeploymentPostController {
                                     response.end(rewritten);
                                 });
                     } else {
-                        return collectTokenUsage(rewritten)
+                        Future<Void> usageFuture = tree != null ? collectTokenUsage(tree) : collectTokenUsage(rewritten);
+                        return usageFuture
                                 .transform(result -> {
                                     if (result.failed()) {
                                         log.warn("Failed to collect token usage", result.cause());
                                     }
-                                    return collectResponseAttachments(rewritten, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
+                                    CollectResponsesApiOutputAttachmentsFn fn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
+                                    return tree != null ? collectResponseAttachments(tree, fn) : collectResponseAttachments(rewritten, fn);
                                 })
                                 .onComplete(result -> {
                                     if (result.failed()) {
@@ -389,23 +392,30 @@ public class ResponsesController extends BaseDeploymentPostController {
                 });
     }
 
-    private Future<Pair<String, Buffer>> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
+    /**
+     * @param tree the {@code body}'s parsed tree (with the id already rewritten), or null when the body
+     *             couldn't be parsed/rewritten - {@code body} is the original bytes in that case.
+     */
+    private record RewrittenResponse(String dialId, Buffer body, ObjectNode tree) {
+    }
+
+    private Future<RewrittenResponse> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
         if (proxyResponse.statusCode() != 200) {
-            return Future.succeededFuture(Pair.of(null, body));
+            return Future.succeededFuture(new RewrittenResponse(null, body, null));
         }
-        JsonNode tree = JsonUtil.tryParse(body.getBytes());
-        if (!tree.isObject() || !(tree instanceof ObjectNode object)) {
+        JsonNode parsed = JsonUtil.tryParse(body.getBytes());
+        if (!(parsed instanceof ObjectNode object)) {
             log.warn("Response body is not a JSON object, skipping rewrite. Deployment: {}. Endpoint: {}",
                     context.getDeployment().getName(),
                     context.getProxyRequestUri());
-            return Future.succeededFuture(Pair.of(null, body));
+            return Future.succeededFuture(new RewrittenResponse(null, body, null));
         }
         JsonNode idNode = object.path("id");
         if (!idNode.isTextual()) {
             log.info("Response body doesn't contain 'id' field, skipping rewrite. Deployment: {}. Endpoint: {}",
                     context.getDeployment().getName(),
                     context.getProxyRequestUri());
-            return Future.succeededFuture(Pair.of(null, body));
+            return Future.succeededFuture(new RewrittenResponse(null, body, null));
         }
 
         String upstreamId = idNode.asText();
@@ -416,7 +426,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         if (!context.isStoreResponse()) {
             String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
             object.put("id", dialId);
-            return Future.succeededFuture(Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object))));
+            return Future.succeededFuture(new RewrittenResponse(dialId, Buffer.buffer(JsonUtil.serialize(object)), object));
         }
         ResponseMapping mapping = ResponseMapping.builder()
                 .upstreamResponseId(upstreamId)
@@ -428,17 +438,20 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
                 .map(dialId -> {
                     object.put("id", dialId);
-                    return Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object)));
+                    return new RewrittenResponse(dialId, Buffer.buffer(JsonUtil.serialize(object)), object);
                 });
     }
 
-    private void handleStreamingResponse(BufferingReadStream responseStream, String dialId, String assembledStreamingResponse) {
+    private void handleStreamingResponse(BufferingReadStream responseStream, String dialId, String assembledStreamingResponse,
+            JsonNode assembledStreamingResponseTree) {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
-        // the terminal frame ExtractTerminalResponseFn already kept: the trace attributes read it instead of
-        // scanning the buffered stream a second time. Null for a run that failed or was cancelled.
+        // the terminal frame ExtractTerminalResponseFn already kept: the trace attributes read the tree
+        // directly instead of scanning the buffered stream - or even reparsing this string - a second time.
+        // Both are null for a run that failed or was cancelled.
         context.setAssembledStreamingResponse(assembledStreamingResponse);
+        context.setAssembledStreamingResponseTree(assembledStreamingResponseTree);
 
         Future<Void> completionFuture;
         if (context.isBackgroundJob() && dialId != null) {

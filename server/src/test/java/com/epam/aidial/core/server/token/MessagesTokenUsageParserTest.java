@@ -103,4 +103,23 @@ public class MessagesTokenUsageParserTest {
         assertEquals(160, usage.getTotalTokens());
         assertEquals(5, usage.getPromptTokensDetails().getCachedTokens());
     }
+
+    @Test
+    void parseFromTreeMatchesParseFromBuffer() throws Exception {
+        String body = "{\"id\":\"msg\",\"usage\":{\"input_tokens\":10,\"output_tokens\":8,\"cache_read_input_tokens\":2}}";
+        JsonNode tree = ProxyUtil.MAPPER.readTree(body);
+
+        TokenUsage fromTree = MessagesTokenUsageParser.parse(tree);
+        TokenUsage fromBuffer = MessagesTokenUsageParser.parse(Buffer.buffer(body));
+
+        assertNotNull(fromTree);
+        assertEquals(fromBuffer.getPromptTokens(), fromTree.getPromptTokens());
+        assertEquals(fromBuffer.getCompletionTokens(), fromTree.getCompletionTokens());
+        assertEquals(fromBuffer.getTotalTokens(), fromTree.getTotalTokens());
+    }
+
+    @Test
+    void parseFromTreeReturnsNullWhenNoUsage() throws Exception {
+        assertNull(MessagesTokenUsageParser.parse(ProxyUtil.MAPPER.readTree("{\"id\":\"msg\"}")));
+    }
 }

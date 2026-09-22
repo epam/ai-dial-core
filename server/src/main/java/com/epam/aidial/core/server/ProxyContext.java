@@ -112,8 +112,11 @@ public class ProxyContext {
     private boolean isBackgroundJob;
     // read from the log layout, which AsyncTaskExecutor may run on a virtual thread sharing this Vert.x context
     private final Map<String, Object> tracingAttributes = new ConcurrentHashMap<>();
-    // the merged chat completions body, or the terminal Responses frame - whichever surface streamed
+    // the merged chat completions body, or the terminal Responses/Messages frame - whichever surface streamed
     private String assembledStreamingResponse;
+    // the same content as assembledStreamingResponse, already parsed - set alongside it so GenAI tracing
+    // never has to reparse the string it was serialized from
+    private JsonNode assembledStreamingResponseTree;
 
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {
@@ -327,7 +330,8 @@ public class ProxyContext {
      */
     public String assembledChatCompletionsResponse() {
         if (assembledStreamingResponse == null && responseBody != null) {
-            assembledStreamingResponse = AnalyticsLogContext.assembleStreamingChatCompletionsResponse(responseBody);
+            assembledStreamingResponseTree = AnalyticsLogContext.assembleStreamingChatCompletionsResponseTree(responseBody);
+            assembledStreamingResponse = ProxyUtil.convertToString(assembledStreamingResponseTree);
         }
         return assembledStreamingResponse;
     }

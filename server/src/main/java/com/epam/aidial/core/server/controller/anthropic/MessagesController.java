@@ -23,8 +23,10 @@ import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
@@ -146,7 +148,10 @@ public class MessagesController extends MessagesBaseController {
         ProxyUtil.copyResponse(response, proxyResponse);
         response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
         putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
-        return collectTokenUsage(body)
+
+        JsonNode tree = JsonUtil.tryParse(body.getBytes());
+        Future<Void> usageFuture = tree.isObject() ? collectTokenUsage(tree) : collectTokenUsage(body);
+        return usageFuture
                 .transform(result -> {
                     if (result.failed()) {
                         log.warn("Failed to collect token usage", result.cause());
@@ -190,6 +195,15 @@ public class MessagesController extends MessagesBaseController {
             return context.getTokenUsage();
         }
         return MessagesTokenUsageParser.parse(responseBody);
+    }
+
+    @Override
+    protected TokenUsage parseTokenUsage(JsonNode responseTree) {
+        if (context.isStreamingRequest()) {
+            // Populated event-by-event by CollectMessagesTokenUsageFn during streaming.
+            return context.getTokenUsage();
+        }
+        return MessagesTokenUsageParser.parse(responseTree);
     }
 
     @Override
