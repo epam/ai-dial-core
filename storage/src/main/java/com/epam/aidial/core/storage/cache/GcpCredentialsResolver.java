@@ -16,7 +16,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 public class GcpCredentialsResolver implements CredentialsResolver {
 
@@ -34,7 +33,6 @@ public class GcpCredentialsResolver implements CredentialsResolver {
                 .setSourceCredentials(GoogleCredentials.getApplicationDefault())
                 .setTargetPrincipal(accountName)
                 .setScopes(SCOPES)
-                .setLifetime((int) TimeUnit.MINUTES.toSeconds(15))
                 .build();
         this.executor = Executors.newVirtualThreadPerTaskExecutor();
     }
@@ -52,12 +50,12 @@ public class GcpCredentialsResolver implements CredentialsResolver {
             @Override
             public void onSuccess(Map<String, List<String>> metadata) {
                 List<String> headers = metadata.get(AUTHORIZATION_HEADER);
-                if (headers == null || headers.isEmpty() || !headers.get(0).startsWith(BEARER_PREFIX)) {
+                String token = findBearerToken(headers);
+                if (token == null) {
                     future.completeExceptionally(new IllegalStateException(
                             "GCP request metadata is missing a valid " + AUTHORIZATION_HEADER + " header"));
                     return;
                 }
-                String token = headers.get(0).substring(BEARER_PREFIX.length());
                 future.complete(new Credentials(null, token));
             }
 
@@ -67,5 +65,17 @@ public class GcpCredentialsResolver implements CredentialsResolver {
             }
         });
         return future;
+    }
+
+    private static String findBearerToken(List<String> headers) {
+        if (headers == null) {
+            return null;
+        }
+        for (String header : headers) {
+            if (header != null && header.startsWith(BEARER_PREFIX)) {
+                return header.substring(BEARER_PREFIX.length());
+            }
+        }
+        return null;
     }
 }
