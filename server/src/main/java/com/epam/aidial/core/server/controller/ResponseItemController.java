@@ -44,6 +44,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -182,18 +183,26 @@ public class ResponseItemController implements Controller {
             context.setInterceptors(apiKeyData.getInterceptors());
             int nextIndex = apiKeyData.getInterceptorIndex() + 1;
             if (nextIndex < apiKeyData.getInterceptors().size()) {
-                return handleInterceptor(nextIndex);
+                return withRequestBody(() -> handleInterceptor(nextIndex));
             }
         } else {
             context.setInterceptors(proxy.getDeploymentService().getInterceptors(context, deployment, InterfaceType.OPENAI_RESPONSES));
             if (context.hasNextInterceptor()) {
                 context.setInitialDeployment(deployment.getName());
-                return handleInterceptor(0);
+                return withRequestBody(() -> handleInterceptor(0));
             }
         }
 
         ResponseMapping mapping = loadMapping();
-        return forwardToUpstream(mapping, deployment);
+        return withRequestBody(() -> forwardToUpstream(mapping, deployment));
+    }
+
+    private Future<Void> withRequestBody(Supplier<Future<Void>> continuation) {
+        return context.getRequest().body()
+                .compose(body -> {
+                    context.setRequestBody(body);
+                    return continuation.get();
+                });
     }
 
     private Future<Void> handleInterceptor(int interceptorIndex) {
@@ -218,7 +227,10 @@ public class ResponseItemController implements Controller {
         context.setProxyApiKeyData(proxyApiKeyData);
         proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
 
-        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, proxyApiKeyData.getPerRequestKey())
+        String requestContentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
+        Buffer requestBody = context.getRequestBody();
+        String perRequestKey = proxyApiKeyData.getPerRequestKey();
+        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, perRequestKey, requestBody, requestContentType)
                 .compose(response -> {
                     String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
                     if (operation == Operation.GET

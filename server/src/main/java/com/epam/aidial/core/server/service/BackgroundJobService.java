@@ -214,7 +214,7 @@ public class BackgroundJobService {
             return Future.failedFuture("Failed to get upstream for deployment " + deployment.getName()
                     + " and upstream key " + mapping.getUpstreamKey() + ": " + e.getMessage());
         }
-        return client.send(targetUrl, HttpMethod.GET, upstream, apiKey)
+        return client.send(targetUrl, HttpMethod.GET, upstream, apiKey, Buffer.buffer(), null)
                 .compose(response -> {
                     int statusCode = response.statusCode();
                     if (statusCode != 200) {

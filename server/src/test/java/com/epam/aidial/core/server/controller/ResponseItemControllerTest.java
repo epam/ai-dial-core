@@ -172,13 +172,14 @@ public class ResponseItemControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any()))
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any(), any(), any()))
                 .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
         when(context.getUserId()).thenReturn("test-user");
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
@@ -193,7 +194,7 @@ public class ResponseItemControllerTest {
 
         ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<HttpMethod> methodCaptor = ArgumentCaptor.forClass(HttpMethod.class);
-        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), methodCaptor.capture(), any(Upstream.class), any());
+        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), methodCaptor.capture(), any(Upstream.class), any(), any(), any());
         assertEquals("http://adapter/responses/upstream-id-123", urlCaptor.getValue());
         assertEquals(HttpMethod.GET, methodCaptor.getValue());
 
@@ -226,13 +227,14 @@ public class ResponseItemControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any()))
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any(), any(), any()))
                 .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
         when(context.getUserId()).thenReturn("test-user");
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
@@ -247,7 +249,7 @@ public class ResponseItemControllerTest {
 
         ArgumentCaptor<String> urlCaptor = ArgumentCaptor.captor();
         ArgumentCaptor<HttpMethod> methodCaptor = ArgumentCaptor.captor();
-        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), methodCaptor.capture(), any(Upstream.class), any());
+        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), methodCaptor.capture(), any(Upstream.class), any(), any(), any());
         assertEquals("http://adapter/openai/v1/responses/upstream-id-123", urlCaptor.getValue());
         assertEquals(HttpMethod.GET, methodCaptor.getValue());
     }
@@ -272,13 +274,14 @@ public class ResponseItemControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any()))
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any(), any(), any()))
                 .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
         when(context.getUserId()).thenReturn("test-user");
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
@@ -293,7 +296,7 @@ public class ResponseItemControllerTest {
 
         ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<HttpMethod> methodCaptor = ArgumentCaptor.forClass(HttpMethod.class);
-        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), methodCaptor.capture(), any(Upstream.class), any());
+        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), methodCaptor.capture(), any(Upstream.class), any(), any(), any());
         assertEquals("http://adapter/responses/upstream-id-123/cancel", urlCaptor.getValue());
         assertEquals(HttpMethod.POST, methodCaptor.getValue());
     }
@@ -318,13 +321,14 @@ public class ResponseItemControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any()))
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any(), any(), any()))
                 .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(null);
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
         when(context.getUserId()).thenReturn("test-user");
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
@@ -360,13 +364,14 @@ public class ResponseItemControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any()))
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any(), any(), any()))
                 .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(400);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer("{\"id\":\"upstream-id-del\"}")));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
         when(context.getUserId()).thenReturn("test-user");
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
@@ -440,6 +445,8 @@ public class ResponseItemControllerTest {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getResponse()).thenReturn(response);
         when(response.ended()).thenReturn(false);
+        when(context.getRequest()).thenReturn(serverRequest);
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
         when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> complete(testContext));
 
         controller("dial_test-deployment_y", GET).handle();
@@ -472,13 +479,14 @@ public class ResponseItemControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any()))
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any(), any(), any()))
                 .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(null);
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
         when(context.getUserId()).thenReturn("test-user");
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
@@ -527,9 +535,10 @@ public class ResponseItemControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any()))
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any(), any(), any()))
                 .thenReturn(Future.succeededFuture(proxyResponse));
         when(context.getRequest()).thenReturn(serverRequest);
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
         when(serverRequest.query()).thenReturn("stream=true");
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(proxyResponse.statusCode()).thenReturn(200);
@@ -574,7 +583,7 @@ public class ResponseItemControllerTest {
         await(testContext);
 
         ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
-        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), any(HttpMethod.class), any(Upstream.class), any());
+        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), any(HttpMethod.class), any(Upstream.class), any(), any(), any());
         assertEquals("http://adapter/responses/upstream-id-stream?stream=true", urlCaptor.getValue());
 
         // First event (response.created) forwarded as a regular chunk with rewritten id
@@ -620,6 +629,7 @@ public class ResponseItemControllerTest {
         when(context.getInterceptors()).thenReturn(apiKeyData.getInterceptors());
         when(context.getConfig()).thenReturn(config);
         when(context.getRequest()).thenReturn(serverRequest);
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(serverRequest.method()).thenReturn(HttpMethod.GET);
         doAnswer(invocation -> {
@@ -637,7 +647,7 @@ public class ResponseItemControllerTest {
         verify(httpClient).request(argThat(opts ->
                 "interceptor2".equals(opts.getHost())
                 && "/responses/dial_test-deployment_123".equals(opts.getURI().toString())));
-        verify(proxy.getResponsesApiClient(), never()).send(any(), any(), any(), any());
+        verify(proxy.getResponsesApiClient(), never()).send(any(), any(), any(), any(), any(), any());
         verify(proxy.getResponseMappingService(), never()).getMapping(anyString());
     }
 
@@ -666,6 +676,7 @@ public class ResponseItemControllerTest {
         when(context.getInterceptors()).thenReturn(List.of("interceptor1"));
         when(context.getConfig()).thenReturn(config);
         when(context.getRequest()).thenReturn(serverRequest);
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(serverRequest.method()).thenReturn(HttpMethod.GET);
         doAnswer(invocation -> {
@@ -683,7 +694,7 @@ public class ResponseItemControllerTest {
         verify(httpClient).request(argThat(opts ->
                 "interceptor1".equals(opts.getHost())
                 && "/responses/dial_test-deployment_123".equals(opts.getURI().toString())));
-        verify(proxy.getResponsesApiClient(), never()).send(any(), any(), any(), any());
+        verify(proxy.getResponsesApiClient(), never()).send(any(), any(), any(), any(), any(), any());
         verify(proxy.getResponseMappingService(), never()).getMapping(anyString());
     }
 
@@ -715,6 +726,7 @@ public class ResponseItemControllerTest {
         when(context.getInterceptors()).thenReturn(List.of("interceptor1"));
         when(context.getConfig()).thenReturn(config);
         when(context.getRequest()).thenReturn(serverRequest);
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(serverRequest.method()).thenReturn(HttpMethod.GET);
         doAnswer(invocation -> {

@@ -422,7 +422,7 @@ class BackgroundJobServiceTest {
         setupDeploymentMocks();
         when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(httpRequest));
         when(httpRequest.putHeader(anyString(), anyString())).thenReturn(httpRequest);
-        when(httpRequest.send()).thenReturn(Future.succeededFuture(httpResponse));
+        when(httpRequest.send(any(Buffer.class))).thenReturn(Future.succeededFuture(httpResponse));
         when(httpResponse.statusCode()).thenReturn(500);
 
         poller.poll(buildMapping(), "test-per-request-key")
@@ -592,7 +592,7 @@ class BackgroundJobServiceTest {
     private void setupHttpMocks(String responseJson) {
         when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(httpRequest));
         when(httpRequest.putHeader(anyString(), anyString())).thenReturn(httpRequest);
-        when(httpRequest.send()).thenReturn(Future.succeededFuture(httpResponse));
+        when(httpRequest.send(any(Buffer.class))).thenReturn(Future.succeededFuture(httpResponse));
         when(httpResponse.statusCode()).thenReturn(200);
         when(httpResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer(responseJson)));
     }
