@@ -154,7 +154,7 @@ public class ChatCompletionsController extends BaseChatCompletionController {
 
         context.setTraceOperation("Send request to %s deployment".formatted(deployment.getName()));
         context.setDeployment(deployment);
-        context.setInterceptors(proxy.getDeploymentService().getInterceptors(context, deployment));
+        context.setInterceptors(proxy.getDeploymentService().getInterceptors(context, deployment, InterfaceType.OPENAI_CHAT_COMPLETIONS));
         return null;
     }
 

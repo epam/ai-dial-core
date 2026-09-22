@@ -909,6 +909,8 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setProxyApiKeyData(any());
         doCallRealMethod().when(context).getProxyApiKeyData();
+        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).getRequestBody();
 
         controller.handle();
 
