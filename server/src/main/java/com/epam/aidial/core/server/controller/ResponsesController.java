@@ -55,7 +55,7 @@ import io.vertx.core.http.HttpServerResponse;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
-import org.apache.commons.lang3.tuple.Pair;
+import org.apache.commons.lang3.tuple.Triple;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -351,9 +351,10 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
         return rewriteResponseId(proxyResponse, body)
-                .compose(pair -> {
-                    String dialId = pair.getKey();
-                    Buffer rewritten = pair.getValue();
+                .compose(triple -> {
+                    String dialId = triple.getLeft();
+                    Buffer rewritten = triple.getMiddle();
+                    JsonNode parsedResponse = triple.getRight();
                     context.setResponseBody(rewritten);
                     context.setResponseBodyTimestamp(System.currentTimeMillis());
                     HttpServerResponse response = context.getResponse();
@@ -371,7 +372,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                                     response.end(rewritten);
                                 });
                     } else {
-                        return collectTokenUsage(rewritten)
+                        return collectTokenUsage(rewritten, null, parsedResponse)
                                 .transform(result -> {
                                     if (result.failed()) {
                                         log.warn("Failed to collect token usage", result.cause());
@@ -389,23 +390,23 @@ public class ResponsesController extends BaseDeploymentPostController {
                 });
     }
 
-    private Future<Pair<String, Buffer>> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
+    private Future<Triple<String, Buffer, JsonNode>> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
         if (proxyResponse.statusCode() != 200) {
-            return Future.succeededFuture(Pair.of(null, body));
+            return Future.succeededFuture(Triple.of(null, body, null));
         }
         JsonNode tree = JsonUtil.tryParse(body.getBytes());
         if (!tree.isObject() || !(tree instanceof ObjectNode object)) {
             log.warn("Response body is not a JSON object, skipping rewrite. Deployment: {}. Endpoint: {}",
                     context.getDeployment().getName(),
                     context.getProxyRequestUri());
-            return Future.succeededFuture(Pair.of(null, body));
+            return Future.succeededFuture(Triple.of(null, body, null));
         }
         JsonNode idNode = object.path("id");
         if (!idNode.isTextual()) {
             log.info("Response body doesn't contain 'id' field, skipping rewrite. Deployment: {}. Endpoint: {}",
                     context.getDeployment().getName(),
                     context.getProxyRequestUri());
-            return Future.succeededFuture(Pair.of(null, body));
+            return Future.succeededFuture(Triple.of(null, body, null));
         }
 
         String upstreamId = idNode.asText();
@@ -416,7 +417,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         if (!context.isStoreResponse()) {
             String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
             object.put("id", dialId);
-            return Future.succeededFuture(Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object))));
+            return Future.succeededFuture(Triple.of(dialId, Buffer.buffer(JsonUtil.serialize(object)), object));
         }
         ResponseMapping mapping = ResponseMapping.builder()
                 .upstreamResponseId(upstreamId)
@@ -428,7 +429,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
                 .map(dialId -> {
                     object.put("id", dialId);
-                    return Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object)));
+                    return Triple.of(dialId, Buffer.buffer(JsonUtil.serialize(object)), (JsonNode) object);
                 });
     }
 
