@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
@@ -140,11 +141,25 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
 
     /**
      * Called when proxy failed to receive response header from origin.
+     * Netty may reject a malformed interceptor 4xx (e.g. Content-Length together with
+     * Transfer-Encoding, RFC 9112 §6.2). Do not leave the client stream open.
      */
-    private void handleProxyResponseError(Throwable error) {
+    @VisibleForTesting
+    void handleProxyResponseError(Throwable error) {
+        HttpClientRequest proxyRequest = context.getProxyRequest();
+        // N/A: send() has not set proxyRequest yet (tests / call before connect).
         log.warn("Proxy failed to receive response header from origin. Address: {}. Error:",
-                context.getProxyRequest().connection().remoteAddress(),
+                proxyRequest == null ? "N/A" : proxyRequest.connection().remoteAddress(),
                 error);
+        if (proxyRequest != null) {
+            proxyRequest.reset();
+        }
+        ErrorData response = new ErrorData();
+        response.getError().setCode(String.valueOf(HttpStatus.BAD_GATEWAY));
+        String message = "Failed to receive response header from interceptor";
+        response.getError().setMessage(message);
+        response.getError().setDisplayMessage(message);
+        respond(HttpStatus.BAD_GATEWAY, response);
     }
 
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
