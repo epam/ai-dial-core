@@ -141,6 +141,15 @@ public abstract class Deployment extends RoleBasedEntity {
     }
 
     /**
+     * Overlays this interface's non-null feature fields on the deployment-level features without
+     * modifying either configuration. False values and empty lists override inherited values.
+     */
+    public Features resolveFeatures(InterfaceType type) {
+        DeploymentInterface declared = interfaces == null ? null : interfaces.get(type.getValue());
+        return Features.merge(features, declared == null ? null : declared.getFeatures());
+    }
+
+    /**
      * The default headers in force for the interface type: the deployment-level {@link #defaultHeaders}
      * with {@code interfaces.<type>.defaultHeaders} laid over them. Names are compared case-insensitively,
      * so an interface entry overrides a deployment-level header however either spells it.

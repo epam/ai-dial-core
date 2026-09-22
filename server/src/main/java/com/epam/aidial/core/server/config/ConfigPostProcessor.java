@@ -2,10 +2,12 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceMode;
+import com.epam.aidial.core.config.InterfacePathMapping;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
@@ -25,6 +27,7 @@ import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
+import com.epam.aidial.core.server.util.PathTemplateUtil;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import lombok.extern.slf4j.Slf4j;
 
@@ -78,7 +81,7 @@ public final class ConfigPostProcessor {
 
     /**
      * Drops file-defined entries with slash-keyed names across models, applications,
-     * interceptors, roles, routes, and toolsets. Warn + drop, not warn + skip-record:
+     * interceptors, translators, roles, routes, and toolsets. Warn + drop, not warn + skip-record:
      * the entries never reach {@link Config} and are not surfaced through the
      * invalid-entity sibling store.
      */
@@ -86,6 +89,7 @@ public final class ConfigPostProcessor {
         rejectSlashKeyedNames(config.getModels(), "models");
         rejectSlashKeyedNames(config.getApplications(), "applications");
         rejectSlashKeyedNames(config.getInterceptors(), "interceptors");
+        rejectSlashKeyedNames(config.getTranslators(), "translators");
         rejectSlashKeyedNames(config.getRoles(), "roles");
         rejectSlashKeyedNames(config.getRoutes(), "routes");
         rejectSlashKeyedNames(config.getToolsets(), "toolsets");
@@ -101,7 +105,7 @@ public final class ConfigPostProcessor {
                                        @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
         Set<String> deploymentIds = new HashSet<>();
         sortRoutes(config);
-        validateTranslators(config);
+        processTranslators(config, onSkip);
         processModels(config, deploymentIds, onSkip);
         processApplications(config, deploymentIds, onSkip);
         processRoles(config);
@@ -111,6 +115,16 @@ public final class ConfigPostProcessor {
         if (apiKeyStore != null) {
             apiKeyStore.addProjectKeys(fileKeysBySecret, apiKeysByCanonicalId);
         }
+    }
+
+    /**
+     * Prefixes a validation message with the entity it's about, so a message read out of context
+     * (a log line, an aggregated skip reason) still says which model/deployment/translator it's
+     * about. Null-safe: {@code name} is unset at a few call sites whose warnings are already tagged
+     * with the entity's id one level up, so those get the message unprefixed, exactly as before.
+     */
+    private static String messageWithEntityPrefix(String typeLabel, @Nullable String name, String message) {
+        return (name == null || name.isBlank()) ? message : typeLabel + " '" + name + "': " + message;
     }
 
     private static <T> void rejectSlashKeyedNames(Map<String, T> map, String typeLabel) {
@@ -154,6 +168,72 @@ public final class ConfigPostProcessor {
         }
         config.getModels().remove(mapKey);
         onSkip.accept(ResourceTypes.MODEL, new InvalidEntityException(ResourceTypes.MODEL, mapKey, warnings));
+    }
+
+    /**
+     * Targeted per-type helper for {@link MergedConfigStore}'s partial-update path — validates the
+     * single written entry via {@link #validateTranslator}. {@link Translator} has no name field to
+     * back-fill, unlike Interceptor/Role/Application.
+     */
+    static void validateSingleTranslator(Config config, String mapKey,
+                                         @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Translator translator = config.getTranslators().get(mapKey);
+        if (translator == null) {
+            return;
+        }
+        List<ValidationWarning> warnings = new ArrayList<>();
+        validateTranslator(mapKey, translator, warnings);
+        if (warnings.isEmpty()) {
+            return;
+        }
+        if (onSkip == null) {
+            throw new InvalidEntityException(ResourceTypes.TRANSLATOR, mapKey, warnings);
+        }
+        config.getTranslators().remove(mapKey);
+        onSkip.accept(ResourceTypes.TRANSLATOR, new InvalidEntityException(ResourceTypes.TRANSLATOR, mapKey, warnings));
+    }
+
+    /**
+     * Targeted per-type helpers for {@link MergedConfigStore}'s partial-update path. Set the name from
+     * the map key and validate {@code overridePaths} — the one semantic check these types carry — so a
+     * write cannot accept an entity the next full rebuild would reject.
+     */
+    static void validateSingleApplication(Config config, String mapKey,
+                                          @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Application application = config.getApplications().get(mapKey);
+        if (application == null) {
+            return;
+        }
+        application.setName(mapKey);
+        List<ValidationWarning> warnings = new ArrayList<>();
+        validateOverridePaths(application, warnings);
+        if (warnings.isEmpty()) {
+            return;
+        }
+        if (onSkip == null) {
+            throw new InvalidEntityException(ResourceTypes.APPLICATION, mapKey, warnings);
+        }
+        config.getApplications().remove(mapKey);
+        onSkip.accept(ResourceTypes.APPLICATION, new InvalidEntityException(ResourceTypes.APPLICATION, mapKey, warnings));
+    }
+
+    static void validateSingleInterceptor(Config config, String mapKey,
+                                          @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Interceptor interceptor = config.getInterceptors().get(mapKey);
+        if (interceptor == null) {
+            return;
+        }
+        interceptor.setName(mapKey);
+        List<ValidationWarning> warnings = new ArrayList<>();
+        validateOverridePaths(interceptor, warnings);
+        if (warnings.isEmpty()) {
+            return;
+        }
+        if (onSkip == null) {
+            throw new InvalidEntityException(ResourceTypes.INTERCEPTOR, mapKey, warnings);
+        }
+        config.getInterceptors().remove(mapKey);
+        onSkip.accept(ResourceTypes.INTERCEPTOR, new InvalidEntityException(ResourceTypes.INTERCEPTOR, mapKey, warnings));
     }
 
     static <T extends RoleBasedEntity> void setNameAsMapKey(Map<String, T> entities, String mapKey) {
@@ -275,7 +355,7 @@ public final class ConfigPostProcessor {
             String ref = refs.get(i);
             if (ref == null || !interceptors.containsKey(ref)) {
                 warnings.add(new ValidationWarning("interceptors[" + i + "]",
-                        "Interceptor '" + ref + "' not found in config"));
+                        messageWithEntityPrefix("Model", model.getName(), "Interceptor '" + ref + "' not found in config")));
             }
         }
         return warnings.isEmpty();
@@ -295,7 +375,7 @@ public final class ConfigPostProcessor {
         boolean hasCacheRate = pricing.getCacheRead() != null || pricing.getCacheWrite() != null;
         if (hasCacheRate && !"token".equals(pricing.getUnit())) {
             warnings.add(new ValidationWarning("pricing",
-                    "cacheRead/cacheWrite pricing requires pricing.unit = \"token\""));
+                    messageWithEntityPrefix("Model", model.getName(), "cacheRead/cacheWrite pricing requires pricing.unit = \"token\"")));
         }
     }
 
@@ -317,7 +397,7 @@ public final class ConfigPostProcessor {
             }
             if (upstream.getId() == null || upstream.getId().isBlank()) {
                 warnings.add(new ValidationWarning("upstreams[" + i + "].id",
-                        "An upstream declaring interfaces requires an id"));
+                        messageWithEntityPrefix("Model", model.getName(), "An upstream declaring interfaces requires an id")));
             }
             if (upstream.getBaseUrl() != null) {
                 continue;
@@ -325,11 +405,30 @@ public final class ConfigPostProcessor {
             for (Map.Entry<String, UpstreamInterface> entry : interfaces.entrySet()) {
                 if (entry.getValue().getEndpoint() == null) {
                     warnings.add(new ValidationWarning("upstreams[" + i + "].interfaces." + entry.getKey(),
-                            "Interface '" + entry.getKey() + "' declares no endpoint and the upstream "
-                                    + "declares no baseUrl")
+                            messageWithEntityPrefix("Model", model.getName(), "Interface '" + entry.getKey() + "' declares no endpoint and the upstream "
+                                    + "declares no baseUrl"))
                     );
                 }
             }
+        }
+    }
+
+    private static void processTranslators(Config config,
+                                           @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Iterator<Map.Entry<String, Translator>> iterator = config.getTranslators().entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, Translator> entry = iterator.next();
+            String name = entry.getKey();
+            List<ValidationWarning> warnings = new ArrayList<>();
+            validateTranslator(name, entry.getValue(), warnings);
+            if (warnings.isEmpty()) {
+                continue;
+            }
+            if (onSkip == null) {
+                throw new InvalidEntityException(ResourceTypes.TRANSLATOR, name, warnings);
+            }
+            iterator.remove();
+            onSkip.accept(ResourceTypes.TRANSLATOR, new InvalidEntityException(ResourceTypes.TRANSLATOR, name, warnings));
         }
     }
 
@@ -337,16 +436,16 @@ public final class ConfigPostProcessor {
      * A {@code translators} entry has to say what it converts from: unlike a definition written inline it is
      * declared under no interface, so {@code in} is the only thing tying it to one. {@code out} and
      * {@code baseUrl} need no check here — {@link Translator} rejects an entry missing either as it is read.
+     * Shared by every write surface (full load, partial-update, admin apply/validate) so a translator is
+     * held to the same rule everywhere.
      */
-    private static void validateTranslators(Config config) {
-        for (Map.Entry<String, Translator> entry : config.getTranslators().entrySet()) {
-            Translator translator = entry.getValue();
-            if (translator == null) {
-                throw new IllegalStateException("Translator '" + entry.getKey() + "' is empty");
-            }
-            if (translator.getIn() == null) {
-                throw new IllegalStateException("Translator '" + entry.getKey() + "' declares no in");
-            }
+    public static void validateTranslator(@Nullable String name, @Nullable Translator translator, List<ValidationWarning> warnings) {
+        if (translator == null) {
+            warnings.add(new ValidationWarning("translator", messageWithEntityPrefix("Translator", name, "Translator is empty")));
+            return;
+        }
+        if (translator.getIn() == null) {
+            warnings.add(new ValidationWarning("in", messageWithEntityPrefix("Translator", name, "Translator declares no in")));
         }
     }
 
@@ -373,11 +472,78 @@ public final class ConfigPostProcessor {
             if (declared.getMode() == InterfaceMode.TRANSLATOR) {
                 validateTranslatedInterface(model, entry.getKey(), declared, translators, field, warnings);
             } else if (declared.getTranslator() != null) {
-                warnings.add(new ValidationWarning(field, "A translator requires mode 'translator'"));
+                warnings.add(new ValidationWarning(field, messageWithEntityPrefix("Model", model.getName(), "A translator requires mode 'translator'")));
             } else if (declared.getBaseUrl() == null && model.getBaseUrl() == null) {
                 warnings.add(new ValidationWarning(field,
-                        "Interface '" + entry.getKey() + "' declares no base_url and the model declares no baseUrl"));
+                        messageWithEntityPrefix("Model", model.getName(), "Interface '" + entry.getKey() + "' declares no base_url and the model declares no baseUrl")));
             }
+            validateOverridePaths(model, entry.getKey(), declared, field, warnings);
+        }
+    }
+
+    /**
+     * Validates every interface entry's {@code overridePaths} on a deployment whose interfaces get no
+     * other semantic validation — applications and interceptors. Models run the same per-entry check
+     * inside {@link #validateDeploymentInterfaces}. Shared by every write surface, each of which turns
+     * the warnings into its own layer's failure: a result object for the admin services, a response
+     * status for the controllers.
+     */
+    public static void validateOverridePaths(Deployment deployment, List<ValidationWarning> warnings) {
+        Map<String, DeploymentInterface> interfaces = deployment.getInterfaces();
+        if (interfaces == null) {
+            return;
+        }
+        for (Map.Entry<String, DeploymentInterface> entry : interfaces.entrySet()) {
+            DeploymentInterface declared = entry.getValue();
+            if (declared == null) {
+                continue;
+            }
+            validateOverridePaths(deployment, entry.getKey(), declared, "interfaces." + entry.getKey(), warnings);
+        }
+    }
+
+    /**
+     * Validates an interface entry's {@code overridePaths}. A key this Core does not know is tolerated —
+     * exactly as an unknown interface type is — but a known key under an interface that does not own it,
+     * a template that does not parse, and a variable the operation cannot render are config contradicting
+     * itself. A translated interface routes to its translator, so overrides on it are dead config.
+     */
+    private static void validateOverridePaths(Deployment deployment, String type, DeploymentInterface declared, String field,
+                                              List<ValidationWarning> warnings) {
+        Map<String, String> overridePaths = declared.getOverridePaths();
+        if (overridePaths == null || overridePaths.isEmpty()) {
+            return;
+        }
+        String entityLabel = deployment.getClass().getSimpleName();
+        if (declared.getMode() == InterfaceMode.TRANSLATOR) {
+            warnings.add(new ValidationWarning(field,
+                    messageWithEntityPrefix(entityLabel, deployment.getName(), "A translated interface is served by its translator: overridePaths has no effect")));
+            return;
+        }
+        for (Map.Entry<String, String> entry : overridePaths.entrySet()) {
+            InterfacePathMapping pathMapping = InterfacePathMapping.find(entry.getKey());
+            if (pathMapping == null) {
+                continue;
+            }
+            String keyField = field + ".overridePaths." + entry.getKey();
+            if (pathMapping.getInterfaceType() != InterfaceType.find(type)) {
+                warnings.add(new ValidationWarning(keyField, messageWithEntityPrefix(entityLabel, deployment.getName(), "Override path key '" + entry.getKey()
+                        + "' belongs to interface '" + pathMapping.getInterfaceType().getValue() + "'")));
+                continue;
+            }
+            validateOverridePathTemplate(deployment, pathMapping, entry.getValue(), keyField, warnings);
+        }
+    }
+
+    private static void validateOverridePathTemplate(Deployment deployment, InterfacePathMapping pathMapping, @Nullable String template,
+                                                     String keyField, List<ValidationWarning> warnings) {
+        String entityLabel = deployment.getClass().getSimpleName();
+        if (template == null || template.isBlank()) {
+            warnings.add(new ValidationWarning(keyField, messageWithEntityPrefix(entityLabel, deployment.getName(), "Override path is empty")));
+            return;
+        }
+        if (!pathMapping.isIdApplicable() && PathTemplateUtil.referencesId(template)) {
+            warnings.add(new ValidationWarning(keyField, messageWithEntityPrefix(entityLabel, deployment.getName(), "The operation carries no id: {id} cannot render")));
         }
     }
 
@@ -386,11 +552,11 @@ public final class ConfigPostProcessor {
                                                     String field, List<ValidationWarning> warnings) {
         if (declared.getBaseUrl() != null) {
             warnings.add(new ValidationWarning(field,
-                    "An interface is served either by a translator or by a base_url, not by both"));
+                    messageWithEntityPrefix("Model", model.getName(), "An interface is served either by a translator or by a base_url, not by both")));
         }
         TranslatorRef translator = declared.getTranslator();
         if (translator == null) {
-            warnings.add(new ValidationWarning(field, "Mode 'translator' requires a translator"));
+            warnings.add(new ValidationWarning(field, messageWithEntityPrefix("Model", model.getName(), "Mode 'translator' requires a translator")));
             return;
         }
         // a name with no entry to resolve to leaves the interface unserved rather than the model invalid:
@@ -404,13 +570,14 @@ public final class ConfigPostProcessor {
         }
         if (definition.getIn() != null && definition.getIn() != InterfaceType.find(type)) {
             warnings.add(new ValidationWarning(field,
-                    "Translator converts from '" + definition.getIn().getValue() + "', not from '" + type + "'"));
+                    messageWithEntityPrefix("Model", model.getName(), "Translator converts from '" + definition.getIn().getValue() + "', not from '" + type + "'")));
         }
         // a definition written inline names no in: the interface it sits under is what it converts from
         String in = definition.getIn() != null ? definition.getIn().getValue() : type;
         if (in.equals(definition.getOut().getValue())) {
             warnings.add(new ValidationWarning(field,
-                    "A translator cannot convert '" + in + "' to itself: its output would arrive back on the interface it came from"));
+                    messageWithEntityPrefix("Model", model.getName(), "A translator cannot convert '" + in
+                            + "' to itself: its output would arrive back on the interface it came from")));
             return;
         }
         validateTranslatorOutput(model, definition, translators, field, warnings);
@@ -431,13 +598,14 @@ public final class ConfigPostProcessor {
         InterfaceType out = definition.getOut();
         if (DeploymentEndpointUtil.resolveMode(model, out) == InterfaceMode.TRANSLATOR) {
             warnings.add(new ValidationWarning(field,
-                    "The model serves '" + out.getValue() + "' through a translator of its own, which the translator here converts to: "
-                            + "the callback would arrive on a translated interface and be handed to a translator again"));
+                    messageWithEntityPrefix("Model", model.getName(), "The model serves '" + out.getValue()
+                            + "' through a translator of its own, which the translator here converts to: "
+                            + "the callback would arrive on a translated interface and be handed to a translator again")));
             return;
         }
         if (DeploymentEndpointUtil.resolveServingEndpoint(model, out, translators) == null) {
             warnings.add(new ValidationWarning(field,
-                    "The model does not serve '" + out.getValue() + "', which the translator converts to"));
+                    messageWithEntityPrefix("Model", model.getName(), "The model does not serve '" + out.getValue() + "', which the translator converts to")));
         }
     }
 
@@ -453,6 +621,16 @@ public final class ConfigPostProcessor {
             Application application = entry.getValue();
             application.setName(name);
             validateExternalServices(application);
+            List<ValidationWarning> warnings = new ArrayList<>();
+            validateOverridePaths(application, warnings);
+            if (!warnings.isEmpty()) {
+                if (onSkip == null) {
+                    throw new InvalidEntityException(ResourceTypes.APPLICATION, name, warnings);
+                }
+                iterator.remove();
+                onSkip.accept(ResourceTypes.APPLICATION, new InvalidEntityException(ResourceTypes.APPLICATION, name, warnings));
+                continue;
+            }
             log.debug("Loading {}", application);
         }
     }
@@ -528,6 +706,16 @@ public final class ConfigPostProcessor {
             }
             Interceptor interceptor = entry.getValue();
             interceptor.setName(name);
+            List<ValidationWarning> warnings = new ArrayList<>();
+            validateOverridePaths(interceptor, warnings);
+            if (!warnings.isEmpty()) {
+                if (onSkip == null) {
+                    throw new InvalidEntityException(ResourceTypes.INTERCEPTOR, name, warnings);
+                }
+                iterator.remove();
+                onSkip.accept(ResourceTypes.INTERCEPTOR, new InvalidEntityException(ResourceTypes.INTERCEPTOR, name, warnings));
+                continue;
+            }
             log.debug("Loading {}", interceptor);
         }
     }

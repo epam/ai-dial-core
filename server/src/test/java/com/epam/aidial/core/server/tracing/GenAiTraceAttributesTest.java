@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.opentelemetry.api.trace.Span;
 import io.vertx.core.MultiMap;
@@ -31,6 +32,8 @@ import static io.opentelemetry.api.common.AttributeKey.longKey;
 import static io.opentelemetry.api.common.AttributeKey.stringKey;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
@@ -658,6 +661,41 @@ class GenAiTraceAttributesTest {
         assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.model"));
         assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
         assertEquals("openai_embeddings", context.getTracingAttributes().get("dial.api"));
+    }
+
+    @Test
+    void setResponseAttributesReturnsTheParsedTreeForCallersThatAlsoNeedOne() {
+        // e.g. token usage extraction - so it does not have to deserialize the same bytes again
+        ProxyContext context = context(proxy(enabledSettings()));
+        Buffer body = Buffer.buffer("{\"id\":\"chat-1\",\"usage\":{\"prompt_tokens\":10}}");
+
+        JsonNode tree = GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
+
+        assertEquals(10, tree.path("usage").path("prompt_tokens").asInt());
+    }
+
+    @Test
+    void setResponseAttributesReturnsNullWhenTracingIsDisabled() {
+        ProxyContext context = context(proxy(TracingSettings.from(new JsonObject())));
+
+        JsonNode tree = GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
+                Buffer.buffer("{\"id\":\"chat-1\"}"));
+
+        assertNull(tree);
+    }
+
+    @Test
+    void setResponseAttributesFromAnAlreadyParsedTreeSkipsReparsing() {
+        // the caller (e.g. a response-id rewrite) already has the tree; tracing must not need the raw bytes at all
+        ProxyContext context = context(proxy(enabledSettings()));
+        JsonNode tree = ProxyUtil.MAPPER.createObjectNode()
+                .put("model", "gpt-4").put("status", "completed");
+
+        JsonNode returned = GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, tree, "dial-1");
+
+        assertEquals("dial-1", context.getTracingAttributes().get("gen_ai.response.id"));
+        assertEquals("gpt-4", context.getTracingAttributes().get("gen_ai.response.model"));
+        assertSame(tree, returned);
     }
 
     private static ProxyContext context(Proxy proxy, HttpServerRequest request) {

@@ -3,6 +3,7 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -112,6 +113,29 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testBlobTranslatorSurfacesAfterReload() {
+        String blobName = "blob-translator-1";
+        String body = """
+                {
+                    "in": "anthropicMessages",
+                    "out": "openaiChatCompletions",
+                    "baseUrl": "http://localhost:9001/translate"
+                }
+                """;
+        putBlob(ResourceTypes.TRANSLATOR, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                blobName, body);
+
+        Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
+        assertEquals(200, reload.status());
+
+        Config merged = dial.getProxy().getConfigStore().get();
+        Translator blob = merged.getTranslators().get(blobName);
+        assertNotNull(blob, () -> "Expected short-name key in merged Config: " + merged.getTranslators().keySet());
+        assertEquals("http://localhost:9001/translate", blob.getBaseUrl());
+        assertNotNull(merged.getTranslators().get("translator1"), "File translator must still coexist");
+    }
+
+    @Test
     void testBlobModelOverwritesFileEntryAtSameShortNameAfterReload() {
         // A blob model written under the SAME short name as an existing file-sourced model shares
         // that single map key with it — both sources key by short name uniformly, so the blob
@@ -158,6 +182,29 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
         Interceptor interceptor = merged.getInterceptors().get(shortName);
         assertNotNull(interceptor);
         assertEquals("http://localhost:9000/migrated-intercept", interceptor.getEndpoint(),
+                "Blob entity must win over the file entry sharing its short name");
+    }
+
+    @Test
+    void testBlobTranslatorOverwritesFileEntryAtSameShortNameAfterReload() {
+        String shortName = "translator1";
+        String body = """
+                {
+                    "in": "anthropicMessages",
+                    "out": "openaiChatCompletions",
+                    "baseUrl": "http://localhost:9001/migrated-translate"
+                }
+                """;
+        putBlob(ResourceTypes.TRANSLATOR, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                shortName, body);
+
+        Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
+        assertEquals(200, reload.status());
+
+        Config merged = dial.getProxy().getConfigStore().get();
+        Translator translator = merged.getTranslators().get(shortName);
+        assertNotNull(translator);
+        assertEquals("http://localhost:9001/migrated-translate", translator.getBaseUrl(),
                 "Blob entity must win over the file entry sharing its short name");
     }
 

@@ -191,11 +191,23 @@ public class BaseDeploymentPostController {
      * @param responseId DIAL's own response id when the caller knows it, null to take the id from the body.
      */
     protected Future<Void> collectTokenUsage(Buffer responseBody, String responseId) {
+        return collectTokenUsage(responseBody, responseId, null);
+    }
+
+    /**
+     * @param responseId        DIAL's own response id when the caller knows it, null to take the id from the body.
+     * @param preParsedResponse the body already parsed by the caller (e.g. while rewriting the response id), so
+     *                          tracing does not have to deserialize the same bytes again; null when no tree exists yet.
+     */
+    protected Future<Void> collectTokenUsage(Buffer responseBody, String responseId, JsonNode preParsedResponse) {
+        JsonNode tree = preParsedResponse;
         if (GenAiTraceAttributes.isEnabled(context)) {
             try {
                 // interfaceType() reads the request path, which not every deployment kind reaching here has,
                 // and this runs before the client response is completed - tracing must not fail the request
-                GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseBody, responseId);
+                tree = preParsedResponse != null
+                        ? GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), preParsedResponse, responseId)
+                        : GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseBody, responseId);
             } catch (Throwable e) {
                 log.warn("Failed to set GenAI response trace attributes", e);
             }
@@ -204,7 +216,7 @@ public class BaseDeploymentPostController {
             if (context.getResponse().getStatusCode() != HttpStatus.OK.getCode()) {
                 return Future.succeededFuture();
             }
-            TokenUsage tokenUsage = parseTokenUsage(responseBody);
+            TokenUsage tokenUsage = parseTokenUsage(responseBody, tree);
             if (tokenUsage == null) {
                 Pricing pricing = model.getPricing();
                 if (pricing == null || "token".equals(pricing.getUnit())) {
@@ -237,7 +249,7 @@ public class BaseDeploymentPostController {
 
         // Application/Assistant: any deployment may self-report usage in its own response body;
         // capture it alongside whatever its descendant Model spans already reported.
-        TokenUsage ownUsage = parseTokenUsage(responseBody);
+        TokenUsage ownUsage = parseTokenUsage(responseBody, tree);
         return trackDeploymentStats(context.getDeployment().getName(), ownUsage, true);
     }
 
@@ -312,8 +324,12 @@ public class BaseDeploymentPostController {
     /**
      * Parses token usage from the fully buffered response body. Overridable so provider-specific
      * controllers can supply their own accounting (e.g. the Anthropic Messages API).
+     *
+     * @param preParsedResponse the tree tracing already parsed for this response, when tracing is enabled and the
+     *                          body was small enough to parse; null otherwise. The default byte-scan implementation
+     *                          ignores it - it never needed a full tree parse in the first place.
      */
-    protected TokenUsage parseTokenUsage(Buffer responseBody) {
+    protected TokenUsage parseTokenUsage(Buffer responseBody, JsonNode preParsedResponse) {
         return TokenUsageParser.parse(responseBody);
     }
 
@@ -396,7 +412,7 @@ public class BaseDeploymentPostController {
         proxyRequest.headers().add(Proxy.HEADER_API_KEY, context.getProxyApiKeyData().getPerRequestKey());
 
         proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_FEATURES,
-                ProxyUtil.convertToString(FeaturesData.createDeploymentFeatures(context.getDeployment())));
+                ProxyUtil.convertToString(FeaturesData.createDeploymentFeatures(context.getDeployment(), type)));
 
         if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
             Upstream upstream = Objects.requireNonNull(context.getUpstreamRoute().get());

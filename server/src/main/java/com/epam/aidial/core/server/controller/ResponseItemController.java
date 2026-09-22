@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfacePathMapping;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
@@ -16,12 +17,14 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
+import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
+import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -119,11 +122,27 @@ public class ResponseItemController implements Controller {
         return proxy.getTaskExecutor().submit(this::loadMapping)
                 .compose(this::checkNotDeletingActive)
                 .compose(this::dispatch)
+                .eventually(this::finalizeRequest)
                 .onFailure(error -> {
                     if (!context.getResponse().ended()) {
                         context.respond(error, "Failed to process response operation");
                     }
                 });
+    }
+
+    private Future<Void> finalizeRequest() {
+        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
+        if (proxyApiKeyData == null) {
+            return Future.succeededFuture();
+        }
+        return proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)
+                .onSuccess(invalidated -> {
+                    if (!invalidated) {
+                        log.warn("Per request is not removed: {}", proxyApiKeyData.getPerRequestKey());
+                    }
+                })
+                .onFailure(error -> log.error("error occurred on invalidating per-request key", error))
+                .mapEmpty();
     }
 
     private Future<ResponseMapping> checkNotDeletingActive(ResponseMapping mapping) {
@@ -177,7 +196,7 @@ public class ResponseItemController implements Controller {
     }
 
     private Future<Void> handleInterceptor(int interceptorIndex) {
-        return new ResponsesInterceptorController(proxy, context, dialResponseId, operation.suffix, interceptorIndex).handle().mapEmpty();
+        return new ResponsesInterceptorController(proxy, context, dialResponseId, operation.pathMapping, interceptorIndex).handle().mapEmpty();
     }
 
     private Future<Void> forwardToUpstream(ResponseMapping mapping, Deployment deployment) {
@@ -189,18 +208,22 @@ public class ResponseItemController implements Controller {
                         mapping.getUpstreamKey());
         Upstream upstream = upstreamRoute.next();
 
-        String query = context.getRequest().query();
-        String targetUrl = DeploymentEndpointUtil.resolveResponsesBaseUri(deployment, context.getConfig().getTranslators())
-                + "/" + mapping.getUpstreamResponseId() + operation.suffix
-                + (query != null ? "?" + query : "");
+        String targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment,
+                context.getConfig().getTranslators(), operation.pathMapping, mapping.getUpstreamResponseId(),
+                context.getRequest().query());
 
-        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream)
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        ApiKeyData.initFromContext(proxyApiKeyData, context);
+        context.setProxyApiKeyData(proxyApiKeyData);
+        proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+
+        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, proxyApiKeyData.getPerRequestKey())
                 .compose(response -> {
                     context.setProxyResponse(response);
                     String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
                     if (operation == Operation.GET
                             && Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM)) {
-                        return collectAndForwardStreaming(response, mapping.getUpstreamResponseId());
+                        return collectAndForwardStreaming(response, mapping);
                     }
                     return collectAndForward(response, mapping);
                 });
@@ -213,7 +236,7 @@ public class ResponseItemController implements Controller {
                         return sendResponse(proxyResponse, body);
                     }
                     return proxy.getTaskExecutor()
-                            .submit(() -> rewriteId(body, mapping.getUpstreamResponseId()))
+                            .submit(() -> rewriteId(body, mapping))
                             .compose(rewritten -> {
                                 if (operation == Operation.DELETE) {
                                     return proxy.getTaskExecutor().submit(() -> {
@@ -249,7 +272,7 @@ public class ResponseItemController implements Controller {
         return serverResponse.end(body).mapEmpty();
     }
 
-    private Buffer rewriteId(Buffer body, String upstreamResponseId) {
+    private Buffer rewriteId(Buffer body, ResponseMapping mapping) {
         if (body.length() == 0) {
             return body;
         }
@@ -257,8 +280,11 @@ public class ResponseItemController implements Controller {
         if (!(tree instanceof ObjectNode object)) {
             return body;
         }
+        if (EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
+            EncryptedContentAffinityUtil.wrapOutputArray(object.path("output"), mapping.getUpstreamKey());
+        }
         JsonNode idNode = object.path("id");
-        if (idNode.isTextual() && upstreamResponseId.equals(idNode.asText())) {
+        if (idNode.isTextual() && mapping.getUpstreamResponseId().equals(idNode.asText())) {
             object.put("id", dialResponseId);
         }
         return Buffer.buffer(JsonUtil.serialize(object));
@@ -273,13 +299,14 @@ public class ResponseItemController implements Controller {
         }
     }
 
-    private Future<Void> collectAndForwardStreaming(HttpClientResponse proxyResponse, String upstreamResponseId) {
+    private Future<Void> collectAndForwardStreaming(HttpClientResponse proxyResponse, ResponseMapping mapping) {
         CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
-        ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context, dialResponseId, upstreamResponseId);
+        ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context, dialResponseId, mapping.getUpstreamResponseId());
+        EncryptedContentWrapFn wrapFn = new EncryptedContentWrapFn(proxy, context, mapping.getUpstreamKey());
         BufferingReadStream responseStream = new BufferingReadStream(
                 proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024),
-                new ResponsesSseListener(List.of(attachmentsFn, replaceIdFn)));
+                new ResponsesSseListener(List.of(wrapFn, attachmentsFn, replaceIdFn)));
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
@@ -313,11 +340,11 @@ public class ResponseItemController implements Controller {
 
     @RequiredArgsConstructor
     public enum Operation {
-        GET(HttpMethod.GET, ""),
-        CANCEL(HttpMethod.POST, "/cancel"),
-        DELETE(HttpMethod.DELETE, "");
+        GET(HttpMethod.GET, InterfacePathMapping.GET_OPENAI_RESPONSES_BY_ID),
+        CANCEL(HttpMethod.POST, InterfacePathMapping.POST_OPENAI_RESPONSES_CANCEL),
+        DELETE(HttpMethod.DELETE, InterfacePathMapping.DELETE_OPENAI_RESPONSES_BY_ID);
 
         private final HttpMethod method;
-        private final String suffix;
+        private final InterfacePathMapping pathMapping;
     }
 }

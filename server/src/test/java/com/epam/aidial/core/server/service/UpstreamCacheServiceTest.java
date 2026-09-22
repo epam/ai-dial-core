@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
@@ -20,6 +21,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
 import org.redisson.config.ConfigSupport;
@@ -43,6 +46,29 @@ public class UpstreamCacheServiceTest {
     private LockService lockService;
 
     private UpstreamCacheService service;
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void interfaceCanEnableOrDisableAutomaticBreakpoints(boolean enabled) throws Exception {
+        service = new UpstreamCacheService(redissonClient, lockService, System::currentTimeMillis, null);
+        Model model = new Model();
+        Features features = new Features();
+        features.setAutoCachingSupported(!enabled);
+        model.setFeatures(features);
+        Features overrides = new Features();
+        overrides.setAutoCachingSupported(enabled);
+        DeploymentInterface declared = new DeploymentInterface();
+        declared.setFeatures(overrides);
+        model.setInterfaces(Map.of(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(), declared));
+        RequestObject request = new ChatCompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree("""
+                {"messages":[{"role":"user","content":"hello"}]}
+                """));
+
+        CacheBreakpointContext cache = service.buildCacheBreakpointContext(
+                request, CachePolicy.AVAILABILITY_PRIORITY, model, InterfaceType.OPENAI_CHAT_COMPLETIONS);
+
+        assertEquals(enabled ? List.of("prefix.body.messages[0]") : List.of(), cache.breakpoints());
+    }
 
     @BeforeAll
     public static void beforeAll() throws IOException {

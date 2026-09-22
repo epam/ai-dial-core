@@ -117,26 +117,49 @@ public final class GenAiTraceAttributes {
         }
     }
 
-    public static void setResponseAttributes(ProxyContext context, InterfaceType type, Buffer responseBody) {
-        setResponseAttributes(context, type, responseBody, null);
+    public static JsonNode setResponseAttributes(ProxyContext context, InterfaceType type, Buffer responseBody) {
+        return setResponseAttributes(context, type, responseBody, null);
     }
 
     /**
      * @param responseId DIAL's own response id, or null to keep the body's. A streamed body is buffered before
      *                   {@code ReplaceResponseIdFn} rewrites it, so the buffered bytes still carry the upstream id.
+     * @return the tree parsed from {@code responseBody}, so a caller that also needs one (e.g. for token usage)
+     *         does not have to deserialize the same bytes a second time. Null when tracing is disabled.
      */
-    public static void setResponseAttributes(ProxyContext context, InterfaceType type, Buffer responseBody, String responseId) {
+    public static JsonNode setResponseAttributes(ProxyContext context, InterfaceType type, Buffer responseBody, String responseId) {
+        JsonNode[] tree = new JsonNode[1];
         enrich(context, () -> {
             setOperationAttributes(context, type, operationName(type));
-            setResponseAttributes(context, type, responseTree(context, type, responseBody), responseId);
+            tree[0] = responseTree(context, type, responseBody);
+            collectResponseFieldAttributes(context, type, tree[0], responseId);
             collectUpstreamCacheAttributes(context);
         });
+        return tree[0];
+    }
+
+    /**
+     * For a caller that already parsed the body for its own purposes (e.g. rewriting the response id) - lets it
+     * hand the tree over instead of forcing {@code setResponseAttributes(Buffer)} to deserialize it again.
+     *
+     * @param responseId overrides the tree's own id when the caller knows the client-facing id; null keeps the tree's.
+     * @return {@code response}, or null when tracing is disabled.
+     */
+    public static JsonNode setResponseAttributes(ProxyContext context, InterfaceType type, JsonNode response, String responseId) {
+        JsonNode[] result = new JsonNode[1];
+        enrich(context, () -> {
+            setOperationAttributes(context, type, operationName(type));
+            collectResponseFieldAttributes(context, type, response, responseId);
+            collectUpstreamCacheAttributes(context);
+            result[0] = response;
+        });
+        return result[0];
     }
 
     /**
      * @param responseId overrides the body's own id when the caller knows the client-facing id; null keeps the body's.
      */
-    private static void setResponseAttributes(ProxyContext context, InterfaceType type, JsonNode response, String responseId) {
+    private static void collectResponseFieldAttributes(ProxyContext context, InterfaceType type, JsonNode response, String responseId) {
         set(context, stringKey("gen_ai.response.id"), responseId == null ? text(response.get("id")) : clamp(responseId));
         set(context, stringKey("gen_ai.response.model"), text(response.get("model")));
         set(context, stringArrayKey("gen_ai.response.finish_reasons"), finishReasons(response, type));
@@ -166,7 +189,7 @@ public final class GenAiTraceAttributes {
         enrich(context, () -> {
             setOperationAttributes(context, InterfaceType.OPENAI_RESPONSES, "fetch_response");
             JsonNode response = responseTree(context, InterfaceType.OPENAI_RESPONSES, responseBody);
-            setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, response, responseId);
+            collectResponseFieldAttributes(context, InterfaceType.OPENAI_RESPONSES, response, responseId);
             collectUsageAttributes(context, tokenUsage(response.get("usage")));
         });
     }

@@ -268,6 +268,105 @@ class ChatCompletionRequestTest {
         assertEquals(Set.of(), actual);
     }
 
+    @Test
+    void testCollectSkills_ChatRequest() throws IOException {
+        String body = """
+                {
+                  "modelId": "model",
+                  "messages": [
+                    {
+                      "content": "test",
+                      "role": "user",
+                      "custom_content": {
+                      }
+                    },
+                    {
+                      "content": "use the summarizer skill",
+                      "role": "user",
+                      "custom_content": {
+                        "skills": [
+                          {
+                            "url": "skills/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/summarizer"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "content": "Sure, using the summarizer skill.",
+                      "role": "assistant",
+                      "custom_content": {
+                        "skills": [
+                          {
+                            "url": "skills/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/translator"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "id": "id"
+                }
+                """;
+        ChatCompletionRequest request = request(body);
+        Set<String> expected = Set.of(
+                "skills/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/summarizer",
+                "skills/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/translator");
+
+        Set<String> actual = request.collectSkills();
+
+        assertEquals(expected, actual);
+    }
+
+    @Test
+    void testCollectSkills_NoSkills() throws IOException {
+        String body = """
+                {
+                  "messages": [
+                    {
+                      "content": "test",
+                      "role": "user",
+                      "custom_content": {
+                        "attachments": [
+                          {
+                            "type": "application/octet-stream",
+                            "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """;
+        ChatCompletionRequest request = request(body);
+
+        assertEquals(Set.of(), request.collectSkills());
+    }
+
+    @Test
+    void testCollectSkills_MissingUrl_Fail() throws IOException {
+        String body = """
+                {
+                  "messages": [
+                    {
+                      "content": "test",
+                      "role": "user",
+                      "custom_content": {
+                        "skills": [
+                          {
+                            "title": "summarizer"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """;
+        ChatCompletionRequest request = request(body);
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, request::collectSkills);
+
+        assertEquals("Missing url in skill attachment.", error.getMessage());
+    }
+
     private static ChatCompletionRequest request(String body) throws JsonProcessingException {
         return new ChatCompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
     }

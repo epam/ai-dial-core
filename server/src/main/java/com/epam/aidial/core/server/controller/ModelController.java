@@ -14,6 +14,7 @@ import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.FeaturesData;
+import com.epam.aidial.core.server.data.InterfaceConfigData;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ModelData;
 import com.epam.aidial.core.server.data.PricingData;
@@ -123,6 +124,7 @@ public class ModelController {
         data.setPricing(createPricing(model.getPricing()));
         data.setDefaults(model.getDefaults());
         data.setResponsesDefaults(model.getResponsesDefaults());
+        data.setInterfaceConfigs(InterfaceConfigData.createInterfaceConfigs(model));
         if (model.getAuthor() != null) {
             data.setOwner(model.getAuthor());
         }
