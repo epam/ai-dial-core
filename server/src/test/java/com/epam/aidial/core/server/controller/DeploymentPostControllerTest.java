@@ -21,6 +21,7 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -30,6 +31,7 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.opentelemetry.api.trace.Span;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
@@ -54,6 +56,7 @@ import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -64,6 +67,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_API_KEY;
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
@@ -74,19 +79,23 @@ import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.storage.http.HttpStatus.FORBIDDEN;
 import static com.epam.aidial.core.storage.http.HttpStatus.NOT_FOUND;
 import static com.epam.aidial.core.storage.http.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
+import static io.opentelemetry.api.common.AttributeKey.longKey;
 import static io.vertx.core.http.HttpHeaders.AUTHORIZATION;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -925,6 +934,109 @@ public class DeploymentPostControllerTest {
         ArgumentCaptor<InterfaceType> interfaceTypeCaptor = ArgumentCaptor.forClass(InterfaceType.class);
         verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), interfaceTypeCaptor.capture(), any());
         assertEquals(InterfaceType.OPENAI_EMBEDDINGS, interfaceTypeCaptor.getValue());
+    }
+
+    /**
+     * Wires {@code context} so the four latency timestamps round-trip (matching real
+     * {@code ProxyContext} semantics for the one field this flow actually sets,
+     * {@code responseBodyTimestamp}) and {@code genAiSpanAttributes} is on, so
+     * {@code GenAiTraceAttributes.setLatencyAttributes} computes real values against a real
+     * {@code Span.current()} mock instead of silently no-oping.
+     */
+    private void enableLatencyTracing() {
+        AtomicLong responseBodyTimestamp = new AtomicLong();
+        when(context.getTracingSettings()).thenReturn(new TracingSettings(true, false, List.of()));
+        when(context.getTracingAttributes()).thenReturn(new ConcurrentHashMap<>());
+        when(context.getRequestTimestamp()).thenReturn(1000L);
+        when(context.getRequestBodyTimestamp()).thenReturn(1010L);
+        when(context.getProxyConnectTimestamp()).thenReturn(1020L);
+        when(context.getProxyResponseTimestamp()).thenReturn(1030L);
+        doAnswer(inv -> {
+            responseBodyTimestamp.set(inv.getArgument(0));
+            return null;
+        }).when(context).setResponseBodyTimestamp(anyLong());
+        when(context.getResponseBodyTimestamp()).thenAnswer(inv -> responseBodyTimestamp.get());
+    }
+
+    private static void assertLatencyPublishedBeforeResponseEnds(Span span, BufferingReadStream responseStream, HttpServerResponse response) {
+        InOrder order = inOrder(span, responseStream);
+        order.verify(span).setAttribute(eq(longKey("dial.latency.client_body_ms")), anyLong());
+        order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_connect_ms")), anyLong());
+        order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_header_ms")), anyLong());
+        order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_body_ms")), anyLong());
+        order.verify(responseStream).end(response);
+    }
+
+    @Test
+    public void testHandleResponse_Model_PublishesLatencyAttributesToSpanBeforeResponseEnds() {
+        Model model = new Model();
+        when(context.getDeployment()).thenReturn(model);
+        when(context.getUserId()).thenReturn("test-user");
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(proxy.getLogStore()).thenReturn(logStore);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        when(context.getResponseBody()).thenReturn(Buffer.buffer());
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(context.getRequest()).thenReturn(request);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.uri()).thenReturn("/test");
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
+        enableLatencyTracing();
+
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            when(span.isRecording()).thenReturn(true);
+            when(Span.current()).thenReturn(span);
+
+            controller.handleResponse(bufferingReadStream);
+
+            assertLatencyPublishedBeforeResponseEnds(span, bufferingReadStream, response);
+        }
+    }
+
+    @Test
+    public void testHandleResponse_Model_Embeddings_PublishesLatencyAttributesToSpanBeforeResponseEnds() {
+        Model model = new Model();
+        when(context.getDeployment()).thenReturn(model);
+        when(context.getUserId()).thenReturn("test-user");
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(proxy.getLogStore()).thenReturn(logStore);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        when(context.getResponseBody()).thenReturn(Buffer.buffer());
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(context.getRequest()).thenReturn(request);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.uri()).thenReturn("/test");
+        when(request.path()).thenReturn("/openai/deployments/name/embeddings");
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
+        enableLatencyTracing();
+
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            when(span.isRecording()).thenReturn(true);
+            when(Span.current()).thenReturn(span);
+
+            controller.handleResponse(bufferingReadStream);
+
+            assertLatencyPublishedBeforeResponseEnds(span, bufferingReadStream, response);
+        }
     }
 
     @ParameterizedTest
