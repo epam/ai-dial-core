@@ -55,6 +55,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -84,6 +85,7 @@ import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -399,6 +401,12 @@ public class ResponsesControllerTest {
                 eq(PER_REQUEST_KEY),
                 argThat(arg ->
                         ProxyUtil.convertToString(updatedApiKeyData).equals(arg.apply("{}"))));
+        // finalizeRequest() - which publishes dial.latency.* onto the still-recording span - must run
+        // before the response ends: Vert.x's OTel tracer ends the span synchronously inside end(),
+        // after which further span attributes are silently dropped (see BaseDeploymentPostController).
+        InOrder order = inOrder(apiKeyStore, response);
+        order.verify(apiKeyStore).invalidatePerRequestApiKey(any());
+        order.verify(response).end(any(Buffer.class));
     }
 
 
@@ -755,6 +763,13 @@ public class ResponsesControllerTest {
         String completedEvent = endCaptor.getValue().toString();
         assertTrue(completedEvent.contains(expectedDialId));
         assertFalse(completedEvent.contains(upstreamId));
+
+        // finalizeRequest() - which publishes dial.latency.* onto the still-recording span - must run
+        // before the response ends: Vert.x's OTel tracer ends the span synchronously inside end(),
+        // after which further span attributes are silently dropped (see BaseDeploymentPostController).
+        InOrder order = inOrder(apiKeyStore, response);
+        order.verify(apiKeyStore).invalidatePerRequestApiKey(any());
+        order.verify(response).end(any(Buffer.class));
     }
 
     @Test

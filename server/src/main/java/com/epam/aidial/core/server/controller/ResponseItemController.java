@@ -119,12 +119,18 @@ public class ResponseItemController implements Controller {
             )
     })
     public Future<?> handle() {
+        context.setRequestBodyTimestamp(System.currentTimeMillis());
         return proxy.getTaskExecutor().submit(this::loadMapping)
                 .compose(this::checkNotDeletingActive)
                 .compose(this::dispatch)
                 .eventually(this::finalizeRequest)
                 .onFailure(error -> {
                     if (!context.getResponse().ended()) {
+                        // dial.api=openai_responses is published on GET, so this is a GenAI surface: publish
+                        // dial.latency.* right here, immediately before the call that ends the response/span -
+                        // see the two other call sites in sendResponse()/collectAndForwardStreaming(), which
+                        // cover the success paths this .onFailure() doesn't reach
+                        GenAiTraceAttributes.setLatencyAttributes(context);
                         context.respond(error, "Failed to process response operation");
                     }
                 });
@@ -217,9 +223,11 @@ public class ResponseItemController implements Controller {
         context.setProxyApiKeyData(proxyApiKeyData);
         proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
 
-        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, proxyApiKeyData.getPerRequestKey())
+        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, proxyApiKeyData.getPerRequestKey(),
+                        () -> context.setProxyConnectTimestamp(System.currentTimeMillis()))
                 .compose(response -> {
                     context.setProxyResponse(response);
+                    context.setProxyResponseTimestamp(System.currentTimeMillis());
                     String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
                     if (operation == Operation.GET
                             && Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM)) {
@@ -232,6 +240,7 @@ public class ResponseItemController implements Controller {
     private Future<Void> collectAndForward(HttpClientResponse proxyResponse, ResponseMapping mapping) {
         return proxyResponse.body()
                 .compose(body -> {
+                    context.setResponseBodyTimestamp(System.currentTimeMillis());
                     if (proxyResponse.statusCode() != 200) {
                         return sendResponse(proxyResponse, body);
                     }
@@ -269,6 +278,9 @@ public class ResponseItemController implements Controller {
             serverResponse.putHeader(HttpHeaders.CONTENT_TYPE, contentType);
         }
         serverResponse.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
+        // must run before end(): Vert.x ends the request's OTel span synchronously inside end(), after
+        // which further span attributes (dial.latency.*) are silently dropped
+        GenAiTraceAttributes.setLatencyAttributes(context);
         return serverResponse.end(body).mapEmpty();
     }
 
@@ -316,9 +328,13 @@ public class ResponseItemController implements Controller {
                 .endOnSuccess(false)
                 .to(response)
                 .onSuccess(ignored -> {
+                    context.setResponseBodyTimestamp(System.currentTimeMillis());
                     // GET only, by the branch that got here: the buffered bytes are the raw upstream frames,
                     // so the id has to come from us
                     GenAiTraceAttributes.setFetchResponseAttributes(context, responseStream.getContent(), dialResponseId);
+                    // must run before end(): Vert.x ends the request's OTel span synchronously inside end(),
+                    // after which further span attributes (dial.latency.*) are silently dropped
+                    GenAiTraceAttributes.setLatencyAttributes(context);
                     responseStream.end(response);
                 })
                 .onFailure(error -> {

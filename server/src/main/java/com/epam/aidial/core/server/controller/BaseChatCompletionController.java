@@ -235,8 +235,7 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
                     }
                     Buffer rewritten = maybeInjectUsagePerModel(body);
                     response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
-                    response.end(rewritten);
-                    finishAndLog(null);
+                    finishAndLog(null, () -> response.end(rewritten));
                     return Future.<Void>succeededFuture();
                 });
     }
@@ -282,16 +281,21 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
                 response.write(buildUsagePerModelChunk(usagePerModel));
             }
         }
-        responseStream.end(response);
 
         String assembledStreamingResponse = null;
         if (isEventStreamResponse(context.getProxyResponse())) {
             assembledStreamingResponse = context.assembledChatCompletionsResponse();
         }
-        finishAndLog(assembledStreamingResponse);
+        finishAndLog(assembledStreamingResponse, () -> responseStream.end(response));
     }
 
-    private void finishAndLog(String assembledStreamingResponse) {
+    /**
+     * Logs and finalizes before {@code sendResponse} actually ends the response - see
+     * {@link BaseDeploymentPostController#finalizeThenRespond}: Vert.x ends the request's OTel span
+     * synchronously inside {@code response.end()}/{@code responseStream.end()}, so dial.latency.* (set
+     * from {@link #finalizeRequest()}) must be published before that call, not after it.
+     */
+    private void finishAndLog(String assembledStreamingResponse, Runnable sendResponse) {
         proxy.getLogStore().save(AnalyticsLogContext.from(context, assembledStreamingResponse));
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
@@ -308,7 +312,7 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
                 context.getTokenUsage() == null ? "N/A" : context.getTokenUsage(),
                 currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
-        finalizeRequest();
+        finalizeThenRespond(sendResponse);
     }
 
     /**

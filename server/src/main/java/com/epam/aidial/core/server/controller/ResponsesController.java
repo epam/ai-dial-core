@@ -46,6 +46,7 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -349,7 +350,8 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
-    private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
+    @VisibleForTesting
+    Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
         return rewriteResponseId(proxyResponse, body)
                 .compose(pair -> {
                     String dialId = pair.getKey();
@@ -382,8 +384,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                                     if (result.failed()) {
                                         log.warn("Failed to collect attachments from response", result.cause());
                                     }
-                                    response.end(rewritten);
-                                    completeProxyResponse(null);
+                                    completeProxyResponse(null, () -> response.end(rewritten));
                                 });
                     }
                 });
@@ -432,7 +433,8 @@ public class ResponsesController extends BaseDeploymentPostController {
                 });
     }
 
-    private void handleStreamingResponse(BufferingReadStream responseStream, String dialId, String assembledStreamingResponse) {
+    @VisibleForTesting
+    void handleStreamingResponse(BufferingReadStream responseStream, String dialId, String assembledStreamingResponse) {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
@@ -453,12 +455,17 @@ public class ResponsesController extends BaseDeploymentPostController {
             if (result.failed()) {
                 log.warn("Failed to collect token usage", result.cause());
             }
-            responseStream.end(context.getResponse());
-            completeProxyResponse(assembledStreamingResponse);
+            completeProxyResponse(assembledStreamingResponse, () -> responseStream.end(context.getResponse()));
         });
     }
 
-    private void completeProxyResponse(String assembledStreamingResponse) {
+    /**
+     * Logs and finalizes before {@code sendResponse} actually ends the response - see
+     * {@link BaseDeploymentPostController#finalizeThenRespond}: Vert.x ends the request's OTel span
+     * synchronously inside {@code response.end()}/{@code responseStream.end()}, so dial.latency.* (set
+     * from {@link #finalizeRequest()}) must be published before that call, not after it.
+     */
+    private void completeProxyResponse(String assembledStreamingResponse, Runnable sendResponse) {
         proxy.getLogStore().save(AnalyticsLogContext.from(context, assembledStreamingResponse));
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
@@ -475,7 +482,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 context.getTokenUsage() == null ? "N/A" : context.getTokenUsage(),
                 currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
-        finalizeRequest();
+        finalizeThenRespond(sendResponse);
     }
 
     private void handleProxyResponseError(Throwable error) {

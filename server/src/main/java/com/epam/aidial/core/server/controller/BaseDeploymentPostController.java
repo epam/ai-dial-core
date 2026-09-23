@@ -139,6 +139,17 @@ public class BaseDeploymentPostController {
     }
 
     /**
+     * Runs {@link #finalizeRequest()} - which publishes {@code dial.latency.*} onto the still-recording
+     * span - before the response-ending action. Vert.x's OTel tracer ends the request's span synchronously
+     * inside {@code response.end()}/{@code responseStream.end()}, so anything that must land on the span
+     * has to run before that call, not after it.
+     */
+    protected void finalizeThenRespond(Runnable sendResponse) {
+        finalizeRequest();
+        sendResponse.run();
+    }
+
+    /**
      * Called when proxy failed to connect to the origin.
      */
     protected void handleProxyConnectionError(Throwable error) {
