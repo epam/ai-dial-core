@@ -186,17 +186,6 @@ public class AnalyticsLogContext {
      */
     @Nullable
     public static String assembleStreamingChatCompletionsResponse(@Nullable Buffer response) {
-        ObjectNode tree = assembleStreamingChatCompletionsResponseTree(response);
-        return tree == null ? null : ProxyUtil.convertToString(tree);
-    }
-
-    /**
-     * Same as {@link #assembleStreamingChatCompletionsResponse(Buffer)}, for a caller (GenAI tracing) that
-     * needs the tree itself rather than its serialized form, so the two never independently reparse the
-     * same merged body.
-     */
-    @Nullable
-    public static ObjectNode assembleStreamingChatCompletionsResponseTree(@Nullable Buffer response) {
         if (response == null) {
             return null;
         }
@@ -230,7 +219,7 @@ public class AnalyticsLogContext {
 
             if (last == null) {
                 log.warn("no chunk is found in streaming response");
-                return ProxyUtil.MAPPER.createObjectNode();
+                return "{}";
             }
 
             ObjectNode result = ProxyUtil.MAPPER.createObjectNode();
@@ -268,10 +257,10 @@ public class AnalyticsLogContext {
 
                 result.set("choices", choices);
             }
-            return result;
+            return ProxyUtil.convertToString(result);
         } catch (Throwable e) {
             log.warn("Can't assemble streaming response", e);
-            return ProxyUtil.MAPPER.createObjectNode();
+            return "{}";
         }
     }
 }

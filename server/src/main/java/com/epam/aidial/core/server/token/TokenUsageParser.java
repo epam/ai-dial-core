@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.token;
 
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.buffer.Buffer;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
@@ -13,26 +12,6 @@ public class TokenUsageParser {
     public TokenUsage parse(Buffer body) {
         try {
             return parseUsage(body);
-        } catch (Throwable e) {
-            log.warn("Can't parse token usage: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * For a caller that already parsed the body into a tree for its own purposes - reads the top-level
-     * {@code usage} field directly instead of reparsing the same bytes. Equivalent to {@link #parse(Buffer)}
-     * for a complete, well-formed response body; only the byte-scan's leniency for a body that doesn't fully
-     * parse (or a streamed body with more than one {@code usage} occurrence) is not needed here, since every
-     * caller of this overload already has a single successfully-parsed JSON object.
-     */
-    public TokenUsage parse(JsonNode tree) {
-        try {
-            JsonNode usage = tree.get("usage");
-            if (usage == null || !usage.isObject()) {
-                return null;
-            }
-            return ProxyUtil.MAPPER.convertValue(usage, TokenUsage.class);
         } catch (Throwable e) {
             log.warn("Can't parse token usage: {}", e.getMessage());
             return null;

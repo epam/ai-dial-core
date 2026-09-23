@@ -382,6 +382,7 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).setProxyApiKeyData(any());
         doCallRealMethod().when(context).getProxyApiKeyData();
         doCallRealMethod().when(context).setProxyResponse(any());
+        doCallRealMethod().when(context).getProxyResponse();
 
         controller.handle();
 
@@ -493,6 +494,7 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).setUpstreamRoute(any());
         doCallRealMethod().when(context).getUpstreamRoute();
         doCallRealMethod().when(context).setProxyResponse(any());
+        doCallRealMethod().when(context).getProxyResponse();
 
         controller.handle();
 
@@ -619,6 +621,7 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).setUpstreamRoute(any());
         doCallRealMethod().when(context).getUpstreamRoute();
         doCallRealMethod().when(context).setProxyResponse(any());
+        doCallRealMethod().when(context).getProxyResponse();
         doCallRealMethod().when(context).setStoreResponse(anyBoolean());
         doCallRealMethod().when(context).isStoreResponse();
 

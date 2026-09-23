@@ -23,7 +23,6 @@ import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
-import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UsagePerModelInjector;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -213,9 +212,7 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
     /**
      * Non-streaming /chat/completions: buffers the body (mirroring {@code ResponsesController}'s
      * non-streaming handling) so {@code statistics.usage_per_model} can be injected before the
-     * client sees a byte of it. Parses the body once and threads the resulting tree through token
-     * usage, tracing and attachment collection, falling back to the raw buffer (skipping injection)
-     * when the body doesn't parse as a JSON object.
+     * client sees a byte of it.
      */
     private Future<Void> handleNonStreamingChatCompletionResponse(HttpClientResponse proxyResponse, Buffer body) {
         context.setResponseBody(body);
@@ -225,38 +222,18 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
         response.setChunked(false);
         putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
-        JsonNode parsed = JsonUtil.tryParse(body.getBytes());
-        if (!(parsed instanceof ObjectNode tree)) {
-            return collectTokenUsage(body)
-                    .transform(result -> {
-                        if (result.failed()) {
-                            log.warn("Failed to collect token usage", result.cause());
-                        }
-                        return collectResponseAttachments(body, new CollectResponseChatCompletionAttachmentsFn(proxy, context));
-                    })
-                    .transform(result -> {
-                        if (result.failed()) {
-                            log.warn("Failed to collect attachments from response", result.cause());
-                        }
-                        response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
-                        response.end(body);
-                        finishAndLog(null);
-                        return Future.<Void>succeededFuture();
-                    });
-        }
-
-        return collectTokenUsage(tree)
+        return collectTokenUsage(body)
                 .transform(result -> {
                     if (result.failed()) {
                         log.warn("Failed to collect token usage", result.cause());
                     }
-                    return collectResponseAttachments(tree, new CollectResponseChatCompletionAttachmentsFn(proxy, context));
+                    return collectResponseAttachments(body, new CollectResponseChatCompletionAttachmentsFn(proxy, context));
                 })
                 .transform(result -> {
                     if (result.failed()) {
                         log.warn("Failed to collect attachments from response", result.cause());
                     }
-                    Buffer rewritten = injectUsagePerModel(tree);
+                    Buffer rewritten = maybeInjectUsagePerModel(body);
                     response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
                     response.end(rewritten);
                     finishAndLog(null);

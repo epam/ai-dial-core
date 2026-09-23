@@ -222,34 +222,6 @@ class GenAiTraceAttributesTest {
     }
 
     @Test
-    void setResponseAttributesFromAlreadyParsedTreeMatchesFromBuffer() throws Exception {
-        ProxyContext context = context(proxy(enabledSettings()));
-        String body = """
-                {"id":"chat-1","model":"gpt-4","choices":[{"finish_reason":"stop"}],
-                 "usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}
-                """;
-
-        // the caller already parsed the body for its own purposes (e.g. id rewriting) - no reparse here
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
-                ProxyUtil.MAPPER.readTree(body), null);
-
-        assertEquals("chat-1", context.getTracingAttributes().get("gen_ai.response.id"));
-        assertEquals("gpt-4", context.getTracingAttributes().get("gen_ai.response.model"));
-        assertEquals(List.of("stop"), context.getTracingAttributes().get("gen_ai.response.finish_reasons"));
-        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
-    }
-
-    @Test
-    void setResponseAttributesFromTreeHonorsResponseIdOverride() throws Exception {
-        ProxyContext context = context(proxy(enabledSettings()));
-        var tree = ProxyUtil.MAPPER.readTree("{\"id\":\"upstream-1\",\"model\":\"gpt-4\"}");
-
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, tree, "dial-1");
-
-        assertEquals("dial-1", context.getTracingAttributes().get("gen_ai.response.id"));
-    }
-
-    @Test
     void setResponseAttributesCoversStreamingChatResponse() {
         ProxyContext context = streamingContext();
         Buffer body = Buffer.buffer("""
@@ -590,51 +562,6 @@ class GenAiTraceAttributesTest {
     }
 
     @Test
-    void setFetchResponseAttributesFromAlreadyParsedTreeMatchesFromBuffer() throws Exception {
-        ProxyContext context = context(proxy(enabledSettings()));
-        String body = "{\"id\":\"resp-1\",\"model\":\"gpt-4\",\"status\":\"completed\"}";
-
-        // the caller already parsed the body for id rewriting/terminal-result detection - no reparse here
-        GenAiTraceAttributes.setFetchResponseAttributes(context, ProxyUtil.MAPPER.readTree(body), "resp-1");
-
-        assertEquals("fetch_response", context.getTracingAttributes().get("gen_ai.operation.name"));
-        assertEquals("resp-1", context.getTracingAttributes().get("gen_ai.response.id"));
-    }
-
-    @Test
-    void setFetchResponseAttributesFromTreeCollectsUsage() throws Exception {
-        ProxyContext context = context(proxy(enabledSettings()));
-        String body = """
-                {"id":"resp-1","model":"gpt-4","status":"completed",
-                 "usage":{"input_tokens":5,"output_tokens":7,"total_tokens":12}}
-                """;
-
-        GenAiTraceAttributes.setFetchResponseAttributes(context, ProxyUtil.MAPPER.readTree(body), "resp-1");
-
-        assertEquals(5L, context.getTracingAttributes().get("gen_ai.usage.input_tokens"));
-        assertEquals(7L, context.getTracingAttributes().get("gen_ai.usage.output_tokens"));
-    }
-
-    @Test
-    void setFetchResponseAttributesFromBufferReusesTheAssembledStreamingResponseWhenAvailable() throws Exception {
-        ProxyContext context = streamingContext();
-        // ResponseItemController's GET streaming path extracts and keeps the terminal frame the same way
-        // ResponsesController's POST streaming path does (ExtractTerminalResponseFn), so this must be
-        // read instead of rescanning the raw multi-frame SSE buffer below for the terminal event.
-        context.setAssembledStreamingResponseTree(
-                ProxyUtil.MAPPER.readTree("{\"id\":\"dial-1\",\"model\":\"gpt-4\",\"status\":\"completed\"}"));
-        Buffer rawUpstreamFrames = Buffer.buffer("""
-                event: response.in_progress
-                data: {"type":"response.in_progress","response":{"id":"upstream-1"}}
-                """);
-
-        GenAiTraceAttributes.setFetchResponseAttributes(context, rawUpstreamFrames, "dial-1");
-
-        assertEquals("gpt-4", context.getTracingAttributes().get("gen_ai.response.model"));
-        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
-    }
-
-    @Test
     void setUsageAttributesUsesTypedValues() {
         ProxyContext context = context(proxy(enabledSettings()));
         TokenUsage usage = new TokenUsage();
@@ -704,12 +631,10 @@ class GenAiTraceAttributesTest {
     }
 
     @Test
-    void setResponseAttributesReusesTheTerminalResponsesFrameAlreadyExtracted() throws Exception {
+    void setResponseAttributesReusesTheTerminalResponsesFrameAlreadyExtracted() {
         ProxyContext context = streamingContext();
-        // ExtractTerminalResponseFn kept this tree while streaming; the buffered frames are never scanned again,
-        // and the tree is never reparsed from the string built from it for the log
-        context.setAssembledStreamingResponseTree(
-                ProxyUtil.MAPPER.readTree("{\"id\":\"resp-1\",\"model\":\"gpt-4\",\"status\":\"incomplete\"}"));
+        // ExtractTerminalResponseFn kept this while streaming; the buffered frames are never scanned again
+        context.setAssembledStreamingResponse("{\"id\":\"resp-1\",\"model\":\"gpt-4\",\"status\":\"incomplete\"}");
         Buffer body = Buffer.buffer("""
                 event: response.completed
                 data: {"type":"response.completed","response":{"id":"scanned","status":"completed"}}

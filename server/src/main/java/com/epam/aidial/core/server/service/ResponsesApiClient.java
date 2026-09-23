@@ -51,31 +51,14 @@ public class ResponsesApiClient {
         if (!(node instanceof ObjectNode tree)) {
             throw new IllegalStateException("Response body is not a JSON object.");
         }
-        if (!isTerminalStatus(tree)) {
+        JsonNode statusNode = tree.path("status");
+        if (!statusNode.isTextual() || !isTerminal(statusNode.asText())) {
             return null;
         }
-        return new TerminalResult(body, extractUsage(tree));
-    }
-
-    /**
-     * Whether an already-parsed Responses API body reports a terminal status. For a caller that already
-     * parsed the body into a tree for its own purposes (e.g. id rewriting) - reads the tree directly instead
-     * of reparsing the same bytes {@link #parseTerminalBody(Buffer)} would, and never needs the raw body
-     * to answer this.
-     */
-    public static boolean isTerminalStatus(JsonNode tree) {
-        JsonNode statusNode = tree.path("status");
-        return statusNode.isTextual() && isTerminal(statusNode.asText());
-    }
-
-    /**
-     * Same as the {@code usage} extraction inside {@link #parseTerminalBody(Buffer)}, for a caller that
-     * already has the tree - never needs the raw body to answer this either.
-     */
-    @SneakyThrows
-    public static TokenUsage extractUsage(JsonNode tree) {
         JsonNode usageNode = tree.path("usage");
-        return usageNode.isObject() ? ProxyUtil.MAPPER.treeToValue(usageNode, TokenUsage.class) : null;
+        TokenUsage usage = usageNode.isObject()
+                ? ProxyUtil.MAPPER.treeToValue(usageNode, TokenUsage.class) : null;
+        return new TerminalResult(body, usage);
     }
 
     public record TerminalResult(Buffer body, TokenUsage usage) {

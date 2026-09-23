@@ -23,6 +23,7 @@ import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.util.UpstreamInterfaceUtil;
@@ -86,19 +87,11 @@ public class BaseDeploymentPostController {
         }
         try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
             ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-            return collectResponseAttachments(tree, fn);
+            return fn.apply(tree).map(ignored -> null);
         } catch (Throwable e) {
             log.warn("Can't parse JSON response body. Error:", e);
             return Future.failedFuture(e);
         }
-    }
-
-    /**
-     * For a caller that already parsed the body into a tree for its own purposes - reuses it instead of
-     * reparsing the same bytes.
-     */
-    protected Future<Void> collectResponseAttachments(ObjectNode responseTree, CollectResponseAttachmentsFn fn) {
-        return fn.apply(responseTree).map(ignored -> null);
     }
 
     protected Future<?> respond(HttpStatus status, String errorMessage) {
@@ -207,41 +200,11 @@ public class BaseDeploymentPostController {
                 log.warn("Failed to set GenAI response trace attributes", e);
             }
         }
-        return finishTokenUsage(() -> parseTokenUsage(responseBody));
-    }
-
-    protected Future<Void> collectTokenUsage(JsonNode responseTree) {
-        return collectTokenUsage(responseTree, null);
-    }
-
-    /**
-     * For a caller that already parsed the body into a tree for its own purposes (e.g. id rewriting) -
-     * reuses it for tracing and token-usage accounting instead of reparsing the same bytes.
-     *
-     * @param responseId DIAL's own response id when the caller knows it, null to take the id from the body.
-     */
-    protected Future<Void> collectTokenUsage(JsonNode responseTree, String responseId) {
-        if (GenAiTraceAttributes.isEnabled(context)) {
-            try {
-                GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseTree, responseId);
-            } catch (Throwable e) {
-                log.warn("Failed to set GenAI response trace attributes", e);
-            }
-        }
-        return finishTokenUsage(() -> parseTokenUsage(responseTree));
-    }
-
-    /**
-     * Shared tail of {@code collectTokenUsage}: accounts the usage the supplier resolves, regardless of
-     * whether it came from a {@link Buffer} or an already-parsed {@link JsonNode}. Lazy so a Model response
-     * that never reaches 200 skips parsing the body for usage entirely, same as before this was extracted.
-     */
-    private Future<Void> finishTokenUsage(Supplier<TokenUsage> usageSupplier) {
         if (context.getDeployment() instanceof Model model) {
             if (context.getResponse().getStatusCode() != HttpStatus.OK.getCode()) {
                 return Future.succeededFuture();
             }
-            TokenUsage tokenUsage = usageSupplier.get();
+            TokenUsage tokenUsage = parseTokenUsage(responseBody);
             if (tokenUsage == null) {
                 Pricing pricing = model.getPricing();
                 if (pricing == null || "token".equals(pricing.getUnit())) {
@@ -274,7 +237,7 @@ public class BaseDeploymentPostController {
 
         // Application/Assistant: any deployment may self-report usage in its own response body;
         // capture it alongside whatever its descendant Model spans already reported.
-        TokenUsage ownUsage = usageSupplier.get();
+        TokenUsage ownUsage = parseTokenUsage(responseBody);
         return trackDeploymentStats(context.getDeployment().getName(), ownUsage, true);
     }
 
@@ -355,14 +318,6 @@ public class BaseDeploymentPostController {
     }
 
     /**
-     * Same as {@link #parseTokenUsage(Buffer)}, for a caller that already parsed the body into a tree.
-     * Overridable so provider-specific controllers can supply their own accounting.
-     */
-    protected TokenUsage parseTokenUsage(JsonNode responseTree) {
-        return TokenUsageParser.parse(responseTree);
-    }
-
-    /**
      * Which upstream interface shape this controller's response is in, for pricing decision-tree
      * evaluation. Overridable so provider-specific controllers (Anthropic Messages, OpenAI Responses)
      * can report their own shape; the default covers the OpenAI Chat Completions path. A controller
@@ -375,22 +330,24 @@ public class BaseDeploymentPostController {
     }
 
     /**
-     * Rewrites {@code tree}'s {@code statistics.usage_per_model} to Core's own value, or strips it
+     * Rewrites {@code body}'s {@code statistics.usage_per_model} to Core's own value, or strips it
      * entirely when Core has nothing to report - a deployment's own response is never trusted to
      * carry this field through untouched, the same guarantee {@code StripUsagePerModelFn} gives the
-     * streaming path (see DeploymentPostController). Mutates {@code tree} in place and serializes it
-     * exactly once; the caller is responsible for falling back to the original body when it couldn't
-     * be parsed into a tree in the first place - injection is best-effort, never a reason to corrupt
-     * or drop a response.
+     * streaming path (see DeploymentPostController). Returns {@code body} unchanged only on a parse
+     * surprise - injection is best-effort, never a reason to corrupt or drop a response.
      */
-    protected Buffer injectUsagePerModel(ObjectNode tree) {
+    protected Buffer maybeInjectUsagePerModel(Buffer body) {
+        JsonNode tree = JsonUtil.tryParse(body.getBytes());
+        if (!tree.isObject() || !(tree instanceof ObjectNode object)) {
+            return body;
+        }
         List<UsagePerModel> usagePerModel = context.getUsagePerModel();
         if (usagePerModel == null || usagePerModel.isEmpty()) {
-            UsagePerModelInjector.strip(tree);
+            UsagePerModelInjector.strip(object);
         } else {
-            UsagePerModelInjector.inject(tree, usagePerModel);
+            UsagePerModelInjector.inject(object, usagePerModel);
         }
-        return Buffer.buffer(ProxyUtil.convertToString(tree));
+        return Buffer.buffer(ProxyUtil.convertToString(object));
     }
 
     /**
