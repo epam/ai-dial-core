@@ -660,6 +660,21 @@ class GenAiTraceAttributesTest {
         assertEquals("openai_embeddings", context.getTracingAttributes().get("dial.api"));
     }
 
+    @Test
+    void setResponseAttributesSkipsAssembledBodyOversizedInUtf8BytesButNotInChars() {
+        ProxyContext context = streamingContext();
+        String oversizedAssembled = "{\"id\":\"chat-1\",\"model\":\"gpt-4\",\"choices\":[{\"content\":\""
+                + "中".repeat(200_000) + "\"}]}";
+        context.setAssembledStreamingResponse(oversizedAssembled);
+        Buffer body = Buffer.buffer("data: [DONE]\n\n");
+
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
+
+        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.id"));
+        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.model"));
+        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
+    }
+
     private static ProxyContext context(Proxy proxy, HttpServerRequest request) {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(new Key());

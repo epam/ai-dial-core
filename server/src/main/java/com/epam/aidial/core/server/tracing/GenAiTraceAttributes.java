@@ -324,7 +324,7 @@ public final class GenAiTraceAttributes {
     }
 
     private static JsonNode parse(String body) {
-        return body == null || body.length() > MAX_TRACED_BODY_BYTES
+        return body == null || body.getBytes(StandardCharsets.UTF_8).length > MAX_TRACED_BODY_BYTES
                 ? MissingNode.getInstance()
                 : JsonUtil.tryParse(body);
     }
