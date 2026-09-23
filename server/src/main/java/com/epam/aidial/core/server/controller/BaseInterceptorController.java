@@ -182,7 +182,8 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
         // finalizeRequest() (dial.latency.*) must run before responseStream.end(): Vert.x ends the
         // request's OTel span synchronously inside response.end(), after which further span
         // attributes are silently dropped.
-        finalizeThenRespond(() -> responseStream.end(response));
+        finalizeRequest();
+        responseStream.end(response);
     }
 
     /**

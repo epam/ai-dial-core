@@ -172,14 +172,15 @@ public class MessagesController extends MessagesBaseController {
     }
 
     /**
-     * Logs and finalizes before {@code endResponse} actually ends the response - see
-     * {@link com.epam.aidial.core.server.controller.BaseDeploymentPostController#finalizeThenRespond}:
-     * Vert.x ends the request's OTel span synchronously inside {@code response.end()}/
-     * {@code responseStream.end()}, so dial.latency.* (set from {@link #finalizeRequest()}) must be
-     * published before that call, not after it.
+     * Finalizes (publishing dial.latency.* onto the still-recording span) before logging, so the
+     * "Sent response to client" log record's own attribute snapshot - taken at the moment log.info()
+     * runs - also carries dial.latency.*; then ends the response last, after both. Vert.x ends the
+     * request's OTel span synchronously inside {@code response.end()}/{@code responseStream.end()}, so
+     * nothing that must land on the span or in this log line can run after that call.
      */
     private void completeProxyResponse(Runnable endResponse) {
         proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
+        finalizeRequest();
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Interface: {}. Endpoint: {}. Upstream: {}. Length: {}. Tokens: {}.",
                 context.getDeployment().getName(),
@@ -189,7 +190,7 @@ public class MessagesController extends MessagesBaseController {
                 context.getResponseBody() == null ? 0 : context.getResponseBody().length(),
                 context.getTokenUsage() == null ? "N/A" : context.getTokenUsage());
 
-        finalizeThenRespond(endResponse);
+        endResponse.run();
     }
 
     @Override
