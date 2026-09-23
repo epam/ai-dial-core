@@ -20,6 +20,7 @@ import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachments
 import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
@@ -218,6 +219,7 @@ public class ResponseItemController implements Controller {
 
         return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, proxyApiKeyData.getPerRequestKey())
                 .compose(response -> {
+                    context.setProxyResponse(response);
                     String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
                     if (operation == Operation.GET
                             && Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM)) {
@@ -258,6 +260,10 @@ public class ResponseItemController implements Controller {
     private Future<Void> sendResponse(HttpClientResponse proxyResponse, Buffer body) {
         HttpServerResponse serverResponse = context.getResponse();
         serverResponse.setStatusCode(proxyResponse.statusCode());
+        if (operation == Operation.GET) {
+            // after setStatusCode: the status fallback reads the client-facing code, still 200 by default before it
+            GenAiTraceAttributes.setFetchResponseAttributes(context, body, dialResponseId);
+        }
         String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
         if (contentType != null) {
             serverResponse.putHeader(HttpHeaders.CONTENT_TYPE, contentType);
@@ -309,7 +315,12 @@ public class ResponseItemController implements Controller {
                 .endOnFailure(false)
                 .endOnSuccess(false)
                 .to(response)
-                .onSuccess(ignored -> responseStream.end(response))
+                .onSuccess(ignored -> {
+                    // GET only, by the branch that got here: the buffered bytes are the raw upstream frames,
+                    // so the id has to come from us
+                    GenAiTraceAttributes.setFetchResponseAttributes(context, responseStream.getContent(), dialResponseId);
+                    responseStream.end(response);
+                })
                 .onFailure(error -> {
                     response.reset();
                     log.warn("Can't send streaming response to client. Error:", error);
