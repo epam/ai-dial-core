@@ -114,8 +114,8 @@
     "useVirtualThreads": true
   },
   "tracing": {
-    "genAiSpanAttributes": false,
-    "responseTraceHeaders": false,
+    "genAiSpanAttributes": true,
+    "responseTraceHeaders": true,
     "conversationIdHeaders": [
       "x-claude-code-session-id",
       "thread-id",
