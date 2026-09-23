@@ -135,6 +135,22 @@ public class DeploymentApiTest extends ResourceBaseTest {
         assertEquals(Set.of("chat", "mcp", "custom_ui", "openaiChatCompletions"), interfacesOf(application));
     }
 
+    @DialConfigLocation("dial-config/deployment-listing-broken-schema.json")
+    @Test
+    public void testListDeploymentsSkipsApplicationWithBrokenSchema() throws JsonProcessingException {
+        // broken-schema-app references a custom application schema that doesn't exist; this must not
+        // fail the whole listing, and the other, healthy deployments must still come back (issue #2013)
+        Map<String, JsonNode> deploymentsById = collectDeployments(send(HttpMethod.GET, "/v1/deployments", null, null));
+
+        assertTrue(deploymentsById.containsKey("healthy-app"));
+        assertTrue(deploymentsById.containsKey("gpt-4"));
+
+        JsonNode brokenApp = deploymentsById.get("broken-schema-app");
+        if (brokenApp != null) {
+            assertTrue(brokenApp.get("invalid").asBoolean());
+        }
+    }
+
     @Test
     public void testGetForbiddenDeployment() {
         // gpt-4 is restricted to the power-user role, proxyKey1 has the default one
