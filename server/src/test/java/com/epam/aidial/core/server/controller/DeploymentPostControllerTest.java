@@ -66,6 +66,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_API_KEY;
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
@@ -81,6 +83,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -89,6 +92,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -927,6 +931,61 @@ public class DeploymentPostControllerTest {
         ArgumentCaptor<InterfaceType> interfaceTypeCaptor = ArgumentCaptor.forClass(InterfaceType.class);
         verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), interfaceTypeCaptor.capture(), any());
         assertEquals(InterfaceType.OPENAI_EMBEDDINGS, interfaceTypeCaptor.getValue());
+    }
+
+    private Map<String, Object> getTracingAttributes() {
+        Map<String, Object> tracingAttributes = new ConcurrentHashMap<>();
+        AtomicLong responseBodyTimestamp = new AtomicLong();
+        when(context.getTracingSettings()).thenReturn(new TracingSettings(true, false, List.of()));
+        when(context.getTracingAttributes()).thenReturn(tracingAttributes);
+        when(context.getRequestTimestamp()).thenReturn(1000L);
+        when(context.getRequestBodyTimestamp()).thenReturn(1010L);
+        when(context.getProxyConnectTimestamp()).thenReturn(1020L);
+        when(context.getProxyResponseTimestamp()).thenReturn(1030L);
+        doAnswer(inv -> {
+            responseBodyTimestamp.set(inv.getArgument(0));
+            return null;
+        }).when(context).setResponseBodyTimestamp(anyLong());
+        when(context.getResponseBodyTimestamp()).thenAnswer(inv -> responseBodyTimestamp.get());
+        return tracingAttributes;
+    }
+
+    @Test
+    public void testHandleResponse_Model_Embeddings_PublishesEmbeddingsResponseAttributes() {
+        Model model = new Model();
+        when(context.getDeployment()).thenReturn(model);
+        when(context.getUserId()).thenReturn("test-user");
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(proxy.getLogStore()).thenReturn(logStore);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        when(context.getResponseBody()).thenReturn(Buffer.buffer("{}"));
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(context.getRequest()).thenReturn(request);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.uri()).thenReturn("/test");
+        when(request.path()).thenReturn("/openai/deployments/name/embeddings");
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
+        when(bufferingReadStream.getContent()).thenReturn(Buffer.buffer("{}"));
+        Map<String, Object> tracingAttributes = getTracingAttributes();
+
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            when(span.isRecording()).thenReturn(true);
+            when(Span.current()).thenReturn(span);
+
+            controller.handleResponse(bufferingReadStream);
+
+            assertEquals("embeddings", tracingAttributes.get("gen_ai.operation.name"));
+            assertEquals("openai_embeddings", tracingAttributes.get("dial.api"));
+        }
     }
 
     @ParameterizedTest
