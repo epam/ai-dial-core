@@ -46,7 +46,6 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -350,8 +349,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
-    @VisibleForTesting
-    Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
+    private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
         return rewriteResponseId(proxyResponse, body)
                 .compose(pair -> {
                     String dialId = pair.getKey();
@@ -384,7 +382,8 @@ public class ResponsesController extends BaseDeploymentPostController {
                                     if (result.failed()) {
                                         log.warn("Failed to collect attachments from response", result.cause());
                                     }
-                                    completeProxyResponse(null, () -> response.end(rewritten));
+                                    response.end(rewritten);
+                                    completeProxyResponse(null);
                                 });
                     }
                 });
@@ -433,8 +432,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 });
     }
 
-    @VisibleForTesting
-    void handleStreamingResponse(BufferingReadStream responseStream, String dialId, String assembledStreamingResponse) {
+    private void handleStreamingResponse(BufferingReadStream responseStream, String dialId, String assembledStreamingResponse) {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
@@ -455,20 +453,13 @@ public class ResponsesController extends BaseDeploymentPostController {
             if (result.failed()) {
                 log.warn("Failed to collect token usage", result.cause());
             }
-            completeProxyResponse(assembledStreamingResponse, () -> responseStream.end(context.getResponse()));
+            responseStream.end(context.getResponse());
+            completeProxyResponse(assembledStreamingResponse);
         });
     }
 
-    /**
-     * Finalizes (publishing dial.latency.* onto the still-recording span) before logging, so the
-     * "Sent response to client" log record's own attribute snapshot - taken at the moment log.info()
-     * runs - also carries dial.latency.*; then ends the response last, after both. Vert.x ends the
-     * request's OTel span synchronously inside {@code response.end()}/{@code responseStream.end()}, so
-     * nothing that must land on the span or in this log line can run after that call.
-     */
-    private void completeProxyResponse(String assembledStreamingResponse, Runnable sendResponse) {
+    private void completeProxyResponse(String assembledStreamingResponse) {
         proxy.getLogStore().save(AnalyticsLogContext.from(context, assembledStreamingResponse));
-        finalizeRequest();
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",
@@ -484,7 +475,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 context.getTokenUsage() == null ? "N/A" : context.getTokenUsage(),
                 currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
-        sendResponse.run();
+        finalizeRequest();
     }
 
     private void handleProxyResponseError(Throwable error) {

@@ -235,7 +235,8 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
                     }
                     Buffer rewritten = maybeInjectUsagePerModel(body);
                     response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
-                    finishAndLog(null, () -> response.end(rewritten));
+                    response.end(rewritten);
+                    finishAndLog(null);
                     return Future.<Void>succeededFuture();
                 });
     }
@@ -281,24 +282,17 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
                 response.write(buildUsagePerModelChunk(usagePerModel));
             }
         }
+        responseStream.end(response);
 
         String assembledStreamingResponse = null;
         if (isEventStreamResponse(context.getProxyResponse())) {
             assembledStreamingResponse = context.assembledChatCompletionsResponse();
         }
-        finishAndLog(assembledStreamingResponse, () -> responseStream.end(response));
+        finishAndLog(assembledStreamingResponse);
     }
 
-    /**
-     * Finalizes (publishing dial.latency.* onto the still-recording span) before logging, so the
-     * "Sent response to client" log record's own attribute snapshot - taken at the moment log.info()
-     * runs - also carries dial.latency.*; then ends the response last, after both. Vert.x ends the
-     * request's OTel span synchronously inside {@code response.end()}/{@code responseStream.end()}, so
-     * nothing that must land on the span or in this log line can run after that call.
-     */
-    private void finishAndLog(String assembledStreamingResponse, Runnable sendResponse) {
+    private void finishAndLog(String assembledStreamingResponse) {
         proxy.getLogStore().save(AnalyticsLogContext.from(context, assembledStreamingResponse));
-        finalizeRequest();
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",
@@ -314,7 +308,7 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
                 context.getTokenUsage() == null ? "N/A" : context.getTokenUsage(),
                 currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
-        sendResponse.run();
+        finalizeRequest();
     }
 
     /**

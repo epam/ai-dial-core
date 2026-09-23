@@ -77,10 +77,11 @@ public class MessagesCountTokensController extends MessagesBaseController {
         response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
         putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
         // count_tokens must NOT charge limits or collect token usage — just log and finalize.
-        // finalizeRequest() (dial.latency.*) must run before response.end(): Vert.x ends the request's
-        // OTel span synchronously inside end(), after which further span attributes are silently dropped.
-        proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
-        finalizeRequest();
-        return response.end(body);
+        return response.end(body)
+                .transform(result -> {
+                    proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
+                    finalizeRequest();
+                    return Future.<Void>succeededFuture();
+                });
     }
 }

@@ -179,11 +179,8 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
 
     private void completeProxyResponse(BufferingReadStream responseStream) {
         HttpServerResponse response = context.getResponse();
-        // finalizeRequest() (dial.latency.*) must run before responseStream.end(): Vert.x ends the
-        // request's OTel span synchronously inside response.end(), after which further span
-        // attributes are silently dropped.
-        finalizeRequest();
         responseStream.end(response);
+        finalizeRequest();
     }
 
     /**

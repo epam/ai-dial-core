@@ -25,7 +25,6 @@ import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
-import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
@@ -140,8 +139,7 @@ public class MessagesController extends MessagesBaseController {
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
-    @VisibleForTesting
-    Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
+    private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
         context.setResponseBody(body);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         HttpServerResponse response = context.getResponse();
@@ -158,8 +156,7 @@ public class MessagesController extends MessagesBaseController {
                 });
     }
 
-    @VisibleForTesting
-    void handleResponse(BufferingReadStream responseStream) {
+    private void handleResponse(BufferingReadStream responseStream) {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
@@ -171,16 +168,9 @@ public class MessagesController extends MessagesBaseController {
         });
     }
 
-    /**
-     * Finalizes (publishing dial.latency.* onto the still-recording span) before logging, so the
-     * "Sent response to client" log record's own attribute snapshot - taken at the moment log.info()
-     * runs - also carries dial.latency.*; then ends the response last, after both. Vert.x ends the
-     * request's OTel span synchronously inside {@code response.end()}/{@code responseStream.end()}, so
-     * nothing that must land on the span or in this log line can run after that call.
-     */
     private void completeProxyResponse(Runnable endResponse) {
+        endResponse.run();
         proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
-        finalizeRequest();
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Interface: {}. Endpoint: {}. Upstream: {}. Length: {}. Tokens: {}.",
                 context.getDeployment().getName(),
@@ -190,7 +180,7 @@ public class MessagesController extends MessagesBaseController {
                 context.getResponseBody() == null ? 0 : context.getResponseBody().length(),
                 context.getTokenUsage() == null ? "N/A" : context.getTokenUsage());
 
-        endResponse.run();
+        finalizeRequest();
     }
 
     @Override

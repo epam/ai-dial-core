@@ -77,14 +77,13 @@ public class ChatCompletionsController extends BaseChatCompletionController {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
         context.getRequest().body()
-                .map(this::parseBody)
+                .map(ChatCompletionsController::parseBody)
                 .compose(this::dispatch)
                 .onFailure(this::handleRequestBodyError);
         return Future.succeededFuture();
     }
 
-    private ChatCompletionRequest parseBody(Buffer body) {
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
+    private static ChatCompletionRequest parseBody(Buffer body) {
         try {
             return new ChatCompletionRequest(ProxyUtil.parseObject(body));
         } catch (IOException e) {

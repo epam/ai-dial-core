@@ -55,7 +55,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -85,7 +84,6 @@ import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -341,13 +339,7 @@ public class ResponsesControllerTest {
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(response.getStatusCode()).thenReturn(200);
-        // completeProxyResponse() now runs finalizeRequest() (and thus invalidatePerRequestApiKey())
-        // before this call, so signaling completion here - the true last step - avoids racing the
-        // test thread against whatever this stub's caller does after it returns.
-        when(response.end(any(Buffer.class))).thenAnswer(inv -> {
-            textContext.completeNow();
-            return Future.succeededFuture();
-        });
+        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test"))
                 .thenReturn(deployment);
         when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
@@ -375,7 +367,10 @@ public class ResponsesControllerTest {
             proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
             return null;
         }).when(apiKeyStore).assignPerRequestApiKey(any());
-        when(apiKeyStore.invalidatePerRequestApiKey(any())).thenReturn(Future.succeededFuture(Boolean.TRUE));
+        doAnswer(invocation -> {
+            textContext.completeNow();
+            return Future.succeededFuture(Boolean.TRUE);
+        }).when(apiKeyStore).invalidatePerRequestApiKey(any());
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setRequestBody(any());
@@ -404,12 +399,6 @@ public class ResponsesControllerTest {
                 eq(PER_REQUEST_KEY),
                 argThat(arg ->
                         ProxyUtil.convertToString(updatedApiKeyData).equals(arg.apply("{}"))));
-        // finalizeRequest() - which publishes dial.latency.* onto the still-recording span - must run
-        // before the response ends: Vert.x's OTel tracer ends the span synchronously inside end(),
-        // after which further span attributes are silently dropped (see BaseDeploymentPostController).
-        InOrder order = inOrder(apiKeyStore, response);
-        order.verify(apiKeyStore).invalidatePerRequestApiKey(any());
-        order.verify(response).end(any(Buffer.class));
     }
 
 
@@ -467,13 +456,7 @@ public class ResponsesControllerTest {
         when(proxyRequest.send(requestBody)).thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
-        // completeProxyResponse() now runs finalizeRequest() (and thus invalidatePerRequestApiKey())
-        // before this call, so signaling completion here - the true last step - avoids racing the
-        // test thread against whatever this stub's caller does after it returns.
-        when(response.end(any(Buffer.class))).thenAnswer(inv -> {
-            textContext.completeNow();
-            return Future.succeededFuture();
-        });
+        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test"))
                 .thenReturn(deployment);
         when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
@@ -494,7 +477,10 @@ public class ResponsesControllerTest {
         // self-reported usage (see issue #1753) rather than read from the trace aggregate
         when(proxy.getTokenStatsTracker().updateDeploymentStats(any(), any(), any(), any()))
                 .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(tokenUsage, List.of())));
-        when(apiKeyStore.invalidatePerRequestApiKey(any())).thenReturn(Future.succeededFuture(Boolean.TRUE));
+        doAnswer(invocation -> {
+            textContext.completeNow();
+            return Future.succeededFuture(Boolean.TRUE);
+        }).when(apiKeyStore).invalidatePerRequestApiKey(any());
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setRequestBody(any());
@@ -601,13 +587,7 @@ public class ResponsesControllerTest {
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
-        // completeProxyResponse() now runs finalizeRequest() (and thus invalidatePerRequestApiKey())
-        // before this call, so signaling completion here - the true last step - avoids racing the
-        // test thread against whatever this stub's caller does after it returns.
-        when(response.end(any(Buffer.class))).thenAnswer(inv -> {
-            textContext.completeNow();
-            return Future.succeededFuture();
-        });
+        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
         when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
@@ -626,7 +606,10 @@ public class ResponsesControllerTest {
         when(responseMappingService.saveMapping(any(), any())).thenReturn(expectedDialId);
 
         when(context.getUserId()).thenReturn("test-user");
-        when(apiKeyStore.invalidatePerRequestApiKey(any())).thenReturn(Future.succeededFuture(Boolean.TRUE));
+        doAnswer(invocation -> {
+            textContext.completeNow();
+            return Future.succeededFuture(Boolean.TRUE);
+        }).when(apiKeyStore).invalidatePerRequestApiKey(any());
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setRequestBody(any());
@@ -717,13 +700,7 @@ public class ResponsesControllerTest {
             writtenChunks.add(inv.getArgument(0));
             return null;
         }).when(response).write(any(Buffer.class), any());
-        // completeProxyResponse() now runs finalizeRequest() (and thus invalidatePerRequestApiKey())
-        // before this call, so signaling completion here - the true last step - avoids racing the
-        // test thread against whatever this stub's caller does after it returns.
-        when(response.end(any(Buffer.class))).thenAnswer(inv -> {
-            textContext.completeNow();
-            return Future.succeededFuture();
-        });
+        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
         when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
@@ -742,7 +719,10 @@ public class ResponsesControllerTest {
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getTokenStatsTracker().getUsageStats(context))
                 .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of())));
-        when(apiKeyStore.invalidatePerRequestApiKey(any())).thenReturn(Future.succeededFuture(Boolean.TRUE));
+        doAnswer(invocation -> {
+            textContext.completeNow();
+            return Future.succeededFuture(Boolean.TRUE);
+        }).when(apiKeyStore).invalidatePerRequestApiKey(any());
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setRequestBody(any());
@@ -775,13 +755,6 @@ public class ResponsesControllerTest {
         String completedEvent = endCaptor.getValue().toString();
         assertTrue(completedEvent.contains(expectedDialId));
         assertFalse(completedEvent.contains(upstreamId));
-
-        // finalizeRequest() - which publishes dial.latency.* onto the still-recording span - must run
-        // before the response ends: Vert.x's OTel tracer ends the span synchronously inside end(),
-        // after which further span attributes are silently dropped (see BaseDeploymentPostController).
-        InOrder order = inOrder(apiKeyStore, response);
-        order.verify(apiKeyStore).invalidatePerRequestApiKey(any());
-        order.verify(response).end(any(Buffer.class));
     }
 
     @Test

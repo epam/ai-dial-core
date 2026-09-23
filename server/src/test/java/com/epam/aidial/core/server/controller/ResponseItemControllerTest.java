@@ -10,7 +10,6 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResponseMapping;
-import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -44,9 +43,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.epam.aidial.core.server.controller.ResponseItemController.Operation.CANCEL;
@@ -96,49 +93,6 @@ public class ResponseItemControllerTest {
 
     private ResponseItemController controller(String dialId, ResponseItemController.Operation op) {
         return new ResponseItemController(proxy, context, dialId, op);
-    }
-
-    /**
-     * Wires the mocked {@code context} so the four latency timestamps round-trip through
-     * {@link AtomicLong}-backed getter/setter pairs - plain mock fields aren't volatile, and the
-     * controller sets/reads them from different {@code AsyncTaskExecutor} threads - and
-     * {@code getTracingAttributes()} returns an inspectable map, as if {@code genAiSpanAttributes} were on.
-     */
-    private Map<String, Object> enableLatencyTracing() {
-        Map<String, Object> tracingAttributes = new ConcurrentHashMap<>();
-        AtomicLong requestBodyTimestamp = new AtomicLong();
-        AtomicLong proxyConnectTimestamp = new AtomicLong();
-        AtomicLong proxyResponseTimestamp = new AtomicLong();
-        AtomicLong responseBodyTimestamp = new AtomicLong();
-        lenient().when(context.getTracingSettings()).thenReturn(new TracingSettings(true, false, List.of()));
-        lenient().when(context.getTracingAttributes()).thenReturn(tracingAttributes);
-        lenient().doAnswer(inv -> {
-            requestBodyTimestamp.set(inv.getArgument(0));
-            return null;
-        }).when(context).setRequestBodyTimestamp(anyLong());
-        lenient().when(context.getRequestBodyTimestamp()).thenAnswer(inv -> requestBodyTimestamp.get());
-        lenient().doAnswer(inv -> {
-            proxyConnectTimestamp.set(inv.getArgument(0));
-            return null;
-        }).when(context).setProxyConnectTimestamp(anyLong());
-        lenient().when(context.getProxyConnectTimestamp()).thenAnswer(inv -> proxyConnectTimestamp.get());
-        lenient().doAnswer(inv -> {
-            proxyResponseTimestamp.set(inv.getArgument(0));
-            return null;
-        }).when(context).setProxyResponseTimestamp(anyLong());
-        lenient().when(context.getProxyResponseTimestamp()).thenAnswer(inv -> proxyResponseTimestamp.get());
-        lenient().doAnswer(inv -> {
-            responseBodyTimestamp.set(inv.getArgument(0));
-            return null;
-        }).when(context).setResponseBodyTimestamp(anyLong());
-        lenient().when(context.getResponseBodyTimestamp()).thenAnswer(inv -> responseBodyTimestamp.get());
-        return tracingAttributes;
-    }
-
-    private static void assertLatencyPublished(Map<String, Object> tracingAttributes) {
-        assertNotNull(tracingAttributes.get("dial.latency.upstream_connect_ms"));
-        assertNotNull(tracingAttributes.get("dial.latency.upstream_header_ms"));
-        assertNotNull(tracingAttributes.get("dial.latency.upstream_body_ms"));
     }
 
     @Test
@@ -203,17 +157,12 @@ public class ResponseItemControllerTest {
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
         Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-id-123\",\"status\":\"completed\"}");
 
-        Map<String, Object> tracingAttributes = enableLatencyTracing();
-
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any(), any(Runnable.class)))
-                .thenAnswer(invocation -> {
-                    ((Runnable) invocation.getArgument(4)).run();
-                    return Future.succeededFuture(proxyResponse);
-                });
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any()))
+                .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
@@ -224,16 +173,16 @@ public class ResponseItemControllerTest {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(200)).thenReturn(response);
         when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
-        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
+        when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
-        controller("dial_test-deployment_123", GET).handle().onComplete(ar -> testContext.completeNow());
+        controller("dial_test-deployment_123", GET).handle();
 
         await(testContext);
 
         ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<HttpMethod> methodCaptor = ArgumentCaptor.forClass(HttpMethod.class);
-        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), methodCaptor.capture(), any(Upstream.class), any(), any(Runnable.class));
+        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), methodCaptor.capture(), any(Upstream.class), any());
         assertEquals("http://adapter/responses/upstream-id-123", urlCaptor.getValue());
         assertEquals(HttpMethod.GET, methodCaptor.getValue());
 
@@ -243,7 +192,6 @@ public class ResponseItemControllerTest {
         assertEquals("dial_test-deployment_123", sentJson.path("id").asText());
 
         verify(proxy.getResponseMappingService(), never()).deleteMapping(anyString());
-        assertLatencyPublished(tracingAttributes);
     }
 
     @Test
@@ -267,7 +215,7 @@ public class ResponseItemControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any(), any(Runnable.class)))
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any()))
                 .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
@@ -288,7 +236,7 @@ public class ResponseItemControllerTest {
 
         ArgumentCaptor<String> urlCaptor = ArgumentCaptor.captor();
         ArgumentCaptor<HttpMethod> methodCaptor = ArgumentCaptor.captor();
-        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), methodCaptor.capture(), any(Upstream.class), any(), any(Runnable.class));
+        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), methodCaptor.capture(), any(Upstream.class), any());
         assertEquals("http://adapter/openai/v1/responses/upstream-id-123", urlCaptor.getValue());
         assertEquals(HttpMethod.GET, methodCaptor.getValue());
     }
@@ -309,17 +257,12 @@ public class ResponseItemControllerTest {
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
         Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-id-123\",\"status\":\"cancelled\"}");
 
-        Map<String, Object> tracingAttributes = enableLatencyTracing();
-
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any(), any(Runnable.class)))
-                .thenAnswer(invocation -> {
-                    ((Runnable) invocation.getArgument(4)).run();
-                    return Future.succeededFuture(proxyResponse);
-                });
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any()))
+                .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
@@ -330,19 +273,18 @@ public class ResponseItemControllerTest {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(200)).thenReturn(response);
         when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
-        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
+        when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
-        controller("dial_test-deployment_123", CANCEL).handle().onComplete(ar -> testContext.completeNow());
+        controller("dial_test-deployment_123", CANCEL).handle();
 
         await(testContext);
 
         ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<HttpMethod> methodCaptor = ArgumentCaptor.forClass(HttpMethod.class);
-        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), methodCaptor.capture(), any(Upstream.class), any(), any(Runnable.class));
+        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), methodCaptor.capture(), any(Upstream.class), any());
         assertEquals("http://adapter/responses/upstream-id-123/cancel", urlCaptor.getValue());
         assertEquals(HttpMethod.POST, methodCaptor.getValue());
-        assertLatencyPublished(tracingAttributes);
     }
 
     @Test
@@ -360,18 +302,13 @@ public class ResponseItemControllerTest {
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
 
-        Map<String, Object> tracingAttributes = enableLatencyTracing();
-
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getBackgroundJobService().isJobActive(anyString())).thenReturn(Future.succeededFuture(false));
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any(), any(Runnable.class)))
-                .thenAnswer(invocation -> {
-                    ((Runnable) invocation.getArgument(4)).run();
-                    return Future.succeededFuture(proxyResponse);
-                });
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any()))
+                .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(null);
@@ -382,15 +319,14 @@ public class ResponseItemControllerTest {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(200)).thenReturn(response);
         when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
-        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
+        when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
-        controller("dial_test-deployment_del", DELETE).handle().onComplete(ar -> testContext.completeNow());
+        controller("dial_test-deployment_del", DELETE).handle();
 
         await(testContext);
 
         verify(proxy.getResponseMappingService()).deleteMapping(anyString());
-        assertLatencyPublished(tracingAttributes);
     }
 
     @Test
@@ -413,7 +349,7 @@ public class ResponseItemControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any(), any(Runnable.class)))
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any()))
                 .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(400);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer("{\"id\":\"upstream-id-del\"}")));
@@ -542,7 +478,7 @@ public class ResponseItemControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any(), any(Runnable.class)))
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any()))
                 .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
@@ -593,17 +529,12 @@ public class ResponseItemControllerTest {
         List<Buffer> writtenChunks = new ArrayList<>();
         AtomicReference<Buffer> endChunkRef = new AtomicReference<>();
 
-        Map<String, Object> tracingAttributes = enableLatencyTracing();
-
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any(), any(Runnable.class)))
-                .thenAnswer(invocation -> {
-                    ((Runnable) invocation.getArgument(4)).run();
-                    return Future.succeededFuture(proxyResponse);
-                });
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any()))
+                .thenReturn(Future.succeededFuture(proxyResponse));
         when(context.getRequest()).thenReturn(serverRequest);
         when(serverRequest.query()).thenReturn("stream=true");
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
@@ -639,16 +570,17 @@ public class ResponseItemControllerTest {
         }).when(response).write(any(Buffer.class), any());
         doAnswer(inv -> {
             endChunkRef.set(inv.getArgument(0));
+            testContext.completeNow();
             return Future.succeededFuture();
         }).when(response).end(any(Buffer.class));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
-        controller("dial_test-deployment_stream", GET).handle().onComplete(ar -> testContext.completeNow());
+        controller("dial_test-deployment_stream", GET).handle();
 
         await(testContext);
 
         ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
-        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), any(HttpMethod.class), any(Upstream.class), any(), any(Runnable.class));
+        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), any(HttpMethod.class), any(Upstream.class), any());
         assertEquals("http://adapter/responses/upstream-id-stream?stream=true", urlCaptor.getValue());
 
         // First event (response.created) forwarded as a regular chunk with rewritten id
@@ -662,8 +594,6 @@ public class ResponseItemControllerTest {
         String lastEvent = endChunkRef.get().toString();
         assertTrue(lastEvent.contains("dial_test-deployment_stream"));
         assertFalse(lastEvent.contains(upstreamId));
-
-        assertLatencyPublished(tracingAttributes);
     }
 
     @Test
@@ -722,12 +652,7 @@ public class ResponseItemControllerTest {
         verify(httpClient).request(argThat(opts ->
                 "interceptor2".equals(opts.getHost())
                 && "/responses/dial_test-deployment_123".equals(opts.getURI().toString())));
-        verify(proxy.getResponsesApiClient(), never()).send(any(), any(), any(), any(), any());
-        // no upstream round trip happened via ResponsesApiClient - the interceptor path never
-        // records the timestamps dial.latency.* is computed from
-        verify(context, never()).setProxyConnectTimestamp(anyLong());
-        verify(context, never()).setProxyResponseTimestamp(anyLong());
-        verify(context, never()).setResponseBodyTimestamp(anyLong());
+        verify(proxy.getResponsesApiClient(), never()).send(any(), any(), any(), any());
     }
 
     @Test
@@ -781,7 +706,7 @@ public class ResponseItemControllerTest {
         verify(httpClient).request(argThat(opts ->
                 "interceptor1".equals(opts.getHost())
                 && "/responses/dial_test-deployment_123".equals(opts.getURI().toString())));
-        verify(proxy.getResponsesApiClient(), never()).send(any(), any(), any(), any(), any());
+        verify(proxy.getResponsesApiClient(), never()).send(any(), any(), any(), any());
     }
 
     private static Future<?> complete(VertxTestContext testContext) {
