@@ -943,10 +943,11 @@ public class DeploymentPostControllerTest {
      * {@code GenAiTraceAttributes.setLatencyAttributes} computes real values against a real
      * {@code Span.current()} mock instead of silently no-oping.
      */
-    private void enableLatencyTracing() {
+    private Map<String, Object> enableLatencyTracing() {
+        Map<String, Object> tracingAttributes = new ConcurrentHashMap<>();
         AtomicLong responseBodyTimestamp = new AtomicLong();
         when(context.getTracingSettings()).thenReturn(new TracingSettings(true, false, List.of()));
-        when(context.getTracingAttributes()).thenReturn(new ConcurrentHashMap<>());
+        when(context.getTracingAttributes()).thenReturn(tracingAttributes);
         when(context.getRequestTimestamp()).thenReturn(1000L);
         when(context.getRequestBodyTimestamp()).thenReturn(1010L);
         when(context.getProxyConnectTimestamp()).thenReturn(1020L);
@@ -956,6 +957,7 @@ public class DeploymentPostControllerTest {
             return null;
         }).when(context).setResponseBodyTimestamp(anyLong());
         when(context.getResponseBodyTimestamp()).thenAnswer(inv -> responseBodyTimestamp.get());
+        return tracingAttributes;
     }
 
     private static void assertLatencyPublishedBeforeResponseEnds(Span span, BufferingReadStream responseStream, HttpServerResponse response) {
@@ -1036,6 +1038,52 @@ public class DeploymentPostControllerTest {
             controller.handleResponse(bufferingReadStream);
 
             assertLatencyPublishedBeforeResponseEnds(span, bufferingReadStream, response);
+        }
+    }
+
+    /**
+     * Regression for a reviewer question: {@code DeploymentPostController} only overrides
+     * {@code requestedInterface()}, not {@code interfaceType()} - but {@code interfaceType()} is
+     * itself overridden once, in {@code BaseChatCompletionController}, to delegate to
+     * {@code requestedInterface()}. So {@code collectTokenUsage()}'s call to {@code interfaceType()}
+     * (for {@code setResponseAttributes}) still dispatches to the path-based override and must not
+     * silently fall back to the chat-completions default for an embeddings response.
+     */
+    @Test
+    public void testHandleResponse_Model_Embeddings_PublishesEmbeddingsResponseAttributes() {
+        Model model = new Model();
+        when(context.getDeployment()).thenReturn(model);
+        when(context.getUserId()).thenReturn("test-user");
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(proxy.getLogStore()).thenReturn(logStore);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        when(context.getResponseBody()).thenReturn(Buffer.buffer("{}"));
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(context.getRequest()).thenReturn(request);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.uri()).thenReturn("/test");
+        when(request.path()).thenReturn("/openai/deployments/name/embeddings");
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
+        when(bufferingReadStream.getContent()).thenReturn(Buffer.buffer("{}"));
+        Map<String, Object> tracingAttributes = enableLatencyTracing();
+
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            when(span.isRecording()).thenReturn(true);
+            when(Span.current()).thenReturn(span);
+
+            controller.handleResponse(bufferingReadStream);
+
+            assertEquals("embeddings", tracingAttributes.get("gen_ai.operation.name"));
+            assertEquals("openai_embeddings", tracingAttributes.get("dial.api"));
         }
     }
 
