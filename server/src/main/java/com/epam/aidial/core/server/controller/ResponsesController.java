@@ -46,6 +46,7 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -349,7 +350,8 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
-    private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
+    @VisibleForTesting
+    Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
         return rewriteResponseId(proxyResponse, body)
                 .compose(pair -> {
                     String dialId = pair.getKey();
@@ -382,6 +384,10 @@ public class ResponsesController extends BaseDeploymentPostController {
                                     if (result.failed()) {
                                         log.warn("Failed to collect attachments from response", result.cause());
                                     }
+                                    // must run before end(): Vert.x ends the request's OTel span
+                                    // synchronously inside end(), after which further span attributes
+                                    // (dial.latency.*) are silently dropped
+                                    GenAiTraceAttributes.setLatencyAttributes(context);
                                     response.end(rewritten);
                                     completeProxyResponse(null);
                                 });
@@ -432,7 +438,8 @@ public class ResponsesController extends BaseDeploymentPostController {
                 });
     }
 
-    private void handleStreamingResponse(BufferingReadStream responseStream, String dialId, String assembledStreamingResponse) {
+    @VisibleForTesting
+    void handleStreamingResponse(BufferingReadStream responseStream, String dialId, String assembledStreamingResponse) {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
@@ -453,6 +460,9 @@ public class ResponsesController extends BaseDeploymentPostController {
             if (result.failed()) {
                 log.warn("Failed to collect token usage", result.cause());
             }
+            // must run before end(): Vert.x ends the request's OTel span synchronously inside end(),
+            // after which further span attributes (dial.latency.*) are silently dropped
+            GenAiTraceAttributes.setLatencyAttributes(context);
             responseStream.end(context.getResponse());
             completeProxyResponse(assembledStreamingResponse);
         });

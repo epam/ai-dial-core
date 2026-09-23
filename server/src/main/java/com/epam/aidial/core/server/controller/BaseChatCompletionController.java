@@ -21,6 +21,7 @@ import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -214,7 +215,8 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
      * non-streaming handling) so {@code statistics.usage_per_model} can be injected before the
      * client sees a byte of it.
      */
-    private Future<Void> handleNonStreamingChatCompletionResponse(HttpClientResponse proxyResponse, Buffer body) {
+    @VisibleForTesting
+    Future<Void> handleNonStreamingChatCompletionResponse(HttpClientResponse proxyResponse, Buffer body) {
         context.setResponseBody(body);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         HttpServerResponse response = context.getResponse();
@@ -235,6 +237,9 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
                     }
                     Buffer rewritten = maybeInjectUsagePerModel(body);
                     response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
+                    // must run before end(): Vert.x ends the request's OTel span synchronously inside
+                    // end(), after which further span attributes (dial.latency.*) are silently dropped
+                    GenAiTraceAttributes.setLatencyAttributes(context);
                     response.end(rewritten);
                     finishAndLog(null);
                     return Future.<Void>succeededFuture();
@@ -282,6 +287,9 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
                 response.write(buildUsagePerModelChunk(usagePerModel));
             }
         }
+        // must run before end(): Vert.x ends the request's OTel span synchronously inside end(), after
+        // which further span attributes (dial.latency.*) are silently dropped
+        GenAiTraceAttributes.setLatencyAttributes(context);
         responseStream.end(response);
 
         String assembledStreamingResponse = null;

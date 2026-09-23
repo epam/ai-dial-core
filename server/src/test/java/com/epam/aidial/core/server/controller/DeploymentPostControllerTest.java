@@ -56,6 +56,7 @@ import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -78,6 +79,7 @@ import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.storage.http.HttpStatus.FORBIDDEN;
 import static com.epam.aidial.core.storage.http.HttpStatus.NOT_FOUND;
 import static com.epam.aidial.core.storage.http.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
+import static io.opentelemetry.api.common.AttributeKey.longKey;
 import static io.vertx.core.http.HttpHeaders.AUTHORIZATION;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -90,6 +92,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -942,11 +945,11 @@ public class DeploymentPostControllerTest {
         when(context.getRequestBodyTimestamp()).thenReturn(1010L);
         when(context.getProxyConnectTimestamp()).thenReturn(1020L);
         when(context.getProxyResponseTimestamp()).thenReturn(1030L);
-        doAnswer(inv -> {
+        lenient().doAnswer(inv -> {
             responseBodyTimestamp.set(inv.getArgument(0));
             return null;
         }).when(context).setResponseBodyTimestamp(anyLong());
-        when(context.getResponseBodyTimestamp()).thenAnswer(inv -> responseBodyTimestamp.get());
+        lenient().when(context.getResponseBodyTimestamp()).thenAnswer(inv -> responseBodyTimestamp.get());
         return tracingAttributes;
     }
 
@@ -985,6 +988,123 @@ public class DeploymentPostControllerTest {
 
             assertEquals("embeddings", tracingAttributes.get("gen_ai.operation.name"));
             assertEquals("openai_embeddings", tracingAttributes.get("dial.api"));
+        }
+    }
+
+    /**
+     * {@code handleResponse} (streaming chat completions) must publish {@code dial.latency.*} onto the
+     * still-recording span before {@code responseStream.end()}, since Vert.x ends the request's OTel
+     * span synchronously inside that call.
+     */
+    @Test
+    public void testHandleResponse_Model_PublishesLatencyAttributesToSpanBeforeResponseStreamEnds() {
+        Model model = new Model();
+        when(context.getDeployment()).thenReturn(model);
+        when(context.getUserId()).thenReturn("test-user");
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(proxy.getLogStore()).thenReturn(logStore);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        when(context.getResponseBody()).thenReturn(Buffer.buffer());
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(context.getRequest()).thenReturn(request);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.uri()).thenReturn("/test");
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
+        getTracingAttributes();
+
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            when(span.isRecording()).thenReturn(true);
+            when(Span.current()).thenReturn(span);
+
+            controller.handleResponse(bufferingReadStream);
+
+            InOrder order = inOrder(span, bufferingReadStream);
+            order.verify(span).setAttribute(eq(longKey("dial.latency.client_body_ms")), anyLong());
+            order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_connect_ms")), anyLong());
+            order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_header_ms")), anyLong());
+            order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_body_ms")), anyLong());
+            order.verify(bufferingReadStream).end(response);
+        }
+    }
+
+    /**
+     * {@code handleNonStreamingChatCompletionResponse} must publish {@code dial.latency.*} onto the
+     * still-recording span before {@code response.end()}, for the same reason as the streaming path
+     * above.
+     */
+    @Test
+    public void testHandleNonStreamingChatCompletionResponse_PublishesLatencyAttributesToSpanBeforeResponseEnds() {
+        Model model = new Model();
+        when(context.getDeployment()).thenReturn(model);
+        when(context.getUserId()).thenReturn("test-user");
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.headers()).thenReturn(new HeadersMultiMap());
+        when(proxy.getLogStore()).thenReturn(logStore);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        when(context.getRequest()).thenReturn(request);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.uri()).thenReturn("/test");
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+        Buffer body = Buffer.buffer("{}");
+        getTracingAttributes();
+
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            when(span.isRecording()).thenReturn(true);
+            when(Span.current()).thenReturn(span);
+
+            controller.handleNonStreamingChatCompletionResponse(proxyResponse, body);
+
+            InOrder order = inOrder(span, response);
+            order.verify(span).setAttribute(eq(longKey("dial.latency.client_body_ms")), anyLong());
+            order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_connect_ms")), anyLong());
+            order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_header_ms")), anyLong());
+            order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_body_ms")), anyLong());
+            order.verify(response).end(any(Buffer.class));
+        }
+    }
+
+    /**
+     * The client-disconnect/write-failure path shared by Chat Completions, Responses API, and
+     * Anthropic Messages streaming ({@code handleResponseError}) must publish {@code dial.latency.*}
+     * onto the still-recording span before {@code response.reset()}, since Vert.x ends the request's
+     * OTel span synchronously inside that call too, not just inside {@code end()}.
+     */
+    @Test
+    public void testHandleResponseError_PublishesLatencyAttributesToSpanBeforeReset() {
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class);
+        when(context.getProxyRequest()).thenReturn(proxyRequest);
+        BufferingReadStream responseStream = mock(BufferingReadStream.class);
+        getTracingAttributes();
+
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            when(span.isRecording()).thenReturn(true);
+            when(Span.current()).thenReturn(span);
+
+            controller.handleResponseError(new RuntimeException("client disconnected"), responseStream);
+
+            InOrder order = inOrder(span, response);
+            order.verify(span).setAttribute(eq(longKey("dial.latency.client_body_ms")), anyLong());
+            order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_connect_ms")), anyLong());
+            order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_header_ms")), anyLong());
+            order.verify(response).reset();
         }
     }
 

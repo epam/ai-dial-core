@@ -24,6 +24,7 @@ import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -64,13 +65,16 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
 import static com.epam.aidial.core.storage.http.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -122,6 +126,52 @@ public class ResponsesControllerTest {
     void stubRequestPath() {
         // resolveRequestUri always consults the ingress path (even though the legacy flow ignores it)
         lenient().when(request.path()).thenReturn("/openai/v1/responses");
+    }
+
+    /**
+     * Wires the mocked {@code context} so the four latency timestamps round-trip through
+     * {@link AtomicLong}-backed getter/setter pairs - plain mock fields aren't volatile, and the
+     * controller sets/reads them from different {@code AsyncTaskExecutor}/Vert.x threads than the test
+     * thread, which also rules out asserting via a thread-confined {@code mockStatic(Span.class)} here
+     * (see {@code BaseInterceptorControllerTest}/{@code MessagesControllerTest} for that pattern on
+     * synchronous, same-thread call sites) - as if {@code genAiSpanAttributes} were on.
+     */
+    private Map<String, Object> enableLatencyTracing() {
+        Map<String, Object> tracingAttributes = new ConcurrentHashMap<>();
+        AtomicLong requestBodyTimestamp = new AtomicLong();
+        AtomicLong proxyConnectTimestamp = new AtomicLong();
+        AtomicLong proxyResponseTimestamp = new AtomicLong();
+        AtomicLong responseBodyTimestamp = new AtomicLong();
+        lenient().when(context.getTracingSettings()).thenReturn(new TracingSettings(true, false, List.of()));
+        lenient().when(context.getTracingAttributes()).thenReturn(tracingAttributes);
+        lenient().when(context.getRequestTimestamp()).thenReturn(1000L);
+        lenient().doAnswer(inv -> {
+            requestBodyTimestamp.set(inv.getArgument(0));
+            return null;
+        }).when(context).setRequestBodyTimestamp(anyLong());
+        lenient().when(context.getRequestBodyTimestamp()).thenAnswer(inv -> requestBodyTimestamp.get());
+        lenient().doAnswer(inv -> {
+            proxyConnectTimestamp.set(inv.getArgument(0));
+            return null;
+        }).when(context).setProxyConnectTimestamp(anyLong());
+        lenient().when(context.getProxyConnectTimestamp()).thenAnswer(inv -> proxyConnectTimestamp.get());
+        lenient().doAnswer(inv -> {
+            proxyResponseTimestamp.set(inv.getArgument(0));
+            return null;
+        }).when(context).setProxyResponseTimestamp(anyLong());
+        lenient().when(context.getProxyResponseTimestamp()).thenAnswer(inv -> proxyResponseTimestamp.get());
+        lenient().doAnswer(inv -> {
+            responseBodyTimestamp.set(inv.getArgument(0));
+            return null;
+        }).when(context).setResponseBodyTimestamp(anyLong());
+        lenient().when(context.getResponseBodyTimestamp()).thenAnswer(inv -> responseBodyTimestamp.get());
+        return tracingAttributes;
+    }
+
+    private static void assertLatencyPublished(Map<String, Object> tracingAttributes) {
+        assertNotNull(tracingAttributes.get("dial.latency.upstream_connect_ms"));
+        assertNotNull(tracingAttributes.get("dial.latency.upstream_header_ms"));
+        assertNotNull(tracingAttributes.get("dial.latency.upstream_body_ms"));
     }
 
     @Test
@@ -383,6 +433,7 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).getProxyApiKeyData();
         doCallRealMethod().when(context).setProxyResponse(any());
         doCallRealMethod().when(context).getProxyResponse();
+        Map<String, Object> tracingAttributes = enableLatencyTracing();
 
         controller.handle();
 
@@ -399,6 +450,7 @@ public class ResponsesControllerTest {
                 eq(PER_REQUEST_KEY),
                 argThat(arg ->
                         ProxyUtil.convertToString(updatedApiKeyData).equals(arg.apply("{}"))));
+        assertLatencyPublished(tracingAttributes);
     }
 
 
@@ -738,6 +790,7 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).isStreamingRequest();
         doCallRealMethod().when(context).setStoreResponse(anyBoolean());
         doCallRealMethod().when(context).isStoreResponse();
+        Map<String, Object> tracingAttributes = enableLatencyTracing();
 
         controller.handle();
 
@@ -755,6 +808,8 @@ public class ResponsesControllerTest {
         String completedEvent = endCaptor.getValue().toString();
         assertTrue(completedEvent.contains(expectedDialId));
         assertFalse(completedEvent.contains(upstreamId));
+
+        assertLatencyPublished(tracingAttributes);
     }
 
     @Test

@@ -162,6 +162,9 @@ public class BaseDeploymentPostController {
      * Called when proxy failed to send response to the client.
      */
     protected void handleResponseError(Throwable error, BufferingReadStream responseStream) {
+        // must run before reset(): Vert.x ends the request's OTel span synchronously inside reset(),
+        // after which further span attributes (dial.latency.*) are silently dropped
+        GenAiTraceAttributes.setLatencyAttributes(context);
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
         log.warn("Can't send response to client. Error:", error);
         Deployment deployment = context.getDeployment();
