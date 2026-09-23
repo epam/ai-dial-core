@@ -11,8 +11,6 @@ dependencies {
     implementation("com.azure:azure-identity:${azure_version}")
     implementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
     implementation("com.google.auth:google-auth-library-oauth2-http:${google_auth_version}")
-    implementation("com.google.cloud:google-cloud-iamcredentials:${google_cloud_version}")
-    implementation("com.google.protobuf:protobuf-java:${google_protobuf_version}")
     implementation("org.apache.commons:commons-lang3:${apache_commons_version}")
     implementation("org.apache.jclouds.api:filesystem:${apache_jclouds_version}")
     implementation("org.apache.jclouds:jclouds-allblobstore:${apache_jclouds_version}")
