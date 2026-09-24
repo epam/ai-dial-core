@@ -51,6 +51,8 @@ import com.epam.aidial.core.server.service.config.ConfigApplyService;
 import com.epam.aidial.core.server.service.config.ConfigValidationService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
+import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.AuthSettingsResolver;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -94,6 +96,15 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     public static final String HEALTH_CHECK_PATH = "/health";
     public static final String VERSION_PATH = "/version";
+    public static final String HEADER_DIAL_TRACE_ID = "X-DIAL-TRACE-ID";
+    public static final String HEADER_DIAL_SPAN_ID = "X-DIAL-SPAN-ID";
+    /**
+     * Not {@code X-DIAL-} prefixed on purpose: this is the W3C Trace Context name and renaming it would
+     * make it unreadable to every standard client.
+     */
+    public static final String HEADER_TRACEPARENT = "traceparent";
+    private static final String EXPOSED_TRACE_HEADERS =
+            HEADER_TRACEPARENT + ", " + HEADER_DIAL_TRACE_ID + ", " + HEADER_DIAL_SPAN_ID;
 
     public static final Pattern TOOLSET_PROXY_PATTERN = RouteTemplate.TOOL_SET_MCP_PROXY.getPattern();
     public static final Pattern TOOLSET_PROXY_METADATA_PATTERN = RouteTemplate.TOOL_SET_PROXY_METADATA.getPattern();
@@ -192,6 +203,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ConfigAuthorizationService configAuthService;
     private final ConfigApplyService configApplyService;
     private final ConfigValidationService configValidationService;
+    private final TracingSettings tracingSettings;
 
     @Override
     public void handle(HttpServerRequest request) {
@@ -231,6 +243,12 @@ public class Proxy implements Handler<HttpServerRequest> {
      */
     private void handleRequest(HttpServerRequest request) {
         enableCors(request);
+        // before the short-circuits below: /health, /version, MCP metadata, OPTIONS and the early
+        // rejections are responses too, and the error ones are exactly where a client needs the id
+        SpanContext spanContext = Span.current().getSpanContext();
+        if (tracingSettings.responseTraceHeaders()) {
+            putTraceHeaders(request.response(), spanContext);
+        }
 
         if (request.version() != HttpVersion.HTTP_1_1) {
             respond(request, HttpStatus.HTTP_VERSION_NOT_SUPPORTED);
@@ -281,7 +299,6 @@ public class Proxy implements Handler<HttpServerRequest> {
             return;
         }
 
-        SpanContext spanContext = Span.current().getSpanContext();
         String traceId = spanContext.getTraceId();
         String spanId = spanContext.getSpanId();
         String traceFlags = spanContext.getTraceFlags().asHex();
@@ -403,6 +420,22 @@ public class Proxy implements Handler<HttpServerRequest> {
         return apiKey;
     }
 
+    /**
+     * Core's own trace ids, as the W3C {@code traceparent} plus the DIAL-specific pair kept for existing
+     * consumers. Exposed through CORS, or a browser client - the reason issue #1253 exists - cannot read them.
+     */
+    private static void putTraceHeaders(HttpServerResponse response, SpanContext spanContext) {
+        if (!spanContext.isValid()) {
+            // no SDK attached: the ids are all-zeros, and a traceparent built from them is malformed
+            return;
+        }
+        response.putHeader(HEADER_TRACEPARENT, "00-%s-%s-%s".formatted(
+                spanContext.getTraceId(), spanContext.getSpanId(), spanContext.getTraceFlags().asHex()));
+        response.putHeader(HEADER_DIAL_TRACE_ID, spanContext.getTraceId());
+        response.putHeader(HEADER_DIAL_SPAN_ID, spanContext.getSpanId());
+        response.putHeader(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, EXPOSED_TRACE_HEADERS);
+    }
+
     private static void enableCors(HttpServerRequest request) {
         HttpServerResponse response = request.response();
         response.putHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "*");
@@ -430,6 +463,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         Future<?> future;
         try {
             ProxyContext context = new ProxyContext(this, request, apiKeyData, extractedClaims, traceId, spanId, traceFlags);
+            GenAiTraceAttributes.initialize(context);
             ContextManager.setProxyContext(context);
             ControllerTemplate controllerTemplate = ControllerSelector.select(request);
             Controller controller = controllerTemplate.build(this, context);

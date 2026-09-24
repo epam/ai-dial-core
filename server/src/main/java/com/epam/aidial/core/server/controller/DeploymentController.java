@@ -286,9 +286,13 @@ public class DeploymentController {
             List<DeploymentData> deployments = new ArrayList<>();
             for (Application application : config.getApplications().values()) {
                 if (application.hasAccess(context.getUserRoles())) {
-                    Application resolved = resolveLocalApplication(application);
-                    if (match(filters, resolved)) {
-                        deployments.add(to(resolved));
+                    try {
+                        Application resolved = resolveLocalApplication(application);
+                        if (match(filters, resolved)) {
+                            deployments.add(to(resolved));
+                        }
+                    } catch (Exception e) {
+                        log.warn("Can't resolve application {} due to the error", application.getName(), e);
                     }
                 }
             }
@@ -308,10 +312,18 @@ public class DeploymentController {
     private Application resolveLocalApplication(Application application) {
         boolean applicationRequestInfoAboutItSelf = Objects.equals(context.getDecodedSourceDeployment(), application.getName());
         application = applicationSchemaService.modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf);
+        if (Boolean.TRUE.equals(application.getInvalid())) {
+            return application;
+        }
         if (application.hasApplicationTypeSchemaId()) {
-            application.setMcp(applicationSchemaService.getMcp(application));
-            application.setViewerUrl(applicationSchemaService.getStringProperty(application,
-                    MetaSchemaHolder.APPLICATION_TYPE_VIEWER_URL));
+            try {
+                application.setMcp(applicationSchemaService.getMcp(application));
+                application.setViewerUrl(applicationSchemaService.getStringProperty(application,
+                        MetaSchemaHolder.APPLICATION_TYPE_VIEWER_URL));
+            } catch (Exception e) {
+                log.warn("Failed to resolve mcp/viewerUrl for application {} due to schema error", application.getName(), e);
+                application.setInvalid(true);
+            }
         }
         return application;
     }

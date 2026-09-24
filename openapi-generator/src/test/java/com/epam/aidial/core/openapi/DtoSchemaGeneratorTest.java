@@ -2,6 +2,7 @@ package com.epam.aidial.core.openapi;
 
 import com.epam.aidial.core.config.LocalizedValue;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Operator;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ApiSchemaType;
 import com.epam.aidial.core.openapi.annotations.ApiSubType;
@@ -11,7 +12,11 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -101,6 +106,26 @@ class DtoSchemaGeneratorTest {
             assertFalse(node.has("plainValue"), "plainValue must not be exposed as a property");
             assertFalse(node.has("localeMap"), "localeMap must not be exposed as a property");
         }
+    }
+
+    @Test
+    void fieldAnnotatedJsonValueEnumUsesItsSerializedValuesNotConstantNames() {
+        // Operator's @JsonValue sits on its backing field (a Lombok @Getter enum), not a method — unlike
+        // a hand-written @JsonValue method, which jsonschema-module-jackson already handles on its own
+        DtoSchemaGenerator generator = new DtoSchemaGenerator();
+        generator.processType(Operator.class);
+
+        Map<String, ObjectNode> schemas = generator.getSchemas();
+        ObjectNode schema = schemas.get("Operator");
+        assertNotNull(schema, "Operator schema should be generated");
+        assertEquals("string", schema.get("type").asText());
+
+        ArrayNode enumValues = (ArrayNode) schema.get("enum");
+        assertNotNull(enumValues, "Operator schema should list its enum values");
+        List<String> actual = new ArrayList<>();
+        enumValues.forEach(node -> actual.add(node.asText()));
+        List<String> expected = Arrays.stream(Operator.values()).map(Operator::getSymbol).collect(Collectors.toList());
+        assertEquals(expected, actual, "Enum values should be the @JsonValue symbols, not the constant names");
     }
 
     @ApiSchema(

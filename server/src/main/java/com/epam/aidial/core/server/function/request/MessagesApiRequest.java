@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -25,6 +26,7 @@ public class MessagesApiRequest implements RequestObject {
     private static final String CONTENT_NODE = "content";
     private static final String CACHE_CONTROL_NODE = "cache_control";
 
+    @Getter
     private final ObjectNode tree;
 
     @Override

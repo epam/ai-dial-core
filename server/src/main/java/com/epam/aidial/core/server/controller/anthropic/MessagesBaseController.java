@@ -81,7 +81,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
         context.getRequest().body()
-                .map(MessagesBaseController::parseBody)
+                .map(this::parseBody)
                 .compose(request -> {
                     String model = request.getModel();
                     deploymentId = model;
@@ -113,7 +113,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         return null;
     }
 
-    protected static MessagesApiRequest parseBody(Buffer body) {
+    protected MessagesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
             ObjectNode tree = ProxyUtil.parseObject(body);

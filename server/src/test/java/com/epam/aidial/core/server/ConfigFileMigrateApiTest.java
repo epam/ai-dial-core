@@ -254,6 +254,35 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
     @Test
     @SneakyThrows
     @DialConfigLocation("dial-config/config-file-migrate.json")
+    void testMigrateToolSetStripsStalePkceArtifacts() {
+        // The fixture's "oauth-toolset-stray-pkce" carries auth_settings.code_verifier/code_challenge
+        // left over from a previous live run. BaseAuthSettingsValidator forbids code_verifier
+        // unconditionally, so migrating it as-is would fail with "Field 'CODE_VERIFIER' is forbidden
+        // for OAUTH authentication." unless the controller strips both stray fields first.
+        String body = """
+                {"types": ["toolsets"]}
+                """;
+        try (TestWebServer ignore = new TestWebServer(9876)) {
+            Response response = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, body,
+                    "authorization", "admin");
+            verify(response, 200);
+            JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+            assertTrue(idsWithStatus(results, "migrated").contains("toolsets/platform/oauth-toolset-stray-pkce"),
+                    () -> "Body: " + response.body());
+
+            Response get = send(HttpMethod.GET, "/v1/toolsets/platform/oauth-toolset-stray-pkce", null, "",
+                    "authorization", "admin");
+            verify(get, 200);
+            assertFalse(get.body().contains("stale-code-verifier-from-a-previous-live-run"),
+                    () -> "Stale code_verifier must not survive migration: " + get.body());
+            assertFalse(get.body().contains("stale-code-challenge-from-a-previous-live-run"),
+                    () -> "Stale code_challenge must not survive migration: " + get.body());
+        }
+    }
+
+    @Test
+    @SneakyThrows
+    @DialConfigLocation("dial-config/config-file-migrate.json")
     void testMigrateSchemasUseLastPathSegmentAsBlobName() {
         // The 4 fixture schemas' $id values have distinct last path segments, so each migrates
         // verbatim under that segment as its blob name — no disambiguation needed.

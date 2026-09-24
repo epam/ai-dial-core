@@ -86,8 +86,10 @@ import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceSweepService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
+import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.AuthSettingsResolver;
+import com.epam.aidial.core.server.util.ProxySettings;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
@@ -187,6 +189,7 @@ public class AiDial {
         try {
             settings = (settings == null) ? settings() : settings;
             printSettings(settings);
+            ProxyUtil.init(ProxySettings.from(settings("proxy")));
             VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
             setupMetrics(vertxOptions);
             setupTracing(vertxOptions);
@@ -380,7 +383,8 @@ public class AiDial {
                     perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
                     printAuthorizationHeader,
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
-                    configAuthService, configApplyService, configValidationService);
+                    configAuthService, configApplyService, configValidationService,
+                    TracingSettings.from(settings("tracing")));
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

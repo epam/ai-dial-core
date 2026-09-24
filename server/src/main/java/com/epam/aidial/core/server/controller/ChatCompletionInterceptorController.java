@@ -67,6 +67,6 @@ public class ChatCompletionInterceptorController extends BaseInterceptorControll
 
     @Override
     protected BufferingReadStream.BaseEventListener createListener(Proxy proxy, ProxyContext context) {
-        return new DeploymentPostController.ChatCompletionSseListener(List.of(new CollectResponseChatCompletionAttachmentsFn(proxy, context)));
+        return new BaseChatCompletionController.ChatCompletionSseListener(List.of(new CollectResponseChatCompletionAttachmentsFn(proxy, context)));
     }
 }
