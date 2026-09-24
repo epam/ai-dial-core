@@ -16,9 +16,9 @@ These are static settings, so they are read once at startup: changing them needs
 
 ## tracing
 
-* `genAiSpanAttributes`: Defaults to `false`. When `true`, Core adds `gen_ai.*` and `dial.*`
+* `genAiSpanAttributes`: Defaults to `true`. When `true`, Core adds `gen_ai.*` and `dial.*`
   attributes to the request span and to OTel log records. See [Attributes](#attributes).
-* `responseTraceHeaders`: Defaults to `false`. When `true`, every response carries the W3C
+* `responseTraceHeaders`: Defaults to `true`. When `true`, every response carries the W3C
   `traceparent` of Core's own root span, plus `X-DIAL-TRACE-ID` and `X-DIAL-SPAN-ID` for existing
   consumers. All three are listed in `Access-Control-Expose-Headers`, so a browser client can read
   them. Nothing is emitted when Core has no valid span context — with no OpenTelemetry SDK attached
