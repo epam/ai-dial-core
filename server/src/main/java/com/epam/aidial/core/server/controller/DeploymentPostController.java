@@ -19,11 +19,13 @@ import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -277,7 +279,9 @@ public class DeploymentPostController extends BaseChatCompletionController {
         context.setRequestBodyTimestamp(System.currentTimeMillis());
 
         try {
-            RequestObject request = new ChatCompletionRequest(ProxyUtil.parseObject(requestBody));
+            ObjectNode requestTree = ProxyUtil.parseObject(requestBody);
+            RequestObject request = new ChatCompletionRequest(requestTree);
+            GenAiTraceAttributes.setRequestAttributes(context, requestedInterface(), requestTree);
             processChatCompletionsRequestBody(request);
         } catch (Throwable e) {
             if (e instanceof HttpException httpException) {
