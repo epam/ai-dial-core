@@ -13,7 +13,6 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
-import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.log.LogStore;
@@ -23,6 +22,7 @@ import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
+import com.epam.aidial.core.server.util.EncryptedAffinityUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -52,7 +52,6 @@ public class BackgroundJobService {
     private final Vertx vertx;
     private final RedissonClient redis;
     private final String prefix;
-    private final ResponseMappingService responseMappingService;
     private final ResourceService resourceService;
     private final AsyncTaskExecutor taskExecutor;
     private final ConfigStore configStore;
@@ -70,7 +69,6 @@ public class BackgroundJobService {
             Vertx vertx,
             RedissonClient redis,
             String prefix,
-            ResponseMappingService responseMappingService,
             ResourceService resourceService,
             AsyncTaskExecutor taskExecutor,
             ConfigStore configStore,
@@ -85,7 +83,6 @@ public class BackgroundJobService {
         this.vertx = vertx;
         this.redis = redis;
         this.prefix = prefix;
-        this.responseMappingService = responseMappingService;
         this.resourceService = resourceService;
         this.taskExecutor = taskExecutor;
         this.configStore = configStore;
@@ -131,7 +128,7 @@ public class BackgroundJobService {
                 });
     }
 
-    public Future<Void> tryComplete(String dialId, ResponseMapping mapping, ResponsesApiClient.TerminalResult result) {
+    public Future<Void> tryComplete(String dialId, ResponsesApiClient.TerminalResult result) {
         return taskExecutor.submit(() -> {
             BackgroundJobRecord record = loadJobRecord(dialId);
             if (record == null) {
@@ -144,7 +141,7 @@ public class BackgroundJobService {
                     if (record == null) {
                         return Future.succeededFuture();
                     }
-                    return processResult(dialId, record, mapping, result)
+                    return processResult(dialId, record, result)
                             .eventually(() -> scheduler.cancel(dialId));
                 });
     }
@@ -155,7 +152,11 @@ public class BackgroundJobService {
 
     private Future<Void> saveJobRecord(String dialId, ProxyContext context) {
         ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(dialId);
-        BackgroundJobRecord record = BackgroundJobRecord.from(context, key -> encryptKey(descriptor, key));
+        EncryptedAffinityUtil.UnwrappedResponseId unwrapped = EncryptedAffinityUtil.unwrapResponseId(dialId);
+        String upstreamResponseId = unwrapped != null ? unwrapped.upstreamResponseId() : null;
+        String upstreamId = unwrapped != null ? unwrapped.upstreamId() : null;
+        BackgroundJobRecord record = BackgroundJobRecord.from(context, key -> encryptKey(descriptor, key),
+                upstreamResponseId, upstreamId);
         String json = ProxyUtil.convertToString(record);
         return taskExecutor.submit(() -> resourceService.putResource(descriptor, json, EtagHeader.NEW_ONLY)).mapEmpty();
     }
@@ -171,64 +172,51 @@ public class BackgroundJobService {
     }
 
     private Poller jobPoller(String dialId) {
-        Map.Entry<BackgroundJobRecord, ResponseMapping> pair = loadJobData(dialId);
-        if (pair == null) {
-            return null;
-        }
-        return new Poller(dialId, pair.getKey(), pair.getValue());
-    }
-
-    private Map.Entry<BackgroundJobRecord, ResponseMapping> loadJobData(String dialId) {
         BackgroundJobRecord record = loadJobRecord(dialId);
         if (record == null) {
             return null;
         }
-        ResponseMapping mapping = responseMappingService.getMapping(dialId);
-        if (mapping == null) {
-            log.warn("Missing response mapping for background job {}", dialId);
-            return null;
-        }
-        return Map.entry(record, mapping);
+        return new Poller(dialId, record);
     }
 
     @VisibleForTesting
-    Future<ResponsesApiClient.TerminalResult> poll(ResponseMapping mapping, String apiKey) {
+    Future<ResponsesApiClient.TerminalResult> poll(BackgroundJobRecord record, String apiKey) {
         Config config = configStore.get();
-        Deployment deployment = config.selectDeployment(mapping.getDeploymentName());
+        Deployment deployment = config.selectDeployment(record.deploymentName());
         if (deployment == null) {
             return Future.failedFuture("Deployment {} not found");
         }
         Map<String, Translator> translators = config.getTranslators();
         String targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment, translators,
-                InterfacePathMapping.GET_OPENAI_RESPONSES_BY_ID, mapping.getUpstreamResponseId(), null);
+                InterfacePathMapping.GET_OPENAI_RESPONSES_BY_ID, record.upstreamResponseId(), null);
         if (targetUrl == null) {
             return Future.failedFuture("Deployment " + deployment.getName() + " does not have a responses endpoint");
         }
         Upstream upstream;
         try {
             // resolved the way the original request was routed, so that a deployment declaring no upstreams of
-            // its own builds the same synthetic upstream the mapping's key was issued against
+            // its own builds the same synthetic upstream the upstream id was issued against
             upstream = upstreamRouteProvider.get(deployment, null,
                     dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES, translators),
-                    mapping.getUpstreamKey()).next();
+                    record.upstreamId()).next();
         } catch (Exception e) {
             return Future.failedFuture("Failed to get upstream for deployment " + deployment.getName()
-                    + " and upstream key " + mapping.getUpstreamKey() + ": " + e.getMessage());
+                    + " and upstream id " + record.upstreamId() + ": " + e.getMessage());
         }
         return client.send(targetUrl, HttpMethod.GET, upstream, apiKey, Buffer.buffer(), null)
                 .compose(response -> {
                     int statusCode = response.statusCode();
                     if (statusCode != 200) {
-                        return Future.failedFuture("Unexpected status " + statusCode + " from upstream for background job " + mapping.getUpstreamResponseId());
+                        return Future.failedFuture("Unexpected status " + statusCode + " from upstream for background job " + record.upstreamResponseId());
                     }
                     return response.body().map(ResponsesApiClient::parseTerminalBody);
                 });
     }
 
     private Future<Void> processResult(
-            String responseId, BackgroundJobRecord jobRecord, ResponseMapping responseMapping, ResponsesApiClient.TerminalResult result) {
+            String responseId, BackgroundJobRecord jobRecord, ResponsesApiClient.TerminalResult result) {
         Config config = configStore.get();
-        Deployment deployment = config.selectDeployment(responseMapping.getDeploymentName());
+        Deployment deployment = config.selectDeployment(jobRecord.deploymentName());
         ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(responseId);
         String perRequestKey = decryptKey(descriptor, jobRecord.perRequestKey());
         TokenUsage usage = result == null ? null : result.usage();
@@ -248,7 +236,7 @@ public class BackgroundJobService {
                         // null liveUsageNode: this poller never streams, result.body() is a single
                         // buffered document, so ModelCostCalculator parses it directly.
                         limitFuture = rateLimiter.increase(
-                                deployment, responseMapping.getInitiatorBucket(), usage, requestBody, result.body(),
+                                deployment, jobRecord.initiatorBucket(), usage, requestBody, result.body(),
                                 InterfaceType.OPENAI_RESPONSES, null)
                                 .transform(limitResult -> {
                                     if (limitResult.failed()) {
@@ -262,7 +250,7 @@ public class BackgroundJobService {
                         if (!hasUsage || traceId == null || spanId == null) {
                             return Future.succeededFuture(List.of());
                         }
-                        return tokenStatsTracker.updateDeploymentStats(traceId, spanId, responseMapping.getDeploymentName(), usage)
+                        return tokenStatsTracker.updateDeploymentStats(traceId, spanId, jobRecord.deploymentName(), usage)
                                 .compose(stats -> recordAggregatedCosts(stats.aggregatedCosts(), responseMapping.getInitiatorBucket())
                                         .map(ignored2 -> stats.usagePerModel()));
                     });
@@ -320,12 +308,12 @@ public class BackgroundJobService {
     }
 
     private Future<Void> completeAndProcess(
-            String dialId, BackgroundJobRecord record, ResponseMapping mapping, ResponsesApiClient.TerminalResult result) {
+            String dialId, BackgroundJobRecord record, ResponsesApiClient.TerminalResult result) {
         return taskExecutor.submit(() ->
                         resourceService.deleteResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId), EtagHeader.ANY))
                 .compose(deleted -> {
                     if (deleted) {
-                        return processResult(dialId, record, mapping, result);
+                        return processResult(dialId, record, result);
                     }
                     log.info("Background job {} already completed by another handler, skipping processing", dialId);
                     return Future.succeededFuture();
@@ -333,13 +321,13 @@ public class BackgroundJobService {
     }
 
     private void expireJob(String dialId) {
-        Map.Entry<BackgroundJobRecord, ResponseMapping> pair = loadJobData(dialId);
-        if (pair == null) {
+        BackgroundJobRecord record = loadJobRecord(dialId);
+        if (record == null) {
             return;
         }
         boolean deleted = resourceService.deleteResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId), EtagHeader.ANY);
         if (deleted) {
-            processResult(dialId, pair.getKey(), pair.getValue(), null)
+            processResult(dialId, record, null)
                     .onFailure(e -> log.warn("BackgroundJobService: failed to finalize expired job {}", dialId, e));
         }
     }
@@ -368,14 +356,13 @@ public class BackgroundJobService {
     public class Poller {
         private final String dialId;
         private final BackgroundJobRecord record;
-        private final ResponseMapping mapping;
 
         public Future<Boolean> poll() {
             String apiKey = decryptKey(ResponseIdUtil.getBackgroundJobDescriptor(dialId), record.perRequestKey());
-            return BackgroundJobService.this.poll(mapping, apiKey)
+            return BackgroundJobService.this.poll(record, apiKey)
                     .compose(result -> {
                                 if (result != null) {
-                                    return completeAndProcess(dialId, record, mapping, result)
+                                    return completeAndProcess(dialId, record, result)
                                             .map(true);
                                 }
 
@@ -385,7 +372,7 @@ public class BackgroundJobService {
         }
 
         public Future<Void> fail() {
-            return completeAndProcess(dialId, record, mapping, null);
+            return completeAndProcess(dialId, record, null);
         }
     }
 }

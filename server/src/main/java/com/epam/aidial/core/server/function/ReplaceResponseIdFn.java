@@ -3,8 +3,7 @@ package com.epam.aidial.core.server.function;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.ResponseMapping;
-import com.epam.aidial.core.server.util.BucketBuilder;
+import com.epam.aidial.core.server.util.EncryptedAffinityUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -60,23 +59,11 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
             return Future.succeededFuture(tree);
         }
         Upstream upstream = context.getUpstreamRoute().get();
-        ResponseMapping mapping = ResponseMapping.builder()
-                .upstreamResponseId(upstreamId)
-                .upstreamKey(upstream.getId())
-                .deploymentName(context.getDeployment().getName())
-                .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
-                .build();
-        return proxy.getTaskExecutor()
-                .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
-                .compose(id -> {
-                    dialId = id;
-                    response.put("id", dialId);
-
-                    if (!context.isBackgroundJob()) {
-                        return Future.succeededFuture();
-                    }
-                    return proxy.getBackgroundJobService().saveJob(dialId, context);
-                })
-                .map(tree);
+        dialId = EncryptedAffinityUtil.wrapResponseId(upstream.getId(), upstreamId, context.getDeployment().getName());
+        response.put("id", dialId);
+        if (!context.isBackgroundJob()) {
+            return Future.succeededFuture(tree);
+        }
+        return proxy.getBackgroundJobService().saveJob(dialId, context).map(tree);
     }
 }

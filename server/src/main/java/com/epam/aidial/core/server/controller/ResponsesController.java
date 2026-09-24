@@ -15,7 +15,6 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
-import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
@@ -34,9 +33,8 @@ import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
-import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
-import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
+import com.epam.aidial.core.server.util.EncryptedAffinityUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
@@ -413,26 +411,17 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         String upstreamId = idNode.asText();
         Upstream upstream = context.getUpstreamRoute().get();
-        if (EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
-            EncryptedContentAffinityUtil.wrapOutputArray(object.path("output"), upstream.getId());
+        if (EncryptedAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
+            EncryptedAffinityUtil.wrapOutputArray(object.path("output"), upstream.getId());
         }
         if (!context.isStoreResponse()) {
             String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
             object.put("id", dialId);
             return Future.succeededFuture(Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object))));
         }
-        ResponseMapping mapping = ResponseMapping.builder()
-                .upstreamResponseId(upstreamId)
-                .upstreamKey(upstream.getId())
-                .deploymentName(context.getDeployment().getName())
-                .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
-                .build();
-        return proxy.getTaskExecutor()
-                .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
-                .map(dialId -> {
-                    object.put("id", dialId);
-                    return Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object)));
-                });
+        String dialId = EncryptedAffinityUtil.wrapResponseId(upstream.getId(), upstreamId, context.getDeployment().getName());
+        object.put("id", dialId);
+        return Future.succeededFuture(Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object))));
     }
 
     private void handleStreamingResponse(BufferingReadStream responseStream, String dialId, String assembledStreamingResponse) {

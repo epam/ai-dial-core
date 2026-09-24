@@ -12,30 +12,31 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class EncryptedContentAffinityUtilTest {
+public class EncryptedAffinityUtilTest {
 
     @Test
     void hasConfiguredUpstreamsRequiresAtLeastOneUpstream() {
         Model model = new Model();
         model.setUpstreams(List.of());
-        assertFalse(EncryptedContentAffinityUtil.hasConfiguredUpstreams(model));
+        assertFalse(EncryptedAffinityUtil.hasConfiguredUpstreams(model));
 
         model.setUpstreams(List.of(new Upstream()));
-        assertTrue(EncryptedContentAffinityUtil.hasConfiguredUpstreams(model));
+        assertTrue(EncryptedAffinityUtil.hasConfiguredUpstreams(model));
     }
 
     @Test
     void isEncryptedItemDetectsFieldStructurally() {
         ObjectNode item = ProxyUtil.MAPPER.createObjectNode();
         item.put("type", "reasoning");
-        assertFalse(EncryptedContentAffinityUtil.isEncryptedItem(item));
+        assertFalse(EncryptedAffinityUtil.isEncryptedItem(item));
 
         item.put("encrypted_content", "cipher-text");
-        assertTrue(EncryptedContentAffinityUtil.isEncryptedItem(item));
+        assertTrue(EncryptedAffinityUtil.isEncryptedItem(item));
     }
 
     @Test
@@ -45,14 +46,14 @@ public class EncryptedContentAffinityUtilTest {
         item.put("id", "rs_original");
         item.put("encrypted_content", "cipher-text");
 
-        EncryptedContentAffinityUtil.wrapOutputItem(item, "upstream-a");
+        EncryptedAffinityUtil.wrapOutputItem(item, "upstream-a");
         assertTrue(item.path("id").asText().startsWith("dialenc_"));
         assertTrue(item.path("encrypted_content").asText().startsWith("dialenc:"));
 
         ArrayNode input = ProxyUtil.MAPPER.createArrayNode();
         input.add(item);
 
-        String resolved = EncryptedContentAffinityUtil.resolveAndUnwrap(input);
+        String resolved = EncryptedAffinityUtil.resolveAndUnwrap(input);
         assertEquals("upstream-a", resolved);
         assertEquals("rs_original", item.path("id").asText());
         assertEquals("cipher-text", item.path("encrypted_content").asText());
@@ -64,7 +65,7 @@ public class EncryptedContentAffinityUtilTest {
         item.put("type", "message");
         item.put("id", "msg_1");
 
-        EncryptedContentAffinityUtil.wrapOutputItem(item, "upstream-a");
+        EncryptedAffinityUtil.wrapOutputItem(item, "upstream-a");
 
         assertEquals("msg_1", item.path("id").asText());
     }
@@ -75,14 +76,14 @@ public class EncryptedContentAffinityUtilTest {
         item.put("type", "reasoning");
         item.put("id", "rs_original");
 
-        EncryptedContentAffinityUtil.wrapOutputItem(item, "upstream-a");
+        EncryptedAffinityUtil.wrapOutputItem(item, "upstream-a");
         assertTrue(item.path("id").asText().startsWith("dialenc_"));
         assertFalse(item.has("encrypted_content"));
 
         ArrayNode input = ProxyUtil.MAPPER.createArrayNode();
         input.add(item);
 
-        String resolved = EncryptedContentAffinityUtil.resolveAndUnwrap(input);
+        String resolved = EncryptedAffinityUtil.resolveAndUnwrap(input);
         assertEquals("upstream-a", resolved);
         assertEquals("rs_original", item.path("id").asText());
     }
@@ -97,7 +98,7 @@ public class EncryptedContentAffinityUtilTest {
         ArrayNode input = ProxyUtil.MAPPER.createArrayNode();
         input.add(item);
 
-        assertNull(EncryptedContentAffinityUtil.resolveAndUnwrap(input));
+        assertNull(EncryptedAffinityUtil.resolveAndUnwrap(input));
         assertEquals("rs_original", item.path("id").asText());
         assertEquals("cipher-text", item.path("encrypted_content").asText());
     }
@@ -112,7 +113,7 @@ public class EncryptedContentAffinityUtilTest {
         ArrayNode input = ProxyUtil.MAPPER.createArrayNode();
         input.add(item);
 
-        assertNull(EncryptedContentAffinityUtil.resolveAndUnwrap(input));
+        assertNull(EncryptedAffinityUtil.resolveAndUnwrap(input));
         assertEquals("dialenc_not-valid-base64!!", item.path("id").asText());
         assertEquals("dialenc:not-valid-base64!!;cipher-text", item.path("encrypted_content").asText());
     }
@@ -123,27 +124,27 @@ public class EncryptedContentAffinityUtilTest {
         itemA.put("type", "reasoning");
         itemA.put("id", "rs_a");
         itemA.put("encrypted_content", "cipher-a");
-        EncryptedContentAffinityUtil.wrapOutputItem(itemA, "upstream-a");
+        EncryptedAffinityUtil.wrapOutputItem(itemA, "upstream-a");
 
         ObjectNode itemB = ProxyUtil.MAPPER.createObjectNode();
         itemB.put("type", "reasoning");
         itemB.put("id", "rs_b");
         itemB.put("encrypted_content", "cipher-b");
-        EncryptedContentAffinityUtil.wrapOutputItem(itemB, "upstream-b");
+        EncryptedAffinityUtil.wrapOutputItem(itemB, "upstream-b");
 
         ArrayNode input = ProxyUtil.MAPPER.createArrayNode();
         input.add(itemA);
         input.add(itemB);
 
         HttpException exception = assertThrows(HttpException.class,
-                () -> EncryptedContentAffinityUtil.resolveAndUnwrap(input));
+                () -> EncryptedAffinityUtil.resolveAndUnwrap(input));
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatus());
         assertTrue(exception.getMessage().contains("conflicting_encrypted_content_affinity"));
     }
 
     @Test
     void upstreamUnavailableExceptionCarriesCodeAndStatus() {
-        HttpException exception = EncryptedContentAffinityUtil.upstreamUnavailableException("upstream-x");
+        HttpException exception = EncryptedAffinityUtil.upstreamUnavailableException("upstream-x");
         assertEquals(HttpStatus.CONFLICT, exception.getStatus());
         assertTrue(exception.getMessage().contains("encrypted_content_upstream_unavailable"));
     }
@@ -163,12 +164,51 @@ public class EncryptedContentAffinityUtilTest {
         output.add(message);
         output.add(reasoning);
 
-        EncryptedContentAffinityUtil.wrapOutputArray(output, "upstream-a");
+        EncryptedAffinityUtil.wrapOutputArray(output, "upstream-a");
 
         assertEquals("msg_1", message.path("id").asText());
         assertTrue(reasoning.path("id").asText().startsWith("dialenc_"));
 
         // missing output field resolves to a MissingNode - must be a no-op, not throw
-        EncryptedContentAffinityUtil.wrapOutputArray(ProxyUtil.MAPPER.missingNode(), "upstream-a");
+        EncryptedAffinityUtil.wrapOutputArray(ProxyUtil.MAPPER.missingNode(), "upstream-a");
+    }
+
+    // ── Response ID affinity ──────────────────────────────────────────────────
+
+    @Test
+    void wrapResponseIdRoundTrip() {
+        String dialId = EncryptedAffinityUtil.wrapResponseId("encrypted-upstream-42", "resp_abc123", "my-deployment");
+
+        assertTrue(dialId.startsWith(EncryptedAffinityUtil.ID_WRAP_PREFIX));
+
+        EncryptedAffinityUtil.UnwrappedResponseId unwrapped = EncryptedAffinityUtil.unwrapResponseId(dialId);
+        assertNotNull(unwrapped);
+        assertEquals("encrypted-upstream-42", unwrapped.upstreamId());
+        assertEquals("resp_abc123", unwrapped.upstreamResponseId());
+        assertEquals("my-deployment", unwrapped.deploymentName());
+    }
+
+    @Test
+    void unwrapResponseIdReturnsNullForPlainDialId() {
+        assertNull(EncryptedAffinityUtil.unwrapResponseId("dial_my-deployment_uuid-123"));
+    }
+
+    @Test
+    void unwrapResponseIdReturnsNullForNull() {
+        assertNull(EncryptedAffinityUtil.unwrapResponseId(null));
+    }
+
+    @Test
+    void unwrapResponseIdReturnsNullForMalformedPayload() {
+        // dialenc_ prefix but not valid base64url JSON
+        assertNull(EncryptedAffinityUtil.unwrapResponseId("dialenc_not!valid"));
+    }
+
+    @Test
+    void unwrapResponseIdReturnsNullForMissingFields() {
+        // valid base64url but JSON missing required fields
+        String noD = EncryptedAffinityUtil.wrapResponseId("u", "o", "d");
+        // should decode fine
+        assertNotNull(EncryptedAffinityUtil.unwrapResponseId(noD));
     }
 }

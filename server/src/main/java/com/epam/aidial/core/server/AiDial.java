@@ -367,7 +367,7 @@ public class AiDial {
                     Json.decodeValue(settings("backgroundJob").toBuffer(), Settings.class);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(),
-                    responseMappingService, resourceService, taskExecutor, configStore, apiKeyStore, rateLimiter, tokenStatsTracker,
+                    resourceService, taskExecutor, configStore, apiKeyStore, rateLimiter, tokenStatsTracker,
                     upstreamRouteProvider, responsesApiClient, logStore, credentialEncryptionService, backgroundJobSettings);
             backgroundJobService.init();
 

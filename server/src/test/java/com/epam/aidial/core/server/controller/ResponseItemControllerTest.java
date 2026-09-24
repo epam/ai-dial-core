@@ -9,8 +9,8 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.EncryptedAffinityUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -95,71 +95,31 @@ public class ResponseItemControllerTest {
         return new ResponseItemController(proxy, context, dialId, op);
     }
 
-    @Test
-    public void testAccessDenied(Vertx vertx, VertxTestContext testContext) throws Throwable {
-        ResponseMapping mapping = ResponseMapping.builder()
-                .upstreamResponseId("upstream-id-forbidden")
-                .upstreamKey("endpoint")
-                .deploymentName("test-deployment")
-                .initiatorBucket("Users/other-user/")
-                .build();
-        Model deployment = new Model();
-        deployment.setName("test-deployment");
-        deployment.setResponsesEndpoint("http://adapter/responses");
-
-        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
-        when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
-        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(context.getUserId()).thenReturn("test-user");
-        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
-        when(context.getResponse()).thenReturn(response);
-        when(response.ended()).thenReturn(false);
-        when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> complete(testContext));
-
-        controller("dial_test-deployment_forbidden", GET).handle();
-
-        await(testContext);
-
-        verify(context).respond(
-                argThat((Throwable e) -> e instanceof HttpException
-                        && ((HttpException) e).getStatus() == HttpStatus.FORBIDDEN
-                        && "Access denied".equals(e.getMessage())),
-                anyString());
+    private static String encId(String upstreamId, String upstreamResponseId, String deploymentName) {
+        return EncryptedAffinityUtil.wrapResponseId(upstreamId, upstreamResponseId, deploymentName);
     }
 
     @Test
-    public void testMappingNotFound(Vertx vertx, VertxTestContext testContext) throws Throwable {
-        Model deployment = new Model();
-        deployment.setName("test-deployment");
-        deployment.setResponsesEndpoint("http://adapter/responses");
-
-        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(null);
-        when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
+    public void testInvalidDialIdReturnsNotFound(Vertx vertx, VertxTestContext testContext) throws Throwable {
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getResponse()).thenReturn(response);
         when(response.ended()).thenReturn(false);
         when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> complete(testContext));
 
-        controller("dial_test-deployment_unknown", GET).handle();
+        controller("not-a-dialenc-id", GET).handle();
 
         await(testContext);
 
         verify(context).respond(
                 argThat((Throwable e) -> e instanceof HttpException
                         && ((HttpException) e).getStatus() == HttpStatus.NOT_FOUND
-                        && e.getMessage().contains("Response with id 'dial_test-deployment_unknown' not found.")),
+                        && e.getMessage().contains("Response with id 'not-a-dialenc-id' not found.")),
                 anyString());
     }
 
     @Test
     public void testGetForwardsToUpstream(Vertx vertx, VertxTestContext testContext) throws Throwable {
-        ResponseMapping mapping = ResponseMapping.builder()
-                .upstreamResponseId("upstream-id-123")
-                .upstreamKey("endpoint")
-                .deploymentName("test-deployment")
-                .initiatorBucket("Users/test-user/")
-                .build();
+        String dialId = encId("endpoint", "upstream-id-123", "test-deployment");
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
@@ -168,7 +128,6 @@ public class ResponseItemControllerTest {
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
         Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-id-123\",\"status\":\"completed\"}");
 
-        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
@@ -180,7 +139,6 @@ public class ResponseItemControllerTest {
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
         when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
-        when(context.getUserId()).thenReturn("test-user");
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(200)).thenReturn(response);
@@ -188,7 +146,7 @@ public class ResponseItemControllerTest {
         when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
-        controller("dial_test-deployment_123", GET).handle();
+        controller(dialId, GET).handle();
 
         await(testContext);
 
@@ -201,19 +159,14 @@ public class ResponseItemControllerTest {
         ArgumentCaptor<Buffer> bodyCaptor = ArgumentCaptor.forClass(Buffer.class);
         verify(response).end(bodyCaptor.capture());
         JsonNode sentJson = ProxyUtil.MAPPER.readTree(bodyCaptor.getValue().getBytes());
-        assertEquals("dial_test-deployment_123", sentJson.path("id").asText());
+        assertEquals(dialId, sentJson.path("id").asText());
 
         verify(proxy.getResponseMappingService(), never()).deleteMapping(anyString());
     }
 
     @Test
     public void testGetForwardsToUpstreamWithInterfaces(Vertx vertx, VertxTestContext testContext) throws Throwable {
-        ResponseMapping mapping = ResponseMapping.builder()
-                .upstreamResponseId("upstream-id-123")
-                .upstreamKey("endpoint")
-                .deploymentName("test-deployment")
-                .initiatorBucket("Users/test-user/")
-                .build();
+        String dialId = encId("endpoint", "upstream-id-123", "test-deployment");
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setInterfaces(Map.of(
@@ -223,7 +176,6 @@ public class ResponseItemControllerTest {
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
         Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-id-123\",\"status\":\"completed\"}");
 
-        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
@@ -235,7 +187,6 @@ public class ResponseItemControllerTest {
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
         when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
-        when(context.getUserId()).thenReturn("test-user");
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(200)).thenReturn(response);
@@ -243,7 +194,7 @@ public class ResponseItemControllerTest {
         when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
-        controller("dial_test-deployment_123", GET).handle();
+        controller(dialId, GET).handle();
 
         await(testContext);
 
@@ -256,12 +207,7 @@ public class ResponseItemControllerTest {
 
     @Test
     public void testCancelForwardsToUpstream(Vertx vertx, VertxTestContext testContext) throws Throwable {
-        ResponseMapping mapping = ResponseMapping.builder()
-                .upstreamResponseId("upstream-id-123")
-                .upstreamKey("endpoint")
-                .deploymentName("test-deployment")
-                .initiatorBucket("Users/test-user/")
-                .build();
+        String dialId = encId("endpoint", "upstream-id-123", "test-deployment");
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
@@ -270,7 +216,6 @@ public class ResponseItemControllerTest {
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
         Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-id-123\",\"status\":\"cancelled\"}");
 
-        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
@@ -282,7 +227,6 @@ public class ResponseItemControllerTest {
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
         when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
-        when(context.getUserId()).thenReturn("test-user");
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(200)).thenReturn(response);
@@ -290,7 +234,7 @@ public class ResponseItemControllerTest {
         when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
-        controller("dial_test-deployment_123", CANCEL).handle();
+        controller(dialId, CANCEL).handle();
 
         await(testContext);
 
@@ -302,13 +246,8 @@ public class ResponseItemControllerTest {
     }
 
     @Test
-    public void testDeleteDeletesMappingOn200(Vertx vertx, VertxTestContext testContext) throws Throwable {
-        ResponseMapping mapping = ResponseMapping.builder()
-                .upstreamResponseId("upstream-id-del")
-                .upstreamKey("endpoint")
-                .deploymentName("test-deployment")
-                .initiatorBucket("Users/test-user/")
-                .build();
+    public void testDeleteForwardsToUpstream(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        String dialId = encId("endpoint", "upstream-id-del", "test-deployment");
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
@@ -316,7 +255,6 @@ public class ResponseItemControllerTest {
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
 
-        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getBackgroundJobService().isJobActive(anyString())).thenReturn(Future.succeededFuture(false));
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
@@ -329,7 +267,6 @@ public class ResponseItemControllerTest {
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
         when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
-        when(context.getUserId()).thenReturn("test-user");
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(200)).thenReturn(response);
@@ -337,21 +274,19 @@ public class ResponseItemControllerTest {
         when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
-        controller("dial_test-deployment_del", DELETE).handle();
+        controller(dialId, DELETE).handle();
 
         await(testContext);
 
-        verify(proxy.getResponseMappingService()).deleteMapping(anyString());
+        ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), any(HttpMethod.class), any(Upstream.class), any(), any(), any());
+        assertEquals("http://adapter/responses/upstream-id-del", urlCaptor.getValue());
+        verify(proxy.getResponseMappingService(), never()).deleteMapping(anyString());
     }
 
     @Test
-    public void testDeleteKeepsMappingOnNon200(Vertx vertx, VertxTestContext testContext) throws Throwable {
-        ResponseMapping mapping = ResponseMapping.builder()
-                .upstreamResponseId("upstream-id-del")
-                .upstreamKey("endpoint")
-                .deploymentName("test-deployment")
-                .initiatorBucket("Users/test-user/")
-                .build();
+    public void testDeleteNon200DoesNotDeleteMapping(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        String dialId = encId("endpoint", "upstream-id-del", "test-deployment");
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
@@ -359,7 +294,6 @@ public class ResponseItemControllerTest {
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
 
-        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getBackgroundJobService().isJobActive(anyString())).thenReturn(Future.succeededFuture(false));
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
@@ -372,7 +306,6 @@ public class ResponseItemControllerTest {
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
         when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
-        when(context.getUserId()).thenReturn("test-user");
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(400)).thenReturn(response);
@@ -380,7 +313,7 @@ public class ResponseItemControllerTest {
         when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
-        controller("dial_test-deployment_del", DELETE).handle();
+        controller(dialId, DELETE).handle();
 
         await(testContext);
 
@@ -389,13 +322,14 @@ public class ResponseItemControllerTest {
 
     @Test
     public void testDeleteBlockedByActiveBackgroundJob(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        String dialId = encId("endpoint", "upstream-id-del", "test-deployment");
         when(proxy.getBackgroundJobService().isJobActive(anyString())).thenReturn(Future.succeededFuture(true));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(context.getResponse()).thenReturn(response);
         when(response.ended()).thenReturn(false);
         when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> complete(testContext));
 
-        controller("dial_test-deployment_del", DELETE).handle();
+        controller(dialId, DELETE).handle();
 
         await(testContext);
 
@@ -409,6 +343,7 @@ public class ResponseItemControllerTest {
 
     @Test
     public void testNoResponsesEndpoint(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        String dialId = encId("endpoint", "upstream-id-x", "no-responses-deployment");
         Model deployment = new Model();
         deployment.setName("no-responses-deployment");
 
@@ -416,7 +351,7 @@ public class ResponseItemControllerTest {
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(context.respond(any(HttpStatus.class), anyString())).thenAnswer(invocation -> complete(testContext));
 
-        controller("dial_no-responses-deployment_x", GET).handle();
+        controller(dialId, GET).handle();
 
         await(testContext);
 
@@ -426,22 +361,15 @@ public class ResponseItemControllerTest {
 
     @Test
     public void testUpstreamNotFound(Vertx vertx, VertxTestContext testContext) throws Throwable {
-        ResponseMapping mapping = ResponseMapping.builder()
-                .upstreamResponseId("upstream-id")
-                .upstreamKey("missing-upstream-key")
-                .deploymentName("test-deployment")
-                .initiatorBucket("Users/test-user/")
-                .build();
+        String dialId = encId("missing-upstream-key", "upstream-id", "test-deployment");
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
 
-        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("missing-upstream-key")))
                 .thenThrow(new HttpException(HttpStatus.BAD_REQUEST, "Unknown upstream id missing-upstream-key"));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(context.getUserId()).thenReturn("test-user");
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getResponse()).thenReturn(response);
         when(response.ended()).thenReturn(false);
@@ -449,7 +377,7 @@ public class ResponseItemControllerTest {
         when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
         when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> complete(testContext));
 
-        controller("dial_test-deployment_y", GET).handle();
+        controller(dialId, GET).handle();
 
         await(testContext);
 
@@ -462,12 +390,7 @@ public class ResponseItemControllerTest {
 
     @Test
     public void testEmptyBodySkipsRewrite(Vertx vertx, VertxTestContext testContext) throws Throwable {
-        ResponseMapping mapping = ResponseMapping.builder()
-                .upstreamResponseId("upstream-id-empty")
-                .upstreamKey("endpoint")
-                .deploymentName("test-deployment")
-                .initiatorBucket("Users/test-user/")
-                .build();
+        String dialId = encId("endpoint", "upstream-id-empty", "test-deployment");
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
@@ -475,7 +398,6 @@ public class ResponseItemControllerTest {
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
 
-        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
@@ -487,7 +409,6 @@ public class ResponseItemControllerTest {
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
         when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
-        when(context.getUserId()).thenReturn("test-user");
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(200)).thenReturn(response);
@@ -495,7 +416,7 @@ public class ResponseItemControllerTest {
         when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
-        controller("dial_test-deployment_empty", GET).handle();
+        controller(dialId, GET).handle();
 
         await(testContext);
 
@@ -507,12 +428,8 @@ public class ResponseItemControllerTest {
 
     @Test
     public void testGetStreamingForwardsSseWithRewrittenId(Vertx vertx, VertxTestContext testContext) throws Throwable {
-        ResponseMapping mapping = ResponseMapping.builder()
-                .upstreamResponseId("upstream-id-stream")
-                .upstreamKey("endpoint")
-                .deploymentName("test-deployment")
-                .initiatorBucket("Users/test-user/")
-                .build();
+        String upstreamResponseId = "upstream-id-stream";
+        String dialId = encId("endpoint", upstreamResponseId, "test-deployment");
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
@@ -520,18 +437,16 @@ public class ResponseItemControllerTest {
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
 
-        String upstreamId = "upstream-id-stream";
         String sseContent = "event: response.created\n"
-                + "data: {\"response\":{\"id\":\"" + upstreamId + "\"}}\n\n"
+                + "data: {\"response\":{\"id\":\"" + upstreamResponseId + "\"}}\n\n"
                 + "event: response.completed\n"
-                + "data: {\"response\":{\"id\":\"" + upstreamId + "\"}}\n\n";
+                + "data: {\"response\":{\"id\":\"" + upstreamResponseId + "\"}}\n\n";
 
         AtomicReference<Handler<Buffer>> chunkHandlerRef = new AtomicReference<>();
         AtomicReference<Handler<Void>> endHandlerRef = new AtomicReference<>();
         List<Buffer> writtenChunks = new ArrayList<>();
         AtomicReference<Buffer> endChunkRef = new AtomicReference<>();
 
-        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
@@ -561,7 +476,6 @@ public class ResponseItemControllerTest {
         });
 
         when(context.getResponse()).thenReturn(response);
-        when(context.getUserId()).thenReturn("test-user");
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setChunked(anyBoolean())).thenReturn(response);
         when(response.setStatusCode(anyInt())).thenReturn(response);
@@ -578,7 +492,7 @@ public class ResponseItemControllerTest {
         }).when(response).end(any(Buffer.class));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
-        controller("dial_test-deployment_stream", GET).handle();
+        controller(dialId, GET).handle();
 
         await(testContext);
 
@@ -589,18 +503,19 @@ public class ResponseItemControllerTest {
         // First event (response.created) forwarded as a regular chunk with rewritten id
         assertEquals(1, writtenChunks.size());
         String firstEvent = writtenChunks.get(0).toString();
-        assertTrue(firstEvent.contains("dial_test-deployment_stream"));
-        assertFalse(firstEvent.contains(upstreamId));
+        assertTrue(firstEvent.contains(dialId));
+        assertFalse(firstEvent.contains(upstreamResponseId));
 
         // Last event (response.completed) sent via end() with rewritten id
         assertNotNull(endChunkRef.get());
         String lastEvent = endChunkRef.get().toString();
-        assertTrue(lastEvent.contains("dial_test-deployment_stream"));
-        assertFalse(lastEvent.contains(upstreamId));
+        assertTrue(lastEvent.contains(dialId));
+        assertFalse(lastEvent.contains(upstreamResponseId));
     }
 
     @Test
     public void testInterceptorReentryDispatchesToNextInterceptor(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        String dialId = encId("endpoint", "upstream-id-123", "test-deployment");
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
@@ -639,20 +554,21 @@ public class ResponseItemControllerTest {
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
 
-        controller("dial_test-deployment_123", GET).handle();
+        controller(dialId, GET).handle();
 
         await(testContext);
 
         verify(context).setProxyApiKeyData(argThat(data -> data.getInterceptorIndex() == 1));
         verify(httpClient).request(argThat(opts ->
                 "interceptor2".equals(opts.getHost())
-                && "/responses/dial_test-deployment_123".equals(opts.getURI().toString())));
+                && ("/responses/" + dialId).equals(opts.getURI().toString())));
         verify(proxy.getResponsesApiClient(), never()).send(any(), any(), any(), any(), any(), any());
         verify(proxy.getResponseMappingService(), never()).getMapping(anyString());
     }
 
     @Test
     public void testDeploymentInterceptorForwardsToInterceptor(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        String dialId = encId("endpoint", "upstream-id-123", "test-deployment");
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
@@ -686,23 +602,23 @@ public class ResponseItemControllerTest {
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
 
-        controller("dial_test-deployment_123", GET).handle();
+        controller(dialId, GET).handle();
 
         await(testContext);
 
         verify(context).setProxyApiKeyData(argThat(data -> data.getInterceptorIndex() == 0));
         verify(httpClient).request(argThat(opts ->
                 "interceptor1".equals(opts.getHost())
-                && "/responses/dial_test-deployment_123".equals(opts.getURI().toString())));
+                && ("/responses/" + dialId).equals(opts.getURI().toString())));
         verify(proxy.getResponsesApiClient(), never()).send(any(), any(), any(), any(), any(), any());
         verify(proxy.getResponseMappingService(), never()).getMapping(anyString());
     }
 
     @Test
     public void testInterceptorDispatchSkipsOwnershipCheck(Vertx vertx, VertxTestContext testContext) throws Throwable {
-        // Ownership of the response_id (the mapping's initiatorBucket) is only known once the mapping is
-        // loaded, and the mapping is not loaded while an interceptor still needs to run - so a caller who
-        // does not own this response_id is not rejected before reaching the interceptor.
+        // The dial ID is decoded up front; the interceptor is then called with the original ID.
+        // The controller does not perform ownership checks — that is handled elsewhere.
+        String dialId = encId("endpoint", "upstream-id-123", "test-deployment");
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
@@ -736,15 +652,13 @@ public class ResponseItemControllerTest {
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
 
-        // note: proxy.getResponseMappingService().getMapping(...) is deliberately not stubbed here -
-        // if it were called, the returned null would surface as a 404 rather than the interceptor call below.
-        controller("dial_test-deployment_123", GET).handle();
+        controller(dialId, GET).handle();
 
         await(testContext);
 
         verify(httpClient).request(argThat(opts ->
                 "interceptor1".equals(opts.getHost())
-                && "/responses/dial_test-deployment_123".equals(opts.getURI().toString())));
+                && ("/responses/" + dialId).equals(opts.getURI().toString())));
         verify(context, never()).respond(any(HttpStatus.class), anyString());
         verify(proxy.getResponseMappingService(), never()).getMapping(anyString());
     }

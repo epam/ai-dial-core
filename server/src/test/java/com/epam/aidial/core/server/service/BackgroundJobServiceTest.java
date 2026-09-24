@@ -10,7 +10,7 @@ import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.data.ResponseMapping;
+import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -109,9 +109,6 @@ class BackgroundJobServiceTest {
     private ApiKeyStore apiKeyStore;
 
     @Mock
-    private ResponseMappingService responseMappingService;
-
-    @Mock
     private UpstreamRouteProvider upstreamRouteProvider;
 
     @Mock
@@ -176,11 +173,12 @@ class BackgroundJobServiceTest {
         AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx,
                 new JsonObject().put("useVirtualThreads", false));
         service = spy(new BackgroundJobService(vertx, redissonClient, PREFIX,
-                responseMappingService, resourceService, taskExecutor,
+                resourceService, taskExecutor,
                 configStore, apiKeyStore, rateLimiter, tokenStatsTracker,
                 upstreamRouteProvider, responsesApiClient, logStore, encryptionService, settings));
         service.init();
 
+        lenient().when(proxyContext.getUserId()).thenReturn("test-user");
         lenient().when(proxyContext.getProxyApiKeyData().getPerRequestKey()).thenReturn("test-per-request-key");
         lenient().when(proxyContext.getRequest().version()).thenReturn(HttpVersion.HTTP_1_1);
         lenient().when(proxyContext.getRequest().method()).thenReturn(HttpMethod.POST);
@@ -189,11 +187,10 @@ class BackgroundJobServiceTest {
         // a real claims node: the deep-stub default is an ObjectNode mock, which serializes the record into broken JSON
         lenient().when(proxyContext.getUserClaims())
                 .thenReturn(ProxyUtil.MAPPER.createObjectNode().put("email", "jane.doe@example.com"));
-        lenient().when(responseMappingService.getMapping(anyString())).thenReturn(buildMapping());
 
         ResponsesApiClient pollClient = new ResponsesApiClient(httpClient, new HttpClientOptions());
         poller = new BackgroundJobService(null, null, null,
-                null, null, null,
+                null, null,
                 configStore, null, null, null, upstreamRouteProvider, pollClient,
                 null, encryptionService, new BackgroundJobService.Settings());
     }
@@ -334,7 +331,6 @@ class BackgroundJobServiceTest {
 
     @Test
     void tryCompleteFinalizesJobWhenTerminalResult(VertxTestContext ctx) throws Throwable {
-        ResponseMapping mapping = buildMapping();
         when(configStore.get()).thenReturn(mock(Config.class));
         when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
         when(apiKeyStore.invalidatePerRequestApiKey(any()))
@@ -345,7 +341,7 @@ class BackgroundJobServiceTest {
 
         service.saveJob(JOB_ID, proxyContext)
                 .compose(ignored -> service.tryComplete(
-                        JOB_ID, mapping, new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), new TokenUsage())))
+                        JOB_ID, new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), new TokenUsage())))
                 .onFailure(ctx::failNow);
 
         await(ctx);
@@ -395,9 +391,7 @@ class BackgroundJobServiceTest {
 
     @Test
     void tryCompleteIsNoOpWhenNoRecord(VertxTestContext ctx) throws Throwable {
-        ResponseMapping mapping = buildMapping();
-
-        service.tryComplete(JOB_ID, mapping, new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), null))
+        service.tryComplete(JOB_ID, new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), null))
                 .onSuccess(ignored -> ctx.completeNow())
                 .onFailure(ctx::failNow);
 
@@ -410,7 +404,7 @@ class BackgroundJobServiceTest {
         setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
         setupDeploymentMocks();
 
-        poller.poll(buildMapping(), "test-per-request-key")
+        poller.poll(buildRecord(), "test-per-request-key")
                 .onSuccess(result -> ctx.verify(() -> {
                     assertNotNull(result);
                     ctx.completeNow();
@@ -424,7 +418,7 @@ class BackgroundJobServiceTest {
         setupHttpMocks("{\"status\":\"in_progress\"}");
         setupDeploymentMocks();
 
-        poller.poll(buildMapping(), "test-per-request-key")
+        poller.poll(buildRecord(), "test-per-request-key")
                 .onSuccess(result -> ctx.verify(() -> {
                     assertNull(result);
                     ctx.completeNow();
@@ -438,7 +432,7 @@ class BackgroundJobServiceTest {
         setupHttpMocks("{\"status\":\"queued\"}");
         setupDeploymentMocks();
 
-        poller.poll(buildMapping(), "test-per-request-key")
+        poller.poll(buildRecord(), "test-per-request-key")
                 .onSuccess(result -> ctx.verify(() -> {
                     assertNull(result);
                     ctx.completeNow();
@@ -453,7 +447,7 @@ class BackgroundJobServiceTest {
         when(configStore.get()).thenReturn(config);
         when(config.selectDeployment(anyString())).thenReturn(null);
 
-        poller.poll(buildMapping(), "test-per-request-key")
+        poller.poll(buildRecord(), "test-per-request-key")
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("not found"));
@@ -470,7 +464,7 @@ class BackgroundJobServiceTest {
         when(httpRequest.send(any(Buffer.class))).thenReturn(Future.succeededFuture(httpResponse));
         when(httpResponse.statusCode()).thenReturn(500);
 
-        poller.poll(buildMapping(), "test-per-request-key")
+        poller.poll(buildRecord(), "test-per-request-key")
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("500"));
@@ -484,7 +478,7 @@ class BackgroundJobServiceTest {
         setupDeploymentMocks();
         setupHttpMocks("not valid json {{{");
 
-        poller.poll(buildMapping(), "test-per-request-key")
+        poller.poll(buildRecord(), "test-per-request-key")
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.completeNow());
         await(ctx);
@@ -495,7 +489,7 @@ class BackgroundJobServiceTest {
         setupDeploymentMocks();
         setupHttpMocks("[1, 2, 3]");
 
-        poller.poll(buildMapping(), "test-per-request-key")
+        poller.poll(buildRecord(), "test-per-request-key")
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("not a JSON object"));
@@ -514,7 +508,7 @@ class BackgroundJobServiceTest {
         when(upstreamRouteProvider.get(any(), any(), any(), anyString()))
                 .thenThrow(new RuntimeException("No available upstream"));
 
-        poller.poll(buildMapping(), "test-per-request-key")
+        poller.poll(buildRecord(), "test-per-request-key")
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("Failed to get upstream"));
@@ -532,7 +526,7 @@ class BackgroundJobServiceTest {
         when(deployment.getResponsesEndpoint()).thenReturn(null);
         when(deployment.getName()).thenReturn(DEPLOYMENT_NAME);
 
-        poller.poll(buildMapping(), "test-per-request-key")
+        poller.poll(buildRecord(), "test-per-request-key")
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("responses endpoint"));
@@ -549,7 +543,7 @@ class BackgroundJobServiceTest {
         setupDeploymentMocks(model);
         setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
 
-        poller.poll(buildMapping(), "test-per-request-key")
+        poller.poll(buildRecord(), "test-per-request-key")
                 .onSuccess(result -> ctx.verify(() -> {
                     assertNotNull(result);
                     assertEquals("http://adapter/openai/v1/responses/" + UPSTREAM_RESPONSE_ID, capturePolledUrl());
@@ -571,7 +565,7 @@ class BackgroundJobServiceTest {
         setupDeploymentMocks(model);
         setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
 
-        poller.poll(buildMapping(), "test-per-request-key")
+        poller.poll(buildRecord(), "test-per-request-key")
                 .onSuccess(result -> ctx.verify(() -> {
                     assertNotNull(result);
                     assertEquals("http://adapter/poll/" + UPSTREAM_RESPONSE_ID, capturePolledUrl());
@@ -592,7 +586,7 @@ class BackgroundJobServiceTest {
         setupDeploymentMocks(model);
         setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
 
-        poller.poll(buildMapping(), "test-per-request-key")
+        poller.poll(buildRecord(), "test-per-request-key")
                 .onSuccess(result -> ctx.verify(() -> {
                     assertEquals("http://adapter/openai/v1/responses/" + UPSTREAM_RESPONSE_ID, capturePolledUrl());
                     ctx.completeNow();
@@ -674,10 +668,10 @@ class BackgroundJobServiceTest {
         return mock;
     }
 
-    private static ResponseMapping buildMapping() {
-        return ResponseMapping.builder()
+    private static BackgroundJobRecord buildRecord() {
+        return BackgroundJobRecord.builder()
                 .upstreamResponseId(UPSTREAM_RESPONSE_ID)
-                .upstreamKey(UPSTREAM_KEY)
+                .upstreamId(UPSTREAM_KEY)
                 .deploymentName(DEPLOYMENT_NAME)
                 .initiatorBucket("Users/test-user/")
                 .build();
@@ -690,7 +684,7 @@ class BackgroundJobServiceTest {
         AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx,
                 new JsonObject().put("useVirtualThreads", false));
         BackgroundJobService svc = spy(new BackgroundJobService(vertx, redissonClient, PREFIX,
-                responseMappingService, resourceService, taskExecutor,
+                resourceService, taskExecutor,
                 configStore, apiKeyStore, rateLimiter, tokenStatsTracker,
                 upstreamRouteProvider, responsesApiClient, logStore, encryptionService, settings));
         return new ServiceBundle(svc);

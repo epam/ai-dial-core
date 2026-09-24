@@ -16,19 +16,25 @@ import java.util.Base64;
 import javax.annotation.Nullable;
 
 /**
- * Cross-upstream affinity for OpenAI Responses API {@code reasoning} items. When a deployment has at least
- * one explicitly configured upstream, a follow-up turn that echoes an earlier turn's {@code reasoning} item
- * (by its {@code id}, its {@code encrypted_content}, or both) must be routed back to the exact upstream that
- * produced it, otherwise the provider rejects the whole request. Outgoing items are stamped with the originating
- * {@link Model#getUpstreams()} entry's {@link com.epam.aidial.core.config.Upstream#getId()} ("upstream config
- * id" below - not to be confused with the provider's own response id string); incoming items are decoded back
- * to that id to force routing, then restored to their original, provider-native shape before forwarding
- * upstream.
+ * Upstream affinity encoding for the OpenAI Responses API. Handles two cases:
+ * <ul>
+ *   <li><b>Reasoning items</b> – when a deployment has at least one explicitly configured
+ *       upstream, a follow-up turn that echoes an earlier turn's {@code reasoning} item
+ *       (by its {@code id}, its {@code encrypted_content}, or both) must be routed back to
+ *       the exact upstream that produced it. Outgoing items are stamped with the originating
+ *       {@link Model#getUpstreams()} entry's {@link com.epam.aidial.core.config.Upstream#getId()}
+ *       ("upstream config id" below); incoming items are decoded to force routing, then
+ *       restored to their provider-native shape before forwarding upstream.</li>
+ *   <li><b>Response IDs</b> – DIAL response IDs for {@code store=true} responses embed the
+ *       upstream id and the provider's original response id so that
+ *       {@code GET/DELETE /responses/{id}} can route back to the correct upstream without a
+ *       separate mapping lookup.</li>
+ * </ul>
  */
 @UtilityClass
-public class EncryptedContentAffinityUtil {
+public class EncryptedAffinityUtil {
 
-    private static final String ID_WRAP_PREFIX = "dialenc_";
+    public static final String ID_WRAP_PREFIX = "dialenc_";
     private static final String CONTENT_WRAP_PREFIX = "dialenc:";
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder DECODER = Base64.getUrlDecoder();
@@ -105,6 +111,53 @@ public class EncryptedContentAffinityUtil {
         }
         return resolvedUpstreamId;
     }
+
+    // ── Response ID affinity ──────────────────────────────────────────────────
+
+    /**
+     * Wraps a provider response id together with the upstream config id and deployment name into
+     * a single DIAL response id. The returned id starts with {@value ID_WRAP_PREFIX} and encodes
+     * a JSON payload {@code {"u":"<upstreamId>","o":"<upstreamResponseId>","d":"<deploymentName>"}}
+     * as base64url so it can be decoded by {@link #unwrapResponseId(String)} without a storage
+     * lookup.
+     */
+    @SneakyThrows
+    public String wrapResponseId(String encryptedUpstreamId, String upstreamResponseId, String deploymentName) {
+        ObjectNode payload = ProxyUtil.MAPPER.createObjectNode();
+        payload.put("u", encryptedUpstreamId);
+        payload.put("o", upstreamResponseId);
+        payload.put("d", deploymentName);
+        return ID_WRAP_PREFIX + ENCODER.encodeToString(ProxyUtil.MAPPER.writeValueAsBytes(payload));
+    }
+
+    /**
+     * Decodes a DIAL response id produced by {@link #wrapResponseId}. Returns {@code null} for
+     * ids that do not start with {@value ID_WRAP_PREFIX} or whose payload is malformed.
+     */
+    @Nullable
+    public UnwrappedResponseId unwrapResponseId(String dialId) {
+        if (dialId == null || !dialId.startsWith(ID_WRAP_PREFIX)) {
+            return null;
+        }
+        String encoded = dialId.substring(ID_WRAP_PREFIX.length());
+        try {
+            byte[] decoded = DECODER.decode(encoded);
+            JsonNode payload = ProxyUtil.MAPPER.readTree(decoded);
+            String upstreamId = payload.path("u").asText(null);
+            String upstreamResponseId = payload.path("o").asText(null);
+            String deploymentName = payload.path("d").asText(null);
+            if (upstreamId == null || upstreamResponseId == null || deploymentName == null) {
+                return null;
+            }
+            return new UnwrappedResponseId(upstreamId, upstreamResponseId, deploymentName);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public record UnwrappedResponseId(String upstreamId, String upstreamResponseId, String deploymentName) {}
+
+    // ── Internal helpers ──────────────────────────────────────────────────────
 
     @Nullable
     private String unwrapId(ObjectNode object) {

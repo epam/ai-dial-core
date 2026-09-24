@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.Builder;
@@ -40,9 +41,13 @@ public record BackgroundJobRecord(
         String requestUri,
         long requestTimestamp,
         String requestBody,
-        String upstreamEndpoint) {
+        String upstreamEndpoint,
+        String upstreamResponseId,
+        String upstreamId,
+        String initiatorBucket) {
 
-    public static BackgroundJobRecord from(ProxyContext context, UnaryOperator<String> keyEncryptor) {
+    public static BackgroundJobRecord from(
+            ProxyContext context, UnaryOperator<String> keyEncryptor, String upstreamResponseId, String upstreamId) {
         return BackgroundJobRecord.builder()
                 .perRequestKey(keyEncryptor.apply(context.getProxyApiKeyData().getPerRequestKey()))
                 .isRootSpan(context.isOriginalRequest())
@@ -71,6 +76,9 @@ public record BackgroundJobRecord(
                         .map(UpstreamRoute::get)
                         .map(Upstream::getEndpoint)
                         .orElse(null))
+                .upstreamResponseId(upstreamResponseId)
+                .upstreamId(upstreamId)
+                .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
                 .build();
     }
 }
