@@ -154,7 +154,7 @@ public class ControllerSelector {
         });
         get(RouteTemplate.COMPLEX_RESOURCE_METADATA, (proxy, context, pathMatcher) -> {
             ComplexResourceMetadataController controller = new ComplexResourceMetadataController(proxy, context, false, null);
-            return () -> controller.handle(complexResourceFolderUrl(pathMatcher));
+            return () -> controller.handle(complexResourceUrl(pathMatcher), complexResourceFolderUrl(pathMatcher));
         });
         get(RouteTemplate.RESOURCE_FOLDER, (proxy, context, pathMatcher) -> {
             ComplexResourceController controller = new ComplexResourceController(proxy, context, false, true);
@@ -320,6 +320,10 @@ public class ControllerSelector {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group("id"));
             DeploymentPostController controller = new DeploymentPostController(proxy, context);
             return () -> controller.handle(deploymentId);
+        });
+        post(RouteTemplate.LLM_CHAT_COMPLETIONS_API, (proxy, context, pathMatcher) -> {
+            ChatCompletionsController controller = new ChatCompletionsController(proxy, context);
+            return controller::handle;
         });
         post(RouteTemplate.LLM_RESPONSES_API, (proxy, context, pathMatcher) -> {
             ResponsesController controller = new ResponsesController(proxy, context);
@@ -665,17 +669,7 @@ public class ControllerSelector {
         // FILES/RESOURCE routes (see ResourceDescriptorFactory.fromAnyUrl) and the {@code path}
         // contract on ResourceDescriptorFactory.fromDecoded ("url decoded relative path").
         String path = UrlUtil.decodePath(pathMatcher.group("path"));
-        ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
-        MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
-        return new ConfigResourceController(context, authService, mergedConfigStore,
-                proxy.getResourceService(), proxy.getTaskExecutor(),
-                mergedConfigStore.getSecretFieldProcessor(),
-                mergedConfigStore.isSoftValidation(),
-                proxy.getApiKeyStore(),
-                proxy.getLockService(),
-                proxy.getApplicationService(),
-                proxy.getToolSetService(),
-                entityType, bucket, path);
+        return new ConfigResourceController(proxy, context, entityType, bucket, path);
     }
 
     private static Controller configResourceMetadataController(Proxy proxy, ProxyContext context, Matcher pathMatcher) {
@@ -718,8 +712,11 @@ public class ControllerSelector {
         return "skills/" + matcher.group("bucket") + "/" + matcher.group("path");
     }
 
-    // Builds the grouping-folder url (trailing slash so fromAnyUrl marks it a folder) for folder ops and the
-    // children metadata listing. An empty path lists the bucket root.
+    // Builds the grouping-folder url (trailing slash so fromAnyUrl marks it a folder) for folder ops, and
+    // as the metadata route's second access-check candidate: {path} may name either a specific skill (shared
+    // as the non-folder url from complexResourceUrl) or a grouping folder (shared as this folder url), and
+    // the client has no way to know which up front, so both shapes are checked. An empty path addresses the
+    // bucket root.
     private static String complexResourceFolderUrl(Matcher matcher) {
         String path = matcher.group("path");
         if (path != null && path.endsWith("/")) {

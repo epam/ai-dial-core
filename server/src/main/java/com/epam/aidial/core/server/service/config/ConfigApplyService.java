@@ -35,6 +35,7 @@ import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.config.ConfigManifestSupport.ParsedName;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
+import com.epam.aidial.core.server.validation.ValidationUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -159,6 +160,7 @@ public class ConfigApplyService {
         if (!ConfigManifestSupport.SETTINGS_SINGLETON_NAME.equals(parsed.name())) {
             return new EntityResult(id, AdminApplyStatus.FAILED, "Settings name must be 'global'");
         }
+        ValidationUtil.validate(settings);
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.GLOBAL_SETTINGS, parsed.bucket(), parsed.location(), parsed.name());
         String blobBody = ConfigEntityCodec.serializeForBlob(settings);
@@ -206,15 +208,18 @@ public class ConfigApplyService {
                 return new EntityResult(id, AdminApplyStatus.FAILED, dupError);
             }
         }
+        secretFieldProcessor.encryptFields(entity, descriptor);
         String blobBody = ConfigEntityCodec.serializeForBlob(entity);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+        // decrypt-in-place so partial-update receives plaintext upstream secrets.
+        secretFieldProcessor.decryptFields(entity, descriptor);
         pending.add(new EntityChange(type, MergedConfigStore.resolveMapKeyFor(descriptor), entity));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
     private EntityResult applyTranslator(Translator translator, String id, ParsedName parsed, List<EntityChange> pending) {
         List<ValidationWarning> warnings = new ArrayList<>();
-        ConfigPostProcessor.validateTranslator(translator, warnings);
+        ConfigPostProcessor.validateTranslator(id, translator, warnings);
         if (!warnings.isEmpty()) {
             return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
         }
@@ -252,7 +257,7 @@ public class ConfigApplyService {
         if (oldSecret != null && !oldSecret.isBlank() && !oldSecret.equals(secret)) {
             apiKeyStore.removeKey(oldSecret);
         }
-        // Slice 4S.4: decrypt-in-place after blob put so the partial-update path receives a
+        // decrypt-in-place after blob put so the partial-update path receives a
         // fully-plaintext Key. decryptValue is idempotent on plaintext fields.
         secretFieldProcessor.decryptFields(key, descriptor);
         pending.add(new EntityChange(ResourceTypes.PROJECT_KEY, canonicalId, key));
@@ -280,7 +285,7 @@ public class ConfigApplyService {
         secretFieldProcessor.encryptFields(model, descriptor);
         String blobBody = ConfigEntityCodec.serializeForBlob(model);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
-        // Slice 4S.4: decrypt-in-place so partial-update receives plaintext upstream secrets.
+        // decrypt-in-place so partial-update receives plaintext upstream secrets.
         secretFieldProcessor.decryptFields(model, descriptor);
         pending.add(new EntityChange(ResourceTypes.MODEL, MergedConfigStore.resolveMapKeyFor(descriptor), model));
         return new EntityResult(id, invalid ? AdminApplyStatus.APPLIED_INVALID : AdminApplyStatus.APPLIED, null);

@@ -51,6 +51,10 @@ public class ConfigSettingsTest extends ResourceBaseTest {
         assertEquals(0, body.get("globalInterceptors").size());
         assertTrue(body.has("retriableErrorCodes"));
         assertTrue(body.get("retriableErrorCodes").isArray());
+        assertTrue(body.has("rateLimitSchedule"));
+        assertEquals("UTC", body.get("rateLimitSchedule").get("timezone").asText());
+        assertEquals("Mon", body.get("rateLimitSchedule").get("weekStartDay").asText());
+        assertEquals("00:00", body.get("rateLimitSchedule").get("resetTime").asText());
     }
 
     @Test
@@ -88,7 +92,8 @@ public class ConfigSettingsTest extends ResourceBaseTest {
         String body = """
                 {
                   "globalInterceptors": ["interceptor1"],
-                  "retriableErrorCodes": [502, 503]
+                  "retriableErrorCodes": [502, 503],
+                  "rateLimitSchedule": {"timezone": "Europe/Warsaw", "weekStartDay": "Sun", "resetTime": "09:00"}
                 }
                 """;
         Response put = send(HttpMethod.PUT, SETTINGS_URL, null, body,
@@ -107,6 +112,9 @@ public class ConfigSettingsTest extends ResourceBaseTest {
         assertEquals(1, getBody.get("globalInterceptors").size());
         assertEquals("interceptor1", getBody.get("globalInterceptors").get(0).asText());
         assertEquals(2, getBody.get("retriableErrorCodes").size());
+        assertEquals("Europe/Warsaw", getBody.get("rateLimitSchedule").get("timezone").asText());
+        assertEquals("Sun", getBody.get("rateLimitSchedule").get("weekStartDay").asText());
+        assertEquals("09:00", getBody.get("rateLimitSchedule").get("resetTime").asText());
     }
 
     @Test
@@ -203,6 +211,21 @@ public class ConfigSettingsTest extends ResourceBaseTest {
                 send(HttpMethod.GET, SETTINGS_URL, null, "", "authorization", "admin").body());
         assertEquals(0, body.get("globalInterceptors").size());
         assertEquals(0, body.get("retriableErrorCodes").size());
+        assertEquals("UTC", body.get("rateLimitSchedule").get("timezone").asText());
+    }
+
+    @Test
+    void testPutInvalidTimezoneReturns400() {
+        verify(send(HttpMethod.PUT, SETTINGS_URL, null, """
+                {"rateLimitSchedule": {"timezone": "not-a-timezone"}}
+                """, "authorization", "admin"), 400);
+    }
+
+    @Test
+    void testPutInvalidResetTimeReturns400() {
+        verify(send(HttpMethod.PUT, SETTINGS_URL, null, """
+                {"rateLimitSchedule": {"resetTime": "9am"}}
+                """, "authorization", "admin"), 400);
     }
 
     @Test

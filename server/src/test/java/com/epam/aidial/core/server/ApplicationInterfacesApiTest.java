@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * An application serves every interface type a model does — the deployment lookup behind
@@ -18,6 +19,10 @@ class ApplicationInterfacesApiTest extends ResourceBaseTest {
             + "\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}";
     private static final String MESSAGES_BODY = "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\","
             + "\"content\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}";
+    private static final String COMPLETIONS_BODY = "{\"id\":\"cmpl_1\",\"object\":\"chat.completion\","
+            + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\","
+            + "\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}],"
+            + "\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}";
 
     @Test
     @DialConfigLocation("dial-config/application-interfaces.json")
@@ -68,5 +73,45 @@ class ApplicationInterfacesApiTest extends ResourceBaseTest {
 
             assertEquals(503, response.status(), response.body());
         }
+    }
+
+    /**
+     * The write API accepts the same shapes the config file does: an application whose only routing target
+     * is {@code interfaces} — here an entry claiming the deployment-level {@code baseUrl} — is stored and
+     * serves, with no legacy {@code endpoint} to satisfy the older validation.
+     */
+    @Test
+    void applicationWrittenThroughTheApiServesInterfacesAsTheOnlyRoutingTarget() {
+        String completionsPath = "/openai/deployments/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST"
+                + "/interfaces-only-app/chat/completions";
+        AtomicReference<String> capturedPath = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, completionsPath, request -> {
+                capturedPath.set(request.getPath());
+                return TestWebServer.createResponse(200, COMPLETIONS_BODY, "Content-Type", "application/json");
+            });
+
+            Response created = send(HttpMethod.PUT,
+                    "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/interfaces-only-app", null,
+                    "{\"baseUrl\":\"http://localhost:4848\", \"interfaces\":{\"openaiChatCompletions\":{}}}");
+            assertEquals(200, created.status(), created.body());
+
+            Response response = send(HttpMethod.POST, completionsPath, null,
+                    "{\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}], \"max_tokens\":16, \"stream\":false}",
+                    "Content-Type", "application/json");
+
+            assertEquals(200, response.status(), response.body());
+            assertEquals(completionsPath, capturedPath.get());
+        }
+    }
+
+    @Test
+    void anInterfacesEntryWithoutAnyUrlIsNoRoutingTarget() {
+        Response response = send(HttpMethod.PUT,
+                "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/no-url-app", null,
+                "{\"interfaces\":{\"openaiChatCompletions\":{}}}");
+
+        assertEquals(400, response.status(), response.body());
+        assertTrue(response.body().contains("At least application endpoint"), response.body());
     }
 }

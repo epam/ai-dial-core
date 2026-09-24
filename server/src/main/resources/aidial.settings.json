@@ -113,11 +113,25 @@
   "asyncTaskExecutor": {
     "useVirtualThreads": true
   },
+  "tracing": {
+    "genAiSpanAttributes": true,
+    "responseTraceHeaders": true,
+    "conversationIdHeaders": [
+      "x-claude-code-session-id",
+      "thread-id",
+      "x-session-id",
+      "x-dial-client-channel-id",
+      "X-CONVERSATION-ID"
+    ]
+  },
   "analytics": {
     "collectClaims": false,
     "claimsAllowlist": [],
     "collectHeaders": false,
     "headersBlacklist": ["authorization", "api-key", "cookie", "proxy-authorization"]
+  },
+  "proxy": {
+    "additionalHopByHopHeaders": []
   },
   "backgroundJob": {
     "initialPollIntervalMs": 10000,

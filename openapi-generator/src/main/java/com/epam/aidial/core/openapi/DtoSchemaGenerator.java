@@ -5,7 +5,11 @@ import com.epam.aidial.core.openapi.annotations.ApiSchemaType;
 import com.epam.aidial.core.openapi.annotations.ApiSubType;
 import com.epam.aidial.core.openapi.annotations.ApiSubTypes;
 import com.fasterxml.classmate.ResolvedType;
+import com.fasterxml.jackson.databind.BeanDescription;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.introspect.AnnotatedMember;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
@@ -18,7 +22,9 @@ import com.github.victools.jsonschema.generator.SchemaGenerationContext;
 import com.github.victools.jsonschema.generator.SchemaGenerator;
 import com.github.victools.jsonschema.generator.SchemaGeneratorConfig;
 import com.github.victools.jsonschema.generator.SchemaGeneratorConfigBuilder;
+import com.github.victools.jsonschema.generator.SchemaKeyword;
 import com.github.victools.jsonschema.generator.SchemaVersion;
+import com.github.victools.jsonschema.generator.impl.AttributeCollector;
 import com.github.victools.jsonschema.module.jackson.JacksonModule;
 import com.github.victools.jsonschema.module.jackson.JacksonOption;
 
@@ -68,7 +74,11 @@ public class DtoSchemaGenerator {
         configBuilder.without(Option.SCHEMA_VERSION_INDICATOR);
 
         configBuilder.forTypesInGeneral().withCustomDefinitionProvider((javaType, context) -> {
-            CustomDefinition definition = createMapSchemaDefinition(javaType, context);
+            CustomDefinition definition = createJsonValueEnumDefinition(javaType, context);
+            if (definition != null) {
+                return definition;
+            }
+            definition = createMapSchemaDefinition(javaType, context);
             if (definition != null) {
                 return definition;
             }
@@ -131,6 +141,41 @@ public class DtoSchemaGenerator {
 
     public void registerExternalSchema(String schemaName) {
         externalSchemaRegistry.register(schemaName);
+    }
+
+    /**
+     * {@link JacksonOption#FLATTENED_ENUMS_FROM_JSONVALUE} only detects {@code @JsonValue} on a method
+     * (jsonschema-module-jackson's {@code CustomEnumDefinitionProvider} reads member <em>methods</em>
+     * exclusively); an enum whose {@code @JsonValue} sits on the backing field instead — the usual shape
+     * for a Lombok {@code @Getter} enum such as {@link com.epam.aidial.core.config.InterfaceType} — falls
+     * through to the default {@code Enum.name()}-based schema. Rather than re-implementing that
+     * field-vs-method lookup with raw reflection, this delegates to Jackson's own introspection
+     * ({@link BeanDescription#findJsonValueAccessor()}), which already resolves either shape.
+     */
+    private CustomDefinition createJsonValueEnumDefinition(ResolvedType javaType, SchemaGenerationContext context) {
+        Class<?> clazz = javaType.getErasedType();
+        Object[] enumConstants = clazz.getEnumConstants();
+        if (enumConstants == null || enumConstants.length == 0) {
+            return null;
+        }
+
+        ObjectMapper mapper = context.getGeneratorConfig().getObjectMapper();
+        BeanDescription beanDescription = mapper.getSerializationConfig().introspect(mapper.constructType(clazz));
+        AnnotatedMember accessor = beanDescription.findJsonValueAccessor();
+        if (accessor == null) {
+            return null;
+        }
+        accessor.fixAccess(mapper.getSerializationConfig().isEnabled(MapperFeature.OVERRIDE_PUBLIC_ACCESS_MODIFIERS));
+
+        List<Object> serializedValues = new ArrayList<>(enumConstants.length);
+        for (Object enumConstant : enumConstants) {
+            serializedValues.add(accessor.getValue(enumConstant));
+        }
+
+        ObjectNode schema = context.getGeneratorConfig().createObjectNode()
+                .put(context.getKeyword(SchemaKeyword.TAG_TYPE), context.getKeyword(SchemaKeyword.TAG_TYPE_STRING));
+        new AttributeCollector(mapper).setEnum(schema, serializedValues, context);
+        return new CustomDefinition(schema);
     }
 
     private CustomDefinition createMapSchemaDefinition(ResolvedType javaType, SchemaGenerationContext context) {

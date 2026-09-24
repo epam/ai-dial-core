@@ -565,7 +565,16 @@ public class ComplexResourceService {
         if (marker != null) {
             return itemMetadata(resource, marker);
         }
-        return listChildren(resource, token, limit, recursive);
+        return listChildren(asFolder(resource), token, limit, recursive);
+    }
+
+    // The v2 metadata route's target path may be requested without a trailing slash regardless of
+    // whether it names an item or a grouping folder, since the caller can't know which it is in advance.
+    // Once getMarker rules out an item, the resource must be folder-shaped for listChildren.
+    private static ResourceDescriptor asFolder(ResourceDescriptor resource) {
+        return resource.isFolder() ? resource
+                : new ResourceDescriptor(resource.getType(), resource.getName(), resource.getParentFolders(),
+                        resource.getBucketName(), resource.getBucketLocation(), true);
     }
 
     private static ResourceItemMetadata itemMetadata(ResourceDescriptor resource, FolderResourceMarker marker) {

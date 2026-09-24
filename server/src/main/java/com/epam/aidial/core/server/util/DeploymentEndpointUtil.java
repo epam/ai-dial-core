@@ -80,6 +80,22 @@ public class DeploymentEndpointUtil {
     }
 
     /**
+     * Whether the {@code interfaces} map contributes a servable type — an entry carrying a translator
+     * reference or a url of its own, the deployment-level {@code baseUrl} included, or one whose type a
+     * legacy field also serves. The map alone: a deployment routing only through legacy fields has no
+     * such interface, and an entry resolving to nothing is not one — the request path answers 503 for
+     * that same shape.
+     */
+    public boolean hasRoutingInterface(Deployment deployment) {
+        for (InterfaceType type : InterfaceType.values()) {
+            if (findInterface(deployment, type) != null && isInterfaceDeclared(deployment, type)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * The absolute uri a deployments-POST request is forwarded to. Under {@code interfaces} that is the
      * ingress path appended to the base url, with the {@code /deployments/{id}/} segment rewritten to the
      * name the deployment is called by. A pre-{@code interfaces} endpoint is a complete url that already

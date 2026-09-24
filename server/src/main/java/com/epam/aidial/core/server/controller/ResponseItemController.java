@@ -17,11 +17,14 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
+import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
+import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -216,10 +219,11 @@ public class ResponseItemController implements Controller {
 
         return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, proxyApiKeyData.getPerRequestKey())
                 .compose(response -> {
+                    context.setProxyResponse(response);
                     String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
                     if (operation == Operation.GET
                             && Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM)) {
-                        return collectAndForwardStreaming(response, mapping.getUpstreamResponseId());
+                        return collectAndForwardStreaming(response, mapping);
                     }
                     return collectAndForward(response, mapping);
                 });
@@ -232,7 +236,7 @@ public class ResponseItemController implements Controller {
                         return sendResponse(proxyResponse, body);
                     }
                     return proxy.getTaskExecutor()
-                            .submit(() -> rewriteId(body, mapping.getUpstreamResponseId()))
+                            .submit(() -> rewriteId(body, mapping))
                             .compose(rewritten -> {
                                 if (operation == Operation.DELETE) {
                                     return proxy.getTaskExecutor().submit(() -> {
@@ -256,6 +260,10 @@ public class ResponseItemController implements Controller {
     private Future<Void> sendResponse(HttpClientResponse proxyResponse, Buffer body) {
         HttpServerResponse serverResponse = context.getResponse();
         serverResponse.setStatusCode(proxyResponse.statusCode());
+        if (operation == Operation.GET) {
+            // after setStatusCode: the status fallback reads the client-facing code, still 200 by default before it
+            GenAiTraceAttributes.setFetchResponseAttributes(context, body, dialResponseId);
+        }
         String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
         if (contentType != null) {
             serverResponse.putHeader(HttpHeaders.CONTENT_TYPE, contentType);
@@ -264,7 +272,7 @@ public class ResponseItemController implements Controller {
         return serverResponse.end(body).mapEmpty();
     }
 
-    private Buffer rewriteId(Buffer body, String upstreamResponseId) {
+    private Buffer rewriteId(Buffer body, ResponseMapping mapping) {
         if (body.length() == 0) {
             return body;
         }
@@ -272,8 +280,11 @@ public class ResponseItemController implements Controller {
         if (!(tree instanceof ObjectNode object)) {
             return body;
         }
+        if (EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
+            EncryptedContentAffinityUtil.wrapOutputArray(object.path("output"), mapping.getUpstreamKey());
+        }
         JsonNode idNode = object.path("id");
-        if (idNode.isTextual() && upstreamResponseId.equals(idNode.asText())) {
+        if (idNode.isTextual() && mapping.getUpstreamResponseId().equals(idNode.asText())) {
             object.put("id", dialResponseId);
         }
         return Buffer.buffer(JsonUtil.serialize(object));
@@ -288,13 +299,14 @@ public class ResponseItemController implements Controller {
         }
     }
 
-    private Future<Void> collectAndForwardStreaming(HttpClientResponse proxyResponse, String upstreamResponseId) {
+    private Future<Void> collectAndForwardStreaming(HttpClientResponse proxyResponse, ResponseMapping mapping) {
         CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
-        ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context, dialResponseId, upstreamResponseId);
+        ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context, dialResponseId, mapping.getUpstreamResponseId());
+        EncryptedContentWrapFn wrapFn = new EncryptedContentWrapFn(proxy, context, mapping.getUpstreamKey());
         BufferingReadStream responseStream = new BufferingReadStream(
                 proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024),
-                new ResponsesSseListener(List.of(attachmentsFn, replaceIdFn)));
+                new ResponsesSseListener(List.of(wrapFn, attachmentsFn, replaceIdFn)));
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
@@ -303,7 +315,12 @@ public class ResponseItemController implements Controller {
                 .endOnFailure(false)
                 .endOnSuccess(false)
                 .to(response)
-                .onSuccess(ignored -> responseStream.end(response))
+                .onSuccess(ignored -> {
+                    // GET only, by the branch that got here: the buffered bytes are the raw upstream frames,
+                    // so the id has to come from us
+                    GenAiTraceAttributes.setFetchResponseAttributes(context, responseStream.getContent(), dialResponseId);
+                    responseStream.end(response);
+                })
                 .onFailure(error -> {
                     response.reset();
                     log.warn("Can't send streaming response to client. Error:", error);

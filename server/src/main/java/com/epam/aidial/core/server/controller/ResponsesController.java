@@ -22,17 +22,21 @@ import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
+import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
 import com.epam.aidial.core.server.function.ExtractTerminalResponseFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
+import com.epam.aidial.core.server.function.enhancement.ResolveEncryptedContentAffinityFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
+import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
@@ -71,6 +75,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.OPENAI_RESPONSES),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
+                new ResolveEncryptedContentAffinityFn(proxy, context),
                 new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_RESPONSES),
                 new CollectDeploymentsFn(proxy, context));
     }
@@ -111,7 +116,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
         context.getRequest().body()
-                .map(ResponsesController::parseBody)
+                .map(this::parseBody)
                 .compose(this::dispatch)
                 .onFailure(this::handleRequestBodyError);
         return Future.succeededFuture();
@@ -191,7 +196,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 });
     }
 
-    private static ResponsesApiRequest parseBody(Buffer body) {
+    private ResponsesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
             ObjectNode tree = ProxyUtil.parseObject(body);
@@ -201,6 +206,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             if (tree.has("conversation")) {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "conversation is not supported");
             }
+            GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.OPENAI_RESPONSES, tree);
             return new ResponsesApiRequest(tree);
         } catch (IOException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
@@ -247,6 +253,9 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         Deployment deployment = context.getDeployment();
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
+        if (upstreamId == null) {
+            upstreamId = request.getEncryptedUpstreamId();
+        }
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
                 .get(deployment, context.getCacheBreakpointContext(),
                         dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES,
@@ -322,14 +331,15 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         ExtractTerminalResponseFn extractFn = new ExtractTerminalResponseFn(proxy, context);
         ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context);
+        EncryptedContentWrapFn wrapFn = new EncryptedContentWrapFn(proxy, context);
         BufferingReadStream responseStream = createResponseStream(proxyResponse, () -> {
             CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
-            return new ResponsesSseListener(List.of(attachmentsFn, replaceIdFn, extractFn));
+            return new ResponsesSseListener(List.of(wrapFn, attachmentsFn, replaceIdFn, extractFn));
         });
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(upstreamRoute.getAttemptCount()));
+        putUpstreamAttempts(response, upstreamRoute.getAttemptCount());
 
         responseStream.pipe()
                 .endOnFailure(false)
@@ -350,7 +360,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                     ProxyUtil.copyResponse(response, proxyResponse);
                     response.setChunked(false);
                     response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
-                    response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
+                    putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
                     if (context.isBackgroundJob() && dialId != null) {
                         return proxy.getBackgroundJobService().saveJob(dialId, context)
@@ -399,12 +409,15 @@ public class ResponsesController extends BaseDeploymentPostController {
         }
 
         String upstreamId = idNode.asText();
+        Upstream upstream = context.getUpstreamRoute().get();
+        if (EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
+            EncryptedContentAffinityUtil.wrapOutputArray(object.path("output"), upstream.getId());
+        }
         if (!context.isStoreResponse()) {
             String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
             object.put("id", dialId);
             return Future.succeededFuture(Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object))));
         }
-        Upstream upstream = context.getUpstreamRoute().get();
         ResponseMapping mapping = ResponseMapping.builder()
                 .upstreamResponseId(upstreamId)
                 .upstreamKey(upstream.getId())
@@ -423,13 +436,17 @@ public class ResponsesController extends BaseDeploymentPostController {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
+        // the terminal frame ExtractTerminalResponseFn already kept: the trace attributes read it instead of
+        // scanning the buffered stream a second time. Null for a run that failed or was cancelled.
+        context.setAssembledStreamingResponse(assembledStreamingResponse);
 
         Future<Void> completionFuture;
         if (context.isBackgroundJob() && dialId != null) {
             completionFuture = proxy.getBackgroundJobService().deleteJob(dialId)
-                    .compose(deleted -> deleted ? collectTokenUsage(responseBody) : Future.succeededFuture());
+                    .compose(deleted -> deleted ? collectTokenUsage(responseBody, dialId) : Future.succeededFuture());
         } else {
-            completionFuture = collectTokenUsage(responseBody);
+            // the buffered bytes are the raw upstream frames, so the id has to come from us
+            completionFuture = collectTokenUsage(responseBody, dialId);
         }
 
         completionFuture.onComplete(result -> {

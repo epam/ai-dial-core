@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
@@ -533,8 +534,8 @@ public final class MergedConfigStore implements ConfigStore {
     }
 
     /**
-     * Whether the {@code globalInterceptors} / {@code retriableErrorCodes} fields in the
-     * current {@link Config} were sourced from the API-managed settings singleton blob
+     * Whether the {@code globalInterceptors} / {@code retriableErrorCodes} / {@code rateLimitSchedule}
+     * fields in the current {@link Config} were sourced from the API-managed settings singleton blob
      * ({@code platform/settings/global}) rather than from the file-defined defaults.
      * Drives the blob-only {@code 404} path on {@code GET /v1/settings/platform/global}
      * (slice U.1): when {@code false}, the per-entity endpoint returns {@code 404} and
@@ -777,8 +778,8 @@ public final class MergedConfigStore implements ConfigStore {
 
     /**
      * Settings singleton overlay write (slice 4S.4). Applies {@code globalInterceptors} +
-     * {@code retriableErrorCodes} fields from the supplied {@link GlobalSettings}, flips
-     * {@code settingsFromApi} to {@code true}.
+     * {@code retriableErrorCodes} + {@code rateLimitSchedule} fields from the supplied
+     * {@link GlobalSettings}, flips {@code settingsFromApi} to {@code true}.
      */
     public Config applySettingsWrite(GlobalSettings settings) {
         rebuildLock.lock();
@@ -788,6 +789,8 @@ public final class MergedConfigStore implements ConfigStore {
                     ? List.of() : settings.getGlobalInterceptors());
             next.setRetriableErrorCodes(settings.getRetriableErrorCodes() == null
                     ? Set.of() : settings.getRetriableErrorCodes());
+            next.setRateLimitSchedule(settings.getRateLimitSchedule() == null
+                    ? new RateLimitSchedule() : settings.getRateLimitSchedule());
             this.config = next;
             this.settingsFromApi = true;
             return next;
@@ -798,8 +801,8 @@ public final class MergedConfigStore implements ConfigStore {
 
     /**
      * Settings singleton overlay delete (slice 4S.4). Restores {@code globalInterceptors} +
-     * {@code retriableErrorCodes} from the file-derived {@link Config} and flips
-     * {@code settingsFromApi} to {@code false}.
+     * {@code retriableErrorCodes} + {@code rateLimitSchedule} from the file-derived {@link Config}
+     * and flips {@code settingsFromApi} to {@code false}.
      */
     public Config applySettingsDelete() {
         rebuildLock.lock();
@@ -808,6 +811,7 @@ public final class MergedConfigStore implements ConfigStore {
             Config next = shallowClone(this.config);
             next.setGlobalInterceptors(base.getGlobalInterceptors());
             next.setRetriableErrorCodes(base.getRetriableErrorCodes());
+            next.setRateLimitSchedule(base.getRateLimitSchedule());
             this.config = next;
             this.settingsFromApi = false;
             return next;
@@ -936,6 +940,7 @@ public final class MergedConfigStore implements ConfigStore {
         next.setToolsets(base.getToolsets());
         next.setRetriableErrorCodes(base.getRetriableErrorCodes());
         next.setGlobalInterceptors(base.getGlobalInterceptors());
+        next.setRateLimitSchedule(base.getRateLimitSchedule());
         next.setTranslators(base.getTranslators());
         return next;
     }
@@ -1118,6 +1123,7 @@ public final class MergedConfigStore implements ConfigStore {
         Map<String, Translator> translators = new LinkedHashMap<>(base.getTranslators());
         merged.setRetriableErrorCodes(base.getRetriableErrorCodes());
         merged.setGlobalInterceptors(base.getGlobalInterceptors());
+        merged.setRateLimitSchedule(base.getRateLimitSchedule());
         // Wire the (still-being-populated) local maps onto merged now rather than after the blob
         // scan below — same references either way, but it lets addBlobEntity/removeAddedEntity
         // dispatch off a single Config parameter instead of a positional map per type (they used
@@ -1270,7 +1276,8 @@ public final class MergedConfigStore implements ConfigStore {
     /**
      * Singleton overlay (design 02 §4): when the API-managed settings blob exists at
      * {@code platform/settings/global}, its fields replace the file-derived
-     * {@code globalInterceptors} / {@code retriableErrorCodes} on the merged {@link Config}.
+     * {@code globalInterceptors} / {@code retriableErrorCodes} / {@code rateLimitSchedule} on the
+     * merged {@link Config}.
      * GlobalSettings is intentionally NOT in {@link #MANAGED_TYPES} — it is a singleton overlay,
      * not a union-by-key like other types. Returns {@code true} iff the blob is present and
      * parses; on parse failure records an {@link InvalidEntityRecord} under {@code GLOBAL_SETTINGS}
@@ -1304,6 +1311,8 @@ public final class MergedConfigStore implements ConfigStore {
                     settings.getGlobalInterceptors() == null ? List.of() : settings.getGlobalInterceptors());
             merged.setRetriableErrorCodes(
                     settings.getRetriableErrorCodes() == null ? Set.of() : settings.getRetriableErrorCodes());
+            merged.setRateLimitSchedule(
+                    settings.getRateLimitSchedule() == null ? new RateLimitSchedule() : settings.getRateLimitSchedule());
             return true;
         } catch (Exception parseError) {
             log.warn("Failed to bind settings singleton blob to GlobalSettings", parseError);

@@ -23,9 +23,11 @@ import com.epam.aidial.core.server.data.config.manifest.AdminTranslatorManifest;
 import com.epam.aidial.core.server.data.config.manifest.ValidationResult;
 import com.epam.aidial.core.server.data.config.manifest.ValidationStatus;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
+import com.epam.aidial.core.server.validation.ValidationUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
+import jakarta.validation.ConstraintViolationException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -59,6 +61,7 @@ public class ConfigValidationService {
                     if (!ConfigManifestSupport.SETTINGS_SINGLETON_NAME.equals(parsed.name().name())) {
                         return new ValidationResult(id, ValidationStatus.FAILED, "Settings name must be 'global'");
                     }
+                    ValidationUtil.validate(settingsManifest.spec());
                 }
                 case AdminModelManifest modelManifest -> {
                     Model model = modelManifest.spec();
@@ -94,7 +97,7 @@ public class ConfigValidationService {
                 case AdminTranslatorManifest translatorManifest -> {
                     Translator translator = translatorManifest.spec();
                     List<ValidationWarning> warnings = new ArrayList<>();
-                    ConfigPostProcessor.validateTranslator(translator, warnings);
+                    ConfigPostProcessor.validateTranslator(id, translator, warnings);
                     if (!warnings.isEmpty()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
@@ -153,7 +156,7 @@ public class ConfigValidationService {
                     }
                 }
             }
-        } catch (IllegalArgumentException ex) {
+        } catch (IllegalArgumentException | ConstraintViolationException ex) {
             return new ValidationResult(id, ValidationStatus.FAILED, ex.getMessage());
         }
         return new ValidationResult(id, ValidationStatus.VALID, null);
