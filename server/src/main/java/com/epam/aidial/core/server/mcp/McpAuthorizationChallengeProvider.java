@@ -19,8 +19,9 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Draws the authorization challenge out of an MCP server by opening a connection to it with the MCP
- * SDK - the {@code initialize} any MCP client starts with - and reading the 401 that refuses it.
+ * Draws the authorization challenge out of an MCP server by opening a connection to it with the
+ * MCP Java SDK ({@code io.modelcontextprotocol.sdk:mcp-core}) - the {@code initialize} any MCP
+ * client starts with - and reading the 401 that refuses it.
  *
  * <p>Letting the SDK make the request, rather than composing one, keeps it indistinguishable from a
  * real client's: strict servers reject anything else as malformed without issuing the challenge.
