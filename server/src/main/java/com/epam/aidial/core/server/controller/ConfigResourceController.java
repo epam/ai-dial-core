@@ -38,12 +38,14 @@ import com.epam.aidial.core.server.security.EntityBucketBinding;
 import com.epam.aidial.core.server.security.Operation;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
+import com.epam.aidial.core.server.validation.CatalogSchemaValidationException;
 import com.epam.aidial.core.server.validation.ValidationUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
@@ -108,6 +110,7 @@ public class ConfigResourceController implements Controller {
     private final LockService lockService;
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
+    private final CatalogSchemaService catalogSchemaService;
     private final ResourceAuthSettingsService resourceAuthSettingsService;
     private final String entityType;
     private final String bucket;
@@ -129,6 +132,7 @@ public class ConfigResourceController implements Controller {
         this.lockService = proxy.getLockService();
         this.applicationService = proxy.getApplicationService();
         this.toolSetService = proxy.getToolSetService();
+        this.catalogSchemaService = proxy.getCatalogSchemaService();
         this.resourceAuthSettingsService = proxy.getResourceAuthSettingsService();
         this.entityType = entityType;
         this.bucket = bucket;
@@ -1923,6 +1927,7 @@ public class ConfigResourceController implements Controller {
      * next merged-config rebuild recording the entity in {@link MergedConfigStore#getInvalidEntities()}.
      */
     private void checkModel(Model entity) {
+        validateCatalogProperties(entity);
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validateOverridePaths(entity, warnings);
         boolean invalidOverridePaths = !warnings.isEmpty();
@@ -1939,6 +1944,18 @@ public class ConfigResourceController implements Controller {
             return;
         }
         rejectWithValidationWarnings(warnings);
+    }
+
+    /**
+     * Structural check for {@code catalog_schema_id}/{@code catalog_properties} on a Model write.
+     * Always enforced, unlike {@link #checkModel}'s cross-reference soft-mode allowance.
+     */
+    private void validateCatalogProperties(Model entity) {
+        try {
+            catalogSchemaService.validate(entity);
+        } catch (CatalogSchemaValidationException e) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Catalog properties validation failed: " + e.getMessage(), e);
+        }
     }
 
     /**
