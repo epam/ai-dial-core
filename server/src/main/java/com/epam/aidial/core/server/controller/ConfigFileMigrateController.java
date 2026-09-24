@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
@@ -273,7 +274,27 @@ public class ConfigFileMigrateController {
                 continue;
             }
             JsonNode specNode = BLOB_MAPPER.valueToTree(entry.getValue());
+            clearPkceArtifacts(spec.resourceType(), specNode);
             collect(new AdminManifest(spec.kind(), canonicalId, specNode), shortName, scratch, dryRun, toApply, results);
+        }
+    }
+
+    /**
+     * {@code code_verifier}/{@code code_challenge} are always derived together by {@code
+     * ResourceAuthSettingsService.setCodeChallengeProperties}, never independent input, so a stray
+     * pair in a file-sourced ToolSet is leftover from a previous run and safe to drop — leaving it
+     * would otherwise fail {@code BaseAuthSettingsValidator}, which forbids {@code code_verifier}
+     * unconditionally. Applications' external services don't need this: {@code
+     * ConfigPostProcessor.validateExternalServices} already drops any that fail the same check at
+     * file-load time.
+     */
+    private static void clearPkceArtifacts(ResourceTypes resourceType, JsonNode specNode) {
+        if (resourceType != ResourceTypes.TOOL_SET) {
+            return;
+        }
+        if (specNode.get("auth_settings") instanceof ObjectNode settings) {
+            settings.remove(ResourceAuthSettings.CODE_VERIFIER_FIELD);
+            settings.remove(ResourceAuthSettings.CODE_CHALLENGE_FIELD);
         }
     }
 
