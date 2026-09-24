@@ -1918,15 +1918,18 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * Collects override-path and cross-reference warnings for Model writes. Override-path errors
-     * always abort with HTTP 422; cross-reference warnings alone may proceed in soft mode, with the
-     * next merged-config rebuild recording the entity in {@link MergedConfigStore#getInvalidEntities()}.
+     * Collects validation warnings for Model writes. Rebuild invariants abort with HTTP 422 even in
+     * soft mode; cross-reference warnings alone may proceed, recorded in
+     * {@link MergedConfigStore#getInvalidEntities()} until a later write repairs them.
+     *
+     * @see ConfigPostProcessor#validateModelInvariants
      */
     private void checkModel(Model entity) {
-        List<ValidationWarning> warnings = new ArrayList<>();
-        ConfigPostProcessor.validateOverridePaths(entity, warnings);
-        boolean invalidOverridePaths = !warnings.isEmpty();
         Config snapshot = mergedConfigStore.get();
+        Map<String, Translator> translators = snapshot != null ? snapshot.getTranslators() : Map.of();
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateModelInvariants(entity, translators, warnings);
+        boolean hardFailure = !warnings.isEmpty();
         if (snapshot != null) {
             ConfigPostProcessor.validateCrossReferences(entity, snapshot, warnings);
             UpstreamExtraDataMerger.validateNoOverlap(entity);
@@ -1934,7 +1937,7 @@ public class ConfigResourceController implements Controller {
         if (warnings.isEmpty()) {
             return;
         }
-        if (softValidation && !invalidOverridePaths) {
+        if (softValidation && !hardFailure) {
             log.warn("Soft-mode cross-ref warnings for model '{}': {}", path, warnings);
             return;
         }

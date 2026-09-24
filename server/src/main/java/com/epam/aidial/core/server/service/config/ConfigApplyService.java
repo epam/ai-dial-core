@@ -266,14 +266,13 @@ public class ConfigApplyService {
 
     private EntityResult applyModel(Model model, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {
         List<ValidationWarning> warnings = new ArrayList<>();
-        ConfigPostProcessor.validateOverridePaths(model, warnings);
-        boolean invalidOverridePaths = !warnings.isEmpty();
-        ConfigPostProcessor.validatePricing(model, warnings);
-        ConfigPostProcessor.validateUpstreamInterfaces(model, warnings);
+        // Never soft-tolerable — see ConfigPostProcessor#validateModelInvariants.
+        ConfigPostProcessor.validateModelInvariants(model, scratch.getTranslators(), warnings);
+        boolean hardFailure = !warnings.isEmpty();
         ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
         UpstreamExtraDataMerger.validateNoOverlap(model);
         boolean invalid = !warnings.isEmpty();
-        if (invalidOverridePaths || (invalid && !softValidation)) {
+        if (hardFailure || (invalid && !softValidation)) {
             return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(

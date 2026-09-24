@@ -154,9 +154,7 @@ public final class ConfigPostProcessor {
         }
         model.setName(mapKey);
         List<ValidationWarning> warnings = new ArrayList<>();
-        validatePricing(model, warnings);
-        validateUpstreamInterfaces(model, warnings);
-        validateDeploymentInterfaces(model, config.getTranslators(), warnings);
+        validateModelInvariants(model, config.getTranslators(), warnings);
         if (onSkip != null) {
             validateCrossReferences(model, config, warnings);
         }
@@ -318,9 +316,7 @@ public final class ConfigPostProcessor {
             model.setName(name);
             log.debug("Loading {}", model);
             List<ValidationWarning> warnings = new ArrayList<>();
-            validatePricing(model, warnings);
-            validateUpstreamInterfaces(model, warnings);
-            validateDeploymentInterfaces(model, config.getTranslators(), warnings);
+            validateModelInvariants(model, config.getTranslators(), warnings);
             // Cross-ref check is skip-mode-only — file-loaded abort-mode path (onSkip == null)
             // preserves design 02 §4.2's allowance for pre-existing file-side inconsistency.
             // Strict-mode 422 is enforced at the write controller, not here. Pricing validation
@@ -359,6 +355,29 @@ public final class ConfigPostProcessor {
             }
         }
         return warnings.isEmpty();
+    }
+
+    /**
+     * The checks every model must pass to survive a merged-config rebuild — the set
+     * {@link #processModels} runs unconditionally. Every pre-write surface calls this exact
+     * method, so a write can never be accepted that the next rebuild would reject; hand-copying
+     * a subset at each call site is what let a model with an unserved interface reach the blob
+     * store and abort every later rebuild. Cross-references are deliberately not in the set —
+     * the rebuild tolerates them, so a write surface may admit them under soft validation.
+     *
+     * <p>{@code translators} may be a partial view (the live snapshot, a batch scratch): a name
+     * with no entry is deliberately not a warning, so a smaller map yields fewer warnings, never
+     * spurious ones.
+     *
+     * <p>Covers {@code overridePaths} already — {@link #validateDeploymentInterfaces} runs the
+     * per-entry check — so callers must not also call
+     * {@link #validateOverridePaths(Deployment, List)} or every such warning is reported twice.
+     */
+    public static void validateModelInvariants(Model model, Map<String, Translator> translators,
+                                               List<ValidationWarning> warnings) {
+        validatePricing(model, warnings);
+        validateUpstreamInterfaces(model, warnings);
+        validateDeploymentInterfaces(model, translators, warnings);
     }
 
     /**
