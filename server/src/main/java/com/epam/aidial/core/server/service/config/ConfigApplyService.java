@@ -31,10 +31,12 @@ import com.epam.aidial.core.server.data.config.manifest.AdminTranslatorManifest;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.config.ConfigManifestSupport.ParsedName;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
+import com.epam.aidial.core.server.validation.CatalogSchemaValidationException;
 import com.epam.aidial.core.server.validation.ValidationUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -67,6 +69,7 @@ public class ConfigApplyService {
     private final ApiKeyStore apiKeyStore;
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
+    private final CatalogSchemaService catalogSchemaService;
 
     public ConfigApplyService(MergedConfigStore mergedConfigStore,
                               ResourceService resourceService,
@@ -74,7 +77,8 @@ public class ConfigApplyService {
                               boolean softValidation,
                               ApiKeyStore apiKeyStore,
                               ApplicationService applicationService,
-                              ToolSetService toolSetService) {
+                              ToolSetService toolSetService,
+                              CatalogSchemaService catalogSchemaService) {
         this.mergedConfigStore = mergedConfigStore;
         this.resourceService = resourceService;
         this.secretFieldProcessor = secretFieldProcessor;
@@ -82,6 +86,7 @@ public class ConfigApplyService {
         this.apiKeyStore = apiKeyStore;
         this.applicationService = applicationService;
         this.toolSetService = toolSetService;
+        this.catalogSchemaService = catalogSchemaService;
     }
 
     /**
@@ -275,6 +280,11 @@ public class ConfigApplyService {
         boolean invalid = !warnings.isEmpty();
         if (invalidOverridePaths || (invalid && !softValidation)) {
             return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+        }
+        try {
+            catalogSchemaService.validate(model);
+        } catch (CatalogSchemaValidationException e) {
+            return new EntityResult(id, AdminApplyStatus.FAILED, "Catalog properties validation failed: " + e.getMessage());
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.MODEL, parsed.bucket(), parsed.location(), parsed.name());

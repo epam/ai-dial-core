@@ -316,9 +316,9 @@ public class AiDial {
 
             ConfigApplyService configApplyService = new ConfigApplyService(
                     mergedConfigStore, resourceService, secretFieldProcessor, mergedConfigStore.isSoftValidation(),
-                    apiKeyStore, applicationService, toolSetService);
+                    apiKeyStore, applicationService, toolSetService, catalogSchemaService);
             ConfigValidationService configValidationService = new ConfigValidationService(
-                    resourceService, mergedConfigStore.isSoftValidation());
+                    resourceService, mergedConfigStore.isSoftValidation(), catalogSchemaService);
 
             TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, resourceService);
 

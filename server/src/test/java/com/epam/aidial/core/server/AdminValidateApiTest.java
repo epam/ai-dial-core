@@ -966,6 +966,55 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                 "authorization", "admin"), 404);
     }
 
+    @Test
+    @SneakyThrows
+    void testV20RejectsModelCatalogPropertiesTypeMismatch() {
+        String catalogSchemaBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/validate-catalog-schema-mismatch",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/validate-model-mismatch",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object",
+                        "properties": {"featured": {"type": "boolean"}}
+                      }
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, catalogSchemaBody, "authorization", "admin"), 200);
+
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/validate-model-catalog-mismatch",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "catalogSchemaId": "https://dial.epam.com/catalog-schemas/validate-model-mismatch",
+                        "catalogProperties": {"featured": "not-a-boolean"}
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/models/platform/validate-model-catalog-mismatch", null, "",
+                "authorization", "admin"), 404);
+    }
+
     public static class SoftValidation extends ResourceBaseTest {
         @Override
         protected JsonObject additionalSettingsOverrides() {

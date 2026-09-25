@@ -22,7 +22,9 @@ import com.epam.aidial.core.server.data.config.manifest.AdminToolSetManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminTranslatorManifest;
 import com.epam.aidial.core.server.data.config.manifest.ValidationResult;
 import com.epam.aidial.core.server.data.config.manifest.ValidationStatus;
+import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
+import com.epam.aidial.core.server.validation.CatalogSchemaValidationException;
 import com.epam.aidial.core.server.validation.ValidationUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -41,10 +43,13 @@ public class ConfigValidationService {
 
     private final ResourceService resourceService;
     private final boolean softValidation;
+    private final CatalogSchemaService catalogSchemaService;
 
-    public ConfigValidationService(ResourceService resourceService, boolean softValidation) {
+    public ConfigValidationService(ResourceService resourceService, boolean softValidation,
+                                   CatalogSchemaService catalogSchemaService) {
         this.resourceService = resourceService;
         this.softValidation = softValidation;
+        this.catalogSchemaService = catalogSchemaService;
     }
 
     public ValidationResult validateOnly(AdminManifest entry, Config scratch) {
@@ -76,6 +81,11 @@ public class ConfigValidationService {
                     // precheck greenlights a batch whose real-apply phase refuses the model mid-write.
                     if (!warnings.isEmpty() && (invalidOverridePaths || !softValidation)) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+                    }
+                    try {
+                        catalogSchemaService.validate(model);
+                    } catch (CatalogSchemaValidationException e) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, "Catalog properties validation failed: " + e.getMessage());
                     }
                     String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(scratch, ResourceTypes.MODEL, parsed.name());
                     if (dupError != null) {

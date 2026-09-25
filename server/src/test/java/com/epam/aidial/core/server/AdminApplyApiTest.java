@@ -448,6 +448,105 @@ public class AdminApplyApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testApplyModelCatalogPropertiesTypeMismatch() {
+        String catalogSchemaBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-catalog-schema-mismatch",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-model-mismatch",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object",
+                        "properties": {"featured": {"type": "boolean"}}
+                      }
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, catalogSchemaBody, "authorization", "admin"), 200);
+
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/apply-model-catalog-mismatch",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "catalogSchemaId": "https://dial.epam.com/catalog-schemas/apply-model-mismatch",
+                        "catalogProperties": {"featured": "not-a-boolean"}
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-model-catalog-mismatch", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyPrecheckFalseRejectsModelCatalogPropertiesTypeMismatch() {
+        // precheck=false must still reject non-conforming catalog_properties at real-apply time —
+        // exercises ConfigApplyService#applyModel's check directly, bypassing ConfigValidationService.
+        String catalogSchemaBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-precheck-false-catalog-mismatch",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-precheck-false-mismatch",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object",
+                        "properties": {"featured": {"type": "boolean"}}
+                      }
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, catalogSchemaBody, "authorization", "admin"), 200);
+
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/apply-precheck-false-model-mismatch",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "catalogSchemaId": "https://dial.epam.com/catalog-schemas/apply-precheck-false-mismatch",
+                        "catalogProperties": {"featured": "not-a-boolean"}
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-precheck-false-model-mismatch", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
     void testApplyCatalogSchemaSurvivesUnrelatedApply() {
         // Regression for MergedConfigStore#shallowClone: partial-update writes (applyBatch et al.)
         // clone the merged Config off a fresh `new Config()`. Any Config map not explicitly carried
