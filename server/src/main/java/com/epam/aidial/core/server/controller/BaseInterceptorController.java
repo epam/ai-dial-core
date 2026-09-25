@@ -87,7 +87,14 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
     @VisibleForTesting
     void handleRequestBody(Buffer requestBody) {
         context.setRequestBody(requestBody);
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
+        // dial.latency.client_body_ms must be stamped once, at the outermost parseBody()/handleRequestBody()
+        // that first read the client's actual HTTP body - every caller here (ChatCompletionsController,
+        // DeploymentPostController, ResponsesController, ResponseItemController) already stamps it before
+        // dispatching into an interceptor, possibly through several hops on the same ProxyContext, so this
+        // must not re-stamp and silently push the metric's start point later on each hop.
+        if (context.getRequestBodyTimestamp() == 0) {
+            context.setRequestBodyTimestamp(System.currentTimeMillis());
+        }
         try {
             RequestObject request = parseRequest(requestBody);
             if (request != null) {

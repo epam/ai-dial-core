@@ -115,6 +115,9 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
 
     protected MessagesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
+        // dial.latency.client_body_ms must reflect only the time to receive/parse the client body,
+        // consistently with ChatCompletionsController - not the enhancement/key/route work that follows
+        context.setRequestBodyTimestamp(System.currentTimeMillis());
         try {
             ObjectNode tree = ProxyUtil.parseObject(body);
             return new MessagesApiRequest(tree);
@@ -174,7 +177,6 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                         dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.ANTHROPIC_MESSAGES,
                                 context.getConfig().getTranslators()), upstreamId);
 
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);
     }
 

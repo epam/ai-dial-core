@@ -142,4 +142,20 @@ class MessagesControllerTest {
             order.verify(responseStream).end(response);
         }
     }
+
+    /**
+     * PR #2020 review item 2: {@code dial.latency.client_body_ms} must reflect only the time to
+     * receive/parse the client body, consistently with {@code ChatCompletionsController} - not the
+     * enhancement chain, per-request key assignment, body re-serialization or upstream-route
+     * resolution that {@code prepareUpstreamRoute()} runs afterward. {@code parseBody()} is the
+     * raw-body-receipt point, so the timestamp must be taken there.
+     */
+    @Test
+    void testParseBody_SetsRequestBodyTimestamp() {
+        Buffer body = Buffer.buffer("{\"model\":\"test\"}");
+
+        controller.parseBody(body);
+
+        verify(context, times(1)).setRequestBodyTimestamp(anyLong());
+    }
 }

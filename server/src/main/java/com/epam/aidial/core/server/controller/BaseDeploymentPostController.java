@@ -87,11 +87,23 @@ public class BaseDeploymentPostController {
         }
         try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
             ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-            return fn.apply(tree).map(ignored -> null);
+            return collectResponseAttachments(tree, fn);
         } catch (Throwable e) {
             log.warn("Can't parse JSON response body. Error:", e);
             return Future.failedFuture(e);
         }
+    }
+
+    /**
+     * @param tree the response body already parsed by a caller that needed the tree for its own reasons
+     *             (e.g. to rewrite its id) - reused here instead of serializing it back to a Buffer and
+     *             parsing the same JSON again.
+     */
+    protected Future<Void> collectResponseAttachments(JsonNode tree, CollectResponseAttachmentsFn fn) {
+        if (isEventStreamResponse(context.getProxyResponse())) {
+            return Future.succeededFuture();
+        }
+        return fn.apply(tree).map(ignored -> null);
     }
 
     // These respond(...) helpers are terminal: context.respond(...) ends the HTTP response and, with it, the

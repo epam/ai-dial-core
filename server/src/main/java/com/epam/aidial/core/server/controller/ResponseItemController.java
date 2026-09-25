@@ -353,6 +353,10 @@ public class ResponseItemController implements Controller {
                     responseStream.end(response);
                 })
                 .onFailure(error -> {
+                    // must run before reset(): Vert.x ends the request's OTel span synchronously inside
+                    // reset(), after which further span attributes (dial.latency.*) are silently dropped -
+                    // same rule as the onSuccess() branch above and BaseDeploymentPostController.handleResponseError()
+                    GenAiTraceAttributes.setLatencyAttributes(context);
                     response.reset();
                     log.warn("Can't send streaming response to client. Error:", error);
                 })

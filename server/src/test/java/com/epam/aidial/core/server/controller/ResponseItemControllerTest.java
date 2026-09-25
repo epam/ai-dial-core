@@ -17,6 +17,7 @@ import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
+import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -675,6 +676,107 @@ public class ResponseItemControllerTest {
         assertFalse(lastEvent.contains(upstreamId));
 
         assertLatencyPublished(tracingAttributes);
+    }
+
+    /**
+     * {@code collectAndForwardStreaming()}'s pipe-failure branch
+     * ({@code response.reset()} on a client disconnect mid-stream) publishes {@code dial.latency.*}
+     * onto the still-recording span before {@code reset()}, matching every sibling disconnect path in
+     * the codebase (its own {@code onSuccess} branch three lines above, {@code
+     * BaseDeploymentPostController.handleResponseError()}, {@code
+     * BaseInterceptorController.handleResponseError()}). Since Vert.x ends the OTel span
+     * synchronously inside {@code reset()}, publishing after it would be a no-op on the span - so the
+     * ordering, not just eventual presence in the tracing-attributes map, is what this test checks.
+     */
+    @Test
+    public void testGetStreamingClientDisconnect_PublishesLatencyAttributesBeforeReset(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        ResponseMapping mapping = ResponseMapping.builder()
+                .upstreamResponseId("upstream-id-stream")
+                .upstreamKey("endpoint")
+                .deploymentName("test-deployment")
+                .initiatorBucket("Users/test-user/")
+                .build();
+        Model deployment = new Model();
+        deployment.setName("test-deployment");
+        deployment.setResponsesEndpoint("http://adapter/responses");
+        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null, null, null);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+
+        String upstreamId = "upstream-id-stream";
+        String sseContent = "event: response.created\n"
+                + "data: {\"response\":{\"id\":\"" + upstreamId + "\"}}\n\n";
+
+        AtomicReference<Handler<Buffer>> chunkHandlerRef = new AtomicReference<>();
+        AtomicReference<Handler<Void>> endHandlerRef = new AtomicReference<>();
+
+        Map<String, Object> tracingAttributes = enableLatencyTracing();
+
+        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
+        when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
+        when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
+        when(upstreamRoute.next()).thenReturn(upstream);
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any(), any(Runnable.class)))
+                .thenAnswer(invocation -> {
+                    ((Runnable) invocation.getArgument(4)).run();
+                    return Future.succeededFuture(proxyResponse);
+                });
+        when(context.getRequest()).thenReturn(serverRequest);
+        when(serverRequest.query()).thenReturn("stream=true");
+        when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
+        when(proxyResponse.statusCode()).thenReturn(200);
+        when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("text/event-stream");
+        when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
+        when(proxyResponse.pause()).thenReturn(proxyResponse);
+        when(proxyResponse.exceptionHandler(any())).thenReturn(proxyResponse);
+        when(proxyResponse.handler(any())).thenAnswer(inv -> {
+            chunkHandlerRef.set(inv.getArgument(0));
+            return proxyResponse;
+        });
+        when(proxyResponse.endHandler(any())).thenAnswer(inv -> {
+            endHandlerRef.set(inv.getArgument(0));
+            return proxyResponse;
+        });
+        when(proxyResponse.fetch(anyLong())).thenAnswer(inv -> {
+            chunkHandlerRef.get().handle(Buffer.buffer(sseContent));
+            // the client goes away before the stream completes - no endHandler firing
+            return proxyResponse;
+        });
+
+        when(context.getResponse()).thenReturn(response);
+        when(context.getUserId()).thenReturn("test-user");
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(response.setChunked(anyBoolean())).thenReturn(response);
+        when(response.setStatusCode(anyInt())).thenReturn(response);
+        when(response.putHeader(anyString(), anyString())).thenReturn(response);
+        when(response.headers()).thenReturn(new HeadersMultiMap());
+        // simulate a broken client connection: the write to the client fails
+        RuntimeException writeFailure = new RuntimeException("connection reset by peer");
+        doAnswer(inv -> {
+            Handler<AsyncResult<Void>> handler = inv.getArgument(1);
+            handler.handle(Future.failedFuture(writeFailure));
+            return response;
+        }).when(response).write(any(Buffer.class), any());
+        // captures whether latency attributes were already published at the exact moment reset() runs -
+        // presence in the map alone isn't enough proof, since handle()'s top-level .onFailure() safety
+        // net would also publish them, redundantly, after reset() if this branch didn't already
+        AtomicReference<Boolean> latencyPublishedBeforeReset = new AtomicReference<>();
+        doAnswer(inv -> {
+            latencyPublishedBeforeReset.set(tracingAttributes.containsKey("dial.latency.client_body_ms"));
+            return null;
+        }).when(response).reset();
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+
+        controller("dial_test-deployment_stream", GET).handle().onComplete(ar -> testContext.completeNow());
+
+        await(testContext);
+
+        // the failure path did run and did reset the connection...
+        verify(response).reset();
+        // ...and dial.latency.* was already published at that moment - i.e. before the OTel span was
+        // ended by reset(), not afterward via handle()'s top-level .onFailure() safety net (too late).
+        assertTrue(latencyPublishedBeforeReset.get());
+        assertNotNull(tracingAttributes.get("dial.latency.client_body_ms"));
     }
 
     @Test

@@ -198,6 +198,9 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     private ResponsesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
+        // dial.latency.client_body_ms must reflect only the time to receive/parse the client body,
+        // consistently with ChatCompletionsController - not the enhancement/key/route work that follows
+        context.setRequestBodyTimestamp(System.currentTimeMillis());
         try {
             ObjectNode tree = ProxyUtil.parseObject(body);
             if (tree.has("previous_response_id")) {
@@ -261,7 +264,6 @@ public class ResponsesController extends BaseDeploymentPostController {
                         dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES,
                                 context.getConfig().getTranslators()), upstreamId);
 
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);
         sendRequest();
 
@@ -373,12 +375,20 @@ public class ResponsesController extends BaseDeploymentPostController {
                                     response.end(rewritten);
                                 });
                     } else {
-                        return collectTokenUsage(rewritten, null, rewrite.tree())
+                        // reuse the tree rewriteResponseId already parsed instead of parsing rewritten a
+                        // second time - only when it's the ObjectNode the rewrite path actually produces;
+                        // anything else falls back to the byte-scan, matching its prior failure behavior
+                        JsonNode tree = rewrite.tree();
+                        return collectTokenUsage(rewritten, null, tree)
                                 .transform(result -> {
                                     if (result.failed()) {
                                         log.warn("Failed to collect token usage", result.cause());
                                     }
-                                    return collectResponseAttachments(rewritten, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
+                                    CollectResponsesApiOutputAttachmentsFn attachmentsFn =
+                                            new CollectResponsesApiOutputAttachmentsFn(proxy, context);
+                                    return tree instanceof ObjectNode
+                                            ? collectResponseAttachments(tree, attachmentsFn)
+                                            : collectResponseAttachments(rewritten, attachmentsFn);
                                 })
                                 .onComplete(result -> {
                                     if (result.failed()) {
