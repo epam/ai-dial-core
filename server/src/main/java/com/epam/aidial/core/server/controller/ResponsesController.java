@@ -56,7 +56,6 @@ import io.vertx.core.http.HttpServerResponse;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
-import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -353,9 +352,9 @@ public class ResponsesController extends BaseDeploymentPostController {
     @VisibleForTesting
     Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
         return rewriteResponseId(proxyResponse, body)
-                .compose(pair -> {
-                    String dialId = pair.getKey();
-                    Buffer rewritten = pair.getValue();
+                .compose(rewrite -> {
+                    String dialId = rewrite.dialId();
+                    Buffer rewritten = rewrite.body();
                     context.setResponseBody(rewritten);
                     context.setResponseBodyTimestamp(System.currentTimeMillis());
                     HttpServerResponse response = context.getResponse();
@@ -373,7 +372,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                                     response.end(rewritten);
                                 });
                     } else {
-                        return collectTokenUsage(rewritten)
+                        return collectTokenUsage(rewritten, null, rewrite.tree())
                                 .transform(result -> {
                                     if (result.failed()) {
                                         log.warn("Failed to collect token usage", result.cause());
@@ -395,23 +394,30 @@ public class ResponsesController extends BaseDeploymentPostController {
                 });
     }
 
-    private Future<Pair<String, Buffer>> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
+    /**
+     * @param tree the body already parsed to check/rewrite its id, or null when the response wasn't a 200 (and
+     *             so was never parsed) - tracing then parses {@code body} itself instead of reusing this.
+     */
+    private record RewriteResult(String dialId, JsonNode tree, Buffer body) {
+    }
+
+    private Future<RewriteResult> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
         if (proxyResponse.statusCode() != 200) {
-            return Future.succeededFuture(Pair.of(null, body));
+            return Future.succeededFuture(new RewriteResult(null, null, body));
         }
         JsonNode tree = JsonUtil.tryParse(body.getBytes());
         if (!tree.isObject() || !(tree instanceof ObjectNode object)) {
             log.warn("Response body is not a JSON object, skipping rewrite. Deployment: {}. Endpoint: {}",
                     context.getDeployment().getName(),
                     context.getProxyRequestUri());
-            return Future.succeededFuture(Pair.of(null, body));
+            return Future.succeededFuture(new RewriteResult(null, tree, body));
         }
         JsonNode idNode = object.path("id");
         if (!idNode.isTextual()) {
             log.info("Response body doesn't contain 'id' field, skipping rewrite. Deployment: {}. Endpoint: {}",
                     context.getDeployment().getName(),
                     context.getProxyRequestUri());
-            return Future.succeededFuture(Pair.of(null, body));
+            return Future.succeededFuture(new RewriteResult(null, object, body));
         }
 
         String upstreamId = idNode.asText();
@@ -422,7 +428,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         if (!context.isStoreResponse()) {
             String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
             object.put("id", dialId);
-            return Future.succeededFuture(Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object))));
+            return Future.succeededFuture(new RewriteResult(dialId, object, Buffer.buffer(JsonUtil.serialize(object))));
         }
         ResponseMapping mapping = ResponseMapping.builder()
                 .upstreamResponseId(upstreamId)
@@ -434,7 +440,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
                 .map(dialId -> {
                     object.put("id", dialId);
-                    return Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object)));
+                    return new RewriteResult(dialId, object, Buffer.buffer(JsonUtil.serialize(object)));
                 });
     }
 

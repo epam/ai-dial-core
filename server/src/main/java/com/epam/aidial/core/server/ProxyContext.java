@@ -27,6 +27,7 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.ServerWebSocket;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
@@ -114,6 +115,10 @@ public class ProxyContext {
     private final Map<String, Object> tracingAttributes = new ConcurrentHashMap<>();
     // the merged chat completions body, or the terminal Responses frame - whichever surface streamed
     private String assembledStreamingResponse;
+    // the tree behind assembledStreamingResponse for Chat Completions - set only via
+    // assembledChatCompletionsResponseTree(), never externally
+    @Setter(AccessLevel.NONE)
+    private ObjectNode assembledChatCompletionsResponseTree;
 
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {
@@ -326,9 +331,22 @@ public class ProxyContext {
      * doubles a full-body scan and merge.
      */
     public String assembledChatCompletionsResponse() {
-        if (assembledStreamingResponse == null && responseBody != null) {
-            assembledStreamingResponse = AnalyticsLogContext.assembleStreamingChatCompletionsResponse(responseBody);
+        if (assembledStreamingResponse == null) {
+            ObjectNode tree = assembledChatCompletionsResponseTree();
+            assembledStreamingResponse = tree == null ? null : ProxyUtil.convertToString(tree);
         }
         return assembledStreamingResponse;
+    }
+
+    /**
+     * The tree behind {@link #assembledChatCompletionsResponse()} - merged at most once per request, from
+     * {@code responseBody}. The GenAI trace attributes read this directly instead of re-parsing the string
+     * form built for the analytics log.
+     */
+    public ObjectNode assembledChatCompletionsResponseTree() {
+        if (assembledChatCompletionsResponseTree == null && responseBody != null) {
+            assembledChatCompletionsResponseTree = AnalyticsLogContext.assembleStreamingChatCompletionsResponseTree(responseBody);
+        }
+        return assembledChatCompletionsResponseTree;
     }
 }

@@ -194,11 +194,25 @@ public class BaseDeploymentPostController {
      * @param responseId DIAL's own response id when the caller knows it, null to take the id from the body.
      */
     protected Future<Void> collectTokenUsage(Buffer responseBody, String responseId) {
+        return collectTokenUsage(responseBody, responseId, null);
+    }
+
+    /**
+     * @param responseId     DIAL's own response id when the caller knows it, null to take the id from the body.
+     * @param parsedResponse the body already parsed by a caller that needed the tree for its own reasons (e.g.
+     *                       to rewrite its id), or null when there is none - tracing then parses {@code responseBody}
+     *                       itself instead of reusing this.
+     */
+    protected Future<Void> collectTokenUsage(Buffer responseBody, String responseId, JsonNode parsedResponse) {
         if (GenAiTraceAttributes.isEnabled(context)) {
             try {
                 // interfaceType() reads the request path, which not every deployment kind reaching here has,
                 // and this runs before the client response is completed - tracing must not fail the request
-                GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseBody, responseId);
+                if (parsedResponse != null) {
+                    GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), parsedResponse, responseId);
+                } else {
+                    parsedResponse = GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseBody, responseId);
+                }
             } catch (Throwable e) {
                 log.warn("Failed to set GenAI response trace attributes", e);
             }
@@ -207,7 +221,7 @@ public class BaseDeploymentPostController {
             if (context.getResponse().getStatusCode() != HttpStatus.OK.getCode()) {
                 return Future.succeededFuture();
             }
-            TokenUsage tokenUsage = parseTokenUsage(responseBody);
+            TokenUsage tokenUsage = parseTokenUsage(responseBody, parsedResponse);
             if (tokenUsage == null) {
                 Pricing pricing = model.getPricing();
                 if (pricing == null || "token".equals(pricing.getUnit())) {
@@ -240,7 +254,7 @@ public class BaseDeploymentPostController {
 
         // Application/Assistant: any deployment may self-report usage in its own response body;
         // capture it alongside whatever its descendant Model spans already reported.
-        TokenUsage ownUsage = parseTokenUsage(responseBody);
+        TokenUsage ownUsage = parseTokenUsage(responseBody, parsedResponse);
         return trackDeploymentStats(context.getDeployment().getName(), ownUsage, true);
     }
 
@@ -317,7 +331,15 @@ public class BaseDeploymentPostController {
      * controllers can supply their own accounting (e.g. the Anthropic Messages API).
      */
     protected TokenUsage parseTokenUsage(Buffer responseBody) {
-        return TokenUsageParser.parse(responseBody);
+        return parseTokenUsage(responseBody, null);
+    }
+
+    /**
+     * @param parsedResponse the tree tracing already parsed from {@code responseBody}, or null - reused here
+     *                       instead of scanning the body a second time; see {@link TokenUsageParser#parse(Buffer, JsonNode)}.
+     */
+    protected TokenUsage parseTokenUsage(Buffer responseBody, JsonNode parsedResponse) {
+        return TokenUsageParser.parse(responseBody, parsedResponse);
     }
 
     /**

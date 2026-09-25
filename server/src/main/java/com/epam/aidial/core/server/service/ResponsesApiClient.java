@@ -55,15 +55,23 @@ public class ResponsesApiClient {
 
     @SneakyThrows
     public static TerminalResult parseTerminalBody(Buffer body) {
-        JsonNode node = ProxyUtil.MAPPER.readTree(body.getBytes());
-        if (!(node instanceof ObjectNode tree)) {
+        return parseTerminalBody(ProxyUtil.MAPPER.readTree(body.getBytes()), body);
+    }
+
+    /**
+     * For a caller that already parsed {@code body} for its own reasons (e.g. to rewrite its id) - skips the
+     * parse this otherwise repeats.
+     */
+    @SneakyThrows
+    public static TerminalResult parseTerminalBody(JsonNode tree, Buffer body) {
+        if (!(tree instanceof ObjectNode object)) {
             throw new IllegalStateException("Response body is not a JSON object.");
         }
-        JsonNode statusNode = tree.path("status");
+        JsonNode statusNode = object.path("status");
         if (!statusNode.isTextual() || !isTerminal(statusNode.asText())) {
             return null;
         }
-        JsonNode usageNode = tree.path("usage");
+        JsonNode usageNode = object.path("usage");
         TokenUsage usage = usageNode.isObject()
                 ? ProxyUtil.MAPPER.treeToValue(usageNode, TokenUsage.class) : null;
         return new TerminalResult(body, usage);

@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
 import com.epam.aidial.core.server.util.MergeChunks;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 
 /**
@@ -16,6 +17,11 @@ import io.vertx.core.Future;
  * {@code usage} (output-only), losing the prompt count. This function observes each event (returning
  * the tree unchanged — pure pass-through) and stores the merged usage on the context, where
  * {@code MessagesController.parseTokenUsage} picks it up for rate-limit/stats.
+ *
+ * <p>{@code message_start} and {@code message_delta} also carry the response id/model and stop reason
+ * respectively, one level away from the {@code usage} node this already reads - captured here too so
+ * {@code GenAiTraceAttributes} can read the cached node instead of re-scanning the buffered SSE stream
+ * for the same three fields.</p>
  */
 public class CollectMessagesTokenUsageFn extends BaseResponseFunction {
 
@@ -27,6 +33,9 @@ public class CollectMessagesTokenUsageFn extends BaseResponseFunction {
     // Merged verbatim, unlike the scalars above, so pricing-relevant fields the scalars don't
     // capture (service_tier, the cache_creation TTL-bucket breakdown) survive for cost evaluation.
     private JsonNode mergedUsage;
+    private String responseId;
+    private String responseModel;
+    private String stopReason;
 
     public CollectMessagesTokenUsageFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
@@ -35,8 +44,16 @@ public class CollectMessagesTokenUsageFn extends BaseResponseFunction {
     @Override
     public Future<JsonNode> apply(JsonNode tree) {
         JsonNode usage = switch (tree.path("type").asText()) {
-            case "message_start" -> tree.path("message").path("usage");
-            case "message_delta" -> tree.path("usage");
+            case "message_start" -> {
+                JsonNode message = tree.path("message");
+                responseId = textOrNull(message.get("id"));
+                responseModel = textOrNull(message.get("model"));
+                yield message.path("usage");
+            }
+            case "message_delta" -> {
+                stopReason = textOrNull(tree.path("delta").get("stop_reason"));
+                yield tree.path("usage");
+            }
             default -> null;
         };
         if (usage != null && usage.isObject()) {
@@ -49,8 +66,22 @@ public class CollectMessagesTokenUsageFn extends BaseResponseFunction {
             context.setTokenUsage(MessagesTokenUsageParser.build(
                     inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, thinkingTokens));
             mergedUsage = MergeChunks.merge(mergedUsage, usage);
-            context.setPricingUsageNode(ProxyUtil.MAPPER.createObjectNode().set("usage", mergedUsage));
+            ObjectNode merged = ProxyUtil.MAPPER.createObjectNode().set("usage", mergedUsage);
+            if (responseId != null) {
+                merged.put("id", responseId);
+            }
+            if (responseModel != null) {
+                merged.put("model", responseModel);
+            }
+            if (stopReason != null) {
+                merged.put("stop_reason", stopReason);
+            }
+            context.setPricingUsageNode(merged);
         }
         return Future.succeededFuture(tree);
+    }
+
+    private static String textOrNull(JsonNode node) {
+        return node != null && node.isTextual() ? node.asText() : null;
     }
 }
