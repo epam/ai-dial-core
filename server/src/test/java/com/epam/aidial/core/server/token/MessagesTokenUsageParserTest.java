@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.token;
 
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
 
@@ -102,5 +103,34 @@ public class MessagesTokenUsageParserTest {
         assertEquals(130, usage.getCompletionTokens());
         assertEquals(160, usage.getTotalTokens());
         assertEquals(5, usage.getPromptTokensDetails().getCachedTokens());
+    }
+
+    @Test
+    void parseWithTreeFallsBackToBodyParseWhenTreeIsAbsent() {
+        Buffer body = Buffer.buffer("{\"usage\":{\"input_tokens\":10,\"output_tokens\":8}}");
+
+        assertEquals(18, MessagesTokenUsageParser.parse(body, null).getTotalTokens());
+        assertEquals(18, MessagesTokenUsageParser.parse(body, MissingNode.getInstance()).getTotalTokens());
+    }
+
+    @Test
+    void parseWithTreeReadsUsageFromTheGivenTreeWithoutTouchingTheBody() throws Exception {
+        JsonNode tree = ProxyUtil.MAPPER.readTree(
+                "{\"usage\":{\"input_tokens\":10,\"output_tokens\":8,\"cache_read_input_tokens\":2}}");
+        // a body that would parse to something else entirely, to prove the tree is used, not the body
+        Buffer body = Buffer.buffer("not json");
+
+        TokenUsage usage = MessagesTokenUsageParser.parse(body, tree);
+
+        assertNotNull(usage);
+        assertEquals(12, usage.getPromptTokens());
+        assertEquals(8, usage.getCompletionTokens());
+    }
+
+    @Test
+    void parseWithTreeReturnsNullWhenTheTreeHasNoUsage() throws Exception {
+        JsonNode tree = ProxyUtil.MAPPER.readTree("{\"id\":\"msg\"}");
+
+        assertNull(MessagesTokenUsageParser.parse(Buffer.buffer("{}"), tree));
     }
 }

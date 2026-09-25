@@ -648,6 +648,43 @@ class GenAiTraceAttributesTest {
     }
 
     @Test
+    void setResponseAttributesPrefersTheLivePricingUsageNodeOverTheAssembledStringForResponsesApi() throws Exception {
+        // ExtractTerminalResponseFn caches the parsed terminal frame as pricingUsageNode during the same
+        // pass that built the assembled string - GenAiTraceAttributes reads that node directly rather than
+        // reparsing the string it would otherwise fall back to
+        ProxyContext context = streamingContext();
+        context.setPricingUsageNode(ProxyUtil.MAPPER.readTree(
+                "{\"id\":\"resp-live\",\"model\":\"gpt-4\",\"status\":\"completed\"}"));
+        context.setAssembledStreamingResponse("{\"id\":\"resp-from-string\",\"status\":\"incomplete\"}");
+        Buffer body = Buffer.buffer("event: response.completed\ndata: {\"type\":\"response.completed\","
+                + "\"response\":{\"id\":\"scanned\",\"status\":\"completed\"}}\n\n");
+
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body);
+
+        assertEquals("resp-live", context.getTracingAttributes().get("gen_ai.response.id"));
+        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
+    }
+
+    @Test
+    void setResponseAttributesPrefersTheLivePricingUsageNodeOverTheRawSseScanForAnthropic() throws Exception {
+        // CollectMessagesTokenUsageFn caches id/model/stop_reason on pricingUsageNode as it streams -
+        // GenAiTraceAttributes reads that instead of re-scanning the buffered SSE frames for the same fields
+        ProxyContext context = streamingContext();
+        context.setPricingUsageNode(ProxyUtil.MAPPER.readTree(
+                "{\"id\":\"msg-live\",\"model\":\"claude-3\",\"stop_reason\":\"end_turn\"}"));
+        Buffer body = Buffer.buffer("""
+                event: message_start
+                data: {"type":"message_start","message":{"id":"scanned","model":"claude-scanned"}}
+                """);
+
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.ANTHROPIC_MESSAGES, body);
+
+        assertEquals("msg-live", context.getTracingAttributes().get("gen_ai.response.id"));
+        assertEquals("claude-3", context.getTracingAttributes().get("gen_ai.response.model"));
+        assertEquals(List.of("end_turn"), context.getTracingAttributes().get("gen_ai.response.finish_reasons"));
+    }
+
+    @Test
     void setResponseAttributesSkipsBodyTooLargeToTrace() {
         // an embeddings body of vectors is not worth a parse of its own - the outcome still is
         ProxyContext context = context(proxy(enabledSettings()));
@@ -661,18 +698,21 @@ class GenAiTraceAttributesTest {
     }
 
     @Test
-    void setResponseAttributesSkipsAssembledBodyOversizedInUtf8BytesButNotInChars() {
+    void setResponseAttributesUsesTheAssembledChatCompletionsTreeRegardlessOfSize() {
+        // the tree is already built once for the analytics log (ProxyContext.assembledChatCompletionsResponseTree),
+        // so reading it here is free - unlike a fresh parse, it isn't worth skipping past a size threshold
         ProxyContext context = streamingContext();
-        String oversizedAssembled = "{\"id\":\"chat-1\",\"model\":\"gpt-4\",\"choices\":[{\"content\":\""
-                + "中".repeat(200_000) + "\"}]}";
-        context.setAssembledStreamingResponse(oversizedAssembled);
-        Buffer body = Buffer.buffer("data: [DONE]\n\n");
+        String oversizedContent = "中".repeat(200_000);
+        Buffer body = Buffer.buffer("data: {\"id\":\"chat-1\",\"model\":\"gpt-4\",\"choices\":"
+                + "[{\"index\":0,\"delta\":{\"content\":\"" + oversizedContent + "\"},\"finish_reason\":\"stop\"}]}\n\n"
+                + "data: [DONE]\n\n");
+        context.setResponseBody(body);
 
         GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
 
-        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.id"));
-        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.model"));
-        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
+        assertEquals("chat-1", context.getTracingAttributes().get("gen_ai.response.id"));
+        assertEquals("gpt-4", context.getTracingAttributes().get("gen_ai.response.model"));
+        assertEquals(List.of("stop"), context.getTracingAttributes().get("gen_ai.response.finish_reasons"));
     }
 
     private static ProxyContext context(Proxy proxy, HttpServerRequest request) {
