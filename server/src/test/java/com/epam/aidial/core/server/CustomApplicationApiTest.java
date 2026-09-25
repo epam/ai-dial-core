@@ -1689,6 +1689,53 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         }
     }
 
+    /**
+     * Reproduces #2018: the owner calls an orchestrator whose sub-agent declares the owner's private prompt.
+     * The sub-agent runs under a per-request key carrying only itself, so the prompt has to be resolved there too.
+     */
+    @Test
+    void testChainedSchemaRichApplicationCanReachOwnPrompt() {
+        Response response = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "user");
+        verify(response, 200);
+        String userBucket = new JsonObject(response.body()).getString("bucket");
+
+        String promptUrl = "prompts/%s/sub_agent_prompt".formatted(userBucket);
+        String subAgentUrl = "applications/%s/sub_agent_with_prompt".formatted(userBucket);
+
+        response = send(HttpMethod.PUT, "/v1/" + promptUrl, null, PROMPT_BODY, "authorization", "user");
+        verify(response, 200);
+
+        response = send(HttpMethod.PUT, "/v1/" + subAgentUrl, null, """
+                {
+                  "displayName": "Sub Agent",
+                  "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/chained_application_type",
+                  "applicationProperties": {
+                    "property1": "test property1",
+                    "prompts": ["%s"]
+                  }
+                }
+                """.formatted(promptUrl), "authorization", "user");
+        verify(response, 200);
+
+        // the key the sub-agent receives from an orchestrator: the sub-agent is attached, its prompt is not
+        ApiKeyData appKey = createAppKey("user", Map.of(subAgentUrl, new AutoSharedData(Set.of(ResourceAccessType.READ))));
+        appKey.setExecutionPath(List.of("orchestrator"));
+        apiKeyStore.assignPerRequestApiKey(appKey);
+
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/chat/completions", request -> new MockResponse()
+                    .setResponseCode(200)
+                    .setHeader("Content-Type", "application/json")
+                    .setBody("{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"choices\":[]}"));
+
+            response = send(HttpMethod.POST, "/openai/deployments/%s/chat/completions".formatted(subAgentUrl), null, """
+                    {"messages":[{"role":"user","content":"how are you?"}]}
+                    """, "api-key", appKey.getPerRequestKey(), "Content-Type", "application/json");
+
+            assertEquals(200, response.status());
+        }
+    }
+
     @Test
     void testApplicationWithTypeSchemaCreationAndThenGet_NoApplicationPropertiesGet_WhenNoApplicationPropertiesCreated() {
 

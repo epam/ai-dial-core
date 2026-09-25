@@ -8,6 +8,7 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -759,6 +760,139 @@ public class AdminValidateApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testValidateKeyDuplicateSecretWithinBatchRejected() {
+        // Precheck-side counterpart of AdminApplyApiTest#applyKeyDuplicateSecretFailsSecondEntity:
+        // the second key in a batch must collide with the first one validated before it.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/validate-dup-key-a",
+                      "spec": {"key": "validate-dup-secret", "project": "projA", "roles": ["admin"]}
+                    },
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/validate-dup-key-b",
+                      "spec": {"key": "validate-dup-secret", "project": "projB", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        assertEquals("SKIPPED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
+        assertEquals("FAILED", parsed.get("results").get(1).get("status").asText(), () -> "Body: " + response.body());
+        assertTrue(parsed.get("results").get(1).get("error").asText()
+                        .contains("already used by a different key entity"), () -> "Body: " + response.body());
+        assertFalse(response.body().contains("validate-dup-secret"),
+                () -> "Response must not echo the secret: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/keys/platform/validate-dup-key-a", null, "",
+                "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/keys/platform/validate-dup-key-b", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateKeyDuplicateSecretAgainstAppliedKeyRejected() {
+        String existingBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/validate-existing-key",
+                      "spec": {"key": "validate-existing-secret", "project": "projA", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, existingBody, "authorization", "admin"), 200);
+
+        String conflictBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/validate-conflict-key",
+                      "spec": {"key": "validate-existing-secret", "project": "projB", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, conflictBody, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/keys/platform/validate-conflict-key", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateKeyUnchangedSecretUpdateValid() {
+        // Re-supplying the entity's own current secret is an update, not a collision.
+        String existingBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/validate-unchanged-key",
+                      "spec": {"key": "validate-unchanged-secret", "project": "projA", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, existingBody, "authorization", "admin"), 200);
+
+        String updateBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/validate-unchanged-key",
+                      "spec": {"key": "validate-unchanged-secret", "project": "projB", "roles": ["default"]}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, updateBody, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(0, parsed.get("failed").asInt());
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateKeyWithFileKeySecretRejected() {
+        // File-sourced keys occupy their raw secret in the folded config; the file→blob handoff
+        // goes through the migration endpoint.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/validate-file-secret-key",
+                      "spec": {"key": "proxyKey1", "project": "someone-else", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        assertFalse(response.body().contains("proxyKey1"),
+                () -> "Response must not echo the secret: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/keys/platform/validate-file-secret-key", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
     void testV16SettingsDoesNotPersist() {
         // U.1 (2026-05-21): /v1/settings/platform/global is blob-only. After validate (no mutation),
         // there is no blob → GET returns 404. We additionally verify the sentinel does not appear
@@ -829,6 +963,55 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         assertEquals(1, parsed.get("failed").asInt());
         assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
         verify(send(HttpMethod.GET, "/v1/models/platform/validate-bad-cache-pricing", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testV20RejectsModelCatalogPropertiesTypeMismatch() {
+        String catalogSchemaBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/validate-catalog-schema-mismatch",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/validate-model-mismatch",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object",
+                        "properties": {"featured": {"type": "boolean"}}
+                      }
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, catalogSchemaBody, "authorization", "admin"), 200);
+
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/validate-model-catalog-mismatch",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "catalogSchemaId": "https://dial.epam.com/catalog-schemas/validate-model-mismatch",
+                        "catalogProperties": {"featured": "not-a-boolean"}
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/models/platform/validate-model-catalog-mismatch", null, "",
                 "authorization", "admin"), 404);
     }
 

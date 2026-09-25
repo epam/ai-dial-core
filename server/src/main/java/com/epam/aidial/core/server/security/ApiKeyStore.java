@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.security;
 import com.epam.aidial.core.config.IpAddressRanges;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.config.FileConfigStore;
+import com.epam.aidial.core.server.config.KeyValidator;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -203,7 +204,7 @@ public class ApiKeyStore {
             }
             ApiKeyData apiKeyData = new ApiKeyData();
             apiKeyData.setOriginalKey(value);
-            apiKeyDataMap.put(value.getKey(), apiKeyData);
+            putAndWarnOnDuplicateSecret(apiKeyDataMap, value, apiKeyData);
             log.debug("Loading {}", value);
         }
         for (Map.Entry<String, Key> entry : apiKeysByCanonicalId.entrySet()) {
@@ -216,10 +217,18 @@ public class ApiKeyStore {
             }
             ApiKeyData apiKeyData = new ApiKeyData();
             apiKeyData.setOriginalKey(value);
-            apiKeyDataMap.put(value.getKey(), apiKeyData);
+            putAndWarnOnDuplicateSecret(apiKeyDataMap, value, apiKeyData);
             log.debug("Loading {}", value);
         }
         keys = apiKeyDataMap;
+    }
+
+    private void putAndWarnOnDuplicateSecret(Map<String, ApiKeyData> apiKeyDataMap, Key value, ApiKeyData apiKeyData) {
+        ApiKeyData previous = apiKeyDataMap.put(value.getKey(), apiKeyData);
+        if (previous != null) {
+            log.warn("Duplicate key secret detected while rebuilding project keys; '{}' collides with '{}', "
+                    + "last one wins", value.getProject(), previous.getOriginalKey().getProject());
+        }
     }
 
     /**
@@ -261,11 +270,9 @@ public class ApiKeyStore {
     }
 
     private void validateProjectKey(Key key) {
-        if (StringUtils.isEmpty(key.getProject())) {
-            throw new IllegalArgumentException("Project key is undefined");
-        }
-        if (StringUtils.isEmpty(key.getRole()) && (key.getRoles() == null || key.getRoles().isEmpty())) {
-            throw new IllegalArgumentException("Invalid key: at least one role must be assigned to the key " + key.getProject());
+        String error = KeyValidator.validateProjectAndRoles(key);
+        if (error != null) {
+            throw new IllegalArgumentException(error);
         }
     }
 

@@ -50,6 +50,36 @@ public class ModelWriteApiTest extends ResourceBaseTest {
             }
             """;
 
+    private static String catalogSchemaBody(String schemaId) {
+        return """
+                {
+                  "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                  "$id": "%s",
+                  "dial:catalogEntityType": "model",
+                  "dial:catalogDisplayName": "Model",
+                  "type": "object",
+                  "properties": {
+                    "featured": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+                """.formatted(schemaId);
+    }
+
+    private static String modelBodyWithCatalogProperties(String schemaId, String featuredValue) {
+        return """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "catalogSchemaId": "%s",
+                  "catalogProperties": {
+                    "featured": %s
+                  }
+                }
+                """.formatted(schemaId, featuredValue);
+    }
+
     @Test
     void testPutCreate200HappyPath() {
         Response put = send(HttpMethod.PUT, "/v1/models/platform/test-model-create",
@@ -436,5 +466,61 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         Response get = send(HttpMethod.GET, "/v1/models/platform/test-model-immediate-delete", null, "",
                 "authorization", "admin");
         verify(get, 404);
+    }
+
+    @Test
+    void testPutCreate400OnCatalogPropertiesTypeMismatch() {
+        String schemaId = "https://dial.epam.com/catalog-schemas/model-write-test-create";
+        verify(send(HttpMethod.PUT, "/v1/catalog_schemas/platform/model-write-test-create", null,
+                catalogSchemaBody(schemaId), "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/test-model-catalog-create-invalid", null,
+                modelBodyWithCatalogProperties(schemaId, "\"not-a-boolean\""),
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 400);
+
+        Response get = send(HttpMethod.GET, "/v1/models/platform/test-model-catalog-create-invalid", null, "",
+                "authorization", "admin");
+        verify(get, 404);
+    }
+
+    @Test
+    void testPutUpdate400OnCatalogPropertiesTypeMismatch() {
+        String schemaId = "https://dial.epam.com/catalog-schemas/model-write-test-update";
+        verify(send(HttpMethod.PUT, "/v1/catalog_schemas/platform/model-write-test-update", null,
+                catalogSchemaBody(schemaId), "authorization", "admin", "If-None-Match", "*"), 200);
+
+        verify(send(HttpMethod.PUT, "/v1/models/platform/test-model-catalog-update-invalid", null,
+                modelBodyWithCatalogProperties(schemaId, "true"),
+                "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/test-model-catalog-update-invalid", null,
+                modelBodyWithCatalogProperties(schemaId, "\"not-a-boolean\""),
+                "authorization", "admin");
+        verify(put, 400);
+
+        Response get = send(HttpMethod.GET, "/v1/models/platform/test-model-catalog-update-invalid", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertTrue(get.body().contains("\"featured\":true"),
+                () -> "Expected the rejected update to leave the prior conforming value in place: " + get.body());
+    }
+
+    @Test
+    void testPutAcceptsConformingCatalogProperties() {
+        String schemaId = "https://dial.epam.com/catalog-schemas/model-write-test-valid";
+        verify(send(HttpMethod.PUT, "/v1/catalog_schemas/platform/model-write-test-valid", null,
+                catalogSchemaBody(schemaId), "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/test-model-catalog-valid", null,
+                modelBodyWithCatalogProperties(schemaId, "true"),
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 200);
+
+        Response get = send(HttpMethod.GET, "/v1/models/platform/test-model-catalog-valid", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertTrue(get.body().contains("\"featured\":true"),
+                () -> "Expected catalogProperties.featured=true to round-trip: " + get.body());
     }
 }
