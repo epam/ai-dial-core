@@ -597,6 +597,17 @@
             "dial:propertyKind": "server",
             "dial:propertyOrder": 2
           }
+        },
+        "prompts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "dial:resource": true
+          },
+          "dial:meta": {
+            "dial:propertyKind": "server",
+            "dial:propertyOrder": 3
+          }
         }
       },
       "required": [
