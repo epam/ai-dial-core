@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
 import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
+import com.epam.aidial.core.server.function.ExtractTerminalResponseFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
@@ -31,6 +32,7 @@ import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -119,12 +121,17 @@ public class ResponseItemController implements Controller {
             )
     })
     public Future<?> handle() {
+        context.setRequestBodyTimestamp(System.currentTimeMillis());
         return proxy.getTaskExecutor().submit(this::loadMapping)
                 .compose(this::checkNotDeletingActive)
                 .compose(this::dispatch)
                 .eventually(this::finalizeRequest)
                 .onFailure(error -> {
                     if (!context.getResponse().ended()) {
+                        // must run before the call that ends the response/span - see the two other call
+                        // sites in sendResponse()/collectAndForwardStreaming(), which cover the success
+                        // paths this .onFailure() doesn't reach
+                        GenAiTraceAttributes.setLatencyAttributes(context);
                         context.respond(error, "Failed to process response operation");
                     }
                 });
@@ -217,9 +224,11 @@ public class ResponseItemController implements Controller {
         context.setProxyApiKeyData(proxyApiKeyData);
         proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
 
-        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, proxyApiKeyData.getPerRequestKey())
+        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, proxyApiKeyData.getPerRequestKey(),
+                        () -> context.setProxyConnectTimestamp(System.currentTimeMillis()))
                 .compose(response -> {
                     context.setProxyResponse(response);
+                    context.setProxyResponseTimestamp(System.currentTimeMillis());
                     String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
                     if (operation == Operation.GET
                             && Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM)) {
@@ -232,53 +241,68 @@ public class ResponseItemController implements Controller {
     private Future<Void> collectAndForward(HttpClientResponse proxyResponse, ResponseMapping mapping) {
         return proxyResponse.body()
                 .compose(body -> {
+                    context.setResponseBodyTimestamp(System.currentTimeMillis());
                     if (proxyResponse.statusCode() != 200) {
-                        return sendResponse(proxyResponse, body);
+                        return sendResponse(proxyResponse, null, body);
                     }
                     return proxy.getTaskExecutor()
                             .submit(() -> rewriteId(body, mapping))
-                            .compose(rewritten -> {
+                            .compose(rewrite -> {
                                 if (operation == Operation.DELETE) {
                                     return proxy.getTaskExecutor().submit(() -> {
                                         proxy.getResponseMappingService().deleteMapping(dialResponseId);
                                         return null;
-                                    }).compose(ignored -> sendResponse(proxyResponse, rewritten));
+                                    }).compose(ignored -> sendResponse(proxyResponse, rewrite.tree(), rewrite.body()));
                                 }
                                 if (operation == Operation.GET) {
-                                    ResponsesApiClient.TerminalResult terminalResult = tryParseTerminalResult(rewritten);
+                                    ResponsesApiClient.TerminalResult terminalResult = tryParseTerminalResult(rewrite.tree(), rewrite.body());
                                     if (terminalResult != null) {
                                         proxy.getBackgroundJobService()
                                                 .tryComplete(dialResponseId, mapping, terminalResult)
                                                 .onFailure(e -> log.warn("Failed to complete background job on GET {}", dialResponseId, e));
                                     }
                                 }
-                                return sendResponse(proxyResponse, rewritten);
+                                return sendResponse(proxyResponse, rewrite.tree(), rewrite.body());
                             });
                 });
     }
 
-    private Future<Void> sendResponse(HttpClientResponse proxyResponse, Buffer body) {
+    /**
+     * @param tree null when the body wasn't parsed for this response (a non-200 status) - tracing then parses
+     *             {@code body} itself instead of reusing this.
+     */
+    private Future<Void> sendResponse(HttpClientResponse proxyResponse, JsonNode tree, Buffer body) {
         HttpServerResponse serverResponse = context.getResponse();
         serverResponse.setStatusCode(proxyResponse.statusCode());
         if (operation == Operation.GET) {
             // after setStatusCode: the status fallback reads the client-facing code, still 200 by default before it
-            GenAiTraceAttributes.setFetchResponseAttributes(context, body, dialResponseId);
+            if (tree != null) {
+                GenAiTraceAttributes.setFetchResponseAttributes(context, tree, dialResponseId);
+            } else {
+                GenAiTraceAttributes.setFetchResponseAttributes(context, body, dialResponseId);
+            }
         }
         String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
         if (contentType != null) {
             serverResponse.putHeader(HttpHeaders.CONTENT_TYPE, contentType);
         }
         serverResponse.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
+        // must run before end(): Vert.x ends the request's OTel span synchronously inside end(), after
+        // which further span attributes (dial.latency.*) are silently dropped
+        GenAiTraceAttributes.setLatencyAttributes(context);
         return serverResponse.end(body).mapEmpty();
     }
 
-    private Buffer rewriteId(Buffer body, ResponseMapping mapping) {
+    private record RewriteResult(JsonNode tree, Buffer body) {
+    }
+
+    private RewriteResult rewriteId(Buffer body, ResponseMapping mapping) {
         if (body.length() == 0) {
-            return body;
+            return new RewriteResult(MissingNode.getInstance(), body);
         }
         JsonNode tree = JsonUtil.tryParse(body.getBytes());
         if (!(tree instanceof ObjectNode object)) {
-            return body;
+            return new RewriteResult(tree, body);
         }
         if (EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
             EncryptedContentAffinityUtil.wrapOutputArray(object.path("output"), mapping.getUpstreamKey());
@@ -287,12 +311,12 @@ public class ResponseItemController implements Controller {
         if (idNode.isTextual() && mapping.getUpstreamResponseId().equals(idNode.asText())) {
             object.put("id", dialResponseId);
         }
-        return Buffer.buffer(JsonUtil.serialize(object));
+        return new RewriteResult(object, Buffer.buffer(JsonUtil.serialize(object)));
     }
 
-    private ResponsesApiClient.TerminalResult tryParseTerminalResult(Buffer body) {
+    private ResponsesApiClient.TerminalResult tryParseTerminalResult(JsonNode tree, Buffer body) {
         try {
-            return ResponsesApiClient.parseTerminalBody(body);
+            return ResponsesApiClient.parseTerminalBody(tree, body);
         } catch (Exception e) {
             log.warn("Failed to extract terminal result for background job {} on GET", dialResponseId, e);
             return null;
@@ -303,10 +327,13 @@ public class ResponseItemController implements Controller {
         CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
         ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context, dialResponseId, mapping.getUpstreamResponseId());
         EncryptedContentWrapFn wrapFn = new EncryptedContentWrapFn(proxy, context, mapping.getUpstreamKey());
+        // parses and caches the terminal frame (context.pricingUsageNode) during the pass below, so tracing
+        // doesn't have to re-scan the buffered stream for it - see GenAiTraceAttributes.liveOrScanned
+        ExtractTerminalResponseFn extractFn = new ExtractTerminalResponseFn(proxy, context);
         BufferingReadStream responseStream = new BufferingReadStream(
                 proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024),
-                new ResponsesSseListener(List.of(wrapFn, attachmentsFn, replaceIdFn)));
+                new ResponsesSseListener(List.of(wrapFn, attachmentsFn, replaceIdFn, extractFn)));
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
@@ -316,12 +343,20 @@ public class ResponseItemController implements Controller {
                 .endOnSuccess(false)
                 .to(response)
                 .onSuccess(ignored -> {
+                    context.setResponseBodyTimestamp(System.currentTimeMillis());
                     // GET only, by the branch that got here: the buffered bytes are the raw upstream frames,
                     // so the id has to come from us
                     GenAiTraceAttributes.setFetchResponseAttributes(context, responseStream.getContent(), dialResponseId);
+                    // must run before end(): Vert.x ends the request's OTel span synchronously inside
+                    // end(), after which further span attributes (dial.latency.*) are silently dropped
+                    GenAiTraceAttributes.setLatencyAttributes(context);
                     responseStream.end(response);
                 })
                 .onFailure(error -> {
+                    // must run before reset(): Vert.x ends the request's OTel span synchronously inside
+                    // reset(), after which further span attributes (dial.latency.*) are silently dropped -
+                    // same rule as the onSuccess() branch above and BaseDeploymentPostController.handleResponseError()
+                    GenAiTraceAttributes.setLatencyAttributes(context);
                     response.reset();
                     log.warn("Can't send streaming response to client. Error:", error);
                 })

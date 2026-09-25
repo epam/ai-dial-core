@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -86,7 +87,14 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
     @VisibleForTesting
     void handleRequestBody(Buffer requestBody) {
         context.setRequestBody(requestBody);
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
+        // dial.latency.client_body_ms must be stamped once, at the outermost parseBody()/handleRequestBody()
+        // that first read the client's actual HTTP body - every caller here (ChatCompletionsController,
+        // DeploymentPostController, ResponsesController, ResponseItemController) already stamps it before
+        // dispatching into an interceptor, possibly through several hops on the same ProxyContext, so this
+        // must not re-stamp and silently push the metric's start point later on each hop.
+        if (context.getRequestBodyTimestamp() == 0) {
+            context.setRequestBodyTimestamp(System.currentTimeMillis());
+        }
         try {
             RequestObject request = parseRequest(requestBody);
             if (request != null) {
@@ -192,8 +200,12 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
         });
     }
 
-    private void completeProxyResponse(BufferingReadStream responseStream) {
+    @VisibleForTesting
+    void completeProxyResponse(BufferingReadStream responseStream) {
         HttpServerResponse response = context.getResponse();
+        // must run before end(): Vert.x ends the request's OTel span synchronously inside end(), after
+        // which further span attributes (dial.latency.*) are silently dropped
+        GenAiTraceAttributes.setLatencyAttributes(context);
         responseStream.end(response);
         finalizeRequest();
     }
@@ -201,10 +213,14 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
     /**
      * Called when proxy failed to send response to the client.
      */
-    private void handleResponseError(Throwable error) {
+    @VisibleForTesting
+    void handleResponseError(Throwable error) {
         log.warn("Can't send response to client. Error:", error);
 
         context.getProxyRequest().reset(); // drop connection to stop origin response
+        // must run before reset(): Vert.x ends the request's OTel span synchronously inside reset(),
+        // after which further span attributes (dial.latency.*) are silently dropped
+        GenAiTraceAttributes.setLatencyAttributes(context);
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
         finalizeRequest();
     }

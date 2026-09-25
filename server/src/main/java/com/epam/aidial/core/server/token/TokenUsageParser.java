@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.token;
 
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.buffer.Buffer;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +17,28 @@ public class TokenUsageParser {
             log.warn("Can't parse token usage: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * @param parsedResponse the body already parsed by a caller that needed the tree for its own reasons (e.g.
+     *                       tracing), or null/{@code MissingNode} when there is none. It may also be a reduced
+     *                       representation of the response built for tracing rather than the full body, so when
+     *                       it doesn't carry usage, this falls back to the byte-scan {@link #parse(Buffer)} over
+     *                       the original body instead of giving up.
+     */
+    public TokenUsage parse(Buffer body, JsonNode parsedResponse) {
+        JsonNode usage = parsedResponse == null ? null : parsedResponse.get("usage");
+
+        if (usage != null && !usage.isMissingNode()) {
+            try {
+                return ProxyUtil.MAPPER.treeToValue(usage, TokenUsage.class);
+            } catch (Throwable e) {
+                log.warn("Can't parse token usage: {}", e.getMessage());
+                return null;
+            }
+        }
+
+        return parse(body);
     }
 
     private TokenUsage parseUsage(Buffer body) {

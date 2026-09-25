@@ -3,7 +3,6 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
@@ -24,6 +23,7 @@ import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -55,6 +55,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -64,13 +65,16 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
 import static com.epam.aidial.core.storage.http.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -84,6 +88,7 @@ import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -122,6 +127,53 @@ public class ResponsesControllerTest {
     void stubRequestPath() {
         // resolveRequestUri always consults the ingress path (even though the legacy flow ignores it)
         lenient().when(request.path()).thenReturn("/openai/v1/responses");
+    }
+
+    /**
+     * Wires the mocked {@code context} so the four latency timestamps round-trip through
+     * {@link AtomicLong}-backed getter/setter pairs - plain mock fields aren't volatile, and the
+     * controller sets/reads them from different {@code AsyncTaskExecutor}/Vert.x threads than the test
+     * thread, which also rules out asserting via a thread-confined {@code mockStatic(Span.class)} here
+     * (see {@code BaseInterceptorControllerTest}/{@code MessagesControllerTest} for that pattern on
+     * synchronous, same-thread call sites) - as if {@code genAiSpanAttributes} were on.
+     */
+    private Map<String, Object> enableLatencyTracing() {
+        Map<String, Object> tracingAttributes = new ConcurrentHashMap<>();
+        AtomicLong requestBodyTimestamp = new AtomicLong();
+        AtomicLong proxyConnectTimestamp = new AtomicLong();
+        AtomicLong proxyResponseTimestamp = new AtomicLong();
+        AtomicLong responseBodyTimestamp = new AtomicLong();
+        lenient().when(context.getTracingSettings()).thenReturn(new TracingSettings(true, false, List.of()));
+        lenient().when(context.getTracingAttributes()).thenReturn(tracingAttributes);
+        lenient().when(context.getRequestTimestamp()).thenReturn(1000L);
+        lenient().doAnswer(inv -> {
+            requestBodyTimestamp.set(inv.getArgument(0));
+            return null;
+        }).when(context).setRequestBodyTimestamp(anyLong());
+        lenient().when(context.getRequestBodyTimestamp()).thenAnswer(inv -> requestBodyTimestamp.get());
+        lenient().doAnswer(inv -> {
+            proxyConnectTimestamp.set(inv.getArgument(0));
+            return null;
+        }).when(context).setProxyConnectTimestamp(anyLong());
+        lenient().when(context.getProxyConnectTimestamp()).thenAnswer(inv -> proxyConnectTimestamp.get());
+        lenient().doAnswer(inv -> {
+            proxyResponseTimestamp.set(inv.getArgument(0));
+            return null;
+        }).when(context).setProxyResponseTimestamp(anyLong());
+        lenient().when(context.getProxyResponseTimestamp()).thenAnswer(inv -> proxyResponseTimestamp.get());
+        lenient().doAnswer(inv -> {
+            responseBodyTimestamp.set(inv.getArgument(0));
+            return null;
+        }).when(context).setResponseBodyTimestamp(anyLong());
+        lenient().when(context.getResponseBodyTimestamp()).thenAnswer(inv -> responseBodyTimestamp.get());
+        return tracingAttributes;
+    }
+
+    private static void assertLatencyPublished(Map<String, Object> tracingAttributes) {
+        assertNotNull(tracingAttributes.get("dial.latency.client_body_ms"));
+        assertNotNull(tracingAttributes.get("dial.latency.upstream_connect_ms"));
+        assertNotNull(tracingAttributes.get("dial.latency.upstream_header_ms"));
+        assertNotNull(tracingAttributes.get("dial.latency.upstream_body_ms"));
     }
 
     @Test
@@ -383,6 +435,7 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).getProxyApiKeyData();
         doCallRealMethod().when(context).setProxyResponse(any());
         doCallRealMethod().when(context).getProxyResponse();
+        Map<String, Object> tracingAttributes = enableLatencyTracing();
 
         controller.handle();
 
@@ -399,6 +452,12 @@ public class ResponsesControllerTest {
                 eq(PER_REQUEST_KEY),
                 argThat(arg ->
                         ProxyUtil.convertToString(updatedApiKeyData).equals(arg.apply("{}"))));
+        assertLatencyPublished(tracingAttributes);
+        // dial.latency.client_body_ms must cover only "receive/parse the client body" - the timestamp
+        // is taken in parseBody(), before the enhancement chain runs and re-serializes the body
+        InOrder requestBodyOrder = inOrder(context);
+        requestBodyOrder.verify(context).setRequestBodyTimestamp(anyLong());
+        requestBodyOrder.verify(context).setRequestBody(any());
     }
 
 
@@ -738,6 +797,7 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).isStreamingRequest();
         doCallRealMethod().when(context).setStoreResponse(anyBoolean());
         doCallRealMethod().when(context).isStoreResponse();
+        Map<String, Object> tracingAttributes = enableLatencyTracing();
 
         controller.handle();
 
@@ -755,6 +815,8 @@ public class ResponsesControllerTest {
         String completedEvent = endCaptor.getValue().toString();
         assertTrue(completedEvent.contains(expectedDialId));
         assertFalse(completedEvent.contains(upstreamId));
+
+        assertLatencyPublished(tracingAttributes);
     }
 
     @Test
@@ -919,6 +981,80 @@ public class ResponsesControllerTest {
         verify(httpClient).request(argThat(opts ->
                 "interceptor2".equals(opts.getHost())
                 && "/responses".equals(opts.getURI().toString())));
+    }
+
+    /**
+     * {@code parseBody()} stamps {@code requestBodyTimestamp} right after the raw client body is read
+     * (PR #2020 item 2 fix, meant to make {@code dial.latency.client_body_ms} measure only "time to
+     * receive/parse the client body"). When the request is routed through an interceptor - even just a
+     * reentry hop between two interceptors, as here - {@code BaseInterceptorController.handleRequestBody()}
+     * must not stamp the *same* {@code context}'s {@code requestBodyTimestamp} again: doing so would
+     * silently push {@code dial.latency.client_body_ms} (and, since {@code upstream_connect_ms} is
+     * measured FROM {@code requestBodyTimestamp}, that too) later on every interceptor hop.
+     */
+    @Test
+    public void testInterceptorReentry_PreservesRequestBodyTimestampFromParseBody(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey(PER_REQUEST_KEY);
+        apiKeyData.setInterceptors(List.of("interceptor1", "interceptor2"));
+        apiKeyData.setInterceptorIndex(0);
+        apiKeyData.setInitialDeployment("test-model");
+        apiKeyData.setExecutionPath(List.of());
+
+        Interceptor interceptor2 = new Interceptor();
+        interceptor2.setResponsesEndpoint("http://interceptor2/responses");
+
+        Config config = new Config();
+        config.setInterceptors(Map.of("interceptor1", new Interceptor(), "interceptor2", interceptor2));
+
+        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
+
+        when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer("{\"model\":\"test-model\"}")));
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(context.getRequest()).thenReturn(request);
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(context.getInterceptors()).thenReturn(apiKeyData.getInterceptors());
+        when(context.getConfig()).thenReturn(config);
+        DeploymentService deploymentService = proxy.getDeploymentService();
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
+        when(proxy.getClient()).thenReturn(httpClient);
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        doAnswer(invocation -> {
+            testContext.completeNow();
+            return Future.failedFuture(new RuntimeException("abort"));
+        }).when(httpClient).request(any(RequestOptions.class));
+        doCallRealMethod().when(context).setDeployment(any());
+        doCallRealMethod().when(context).getDeployment();
+        doCallRealMethod().when(context).setProxyApiKeyData(any());
+        doCallRealMethod().when(context).getProxyApiKeyData();
+
+        // track every value setRequestBodyTimestamp is called with, in call order, AND back
+        // getRequestBodyTimestamp() with the same store - the fix's set-once guard reads it
+        List<Long> stampedValues = new ArrayList<>();
+        AtomicLong requestBodyTimestamp = new AtomicLong();
+        doAnswer(inv -> {
+            long value = inv.getArgument(0);
+            stampedValues.add(value);
+            requestBodyTimestamp.set(value);
+            return null;
+        }).when(context).setRequestBodyTimestamp(anyLong());
+        when(context.getRequestBodyTimestamp()).thenAnswer(inv -> requestBodyTimestamp.get());
+
+        controller.handle();
+
+        await(testContext);
+
+        // sanity: the interceptor hop did happen, same as the existing reentry test above
+        verify(httpClient).request(argThat(opts ->
+                "interceptor2".equals(opts.getHost())
+                && "/responses".equals(opts.getURI().toString())));
+
+        // stamped exactly once, by parseBody() - the interceptor hop's handleRequestBody() must not
+        // overwrite it with a later value.
+        assertEquals(1, stampedValues.size());
     }
 
     @Test

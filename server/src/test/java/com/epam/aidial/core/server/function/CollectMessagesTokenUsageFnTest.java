@@ -75,6 +75,8 @@ class CollectMessagesTokenUsageFnTest {
                 {
                   "type": "message_start",
                   "message": {
+                    "id": "msg-1",
+                    "model": "claude-3",
                     "usage": {
                       "input_tokens": 249500,
                       "cache_read_input_tokens": 400,
@@ -88,12 +90,18 @@ class CollectMessagesTokenUsageFnTest {
         fn.apply(tree("""
                 {
                   "type": "message_delta",
+                  "delta": { "stop_reason": "end_turn" },
                   "usage": { "output_tokens": 8 }
                 }
                 """));
 
         JsonNode pricingUsageNode = context.getPricingUsageNode();
         assertNotNull(pricingUsageNode);
+        // id/model/stop_reason ride along on the same message_start/message_delta frames this already reads
+        // for usage, so GenAiTraceAttributes can read them here instead of re-scanning the buffered stream.
+        assertEquals("msg-1", pricingUsageNode.path("id").asText());
+        assertEquals("claude-3", pricingUsageNode.path("model").asText());
+        assertEquals("end_turn", pricingUsageNode.path("stop_reason").asText());
         JsonNode usage = pricingUsageNode.path("usage");
         assertEquals(249500, usage.path("input_tokens").asLong());
         assertEquals(400, usage.path("cache_read_input_tokens").asLong());

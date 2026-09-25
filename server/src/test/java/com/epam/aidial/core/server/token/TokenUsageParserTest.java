@@ -1,5 +1,8 @@
 package com.epam.aidial.core.server.token;
 
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -221,5 +224,63 @@ class TokenUsageParserTest {
             actualReasoning = usage.getCompletionTokensDetails().getReasoningTokens();
         }
         Assertions.assertEquals(actualReasoning, reasoning);
+    }
+
+    @Test
+    void parseWithTreeFallsBackToByteScanWhenTreeIsNull() {
+        Buffer body = Buffer.buffer("{\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2,\"total_tokens\":7}}");
+
+        TokenUsage usage = TokenUsageParser.parse(body, null);
+
+        Assertions.assertNotNull(usage);
+        Assertions.assertEquals(5, usage.getPromptTokens());
+        Assertions.assertEquals(2, usage.getCompletionTokens());
+    }
+
+    @Test
+    void parseWithTreeFallsBackToByteScanWhenTreeIsMissing() {
+        Buffer body = Buffer.buffer("{\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2,\"total_tokens\":7}}");
+
+        TokenUsage usage = TokenUsageParser.parse(body, MissingNode.getInstance());
+
+        Assertions.assertNotNull(usage);
+        Assertions.assertEquals(5, usage.getPromptTokens());
+    }
+
+    @Test
+    void parseWithTreeReadsUsageFromTheGivenTreeWithoutTouchingTheBody() throws Exception {
+        JsonNode tree = ProxyUtil.MAPPER.readTree(
+                "{\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":4,\"total_tokens\":15}}");
+        // a body that would parse to something else entirely, to prove the tree is used, not the body
+        Buffer body = Buffer.buffer("not json");
+
+        TokenUsage usage = TokenUsageParser.parse(body, tree);
+
+        Assertions.assertNotNull(usage);
+        Assertions.assertEquals(11, usage.getPromptTokens());
+        Assertions.assertEquals(4, usage.getCompletionTokens());
+        Assertions.assertEquals(15, usage.getTotalTokens());
+    }
+
+    @Test
+    void parseWithTreeFallsBackToBodyWhenTheTreeHasNoUsage() throws Exception {
+        // the tree is a reduced representation (e.g. built for tracing) that doesn't carry usage,
+        // so the body must still be scanned to avoid losing token usage.
+        JsonNode tree = ProxyUtil.MAPPER.readTree("{\"id\":\"chat-1\"}");
+        Buffer body = Buffer.buffer("{\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2,\"total_tokens\":7}}");
+
+        TokenUsage usage = TokenUsageParser.parse(body, tree);
+
+        Assertions.assertNotNull(usage);
+        Assertions.assertEquals(5, usage.getPromptTokens());
+        Assertions.assertEquals(2, usage.getCompletionTokens());
+        Assertions.assertEquals(7, usage.getTotalTokens());
+    }
+
+    @Test
+    void parseWithTreeReturnsNullWhenNeitherTreeNorBodyHaveUsage() throws Exception {
+        JsonNode tree = ProxyUtil.MAPPER.readTree("{\"id\":\"chat-1\"}");
+
+        Assertions.assertNull(TokenUsageParser.parse(Buffer.buffer("{}"), tree));
     }
 }
