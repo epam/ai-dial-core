@@ -20,6 +20,9 @@ public class HttpProxySelectorTest {
         ProxyOptions proxyOptions = new ProxyOptions();
         proxyOptions.setHost("localhost");
         proxyOptions.setPort(9083);
+        // ProxySelector.setDefault is JVM-wide: left set, it would route every later test's default HTTP
+        // client through this test's proxy, which is gone once the test ends
+        ProxySelector originalDefault = ProxySelector.getDefault();
         try (var ignored = new TestWebServer(9083)) {
             URL httpUrl = URI.create("http://some-host").toURL();
             // non-proxy hosts is missed
@@ -36,6 +39,8 @@ public class HttpProxySelectorTest {
             selector = new HttpProxySelector(proxyOptions, nonProxyList);
             ProxySelector.setDefault(selector);
             Assertions.assertDoesNotThrow(() -> checkConnection(httpUrl));
+        } finally {
+            ProxySelector.setDefault(originalDefault);
         }
     }
 

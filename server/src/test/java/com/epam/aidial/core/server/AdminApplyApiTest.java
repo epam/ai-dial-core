@@ -448,6 +448,105 @@ public class AdminApplyApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testApplyModelCatalogPropertiesTypeMismatch() {
+        String catalogSchemaBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-catalog-schema-mismatch",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-model-mismatch",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object",
+                        "properties": {"featured": {"type": "boolean"}}
+                      }
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, catalogSchemaBody, "authorization", "admin"), 200);
+
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/apply-model-catalog-mismatch",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "catalogSchemaId": "https://dial.epam.com/catalog-schemas/apply-model-mismatch",
+                        "catalogProperties": {"featured": "not-a-boolean"}
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-model-catalog-mismatch", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyPrecheckFalseRejectsModelCatalogPropertiesTypeMismatch() {
+        // precheck=false must still reject non-conforming catalog_properties at real-apply time —
+        // exercises ConfigApplyService#applyModel's check directly, bypassing ConfigValidationService.
+        String catalogSchemaBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-precheck-false-catalog-mismatch",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-precheck-false-mismatch",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object",
+                        "properties": {"featured": {"type": "boolean"}}
+                      }
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, catalogSchemaBody, "authorization", "admin"), 200);
+
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/apply-precheck-false-model-mismatch",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "catalogSchemaId": "https://dial.epam.com/catalog-schemas/apply-precheck-false-mismatch",
+                        "catalogProperties": {"featured": "not-a-boolean"}
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-precheck-false-model-mismatch", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
     void testApplyCatalogSchemaSurvivesUnrelatedApply() {
         // Regression for MergedConfigStore#shallowClone: partial-update writes (applyBatch et al.)
         // clone the merged Config off a fresh `new Config()`. Any Config map not explicitly carried
@@ -836,6 +935,150 @@ public class AdminApplyApiTest extends ResourceBaseTest {
 
         verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "apply-secret-old"), 401);
         verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "apply-secret-new"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void applyKeyDuplicateSecretFailsSecondEntity() {
+        // ApiKeyStore indexes keys by plaintext secret, so two key entities sharing one secret
+        // would silently collapse their auth, roles and project attribution. The second entity
+        // in the batch must fail and leave nothing behind.
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-dup-key-a",
+                      "spec": {"key": "apply-dup-secret", "project": "projA", "roles": ["admin"]}
+                    },
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-dup-key-b",
+                      "spec": {"key": "apply-dup-secret", "project": "projB", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        assertTrue(parsed.get("results").get(1).get("error").asText()
+                        .contains("already used by a different key entity"), () -> "Body: " + response.body());
+        assertFalse(response.body().contains("apply-dup-secret"),
+                () -> "Response must not echo the secret: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/keys/platform/apply-dup-key-a", null, "",
+                "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/keys/platform/apply-dup-key-b", null, "",
+                "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "apply-dup-secret"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void applyKeyRotateToExistingSecretFailsEntity() {
+        String bodyA = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-rotate-dup-key-a",
+                      "spec": {"key": "apply-rotate-dup-a", "project": "projA", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        String bodyB = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-rotate-dup-key-b",
+                      "spec": {"key": "apply-rotate-dup-b", "project": "projB", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        String bodyRotate = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-rotate-dup-key-a",
+                      "spec": {"key": "apply-rotate-dup-b", "project": "projA", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, bodyA, "authorization", "admin"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, bodyB, "authorization", "admin"), 200);
+
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, bodyRotate, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+
+        // Both original secrets still authenticate; the rotation was refused wholesale.
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "apply-rotate-dup-a"), 200);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "apply-rotate-dup-b"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void applyKeyUpdateWithUnchangedSecretSucceeds() {
+        // An update re-supplying the entity's own current secret is not a collision with itself —
+        // the guard only polices new secrets.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-unchanged-key",
+                      "spec": {"key": "apply-unchanged-secret", "project": "projA", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        String bodyUpdated = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-unchanged-key",
+                      "spec": {"key": "apply-unchanged-secret", "project": "projB", "roles": ["default"]}
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, bodyUpdated, "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "apply-unchanged-secret"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void applyKeyWithFileKeySecretFails() {
+        // The file→blob handoff for keys goes through the migration endpoint; a direct apply
+        // claiming a file-sourced key's secret must fail.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-file-secret-key",
+                      "spec": {"key": "proxyKey1", "project": "someone-else", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 422);
+        assertFalse(response.body().contains("proxyKey1"),
+                () -> "Response must not echo the secret: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/keys/platform/apply-file-secret-key", null, "",
+                "authorization", "admin"), 404);
     }
 
     @Test

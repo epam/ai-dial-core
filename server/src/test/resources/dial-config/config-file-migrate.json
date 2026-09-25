@@ -309,6 +309,24 @@
       "userRoles": [
         "admin"
       ]
+    },
+    "oauth-toolset-stray-pkce": {
+      "display_name": "OAuth Toolset with stray PKCE artifacts",
+      "endpoint": "http://localhost:9876",
+      "transport": "HTTP",
+      "auth_settings": {
+        "authentication_type": "OAUTH",
+        "client_id": "test-client-id-2",
+        "client_secret": "test-client-secret-2",
+        "authorization_endpoint": "http://localhost:9876/authorize",
+        "token_endpoint": "http://localhost:9876/token",
+        "redirect_uri": "http://localhost:3000/auth/signin",
+        "code_verifier": "stale-code-verifier-from-a-previous-live-run",
+        "code_challenge": "stale-code-challenge-from-a-previous-live-run"
+      },
+      "userRoles": [
+        "admin"
+      ]
     }
   },
   "keys": {

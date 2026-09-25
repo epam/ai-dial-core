@@ -10,6 +10,7 @@ import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.EntityChange;
+import com.epam.aidial.core.server.config.KeyValidator;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.config.ValidationWarning;
@@ -30,10 +31,12 @@ import com.epam.aidial.core.server.data.config.manifest.AdminTranslatorManifest;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.config.ConfigManifestSupport.ParsedName;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
+import com.epam.aidial.core.server.validation.CatalogSchemaValidationException;
 import com.epam.aidial.core.server.validation.ValidationUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -42,7 +45,6 @@ import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -67,6 +69,7 @@ public class ConfigApplyService {
     private final ApiKeyStore apiKeyStore;
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
+    private final CatalogSchemaService catalogSchemaService;
 
     public ConfigApplyService(MergedConfigStore mergedConfigStore,
                               ResourceService resourceService,
@@ -74,7 +77,8 @@ public class ConfigApplyService {
                               boolean softValidation,
                               ApiKeyStore apiKeyStore,
                               ApplicationService applicationService,
-                              ToolSetService toolSetService) {
+                              ToolSetService toolSetService,
+                              CatalogSchemaService catalogSchemaService) {
         this.mergedConfigStore = mergedConfigStore;
         this.resourceService = resourceService;
         this.secretFieldProcessor = secretFieldProcessor;
@@ -82,6 +86,7 @@ public class ConfigApplyService {
         this.apiKeyStore = apiKeyStore;
         this.applicationService = applicationService;
         this.toolSetService = toolSetService;
+        this.catalogSchemaService = catalogSchemaService;
     }
 
     /**
@@ -148,7 +153,7 @@ public class ConfigApplyService {
                     applyManagedEntity(role.spec(), id, parsed.name(), ResourceTypes.ROLE, scratch, pending);
             case AdminRouteManifest route ->
                     applyManagedEntity(route.spec(), id, parsed.name(), ResourceTypes.ROUTE, scratch, pending);
-            case AdminKeyManifest key -> applyKey(key.spec(), id, parsed.name(), pending);
+            case AdminKeyManifest key -> applyKey(key.spec(), id, parsed.name(), scratch, pending);
             case AdminModelManifest model -> applyModel(model.spec(), id, parsed.name(), scratch, pending);
             case AdminToolSetManifest toolSet -> applyToolSet(toolSet.spec(), id, parsed.name(), scratch, pending);
             case AdminApplicationManifest application ->
@@ -231,35 +236,22 @@ public class ConfigApplyService {
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applyKey(Key key, String id, ParsedName parsed, List<EntityChange> pending) {
-        if (StringUtils.isBlank(key.getKey())) {
-            return new EntityResult(id, AdminApplyStatus.FAILED, "Key.key must be provided explicitly");
-        }
-        if (StringUtils.isBlank(key.getProject())) {
-            return new EntityResult(id, AdminApplyStatus.FAILED, "Project key is undefined");
-        }
-        if (StringUtils.isBlank(key.getRole()) && (key.getRoles() == null || key.getRoles().isEmpty())) {
-            return new EntityResult(id, AdminApplyStatus.FAILED,
-                    "Invalid key: at least one role must be assigned to the key " + key.getProject());
+    private EntityResult applyKey(Key key, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {
+        String validationError = KeyValidator.validateRequiredFields(key);
+        if (validationError != null) {
+            return new EntityResult(id, AdminApplyStatus.FAILED, validationError);
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.PROJECT_KEY, parsed.bucket(), parsed.location(), parsed.name());
         String secret = key.getKey();
-        // Recover the prior plaintext secret so a rotation can revoke the old auth bearer
-        // (FINDING #2). Deliberately non-fatal: a corrupt prior blob must NOT abort the rotation —
-        // the new secret is authoritative and any stale entry is cleaned at the next full rebuild.
-        String oldSecret = null;
-        String existingBody = resourceService.getResource(descriptor);
-        if (existingBody != null) {
-            try {
-                Key prior = ConfigEntityCodec.treeToEntity(
-                        BLOB_MAPPER.readTree(existingBody), Key.class);
-                secretFieldProcessor.decryptFields(prior, descriptor);
-                oldSecret = prior.getKey();
-            } catch (Exception e) {
-                log.warn("Could not recover prior key secret for rotation at {}; "
-                        + "proceeding with new secret as authoritative", descriptor.getUrl());
-            }
+        String canonicalId = MergedConfigStore.canonicalId(descriptor);
+        // Prior plaintext secret, read from the batch scratch (already decrypted, kept current by
+        // mutateScratch) so a rotation can revoke the old auth bearer below.
+        Key prior = scratch.getKeys().get(canonicalId);
+        String oldSecret = prior == null ? null : prior.getKey();
+        validationError = KeyValidator.validateSecretNotTaken(scratch, canonicalId, key, oldSecret);
+        if (validationError != null) {
+            return new EntityResult(id, AdminApplyStatus.FAILED, validationError);
         }
         secretFieldProcessor.encryptFields(key, descriptor);
         String blobBody = ConfigEntityCodec.serializeForBlob(key);
@@ -273,7 +265,7 @@ public class ConfigApplyService {
         // decrypt-in-place after blob put so the partial-update path receives a
         // fully-plaintext Key. decryptValue is idempotent on plaintext fields.
         secretFieldProcessor.decryptFields(key, descriptor);
-        pending.add(new EntityChange(ResourceTypes.PROJECT_KEY, MergedConfigStore.canonicalId(descriptor), key));
+        pending.add(new EntityChange(ResourceTypes.PROJECT_KEY, canonicalId, key));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
@@ -288,6 +280,11 @@ public class ConfigApplyService {
         boolean invalid = !warnings.isEmpty();
         if (invalidOverridePaths || (invalid && !softValidation)) {
             return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+        }
+        try {
+            catalogSchemaService.validate(model);
+        } catch (CatalogSchemaValidationException e) {
+            return new EntityResult(id, AdminApplyStatus.FAILED, "Catalog properties validation failed: " + e.getMessage());
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.MODEL, parsed.bucket(), parsed.location(), parsed.name());
