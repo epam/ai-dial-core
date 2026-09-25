@@ -33,6 +33,8 @@ import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -81,6 +83,10 @@ class MessagesControllerTest {
         order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_connect_ms")), anyLong());
         order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_header_ms")), anyLong());
         order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_body_ms")), anyLong());
+        verify(span, times(1)).setAttribute(eq(longKey("dial.latency.client_body_ms")), anyLong());
+        verify(span, times(1)).setAttribute(eq(longKey("dial.latency.upstream_connect_ms")), anyLong());
+        verify(span, times(1)).setAttribute(eq(longKey("dial.latency.upstream_header_ms")), anyLong());
+        verify(span, times(1)).setAttribute(eq(longKey("dial.latency.upstream_body_ms")), anyLong());
     }
 
     @Test

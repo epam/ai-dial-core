@@ -369,6 +369,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                                     if (result.failed()) {
                                         log.warn("Failed to save background job record", result.cause());
                                     }
+                                    GenAiTraceAttributes.setLatencyAttributes(context);
                                     response.end(rewritten);
                                 });
                     } else {

@@ -263,7 +263,22 @@ class TokenUsageParserTest {
     }
 
     @Test
-    void parseWithTreeReturnsNullWhenTheTreeHasNoUsage() throws Exception {
+    void parseWithTreeFallsBackToBodyWhenTheTreeHasNoUsage() throws Exception {
+        // the tree is a reduced representation (e.g. built for tracing) that doesn't carry usage,
+        // so the body must still be scanned to avoid losing token usage.
+        JsonNode tree = ProxyUtil.MAPPER.readTree("{\"id\":\"chat-1\"}");
+        Buffer body = Buffer.buffer("{\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2,\"total_tokens\":7}}");
+
+        TokenUsage usage = TokenUsageParser.parse(body, tree);
+
+        Assertions.assertNotNull(usage);
+        Assertions.assertEquals(5, usage.getPromptTokens());
+        Assertions.assertEquals(2, usage.getCompletionTokens());
+        Assertions.assertEquals(7, usage.getTotalTokens());
+    }
+
+    @Test
+    void parseWithTreeReturnsNullWhenNeitherTreeNorBodyHaveUsage() throws Exception {
         JsonNode tree = ProxyUtil.MAPPER.readTree("{\"id\":\"chat-1\"}");
 
         Assertions.assertNull(TokenUsageParser.parse(Buffer.buffer("{}"), tree));

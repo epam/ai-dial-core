@@ -32,6 +32,8 @@ import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -97,6 +99,12 @@ class MessagesCountTokensControllerTest {
             order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_header_ms")), anyLong());
             order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_body_ms")), anyLong());
             order.verify(response).end(body);
+            // set once before end() - finalizeRequest() (called right after, inside the response.end()
+            // transform) must not set them again onto the by-then-closed span
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.client_body_ms")), anyLong());
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.upstream_connect_ms")), anyLong());
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.upstream_header_ms")), anyLong());
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.upstream_body_ms")), anyLong());
         }
     }
 }

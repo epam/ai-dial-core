@@ -1034,6 +1034,10 @@ public class DeploymentPostControllerTest {
             order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_header_ms")), anyLong());
             order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_body_ms")), anyLong());
             order.verify(bufferingReadStream).end(response);
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.client_body_ms")), anyLong());
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.upstream_connect_ms")), anyLong());
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.upstream_header_ms")), anyLong());
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.upstream_body_ms")), anyLong());
         }
     }
 
@@ -1075,6 +1079,11 @@ public class DeploymentPostControllerTest {
             order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_header_ms")), anyLong());
             order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_body_ms")), anyLong());
             order.verify(response).end(any(Buffer.class));
+            // set once before end() - finalizeRequest() must not set them again afterward
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.client_body_ms")), anyLong());
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.upstream_connect_ms")), anyLong());
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.upstream_header_ms")), anyLong());
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.upstream_body_ms")), anyLong());
         }
     }
 
@@ -1105,6 +1114,30 @@ public class DeploymentPostControllerTest {
             order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_connect_ms")), anyLong());
             order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_header_ms")), anyLong());
             order.verify(response).reset();
+        }
+    }
+
+    /**
+     * The generic {@code respond(...)} helpers (used by every early-rejection path - bad request,
+     * forbidden, not found, etc.) publish {@code dial.latency.*} themselves before {@code context.respond(...)}
+     * ends the response/span, now that {@code finalizeRequest()} no longer does it a second time.
+     */
+    @Test
+    void testRespond_PublishesLatencyAttributesToSpanBeforeResponseEnds() {
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        getTracingAttributes();
+
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            when(span.isRecording()).thenReturn(true);
+            when(Span.current()).thenReturn(span);
+
+            controller.respond(BAD_REQUEST, "bad request");
+
+            InOrder order = inOrder(span, context);
+            order.verify(span).setAttribute(eq(longKey("dial.latency.client_body_ms")), anyLong());
+            order.verify(context).respond(BAD_REQUEST, "bad request");
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.client_body_ms")), anyLong());
         }
     }
 

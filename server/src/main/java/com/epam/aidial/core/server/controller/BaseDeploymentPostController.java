@@ -94,22 +94,29 @@ public class BaseDeploymentPostController {
         }
     }
 
+    // These respond(...) helpers are terminal: context.respond(...) ends the HTTP response and, with it, the
+    // OTel span synchronously - so latency attributes must be published before that call, not inside
+    // finalizeRequest(), which runs after (see finalizeRequest()'s own comment).
     protected Future<?> respond(HttpStatus status, String errorMessage) {
+        GenAiTraceAttributes.setLatencyAttributes(context);
         finalizeRequest();
         return context.respond(status, errorMessage);
     }
 
     protected void respond(HttpException exception) {
+        GenAiTraceAttributes.setLatencyAttributes(context);
         finalizeRequest();
         context.respond(exception);
     }
 
     protected void respond(HttpStatus status) {
+        GenAiTraceAttributes.setLatencyAttributes(context);
         finalizeRequest();
         context.respond(status);
     }
 
     protected void respond(HttpStatus status, Object result) {
+        GenAiTraceAttributes.setLatencyAttributes(context);
         finalizeRequest();
         context.respond(status, result);
     }
@@ -124,17 +131,15 @@ public class BaseDeploymentPostController {
     }
 
     protected void finalizeRequest() {
-        // every terminal path of all four LLM surfaces reaches here, including the respond(...) helpers above
-        GenAiTraceAttributes.setLatencyAttributes(context);
         proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData != null) {
             proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)
-                    .onSuccess(invalidated -> {
-                        if (!invalidated) {
-                            log.warn("Per request is not removed: {}", proxyApiKeyData.getPerRequestKey());
-                        }
-                    }).onFailure(error -> log.error("error occurred on invalidating per-request key", error));
+                .onSuccess(invalidated -> {
+                    if (!invalidated) {
+                        log.warn("Per request is not removed: {}", proxyApiKeyData.getPerRequestKey());
+                    }
+                }).onFailure(error -> log.error("error occurred on invalidating per-request key", error));
         }
     }
 
