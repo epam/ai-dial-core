@@ -42,12 +42,9 @@ public record BackgroundJobRecord(
         long requestTimestamp,
         String requestBody,
         String upstreamEndpoint,
-        String upstreamResponseId,
-        String upstreamId,
         String initiatorBucket) {
 
-    public static BackgroundJobRecord from(
-            ProxyContext context, UnaryOperator<String> keyEncryptor, String upstreamResponseId, String upstreamId) {
+    public static BackgroundJobRecord from(ProxyContext context, UnaryOperator<String> keyEncryptor) {
         return BackgroundJobRecord.builder()
                 .perRequestKey(keyEncryptor.apply(context.getProxyApiKeyData().getPerRequestKey()))
                 .isRootSpan(context.isOriginalRequest())
@@ -76,8 +73,6 @@ public record BackgroundJobRecord(
                         .map(UpstreamRoute::get)
                         .map(Upstream::getEndpoint)
                         .orElse(null))
-                .upstreamResponseId(upstreamResponseId)
-                .upstreamId(upstreamId)
                 .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
                 .build();
     }

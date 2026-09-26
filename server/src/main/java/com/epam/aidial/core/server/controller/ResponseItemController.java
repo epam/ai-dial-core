@@ -17,7 +17,6 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
 import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
-import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -280,9 +279,7 @@ public class ResponseItemController implements Controller {
         if (!(tree instanceof ObjectNode object)) {
             return body;
         }
-        if (EncryptedAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
-            EncryptedAffinityUtil.wrapOutputArray(object.path("output"), upstreamId);
-        }
+        EncryptedAffinityUtil.wrapOutputArray(object.path("output"), upstreamId);
         JsonNode idNode = object.path("id");
         if (idNode.isTextual() && upstreamResponseId.equals(idNode.asText())) {
             object.put("id", dialResponseId);
@@ -301,12 +298,11 @@ public class ResponseItemController implements Controller {
 
     private Future<Void> collectAndForwardStreaming(HttpClientResponse proxyResponse, EncryptedAffinityUtil.UnwrappedResponseId unwrapped) {
         CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
-        ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context, dialResponseId, unwrapped.upstreamResponseId());
         EncryptedContentWrapFn wrapFn = new EncryptedContentWrapFn(proxy, context, unwrapped.upstreamId());
         BufferingReadStream responseStream = new BufferingReadStream(
                 proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024),
-                new ResponsesSseListener(List.of(wrapFn, attachmentsFn, replaceIdFn)));
+                new ResponsesSseListener(List.of(wrapFn, attachmentsFn)));
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);

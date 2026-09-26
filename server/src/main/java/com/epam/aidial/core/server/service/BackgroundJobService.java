@@ -2,13 +2,11 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.config.InterfacePathMapping;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.config.Translator;
-import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -20,9 +18,6 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
-import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
-import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
-import com.epam.aidial.core.server.util.EncryptedAffinityUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -34,7 +29,9 @@ import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.RequestOptions;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,7 +41,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -58,8 +54,7 @@ public class BackgroundJobService {
     private final ApiKeyStore apiKeyStore;
     private final RateLimiter rateLimiter;
     private final TokenStatsTracker tokenStatsTracker;
-    private final UpstreamRouteProvider upstreamRouteProvider;
-    private final ResponsesApiClient client;
+    private final HttpClient httpClient;
     private final LogStore logStore;
     private final CredentialEncryptionService encryptionService;
     private final Settings settings;
@@ -75,8 +70,7 @@ public class BackgroundJobService {
             ApiKeyStore apiKeyStore,
             RateLimiter rateLimiter,
             TokenStatsTracker tokenStatsTracker,
-            UpstreamRouteProvider upstreamRouteProvider,
-            ResponsesApiClient client,
+            HttpClient httpClient,
             LogStore logStore,
             CredentialEncryptionService encryptionService,
             Settings settings) {
@@ -89,8 +83,7 @@ public class BackgroundJobService {
         this.apiKeyStore = apiKeyStore;
         this.rateLimiter = rateLimiter;
         this.tokenStatsTracker = tokenStatsTracker;
-        this.upstreamRouteProvider = upstreamRouteProvider;
-        this.client = client;
+        this.httpClient = httpClient;
         this.logStore = logStore;
         this.encryptionService = encryptionService;
         this.settings = settings;
@@ -152,11 +145,7 @@ public class BackgroundJobService {
 
     private Future<Void> saveJobRecord(String dialId, ProxyContext context) {
         ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(dialId);
-        EncryptedAffinityUtil.UnwrappedResponseId unwrapped = EncryptedAffinityUtil.unwrapResponseId(dialId);
-        String upstreamResponseId = unwrapped != null ? unwrapped.upstreamResponseId() : null;
-        String upstreamId = unwrapped != null ? unwrapped.upstreamId() : null;
-        BackgroundJobRecord record = BackgroundJobRecord.from(context, key -> encryptKey(descriptor, key),
-                upstreamResponseId, upstreamId);
+        BackgroundJobRecord record = BackgroundJobRecord.from(context, key -> encryptKey(descriptor, key));
         String json = ProxyUtil.convertToString(record);
         return taskExecutor.submit(() -> resourceService.putResource(descriptor, json, EtagHeader.NEW_ONLY)).mapEmpty();
     }
@@ -180,34 +169,14 @@ public class BackgroundJobService {
     }
 
     @VisibleForTesting
-    Future<ResponsesApiClient.TerminalResult> poll(BackgroundJobRecord record, String apiKey) {
-        Config config = configStore.get();
-        Deployment deployment = config.selectDeployment(record.deploymentName());
-        if (deployment == null) {
-            return Future.failedFuture("Deployment {} not found");
-        }
-        Map<String, Translator> translators = config.getTranslators();
-        String targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment, translators,
-                InterfacePathMapping.GET_OPENAI_RESPONSES_BY_ID, record.upstreamResponseId(), null);
-        if (targetUrl == null) {
-            return Future.failedFuture("Deployment " + deployment.getName() + " does not have a responses endpoint");
-        }
-        Upstream upstream;
-        try {
-            // resolved the way the original request was routed, so that a deployment declaring no upstreams of
-            // its own builds the same synthetic upstream the upstream id was issued against
-            upstream = upstreamRouteProvider.get(deployment, null,
-                    dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES, translators),
-                    record.upstreamId()).next();
-        } catch (Exception e) {
-            return Future.failedFuture("Failed to get upstream for deployment " + deployment.getName()
-                    + " and upstream id " + record.upstreamId() + ": " + e.getMessage());
-        }
-        return client.send(targetUrl, HttpMethod.GET, upstream, apiKey, Buffer.buffer(), null)
+    Future<ResponsesApiClient.TerminalResult> poll(String dialId, String apiKey) {
+        String url = settings.getLocalBaseUrl() + "/openai/v1/responses/" + dialId;
+        return httpClient.request(new RequestOptions().setAbsoluteURI(url).setMethod(HttpMethod.GET))
+                .compose(request -> request.putHeader(Proxy.HEADER_API_KEY, apiKey).send())
                 .compose(response -> {
                     int statusCode = response.statusCode();
                     if (statusCode != 200) {
-                        return Future.failedFuture("Unexpected status " + statusCode + " from upstream for background job " + record.upstreamResponseId());
+                        return Future.failedFuture("Unexpected status " + statusCode + " from DIAL for background job " + dialId);
                     }
                     return response.body().map(ResponsesApiClient::parseTerminalBody);
                 });
@@ -341,6 +310,7 @@ public class BackgroundJobService {
     @JsonIgnoreProperties(ignoreUnknown = true)
     @Data
     public static class Settings {
+        String localBaseUrl = "http://localhost:8080";
         long initialPollIntervalMs = TimeUnit.SECONDS.toMillis(10);
         long maxPollIntervalMs = TimeUnit.MINUTES.toMillis(5);
         double pollBackoffFactor = 2.0;
@@ -359,16 +329,13 @@ public class BackgroundJobService {
 
         public Future<Boolean> poll() {
             String apiKey = decryptKey(ResponseIdUtil.getBackgroundJobDescriptor(dialId), record.perRequestKey());
-            return BackgroundJobService.this.poll(record, apiKey)
+            return BackgroundJobService.this.poll(dialId, apiKey)
                     .compose(result -> {
-                                if (result != null) {
-                                    return completeAndProcess(dialId, record, result)
-                                            .map(true);
-                                }
-
-                                return Future.succeededFuture(false);
-                            }
-                    );
+                        if (result != null) {
+                            return completeAndProcess(dialId, record, result).map(true);
+                        }
+                        return Future.succeededFuture(false);
+                    });
         }
 
         public Future<Void> fail() {

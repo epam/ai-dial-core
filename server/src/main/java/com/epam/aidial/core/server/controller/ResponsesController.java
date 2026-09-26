@@ -23,7 +23,6 @@ import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
 import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
 import com.epam.aidial.core.server.function.ExtractTerminalResponseFn;
-import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.enhancement.ResolveEncryptedContentAffinityFn;
@@ -331,11 +330,10 @@ public class ResponsesController extends BaseDeploymentPostController {
         }
 
         ExtractTerminalResponseFn extractFn = new ExtractTerminalResponseFn(proxy, context);
-        ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context);
-        EncryptedContentWrapFn wrapFn = new EncryptedContentWrapFn(proxy, context);
+        EncryptedContentWrapFn wrapFn = new EncryptedContentWrapFn(proxy, context, currentUpstream.getId());
         BufferingReadStream responseStream = createResponseStream(proxyResponse, () -> {
             CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
-            return new ResponsesSseListener(List.of(wrapFn, attachmentsFn, replaceIdFn, extractFn));
+            return new ResponsesSseListener(List.of(wrapFn, attachmentsFn, extractFn));
         });
 
         HttpServerResponse response = context.getResponse();
@@ -346,82 +344,61 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .endOnFailure(false)
                 .endOnSuccess(false)
                 .to(response)
-                .onSuccess(ignored -> handleStreamingResponse(responseStream, replaceIdFn.getDialId(), extractFn.getAssembledStreamingResponse()))
+                .onSuccess(ignored -> handleStreamingResponse(responseStream, wrapFn.getDialId(), extractFn.getAssembledStreamingResponse()))
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
     private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
-        return rewriteResponseId(proxyResponse, body)
-                .compose(pair -> {
-                    String dialId = pair.getKey();
-                    Buffer rewritten = pair.getValue();
-                    context.setResponseBody(rewritten);
-                    context.setResponseBodyTimestamp(System.currentTimeMillis());
-                    HttpServerResponse response = context.getResponse();
-                    ProxyUtil.copyResponse(response, proxyResponse);
-                    response.setChunked(false);
-                    response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
-                    putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
+        Buffer updatedBody = proxyResponse.statusCode() == 200
+                ? rewrite(body)
+                : body;
+        context.setResponseBody(updatedBody);
+        context.setResponseBodyTimestamp(System.currentTimeMillis());
+        HttpServerResponse response = context.getResponse();
+        ProxyUtil.copyResponse(response, proxyResponse);
+        response.setChunked(false);
+        response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(updatedBody.length()));
+        putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
-                    if (context.isBackgroundJob() && dialId != null) {
-                        return proxy.getBackgroundJobService().saveJob(dialId, context)
-                                .onComplete(result -> {
-                                    if (result.failed()) {
-                                        log.warn("Failed to save background job record", result.cause());
-                                    }
-                                    response.end(rewritten);
-                                });
-                    } else {
-                        return collectTokenUsage(rewritten, dialId)
-                                .transform(result -> {
-                                    if (result.failed()) {
-                                        log.warn("Failed to collect token usage", result.cause());
-                                    }
-                                    return collectResponseAttachments(rewritten, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
-                                })
-                                .onComplete(result -> {
-                                    if (result.failed()) {
-                                        log.warn("Failed to collect attachments from response", result.cause());
-                                    }
-                                    response.end(rewritten);
-                                    completeProxyResponse(null);
-                                });
-                    }
-                });
+        if (context.isBackgroundJob()) {
+            return Future.succeededFuture();
+        } else {
+            return collectTokenUsage(updatedBody, dialId)
+                    .transform(result -> {
+                        if (result.failed()) {
+                            log.warn("Failed to collect token usage", result.cause());
+                        }
+                        return collectResponseAttachments(updatedBody, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
+                    })
+                    .onComplete(result -> {
+                        if (result.failed()) {
+                            log.warn("Failed to collect attachments from response", result.cause());
+                        }
+                        response.end(updatedBody);
+                        completeProxyResponse(null);
+                    });
+        }
     }
 
-    private Future<Pair<String, Buffer>> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
-        if (proxyResponse.statusCode() != 200) {
-            return Future.succeededFuture(Pair.of(null, body));
-        }
+    private Buffer rewrite(Buffer body) {
         JsonNode tree = JsonUtil.tryParse(body.getBytes());
         if (!tree.isObject() || !(tree instanceof ObjectNode object)) {
             log.warn("Response body is not a JSON object, skipping rewrite. Deployment: {}. Endpoint: {}",
                     context.getDeployment().getName(),
                     context.getProxyRequestUri());
-            return Future.succeededFuture(Pair.of(null, body));
-        }
-        JsonNode idNode = object.path("id");
-        if (!idNode.isTextual()) {
-            log.info("Response body doesn't contain 'id' field, skipping rewrite. Deployment: {}. Endpoint: {}",
-                    context.getDeployment().getName(),
-                    context.getProxyRequestUri());
-            return Future.succeededFuture(Pair.of(null, body));
+            return body;
         }
 
-        String upstreamId = idNode.asText();
         Upstream upstream = context.getUpstreamRoute().get();
-        if (EncryptedAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
-            EncryptedAffinityUtil.wrapOutputArray(object.path("output"), upstream.getId());
-        }
-        if (!context.isStoreResponse()) {
-            String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
+        EncryptedAffinityUtil.wrapOutputArray(object.path("output"), upstream.getId());
+
+        JsonNode idNode = object.path("id");
+        if (idNode.isTextual()) {
+            String upstreamResponseId = idNode.asText();
+            String dialId = EncryptedAffinityUtil.wrapResponseId(upstream.getId(), upstreamResponseId, context.getDeployment().getName());
             object.put("id", dialId);
-            return Future.succeededFuture(Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object))));
         }
-        String dialId = EncryptedAffinityUtil.wrapResponseId(upstream.getId(), upstreamId, context.getDeployment().getName());
-        object.put("id", dialId);
-        return Future.succeededFuture(Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object))));
+        return Buffer.buffer(JsonUtil.serialize(object));
     }
 
     private void handleStreamingResponse(BufferingReadStream responseStream, String dialId, String assembledStreamingResponse) {
@@ -431,7 +408,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         context.setAssembledStreamingResponse(assembledStreamingResponse);
 
         Future<Void> completionFuture;
-        if (context.isBackgroundJob() && dialId != null) {
+        if (context.isBackgroundJob()) {
             completionFuture = proxy.getBackgroundJobService().deleteJob(dialId)
                     .compose(deleted -> deleted ? collectTokenUsage(responseBody, dialId) : Future.succeededFuture());
         } else {
