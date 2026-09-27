@@ -32,6 +32,7 @@ import static io.opentelemetry.api.common.AttributeKey.stringKey;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -51,7 +52,9 @@ class GenAiTraceAttributesTest {
                 .thenReturn("00-11111111111111111111111111111111-2222222222222222-01");
         ProxyContext context = context(proxy, request);
 
-        try (var ignored = mockStatic(Span.class)) {
+        // CALLS_REAL_METHODS: parseParentSpanId now goes through W3CTraceContextPropagator, which calls
+        // Span.wrap/Span.fromContext internally - only Span.current() below needs to be the mock's own answer
+        try (var ignored = mockStatic(Span.class, CALLS_REAL_METHODS)) {
             Span span = mock(Span.class);
             when(span.isRecording()).thenReturn(true);
             when(Span.current()).thenReturn(span);

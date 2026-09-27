@@ -16,9 +16,14 @@ import com.fasterxml.jackson.databind.node.MissingNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.propagation.TextMapGetter;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
+import io.vertx.core.http.HttpServerRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
@@ -29,8 +34,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import static io.opentelemetry.api.common.AttributeKey.booleanKey;
 import static io.opentelemetry.api.common.AttributeKey.doubleKey;
@@ -41,11 +44,23 @@ import static io.opentelemetry.api.common.AttributeKey.stringKey;
 @Slf4j
 public final class GenAiTraceAttributes {
     /**
-     * Any version but the invalid {@code ff}: a version Core does not know still carries the trace and the
-     * parent id in the first three fields, and W3C requires a parser to read those and ignore what follows.
+     * Delegates traceparent parsing to the SDK: {@link W3CTraceContextPropagator} already implements the same
+     * forward-compat rule (a version Core does not know still carries the trace and parent id in the first three
+     * fields) and stays in sync with the W3C spec on its own, unlike a hand-rolled regex here. {@code keys} is
+     * never called by the propagator's {@code extract} - it looks up "traceparent"/"tracestate" by name - so it's
+     * a stub, and the header name itself lives only inside the propagator, never duplicated in this class.
      */
-    private static final Pattern TRACEPARENT_PATTERN = Pattern.compile(
-            "(?!ff)[0-9a-f]{2}-(?!0{32})([0-9a-f]{32})-(?!0{16})([0-9a-f]{16})-[0-9a-f]{2}(?:-.*)?");
+    private static final TextMapGetter<HttpServerRequest> TRACEPARENT_GETTER = new TextMapGetter<>() {
+        @Override
+        public Iterable<String> keys(HttpServerRequest carrier) {
+            return List.of();
+        }
+
+        @Override
+        public String get(HttpServerRequest carrier, String key) {
+            return carrier == null ? null : carrier.getHeader(key);
+        }
+    };
     private static final String CONVERSATION_ID_ATTRIBUTE = "gen_ai.conversation.id";
     private static final String PARENT_SPAN_ATTRIBUTE = "dial.request.parent_span.id";
     private static final String RESPONSE_STATUS_ATTRIBUTE = "gen_ai.response.status";
@@ -493,12 +508,10 @@ public final class GenAiTraceAttributes {
     }
 
     private static String parseParentSpanId(ProxyContext context) {
-        String traceparent = context.getRequest().getHeader("traceparent");
-        if (traceparent == null) {
-            return null;
-        }
-        Matcher matcher = TRACEPARENT_PATTERN.matcher(traceparent);
-        return matcher.matches() ? matcher.group(2) : null;
+        Context extracted = W3CTraceContextPropagator.getInstance()
+                .extract(Context.root(), context.getRequest(), TRACEPARENT_GETTER);
+        SpanContext spanContext = Span.fromContext(extracted).getSpanContext();
+        return spanContext.isValid() ? spanContext.getSpanId() : null;
     }
 
     private static TokenUsage tokenUsage(JsonNode usage) {
