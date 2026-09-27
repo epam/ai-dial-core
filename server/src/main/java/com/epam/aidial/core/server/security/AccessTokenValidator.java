@@ -11,6 +11,7 @@ import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
+import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -119,12 +120,15 @@ public class AccessTokenValidator {
     }
 
     private Future<ExtractedClaims> extractClaimsFromUserInfo(String accessToken, Supplier<Future<UserInfoResult>> fn) {
-
-        return userInfoCache.computeIfAbsent(accessToken, k -> fn.get())
-                .map(UserInfoResult::claims).onFailure(error -> {
-                    /* we don't need to keep the failed response any longer */
-                    userInfoCache.remove(accessToken);
-                });
+        Future<UserInfoResult> shared = userInfoCache.computeIfAbsent(accessToken, k -> fn.get());
+        // the shared future is bound to the first caller's context: continue on the current request's context instead
+        ContextInternal caller = ContextInternal.current();
+        Promise<UserInfoResult> promise = caller != null ? caller.promise() : Promise.promise();
+        shared.onComplete(promise);
+        return promise.future().map(UserInfoResult::claims).onFailure(error -> {
+            /* we don't need to keep the failed response any longer */
+            userInfoCache.remove(accessToken);
+        });
     }
 
     /**

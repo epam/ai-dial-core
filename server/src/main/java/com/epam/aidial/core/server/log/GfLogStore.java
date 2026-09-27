@@ -13,6 +13,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
+import io.opentelemetry.context.Context;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
@@ -72,7 +73,8 @@ public class GfLogStore implements LogStore {
         }
         // run the process of saving analytics logs in a single thread in order to reduce memory footprint.
         // Gflog allocates a buffer per thread: the more threads the more buffers need to be allocated.
-        executor.submit(() -> doSave(logContext));
+        // wrap: the writer thread has no Vert.x context, so carry the request's trace context over
+        executor.submit(Context.current().wrap(() -> doSave(logContext)));
     }
 
     private Void doSave(AnalyticsLogContext logContext) {

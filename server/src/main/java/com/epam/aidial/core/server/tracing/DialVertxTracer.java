@@ -3,15 +3,19 @@ package com.epam.aidial.core.server.tracing;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.controller.ControllerSelector;
 import com.epam.aidial.core.server.controller.ControllerTemplate;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
 import io.vertx.core.Context;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.impl.HttpRequestHead;
+import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.spi.observability.HttpRequest;
 import io.vertx.core.spi.tracing.SpanKind;
 import io.vertx.core.spi.tracing.TagExtractor;
 import io.vertx.core.spi.tracing.VertxTracer;
 import io.vertx.core.tracing.TracingPolicy;
+import io.vertx.tracing.opentelemetry.VertxContextStorageProvider;
 
 import java.util.List;
 import java.util.Map;
@@ -43,7 +47,14 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
     public <R> void sendResponse(
             Context context, R response, I payload, Throwable failure, TagExtractor<R> tagExtractor) {
 
+        io.opentelemetry.context.Context active = context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
+        SpanContext span = active == null ? SpanContext.getInvalid() : Span.fromContext(active).getSpanContext();
+        // ends the span and closes its scope, so lines logged after response.end() would lose the trace
         delegate.sendResponse(context, response, payload, failure, tagExtractor);
+        if (span.isValid() && ((ContextInternal) context).isDuplicate()) {
+            // the request's duplicated context dies with the request, so nothing leaks to the next one; Span.wrap is non-recording
+            context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, io.opentelemetry.context.Context.root().with(Span.wrap(span)));
+        }
     }
 
     @Override

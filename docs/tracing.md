@@ -5,8 +5,8 @@ DIAL Core always emits OpenTelemetry spans for incoming requests. The `tracing` 
 attributes, a conversation/session correlation id taken from a request header, and response
 headers that hand the caller Core's own trace and span ids.
 
-Everything here is off by default, and nothing here ever publishes prompts, completions, tool
-payloads, API keys, arbitrary headers, or upstream provider names.
+The bundled settings turn `genAiSpanAttributes` and `responseTraceHeaders` on. Nothing here ever
+publishes prompts, completions, tool payloads, API keys, arbitrary headers, or upstream provider names.
 
 These are static settings, so they are read once at startup: changing them needs a restart.
 
@@ -38,8 +38,8 @@ To suppress individual attributes, drop them in the OpenTelemetry Collector (an 
 
 Defaults for `conversationIdHeaders` cover the harnesses DIAL ships with — Claude Code
 (`x-claude-code-session-id`), OpenAI Codex CLI (`thread-id`), OpenCode (`x-session-id`), and DIAL
-Chat (`x-dial-client-channel-id`, with `X-CONVERSATION-ID` as the legacy fallback). Any other client
-needs its own session header listed explicitly.
+Chat (`X-CONVERSATION-ID`). DIAL Chat's `x-dial-client-channel-id` is not on the list on purpose: it
+identifies a browser tab, not a conversation. Any other client needs its own session header listed explicitly.
 
 **Example**
 
@@ -51,7 +51,6 @@ needs its own session header listed explicitly.
     "x-claude-code-session-id",
     "thread-id",
     "x-session-id",
-    "x-dial-client-channel-id",
     "X-CONVERSATION-ID"
   ]
 }

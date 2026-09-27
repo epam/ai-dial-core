@@ -20,6 +20,7 @@ import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
+import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.Getter;
@@ -330,8 +331,11 @@ public class IdentityProvider {
          * execution. So, if we put that future in a cache, it will contain a context from the initial request, that
          * may be invalid for further requests. For this reason, when we retrieve the future from the cache, we must
          * extract the value and put it into another future (Promise) which holds a valid context of a current request.
+         * Promise.promise() has no context, so the caller's context must be bound explicitly (null in plain unit tests).
          * */
-        Promise<JwkResult> promise = Promise.promise();
+        // ponytail: two caches share futures between requests; move this into a helper when a third one does
+        ContextInternal caller = ContextInternal.current();
+        Promise<JwkResult> promise = caller != null ? caller.promise() : Promise.promise();
         cache.computeIfAbsent(kid, key -> taskExecutor.submit(() -> {
             JwkResult jwkResult;
             long currentTime = System.currentTimeMillis();

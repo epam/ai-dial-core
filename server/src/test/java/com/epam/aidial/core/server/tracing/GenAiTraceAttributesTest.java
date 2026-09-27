@@ -91,7 +91,6 @@ class GenAiTraceAttributesTest {
             "x-claude-code-session-id",
             "thread-id",
             "x-session-id",
-            "x-dial-client-channel-id",
             "X-CONVERSATION-ID"
     })
     void initializeMapsEveryDefaultConversationHeader(String header) {
@@ -714,7 +713,6 @@ class GenAiTraceAttributesTest {
                         .add("x-claude-code-session-id")
                         .add("thread-id")
                         .add("x-session-id")
-                        .add("x-dial-client-channel-id")
                         .add("X-CONVERSATION-ID")));
     }
 }

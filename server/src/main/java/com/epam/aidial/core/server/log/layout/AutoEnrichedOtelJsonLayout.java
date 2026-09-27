@@ -11,6 +11,7 @@ import com.epam.aidial.core.server.log.otl.OtelLogRecord;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -51,6 +52,14 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
             traceId = proxyContext.getTraceId();
             spanId = proxyContext.getSpanId();
             traceFlags = proxyContext.getTraceFlags();
+        } else {
+            // no ProxyContext yet (auth phase, early rejections): take the ids from the current span
+            SpanContext span = Span.current().getSpanContext();
+            if (span.isValid()) {
+                traceId = span.getTraceId();
+                spanId = span.getSpanId();
+                traceFlags = span.getTraceFlags().asHex();
+            }
         }
 
         Map<String, Object> attributes = new LinkedHashMap<>();

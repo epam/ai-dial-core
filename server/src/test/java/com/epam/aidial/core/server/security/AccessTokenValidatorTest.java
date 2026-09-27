@@ -5,9 +5,12 @@ import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import io.vertx.core.Context;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
+import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,10 +25,13 @@ import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -218,6 +224,33 @@ public class AccessTokenValidatorTest {
             assertEquals("project1", claims.project());
             verify(provider, never()).match(any(DecodedJWT.class));
         });
+    }
+
+    @Test
+    public void testExtractClaims_waiterOnSharedUserInfoContinuesOnItsOwnContext() throws Exception {
+        Vertx realVertx = Vertx.vertx();
+        try {
+            AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, taskExecutor, client, "DEBUG");
+            IdentityProvider provider = mock(IdentityProvider.class);
+            when(provider.hasUserinfoUrl()).thenReturn(true);
+            Promise<ExtractedClaims> userInfo = Promise.promise();
+            when(provider.extractClaimsFromUserInfo(anyString())).thenReturn(userInfo.future());
+            validator.setProviders(List.of(provider));
+            String header = getBearerHeaderValue("token");
+
+            ContextInternal first = ((ContextInternal) realVertx.getOrCreateContext()).duplicate();
+            ContextInternal second = ((ContextInternal) realVertx.getOrCreateContext()).duplicate();
+            CompletableFuture<Context> continuedOn = new CompletableFuture<>();
+            // the first request fills the cache, the second waits on the same in-flight future
+            first.runOnContext(v -> validator.extractClaims(header));
+            second.runOnContext(v -> validator.extractClaims(header).onComplete(res -> continuedOn.complete(Vertx.currentContext())));
+            first.runOnContext(v -> userInfo.complete(new ExtractedClaims("sub", List.of(), "hash",
+                    ProxyUtil.MAPPER.createObjectNode(), null, null)));
+
+            assertSame(second, continuedOn.get(5, TimeUnit.SECONDS));
+        } finally {
+            realVertx.close();
+        }
     }
 
     @Test

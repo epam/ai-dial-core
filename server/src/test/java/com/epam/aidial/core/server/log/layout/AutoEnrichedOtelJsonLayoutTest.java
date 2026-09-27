@@ -11,6 +11,9 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.TraceFlags;
+import io.opentelemetry.api.trace.TraceState;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -61,6 +64,7 @@ class AutoEnrichedOtelJsonLayoutTest {
         spanMock = mockStatic(Span.class);
         currentSpan = mock(Span.class);
         when(currentSpan.isRecording()).thenReturn(false);
+        when(currentSpan.getSpanContext()).thenReturn(SpanContext.getInvalid());
         spanMock.when(Span::current).thenReturn(currentSpan);
     }
     
@@ -213,6 +217,27 @@ class AutoEnrichedOtelJsonLayoutTest {
         assertNotNull(attributes);
         assertTrue(attributes.isObject());
         assertEquals(3, attributes.size());
+    }
+
+    @Test
+    void shouldTakeIdsFromCurrentSpanWithoutProxyContext() throws Exception {
+        vertxMock.when(Vertx::currentContext).thenReturn(null);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        when(currentSpan.getSpanContext()).thenReturn(SpanContext.create(
+                "22510e56eb9b21f6b03dbc038cd8fb71", "b03dbc038cd8fb71", TraceFlags.getSampled(), TraceState.getDefault()));
+
+        LoggingEvent event = new LoggingEvent();
+        event.setLoggerName("test.logger");
+        event.setLevel(Level.WARN);
+        event.setMessage("Authorization failed");
+        event.setTimeStamp(System.currentTimeMillis());
+        event.setLoggerContext((LoggerContext) LoggerFactory.getILoggerFactory());
+
+        JsonNode jsonNode = objectMapper.readTree(layout.doLayout(event));
+
+        assertEquals("22510e56eb9b21f6b03dbc038cd8fb71", jsonNode.get("TraceId").asText());
+        assertEquals("b03dbc038cd8fb71", jsonNode.get("SpanId").asText());
+        assertEquals("01", jsonNode.get("TraceFlags").asText());
     }
 
     @Test

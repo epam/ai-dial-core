@@ -36,15 +36,4 @@ public class ContextManager {
         }
         return null;
     }
-
-    /**
-     * Clear context data from Vertx context.
-     */
-    public static void clearContext() {
-        // Clear ProxyContext from Vertx context
-        Context vertxContext = Vertx.currentContext();
-        if (vertxContext != null) {
-            vertxContext.removeLocal(PROXY_CONTEXT_KEY);
-        }
-    }
 }

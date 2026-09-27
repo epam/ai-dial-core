@@ -32,7 +32,6 @@ class TracingSettingsTest {
                         .add("x-claude-code-session-id")
                         .add("thread-id")
                         .add("x-session-id")
-                        .add("x-dial-client-channel-id")
                         .add("X-CONVERSATION-ID")));
 
         assertTrue(settings.genAiSpanAttributes());
@@ -41,7 +40,6 @@ class TracingSettingsTest {
                 "x-claude-code-session-id",
                 "thread-id",
                 "x-session-id",
-                "x-dial-client-channel-id",
                 "X-CONVERSATION-ID"), settings.conversationIdHeaders());
     }
 
