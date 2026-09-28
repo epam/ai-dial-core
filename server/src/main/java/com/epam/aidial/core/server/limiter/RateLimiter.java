@@ -100,6 +100,22 @@ public class RateLimiter {
         }
     }
 
+    /**
+     * Records a deployment's aggregated cost - the sum rolled up from descendants it called in a
+     * chain, as opposed to cost it reports directly itself. Written to its own record, entirely
+     * apart from both the caller's global spend and the deployment's direct-cost record, so it can
+     * never inflate what the caller is billed/capped on nor be conflated with unrelated direct
+     * activity under the same deployment name.
+     */
+    public Future<Void> recordAggregatedCost(String deploymentName, String bucket, BigDecimal cost) {
+        if (resourceService == null || cost == null || cost.compareTo(BigDecimal.ZERO) <= 0) {
+            return Future.succeededFuture();
+        }
+        RateLimitSchedule schedule = configStore.get().getRateLimitSchedule();
+        ResourceDescriptor descriptor = getResourceDescription(bucket, getPathToAggregatedCosts(deploymentName));
+        return taskExecutor.submit(() -> updateCostLimit(descriptor, cost, schedule));
+    }
+
     public Future<RateLimitResult> limit(ProxyContext context, RoleBasedEntity roleBasedEntity) {
         try {
             // skip checking limits if redis is not available
@@ -145,6 +161,7 @@ public class RateLimiter {
         collectTokenLimitStats(context, limitStats, timestamp, name, schedule);
         collectRequestLimitStats(context, limitStats, timestamp, name, schedule);
         collectCostLimitStats(context, limitStats, timestamp, schedule);
+        collectAggregatedCostLimitStats(context, limitStats, timestamp, name, schedule);
         return limitStats;
     }
 
@@ -190,9 +207,11 @@ public class RateLimiter {
             String tokensPath = getLimitAbsolutePath(bucketLocation, getPathToTokens(name));
             String requestsPath = getLimitAbsolutePath(bucketLocation, getPathToRequests(name));
             String costsPath = getLimitAbsolutePath(bucketLocation, getPathToDeploymentCosts(name));
+            String aggregatedCostsPath = getLimitAbsolutePath(bucketLocation, getPathToAggregatedCosts(name));
             targetsByRecordPath.put(tokensPath, new StatsTarget(limitStats, LimitType.TOKENS));
             targetsByRecordPath.put(requestsPath, new StatsTarget(limitStats, LimitType.REQUESTS));
             targetsByRecordPath.put(costsPath, new StatsTarget(limitStats, LimitType.COSTS));
+            targetsByRecordPath.put(aggregatedCostsPath, new StatsTarget(limitStats, LimitType.AGGREGATED_COSTS));
             statsByDeployment.put(name, limitStats);
         }
 
@@ -293,6 +312,14 @@ public class RateLimiter {
             void collect(String json, LimitStats stats, long timestamp, RateLimitSchedule schedule) {
                 collectCostLimitStats(json, stats, timestamp, schedule);
             }
+        },
+        AGGREGATED_COSTS {
+            @Override
+            void collect(String json, LimitStats stats, long timestamp, RateLimitSchedule schedule) {
+                // same record shape and same additive collection as a direct-cost record - the two
+                // are read into the same LimitStats fields and sum, whichever is processed first
+                collectCostLimitStats(json, stats, timestamp, schedule);
+            }
         };
 
         abstract void collect(String json, LimitStats stats, long timestamp, RateLimitSchedule schedule);
@@ -337,6 +364,12 @@ public class RateLimiter {
             return;
         }
         rateLimit.update(timestamp, schedule, limitStats);
+    }
+
+    private void collectAggregatedCostLimitStats(
+            ProxyContext context, LimitStats limitStats, long timestamp, String name, RateLimitSchedule schedule) {
+        ResourceDescriptor resourceDescription = getResourceDescription(context, getPathToAggregatedCosts(name));
+        collectCostLimitStats(resourceService.getResource(resourceDescription), limitStats, timestamp, schedule);
     }
 
     private LimitStats create(Limit limit, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
@@ -616,6 +649,10 @@ public class RateLimiter {
 
     private static String getPathToDeploymentCosts(String name) {
         return String.format("%s/costs", name);
+    }
+
+    private static String getPathToAggregatedCosts(String name) {
+        return String.format("%s/aggregated-costs", name);
     }
 
     private static Limit getLimit(Map<String, Role> roles, String userRole, String name, Limit defaultLimit) {
