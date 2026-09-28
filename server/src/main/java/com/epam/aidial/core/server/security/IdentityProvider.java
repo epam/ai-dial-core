@@ -336,17 +336,23 @@ public class IdentityProvider {
         // ponytail: two caches share futures between requests; move this into a helper when a third one does
         ContextInternal caller = ContextInternal.current();
         Promise<JwkResult> promise = caller != null ? caller.promise() : Promise.promise();
-        cache.computeIfAbsent(kid, key -> taskExecutor.submit(() -> {
-            JwkResult jwkResult;
-            long currentTime = System.currentTimeMillis();
-            try {
-                Jwk jwk = jwkProvider.get(key);
-                jwkResult = new JwkResult(jwk, null, currentTime + positiveCacheExpirationMs);
-            } catch (Exception e) {
-                jwkResult = new JwkResult(null, e, currentTime + negativeCacheExpirationMs);
-            }
-            return jwkResult;
-        })).onComplete(promise);
+        cache.computeIfAbsent(kid, key -> {
+            // the cached future must be context-less: a context-bound one would pin the first request's context
+            // (and its ProxyContext with request/response bodies) for the whole cache TTL
+            Promise<JwkResult> shared = Promise.promise();
+            taskExecutor.submit(() -> {
+                JwkResult jwkResult;
+                long currentTime = System.currentTimeMillis();
+                try {
+                    Jwk jwk = jwkProvider.get(key);
+                    jwkResult = new JwkResult(jwk, null, currentTime + positiveCacheExpirationMs);
+                } catch (Exception e) {
+                    jwkResult = new JwkResult(null, e, currentTime + negativeCacheExpirationMs);
+                }
+                return jwkResult;
+            }).onComplete(shared);
+            return shared.future();
+        }).onComplete(promise);
         return promise.future();
     }
 

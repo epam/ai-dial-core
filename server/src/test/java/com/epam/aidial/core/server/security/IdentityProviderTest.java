@@ -22,6 +22,8 @@ import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.RequestOptions;
+import io.vertx.core.impl.ContextInternal;
+import io.vertx.core.impl.future.FutureInternal;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +35,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Field;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
@@ -1219,5 +1222,34 @@ public class IdentityProviderTest {
 
         assertThrows(NullPointerException.class,
                 () -> new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG"));
+    }
+
+    @Test
+    public void testCachedJwkFutureDoesNotPinRequestContext() throws Exception {
+        Vertx realVertx = Vertx.vertx();
+        try {
+            ContextInternal requestContext = (ContextInternal) realVertx.getOrCreateContext();
+            IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+            Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+            String token = JWT.create().withHeader(Map.of("kid", "kid1")).sign(algorithm);
+            Jwk jwk = mock(Jwk.class);
+            when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
+            // like AsyncTaskExecutor: the result future is bound to the calling request's context
+            when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+                Callable<?> callable = invocation.getArgument(0);
+                return requestContext.succeededFuture(callable.call());
+            });
+
+            identityProvider.extractClaimsFromJwt(JWT.decode(token));
+
+            Field field = IdentityProvider.class.getDeclaredField("cache");
+            field.setAccessible(true);
+            Map<?, ?> cache = (Map<?, ?>) field.get(identityProvider);
+            FutureInternal<?> cached = (FutureInternal<?>) cache.get("kid1");
+            assertNotNull(cached);
+            assertNull(cached.context());
+        } finally {
+            realVertx.close();
+        }
     }
 }
