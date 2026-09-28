@@ -179,6 +179,9 @@ public final class OpenApiDescriptions {
     public static final String INTERFACE_TYPE =
             "Filter deployments by the interface types they support (chat, embedding, mcp, custom_ui, all).";
 
+    public static final String DEPLOYMENT_TYPES =
+            "Which deployment kinds to report on (model, application). Defaults to model.";
+
     public static final String RESPONSE_SUCCESS = "Success";
     public static final String RESPONSE_INVALID_AUTHENTICATION = "Invalid Authentication";
     public static final String RESPONSE_BAD_REQUEST = "Bad request";
