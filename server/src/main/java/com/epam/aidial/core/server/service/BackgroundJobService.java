@@ -41,7 +41,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RedissonClient;
 
-import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -247,18 +246,14 @@ public class BackgroundJobService {
                     Future<Void> limitFuture = Future.succeededFuture();
                     if (deployment instanceof Model && hasUsage) {
                         Buffer requestBody = Buffer.buffer(jobRecord.requestBody());
-                        // this poller never streams, so nothing has parsed result.body() yet; resolveCost
-                        // reads it - only if the model is priced per token - instead of ModelCostCalculator
-                        // ever being handed both the parsed tree and the raw bytes for one response
-                        BigDecimal cost = ModelCostCalculator.resolveCost(deployment, usage, requestBody,
-                                InterfaceType.OPENAI_RESPONSES, new ModelCostCalculator.ResponseSource.Body(result.body()));
-                        limitFuture = rateLimiter.increase(deployment, responseMapping.getInitiatorBucket(), usage, cost)
-                                .transform(limitResult -> {
-                                    if (limitResult.failed()) {
-                                        log.warn("Failed to increase limit", limitResult.cause());
-                                    }
-                                    return Future.<Void>succeededFuture();
-                                });
+                        limitFuture = rateLimiter.increase(deployment, responseMapping.getInitiatorBucket(), usage, requestBody, InterfaceType.OPENAI_RESPONSES,
+                                new ModelCostCalculator.ResponseSource.Body(result.body()))
+                            .transform(limitResult -> {
+                                if (limitResult.failed()) {
+                                    log.warn("Failed to increase limit", limitResult.cause());
+                                }
+                                return Future.<Void>succeededFuture();
+                            });
                     }
 
                     Future<List<UsagePerModel>> statsFuture = limitFuture.compose(ignored -> {

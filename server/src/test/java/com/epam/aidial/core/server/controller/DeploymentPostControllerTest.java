@@ -896,7 +896,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
@@ -906,11 +906,17 @@ public class DeploymentPostControllerTest {
         when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
-        controller.handleResponse(bufferingReadStream);
+        // the legacy path prices the call via ModelCostCalculator.calculate() before ever reaching
+        // rateLimiter.increase() - the resolved InterfaceType is only observable there
+        try (var mockedCalculator = mockStatic(ModelCostCalculator.class, CALLS_REAL_METHODS)) {
+            controller.handleResponse(bufferingReadStream);
 
-        ArgumentCaptor<InterfaceType> interfaceTypeCaptor = ArgumentCaptor.forClass(InterfaceType.class);
-        verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), interfaceTypeCaptor.capture(), any());
-        assertEquals(InterfaceType.OPENAI_CHAT_COMPLETIONS, interfaceTypeCaptor.getValue());
+            ArgumentCaptor<InterfaceType> interfaceTypeCaptor = ArgumentCaptor.forClass(InterfaceType.class);
+            mockedCalculator.verify(() -> ModelCostCalculator.calculate(
+                    eq(model), any(), any(), any(), interfaceTypeCaptor.capture(), any()));
+            assertEquals(InterfaceType.OPENAI_CHAT_COMPLETIONS, interfaceTypeCaptor.getValue());
+        }
+        verify(rateLimiter).increase(eq(model), any(), any(), any());
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(any(AnalyticsLogContext.class));
         verify(tokenStatsTracker).endSpan(eq(context));
@@ -931,7 +937,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
@@ -941,11 +947,14 @@ public class DeploymentPostControllerTest {
         when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
-        controller.handleResponse(bufferingReadStream);
+        try (var mockedCalculator = mockStatic(ModelCostCalculator.class, CALLS_REAL_METHODS)) {
+            controller.handleResponse(bufferingReadStream);
 
-        ArgumentCaptor<InterfaceType> interfaceTypeCaptor = ArgumentCaptor.forClass(InterfaceType.class);
-        verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), interfaceTypeCaptor.capture(), any());
-        assertEquals(InterfaceType.OPENAI_EMBEDDINGS, interfaceTypeCaptor.getValue());
+            ArgumentCaptor<InterfaceType> interfaceTypeCaptor = ArgumentCaptor.forClass(InterfaceType.class);
+            mockedCalculator.verify(() -> ModelCostCalculator.calculate(
+                    eq(model), any(), any(), any(), interfaceTypeCaptor.capture(), any()));
+            assertEquals(InterfaceType.OPENAI_EMBEDDINGS, interfaceTypeCaptor.getValue());
+        }
     }
 
     private Map<String, Object> getTracingAttributes() {
@@ -979,7 +988,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer("{}"));
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
@@ -1022,7 +1031,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
@@ -1073,7 +1082,7 @@ public class DeploymentPostControllerTest {
         when(context.getResponse()).thenReturn(response);
         when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
         when(proxy.getRateLimiter()).thenReturn(rateLimiter);
-        when(rateLimiter.increase(any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(proxy.getLogStore()).thenReturn(logStore);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
@@ -1089,15 +1098,18 @@ public class DeploymentPostControllerTest {
         Buffer body = Buffer.buffer("{\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":8,\"total_tokens\":18}}");
         getTracingAttributes();
 
-        try (var mockedJson = mockStatic(JsonUtil.class, CALLS_REAL_METHODS);
-                var mockedCalculator = mockStatic(ModelCostCalculator.class, CALLS_REAL_METHODS)) {
+        try (var mockedJson = mockStatic(JsonUtil.class, CALLS_REAL_METHODS)) {
             controller.handleNonStreamingChatCompletionResponse(proxyResponse, body);
 
             // the assertion that makes this a single-parse test: one readTree for the whole chain below
             mockedJson.verify(() -> JsonUtil.tryParse(any(byte[].class)), times(1));
 
+            // rateLimiter is mocked, so pricing (ModelCostCalculator.resolveCost, invoked from inside its
+            // real increase()) is exercised in RateLimiterTest/ModelCostCalculatorTest instead; here the
+            // boundary this test controls is the ResponseSource it hands to rateLimiter.increase() -
+            // identity, not just value, is what proves the tree was never re-parsed for pricing.
             ArgumentCaptor<ModelCostCalculator.ResponseSource> priced = ArgumentCaptor.forClass(ModelCostCalculator.ResponseSource.class);
-            mockedCalculator.verify(() -> ModelCostCalculator.resolveCost(any(), any(), any(), any(), priced.capture()));
+            verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), priced.capture());
             assertInstanceOf(ModelCostCalculator.ResponseSource.Tree.class, priced.getValue());
             JsonNode pricedTree = ((ModelCostCalculator.ResponseSource.Tree) priced.getValue()).responseTree();
 
@@ -1316,7 +1328,7 @@ public class DeploymentPostControllerTest {
         when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
         when(context.getUserId()).thenReturn("test-user");
         when(proxy.getRateLimiter()).thenReturn(rateLimiter);
-        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any()))
+        when(rateLimiter.increase(any(), any(), any(), any()))
                 .thenReturn(Future.succeededFuture());
         Buffer body = Buffer.buffer("{\"usage\":{\"prompt_tokens\":19,\"completion_tokens\":9,\"total_tokens\":28}}");
 
@@ -1413,7 +1425,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
@@ -1426,8 +1438,7 @@ public class DeploymentPostControllerTest {
         controller.handleResponse(bufferingReadStream);
 
         // an interface declaring no mode is what every config written before mode existed is: still charged
-        verify(rateLimiter).increase(
-                eq(model), any(), any(), any(), any(), eq(InterfaceType.OPENAI_CHAT_COMPLETIONS), any());
+        verify(rateLimiter).increase(eq(model), any(), any(), any());
     }
 
     @ParameterizedTest
@@ -1483,7 +1494,8 @@ public class DeploymentPostControllerTest {
         controller.handleResponse(bufferingReadStream);
 
         // the translator calls Core back for the completion; that inner request carries the usage to limits
-        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any());
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(any(AnalyticsLogContext.class));
         verify(bufferingReadStream).end(response);
@@ -1514,7 +1526,8 @@ public class DeploymentPostControllerTest {
 
         controller.handleResponse(bufferingReadStream);
 
-        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any());
         verify(tokenStatsTracker).getUsageStats(eq(context));
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(context).setUsagePerModel(any());
@@ -1560,7 +1573,8 @@ public class DeploymentPostControllerTest {
 
         controller.handleResponse(bufferingReadStream);
 
-        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any());
         verify(rateLimiter).recordAggregatedCost(eq("inner-app"), any(), eq(new BigDecimal("0.40")));
         verify(rateLimiter).recordAggregatedCost(eq("router-app"), any(), eq(new BigDecimal("0.40")));
         verify(bufferingReadStream).end(response);

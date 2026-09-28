@@ -45,6 +45,7 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
@@ -420,10 +421,10 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private Future<RewriteResult> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
-        JsonNode responseTree = JsonUtil.tryParse(body.getBytes());
         if (proxyResponse.statusCode() != 200) {
-            return Future.succeededFuture(new RewriteResult(null, responseTree, body));
+            return Future.succeededFuture(new RewriteResult(null, MissingNode.getInstance(), body));
         }
+        JsonNode responseTree = JsonUtil.tryParse(body.getBytes());
         if (!(responseTree instanceof ObjectNode responseObject)) {
             log.warn("Response body is not a JSON object, skipping rewrite. Deployment: {}. Endpoint: {}",
                     context.getDeployment().getName(),

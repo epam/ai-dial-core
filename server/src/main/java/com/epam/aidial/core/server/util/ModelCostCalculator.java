@@ -158,7 +158,8 @@ public class ModelCostCalculator {
      */
     public static BigDecimal calculateCharCost(ModelType modelType, Buffer requestBody, ResponseSource response,
             String promptRate, String completionRate) {
-        if (requestBody == null) {
+        if (requestBody == null
+            || response instanceof ResponseSource.Body body && body.responseBody() == null) {
             log.error("Can't calculate model cost due to missing request body.");
             return null;
         }

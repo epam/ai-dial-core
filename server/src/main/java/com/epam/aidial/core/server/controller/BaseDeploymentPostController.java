@@ -321,21 +321,28 @@ public class BaseDeploymentPostController {
     }
 
     /**
-     * Charges the request's usage to the initiator's token and cost limits, for a caller holding no parsed
-     * response. Skipped on the same terms {@link #checkLimits} is, so the two can never disagree about what
-     * a mode exempts. Unchanged by the parse-once refactor: {@link RateLimiter#increase(RoleBasedEntity,
-     * String, TokenUsage, Buffer, Buffer, InterfaceType, JsonNode)} still resolves pricing itself, preferring
-     * {@code context.getPricingUsageNode()} - a live per-event accumulation - over parsing {@code responseBody},
-     * which for a streamed body may not even be a single JSON document.
+     * Charges usage to the initiator's token and cost limits.
+     * Uses the raw response body when no parsed response is available.
      */
     private Future<Void> increaseLimits(TokenUsage usage) {
         Deployment deployment = context.getDeployment();
         if (!subjectToLimits(deployment)) {
             return Future.succeededFuture();
         }
+        BigDecimal cost = ModelCostCalculator.calculate(
+            deployment,
+            usage,
+            context.getRequestBody(),
+            context.getResponseBody(),
+            interfaceType(),
+            context.getPricingUsageNode()
+        );
+
         return proxy.getRateLimiter().increase(
-                deployment, BucketBuilder.buildInitiatorBucket(context), usage,
-                context.getRequestBody(), context.getResponseBody(), interfaceType(), context.getPricingUsageNode()
+            deployment,
+            BucketBuilder.buildInitiatorBucket(context),
+            usage,
+            cost
         );
     }
 
@@ -349,9 +356,15 @@ public class BaseDeploymentPostController {
         if (!subjectToLimits(deployment)) {
             return Future.succeededFuture();
         }
-        BigDecimal cost = ModelCostCalculator.resolveCost(deployment, usage, context.getRequestBody(), interfaceType(),
-                new ModelCostCalculator.ResponseSource.Tree(response));
-        return proxy.getRateLimiter().increase(deployment, BucketBuilder.buildInitiatorBucket(context), usage, cost);
+
+        return proxy.getRateLimiter().increase(
+            deployment,
+            BucketBuilder.buildInitiatorBucket(context),
+            usage,
+            context.getRequestBody(),
+            interfaceType(),
+            new ModelCostCalculator.ResponseSource.Tree(response)
+        );
     }
 
     /**

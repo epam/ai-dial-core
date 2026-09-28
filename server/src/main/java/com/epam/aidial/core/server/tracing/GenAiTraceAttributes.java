@@ -345,12 +345,20 @@ public final class GenAiTraceAttributes {
 
     /**
      * @return the tree {@link ProxyContext#assembledChatCompletionsResponseTree()} already merged for the
-     *         analytics log - never a fresh parse, so the size cap that guards {@link #parse(Buffer)} doesn't
-     *         apply here.
+     *         analytics log. The same 512 KiB tracing limit as for non-streaming responses is preserved,
+     *         but the already assembled tree is reused instead of being parsed again.
      */
     private static JsonNode chatCompletionsTree(ProxyContext context) {
         ObjectNode tree = context.assembledChatCompletionsResponseTree();
-        return tree == null ? MissingNode.getInstance() : tree;
+        if (tree == null) {
+            return MissingNode.getInstance();
+        }
+        String assembledResponse = context.assembledChatCompletionsResponse();
+        if (assembledResponse == null
+            || assembledResponse.getBytes(StandardCharsets.UTF_8).length > MAX_TRACED_BODY_BYTES) {
+            return MissingNode.getInstance();
+        }
+        return tree;
     }
 
     /**

@@ -60,23 +60,26 @@ public class RateLimiter {
 
     private final ConfigStore configStore;
 
-    /**
-     * Legacy path: covers streaming, {@code /embeddings} and disconnect-recovery, none of which hold a
-     * parsed response - unchanged by the parse-once refactor. {@code liveUsageNode} preferred over parsing
-     * {@code responseBody} is exactly {@link ModelCostCalculator}'s original behavior, preserved here because
-     * a streamed body may not even be a single JSON document, so it cannot be reduced to the single
-     * {@link ModelCostCalculator.ResponseSource} representation the other {@link #increase(RoleBasedEntity,
-     * String, TokenUsage, BigDecimal)} overload's callers use.
-     */
     public Future<Void> increase(
-            RoleBasedEntity roleBasedEntity, String bucket, TokenUsage usage, Buffer requestBody, Buffer responseBody,
-            InterfaceType interfaceType, JsonNode liveUsageNode) {
+        RoleBasedEntity roleBasedEntity,
+        String bucket,
+        TokenUsage usage,
+        Buffer requestBody,
+        InterfaceType interfaceType,
+        ModelCostCalculator.ResponseSource response) {
+
         try {
             if (resourceService == null) {
                 return Future.succeededFuture();
             }
-            BigDecimal cost = ModelCostCalculator.calculate(
-                    roleBasedEntity, usage, requestBody, responseBody, interfaceType, liveUsageNode);
+
+            BigDecimal cost = ModelCostCalculator.resolveCost(
+                roleBasedEntity,
+                usage,
+                requestBody,
+                interfaceType,
+                response);
+
             return increase(roleBasedEntity, bucket, usage, cost);
         } catch (Throwable e) {
             return Future.failedFuture(e);
