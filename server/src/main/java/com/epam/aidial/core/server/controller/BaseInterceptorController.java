@@ -178,8 +178,11 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
                 .onFailure(this::handleResponseError);
     }
 
+    protected void afterResponse(Buffer responseBody) {}
+
     private void handleResponse(BufferingReadStream responseStream) {
         Buffer responseBody = responseStream.getContent();
+        afterResponse(responseBody);
         collectResponseAttachments(responseBody, createAttachmentFn(proxy, context)).onComplete(result -> {
             if (result.failed()) {
                 log.warn("Failed to collect attachments from response. Error:", result.cause());

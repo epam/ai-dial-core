@@ -350,7 +350,6 @@ public class ResponsesControllerTest {
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         when(httpClient.request(any())).thenReturn(Future.succeededFuture(proxyRequest));
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
-        when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
 
         when(proxy.getTokenStatsTracker().startSpan(context))
                 .thenReturn(Future.succeededFuture());
@@ -389,7 +388,8 @@ public class ResponsesControllerTest {
 
         verify(httpClient).request(argThat(req ->
                 "/responses?arg=value".equals(req.getURI().toString())));
-        assertEquals(responseBody, context.getResponseBody());
+        String expectedDialId = EncryptedAffinityUtil.wrapResponseId("endpoint", "dial_test_fixed-uuid-1234", "test");
+        assertEquals(expectedDialId, ProxyUtil.MAPPER.readTree(context.getResponseBody().getBytes()).path("id").asText());
         assertEquals(tokenUsage, context.getTokenUsage());
         // Ensure the list of attached files is updated before it's saved
         verify(apiKeyStore).assignPerRequestApiKey(argThat(arg ->
@@ -468,7 +468,6 @@ public class ResponsesControllerTest {
         when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
-        when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
 
         when(proxy.getTokenStatsTracker().startSpan(context))
                 .thenReturn(Future.succeededFuture());
@@ -499,7 +498,8 @@ public class ResponsesControllerTest {
 
         await(textContext);
 
-        assertEquals(responseBody, context.getResponseBody());
+        String expectedDialId = EncryptedAffinityUtil.wrapResponseId("endpoint", "dial_test_fixed-uuid-1234", "test");
+        assertEquals(expectedDialId, ProxyUtil.MAPPER.readTree(context.getResponseBody().getBytes()).path("id").asText());
 
         TokenUsage expectedOwnUsage = new TokenUsage();
         expectedOwnUsage.setPromptTokens(19);
@@ -795,6 +795,7 @@ public class ResponsesControllerTest {
         deployment.setResponsesEndpoint("http://adapter/responses");
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
@@ -811,6 +812,7 @@ public class ResponsesControllerTest {
         when(upstreamRoute.get()).thenReturn(upstream);
         when(context.getRequest()).thenReturn(request);
         when(context.getResponse()).thenReturn(response);
+        when(context.getUserId()).thenReturn("test-user");
         when(context.getConfig()).thenReturn(new Config());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
@@ -831,15 +833,17 @@ public class ResponsesControllerTest {
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
-        when(proxy.getBackgroundJobService().saveJob(anyString(), any())).thenAnswer(invocation -> {
+        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
+        doAnswer(invocation -> {
             textContext.completeNow();
-            return Future.<Void>succeededFuture();
-        });
+            return Future.succeededFuture(Boolean.TRUE);
+        }).when(apiKeyStore).invalidatePerRequestApiKey(any());
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setRequestBody(any());
         doCallRealMethod().when(context).getRequestBody();
         doCallRealMethod().when(context).setResponseBody(any());
+        doCallRealMethod().when(context).getResponseBody();
         doCallRealMethod().when(context).setUpstreamRoute(any());
         doCallRealMethod().when(context).getUpstreamRoute();
         doCallRealMethod().when(context).setProxyResponse(any());

@@ -161,7 +161,7 @@ public class ResponseItemControllerTest {
         JsonNode sentJson = ProxyUtil.MAPPER.readTree(bodyCaptor.getValue().getBytes());
         assertEquals(dialId, sentJson.path("id").asText());
 
-        verify(proxy.getResponseMappingService(), never()).deleteMapping(anyString());
+        verify(proxy.getResponseMetadataService(), never()).deleteMetadata(anyString());
     }
 
     @Test
@@ -281,7 +281,7 @@ public class ResponseItemControllerTest {
         ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
         verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), any(HttpMethod.class), any(Upstream.class), any(), any(), any());
         assertEquals("http://adapter/responses/upstream-id-del", urlCaptor.getValue());
-        verify(proxy.getResponseMappingService(), never()).deleteMapping(anyString());
+        verify(proxy.getResponseMetadataService(), never()).deleteMetadata(anyString());
     }
 
     @Test
@@ -317,7 +317,7 @@ public class ResponseItemControllerTest {
 
         await(testContext);
 
-        verify(proxy.getResponseMappingService(), never()).deleteMapping(anyString());
+        verify(proxy.getResponseMetadataService(), never()).deleteMetadata(anyString());
     }
 
     @Test
@@ -338,7 +338,7 @@ public class ResponseItemControllerTest {
                         && ((HttpException) e).getStatus() == HttpStatus.CONFLICT
                         && "Cannot delete response while background job is in progress".equals(e.getMessage())),
                 anyString());
-        verify(proxy.getResponseMappingService(), never()).deleteMapping(anyString());
+        verify(proxy.getResponseMetadataService(), never()).deleteMetadata(anyString());
     }
 
     @Test
@@ -423,7 +423,7 @@ public class ResponseItemControllerTest {
         ArgumentCaptor<Buffer> bodyCaptor = ArgumentCaptor.forClass(Buffer.class);
         verify(response).end(bodyCaptor.capture());
         assertEquals(0, bodyCaptor.getValue().length());
-        verify(proxy.getResponseMappingService(), never()).deleteMapping(anyString());
+        verify(proxy.getResponseMetadataService(), never()).deleteMetadata(anyString());
     }
 
     @Test
@@ -448,6 +448,7 @@ public class ResponseItemControllerTest {
         AtomicReference<Buffer> endChunkRef = new AtomicReference<>();
 
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
+        when(context.getDeployment()).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
         when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any(), any(), any()))
@@ -563,7 +564,7 @@ public class ResponseItemControllerTest {
                 "interceptor2".equals(opts.getHost())
                 && ("/responses/" + dialId).equals(opts.getURI().toString())));
         verify(proxy.getResponsesApiClient(), never()).send(any(), any(), any(), any(), any(), any());
-        verify(proxy.getResponseMappingService(), never()).getMapping(anyString());
+        verify(proxy.getResponseMetadataService(), never()).getMetadata(anyString());
     }
 
     @Test
@@ -611,7 +612,7 @@ public class ResponseItemControllerTest {
                 "interceptor1".equals(opts.getHost())
                 && ("/responses/" + dialId).equals(opts.getURI().toString())));
         verify(proxy.getResponsesApiClient(), never()).send(any(), any(), any(), any(), any(), any());
-        verify(proxy.getResponseMappingService(), never()).getMapping(anyString());
+        verify(proxy.getResponseMetadataService(), never()).getMetadata(anyString());
     }
 
     @Test
@@ -660,7 +661,7 @@ public class ResponseItemControllerTest {
                 "interceptor1".equals(opts.getHost())
                 && ("/responses/" + dialId).equals(opts.getURI().toString())));
         verify(context, never()).respond(any(HttpStatus.class), anyString());
-        verify(proxy.getResponseMappingService(), never()).getMapping(anyString());
+        verify(proxy.getResponseMetadataService(), never()).getMetadata(anyString());
     }
 
     private static Future<?> complete(VertxTestContext testContext) {
