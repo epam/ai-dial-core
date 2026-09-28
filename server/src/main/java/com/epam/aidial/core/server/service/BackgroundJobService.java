@@ -43,6 +43,7 @@ import org.redisson.api.RedissonClient;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -265,7 +266,8 @@ public class BackgroundJobService {
                             return Future.succeededFuture(List.of());
                         }
                         return tokenStatsTracker.updateDeploymentStats(traceId, spanId, responseMapping.getDeploymentName(), usage)
-                                .map(TokenStatsTracker.UsageStats::usagePerModel);
+                                .compose(stats -> recordAggregatedCosts(stats.aggregatedCosts(), responseMapping.getInitiatorBucket())
+                                        .map(ignored2 -> stats.usagePerModel()));
                     });
 
                     if (traceId != null && Boolean.TRUE.equals(jobRecord.isRootSpan())) {
@@ -285,10 +287,27 @@ public class BackgroundJobService {
     }
 
     /**
-     * Resolves the model's cost for this poller's result, reading only the representation its pricing unit
-     * actually needs - the response is parsed here for token pricing, since this poller never streams and
-     * nothing upstream of it has parsed {@code responseBody} yet, but only when the unit actually calls for it.
+     * Persists each ancestor's aggregated-cost increment collected by this report, mirroring
+     * {@code BaseDeploymentPostController.recordAggregatedCosts} for the polled/background path, which
+     * has no live {@link com.epam.aidial.core.server.ProxyContext} to derive a bucket from. Never fails
+     * the caller: a write failure here is logged and swallowed.
      */
+    private Future<Void> recordAggregatedCosts(List<TokenStatsTracker.AggregatedCost> aggregatedCosts, String bucket) {
+        if (aggregatedCosts.isEmpty()) {
+            return Future.succeededFuture();
+        }
+        List<Future<Void>> futures = new ArrayList<>(aggregatedCosts.size());
+        for (TokenStatsTracker.AggregatedCost cost : aggregatedCosts) {
+            futures.add(rateLimiter.recordAggregatedCost(cost.deploymentName(), bucket, cost.cost()));
+        }
+        return Future.all(futures).<Void>transform(result -> {
+            if (result.failed()) {
+                log.warn("Failed to record aggregated cost", result.cause());
+            }
+            return Future.succeededFuture();
+        });
+    }
+
     private String encryptKey(ResourceDescriptor descriptor, String key) {
         BucketInfo bucketInfo = new BucketInfo(descriptor.getBucketName(), descriptor.getBucketLocation());
         byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);

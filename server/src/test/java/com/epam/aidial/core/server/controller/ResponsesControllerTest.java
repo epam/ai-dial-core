@@ -545,7 +545,7 @@ public class ResponsesControllerTest {
         // the response body carries its own "usage" object, so it's captured as this app's
         // self-reported usage (see issue #1753) rather than read from the trace aggregate
         when(proxy.getTokenStatsTracker().updateDeploymentStats(any(), any(), any(), any()))
-                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(tokenUsage, List.of())));
+                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(tokenUsage, List.of(), List.of())));
         doAnswer(invocation -> {
             textContext.completeNow();
             return Future.succeededFuture(Boolean.TRUE);
@@ -670,7 +670,7 @@ public class ResponsesControllerTest {
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getTokenStatsTracker().getUsageStats(context))
-                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of())));
+                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of(), List.of())));
         ResponseMappingService responseMappingService = proxy.getResponseMappingService();
         when(responseMappingService.saveMapping(any(), any())).thenReturn(expectedDialId);
 
@@ -787,7 +787,7 @@ public class ResponsesControllerTest {
 
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getTokenStatsTracker().getUsageStats(context))
-                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of())));
+                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of(), List.of())));
         doAnswer(invocation -> {
             textContext.completeNow();
             return Future.succeededFuture(Boolean.TRUE);
