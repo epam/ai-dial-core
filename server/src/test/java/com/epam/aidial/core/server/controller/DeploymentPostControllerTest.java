@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
+import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
@@ -21,6 +22,7 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -30,6 +32,7 @@ import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.opentelemetry.api.trace.Span;
 import io.vertx.core.Future;
@@ -82,6 +85,8 @@ import static io.vertx.core.http.HttpHeaders.AUTHORIZATION;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -986,6 +991,73 @@ public class DeploymentPostControllerTest {
             assertEquals("embeddings", tracingAttributes.get("gen_ai.operation.name"));
             assertEquals("openai_embeddings", tracingAttributes.get("dial.api"));
         }
+    }
+
+    @Test
+    void testCollectTokenUsage_ReusesParsedResponseWithoutReparsingBody() {
+        when(context.getDeployment()).thenReturn(new Model());
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.INTERNAL_SERVER_ERROR.getCode());
+        when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
+        // malformed on purpose: proves the assertion below by failing loudly if it were ever parsed
+        Buffer body = Buffer.buffer("not valid json");
+        JsonNode parsedResponse = ProxyUtil.MAPPER.createObjectNode().put("id", "resp-1");
+
+        try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class)) {
+            mockedGenAi.when(() -> GenAiTraceAttributes.isEnabled(context)).thenReturn(true);
+
+            controller.collectTokenUsage(body, "resp-1", parsedResponse);
+
+            mockedGenAi.verify(() -> GenAiTraceAttributes.setResponseAttributes(
+                    eq(context), any(), eq(parsedResponse), eq("resp-1")));
+            mockedGenAi.verify(() -> GenAiTraceAttributes.setResponseAttributes(
+                    eq(context), any(), any(Buffer.class), any()), never());
+        }
+    }
+
+    /**
+     * The symmetric case: with no parsed tree available, {@code collectTokenUsage} must parse
+     * {@code responseBody} itself instead of silently skipping tracing.
+     */
+    @Test
+    void testCollectTokenUsage_ParsesResponseBodyWhenNoParsedResponseGiven() {
+        when(context.getDeployment()).thenReturn(new Model());
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.INTERNAL_SERVER_ERROR.getCode());
+        when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
+        Buffer body = Buffer.buffer("{}");
+
+        try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class)) {
+            mockedGenAi.when(() -> GenAiTraceAttributes.isEnabled(context)).thenReturn(true);
+
+            controller.collectTokenUsage(body, "resp-1", null);
+
+            mockedGenAi.verify(() -> GenAiTraceAttributes.setResponseAttributes(
+                    eq(context), any(), eq(body), eq("resp-1")));
+        }
+    }
+
+    /**
+     * {@code collectResponseAttachments}'s JsonNode overload must hand the given tree straight to the
+     * attachment function, without serializing it back to a Buffer and parsing the same JSON again.
+     */
+    @Test
+    void testCollectResponseAttachments_JsonNodeOverload_ReusesGivenTreeWithoutReparsing() {
+        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        JsonNode tree = ProxyUtil.MAPPER.createObjectNode().put("id", "resp-1");
+        CollectResponseAttachmentsFn fn = mock(CollectResponseAttachmentsFn.class);
+        when(fn.apply(any())).thenReturn(Future.succeededFuture(tree));
+
+        Future<Void> result = controller.collectResponseAttachments(tree, fn);
+
+        assertTrue(result.succeeded());
+        ArgumentCaptor<JsonNode> captor = ArgumentCaptor.forClass(JsonNode.class);
+        verify(fn).apply(captor.capture());
+        assertSame(tree, captor.getValue());
     }
 
     @ParameterizedTest
