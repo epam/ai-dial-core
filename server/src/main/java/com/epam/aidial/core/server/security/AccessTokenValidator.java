@@ -31,6 +31,7 @@ import javax.annotation.Nullable;
 public class AccessTokenValidator {
 
     private static final long USER_INFO_EXP_PERIOD_MS = TimeUnit.MINUTES.toMillis(1);
+    private static final int JWKS_TIMEOUT_MS = (int) TimeUnit.SECONDS.toMillis(10);
 
     private final List<IdentityProvider> providers = new ArrayList<>();
 
@@ -51,7 +52,8 @@ public class AccessTokenValidator {
         for (String idpKey : idpConfig.fieldNames()) {
             providers.add(new IdentityProvider(idpConfig.getJsonObject(idpKey), vertx, taskExecutor, client, clientOptions, jwksUrl -> {
                 try {
-                    return new UrlJwkProvider(new URL(jwksUrl));
+                    // without timeouts a JWKS endpoint that never answers blocks the lookup forever, and the pending lookup stays cached
+                    return new UrlJwkProvider(new URL(jwksUrl), JWKS_TIMEOUT_MS, JWKS_TIMEOUT_MS);
                 } catch (MalformedURLException e) {
                     throw new IllegalArgumentException(e);
                 }

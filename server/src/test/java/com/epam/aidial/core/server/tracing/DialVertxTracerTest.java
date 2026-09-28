@@ -84,6 +84,28 @@ class DialVertxTracerTest {
     }
 
     @Test
+    void sendRequestAfterResponseEndDoesNotParentToEndedSpan(Vertx vertx) {
+        ContextInternal context = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
+        SpanContext span = SpanContext.create("22510e56eb9b21f6b03dbc038cd8fb71", "b03dbc038cd8fb71",
+                TraceFlags.getSampled(), TraceState.getDefault());
+        context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, io.opentelemetry.context.Context.root().with(Span.wrap(span)));
+        doAnswer(invocation -> context.removeLocal(VertxContextStorageProvider.ACTIVE_CONTEXT))
+                .when(delegate).sendResponse(any(), any(), any(), any(), any());
+        tracer.sendResponse(context, null, new Object(), null, null);
+        Object restored = context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
+        // OpenTelemetryTracer creates no client span and injects no traceparent when the context has no active trace
+        doAnswer(invocation -> {
+            assertNull(context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
+            return null;
+        }).when(delegate).sendRequest(any(), any(), any(), any(), any(), any(), any());
+
+        tracer.sendRequest(context, SpanKind.RPC, null, new Object(), "op", null, null);
+
+        verify(delegate).sendRequest(any(), any(), any(), any(), any(), any(), any());
+        assertSame(restored, context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
+    }
+
+    @Test
     void sendResponseKeepsOuterContextRestoredByDelegate(Vertx vertx) {
         ContextInternal context = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
         io.opentelemetry.context.Context outer = io.opentelemetry.context.Context.root().with(Span.wrap(SpanContext.create(

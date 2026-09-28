@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.controller.ControllerSelector;
 import com.epam.aidial.core.server.controller.ControllerTemplate;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.context.ContextKey;
 import io.vertx.core.Context;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -27,6 +28,9 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
             Proxy.HEALTH_CHECK_PATH,
             Proxy.VERSION_PATH
     );
+
+    // marks the context restored after the response ended: it is for log correlation only, not a parent for new spans
+    private static final ContextKey<Boolean> RESPONSE_ENDED = ContextKey.named("dial-response-ended");
 
     private final VertxTracer<I, O> delegate;
 
@@ -55,7 +59,7 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
         if (payload != null && span.isValid() && ((ContextInternal) context).isDuplicate()
                 && context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT) == null) {
             // the request's duplicated context dies with the request, so nothing leaks to the next one; Span.wrap is non-recording
-            context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, active.with(Span.wrap(span)));
+            context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, active.with(Span.wrap(span)).with(RESPONSE_ENDED, true));
         }
     }
 
@@ -65,7 +69,17 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
             BiConsumer<String, String> headers, TagExtractor<R> tagExtractor) {
 
         String spanName = request instanceof HttpRequest req ? getClientSpanName(req) : operation;
-        return delegate.sendRequest(context, kind, policy, request, spanName, headers, tagExtractor);
+        io.opentelemetry.context.Context active = context == null ? null : context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
+        if (active == null || active.get(RESPONSE_ENDED) == null) {
+            return delegate.sendRequest(context, kind, policy, request, spanName, headers, tagExtractor);
+        }
+        // hide the ended server span, so the delegate traces this call as it did before the context was restored
+        context.removeLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
+        try {
+            return delegate.sendRequest(context, kind, policy, request, spanName, headers, tagExtractor);
+        } finally {
+            context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, active);
+        }
     }
 
     @Override
