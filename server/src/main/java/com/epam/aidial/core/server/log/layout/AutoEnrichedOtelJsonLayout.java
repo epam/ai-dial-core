@@ -70,7 +70,7 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         attributes.put("threadName", event.getThreadName());
 
         // Enrich attributes from context
-        enrichAttributesFromContext(event, attributes);
+        enrichAttributesFromContext(proxyContext, attributes);
         
         // Handle exception info
         enrichExceptionAttributes(event, attributes);
@@ -103,8 +103,7 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
                 .build();
     }
 
-    private void enrichAttributesFromContext(ILoggingEvent event, Map<String, Object> attributes) {
-        ProxyContext proxyContext = ContextManager.getProxyContext();
+    private void enrichAttributesFromContext(ProxyContext proxyContext, Map<String, Object> attributes) {
         if (proxyContext != null) {
             attributes.put("user.project", proxyContext.getProject());
             attributes.put("user.id", proxyContext.getUserId());

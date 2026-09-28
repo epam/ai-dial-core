@@ -331,12 +331,8 @@ public class IdentityProvider {
          * execution. So, if we put that future in a cache, it will contain a context from the initial request, that
          * may be invalid for further requests. For this reason, when we retrieve the future from the cache, we must
          * extract the value and put it into another future (Promise) which holds a valid context of a current request.
-         * Promise.promise() has no context, so the caller's context must be bound explicitly (null in plain unit tests).
          * */
-        // ponytail: two caches share futures between requests; move this into a helper when a third one does
-        ContextInternal caller = ContextInternal.current();
-        Promise<JwkResult> promise = caller != null ? caller.promise() : Promise.promise();
-        cache.computeIfAbsent(kid, key -> {
+        return onCallerContext(cache.computeIfAbsent(kid, key -> {
             // the cached future must be context-less: a context-bound one would pin the first request's context
             // (and its ProxyContext with request/response bodies) for the whole cache TTL
             Promise<JwkResult> shared = Promise.promise();
@@ -352,7 +348,17 @@ public class IdentityProvider {
                 return jwkResult;
             }).onComplete(shared);
             return shared.future();
-        }).onComplete(promise);
+        }));
+    }
+
+    /**
+     * Continues a future shared between requests on the calling request's context.
+     * Promise.promise() has no context, so the caller's context is bound explicitly (null in plain unit tests).
+     */
+    static <T> Future<T> onCallerContext(Future<T> shared) {
+        ContextInternal caller = ContextInternal.current();
+        Promise<T> promise = caller != null ? caller.promise() : Promise.promise();
+        shared.onComplete(promise);
         return promise.future();
     }
 

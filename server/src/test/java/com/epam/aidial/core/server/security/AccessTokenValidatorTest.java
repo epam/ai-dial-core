@@ -251,7 +251,7 @@ public class AccessTokenValidatorTest {
 
             assertSame(second, continuedOn.get(5, TimeUnit.SECONDS));
         } finally {
-            realVertx.close();
+            realVertx.close().toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
         }
     }
 

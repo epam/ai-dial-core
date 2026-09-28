@@ -26,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -38,9 +39,9 @@ import static org.mockito.Mockito.when;
 class DialVertxTracerTest {
 
     @Mock
-    private VertxTracer<?, ?> delegate;
+    private VertxTracer<Object, Object> delegate;
     @InjectMocks
-    private DialVertxTracer<?, ?> tracer;
+    private DialVertxTracer<Object, Object> tracer;
 
     @ParameterizedTest
     @MethodSource("receiveRequestDatasource")
@@ -75,10 +76,42 @@ class DialVertxTracerTest {
         doAnswer(invocation -> context.removeLocal(VertxContextStorageProvider.ACTIVE_CONTEXT))
                 .when(delegate).sendResponse(any(), any(), any(), any(), any());
 
-        tracer.sendResponse(context, null, null, null, null);
+        tracer.sendResponse(context, null, new Object(), null, null);
 
         io.opentelemetry.context.Context active = context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
         assertEquals(span, Span.fromContext(active).getSpanContext());
+    }
+
+    @Test
+    void sendResponseKeepsOuterContextRestoredByDelegate(Vertx vertx) {
+        ContextInternal context = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
+        io.opentelemetry.context.Context outer = io.opentelemetry.context.Context.root().with(Span.wrap(SpanContext.create(
+                "22510e56eb9b21f6b03dbc038cd8fb71", "b03dbc038cd8fb71", TraceFlags.getSampled(), TraceState.getDefault())));
+        io.opentelemetry.context.Context inner = outer.with(Span.wrap(SpanContext.create(
+                "22510e56eb9b21f6b03dbc038cd8fb71", "038cd8fb71b03dbc", TraceFlags.getSampled(), TraceState.getDefault())));
+        context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, inner);
+        // a nested span on the same context: closing its scope restores the outer, still live span
+        doAnswer(invocation -> {
+            context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, outer);
+            return null;
+        }).when(delegate).sendResponse(any(), any(), any(), any(), any());
+
+        tracer.sendResponse(context, null, new Object(), null, null);
+
+        assertSame(outer, context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
+    }
+
+    @Test
+    void sendResponseWithoutSpanLeavesContextAlone(Vertx vertx) {
+        ContextInternal context = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
+        io.opentelemetry.context.Context active = io.opentelemetry.context.Context.root().with(Span.wrap(SpanContext.create(
+                "22510e56eb9b21f6b03dbc038cd8fb71", "b03dbc038cd8fb71", TraceFlags.getSampled(), TraceState.getDefault())));
+        context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, active);
+
+        // TracingPolicy.IGNORE: the delegate returned no payload from receiveRequest and owns no span
+        tracer.sendResponse(context, null, null, null, null);
+
+        assertSame(active, context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
     }
 
     public static List<Arguments> receiveRequestDatasource() {

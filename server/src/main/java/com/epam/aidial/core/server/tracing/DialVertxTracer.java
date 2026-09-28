@@ -51,7 +51,9 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
         SpanContext span = active == null ? SpanContext.getInvalid() : Span.fromContext(active).getSpanContext();
         // ends the span and closes its scope, so lines logged after response.end() would lose the trace
         delegate.sendResponse(context, response, payload, failure, tagExtractor);
-        if (span.isValid() && ((ContextInternal) context).isDuplicate()) {
+        // payload == null: the delegate owned no span; slot still set: the scope close restored an outer live context
+        if (payload != null && span.isValid() && ((ContextInternal) context).isDuplicate()
+                && context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT) == null) {
             // the request's duplicated context dies with the request, so nothing leaks to the next one; Span.wrap is non-recording
             context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, active.with(Span.wrap(span)));
         }

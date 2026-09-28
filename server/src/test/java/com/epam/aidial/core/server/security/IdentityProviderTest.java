@@ -15,7 +15,9 @@ import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.Context;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
@@ -46,11 +48,14 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -1249,7 +1254,32 @@ public class IdentityProviderTest {
             assertNotNull(cached);
             assertNull(cached.context());
         } finally {
-            realVertx.close();
+            realVertx.close().toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    public void testWaiterOnSharedJwkContinuesOnItsOwnContext() throws Exception {
+        Vertx realVertx = Vertx.vertx();
+        try {
+            IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+            Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+            DecodedJWT jwt = JWT.decode(JWT.create().withHeader(Map.of("kid", "kid1")).sign(algorithm));
+            Promise<Object> lookup = Promise.promise();
+            when(taskExecutor.submit(any(Callable.class))).thenReturn(lookup.future());
+
+            // one event loop: the three tasks below run in order, so the second request is always a waiter
+            ContextInternal loop = (ContextInternal) realVertx.getOrCreateContext();
+            ContextInternal first = loop.duplicate();
+            ContextInternal second = loop.duplicate();
+            CompletableFuture<Context> continuedOn = new CompletableFuture<>();
+            first.runOnContext(v -> identityProvider.extractClaimsFromJwt(jwt));
+            second.runOnContext(v -> identityProvider.extractClaimsFromJwt(jwt).onComplete(res -> continuedOn.complete(Vertx.currentContext())));
+            first.runOnContext(v -> lookup.fail(new JwkException("no key")));
+
+            assertSame(second, continuedOn.get(5, TimeUnit.SECONDS));
+        } finally {
+            realVertx.close().toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
         }
     }
 }

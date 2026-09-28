@@ -458,6 +458,9 @@ public class Proxy implements Handler<HttpServerRequest> {
     private Future<?> processAuthorizationResult(ExtractedClaims extractedClaims,
                                                  HttpServerRequest request, ApiKeyData apiKeyData,
                                                  String traceId, String spanId, String traceFlags) {
+        // fires only when the connection drops before end(): release the bodies from the request context,
+        // which anything context-bound (cached futures, timers) may keep reachable; trace ids stay on the span
+        request.response().closeHandler(v -> ContextManager.clearContext());
         Future<?> future;
         try {
             ProxyContext context = new ProxyContext(this, request, apiKeyData, extractedClaims, traceId, spanId, traceFlags);
