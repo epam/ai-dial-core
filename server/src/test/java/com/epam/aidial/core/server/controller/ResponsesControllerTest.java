@@ -375,7 +375,8 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setRequestBody(any());
         doCallRealMethod().when(context).getRequestBody();
-        doCallRealMethod().when(context).setResponseBody(any());
+        doCallRealMethod().when(context).setResponseBody(any(), any());
+        lenient().doCallRealMethod().when(context).resolveResponseTree(any());
         doCallRealMethod().when(context).getResponseBody();
         doCallRealMethod().when(context).setTokenUsage(any());
         doCallRealMethod().when(context).getTokenUsage();
@@ -485,7 +486,8 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setRequestBody(any());
         doCallRealMethod().when(context).getRequestBody();
-        doCallRealMethod().when(context).setResponseBody(any());
+        doCallRealMethod().when(context).setResponseBody(any(), any());
+        lenient().doCallRealMethod().when(context).resolveResponseTree(any());
         doCallRealMethod().when(context).getResponseBody();
         doCallRealMethod().when(context).setTokenUsage(any());
         doCallRealMethod().when(context).getTokenUsage();
@@ -614,7 +616,8 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setRequestBody(any());
         doCallRealMethod().when(context).getRequestBody();
-        doCallRealMethod().when(context).setResponseBody(any());
+        doCallRealMethod().when(context).setResponseBody(any(), any());
+        lenient().doCallRealMethod().when(context).resolveResponseTree(any());
         doCallRealMethod().when(context).getResponseBody();
         doCallRealMethod().when(context).setTokenUsage(any());
         doCallRealMethod().when(context).getTokenUsage();
@@ -728,6 +731,8 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).setRequestBody(any());
         doCallRealMethod().when(context).getRequestBody();
         doCallRealMethod().when(context).setResponseBody(any());
+        doCallRealMethod().when(context).setResponseBody(any(), any());
+        lenient().doCallRealMethod().when(context).resolveResponseTree(any());
         doCallRealMethod().when(context).getResponseBody();
         doCallRealMethod().when(context).setTokenUsage(any());
         doCallRealMethod().when(context).getTokenUsage();
@@ -855,7 +860,8 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setRequestBody(any());
         doCallRealMethod().when(context).getRequestBody();
-        doCallRealMethod().when(context).setResponseBody(any());
+        doCallRealMethod().when(context).setResponseBody(any(), any());
+        lenient().doCallRealMethod().when(context).resolveResponseTree(any());
         doCallRealMethod().when(context).setUpstreamRoute(any());
         doCallRealMethod().when(context).getUpstreamRoute();
         doCallRealMethod().when(context).setProxyResponse(any());

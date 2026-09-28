@@ -631,10 +631,11 @@ class GenAiTraceAttributesTest {
     }
 
     @Test
-    void setResponseAttributesReusesTheTerminalResponsesFrameAlreadyExtracted() {
+    void setResponseAttributesReusesTheTerminalResponsesFrameAlreadyExtracted() throws Exception {
         ProxyContext context = streamingContext();
         // ExtractTerminalResponseFn kept this while streaming; the buffered frames are never scanned again
-        context.setAssembledStreamingResponse("{\"id\":\"resp-1\",\"model\":\"gpt-4\",\"status\":\"incomplete\"}");
+        context.setPricingUsageNode(ProxyUtil.MAPPER.readTree(
+                "{\"id\":\"resp-1\",\"model\":\"gpt-4\",\"status\":\"incomplete\"}"));
         Buffer body = Buffer.buffer("""
                 event: response.completed
                 data: {"type":"response.completed","response":{"id":"scanned","status":"completed"}}
@@ -648,21 +649,15 @@ class GenAiTraceAttributesTest {
     }
 
     @Test
-    void setResponseAttributesPrefersTheLivePricingUsageNodeOverTheAssembledStringForResponsesApi() throws Exception {
-        // ExtractTerminalResponseFn caches the parsed terminal frame as pricingUsageNode during the same
-        // pass that built the assembled string - GenAiTraceAttributes reads that node directly rather than
-        // reparsing the string it would otherwise fall back to
-        ProxyContext context = streamingContext();
-        context.setPricingUsageNode(ProxyUtil.MAPPER.readTree(
-                "{\"id\":\"resp-live\",\"model\":\"gpt-4\",\"status\":\"completed\"}"));
-        context.setAssembledStreamingResponse("{\"id\":\"resp-from-string\",\"status\":\"incomplete\"}");
-        Buffer body = Buffer.buffer("event: response.completed\ndata: {\"type\":\"response.completed\","
-                + "\"response\":{\"id\":\"scanned\",\"status\":\"completed\"}}\n\n");
+    void setResponseAttributesReadsTheResponseTreeTheContextShares() {
+        ProxyContext context = context(proxy(enabledSettings()));
+        Buffer body = Buffer.buffer("{\"id\":\"parsed\"}");
+        // not what the bytes parse to, to prove tracing reads the shared tree rather than parsing its own
+        context.setResponseBody(body, ProxyUtil.MAPPER.createObjectNode().put("id", "shared"));
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body);
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
 
-        assertEquals("resp-live", context.getTracingAttributes().get("gen_ai.response.id"));
-        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
+        assertEquals("shared", context.getTracingAttributes().get("gen_ai.response.id"));
     }
 
     @Test

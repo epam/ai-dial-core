@@ -235,16 +235,18 @@ public class ResponseItemController implements Controller {
         return proxyResponse.body()
                 .compose(body -> {
                     if (proxyResponse.statusCode() != 200) {
-                        return sendResponse(proxyResponse, null, body);
+                        return sendResponse(proxyResponse, body);
                     }
                     return proxy.getTaskExecutor()
                             .submit(() -> rewriteId(body, mapping))
                             .compose(rewrite -> {
+                                // tracing then reads the tree the rewrite already parsed
+                                context.setResponseBody(rewrite.body(), rewrite.tree());
                                 if (operation == Operation.DELETE) {
                                     return proxy.getTaskExecutor().submit(() -> {
                                         proxy.getResponseMappingService().deleteMapping(dialResponseId);
                                         return null;
-                                    }).compose(ignored -> sendResponse(proxyResponse, rewrite.tree(), rewrite.body()));
+                                    }).compose(ignored -> sendResponse(proxyResponse, rewrite.body()));
                                 }
                                 if (operation == Operation.GET) {
                                     ResponsesApiClient.TerminalResult terminalResult = tryParseTerminalResult(rewrite.tree(), rewrite.body());
@@ -254,25 +256,17 @@ public class ResponseItemController implements Controller {
                                                 .onFailure(e -> log.warn("Failed to complete background job on GET {}", dialResponseId, e));
                                     }
                                 }
-                                return sendResponse(proxyResponse, rewrite.tree(), rewrite.body());
+                                return sendResponse(proxyResponse, rewrite.body());
                             });
                 });
     }
 
-    /**
-     * @param tree null when the body wasn't parsed for this response (a non-200 status) - tracing then parses
-     *             {@code body} itself instead of reusing this.
-     */
-    private Future<Void> sendResponse(HttpClientResponse proxyResponse, JsonNode tree, Buffer body) {
+    private Future<Void> sendResponse(HttpClientResponse proxyResponse, Buffer body) {
         HttpServerResponse serverResponse = context.getResponse();
         serverResponse.setStatusCode(proxyResponse.statusCode());
         if (operation == Operation.GET) {
             // after setStatusCode: the status fallback reads the client-facing code, still 200 by default before it
-            if (tree != null) {
-                GenAiTraceAttributes.setFetchResponseAttributes(context, tree, dialResponseId);
-            } else {
-                GenAiTraceAttributes.setFetchResponseAttributes(context, body, dialResponseId);
-            }
+            GenAiTraceAttributes.setFetchResponseAttributes(context, body, dialResponseId);
         }
         String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
         if (contentType != null) {
@@ -316,8 +310,8 @@ public class ResponseItemController implements Controller {
         CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
         ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context, dialResponseId, mapping.getUpstreamResponseId());
         EncryptedContentWrapFn wrapFn = new EncryptedContentWrapFn(proxy, context, mapping.getUpstreamKey());
-        // parses and caches the terminal frame (context.pricingUsageNode) during the pass below, so tracing
-        // doesn't have to re-scan the buffered stream for it - see GenAiTraceAttributes.liveOrScanned
+        // caches the terminal frame (context.pricingUsageNode) during the pass below, so tracing doesn't have to
+        // re-scan the buffered stream for it - see GenAiTraceAttributes.liveOrScanned
         ExtractTerminalResponseFn extractFn = new ExtractTerminalResponseFn(proxy, context);
         BufferingReadStream responseStream = new BufferingReadStream(
                 proxyResponse,

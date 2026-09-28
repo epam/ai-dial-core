@@ -1,10 +1,7 @@
 package com.epam.aidial.core.server.token;
 
-import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
-import io.vertx.core.buffer.Buffer;
 import lombok.experimental.UtilityClass;
-import lombok.extern.slf4j.Slf4j;
 
 /**
  * Token-usage accounting for the Anthropic Messages API. Anthropic reports usage as
@@ -18,38 +15,15 @@ import lombok.extern.slf4j.Slf4j;
  * {@code output_tokens_details.thinking_tokens} is reported as the OpenAI-equivalent
  * {@link CompletionTokensDetails#getReasoningTokens()}.
  */
-@Slf4j
 @UtilityClass
 public class MessagesTokenUsageParser {
 
     /**
-     * Parses usage from a non-streaming Messages response body (top-level {@code usage} object).
+     * Parses usage from a non-streaming Messages response (top-level {@code usage} object).
      */
-    public TokenUsage parse(Buffer body) {
-        try {
-            JsonNode usage = ProxyUtil.MAPPER.readTree(body.getBytes()).get("usage");
-            if (usage == null || !usage.isObject()) {
-                return null;
-            }
-            return fromUsageNode(usage);
-        } catch (Throwable e) {
-            log.warn("Can't parse Anthropic token usage: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * @param parsedResponse the body already parsed by a caller that needed the tree for its own reasons (e.g.
-     *                       tracing), or null/{@code MissingNode} when there is none - falls back to
-     *                       {@link #parse(Buffer)} in that case, so the common tracing-disabled path is
-     *                       unaffected.
-     */
-    public TokenUsage parse(Buffer body, JsonNode parsedResponse) {
-        if (parsedResponse == null || parsedResponse.isMissingNode()) {
-            return parse(body);
-        }
-        JsonNode usage = parsedResponse.get("usage");
-        return (usage != null && usage.isObject()) ? fromUsageNode(usage) : null;
+    public TokenUsage parse(JsonNode response) {
+        JsonNode usage = response.get("usage");
+        return usage != null && usage.isObject() ? fromUsageNode(usage) : null;
     }
 
     /**

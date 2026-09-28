@@ -33,7 +33,6 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
@@ -47,7 +46,6 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
-import java.io.InputStream;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -85,25 +83,16 @@ public class BaseDeploymentPostController {
         if (isEventStreamResponse(context.getProxyResponse())) {
             return Future.succeededFuture();
         }
-        try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
-            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-            return collectResponseAttachments(tree, fn);
+        try {
+            JsonNode tree = context.resolveResponseTree(responseBody);
+            if (!tree.isObject()) {
+                throw new IllegalArgumentException("Response body is not a JSON object");
+            }
+            return fn.apply(tree).map(ignored -> null);
         } catch (Throwable e) {
             log.warn("Can't parse JSON response body. Error:", e);
             return Future.failedFuture(e);
         }
-    }
-
-    /**
-     * @param tree the response body already parsed by a caller that needed the tree for its own reasons
-     *             (e.g. to rewrite its id) - reused here instead of serializing it back to a Buffer and
-     *             parsing the same JSON again.
-     */
-    protected Future<Void> collectResponseAttachments(JsonNode tree, CollectResponseAttachmentsFn fn) {
-        if (isEventStreamResponse(context.getProxyResponse())) {
-            return Future.succeededFuture();
-        }
-        return fn.apply(tree).map(ignored -> null);
     }
 
     protected Future<?> respond(HttpStatus status, String errorMessage) {
@@ -203,25 +192,11 @@ public class BaseDeploymentPostController {
      * @param responseId DIAL's own response id when the caller knows it, null to take the id from the body.
      */
     protected Future<Void> collectTokenUsage(Buffer responseBody, String responseId) {
-        return collectTokenUsage(responseBody, responseId, null);
-    }
-
-    /**
-     * @param responseId     DIAL's own response id when the caller knows it, null to take the id from the body.
-     * @param parsedResponse the body already parsed by a caller that needed the tree for its own reasons (e.g.
-     *                       to rewrite its id), or null when there is none - tracing then parses {@code responseBody}
-     *                       itself instead of reusing this.
-     */
-    protected Future<Void> collectTokenUsage(Buffer responseBody, String responseId, JsonNode parsedResponse) {
         if (GenAiTraceAttributes.isEnabled(context)) {
             try {
                 // interfaceType() reads the request path, which not every deployment kind reaching here has,
                 // and this runs before the client response is completed - tracing must not fail the request
-                if (parsedResponse != null) {
-                    GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), parsedResponse, responseId);
-                } else {
-                    parsedResponse = GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseBody, responseId);
-                }
+                GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseBody, responseId);
             } catch (Throwable e) {
                 log.warn("Failed to set GenAI response trace attributes", e);
             }
@@ -230,7 +205,7 @@ public class BaseDeploymentPostController {
             if (context.getResponse().getStatusCode() != HttpStatus.OK.getCode()) {
                 return Future.succeededFuture();
             }
-            TokenUsage tokenUsage = parseTokenUsage(responseBody, parsedResponse);
+            TokenUsage tokenUsage = parseTokenUsage(responseBody);
             if (tokenUsage == null) {
                 Pricing pricing = model.getPricing();
                 if (pricing == null || "token".equals(pricing.getUnit())) {
@@ -263,7 +238,7 @@ public class BaseDeploymentPostController {
 
         // Application/Assistant: any deployment may self-report usage in its own response body;
         // capture it alongside whatever its descendant Model spans already reported.
-        TokenUsage ownUsage = parseTokenUsage(responseBody, parsedResponse);
+        TokenUsage ownUsage = parseTokenUsage(responseBody);
         return trackDeploymentStats(context.getDeployment().getName(), ownUsage, true);
     }
 
@@ -292,9 +267,12 @@ public class BaseDeploymentPostController {
         if (!subjectToLimits(deployment)) {
             return Future.succeededFuture();
         }
+        JsonNode liveUsageNode = context.getPricingUsageNode();
         return proxy.getRateLimiter().increase(
                 deployment, BucketBuilder.buildInitiatorBucket(context), usage,
-                context.getRequestBody(), context.getResponseBody(), interfaceType(), context.getPricingUsageNode()
+                context.getRequestBody(), context.getResponseBody(), interfaceType(),
+                // the parse tracing and attachments share, instead of pricing parsing the body once more
+                liveUsageNode != null ? liveUsageNode : context.resolveResponseTree(context.getResponseBody())
         );
     }
 
@@ -340,15 +318,7 @@ public class BaseDeploymentPostController {
      * controllers can supply their own accounting (e.g. the Anthropic Messages API).
      */
     protected TokenUsage parseTokenUsage(Buffer responseBody) {
-        return parseTokenUsage(responseBody, null);
-    }
-
-    /**
-     * @param parsedResponse the tree tracing already parsed from {@code responseBody}, or null - reused here
-     *                       instead of scanning the body a second time; see {@link TokenUsageParser#parse(Buffer, JsonNode)}.
-     */
-    protected TokenUsage parseTokenUsage(Buffer responseBody, JsonNode parsedResponse) {
-        return TokenUsageParser.parse(responseBody, parsedResponse);
+        return TokenUsageParser.parse(responseBody);
     }
 
     /**

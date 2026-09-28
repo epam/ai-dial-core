@@ -22,7 +22,6 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
-import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -85,13 +84,13 @@ import static io.vertx.core.http.HttpHeaders.AUTHORIZATION;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -136,6 +135,8 @@ public class DeploymentPostControllerTest {
     void stubConfig() {
         // the controller resolves translator references against the request's config on every routing step
         lenient().when(context.getConfig()).thenReturn(new Config());
+        // a real context parses the body it is handed; the mock would hand back null
+        lenient().when(context.resolveResponseTree(any())).thenCallRealMethod();
     }
 
     @SuppressWarnings("checkstyle:LineLength")
@@ -993,71 +994,61 @@ public class DeploymentPostControllerTest {
         }
     }
 
-    @Test
-    void testCollectTokenUsage_ReusesParsedResponseWithoutReparsingBody() {
-        when(context.getDeployment()).thenReturn(new Model());
-        HttpServerResponse response = mock(HttpServerResponse.class);
-        when(context.getResponse()).thenReturn(response);
-        when(response.getStatusCode()).thenReturn(HttpStatus.INTERNAL_SERVER_ERROR.getCode());
-        when(context.getRequest()).thenReturn(request);
-        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
-        // malformed on purpose: proves the assertion below by failing loudly if it were ever parsed
-        Buffer body = Buffer.buffer("not valid json");
-        JsonNode parsedResponse = ProxyUtil.MAPPER.createObjectNode().put("id", "resp-1");
-
-        try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class)) {
-            mockedGenAi.when(() -> GenAiTraceAttributes.isEnabled(context)).thenReturn(true);
-
-            controller.collectTokenUsage(body, "resp-1", parsedResponse);
-
-            mockedGenAi.verify(() -> GenAiTraceAttributes.setResponseAttributes(
-                    eq(context), any(), eq(parsedResponse), eq("resp-1")));
-            mockedGenAi.verify(() -> GenAiTraceAttributes.setResponseAttributes(
-                    eq(context), any(), any(Buffer.class), any()), never());
-        }
-    }
-
     /**
-     * The symmetric case: with no parsed tree available, {@code collectTokenUsage} must parse
-     * {@code responseBody} itself instead of silently skipping tracing.
+     * Tracing parses the whole body, while token accounting takes the last {@code usage} object in it - the
+     * charge must not depend on which of the two ran, so an observability switch can't change billing.
      */
     @Test
-    void testCollectTokenUsage_ParsesResponseBodyWhenNoParsedResponseGiven() {
+    void testCollectTokenUsage_TracingDoesNotChangeTheUsageCharged() {
         when(context.getDeployment()).thenReturn(new Model());
+        when(context.getUserId()).thenReturn("test-user");
         HttpServerResponse response = mock(HttpServerResponse.class);
         when(context.getResponse()).thenReturn(response);
-        when(response.getStatusCode()).thenReturn(HttpStatus.INTERNAL_SERVER_ERROR.getCode());
+        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
         when(context.getRequest()).thenReturn(request);
         when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
-        Buffer body = Buffer.buffer("{}");
+        when(context.getTracingSettings()).thenReturn(new TracingSettings(true, false, List.of()));
+        when(context.getTracingAttributes()).thenReturn(new ConcurrentHashMap<>());
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        Buffer body = Buffer.buffer("""
+                {"id":"chat-1","usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},
+                 "choices":[{"message":{"custom_content":{"state":{"usage":{"prompt_tokens":5,"completion_tokens":5,"total_tokens":10}}}}}]}
+                """);
 
-        try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class)) {
-            mockedGenAi.when(() -> GenAiTraceAttributes.isEnabled(context)).thenReturn(true);
+        controller.collectTokenUsage(body);
 
-            controller.collectTokenUsage(body, "resp-1", null);
-
-            mockedGenAi.verify(() -> GenAiTraceAttributes.setResponseAttributes(
-                    eq(context), any(), eq(body), eq("resp-1")));
-        }
+        ArgumentCaptor<TokenUsage> usage = ArgumentCaptor.forClass(TokenUsage.class);
+        verify(context).setTokenUsage(usage.capture());
+        // the last usage object in the body, as with tracing off - not the top-level one tracing reads
+        assertEquals(10, usage.getValue().getTotalTokens());
+        assertEquals("chat-1", context.getTracingAttributes().get("gen_ai.response.id"));
     }
 
-    /**
-     * {@code collectResponseAttachments}'s JsonNode overload must hand the given tree straight to the
-     * attachment function, without serializing it back to a Buffer and parsing the same JSON again.
-     */
     @Test
-    void testCollectResponseAttachments_JsonNodeOverload_ReusesGivenTreeWithoutReparsing() {
+    void testCollectResponseAttachments_SharesTheParsedResponseBody() {
         when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        Buffer body = Buffer.buffer("{}");
         JsonNode tree = ProxyUtil.MAPPER.createObjectNode().put("id", "resp-1");
+        when(context.resolveResponseTree(body)).thenReturn(tree);
         CollectResponseAttachmentsFn fn = mock(CollectResponseAttachmentsFn.class);
         when(fn.apply(any())).thenReturn(Future.succeededFuture(tree));
 
-        Future<Void> result = controller.collectResponseAttachments(tree, fn);
+        Future<Void> result = controller.collectResponseAttachments(body, fn);
 
         assertTrue(result.succeeded());
-        ArgumentCaptor<JsonNode> captor = ArgumentCaptor.forClass(JsonNode.class);
-        verify(fn).apply(captor.capture());
-        assertSame(tree, captor.getValue());
+        verify(fn).apply(same(tree));
+    }
+
+    @Test
+    void testCollectResponseAttachments_FailsOnNonObjectBody() {
+        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        CollectResponseAttachmentsFn fn = mock(CollectResponseAttachmentsFn.class);
+
+        Future<Void> result = controller.collectResponseAttachments(Buffer.buffer("[1]"), fn);
+
+        assertTrue(result.failed());
+        verify(fn, never()).apply(any());
     }
 
     @ParameterizedTest

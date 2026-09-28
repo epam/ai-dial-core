@@ -353,7 +353,8 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .compose(rewrite -> {
                     String dialId = rewrite.dialId();
                     Buffer rewritten = rewrite.body();
-                    context.setResponseBody(rewritten);
+                    // tracing and attachments then share the tree the rewrite already parsed
+                    context.setResponseBody(rewritten, rewrite.tree());
                     context.setResponseBodyTimestamp(System.currentTimeMillis());
                     HttpServerResponse response = context.getResponse();
                     ProxyUtil.copyResponse(response, proxyResponse);
@@ -370,20 +371,12 @@ public class ResponsesController extends BaseDeploymentPostController {
                                     response.end(rewritten);
                                 });
                     } else {
-                        // reuse the tree rewriteResponseId already parsed instead of parsing rewritten a
-                        // second time - only when it's the ObjectNode the rewrite path actually produces;
-                        // anything else falls back to the byte-scan, matching its prior failure behavior
-                        JsonNode tree = rewrite.tree();
-                        return collectTokenUsage(rewritten, null, tree)
+                        return collectTokenUsage(rewritten)
                                 .transform(result -> {
                                     if (result.failed()) {
                                         log.warn("Failed to collect token usage", result.cause());
                                     }
-                                    CollectResponsesApiOutputAttachmentsFn attachmentsFn =
-                                            new CollectResponsesApiOutputAttachmentsFn(proxy, context);
-                                    return tree instanceof ObjectNode
-                                            ? collectResponseAttachments(tree, attachmentsFn)
-                                            : collectResponseAttachments(rewritten, attachmentsFn);
+                                    return collectResponseAttachments(rewritten, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
                                 })
                                 .onComplete(result -> {
                                     if (result.failed()) {
@@ -397,8 +390,8 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     /**
-     * @param tree the body already parsed to check/rewrite its id, or null when the response wasn't a 200 (and
-     *             so was never parsed) - tracing then parses {@code body} itself instead of reusing this.
+     * @param tree {@code body} as parsed to check/rewrite its id, or null when the response wasn't a 200 and so
+     *             was never parsed.
      */
     private record RewriteResult(String dialId, JsonNode tree, Buffer body) {
     }
@@ -450,9 +443,6 @@ public class ResponsesController extends BaseDeploymentPostController {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
-        // the terminal frame ExtractTerminalResponseFn already kept: the trace attributes read it instead of
-        // scanning the buffered stream a second time. Null for a run that failed or was cancelled.
-        context.setAssembledStreamingResponse(assembledStreamingResponse);
 
         Future<Void> completionFuture;
         if (context.isBackgroundJob() && dialId != null) {

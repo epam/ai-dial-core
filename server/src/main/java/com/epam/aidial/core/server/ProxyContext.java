@@ -13,11 +13,13 @@ import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -83,7 +85,7 @@ public class ProxyContext {
     private TokenUsage tokenUsage;
     private List<UsagePerModel> usagePerModel;
     // Raw usage JSON accumulated live from SSE events, for pricing decision-tree evaluation. Null
-    // for non-streaming requests, where ModelCostCalculator parses responseBody directly instead.
+    // for non-streaming requests, where ModelCostCalculator reads the parsed responseBody instead.
     private JsonNode pricingUsageNode;
     private Route route;
     private UpstreamRoute upstreamRoute;
@@ -91,7 +93,12 @@ public class ProxyContext {
     private String proxyRequestUri;
     private HttpClientResponse proxyResponse;
     private Buffer requestBody;
+    @Setter(AccessLevel.NONE)
     private Buffer responseBody;
+    // responseBody parsed as JSON, at most once per request - see resolveResponseTree
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    private JsonNode responseTree;
     private long requestTimestamp;
     private long requestBodyTimestamp;
     private long proxyConnectTimestamp;
@@ -113,10 +120,12 @@ public class ProxyContext {
     private boolean isBackgroundJob;
     // read from the log layout, which AsyncTaskExecutor may run on a virtual thread sharing this Vert.x context
     private final Map<String, Object> tracingAttributes = new ConcurrentHashMap<>();
-    // the merged chat completions body, or the terminal Responses frame - whichever surface streamed
+    // the merged chat completions body - see assembledChatCompletionsResponse()
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
     private String assembledStreamingResponse;
-    // the tree behind assembledStreamingResponse for Chat Completions - set only via
-    // assembledChatCompletionsResponseTree(), never externally
+    // the tree behind assembledStreamingResponse for Chat Completions - see assembledChatCompletionsResponseTree()
+    @Getter(AccessLevel.NONE)
     @Setter(AccessLevel.NONE)
     private ObjectNode assembledChatCompletionsResponseTree;
 
@@ -332,7 +341,10 @@ public class ProxyContext {
      */
     public String assembledChatCompletionsResponse() {
         if (assembledStreamingResponse == null) {
-            ObjectNode tree = assembledChatCompletionsResponseTree();
+            // the tree is kept only once tracing asked for it; the log alone needs just the string
+            ObjectNode tree = assembledChatCompletionsResponseTree != null
+                    ? assembledChatCompletionsResponseTree
+                    : AnalyticsLogContext.assembleStreamingChatCompletionsResponseTree(responseBody);
             assembledStreamingResponse = tree == null ? null : ProxyUtil.convertToString(tree);
         }
         return assembledStreamingResponse;
@@ -348,5 +360,36 @@ public class ProxyContext {
             assembledChatCompletionsResponseTree = AnalyticsLogContext.assembleStreamingChatCompletionsResponseTree(responseBody);
         }
         return assembledChatCompletionsResponseTree;
+    }
+
+    public void setResponseBody(Buffer responseBody) {
+        setResponseBody(responseBody, null);
+    }
+
+    /**
+     * @param responseTree {@code responseBody} exactly as a caller already parsed it, or null to parse it on
+     *                     first use.
+     */
+    public void setResponseBody(Buffer responseBody, JsonNode responseTree) {
+        this.responseBody = responseBody;
+        this.responseTree = responseTree;
+    }
+
+    /**
+     * {@code body} parsed as JSON, {@link MissingNode} when it is none (an event stream, say). The tree is
+     * shared, and must not be modified: {@code responseBody} is parsed at most once per request for tracing,
+     * Anthropic token usage, pricing and attachments alike, while any other buffer is parsed afresh.
+     */
+    public JsonNode resolveResponseTree(Buffer body) {
+        if (body == null) {
+            return MissingNode.getInstance();
+        }
+        if (body != responseBody) {
+            return JsonUtil.tryParse(body.getBytes());
+        }
+        if (responseTree == null) {
+            responseTree = JsonUtil.tryParse(body.getBytes());
+        }
+        return responseTree;
     }
 }

@@ -111,6 +111,28 @@ class CollectMessagesTokenUsageFnTest {
         assertEquals(8, usage.path("output_tokens").asLong());
     }
 
+    @Test
+    public void testPublishesStopReasonFromMessageDeltaWithoutUsage() throws JsonProcessingException {
+        doCallRealMethod().when(context).setTokenUsage(any());
+        doCallRealMethod().when(context).setPricingUsageNode(any());
+        doCallRealMethod().when(context).getPricingUsageNode();
+
+        CollectMessagesTokenUsageFn fn = new CollectMessagesTokenUsageFn(null, context);
+
+        fn.apply(tree("""
+                {"type": "message_start", "message": {"id": "msg-1", "usage": {"input_tokens": 5}}}
+                """));
+        fn.apply(tree("""
+                {"type": "message_delta", "delta": {"stop_reason": "end_turn"}}
+                """));
+
+        // GenAiTraceAttributes prefers this node over scanning the stream, so it must not keep a stale one
+        JsonNode pricingUsageNode = context.getPricingUsageNode();
+        assertEquals("msg-1", pricingUsageNode.path("id").asText());
+        assertEquals("end_turn", pricingUsageNode.path("stop_reason").asText());
+        assertEquals(5, pricingUsageNode.path("usage").path("input_tokens").asLong());
+    }
+
     private static JsonNode tree(String json) throws JsonProcessingException {
         return ProxyUtil.MAPPER.readTree(json);
     }

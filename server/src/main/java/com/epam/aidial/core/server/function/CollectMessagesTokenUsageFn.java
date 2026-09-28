@@ -56,7 +56,10 @@ public class CollectMessagesTokenUsageFn extends BaseResponseFunction {
             }
             default -> null;
         };
-        if (usage != null && usage.isObject()) {
+        if (usage == null) {
+            return Future.succeededFuture(tree);
+        }
+        if (usage.isObject()) {
             // Counters are cumulative; fields absent from an event keep their previous values.
             inputTokens = usage.path("input_tokens").asLong(inputTokens);
             outputTokens = usage.path("output_tokens").asLong(outputTokens);
@@ -66,18 +69,23 @@ public class CollectMessagesTokenUsageFn extends BaseResponseFunction {
             context.setTokenUsage(MessagesTokenUsageParser.build(
                     inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, thinkingTokens));
             mergedUsage = MergeChunks.merge(mergedUsage, usage);
-            ObjectNode merged = ProxyUtil.MAPPER.createObjectNode().set("usage", mergedUsage);
-            if (responseId != null) {
-                merged.put("id", responseId);
-            }
-            if (responseModel != null) {
-                merged.put("model", responseModel);
-            }
-            if (stopReason != null) {
-                merged.put("stop_reason", stopReason);
-            }
-            context.setPricingUsageNode(merged);
         }
+        // republished on every message_start/message_delta, usage or not: GenAiTraceAttributes prefers this
+        // node over scanning the stream, so a stop_reason on a usage-less message_delta must still reach it
+        ObjectNode merged = ProxyUtil.MAPPER.createObjectNode();
+        if (mergedUsage != null) {
+            merged.set("usage", mergedUsage);
+        }
+        if (responseId != null) {
+            merged.put("id", responseId);
+        }
+        if (responseModel != null) {
+            merged.put("model", responseModel);
+        }
+        if (stopReason != null) {
+            merged.put("stop_reason", stopReason);
+        }
+        context.setPricingUsageNode(merged);
         return Future.succeededFuture(tree);
     }
 

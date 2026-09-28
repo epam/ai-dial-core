@@ -1,9 +1,9 @@
 package com.epam.aidial.core.server.token;
 
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.MissingNode;
-import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -14,7 +14,7 @@ public class MessagesTokenUsageParserTest {
 
     @Test
     void parseDerivesTotalAndCache() {
-        Buffer body = Buffer.buffer(
+        JsonNode body = tree(
                 "{\"id\":\"msg\",\"usage\":{\"input_tokens\":10,\"output_tokens\":8,\"cache_read_input_tokens\":2}}");
 
         TokenUsage usage = MessagesTokenUsageParser.parse(body);
@@ -32,7 +32,7 @@ public class MessagesTokenUsageParserTest {
 
     @Test
     void parseCountsCacheCreationTokens() {
-        Buffer body = Buffer.buffer(
+        JsonNode body = tree(
                 "{\"usage\":{\"input_tokens\":10,\"output_tokens\":5,\"cache_read_input_tokens\":7,\"cache_creation_input_tokens\":3}}");
 
         TokenUsage usage = MessagesTokenUsageParser.parse(body);
@@ -47,7 +47,7 @@ public class MessagesTokenUsageParserTest {
 
     @Test
     void parseCountsCacheCreationTokensWithoutCacheReads() {
-        Buffer body = Buffer.buffer(
+        JsonNode body = tree(
                 "{\"usage\":{\"input_tokens\":10,\"output_tokens\":5,\"cache_creation_input_tokens\":3}}");
 
         TokenUsage usage = MessagesTokenUsageParser.parse(body);
@@ -61,7 +61,7 @@ public class MessagesTokenUsageParserTest {
 
     @Test
     void parseMapsThinkingTokensToReasoningTokens() {
-        Buffer body = Buffer.buffer(
+        JsonNode body = tree(
                 "{\"usage\":{\"input_tokens\":10,\"output_tokens\":8,\"output_tokens_details\":{\"thinking_tokens\":6}}}");
 
         TokenUsage usage = MessagesTokenUsageParser.parse(body);
@@ -76,7 +76,7 @@ public class MessagesTokenUsageParserTest {
 
     @Test
     void parseWithoutCacheLeavesDetailsNull() {
-        Buffer body = Buffer.buffer("{\"usage\":{\"input_tokens\":3,\"output_tokens\":4}}");
+        JsonNode body = tree("{\"usage\":{\"input_tokens\":3,\"output_tokens\":4}}");
 
         TokenUsage usage = MessagesTokenUsageParser.parse(body);
 
@@ -88,8 +88,8 @@ public class MessagesTokenUsageParserTest {
 
     @Test
     void parseReturnsNullWhenNoUsage() {
-        assertNull(MessagesTokenUsageParser.parse(Buffer.buffer("{\"id\":\"msg\"}")));
-        assertNull(MessagesTokenUsageParser.parse(Buffer.buffer("not json")));
+        assertNull(MessagesTokenUsageParser.parse(tree("{\"id\":\"msg\"}")));
+        assertNull(MessagesTokenUsageParser.parse(MissingNode.getInstance()));
     }
 
     @Test
@@ -105,32 +105,7 @@ public class MessagesTokenUsageParserTest {
         assertEquals(5, usage.getPromptTokensDetails().getCachedTokens());
     }
 
-    @Test
-    void parseWithTreeFallsBackToBodyParseWhenTreeIsAbsent() {
-        Buffer body = Buffer.buffer("{\"usage\":{\"input_tokens\":10,\"output_tokens\":8}}");
-
-        assertEquals(18, MessagesTokenUsageParser.parse(body, null).getTotalTokens());
-        assertEquals(18, MessagesTokenUsageParser.parse(body, MissingNode.getInstance()).getTotalTokens());
-    }
-
-    @Test
-    void parseWithTreeReadsUsageFromTheGivenTreeWithoutTouchingTheBody() throws Exception {
-        JsonNode tree = ProxyUtil.MAPPER.readTree(
-                "{\"usage\":{\"input_tokens\":10,\"output_tokens\":8,\"cache_read_input_tokens\":2}}");
-        // a body that would parse to something else entirely, to prove the tree is used, not the body
-        Buffer body = Buffer.buffer("not json");
-
-        TokenUsage usage = MessagesTokenUsageParser.parse(body, tree);
-
-        assertNotNull(usage);
-        assertEquals(12, usage.getPromptTokens());
-        assertEquals(8, usage.getCompletionTokens());
-    }
-
-    @Test
-    void parseWithTreeReturnsNullWhenTheTreeHasNoUsage() throws Exception {
-        JsonNode tree = ProxyUtil.MAPPER.readTree("{\"id\":\"msg\"}");
-
-        assertNull(MessagesTokenUsageParser.parse(Buffer.buffer("{}"), tree));
+    private static JsonNode tree(String json) {
+        return JsonUtil.tryParse(json);
     }
 }

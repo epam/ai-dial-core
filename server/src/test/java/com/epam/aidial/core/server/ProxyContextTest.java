@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpServerRequest;
@@ -18,7 +19,9 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
@@ -104,6 +107,83 @@ public class ProxyContextTest {
             logger.setLevel(previous);
             logger.detachAppender(appender);
         }
+    }
+
+    @Test
+    public void testResolveResponseTreeParsesResponseBodyOnce() {
+        ProxyContext context = context(null);
+        Buffer body = Buffer.buffer("{\"id\":\"chat-1\"}");
+        context.setResponseBody(body);
+
+        JsonNode tree = context.resolveResponseTree(body);
+
+        assertEquals("chat-1", tree.path("id").asText());
+        assertSame(tree, context.resolveResponseTree(body));
+    }
+
+    @Test
+    public void testResolveResponseTreeReusesTheTreeGivenWithTheBody() {
+        ProxyContext context = context(null);
+        // not what the bytes parse to, to prove the given tree is the one returned
+        JsonNode given = ProxyUtil.MAPPER.createObjectNode().put("id", "given");
+        Buffer body = Buffer.buffer("{\"id\":\"parsed\"}");
+        context.setResponseBody(body, given);
+
+        assertSame(given, context.resolveResponseTree(body));
+    }
+
+    @Test
+    public void testResolveResponseTreeForgetsTheTreeOfReplacedBody() {
+        ProxyContext context = context(null);
+        Buffer first = Buffer.buffer("{\"id\":\"first\"}");
+        context.setResponseBody(first);
+        context.resolveResponseTree(first);
+        Buffer second = Buffer.buffer("{\"id\":\"second\"}");
+        context.setResponseBody(second);
+
+        assertEquals("second", context.resolveResponseTree(second).path("id").asText());
+    }
+
+    @Test
+    public void testResolveResponseTreeParsesAnyOtherBufferAfresh() {
+        ProxyContext context = context(null);
+        context.setResponseBody(Buffer.buffer("{\"id\":\"cached\"}"));
+        Buffer other = Buffer.buffer("{\"id\":\"other\"}");
+
+        JsonNode tree = context.resolveResponseTree(other);
+
+        assertEquals("other", tree.path("id").asText());
+        assertNotSame(tree, context.resolveResponseTree(other));
+    }
+
+    @Test
+    public void testResolveResponseTreeOfNonJson() {
+        ProxyContext context = context(null);
+        Buffer body = Buffer.buffer("data: {}\n\n");
+        context.setResponseBody(body);
+
+        assertTrue(context.resolveResponseTree(body).isMissingNode());
+        assertTrue(context.resolveResponseTree(null).isMissingNode());
+    }
+
+    @Test
+    public void testAssembledChatCompletionsResponseSharesTheTreeTracingMerged() {
+        ProxyContext context = context(null);
+        context.setResponseBody(Buffer.buffer("data: {\"id\":\"chat-1\",\"choices\":[]}\n\ndata: [DONE]\n\n"));
+
+        ObjectNode tree = context.assembledChatCompletionsResponseTree();
+
+        assertEquals("chat-1", tree.path("id").asText());
+        assertSame(tree, context.assembledChatCompletionsResponseTree());
+        assertEquals(ProxyUtil.convertToString(tree), context.assembledChatCompletionsResponse());
+    }
+
+    @Test
+    public void testAssembledChatCompletionsResponseWithoutTracing() {
+        ProxyContext context = context(null);
+        context.setResponseBody(Buffer.buffer("data: {\"id\":\"chat-1\",\"choices\":[]}\n\ndata: [DONE]\n\n"));
+
+        assertTrue(context.assembledChatCompletionsResponse().contains("\"chat-1\""));
     }
 
     private static ProxyContext context(ExtractedClaims claims) {
