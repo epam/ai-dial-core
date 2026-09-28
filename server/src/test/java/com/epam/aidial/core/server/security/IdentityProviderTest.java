@@ -62,6 +62,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -1281,5 +1283,19 @@ public class IdentityProviderTest {
         } finally {
             realVertx.close().toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
         }
+    }
+
+    @Test
+    public void testFailedJwkLookupIsNotCached() {
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+        DecodedJWT jwt = JWT.decode(JWT.create().withHeader(Map.of("kid", "kid1")).sign(algorithm));
+        // an Error escapes the lookup's own catch: the shared future fails and carries no result for the evictor to expire
+        when(taskExecutor.submit(any(Callable.class))).thenReturn(Future.failedFuture(new NoClassDefFoundError("jwk")));
+
+        identityProvider.extractClaimsFromJwt(jwt);
+        identityProvider.extractClaimsFromJwt(jwt);
+
+        verify(taskExecutor, times(2)).submit(any(Callable.class));
     }
 }

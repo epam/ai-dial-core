@@ -26,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -112,6 +113,21 @@ class DialVertxTracerTest {
         tracer.sendResponse(context, null, null, null, null);
 
         assertSame(active, context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
+    }
+
+    @Test
+    void sendResponseLeavesSharedEventLoopContextAlone(Vertx vertx) {
+        // not a duplicate: every request on this loop shares it, so a restored span would leak into the next request
+        ContextInternal context = (ContextInternal) vertx.getOrCreateContext();
+        io.opentelemetry.context.Context active = io.opentelemetry.context.Context.root().with(Span.wrap(SpanContext.create(
+                "22510e56eb9b21f6b03dbc038cd8fb71", "b03dbc038cd8fb71", TraceFlags.getSampled(), TraceState.getDefault())));
+        context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, active);
+        doAnswer(invocation -> context.removeLocal(VertxContextStorageProvider.ACTIVE_CONTEXT))
+                .when(delegate).sendResponse(any(), any(), any(), any(), any());
+
+        tracer.sendResponse(context, null, new Object(), null, null);
+
+        assertNull(context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
     }
 
     public static List<Arguments> receiveRequestDatasource() {

@@ -5,6 +5,7 @@ import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.server.vertx.FutureUtil;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -121,7 +122,7 @@ public class AccessTokenValidator {
     private Future<ExtractedClaims> extractClaimsFromUserInfo(String accessToken, Supplier<Future<UserInfoResult>> fn) {
         Future<UserInfoResult> shared = userInfoCache.computeIfAbsent(accessToken, k -> fn.get());
         // the shared future completes on the first caller's context: continue on the current request's context instead
-        return IdentityProvider.onCallerContext(shared).map(UserInfoResult::claims).onFailure(error -> {
+        return FutureUtil.continueOnCallerContext(shared).map(UserInfoResult::claims).onFailure(error -> {
             /* we don't need to keep the failed response any longer; a waiter runs late, so never evict a newer entry */
             userInfoCache.remove(accessToken, shared);
         });

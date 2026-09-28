@@ -12,6 +12,7 @@ import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.server.vertx.FutureUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -20,7 +21,6 @@ import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
-import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.Getter;
@@ -327,15 +327,10 @@ public class IdentityProvider {
     }
 
     private Future<JwkResult> getJwk(String kid) {
-        /* The result of vertx.executeBlocking is a future that contains Vert.x context which is valid during a request
-         * execution. So, if we put that future in a cache, it will contain a context from the initial request, that
-         * may be invalid for further requests. For this reason, when we retrieve the future from the cache, we must
-         * extract the value and put it into another future (Promise) which holds a valid context of a current request.
-         * */
-        return onCallerContext(cache.computeIfAbsent(kid, key -> {
+        Future<JwkResult> shared = cache.computeIfAbsent(kid, key -> {
             // the cached future must be context-less: a context-bound one would pin the first request's context
             // (and its ProxyContext with request/response bodies) for the whole cache TTL
-            Promise<JwkResult> shared = Promise.promise();
+            Promise<JwkResult> lookup = Promise.promise();
             taskExecutor.submit(() -> {
                 JwkResult jwkResult;
                 long currentTime = System.currentTimeMillis();
@@ -346,20 +341,11 @@ public class IdentityProvider {
                     jwkResult = new JwkResult(null, e, currentTime + negativeCacheExpirationMs);
                 }
                 return jwkResult;
-            }).onComplete(shared);
-            return shared.future();
-        }));
-    }
-
-    /**
-     * Continues a future shared between requests on the calling request's context.
-     * Promise.promise() has no context, so the caller's context is bound explicitly (null in plain unit tests).
-     */
-    static <T> Future<T> onCallerContext(Future<T> shared) {
-        ContextInternal caller = ContextInternal.current();
-        Promise<T> promise = caller != null ? caller.promise() : Promise.promise();
-        shared.onComplete(promise);
-        return promise.future();
+            }).onComplete(lookup);
+            return lookup.future();
+        });
+        // a lookup that fails outside the catch above (an Error, a rejected task) has no result for the evictor to expire
+        return FutureUtil.continueOnCallerContext(shared).onFailure(error -> cache.remove(kid, shared));
     }
 
     private Future<DecodedJWT> verifyJwt(DecodedJWT jwt) {

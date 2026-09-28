@@ -36,14 +36,4 @@ public class ContextManager {
         }
         return null;
     }
-
-    /**
-     * Detaches the ProxyContext (and its request/response bodies) from the current Vertx context.
-     */
-    public static void clearContext() {
-        Context vertxContext = Vertx.currentContext();
-        if (vertxContext != null) {
-            vertxContext.removeLocal(PROXY_CONTEXT_KEY);
-        }
-    }
 }
