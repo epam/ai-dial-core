@@ -1488,7 +1488,25 @@ public class ConfigResourceController implements Controller {
                 // this path is always admin context and may preserve forwardAuthToken.
                 Object decrypted = switch (type) {
                     case APPLICATION -> {
-                        Application application = ConfigEntityCodec.treeToEntity(requestNode, Application.class);
+                        // APPLICATION bypasses the generic handlePut()/WriteSpec merge mechanism
+                        // entirely, so preserve-on-omit for routes[].upstreams[].key/secretExtraData
+                        // has to be inlined here — same pattern handlePut() uses for Model/Key/Route.
+                        Pair<ResourceItemMetadata, String> existingPair =
+                                resourceService.getResourceWithMetadata(descriptor, EtagHeader.ANY);
+                        String existingBody = existingPair == null ? null : existingPair.getRight();
+                        JsonNode source = requestNode;
+                        if (existingBody != null) {
+                            JsonNode existingBlobNode;
+                            try {
+                                existingBlobNode = BLOB_MAPPER.readTree(existingBody);
+                            } catch (JsonProcessingException e) {
+                                throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
+                                        "Stored entity is malformed at " + locationOf(e));
+                            }
+                            source = secretFieldProcessor.mergePreservingOmittedSecrets(
+                                    existingBlobNode, requestNode, Application.class);
+                        }
+                        Application application = ConfigEntityCodec.treeToEntity(source, Application.class);
                         applicationService.putApplication(descriptor, etag, author, application, true, AdminManagedFieldsWriteMode.AUTHORITATIVE);
                         yield applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
                     }

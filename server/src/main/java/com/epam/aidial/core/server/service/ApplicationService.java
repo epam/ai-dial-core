@@ -7,11 +7,13 @@ import com.epam.aidial.core.metaschemas.CopyAppBucketOptions;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.ConfigStore;
+import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.CatalogPropertiesLinkRewriter;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
@@ -64,6 +66,7 @@ public class ApplicationService {
     private final AsyncTaskExecutor taskExecutor;
     private final ApiKeyStore apiKeyStore;
     private final EncryptionService encryptionService;
+    private final SecretFieldProcessor secretFieldProcessor;
     private final ExternalServiceService externalServiceService;
     private final ResourceService resourceService;
     private final LockService lockService;
@@ -83,6 +86,7 @@ public class ApplicationService {
                               RedissonClient redis,
                               ApiKeyStore apiKeyStore,
                               EncryptionService encryptionService,
+                              SecretFieldProcessor secretFieldProcessor,
                               ExternalServiceService externalServiceService,
                               ResourceService resourceService,
                               LockService lockService,
@@ -97,6 +101,7 @@ public class ApplicationService {
         this.taskExecutor = taskExecutor;
         this.apiKeyStore = apiKeyStore;
         this.encryptionService = encryptionService;
+        this.secretFieldProcessor = secretFieldProcessor;
         this.externalServiceService = externalServiceService;
         this.resourceService = resourceService;
         this.applicationSchemaService = applicationSchemaService;
@@ -154,6 +159,13 @@ public class ApplicationService {
         application.setAuthor(meta.getAuthor());
         application.setCreatedAt(meta.getCreatedAt());
         application.setUpdatedAt(meta.getUpdatedAt());
+        // Route-upstream secrets (routes[].upstreams[].key/secretExtraData) are @EncryptedField,
+        // unlike externalServices — decrypted unconditionally here (not opt-in) because this is
+        // also the live request-routing load path for non-platform-bucket applications
+        // (DeploymentService#findDeployment falls back to this when the merged Config has no
+        // entry), and every response surface already suppresses the field independently via
+        // @JsonProperty(WRITE_ONLY).
+        secretFieldProcessor.decryptFields(application, resource);
 
         return Pair.of(meta, application);
     }
@@ -166,6 +178,7 @@ public class ApplicationService {
         application.setAuthor(meta.getAuthor());
         application.setCreatedAt(meta.getCreatedAt());
         application.setUpdatedAt(meta.getUpdatedAt());
+        secretFieldProcessor.decryptFields(application, meta.getDescriptor());
         return application;
     }
 
@@ -191,7 +204,7 @@ public class ApplicationService {
             prepareAdminManagedFields(application, existing, adminManagedFieldsWriteMode);
             List<String> externalServices = externalServiceService.processOnWrite(resource, application, existing, externalServicesWriteMode);
             purgeableExternalServices.setValue(externalServices);
-            return ProxyUtil.convertToString(application);
+            return serializeEncrypted(resource, application);
         });
 
         // Purge credentials of services this write dropped or changed the auth type of (after commit).
@@ -247,6 +260,23 @@ public class ApplicationService {
      */
     public void decryptExternalServiceSecretsForResponse(ResourceDescriptor resource, Application application) {
         externalServiceService.decryptSecretsForResponse(resource, application);
+    }
+
+    /**
+     * Encrypts {@code application}'s route-upstream secrets for {@code resource}'s own descriptor,
+     * serializes it for blob storage (unlike {@link ProxyUtil#convertToString}, {@link ConfigEntityCodec
+     * #serializeForBlob} honors {@code @EncryptedField} as read-write instead of dropping it), then
+     * decrypts the object back to plaintext in place — mirroring {@code ConfigApplyService#applyModel}'s
+     * encrypt/put/decrypt-in-place convention, so every caller keeps working with a plaintext object
+     * after the write. Every write of an {@link Application} body in this class must go through this,
+     * not {@code ProxyUtil.convertToString} directly, or an already-encrypted route secret is silently
+     * dropped from the blob on the next write.
+     */
+    private String serializeEncrypted(ResourceDescriptor resource, Application application) {
+        secretFieldProcessor.encryptFields(application, resource);
+        String blobBody = ConfigEntityCodec.serializeForBlob(application);
+        secretFieldProcessor.decryptFields(application, resource);
+        return blobBody;
     }
 
     private static void verifySchemaRichApp(Application application, Application existing) {
@@ -407,7 +437,13 @@ public class ApplicationService {
 
             externalServiceService.encryptSecrets(destination, application);
 
-            return ProxyUtil.convertToString(application);
+            // application's route-upstream secrets were decrypted at load time (getApplication),
+            // never re-decrypted since — this is the SOURCE object still holding the SOURCE's own
+            // plaintext, now encrypted below under the DESTINATION descriptor's AAD. Never skip
+            // straight to an encrypt call on an object still carrying a stale-AAD ciphertext:
+            // encryptValue's "already a valid envelope" check can't detect an AAD mismatch and
+            // would leave it un-re-encrypted, permanently corrupting it at the new path.
+            return serializeEncrypted(destination, application);
         });
 
         if (isPublicOrReview) {
@@ -515,7 +551,7 @@ public class ApplicationService {
             result.setValue(application);
             pendingApplications.add(System.currentTimeMillis() + checkDelay, resource.getUrl());
 
-            return ProxyUtil.convertToString(application);
+            return serializeEncrypted(resource, application);
         });
 
         taskExecutor.submit(() -> launchApplication(context, resource))
@@ -557,7 +593,7 @@ public class ApplicationService {
             result.setValue(application);
             pendingApplications.add(System.currentTimeMillis() + checkDelay, resource.getUrl());
 
-            return ProxyUtil.convertToString(application);
+            return serializeEncrypted(resource, application);
         });
 
         Future<Void> future = taskExecutor.submit(() -> terminateApplication(resource, null));
@@ -765,7 +801,7 @@ public class ApplicationService {
                 existing.getFeatures().setTruncatePromptEndpoint(buildMapping(endpoint, function.getMapping().getTruncatePrompt()));
                 existing.getFeatures().setConfigurationEndpoint(buildMapping(endpoint, function.getMapping().getConfiguration()));
 
-                return ProxyUtil.convertToString(existing);
+                return serializeEncrypted(resource, existing);
             });
 
             pendingApplications.remove(resource.getUrl());
@@ -816,7 +852,7 @@ public class ApplicationService {
                     function.setError(status == Application.Function.Status.FAILED ? error : null);
 
                     existing.setFunction(function);
-                    return ProxyUtil.convertToString(existing);
+                    return serializeEncrypted(resource, existing);
                 });
             }
 

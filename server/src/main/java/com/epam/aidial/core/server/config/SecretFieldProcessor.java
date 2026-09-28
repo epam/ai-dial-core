@@ -9,20 +9,24 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class SecretFieldProcessor {
 
-    public static final String ENC_PREFIX = "ENC[";
-    public static final String ENC_SUFFIX = "]";
-    public static final String SECRET_REF_PREFIX = "${SECRET:";
+    private static final String ENC_PREFIX = "ENC[";
+    private static final String ENC_SUFFIX = "]";
+    private static final String SECRET_REF_PREFIX = "${SECRET:";
 
     private static final ConcurrentHashMap<Class<?>, List<Field>> FIELDS_CACHE = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Class<?>, Boolean> HAS_ENCRYPTED_FIELD_CACHE = new ConcurrentHashMap<>();
@@ -50,17 +54,6 @@ public class SecretFieldProcessor {
         }
         byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
         walk(entity, aad, false);
-    }
-
-    public String resolveSecret(String value, ResourceDescriptor descriptor) {
-        if (value == null) {
-            return null;
-        }
-        if (value.startsWith(ENC_PREFIX) && value.endsWith(ENC_SUFFIX)) {
-            byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
-            return decryptEnvelope(value, aad, "value");
-        }
-        return value;
     }
 
     /**
@@ -102,6 +95,10 @@ public class SecretFieldProcessor {
                         applyStrip(entryObj, valueType);
                     }
                 }
+            }
+            Class<?> objectType = objectClassWithEncryptedField(field);
+            if (objectType != null && target.get(name) instanceof ObjectNode nested) {
+                applyStrip(nested, objectType);
             }
         }
     }
@@ -149,6 +146,12 @@ public class SecretFieldProcessor {
                     && target.get(name) instanceof ObjectNode targetEntries
                     && source.get(name) instanceof ObjectNode sourceEntries) {
                 mergeMap(targetEntries, sourceEntries, valueType);
+            }
+            Class<?> objectType = objectClassWithEncryptedField(field);
+            if (objectType != null
+                    && target.get(name) instanceof ObjectNode targetObj
+                    && source.get(name) instanceof ObjectNode sourceObj) {
+                mergeInto(targetObj, sourceObj, objectType);
             }
         }
     }
@@ -390,6 +393,24 @@ public class SecretFieldProcessor {
         return null;
     }
 
+    /**
+     * The type of a plain (non-{@code Collection}, non-{@code Map}) object-valued field that itself
+     * carries — directly or transitively — an {@link EncryptedField}. Lets {@link #mergeInto}/
+     * {@link #applyStrip} descend through a bare nested-object field the same way they already
+     * descend through array- and map-valued fields.
+     */
+    private static Class<?> objectClassWithEncryptedField(Field field) {
+        Class<?> type = field.getType();
+        if (field.isAnnotationPresent(EncryptedField.class)
+                || Collection.class.isAssignableFrom(type)
+                || Map.class.isAssignableFrom(type)
+                || type.isPrimitive()
+                || type.getName().startsWith("java.")) {
+            return null;
+        }
+        return classHasEncryptedField(type) ? type : null;
+    }
+
     private static boolean classHasEncryptedField(Class<?> cls) {
         if (cls == null || cls.isPrimitive() || cls.getName().startsWith("java.")) {
             return false;
@@ -397,12 +418,58 @@ public class SecretFieldProcessor {
         return HAS_ENCRYPTED_FIELD_CACHE.computeIfAbsent(cls, SecretFieldProcessor::computeHasEncryptedField);
     }
 
+    /**
+     * Transitive: a class "has" an encrypted field if it declares one directly, or if any field's
+     * type (or, for a {@code Collection}/{@code Map} field, its element/value type) does. This is
+     * what lets {@link #recurseInto} descend through e.g. {@code Application.routes} into
+     * {@code Route.upstreams} to reach {@code Upstream.key} — {@code Route} itself carries no
+     * {@code @EncryptedField}. {@code visiting} guards against infinite recursion on a cyclic type
+     * graph; {@link #HAS_ENCRYPTED_FIELD_CACHE} only gets populated once the outer call returns, so
+     * it can't protect against a cycle mid-computation on its own.
+     */
     private static boolean computeHasEncryptedField(Class<?> cls) {
-        for (Field f : declaredFieldsIncludingInherited(cls)) {
-            if (f.isAnnotationPresent(EncryptedField.class)) {
-                return true;
-            }
+        return computeHasEncryptedField(cls, new HashSet<>());
+    }
+
+    private static boolean computeHasEncryptedField(Class<?> cls, Set<Class<?>> visiting) {
+        if (!visiting.add(cls)) {
+            return false;
         }
-        return false;
+        try {
+            for (Field f : declaredFieldsIncludingInherited(cls)) {
+                if (f.isAnnotationPresent(EncryptedField.class)) {
+                    return true;
+                }
+                Class<?> nested = resolveNestedClass(f);
+                if (nested != null && !nested.isPrimitive() && !nested.getName().startsWith("java.")
+                        && computeHasEncryptedField(nested, visiting)) {
+                    return true;
+                }
+            }
+            return false;
+        } finally {
+            visiting.remove(cls);
+        }
+    }
+
+    /**
+     * A field's own type, or — for a {@code Collection}/{@code Map} field — its generic
+     * element/value type. Shared by {@link #computeHasEncryptedField} and by
+     * {@link #elementClassWithEncryptedField}/{@link #valueClassWithEncryptedField}'s own
+     * generic-type resolution.
+     */
+    private static Class<?> resolveNestedClass(Field field) {
+        Class<?> type = field.getType();
+        if (Collection.class.isAssignableFrom(type) || Map.class.isAssignableFrom(type)) {
+            if (field.getGenericType() instanceof ParameterizedType pt) {
+                Type[] args = pt.getActualTypeArguments();
+                int idx = Map.class.isAssignableFrom(type) ? 1 : 0;
+                if (args.length > idx && args[idx] instanceof Class<?> c) {
+                    return c;
+                }
+            }
+            return null;
+        }
+        return type;
     }
 }

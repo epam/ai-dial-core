@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -899,6 +900,55 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                 "authorization", "admin"), 200);
         verify(send(HttpMethod.GET, "/v1/toolsets/platform/apply-toolset-1", null, "",
                 "authorization", "admin"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyApplicationRouteEncryptsUpstreamSecretAtRest() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Application",
+                      "name": "applications/platform/apply-app-route-secret",
+                      "spec": {
+                        "endpoint": "http://example.com/v1/completions",
+                        "display_name": "Apply App Route Secret",
+                        "routes": {
+                          "apply-route": {
+                            "paths": ["/v1/apply-route"],
+                            "methods": ["GET"],
+                            "upstreams": [
+                              {"endpoint": "http://localhost:9876", "key": "app-route-secret-1"}
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+
+        // Raw blob must never carry the plaintext secret — only its ENC[...] envelope.
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION,
+                ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, "apply-app-route-secret");
+        String rawBlob = resourceService.getResource(descriptor);
+        assertNotNull(rawBlob, "Application blob must exist");
+        assertTrue(rawBlob.contains("ENC["), () -> "Route upstream secret must be encrypted at rest: " + rawBlob);
+        assertFalse(rawBlob.contains("app-route-secret-1"), () -> "Plaintext upstream key must not appear in blob: " + rawBlob);
+
+        // The merged in-memory Config must hold the plaintext — this is what the live routing path reads.
+        MergedConfigStore store = (MergedConfigStore) dial.getProxy().getConfigStore();
+        Application application = store.get().getApplications().get("apply-app-route-secret");
+        assertNotNull(application, "Applied application must be present in merged config");
+        Route route = application.getRoutes().get("apply-route");
+        assertNotNull(route, "Application route must be present");
+        assertEquals("app-route-secret-1", route.getUpstreams().get(0).getKey());
     }
 
     @Test
