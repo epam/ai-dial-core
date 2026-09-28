@@ -717,10 +717,14 @@ class GenAiTraceAttributesTest {
         assertEquals("openai_embeddings", context.getTracingAttributes().get("dial.api"));
     }
 
+    /**
+     * The assembled tree ({@link com.epam.aidial.core.server.ProxyContext#assembledChatCompletionsResponseTree()})
+     * is reused rather than re-parsed, but it is still subject to the same 512 KiB tracing cap as a fresh
+     * parse - {@code chatCompletionsTree} checks the assembled string's byte length before handing the tree
+     * back, exactly as {@link #setResponseAttributesSkipsBodyTooLargeToTrace} checks it for a non-streamed body.
+     */
     @Test
-    void setResponseAttributesUsesTheAssembledChatCompletionsTreeRegardlessOfSize() {
-        // the tree is already built once for the analytics log (ProxyContext.assembledChatCompletionsResponseTree),
-        // so reading it here is free - unlike a fresh parse, it isn't worth skipping past a size threshold
+    void setResponseAttributesSkipsTheAssembledChatCompletionsTreeWhenTooLarge() {
         ProxyContext context = streamingContext();
         String oversizedContent = "中".repeat(200_000);
         Buffer body = Buffer.buffer("data: {\"id\":\"chat-1\",\"model\":\"gpt-4\",\"choices\":"
@@ -731,9 +735,9 @@ class GenAiTraceAttributesTest {
         JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
         GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, responseTree, null);
 
-        assertEquals("chat-1", context.getTracingAttributes().get("gen_ai.response.id"));
-        assertEquals("gpt-4", context.getTracingAttributes().get("gen_ai.response.model"));
-        assertEquals(List.of("stop"), context.getTracingAttributes().get("gen_ai.response.finish_reasons"));
+        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.id"));
+        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.model"));
+        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
     }
 
     private static ProxyContext context(Proxy proxy, HttpServerRequest request) {

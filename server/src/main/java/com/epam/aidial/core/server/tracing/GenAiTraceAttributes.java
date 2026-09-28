@@ -355,7 +355,7 @@ public final class GenAiTraceAttributes {
         }
         String assembledResponse = context.assembledChatCompletionsResponse();
         if (assembledResponse == null
-            || assembledResponse.getBytes(StandardCharsets.UTF_8).length > MAX_TRACED_BODY_BYTES) {
+                || assembledResponse.getBytes(StandardCharsets.UTF_8).length > MAX_TRACED_BODY_BYTES) {
             return MissingNode.getInstance();
         }
         return tree;

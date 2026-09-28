@@ -218,22 +218,24 @@ class MessagesControllerTest {
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(proxy.getRateLimiter()).thenReturn(rateLimiter);
-        when(rateLimiter.increase(any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
         when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
         Buffer body = Buffer.buffer("{\"usage\":{\"input_tokens\":10,\"output_tokens\":8}}");
         enableLatencyTracing();
 
-        try (var mockedJson = mockStatic(JsonUtil.class, CALLS_REAL_METHODS);
-                var mockedCalculator = mockStatic(ModelCostCalculator.class, CALLS_REAL_METHODS)) {
+        try (var mockedJson = mockStatic(JsonUtil.class, CALLS_REAL_METHODS)) {
             controller.handleNonStreamingResponse(proxyResponse, body);
 
             mockedJson.verify(() -> JsonUtil.tryParse(any(byte[].class)), times(1));
 
             ArgumentCaptor<JsonNode> parsed = ArgumentCaptor.forClass(JsonNode.class);
             verify(context).setTokenUsage(any());
+            // rateLimiter is mocked, so pricing (ModelCostCalculator.resolveCost, invoked from inside its
+            // real increase()) is exercised in RateLimiterTest/ModelCostCalculatorTest instead; here the
+            // boundary this test controls is the ResponseSource it hands to rateLimiter.increase().
             ArgumentCaptor<ModelCostCalculator.ResponseSource> priced = ArgumentCaptor.forClass(ModelCostCalculator.ResponseSource.class);
-            mockedCalculator.verify(() -> ModelCostCalculator.resolveCost(any(), any(), any(), any(), priced.capture()));
+            verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), priced.capture());
             assertInstanceOf(ModelCostCalculator.ResponseSource.Tree.class, priced.getValue());
             JsonNode pricedTree = ((ModelCostCalculator.ResponseSource.Tree) priced.getValue()).responseTree();
 

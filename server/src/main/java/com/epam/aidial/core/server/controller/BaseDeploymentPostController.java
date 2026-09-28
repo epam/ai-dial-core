@@ -330,12 +330,12 @@ public class BaseDeploymentPostController {
             return Future.succeededFuture();
         }
         BigDecimal cost = ModelCostCalculator.calculate(
-            deployment,
-            usage,
-            context.getRequestBody(),
-            context.getResponseBody(),
-            interfaceType(),
-            context.getPricingUsageNode()
+                deployment,
+                usage,
+                context.getRequestBody(),
+                context.getResponseBody(),
+                interfaceType(),
+                context.getPricingUsageNode()
         );
 
         return proxy.getRateLimiter().increase(

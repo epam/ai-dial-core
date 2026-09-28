@@ -64,7 +64,7 @@ public class CollectMessagesTokenUsageFn extends BaseResponseFunction {
             cacheCreationTokens = usage.path("cache_creation_input_tokens").asLong(cacheCreationTokens);
             thinkingTokens = usage.path("output_tokens_details").path("thinking_tokens").asLong(thinkingTokens);
             context.setTokenUsage(MessagesTokenUsageParser.build(
-                inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, thinkingTokens));
+                    inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, thinkingTokens));
             mergedUsage = MergeChunks.merge(mergedUsage, usage);
         }
         if (mergedUsage != null || responseId != null || responseModel != null || stopReason != null) {

@@ -61,12 +61,12 @@ public class RateLimiter {
     private final ConfigStore configStore;
 
     public Future<Void> increase(
-        RoleBasedEntity roleBasedEntity,
-        String bucket,
-        TokenUsage usage,
-        Buffer requestBody,
-        InterfaceType interfaceType,
-        ModelCostCalculator.ResponseSource response) {
+            RoleBasedEntity roleBasedEntity,
+            String bucket,
+            TokenUsage usage,
+            Buffer requestBody,
+            InterfaceType interfaceType,
+            ModelCostCalculator.ResponseSource response) {
 
         try {
             if (resourceService == null) {
@@ -74,11 +74,11 @@ public class RateLimiter {
             }
 
             BigDecimal cost = ModelCostCalculator.resolveCost(
-                roleBasedEntity,
-                usage,
-                requestBody,
-                interfaceType,
-                response);
+                    roleBasedEntity,
+                    usage,
+                    requestBody,
+                    interfaceType,
+                    response);
 
             return increase(roleBasedEntity, bucket, usage, cost);
         } catch (Throwable e) {

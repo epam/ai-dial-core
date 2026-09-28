@@ -406,7 +406,7 @@ public class ResponsesControllerTest {
                 .thenReturn(deployment);
         when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
-        when(proxy.getRateLimiter().increase(any(), any(), any(), any()))
+        when(proxy.getRateLimiter().increase(any(), any(), any(), any(), any(), any()))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getClient()).thenReturn(httpClient);
@@ -1165,7 +1165,7 @@ public class ResponsesControllerTest {
         when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
-        when(proxy.getRateLimiter().increase(any(), any(), any(), any()))
+        when(proxy.getRateLimiter().increase(any(), any(), any(), any(), any(), any()))
                 .thenReturn(Future.succeededFuture());
         when(context.getUserId()).thenReturn("test-user");
         doCallRealMethod().when(context).setDeployment(any());
@@ -1178,8 +1178,7 @@ public class ResponsesControllerTest {
 
         try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class);
                 var mockedJson = mockStatic(JsonUtil.class, CALLS_REAL_METHODS);
-                var mockedParser = mockStatic(TokenUsageParser.class);
-                var mockedCalculator = mockStatic(ModelCostCalculator.class, CALLS_REAL_METHODS)) {
+                var mockedParser = mockStatic(TokenUsageParser.class)) {
             mockedGenAi.when(() -> GenAiTraceAttributes.isEnabled(context)).thenReturn(true);
             mockedParser.when(() -> TokenUsageParser.parse(any(JsonNode.class))).thenReturn(parsedUsage);
 
@@ -1198,8 +1197,11 @@ public class ResponsesControllerTest {
             mockedParser.verify(() -> TokenUsageParser.parse(charged.capture()));
             mockedParser.verify(() -> TokenUsageParser.parse(any(Buffer.class)), never());
 
+            // rateLimiter is mocked, so pricing (ModelCostCalculator.resolveCost, invoked from inside its
+            // real increase()) is exercised in RateLimiterTest/ModelCostCalculatorTest instead; here the
+            // boundary this test controls is the ResponseSource it hands to rateLimiter.increase().
             ArgumentCaptor<ModelCostCalculator.ResponseSource> priced = ArgumentCaptor.forClass(ModelCostCalculator.ResponseSource.class);
-            mockedCalculator.verify(() -> ModelCostCalculator.resolveCost(any(), any(), any(), any(), priced.capture()));
+            verify(proxy.getRateLimiter()).increase(eq(deployment), any(), any(), any(), any(), priced.capture());
             assertInstanceOf(ModelCostCalculator.ResponseSource.Tree.class, priced.getValue());
             JsonNode pricedTree = ((ModelCostCalculator.ResponseSource.Tree) priced.getValue()).responseTree();
 
@@ -1212,8 +1214,9 @@ public class ResponsesControllerTest {
     }
 
     /**
-     * A non-200 upstream body is parsed on the same single path as a 200 one, so tracing is handed a tree
-     * here too and never falls back to reading the raw bytes itself - PR #2020 review item 1.
+     * A non-200 upstream body skips {@code rewriteResponseId}'s rewrite/parse (only a 200 response gets its
+     * id rewritten), so tracing falls back to parsing the raw bytes itself here - unlike the 200 path in
+     * {@link #testNonStreamingResponse_ParsesBodyOnceAndSharesThatTree}, which shares one already-parsed tree.
      */
     @Test
     public void testNonStreamingErrorResponse_StillHandsTracingParsedTree(Vertx vertx) throws Throwable {
@@ -1245,6 +1248,9 @@ public class ResponsesControllerTest {
 
         try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class)) {
             mockedGenAi.when(() -> GenAiTraceAttributes.isEnabled(context)).thenReturn(true);
+            JsonNode errorTree = ProxyUtil.MAPPER.readTree(body.getBytes());
+            mockedGenAi.when(() -> GenAiTraceAttributes.parseResponse(eq(context), eq(InterfaceType.OPENAI_RESPONSES), eq(body)))
+                    .thenReturn(errorTree);
 
             controller.handleNonStreamingResponse(proxyResponse, body).toCompletionStage().toCompletableFuture()
                     .get(10, TimeUnit.SECONDS);
@@ -1252,7 +1258,8 @@ public class ResponsesControllerTest {
             ArgumentCaptor<JsonNode> traced = ArgumentCaptor.forClass(JsonNode.class);
             mockedGenAi.verify(() -> GenAiTraceAttributes.setResponseAttributes(
                     eq(context), eq(InterfaceType.OPENAI_RESPONSES), traced.capture(), isNull()));
-            mockedGenAi.verify(() -> GenAiTraceAttributes.parseResponse(any(), any(), any()), never());
+            mockedGenAi.verify(() -> GenAiTraceAttributes.parseResponse(
+                    eq(context), eq(InterfaceType.OPENAI_RESPONSES), eq(body)));
             assertEquals("boom", traced.getValue().path("error").path("message").asText());
         }
     }
