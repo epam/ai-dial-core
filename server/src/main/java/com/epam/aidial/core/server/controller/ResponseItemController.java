@@ -273,7 +273,8 @@ public class ResponseItemController implements Controller {
      * parsed representation, never the raw one.
      */
     private Future<Void> sendResponse(HttpClientResponse proxyResponse, Buffer body) {
-        context.getResponse().setStatusCode(proxyResponse.statusCode());
+        HttpServerResponse serverResponse = context.getResponse();
+        serverResponse.setStatusCode(proxyResponse.statusCode());
         if (operation == Operation.GET && GenAiTraceAttributes.isEnabled(context)) {
             // after setStatusCode: the status fallback reads the client-facing code, still 200 by default before it
             JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_RESPONSES, body);
