@@ -13035,6 +13035,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      parameters:
+      - name: deploymentTypes
+        in: query
+        description: "Which deployment kinds to report on (model, application). Defaults to model."
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - model
+            - application
   /v1/user/offline-credentials:
     get:
       tags:
@@ -13227,6 +13239,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      parameters:
+      - name: deploymentTypes
+        in: query
+        description: "Which deployment kinds to report on (model, application). Defaults to model."
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - model
+            - application
   /v1/{deployment_name}/rate:
     post:
       summary: "/v1/{deployment_name}/rate"
