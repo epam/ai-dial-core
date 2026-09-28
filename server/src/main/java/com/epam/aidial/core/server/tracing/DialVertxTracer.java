@@ -53,7 +53,7 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
         delegate.sendResponse(context, response, payload, failure, tagExtractor);
         if (span.isValid() && ((ContextInternal) context).isDuplicate()) {
             // the request's duplicated context dies with the request, so nothing leaks to the next one; Span.wrap is non-recording
-            context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, io.opentelemetry.context.Context.root().with(Span.wrap(span)));
+            context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, active.with(Span.wrap(span)));
         }
     }
 

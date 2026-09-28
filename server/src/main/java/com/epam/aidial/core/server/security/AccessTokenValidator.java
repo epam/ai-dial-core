@@ -121,13 +121,13 @@ public class AccessTokenValidator {
 
     private Future<ExtractedClaims> extractClaimsFromUserInfo(String accessToken, Supplier<Future<UserInfoResult>> fn) {
         Future<UserInfoResult> shared = userInfoCache.computeIfAbsent(accessToken, k -> fn.get());
-        // the shared future is bound to the first caller's context: continue on the current request's context instead
+        // the shared future completes on the first caller's context: continue on the current request's context instead
         ContextInternal caller = ContextInternal.current();
         Promise<UserInfoResult> promise = caller != null ? caller.promise() : Promise.promise();
         shared.onComplete(promise);
         return promise.future().map(UserInfoResult::claims).onFailure(error -> {
-            /* we don't need to keep the failed response any longer */
-            userInfoCache.remove(accessToken);
+            /* we don't need to keep the failed response any longer; a waiter runs late, so never evict a newer entry */
+            userInfoCache.remove(accessToken, shared);
         });
     }
 

@@ -346,7 +346,7 @@ public class IdentityProvider {
                 jwkResult = new JwkResult(null, e, currentTime + negativeCacheExpirationMs);
             }
             return jwkResult;
-        })).onSuccess(promise::complete).onFailure(promise::fail);
+        })).onComplete(promise);
         return promise.future();
     }
 

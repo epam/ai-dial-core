@@ -238,8 +238,10 @@ public class AccessTokenValidatorTest {
             validator.setProviders(List.of(provider));
             String header = getBearerHeaderValue("token");
 
-            ContextInternal first = ((ContextInternal) realVertx.getOrCreateContext()).duplicate();
-            ContextInternal second = ((ContextInternal) realVertx.getOrCreateContext()).duplicate();
+            // one event loop: the three tasks below run in order, so the second request is always a waiter
+            ContextInternal loop = (ContextInternal) realVertx.getOrCreateContext();
+            ContextInternal first = loop.duplicate();
+            ContextInternal second = loop.duplicate();
             CompletableFuture<Context> continuedOn = new CompletableFuture<>();
             // the first request fills the cache, the second waits on the same in-flight future
             first.runOnContext(v -> validator.extractClaims(header));

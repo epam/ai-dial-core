@@ -47,6 +47,7 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         String spanId = "";
         String traceFlags = "";
 
+        Span currentSpan = Span.current();
         ProxyContext proxyContext = ContextManager.getProxyContext();
         if (proxyContext != null) {
             traceId = proxyContext.getTraceId();
@@ -54,7 +55,7 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
             traceFlags = proxyContext.getTraceFlags();
         } else {
             // no ProxyContext yet (auth phase, early rejections): take the ids from the current span
-            SpanContext span = Span.current().getSpanContext();
+            SpanContext span = currentSpan.getSpanContext();
             if (span.isValid()) {
                 traceId = span.getTraceId();
                 spanId = span.getSpanId();
@@ -75,7 +76,7 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         enrichExceptionAttributes(event, attributes);
         
         // Enrich OpenTelemetry span
-        enrichOpenTelemetrySpan(event, attributes);
+        enrichOpenTelemetrySpan(currentSpan, attributes);
 
         // after the span pass: GenAiTraceAttributes already set these on the span, typed
         if (proxyContext != null) {
@@ -135,8 +136,7 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         }
     }
 
-    private void enrichOpenTelemetrySpan(ILoggingEvent event, Map<String, Object> attributes) {
-        Span currentSpan = Span.current();
+    private void enrichOpenTelemetrySpan(Span currentSpan, Map<String, Object> attributes) {
         if (!currentSpan.isRecording()) {
             return;
         }
