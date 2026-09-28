@@ -106,31 +106,26 @@ public class MessagesTokenUsageParserTest {
     }
 
     @Test
-    void parseWithTreeFallsBackToBodyParseWhenTreeIsAbsent() {
-        Buffer body = Buffer.buffer("{\"usage\":{\"input_tokens\":10,\"output_tokens\":8}}");
+    void parseTreeReadsTheTopLevelUsageObject() throws Exception {
+        JsonNode response = ProxyUtil.MAPPER.readTree(
+                "{\"id\":\"msg\",\"usage\":{\"input_tokens\":10,\"output_tokens\":8,\"cache_read_input_tokens\":2}}");
 
-        assertEquals(18, MessagesTokenUsageParser.parse(body, null).getTotalTokens());
-        assertEquals(18, MessagesTokenUsageParser.parse(body, MissingNode.getInstance()).getTotalTokens());
-    }
-
-    @Test
-    void parseWithTreeReadsUsageFromTheGivenTreeWithoutTouchingTheBody() throws Exception {
-        JsonNode tree = ProxyUtil.MAPPER.readTree(
-                "{\"usage\":{\"input_tokens\":10,\"output_tokens\":8,\"cache_read_input_tokens\":2}}");
-        // a body that would parse to something else entirely, to prove the tree is used, not the body
-        Buffer body = Buffer.buffer("not json");
-
-        TokenUsage usage = MessagesTokenUsageParser.parse(body, tree);
+        TokenUsage usage = MessagesTokenUsageParser.parse(response);
 
         assertNotNull(usage);
         assertEquals(12, usage.getPromptTokens());
         assertEquals(8, usage.getCompletionTokens());
+        assertEquals(20, usage.getTotalTokens());
+        assertEquals(2, usage.getPromptTokensDetails().getCachedTokens());
     }
 
     @Test
-    void parseWithTreeReturnsNullWhenTheTreeHasNoUsage() throws Exception {
-        JsonNode tree = ProxyUtil.MAPPER.readTree("{\"id\":\"msg\"}");
+    void parseTreeReturnsNullWhenTheResponseCarriesNoUsage() throws Exception {
+        assertNull(MessagesTokenUsageParser.parse(ProxyUtil.MAPPER.readTree("{\"id\":\"msg\"}")));
+    }
 
-        assertNull(MessagesTokenUsageParser.parse(Buffer.buffer("{}"), tree));
+    @Test
+    void parseTreeReturnsNullForAnUnparseableResponse() {
+        assertNull(MessagesTokenUsageParser.parse(MissingNode.getInstance()));
     }
 }

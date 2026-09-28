@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -26,6 +27,8 @@ import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
+import com.epam.aidial.core.server.util.JsonUtil;
+import com.epam.aidial.core.server.util.ModelCostCalculator;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -33,6 +36,7 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.opentelemetry.api.trace.Span;
 import io.vertx.core.Future;
@@ -85,6 +89,7 @@ import static com.epam.aidial.core.storage.http.HttpStatus.UNSUPPORTED_MEDIA_TYP
 import static io.opentelemetry.api.common.AttributeKey.longKey;
 import static io.vertx.core.http.HttpHeaders.AUTHORIZATION;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -94,6 +99,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -1047,6 +1053,60 @@ public class DeploymentPostControllerTest {
     }
 
     /**
+     * The non-streaming Chat Completions body is parsed once - tracing, token usage, attachment collection,
+     * the usage_per_model rewrite and {@code ModelCostCalculator} all read that one tree. Asserting on
+     * instance identity, not just which overload ran, is what proves it: a caller that re-parsed the body
+     * into an equal-but-distinct node would still pass a weaker, value-based check.
+     */
+    @Test
+    public void testHandleNonStreamingChatCompletionResponse_ParsesBodyOnceAndSharesThatTree() {
+        Model model = new Model();
+        Pricing pricing = new Pricing();
+        pricing.setUnit("token");
+        pricing.setPrompt("0.1");
+        pricing.setCompletion("0.5");
+        model.setPricing(pricing);
+        when(context.getDeployment()).thenReturn(model);
+        when(context.getUserId()).thenReturn("test-user");
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(rateLimiter.increase(any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(proxy.getLogStore()).thenReturn(logStore);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        when(context.getRequest()).thenReturn(request);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.uri()).thenReturn("/test");
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+        Buffer body = Buffer.buffer("{\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":8,\"total_tokens\":18}}");
+        getTracingAttributes();
+
+        try (var mockedJson = mockStatic(JsonUtil.class, CALLS_REAL_METHODS);
+                var mockedCalculator = mockStatic(ModelCostCalculator.class, CALLS_REAL_METHODS)) {
+            controller.handleNonStreamingChatCompletionResponse(proxyResponse, body);
+
+            // the assertion that makes this a single-parse test: one readTree for the whole chain below
+            mockedJson.verify(() -> JsonUtil.tryParse(any(byte[].class)), times(1));
+
+            ArgumentCaptor<ModelCostCalculator.ResponseSource> priced = ArgumentCaptor.forClass(ModelCostCalculator.ResponseSource.class);
+            mockedCalculator.verify(() -> ModelCostCalculator.resolveCost(any(), any(), any(), any(), priced.capture()));
+            assertInstanceOf(ModelCostCalculator.ResponseSource.Tree.class, priced.getValue());
+            JsonNode pricedTree = ((ModelCostCalculator.ResponseSource.Tree) priced.getValue()).responseTree();
+
+            assertEquals(10, pricedTree.path("usage").path("prompt_tokens").asLong());
+            verify(context).setTokenUsage(any(TokenUsage.class));
+            verify(response).end(any(Buffer.class));
+        }
+    }
+
+    /**
      * {@code handleNonStreamingChatCompletionResponse} must publish {@code dial.latency.*} onto the
      * still-recording span before {@code response.end()}, for the same reason as the streaming path
      * above.
@@ -1183,39 +1243,37 @@ public class DeploymentPostControllerTest {
     }
 
     /**
-     * {@code collectTokenUsage}'s 3-arg overload must reuse an already-parsed response tree for
-     * tracing instead of parsing {@code responseBody} a second time - PR #2020 review item 1.
+     * {@code collectTokenUsage}'s {@code JsonNode} overload is for a caller that already parsed the
+     * response: it must hand that tree to tracing instead of letting tracing read the body again -
+     * PR #2020 review item 1.
      */
     @Test
-    void testCollectTokenUsage_ReusesParsedResponseWithoutReparsingBody() {
+    void testCollectTokenUsage_JsonNodeOverload_ReusesParsedResponseWithoutReparsingBody() {
         when(context.getDeployment()).thenReturn(new Model());
         HttpServerResponse response = mock(HttpServerResponse.class);
         when(context.getResponse()).thenReturn(response);
         when(response.getStatusCode()).thenReturn(HttpStatus.INTERNAL_SERVER_ERROR.getCode());
         when(context.getRequest()).thenReturn(request);
         when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
-        // malformed on purpose: proves the assertion below by failing loudly if it were ever parsed
-        Buffer body = Buffer.buffer("not valid json");
         JsonNode parsedResponse = ProxyUtil.MAPPER.createObjectNode().put("id", "resp-1");
 
         try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class)) {
             mockedGenAi.when(() -> GenAiTraceAttributes.isEnabled(context)).thenReturn(true);
 
-            controller.collectTokenUsage(body, "resp-1", parsedResponse);
+            controller.collectTokenUsage(parsedResponse, "resp-1");
 
             mockedGenAi.verify(() -> GenAiTraceAttributes.setResponseAttributes(
                     eq(context), any(), eq(parsedResponse), eq("resp-1")));
-            mockedGenAi.verify(() -> GenAiTraceAttributes.setResponseAttributes(
-                    eq(context), any(), any(Buffer.class), any()), never());
+            mockedGenAi.verify(() -> GenAiTraceAttributes.parseResponse(any(), any(), any()), never());
         }
     }
 
     /**
-     * The symmetric case: with no parsed tree available, {@code collectTokenUsage} must parse
-     * {@code responseBody} itself instead of silently skipping tracing - PR #2020 review item 1.
+     * The symmetric case: a caller holding only the raw body has {@code GenAiTraceAttributes} derive its own
+     * view of the response (via {@code parseResponse}) rather than being handed one - PR #2020 review item 1.
      */
     @Test
-    void testCollectTokenUsage_ParsesResponseBodyWhenNoParsedResponseGiven() {
+    void testCollectTokenUsage_BufferOverload_LetsTracingDeriveItsOwnView() {
         when(context.getDeployment()).thenReturn(new Model());
         HttpServerResponse response = mock(HttpServerResponse.class);
         when(context.getResponse()).thenReturn(response);
@@ -1223,14 +1281,54 @@ public class DeploymentPostControllerTest {
         when(context.getRequest()).thenReturn(request);
         when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
         Buffer body = Buffer.buffer("{}");
+        JsonNode parsedResponse = ProxyUtil.MAPPER.createObjectNode().put("id", "resp-1");
 
         try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class)) {
             mockedGenAi.when(() -> GenAiTraceAttributes.isEnabled(context)).thenReturn(true);
+            mockedGenAi.when(() -> GenAiTraceAttributes.parseResponse(eq(context), any(), eq(body)))
+                    .thenReturn(parsedResponse);
 
-            controller.collectTokenUsage(body, "resp-1", null);
+            controller.collectTokenUsage(body, "resp-1");
 
+            mockedGenAi.verify(() -> GenAiTraceAttributes.parseResponse(eq(context), any(), eq(body)));
             mockedGenAi.verify(() -> GenAiTraceAttributes.setResponseAttributes(
-                    eq(context), any(), eq(body), eq("resp-1")));
+                    eq(context), any(), eq(parsedResponse), eq("resp-1")));
+        }
+    }
+
+    /**
+     * Billing must not depend on observability. Before the overload split, {@code collectTokenUsage} read
+     * usage out of whatever tree tracing happened to build - which for a streamed chat completion is the
+     * merged assembled tree, not the raw frames the byte-scan reads - so turning {@code genAiSpanAttributes}
+     * on could change the charged amount. Token usage is now read the same way either way.
+     */
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void testCollectTokenUsage_ChargesTheSameUsageWhetherOrNotTracingIsEnabled(boolean tracingEnabled) {
+        Model model = new Model();
+        model.setName("test");
+        when(context.getDeployment()).thenReturn(model);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
+        when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
+        when(context.getUserId()).thenReturn("test-user");
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(Future.succeededFuture());
+        Buffer body = Buffer.buffer("{\"usage\":{\"prompt_tokens\":19,\"completion_tokens\":9,\"total_tokens\":28}}");
+
+        try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class)) {
+            mockedGenAi.when(() -> GenAiTraceAttributes.isEnabled(context)).thenReturn(tracingEnabled);
+
+            controller.collectTokenUsage(body, null);
+
+            ArgumentCaptor<TokenUsage> charged = ArgumentCaptor.forClass(TokenUsage.class);
+            verify(context).setTokenUsage(charged.capture());
+            assertEquals(19, charged.getValue().getPromptTokens());
+            assertEquals(9, charged.getValue().getCompletionTokens());
+            assertEquals(28, charged.getValue().getTotalTokens());
         }
     }
 
@@ -1252,6 +1350,23 @@ public class DeploymentPostControllerTest {
         ArgumentCaptor<JsonNode> captor = ArgumentCaptor.forClass(JsonNode.class);
         verify(fn).apply(captor.capture());
         assertSame(tree, captor.getValue());
+    }
+
+    /**
+     * A response that isn't a JSON object has no attachments to collect. The JsonNode overload must report
+     * that the way the Buffer overload always has - by failing the future, which every caller logs and
+     * carries on from - rather than handing a non-object to the attachment function. Without this, a caller
+     * moving from the Buffer overload to the tree overload would silently change behaviour on a bad body.
+     */
+    @Test
+    void testCollectResponseAttachments_JsonNodeOverload_FailsForNonObjectResponse() {
+        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        CollectResponseAttachmentsFn fn = mock(CollectResponseAttachmentsFn.class);
+
+        Future<Void> result = controller.collectResponseAttachments(MissingNode.getInstance(), fn);
+
+        assertTrue(result.failed());
+        verify(fn, never()).apply(any());
     }
 
     /**

@@ -24,6 +24,7 @@ import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UsagePerModelInjector;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -223,19 +224,33 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
         ProxyUtil.copyResponse(response, proxyResponse);
         response.setChunked(false);
         putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
-
-        return collectTokenUsage(body)
+        // parsed once here: tracing, token usage, pricing, attachment collection and the usage_per_model
+        // rewrite below all read this tree instead of each deserializing the same body again. A body that
+        // isn't valid JSON at all falls back to the Buffer overloads below - exactly what every one of them
+        // did before this method ever parsed anything - rather than silently reporting no usage/attachments
+        // for a body the byte-scan could still read.
+        JsonNode responseTree = JsonUtil.tryParse(body.getBytes());
+        boolean parsed = !responseTree.isMissingNode();
+        Future<Void> tokenUsageFuture = parsed ? collectTokenUsage(responseTree, null) : collectTokenUsage(body);
+        return tokenUsageFuture
                 .transform(result -> {
                     if (result.failed()) {
                         log.warn("Failed to collect token usage", result.cause());
                     }
-                    return collectResponseAttachments(body, new CollectResponseChatCompletionAttachmentsFn(proxy, context));
+                    CollectResponseChatCompletionAttachmentsFn attachmentsFn = new CollectResponseChatCompletionAttachmentsFn(proxy, context);
+                    return parsed ? collectResponseAttachments(responseTree, attachmentsFn) : collectResponseAttachments(body, attachmentsFn);
                 })
                 .transform(result -> {
                     if (result.failed()) {
                         log.warn("Failed to collect attachments from response", result.cause());
                     }
-                    Buffer rewritten = maybeInjectUsagePerModel(body);
+                    // last: this mutates statistics.usage_per_model on the shared tree, after every reader
+                    // above has run. Pricing reads only usage/custom_fields, so the order is not load-bearing.
+                    // decided here, from the same parse result, rather than inside injectUsagePerModel -
+                    // that method takes only the tree, never the raw body, so it is never handed both
+                    Buffer rewritten = responseTree instanceof ObjectNode responseObject
+                            ? injectUsagePerModel(responseObject)
+                            : body;
                     response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
                     // must run before end(): Vert.x ends the request's OTel span synchronously inside
                     // end(), after which further span attributes (dial.latency.*) are silently dropped

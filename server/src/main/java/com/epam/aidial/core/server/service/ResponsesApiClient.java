@@ -59,22 +59,26 @@ public class ResponsesApiClient {
     }
 
     /**
-     * For a caller that already parsed {@code body} for its own reasons (e.g. to rewrite its id) - skips the
-     * parse this otherwise repeats.
+     * For a caller that already parsed the response (e.g. to rewrite its id) - skips the parse this otherwise
+     * repeats.
+     *
+     * @param response the parsed response, the only thing inspected here.
+     * @param payload  the bytes to hand on in {@link TerminalResult} for the background job to persist - never
+     *                 parsed, so it is not a second representation to choose between.
      */
     @SneakyThrows
-    public static TerminalResult parseTerminalBody(JsonNode tree, Buffer body) {
-        if (!(tree instanceof ObjectNode object)) {
+    public static TerminalResult parseTerminalBody(JsonNode response, Buffer payload) {
+        if (!(response instanceof ObjectNode responseObject)) {
             throw new IllegalStateException("Response body is not a JSON object.");
         }
-        JsonNode statusNode = object.path("status");
+        JsonNode statusNode = responseObject.path("status");
         if (!statusNode.isTextual() || !isTerminal(statusNode.asText())) {
             return null;
         }
-        JsonNode usageNode = object.path("usage");
+        JsonNode usageNode = responseObject.path("usage");
         TokenUsage usage = usageNode.isObject()
                 ? ProxyUtil.MAPPER.treeToValue(usageNode, TokenUsage.class) : null;
-        return new TerminalResult(body, usage);
+        return new TerminalResult(payload, usage);
     }
 
     public record TerminalResult(Buffer body, TokenUsage usage) {

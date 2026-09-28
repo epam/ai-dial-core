@@ -39,16 +39,11 @@ public class MessagesTokenUsageParser {
     }
 
     /**
-     * @param parsedResponse the body already parsed by a caller that needed the tree for its own reasons (e.g.
-     *                       tracing), or null/{@code MissingNode} when there is none - falls back to
-     *                       {@link #parse(Buffer)} in that case, so the common tracing-disabled path is
-     *                       unaffected.
+     * For a caller that already parsed the response: reads its top-level {@code usage} object, null when the
+     * response carries none.
      */
-    public TokenUsage parse(Buffer body, JsonNode parsedResponse) {
-        if (parsedResponse == null || parsedResponse.isMissingNode()) {
-            return parse(body);
-        }
-        JsonNode usage = parsedResponse.get("usage");
+    public TokenUsage parse(JsonNode response) {
+        JsonNode usage = response.get("usage");
         return (usage != null && usage.isObject()) ? fromUsageNode(usage) : null;
     }
 

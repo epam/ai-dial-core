@@ -23,6 +23,7 @@ import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -149,7 +150,12 @@ public class MessagesController extends MessagesBaseController {
         ProxyUtil.copyResponse(response, proxyResponse);
         response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
         putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
-        return collectTokenUsage(body)
+        // parsed once here: both token usage and tracing read this tree, instead of each calling readTree
+        // on the same body. Nothing rewrites the body, so the client still gets the upstream bytes. A body
+        // that isn't valid JSON at all falls back to the Buffer overload instead of silently reporting no usage.
+        JsonNode responseTree = JsonUtil.tryParse(body.getBytes());
+        Future<Void> tokenUsageFuture = responseTree.isMissingNode() ? collectTokenUsage(body) : collectTokenUsage(responseTree, null);
+        return tokenUsageFuture
                 .transform(result -> {
                     if (result.failed()) {
                         log.warn("Failed to collect token usage", result.cause());
@@ -192,12 +198,21 @@ public class MessagesController extends MessagesBaseController {
     }
 
     @Override
-    protected TokenUsage parseTokenUsage(Buffer responseBody, JsonNode parsedResponse) {
+    protected TokenUsage parseTokenUsage(Buffer responseBody) {
         if (context.isStreamingRequest()) {
             // Populated event-by-event by CollectMessagesTokenUsageFn during streaming.
             return context.getTokenUsage();
         }
-        return MessagesTokenUsageParser.parse(responseBody, parsedResponse);
+        return MessagesTokenUsageParser.parse(responseBody);
+    }
+
+    @Override
+    protected TokenUsage parseTokenUsage(JsonNode response) {
+        if (context.isStreamingRequest()) {
+            // Populated event-by-event by CollectMessagesTokenUsageFn during streaming.
+            return context.getTokenUsage();
+        }
+        return MessagesTokenUsageParser.parse(response);
     }
 
     @Override

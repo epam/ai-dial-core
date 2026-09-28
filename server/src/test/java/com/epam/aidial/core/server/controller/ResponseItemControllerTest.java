@@ -10,8 +10,10 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResponseMapping;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -45,6 +47,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -65,12 +68,15 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -890,6 +896,107 @@ public class ResponseItemControllerTest {
                 "interceptor1".equals(opts.getHost())
                 && "/responses/dial_test-deployment_123".equals(opts.getURI().toString())));
         verify(proxy.getResponsesApiClient(), never()).send(any(), any(), any(), any());
+    }
+
+    /**
+     * PR #2020 review item 4: a 200 GET body is parsed once, by {@code rewriteId}, and tracing reads that
+     * tree - it must not parse the same JSON a second time. The {@code tryParse} count is what makes this a
+     * single-parse test; the overload checks alone would still pass if tracing re-parsed the bytes.
+     */
+    @Test
+    public void testGetResponse_ParsesBodyOnceAndHandsTracingThatTree(VertxTestContext testContext) throws Throwable {
+        HttpClientResponse proxyResponse = stubGetForwarding(testContext, 200,
+                "{\"id\":\"upstream-id-123\",\"status\":\"completed\",\"model\":\"gpt-test\"}");
+
+        try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class);
+                var mockedJson = mockStatic(JsonUtil.class, CALLS_REAL_METHODS)) {
+            mockedGenAi.when(() -> GenAiTraceAttributes.isEnabled(context)).thenReturn(true);
+
+            controller("dial_test-deployment_123", GET).handle();
+
+            await(testContext);
+
+            mockedJson.verify(() -> JsonUtil.tryParse(any(byte[].class)), times(1));
+            mockedGenAi.verify(() -> GenAiTraceAttributes.parseResponse(any(), any(), any()), never());
+
+            ArgumentCaptor<JsonNode> traced = ArgumentCaptor.forClass(JsonNode.class);
+            mockedGenAi.verify(() -> GenAiTraceAttributes.setFetchResponseAttributes(
+                    eq(context), traced.capture(), eq("dial_test-deployment_123")));
+            // the node rewriteId mutated, carrying the DIAL-facing id
+            assertEquals("dial_test-deployment_123", traced.getValue().path("id").asText());
+            assertEquals("gpt-test", traced.getValue().path("model").asText());
+        }
+        assertNotNull(proxyResponse);
+    }
+
+    /**
+     * A non-200 GET never reaches {@code rewriteId}, so nothing has parsed that body: tracing takes the
+     * {@code Buffer} entry point and derives its own size-capped view - PR #2020 review item 4.
+     */
+    @Test
+    public void testGetErrorResponse_LeavesTracingToReadTheRawBody(VertxTestContext testContext) throws Throwable {
+        Buffer errorBody = Buffer.buffer("{\"error\":{\"message\":\"boom\"}}");
+        stubGetForwarding(testContext, 502, errorBody.toString());
+        JsonNode parsedError = ProxyUtil.MAPPER.createObjectNode().put("error", "boom");
+
+        try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class)) {
+            mockedGenAi.when(() -> GenAiTraceAttributes.isEnabled(context)).thenReturn(true);
+            mockedGenAi.when(() -> GenAiTraceAttributes.parseResponse(eq(context), any(), eq(errorBody)))
+                    .thenReturn(parsedError);
+
+            controller("dial_test-deployment_123", GET).handle();
+
+            await(testContext);
+
+            // nothing parsed this body before tracing did - proven by identity, not just by which
+            // overload ran, since parseResponse's own capped/streaming-aware parse must be what tracing uses
+            mockedGenAi.verify(() -> GenAiTraceAttributes.parseResponse(eq(context), eq(InterfaceType.OPENAI_RESPONSES), eq(errorBody)));
+            mockedGenAi.verify(() -> GenAiTraceAttributes.setFetchResponseAttributes(
+                    eq(context), eq(parsedError), eq("dial_test-deployment_123")));
+        }
+    }
+
+    /**
+     * Runs {@code rewriteId} and the response continuation on the calling thread: {@code mockStatic} is
+     * thread-confined, so a real {@code AsyncTaskExecutor} would hop off the test thread and the static
+     * mocks above would record nothing.
+     */
+    private HttpClientResponse stubGetForwarding(VertxTestContext testContext, int status, String body) {
+        ResponseMapping mapping = ResponseMapping.builder()
+                .upstreamResponseId("upstream-id-123")
+                .upstreamKey("endpoint")
+                .deploymentName("test-deployment")
+                .initiatorBucket("Users/test-user/")
+                .build();
+        Model deployment = new Model();
+        deployment.setName("test-deployment");
+        deployment.setResponsesEndpoint("http://adapter/responses");
+        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null, null, null);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+
+        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
+        when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
+        when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
+        when(upstreamRoute.next()).thenReturn(upstream);
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any(), any(Runnable.class)))
+                .thenReturn(Future.succeededFuture(proxyResponse));
+        when(proxyResponse.statusCode()).thenReturn(status);
+        when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer(body)));
+        when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
+        when(context.getResponse()).thenReturn(response);
+        when(context.getRequest()).thenReturn(serverRequest);
+        when(context.getUserId()).thenReturn("test-user");
+        when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(response.setStatusCode(status)).thenReturn(response);
+        when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
+        when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
+        AsyncTaskExecutor inlineExecutor = mock(AsyncTaskExecutor.class);
+        when(inlineExecutor.submit(any())).thenAnswer(invocation ->
+                Future.succeededFuture(((Callable<?>) invocation.getArgument(0)).call()));
+        when(proxy.getTaskExecutor()).thenReturn(inlineExecutor);
+        return proxyResponse;
     }
 
     private static Future<?> complete(VertxTestContext testContext) {

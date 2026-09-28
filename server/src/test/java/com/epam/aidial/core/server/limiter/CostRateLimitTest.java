@@ -25,6 +25,7 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.json.Json;
@@ -209,7 +210,7 @@ public class CostRateLimitTest {
 
             // First increase and limit check should succeed
             Future<Void> increaseLimitFuture = rateLimiter.increase(
-                    model, bucketLocation, proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+                    model, bucketLocation, proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
             assertNotNull(increaseLimitFuture);
             assertNull(increaseLimitFuture.cause());
 
@@ -224,7 +225,7 @@ public class CostRateLimitTest {
 
             // Second increase and limit check should fail due to cost limit
             increaseLimitFuture = rateLimiter.increase(
-                    model, bucketLocation, proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+                    model, bucketLocation, proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
             assertNotNull(increaseLimitFuture);
             assertNull(increaseLimitFuture.cause());
 
@@ -306,7 +307,7 @@ public class CostRateLimitTest {
 
             // Increase limit to record usage
             Future<Void> increaseLimitFuture = rateLimiter.increase(
-                    model, bucketLocation, proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+                    model, bucketLocation, proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
             assertNotNull(increaseLimitFuture);
             assertNull(increaseLimitFuture.cause());
 
@@ -414,13 +415,13 @@ public class CostRateLimitTest {
 
             // First user increases limit
             Future<Void> increaseLimitFuture1 = rateLimiter.increase(
-                    model, bucketLocation1, tokenUsage1, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+                    model, bucketLocation1, tokenUsage1, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
             assertNotNull(increaseLimitFuture1);
             assertNull(increaseLimitFuture1.cause());
 
             // Second user increases limit
             Future<Void> increaseLimitFuture2 = rateLimiter.increase(
-                    model, bucketLocation2, tokenUsage2, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+                    model, bucketLocation2, tokenUsage2, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
             assertNotNull(increaseLimitFuture2);
             assertNull(increaseLimitFuture2.cause());
 
@@ -457,7 +458,7 @@ public class CostRateLimitTest {
                     .thenReturn(new BigDecimal("0.06"));
 
             // First user increases limit again
-            increaseLimitFuture1 = rateLimiter.increase(model, bucketLocation1, tokenUsage1, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+            increaseLimitFuture1 = rateLimiter.increase(model, bucketLocation1, tokenUsage1, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
             assertNotNull(increaseLimitFuture1);
             assertNull(increaseLimitFuture1.cause());
 

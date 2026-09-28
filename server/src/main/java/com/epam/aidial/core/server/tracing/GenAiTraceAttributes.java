@@ -133,30 +133,9 @@ public final class GenAiTraceAttributes {
         }
     }
 
-    public static JsonNode setResponseAttributes(ProxyContext context, InterfaceType type, Buffer responseBody) {
-        return setResponseAttributes(context, type, responseBody, null);
-    }
-
     /**
-     * @param responseId DIAL's own response id, or null to keep the body's. A streamed body is buffered before
-     *                   {@code ReplaceResponseIdFn} rewrites it, so the buffered bytes still carry the upstream id.
-     * @return the tree tracing parsed from {@code responseBody}, or null if tracing is disabled or the
-     *         parse/enrichment failed - a caller that also needs the body's content (e.g. token usage) reuses
-     *         this instead of parsing it a second time.
-     */
-    public static JsonNode setResponseAttributes(ProxyContext context, InterfaceType type, Buffer responseBody, String responseId) {
-        return enrich(context, () -> {
-            setOperationAttributes(context, type, operationName(type));
-            JsonNode response = responseTree(context, type, responseBody);
-            setResponseAttributesInternal(context, type, response, responseId);
-            collectUpstreamCacheAttributes(context);
-            return response;
-        });
-    }
-
-    /**
-     * For a caller that already parsed the body for its own purposes (e.g. to rewrite its id) - skips tracing's
-     * own parse entirely.
+     * For a caller that already parsed the body - either by its own processing, or via
+     * {@link #parseResponse(ProxyContext, InterfaceType, Buffer)} when it holds only raw bytes.
      */
     public static void setResponseAttributes(ProxyContext context, InterfaceType type, JsonNode response, String responseId) {
         enrich(context, () -> {
@@ -192,19 +171,8 @@ public final class GenAiTraceAttributes {
     }
 
     /**
-     * @param responseId DIAL's own response id. A streamed body is buffered before {@code ReplaceResponseIdFn}
-     *                   rewrites it, so the buffered bytes still carry the upstream id.
-     */
-    public static void setFetchResponseAttributes(ProxyContext context, Buffer responseBody, String responseId) {
-        enrich(context, () -> {
-            JsonNode response = responseTree(context, InterfaceType.OPENAI_RESPONSES, responseBody);
-            setFetchResponseAttributesInternal(context, response, responseId);
-        });
-    }
-
-    /**
-     * For a caller that already parsed the body for its own purposes (e.g. to rewrite its id, or to check a
-     * background job's completion) - skips tracing's own parse entirely.
+     * For a caller that already parsed the body - either by its own processing, or via
+     * {@link #parseResponse(ProxyContext, InterfaceType, Buffer)} when it holds only raw bytes.
      */
     public static void setFetchResponseAttributes(ProxyContext context, JsonNode response, String responseId) {
         enrich(context, () -> setFetchResponseAttributesInternal(context, response, responseId));
@@ -342,23 +310,37 @@ public final class GenAiTraceAttributes {
         return statusCode < 200 || statusCode >= 300 ? "failed" : "completed";
     }
 
-    private static JsonNode responseTree(ProxyContext context, InterfaceType type, Buffer responseBody) {
-        if (!isEventStream(context)) {
-            return parse(responseBody);
+    /**
+     * Derives tracing's view of a response the caller holds only as raw bytes: streaming-aware (a reduced
+     * view assembled from the SSE frames for a streamed request, not the buffered body) and capped at
+     * {@link #MAX_TRACED_BODY_BYTES}. That tree is tracing's alone; nothing outside this class may treat it
+     * as "the parsed response" for any other purpose. Never throws - a caller passes the result straight to
+     * {@link #setResponseAttributes(ProxyContext, InterfaceType, JsonNode, String)} or
+     * {@link #setFetchResponseAttributes(ProxyContext, JsonNode, String)} without its own try/catch, exactly
+     * as {@link #enrich} already shielded this same derivation when it ran inside those methods.
+     */
+    public static JsonNode parseResponse(ProxyContext context, InterfaceType type, Buffer responseBody) {
+        try {
+            if (!isEventStream(context)) {
+                return parse(responseBody);
+            }
+            return switch (type) {
+                // shared with the analytics log, which merges the same body once per streamed request
+                case OPENAI_CHAT_COMPLETIONS -> chatCompletionsTree(context);
+                // captured live by ExtractTerminalResponseFn / CollectMessagesTokenUsageFn while streaming; a run
+                // that never reached an attributable frame (failed/cancelled, or a fetch path that doesn't run
+                // that function) leaves nothing cached, and only then is the buffered stream scanned for it
+                case OPENAI_RESPONSES -> liveOrScanned(context, () -> {
+                    String assembled = context.getAssembledStreamingResponse();
+                    return assembled == null ? responsesEvent(responseBody) : parse(assembled);
+                });
+                case ANTHROPIC_MESSAGES -> liveOrScanned(context, () -> anthropicResponse(responseBody));
+                case OPENAI_EMBEDDINGS -> parse(responseBody);
+            };
+        } catch (Throwable e) {
+            log.warn("Failed to parse response for tracing", e);
+            return MissingNode.getInstance();
         }
-        return switch (type) {
-            // shared with the analytics log, which merges the same body once per streamed request
-            case OPENAI_CHAT_COMPLETIONS -> chatCompletionsTree(context);
-            // captured live by ExtractTerminalResponseFn / CollectMessagesTokenUsageFn while streaming; a run
-            // that never reached an attributable frame (failed/cancelled, or a fetch path that doesn't run
-            // that function) leaves nothing cached, and only then is the buffered stream scanned for it
-            case OPENAI_RESPONSES -> liveOrScanned(context, () -> {
-                String assembled = context.getAssembledStreamingResponse();
-                return assembled == null ? responsesEvent(responseBody) : parse(assembled);
-            });
-            case ANTHROPIC_MESSAGES -> liveOrScanned(context, () -> anthropicResponse(responseBody));
-            case OPENAI_EMBEDDINGS -> parse(responseBody);
-        };
     }
 
     /**
@@ -532,21 +514,13 @@ public final class GenAiTraceAttributes {
      * before the client response is completed - so a tracing failure must never fail a request.
      */
     private static void enrich(ProxyContext context, Runnable enrichment) {
-        enrich(context, () -> {
-            enrichment.run();
-            return null;
-        });
-    }
-
-    private static <T> T enrich(ProxyContext context, Supplier<T> enrichment) {
         if (!isEnabled(context)) {
-            return null;
+            return;
         }
         try {
-            return enrichment.get();
+            enrichment.run();
         } catch (Throwable e) {
             log.warn("Failed to set GenAI trace attributes", e);
-            return null;
         }
     }
 

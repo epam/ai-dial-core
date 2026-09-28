@@ -1,13 +1,23 @@
 package com.epam.aidial.core.server.controller.anthropic;
 
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
+import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
+import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.JsonUtil;
+import com.epam.aidial.core.server.util.ModelCostCalculator;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
+import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.opentelemetry.api.trace.Span;
+import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpMethod;
@@ -18,6 +28,7 @@ import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -27,12 +38,18 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static io.opentelemetry.api.common.AttributeKey.longKey;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -55,6 +72,9 @@ class MessagesControllerTest {
 
     @Mock
     private LogStore logStore;
+
+    @Mock
+    private RateLimiter rateLimiter;
 
     @Mock
     private HttpServerRequest request;
@@ -141,6 +161,100 @@ class MessagesControllerTest {
             assertLatencyPublishedBeforeEnd(order, span);
             order.verify(responseStream).end(response);
         }
+    }
+
+    /**
+     * PR #2020 review item 2: the Anthropic non-streaming body used to be read twice - once by
+     * {@code MessagesTokenUsageParser.parse(Buffer)} and once by {@code GenAiTraceAttributes}, both doing
+     * their own {@code readTree}. It is now parsed once in the controller and that tree is what token usage
+     * reads, so the {@code Buffer} entry point must not be reached on this path at all.
+     */
+    @Test
+    void testHandleNonStreamingResponse_ReadsUsageFromTheTreeParsedOnce() {
+        Model model = new Model();
+        when(context.getDeployment()).thenReturn(model);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.headers()).thenReturn(new HeadersMultiMap());
+        when(proxy.getLogStore()).thenReturn(logStore);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+        when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
+        // a non-OK client status stops chargeTokenUsage before the rate limiter, keeping this focused
+        when(response.getStatusCode()).thenReturn(HttpStatus.INTERNAL_SERVER_ERROR.getCode());
+        Buffer body = Buffer.buffer("{\"usage\":{\"input_tokens\":10,\"output_tokens\":8}}");
+        enableLatencyTracing();
+
+        try (var mockedJson = mockStatic(JsonUtil.class, CALLS_REAL_METHODS);
+                var mockedParser = mockStatic(MessagesTokenUsageParser.class)) {
+            controller.handleNonStreamingResponse(proxyResponse, body);
+
+            mockedJson.verify(() -> JsonUtil.tryParse(any(byte[].class)), times(1));
+            mockedParser.verify(() -> MessagesTokenUsageParser.parse(any(Buffer.class)), never());
+        }
+    }
+
+    /**
+     * The same tree that tracing and token usage read must also be what {@code ModelCostCalculator} prices -
+     * verified by instance identity, not just overload choice, so a caller that re-parsed the body into an
+     * equal-but-distinct node would still fail this even though every {@code never()} check above would pass.
+     */
+    @Test
+    void testHandleNonStreamingResponse_PricesTheSameTreeTracingAndUsageRead() {
+        Model model = new Model();
+        Pricing pricing = new Pricing();
+        pricing.setUnit("token");
+        pricing.setPrompt("0.1");
+        pricing.setCompletion("0.5");
+        model.setPricing(pricing);
+        when(context.getDeployment()).thenReturn(model);
+        when(context.getUserId()).thenReturn("test-user");
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.headers()).thenReturn(new HeadersMultiMap());
+        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
+        when(proxy.getLogStore()).thenReturn(logStore);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(rateLimiter.increase(any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+        when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
+        Buffer body = Buffer.buffer("{\"usage\":{\"input_tokens\":10,\"output_tokens\":8}}");
+        enableLatencyTracing();
+
+        try (var mockedJson = mockStatic(JsonUtil.class, CALLS_REAL_METHODS);
+                var mockedCalculator = mockStatic(ModelCostCalculator.class, CALLS_REAL_METHODS)) {
+            controller.handleNonStreamingResponse(proxyResponse, body);
+
+            mockedJson.verify(() -> JsonUtil.tryParse(any(byte[].class)), times(1));
+
+            ArgumentCaptor<JsonNode> parsed = ArgumentCaptor.forClass(JsonNode.class);
+            verify(context).setTokenUsage(any());
+            ArgumentCaptor<ModelCostCalculator.ResponseSource> priced = ArgumentCaptor.forClass(ModelCostCalculator.ResponseSource.class);
+            mockedCalculator.verify(() -> ModelCostCalculator.resolveCost(any(), any(), any(), any(), priced.capture()));
+            assertInstanceOf(ModelCostCalculator.ResponseSource.Tree.class, priced.getValue());
+            JsonNode pricedTree = ((ModelCostCalculator.ResponseSource.Tree) priced.getValue()).responseTree();
+
+            assertEquals(10, pricedTree.path("usage").path("input_tokens").asLong());
+        }
+    }
+
+    /**
+     * The streaming counterpart still holds only the buffered SSE frames, so it keeps the {@code Buffer}
+     * entry point - and {@code parseTokenUsage} short-circuits to the usage
+     * {@code CollectMessagesTokenUsageFn} accumulated event by event, never reading the body at all.
+     */
+    @Test
+    void testStreamingResponse_TakesUsageFromTheContextNotTheBody() {
+        when(context.isStreamingRequest()).thenReturn(true);
+        TokenUsage streamed = new TokenUsage();
+        streamed.setTotalTokens(18);
+        when(context.getTokenUsage()).thenReturn(streamed);
+
+        assertSame(streamed, controller.parseTokenUsage(Buffer.buffer("{}")));
+        assertSame(streamed, controller.parseTokenUsage(ProxyUtil.MAPPER.createObjectNode()));
     }
 
     /**

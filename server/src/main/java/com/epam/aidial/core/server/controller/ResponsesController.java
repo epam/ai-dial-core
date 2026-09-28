@@ -354,15 +354,15 @@ public class ResponsesController extends BaseDeploymentPostController {
     @VisibleForTesting
     Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
         return rewriteResponseId(proxyResponse, body)
-                .compose(rewrite -> {
-                    String dialId = rewrite.dialId();
-                    Buffer rewritten = rewrite.body();
-                    context.setResponseBody(rewritten);
+                .compose(rewriteResult -> {
+                    String dialId = rewriteResult.dialId();
+                    Buffer serializedBody = rewriteResult.serializedBody();
+                    context.setResponseBody(serializedBody);
                     context.setResponseBodyTimestamp(System.currentTimeMillis());
                     HttpServerResponse response = context.getResponse();
                     ProxyUtil.copyResponse(response, proxyResponse);
                     response.setChunked(false);
-                    response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
+                    response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(serializedBody.length()));
                     putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
                     if (context.isBackgroundJob() && dialId != null) {
@@ -372,23 +372,28 @@ public class ResponsesController extends BaseDeploymentPostController {
                                         log.warn("Failed to save background job record", result.cause());
                                     }
                                     GenAiTraceAttributes.setLatencyAttributes(context);
-                                    response.end(rewritten);
+                                    response.end(serializedBody);
                                 });
                     } else {
-                        // reuse the tree rewriteResponseId already parsed instead of parsing rewritten a
-                        // second time - only when it's the ObjectNode the rewrite path actually produces;
-                        // anything else falls back to the byte-scan, matching its prior failure behavior
-                        JsonNode tree = rewrite.tree();
-                        return collectTokenUsage(rewritten, null, tree)
+                        // rewriteResponseId already parsed this response - tracing, token usage and attachment
+                        // collection all read that tree, so the body is never parsed a second time. A body
+                        // that isn't valid JSON at all (rewriteResponseId's parse then yields MissingNode)
+                        // falls back to the Buffer overloads instead of silently reporting no usage.
+                        JsonNode responseTree = rewriteResult.responseTree();
+                        boolean parsed = !responseTree.isMissingNode();
+                        Future<Void> tokenUsageFuture = parsed
+                                ? collectTokenUsage(responseTree, null)
+                                : collectTokenUsage(serializedBody, null);
+                        return tokenUsageFuture
                                 .transform(result -> {
                                     if (result.failed()) {
                                         log.warn("Failed to collect token usage", result.cause());
                                     }
                                     CollectResponsesApiOutputAttachmentsFn attachmentsFn =
                                             new CollectResponsesApiOutputAttachmentsFn(proxy, context);
-                                    return tree instanceof ObjectNode
-                                            ? collectResponseAttachments(tree, attachmentsFn)
-                                            : collectResponseAttachments(rewritten, attachmentsFn);
+                                    return parsed
+                                            ? collectResponseAttachments(responseTree, attachmentsFn)
+                                            : collectResponseAttachments(serializedBody, attachmentsFn);
                                 })
                                 .onComplete(result -> {
                                     if (result.failed()) {
@@ -398,7 +403,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                                     // synchronously inside end(), after which further span attributes
                                     // (dial.latency.*) are silently dropped
                                     GenAiTraceAttributes.setLatencyAttributes(context);
-                                    response.end(rewritten);
+                                    response.end(serializedBody);
                                     completeProxyResponse(null);
                                 });
                     }
@@ -406,40 +411,42 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     /**
-     * @param tree the body already parsed to check/rewrite its id, or null when the response wasn't a 200 (and
-     *             so was never parsed) - tracing then parses {@code body} itself instead of reusing this.
+     * @param responseTree   the parsed response - what tracing, token usage and attachment collection read.
+     *                       Never null: the body is parsed whatever the upstream status was.
+     * @param serializedBody the bytes to write to the client: the re-serialized tree when the id was rewritten,
+     *                       otherwise the upstream body untouched.
      */
-    private record RewriteResult(String dialId, JsonNode tree, Buffer body) {
+    private record RewriteResult(String dialId, JsonNode responseTree, Buffer serializedBody) {
     }
 
     private Future<RewriteResult> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
+        JsonNode responseTree = JsonUtil.tryParse(body.getBytes());
         if (proxyResponse.statusCode() != 200) {
-            return Future.succeededFuture(new RewriteResult(null, null, body));
+            return Future.succeededFuture(new RewriteResult(null, responseTree, body));
         }
-        JsonNode tree = JsonUtil.tryParse(body.getBytes());
-        if (!tree.isObject() || !(tree instanceof ObjectNode object)) {
+        if (!(responseTree instanceof ObjectNode responseObject)) {
             log.warn("Response body is not a JSON object, skipping rewrite. Deployment: {}. Endpoint: {}",
                     context.getDeployment().getName(),
                     context.getProxyRequestUri());
-            return Future.succeededFuture(new RewriteResult(null, tree, body));
+            return Future.succeededFuture(new RewriteResult(null, responseTree, body));
         }
-        JsonNode idNode = object.path("id");
+        JsonNode idNode = responseObject.path("id");
         if (!idNode.isTextual()) {
             log.info("Response body doesn't contain 'id' field, skipping rewrite. Deployment: {}. Endpoint: {}",
                     context.getDeployment().getName(),
                     context.getProxyRequestUri());
-            return Future.succeededFuture(new RewriteResult(null, object, body));
+            return Future.succeededFuture(new RewriteResult(null, responseObject, body));
         }
 
         String upstreamId = idNode.asText();
         Upstream upstream = context.getUpstreamRoute().get();
         if (EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
-            EncryptedContentAffinityUtil.wrapOutputArray(object.path("output"), upstream.getId());
+            EncryptedContentAffinityUtil.wrapOutputArray(responseObject.path("output"), upstream.getId());
         }
         if (!context.isStoreResponse()) {
             String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
-            object.put("id", dialId);
-            return Future.succeededFuture(new RewriteResult(dialId, object, Buffer.buffer(JsonUtil.serialize(object))));
+            responseObject.put("id", dialId);
+            return Future.succeededFuture(new RewriteResult(dialId, responseObject, Buffer.buffer(JsonUtil.serialize(responseObject))));
         }
         ResponseMapping mapping = ResponseMapping.builder()
                 .upstreamResponseId(upstreamId)
@@ -450,8 +457,8 @@ public class ResponsesController extends BaseDeploymentPostController {
         return proxy.getTaskExecutor()
                 .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
                 .map(dialId -> {
-                    object.put("id", dialId);
-                    return new RewriteResult(dialId, object, Buffer.buffer(JsonUtil.serialize(object)));
+                    responseObject.put("id", dialId);
+                    return new RewriteResult(dialId, responseObject, Buffer.buffer(JsonUtil.serialize(responseObject)));
                 });
     }
 

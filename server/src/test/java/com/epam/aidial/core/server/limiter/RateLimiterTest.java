@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Role;
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.FileUtil;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -34,6 +35,7 @@ import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpServerRequest;
 import org.junit.jupiter.api.AfterAll;
@@ -265,7 +267,7 @@ public class RateLimiterTest {
         proxyContext.setTokenUsage(tokenUsage);
 
         Future<Void> increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext),
-                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -276,7 +278,7 @@ public class RateLimiterTest {
         assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
 
         increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext),
-                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -327,7 +329,7 @@ public class RateLimiterTest {
         assertEquals(HttpStatus.OK, resultFuture.result().status());
 
         Future<Void> increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext),
-                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -350,7 +352,7 @@ public class RateLimiterTest {
         assertEquals(90, limitStats.getMonthTokenStats().getUsed());
 
         increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext),
-                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -409,7 +411,7 @@ public class RateLimiterTest {
         proxyContext.setTokenUsage(tokenUsage);
 
         Future<Void> increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext),
-                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -420,7 +422,7 @@ public class RateLimiterTest {
         assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
 
         increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext),
-                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -455,7 +457,7 @@ public class RateLimiterTest {
         proxyContext.setTokenUsage(tokenUsage);
 
         Future<Void> increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext),
-                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -466,7 +468,7 @@ public class RateLimiterTest {
         assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
 
         increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext),
-                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -515,7 +517,7 @@ public class RateLimiterTest {
         proxyContext.setTokenUsage(tokenUsage);
 
         Future<Void> increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext),
-                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -526,7 +528,7 @@ public class RateLimiterTest {
         assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
 
         increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext),
-                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+                proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -562,7 +564,7 @@ public class RateLimiterTest {
         TokenUsage tokenUsage = new TokenUsage();
         tokenUsage.setTotalTokens(90);
         assertNull(rateLimiter.increase(
-                usedModel, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+                usedModel, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance()).cause());
 
         UserLimitStats stats = rateLimiter.getUserStats(proxyContext, List.of(usedModel, unusedModel), false).result();
 
@@ -623,7 +625,7 @@ public class RateLimiterTest {
         tokenUsage.setCompletionTokens(2000);
         tokenUsage.setTotalTokens(3000);
         assertNull(rateLimiter.increase(
-                model, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+                model, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance()).cause());
 
         UserLimitStats stats = rateLimiter.getUserStats(proxyContext, List.of(model), false).result();
 
@@ -657,8 +659,8 @@ public class RateLimiterTest {
         TokenUsage tokenUsage = new TokenUsage();
         tokenUsage.setTotalTokens(70);
         String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
-        assertNull(rateLimiter.increase(reported, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
-        assertNull(rateLimiter.increase(revoked, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+        assertNull(rateLimiter.increase(reported, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance()).cause());
+        assertNull(rateLimiter.increase(revoked, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance()).cause());
 
         // only the accessible model is passed in, as the controller would after the access check
         UserLimitStats stats = rateLimiter.getUserStats(proxyContext, List.of(reported), false).result();
@@ -687,7 +689,7 @@ public class RateLimiterTest {
         TokenUsage tokenUsage = new TokenUsage();
         tokenUsage.setTotalTokens(11);
         assertNull(rateLimiter.increase(
-                model, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+                model, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance()).cause());
 
         UserLimitStats stats = rateLimiter.getUserStats(proxyContext, List.of(model), false).result();
 
@@ -826,7 +828,7 @@ public class RateLimiterTest {
         String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
         // limit() writes the request counter, increase() the token one
         assertEquals(HttpStatus.OK, rateLimiter.limit(proxyContext, model).result().status());
-        assertNull(rateLimiter.increase(model, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+        assertNull(rateLimiter.increase(model, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance()).cause());
 
         // corrupt the token counter in place, leaving the request counter intact
         ResourceDescriptor tokens = ResourceDescriptorFactory
@@ -858,7 +860,7 @@ public class RateLimiterTest {
         tokenUsage.setTotalTokens(42);
         String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
         assertEquals(HttpStatus.OK, rateLimiter.limit(proxyContext, model).result().status());
-        assertNull(rateLimiter.increase(model, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+        assertNull(rateLimiter.increase(model, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance()).cause());
 
         // age the token record's listing entry past RateLimiter's widest-window pre-filter (32 days),
         // leaving its counter untouched
@@ -916,7 +918,7 @@ public class RateLimiterTest {
         tokenUsage.setTotalTokens(3000);
         String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
         assertEquals(HttpStatus.OK, rateLimiter.limit(proxyContext, model).result().status());
-        assertNull(rateLimiter.increase(model, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+        assertNull(rateLimiter.increase(model, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance()).cause());
 
         // the record lands under the name exactly as configured
         assertNotNull(resourceService.getResource(ResourceDescriptorFactory
@@ -955,7 +957,7 @@ public class RateLimiterTest {
         TokenUsage tokenUsage = new TokenUsage();
         tokenUsage.setTotalTokens(7);
         String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
-        assertNull(rateLimiter.increase(application, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+        assertNull(rateLimiter.increase(application, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance()).cause());
 
         assertNotNull(resourceService.getResource(ResourceDescriptorFactory
                 .fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "applications/buck/my app/tokens")));
@@ -985,6 +987,91 @@ public class RateLimiterTest {
         costLimit.setWeek(new BigDecimal(perWindow));
         costLimit.setMonth(new BigDecimal(perWindow));
         return costLimit;
+    }
+
+    /**
+     * The pricing-unit dispatch moved out of {@code ModelCostCalculator} and into this class, so it needs
+     * its own coverage here: a non-{@code Model} entity is never priced, and {@code increase} must still
+     * apply the token-limit charge from {@code usage} regardless.
+     */
+    @Test
+    public void testIncrease_NonModelEntity_SkipsCostButStillChargesTokens() {
+        Key key = new Key();
+        key.setProject("api-key");
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(key);
+        apiKeyData.setPerRequestKey("per-request-key");
+        ProxyContext proxyContext = new ProxyContext(mock(Proxy.class), request, apiKeyData, null, "trace-id", "span-id", "01");
+        Route route = new Route();
+        route.setName("route");
+        stubInlineExecutor();
+
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setTotalTokens(10);
+
+        Future<Void> increaseLimitFuture = rateLimiter.increase(route, BucketBuilder.buildInitiatorBucket(proxyContext),
+                tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
+
+        assertNotNull(increaseLimitFuture);
+        assertNull(increaseLimitFuture.cause());
+        assertNull(tokenUsage.getCost());
+    }
+
+    /**
+     * A {@link Model} with no pricing configured is charged for tokens only - {@code calculateCost} returns
+     * before either of {@code ModelCostCalculator}'s single-representation methods is ever called.
+     */
+    @Test
+    public void testIncrease_ModelWithNoPricing_SkipsCost() {
+        Key key = new Key();
+        key.setProject("api-key");
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(key);
+        apiKeyData.setPerRequestKey("per-request-key");
+        ProxyContext proxyContext = new ProxyContext(mock(Proxy.class), request, apiKeyData, null, "trace-id", "span-id", "01");
+        Model model = new Model();
+        model.setName("model");
+        stubInlineExecutor();
+
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setTotalTokens(10);
+
+        Future<Void> increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext),
+                tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
+
+        assertNotNull(increaseLimitFuture);
+        assertNull(increaseLimitFuture.cause());
+        assertNull(tokenUsage.getCost());
+    }
+
+    /**
+     * A pricing unit {@code calculateCost}'s switch doesn't recognize resolves to no cost, same as
+     * {@code ModelCostCalculator}'s original combined dispatcher did for its {@code default} branch.
+     */
+    @Test
+    public void testIncrease_UnknownPricingUnit_SkipsCost() {
+        Key key = new Key();
+        key.setProject("api-key");
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(key);
+        apiKeyData.setPerRequestKey("per-request-key");
+        ProxyContext proxyContext = new ProxyContext(mock(Proxy.class), request, apiKeyData, null, "trace-id", "span-id", "01");
+        Model model = new Model();
+        model.setName("model");
+        Pricing pricing = new Pricing();
+        pricing.setUnit("unknown");
+        model.setPricing(pricing);
+        stubInlineExecutor();
+
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setTotalTokens(10);
+
+        Future<Void> increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext),
+                tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, MissingNode.getInstance());
+
+        assertNotNull(increaseLimitFuture);
+        assertNull(increaseLimitFuture.cause());
+        assertNull(tokenUsage.getCost());
     }
 
     @SuppressWarnings("unchecked")

@@ -23,7 +23,7 @@ import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
-import com.epam.aidial.core.server.util.JsonUtil;
+import com.epam.aidial.core.server.util.ModelCostCalculator;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.util.UpstreamInterfaceUtil;
@@ -48,6 +48,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -95,15 +96,21 @@ public class BaseDeploymentPostController {
     }
 
     /**
-     * @param tree the response body already parsed by a caller that needed the tree for its own reasons
-     *             (e.g. to rewrite its id) - reused here instead of serializing it back to a Buffer and
-     *             parsing the same JSON again.
+     * @param responseTree the response already parsed by a caller that needed it for its own reasons
+     *                     (e.g. to rewrite its id) - reused here instead of serializing it back to a
+     *                     Buffer and parsing the same JSON again.
      */
-    protected Future<Void> collectResponseAttachments(JsonNode tree, CollectResponseAttachmentsFn fn) {
+    protected Future<Void> collectResponseAttachments(JsonNode responseTree, CollectResponseAttachmentsFn fn) {
         if (isEventStreamResponse(context.getProxyResponse())) {
             return Future.succeededFuture();
         }
-        return fn.apply(tree).map(ignored -> null);
+        if (!(responseTree instanceof ObjectNode responseObject)) {
+            // same outcome as the Buffer overload, whose (ObjectNode) cast fails on a non-object body
+            Throwable error = new IllegalStateException("Response body is not a JSON object");
+            log.warn("Can't collect attachments from response body. Error:", error);
+            return Future.failedFuture(error);
+        }
+        return fn.apply(responseObject).map(ignored -> null);
     }
 
     // These respond(...) helpers are terminal: context.respond(...) ends the HTTP response and, with it, the
@@ -208,37 +215,59 @@ public class BaseDeploymentPostController {
     }
 
     /**
+     * For a caller holding only the raw body - nothing has parsed it, so token usage comes from the byte-scan
+     * and tracing derives its own view. A caller that already parsed the response uses the {@link JsonNode}
+     * overload instead, so the same body is never read twice.
+     *
      * @param responseId DIAL's own response id when the caller knows it, null to take the id from the body.
      */
     protected Future<Void> collectTokenUsage(Buffer responseBody, String responseId) {
-        return collectTokenUsage(responseBody, responseId, null);
+        setResponseTraceAttributes(() -> {
+            JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, interfaceType(), responseBody);
+            GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseTree, responseId);
+        });
+        // legacy path: covers streaming, /embeddings and the disconnect-recovery case above, none of which
+        // hold a parsed response - preserved exactly as it was, including preferring a live accumulated
+        // usage node over parsing the (possibly multi-chunk SSE) buffer, which the JsonNode overload below
+        // has no equivalent of and must not be made to share
+        return chargeTokenUsage(() -> parseTokenUsage(responseBody), this::increaseLimits);
     }
 
     /**
-     * @param responseId     DIAL's own response id when the caller knows it, null to take the id from the body.
-     * @param parsedResponse the body already parsed by a caller that needed the tree for its own reasons (e.g.
-     *                       to rewrite its id), or null when there is none - tracing then parses {@code responseBody}
-     *                       itself instead of reusing this.
+     * For a caller that already parsed the response for its own reasons (e.g. to rewrite its id).
+     *
+     * @param responseId DIAL's own response id when the caller knows it, null to take the id from the response.
      */
-    protected Future<Void> collectTokenUsage(Buffer responseBody, String responseId, JsonNode parsedResponse) {
+    protected Future<Void> collectTokenUsage(JsonNode response, String responseId) {
+        setResponseTraceAttributes(() ->
+                GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), response, responseId));
+        return chargeTokenUsage(() -> parseTokenUsage(response), usage -> increaseLimits(usage, response));
+    }
+
+    private void setResponseTraceAttributes(Runnable enrichment) {
         if (GenAiTraceAttributes.isEnabled(context)) {
             try {
                 // interfaceType() reads the request path, which not every deployment kind reaching here has,
                 // and this runs before the client response is completed - tracing must not fail the request
-                if (parsedResponse != null) {
-                    GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), parsedResponse, responseId);
-                } else {
-                    parsedResponse = GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseBody, responseId);
-                }
+                enrichment.run();
             } catch (Throwable e) {
                 log.warn("Failed to set GenAI response trace attributes", e);
             }
         }
+    }
+
+    /**
+     * @param usageSupplier  reads the usage out of whichever representation the caller holds; invoked only on
+     *                       the paths that charge for it, so an error response is never read for usage at all.
+     * @param limitsCharger  charges token/cost limits for the resolved usage - each {@code collectTokenUsage}
+     *                       overload supplies its own, so the two representations never meet in this method.
+     */
+    private Future<Void> chargeTokenUsage(Supplier<TokenUsage> usageSupplier, Function<TokenUsage, Future<Void>> limitsCharger) {
         if (context.getDeployment() instanceof Model model) {
             if (context.getResponse().getStatusCode() != HttpStatus.OK.getCode()) {
                 return Future.succeededFuture();
             }
-            TokenUsage tokenUsage = parseTokenUsage(responseBody, parsedResponse);
+            TokenUsage tokenUsage = usageSupplier.get();
             if (tokenUsage == null) {
                 Pricing pricing = model.getPricing();
                 if (pricing == null || "token".equals(pricing.getUnit())) {
@@ -255,7 +284,7 @@ public class BaseDeploymentPostController {
             context.setTokenUsage(tokenUsage);
             GenAiTraceAttributes.setUsageAttributes(context, tokenUsage);
             TokenUsage usage = context.getTokenUsage();
-            return increaseLimits(usage)
+            return limitsCharger.apply(usage)
                     .transform(result -> {
                         if (result.failed()) {
                             log.warn("Failed to increase limit", result.cause());
@@ -271,8 +300,7 @@ public class BaseDeploymentPostController {
 
         // Application/Assistant: any deployment may self-report usage in its own response body;
         // capture it alongside whatever its descendant Model spans already reported.
-        TokenUsage ownUsage = parseTokenUsage(responseBody, parsedResponse);
-        return trackDeploymentStats(context.getDeployment().getName(), ownUsage, true);
+        return trackDeploymentStats(context.getDeployment().getName(), usageSupplier.get(), true);
     }
 
     private boolean subjectToLimits(Deployment deployment) {
@@ -292,8 +320,12 @@ public class BaseDeploymentPostController {
     }
 
     /**
-     * Charges the request's usage to the initiator's token and cost limits. Skipped on the same terms
-     * {@link #checkLimits} is, so the two can never disagree about what a mode exempts.
+     * Charges the request's usage to the initiator's token and cost limits, for a caller holding no parsed
+     * response. Skipped on the same terms {@link #checkLimits} is, so the two can never disagree about what
+     * a mode exempts. Unchanged by the parse-once refactor: {@link RateLimiter#increase(RoleBasedEntity,
+     * String, TokenUsage, Buffer, Buffer, InterfaceType, JsonNode)} still resolves pricing itself, preferring
+     * {@code context.getPricingUsageNode()} - a live per-event accumulation - over parsing {@code responseBody},
+     * which for a streamed body may not even be a single JSON document.
      */
     private Future<Void> increaseLimits(TokenUsage usage) {
         Deployment deployment = context.getDeployment();
@@ -304,6 +336,21 @@ public class BaseDeploymentPostController {
                 deployment, BucketBuilder.buildInitiatorBucket(context), usage,
                 context.getRequestBody(), context.getResponseBody(), interfaceType(), context.getPricingUsageNode()
         );
+    }
+
+    /**
+     * Charges the request's usage to the initiator's token and cost limits, for a caller that already parsed
+     * the response. Reads only that tree for pricing - never {@code context.getResponseBody()} - so the body
+     * this {@code response} was parsed from is not deserialized again here.
+     */
+    private Future<Void> increaseLimits(TokenUsage usage, JsonNode response) {
+        Deployment deployment = context.getDeployment();
+        if (!subjectToLimits(deployment)) {
+            return Future.succeededFuture();
+        }
+        BigDecimal cost = ModelCostCalculator.resolveCost(deployment, usage, context.getRequestBody(), interfaceType(),
+                new ModelCostCalculator.ResponseSource.Tree(response));
+        return proxy.getRateLimiter().increase(deployment, BucketBuilder.buildInitiatorBucket(context), usage, cost);
     }
 
     /**
@@ -344,19 +391,20 @@ public class BaseDeploymentPostController {
     }
 
     /**
-     * Parses token usage from the fully buffered response body. Overridable so provider-specific
-     * controllers can supply their own accounting (e.g. the Anthropic Messages API).
+     * Parses token usage from the fully buffered response body, without parsing the body as a whole.
+     * Overridable so provider-specific controllers can supply their own accounting (e.g. the Anthropic
+     * Messages API).
      */
     protected TokenUsage parseTokenUsage(Buffer responseBody) {
-        return parseTokenUsage(responseBody, null);
+        return TokenUsageParser.parse(responseBody);
     }
 
     /**
-     * @param parsedResponse the tree tracing already parsed from {@code responseBody}, or null - reused here
-     *                       instead of scanning the body a second time; see {@link TokenUsageParser#parse(Buffer, JsonNode)}.
+     * Reads token usage out of a response a caller already parsed. Overridable alongside
+     * {@link #parseTokenUsage(Buffer)} - a controller that overrides one must consider the other.
      */
-    protected TokenUsage parseTokenUsage(Buffer responseBody, JsonNode parsedResponse) {
-        return TokenUsageParser.parse(responseBody, parsedResponse);
+    protected TokenUsage parseTokenUsage(JsonNode response) {
+        return TokenUsageParser.parse(response);
     }
 
     /**
@@ -372,24 +420,23 @@ public class BaseDeploymentPostController {
     }
 
     /**
-     * Rewrites {@code body}'s {@code statistics.usage_per_model} to Core's own value, or strips it
+     * Rewrites {@code responseTree}'s {@code statistics.usage_per_model} to Core's own value, or strips it
      * entirely when Core has nothing to report - a deployment's own response is never trusted to
      * carry this field through untouched, the same guarantee {@code StripUsagePerModelFn} gives the
-     * streaming path (see DeploymentPostController). Returns {@code body} unchanged only on a parse
-     * surprise - injection is best-effort, never a reason to corrupt or drop a response.
+     * streaming path (see DeploymentPostController).
+     *
+     * @param responseObject the parsed response, mutated in place and re-serialized - the only representation
+     *                        this touches; a caller with an unparsed or non-object response serializes nothing
+     *                        through here at all, forwarding its own bytes unchanged instead.
      */
-    protected Buffer maybeInjectUsagePerModel(Buffer body) {
-        JsonNode tree = JsonUtil.tryParse(body.getBytes());
-        if (!tree.isObject() || !(tree instanceof ObjectNode object)) {
-            return body;
-        }
+    protected Buffer injectUsagePerModel(ObjectNode responseObject) {
         List<UsagePerModel> usagePerModel = context.getUsagePerModel();
         if (usagePerModel == null || usagePerModel.isEmpty()) {
-            UsagePerModelInjector.strip(object);
+            UsagePerModelInjector.strip(responseObject);
         } else {
-            UsagePerModelInjector.inject(object, usagePerModel);
+            UsagePerModelInjector.inject(responseObject, usagePerModel);
         }
-        return Buffer.buffer(ProxyUtil.convertToString(object));
+        return Buffer.buffer(ProxyUtil.convertToString(responseObject));
     }
 
     /**

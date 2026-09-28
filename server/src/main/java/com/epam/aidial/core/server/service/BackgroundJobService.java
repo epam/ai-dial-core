@@ -23,6 +23,7 @@ import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
+import com.epam.aidial.core.server.util.ModelCostCalculator;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -40,6 +41,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RedissonClient;
 
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
@@ -244,11 +246,12 @@ public class BackgroundJobService {
                     Future<Void> limitFuture = Future.succeededFuture();
                     if (deployment instanceof Model && hasUsage) {
                         Buffer requestBody = Buffer.buffer(jobRecord.requestBody());
-                        // null liveUsageNode: this poller never streams, result.body() is a single
-                        // buffered document, so ModelCostCalculator parses it directly.
-                        limitFuture = rateLimiter.increase(
-                                deployment, responseMapping.getInitiatorBucket(), usage, requestBody, result.body(),
-                                InterfaceType.OPENAI_RESPONSES, null)
+                        // this poller never streams, so nothing has parsed result.body() yet; resolveCost
+                        // reads it - only if the model is priced per token - instead of ModelCostCalculator
+                        // ever being handed both the parsed tree and the raw bytes for one response
+                        BigDecimal cost = ModelCostCalculator.resolveCost(deployment, usage, requestBody,
+                                InterfaceType.OPENAI_RESPONSES, new ModelCostCalculator.ResponseSource.Body(result.body()));
+                        limitFuture = rateLimiter.increase(deployment, responseMapping.getInitiatorBucket(), usage, cost)
                                 .transform(limitResult -> {
                                     if (limitResult.failed()) {
                                         log.warn("Failed to increase limit", limitResult.cause());
@@ -281,6 +284,11 @@ public class BackgroundJobService {
         return Future.succeededFuture();
     }
 
+    /**
+     * Resolves the model's cost for this poller's result, reading only the representation its pricing unit
+     * actually needs - the response is parsed here for token pricing, since this poller never streams and
+     * nothing upstream of it has parsed {@code responseBody} yet, but only when the unit actually calls for it.
+     */
     private String encryptKey(ResourceDescriptor descriptor, String key) {
         BucketInfo bucketInfo = new BucketInfo(descriptor.getBucketName(), descriptor.getBucketLocation());
         byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);

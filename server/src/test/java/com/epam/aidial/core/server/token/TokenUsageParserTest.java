@@ -227,34 +227,11 @@ class TokenUsageParserTest {
     }
 
     @Test
-    void parseWithTreeFallsBackToByteScanWhenTreeIsNull() {
-        Buffer body = Buffer.buffer("{\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2,\"total_tokens\":7}}");
+    void parseTreeReadsTheTopLevelUsageObject() throws Exception {
+        JsonNode response = ProxyUtil.MAPPER.readTree(
+                "{\"id\":\"chat-1\",\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":4,\"total_tokens\":15}}");
 
-        TokenUsage usage = TokenUsageParser.parse(body, null);
-
-        Assertions.assertNotNull(usage);
-        Assertions.assertEquals(5, usage.getPromptTokens());
-        Assertions.assertEquals(2, usage.getCompletionTokens());
-    }
-
-    @Test
-    void parseWithTreeFallsBackToByteScanWhenTreeIsMissing() {
-        Buffer body = Buffer.buffer("{\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2,\"total_tokens\":7}}");
-
-        TokenUsage usage = TokenUsageParser.parse(body, MissingNode.getInstance());
-
-        Assertions.assertNotNull(usage);
-        Assertions.assertEquals(5, usage.getPromptTokens());
-    }
-
-    @Test
-    void parseWithTreeReadsUsageFromTheGivenTreeWithoutTouchingTheBody() throws Exception {
-        JsonNode tree = ProxyUtil.MAPPER.readTree(
-                "{\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":4,\"total_tokens\":15}}");
-        // a body that would parse to something else entirely, to prove the tree is used, not the body
-        Buffer body = Buffer.buffer("not json");
-
-        TokenUsage usage = TokenUsageParser.parse(body, tree);
+        TokenUsage usage = TokenUsageParser.parse(response);
 
         Assertions.assertNotNull(usage);
         Assertions.assertEquals(11, usage.getPromptTokens());
@@ -263,24 +240,105 @@ class TokenUsageParserTest {
     }
 
     @Test
-    void parseWithTreeFallsBackToBodyWhenTheTreeHasNoUsage() throws Exception {
-        // the tree is a reduced representation (e.g. built for tracing) that doesn't carry usage,
-        // so the body must still be scanned to avoid losing token usage.
-        JsonNode tree = ProxyUtil.MAPPER.readTree("{\"id\":\"chat-1\"}");
-        Buffer body = Buffer.buffer("{\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2,\"total_tokens\":7}}");
+    void parseTreeReadsUsageDetails() throws Exception {
+        JsonNode response = ProxyUtil.MAPPER.readTree("""
+                {
+                  "usage": {
+                    "prompt_tokens": 1420,
+                    "completion_tokens": 119,
+                    "total_tokens": 1539,
+                    "prompt_tokens_details": {"cached_tokens": 1024},
+                    "completion_tokens_details": {"reasoning_tokens": 64}
+                  }
+                }
+                """);
 
-        TokenUsage usage = TokenUsageParser.parse(body, tree);
+        TokenUsage usage = TokenUsageParser.parse(response);
 
         Assertions.assertNotNull(usage);
-        Assertions.assertEquals(5, usage.getPromptTokens());
-        Assertions.assertEquals(2, usage.getCompletionTokens());
-        Assertions.assertEquals(7, usage.getTotalTokens());
+        Assertions.assertEquals(1024, usage.getPromptTokensDetails().getCachedTokens());
+        Assertions.assertEquals(64, usage.getCompletionTokensDetails().getReasoningTokens());
     }
 
     @Test
-    void parseWithTreeReturnsNullWhenNeitherTreeNorBodyHaveUsage() throws Exception {
-        JsonNode tree = ProxyUtil.MAPPER.readTree("{\"id\":\"chat-1\"}");
+    void parseTreeReturnsNullWhenTheResponseCarriesNoUsage() throws Exception {
+        Assertions.assertNull(TokenUsageParser.parse(ProxyUtil.MAPPER.readTree("{\"id\":\"chat-1\"}")));
+    }
 
-        Assertions.assertNull(TokenUsageParser.parse(Buffer.buffer("{}"), tree));
+    /**
+     * A queued or in-progress Responses body reports {@code "usage": null}, which is present but not an
+     * object - the byte-scan finds nothing there either, so both entry points agree on no usage.
+     */
+    @Test
+    void parseTreeReturnsNullWhenUsageIsExplicitlyNull() throws Exception {
+        Assertions.assertNull(TokenUsageParser.parse(ProxyUtil.MAPPER.readTree("{\"usage\":null}")));
+    }
+
+    @Test
+    void parseTreeReturnsNullForAnUnparseableResponse() {
+        Assertions.assertNull(TokenUsageParser.parse(MissingNode.getInstance()));
+    }
+
+    /**
+     * {@code findUsage(Buffer)} scans the raw bytes right to left and returns the LAST {@code "usage":{...}}
+     * it finds, at any nesting depth - not the top-level one. A translated response carries both: a
+     * top-level {@code usage} (already in DIAL units) and, serialized after it, the untranslated
+     * {@code custom_fields.upstream_usage.usage} that {@code ModelCostCalculator} prices from. Both entry
+     * points must agree on which one that is, or token-usage reporting and billing would disagree on a
+     * translated deployment.
+     */
+    @Test
+    void parseTreeAndParseBufferAgreeOnTheLastUsageWhenNested() throws Exception {
+        String response = """
+                {
+                  "usage": { "prompt_tokens": 250000, "prompt_tokens_details": { "cached_tokens": 400, "cache_write_tokens": 100 } },
+                  "custom_fields": {
+                    "upstream_usage": {
+                      "interface": "anthropicMessages",
+                      "usage": {
+                        "input_tokens": 249500,
+                        "cache_read_input_tokens": 400,
+                        "cache_creation_input_tokens": 100,
+                        "cache_creation": { "ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 100 },
+                        "service_tier": "standard"
+                      }
+                    }
+                  }
+                }
+                """;
+
+        TokenUsage fromBuffer = TokenUsageParser.parse(Buffer.buffer(response));
+        TokenUsage fromTree = TokenUsageParser.parse(ProxyUtil.MAPPER.readTree(response));
+
+        Assertions.assertNotNull(fromBuffer);
+        // the nested upstream usage's input_tokens, not the top-level usage's prompt_tokens (250000)
+        Assertions.assertEquals(249500, fromBuffer.getPromptTokens());
+        Assertions.assertEquals(fromBuffer, fromTree);
+    }
+
+    /**
+     * The same "last one wins" rule applies across array elements, not just nested objects: a top-level
+     * {@code usage} followed by per-item usage inside an array must resolve to the last array element's
+     * usage for both entry points, since that is the last {@code "usage":{...}} in the raw bytes too.
+     */
+    @Test
+    void parseTreeAndParseBufferAgreeOnTheLastUsageAcrossArrayElements() throws Exception {
+        String response = """
+                {
+                  "usage": { "prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2 },
+                  "batches": [
+                    { "usage": { "prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20 } },
+                    { "usage": { "prompt_tokens": 100, "completion_tokens": 100, "total_tokens": 200 } }
+                  ]
+                }
+                """;
+
+        TokenUsage fromBuffer = TokenUsageParser.parse(Buffer.buffer(response));
+        TokenUsage fromTree = TokenUsageParser.parse(ProxyUtil.MAPPER.readTree(response));
+
+        Assertions.assertNotNull(fromBuffer);
+        Assertions.assertEquals(100, fromBuffer.getPromptTokens());
+        Assertions.assertEquals(200, fromBuffer.getTotalTokens());
+        Assertions.assertEquals(fromBuffer, fromTree);
     }
 }

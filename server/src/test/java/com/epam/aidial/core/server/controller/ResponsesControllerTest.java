@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
@@ -23,8 +24,12 @@ import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.token.TokenUsageParser;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.JsonUtil;
+import com.epam.aidial.core.server.util.ModelCostCalculator;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -74,7 +79,9 @@ import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_
 import static com.epam.aidial.core.storage.http.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -84,6 +91,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -91,7 +99,9 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -396,7 +406,7 @@ public class ResponsesControllerTest {
                 .thenReturn(deployment);
         when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
-        when(proxy.getRateLimiter().increase(any(), any(), any(), any(), any(), any(), any()))
+        when(proxy.getRateLimiter().increase(any(), any(), any(), any()))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getClient()).thenReturn(httpClient);
@@ -1110,6 +1120,141 @@ public class ResponsesControllerTest {
         verify(httpClient).request(argThat(opts ->
                 "actual-model".equals(opts.getHost())
                 && "/responses".equals(opts.getURI().toString())));
+    }
+
+    /**
+     * The non-streaming Responses path parses the upstream body exactly once, in {@code rewriteResponseId},
+     * and that one tree is what tracing and token usage both read. Asserting on the instance is what makes
+     * this a single-parse test rather than a same-value test: a second {@code readTree} of the same bytes
+     * would produce an equal but distinct node, and the {@code never()} checks below would still pass.
+     * PR #2020 review items 1 and 4.
+     */
+    @Test
+    public void testNonStreamingResponse_ParsesBodyOnceAndSharesThatTree(Vertx vertx) throws Throwable {
+        Model deployment = new Model();
+        deployment.setName("test");
+        Pricing pricing = new Pricing();
+        pricing.setUnit("token");
+        pricing.setPrompt("0.1");
+        pricing.setCompletion("0.5");
+        deployment.setPricing(pricing);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+        Buffer body = Buffer.buffer(normalizeJson("""
+                {
+                    "id": "upstream-1",
+                    "output": [],
+                    "usage": {"input_tokens": 19, "output_tokens": 9, "total_tokens": 28}
+                }
+                """));
+        TokenUsage parsedUsage = new TokenUsage();
+        parsedUsage.setTotalTokens(28);
+
+        when(proxyResponse.statusCode()).thenReturn(200);
+        when(upstreamRoute.get()).thenReturn(upstream);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        when(context.getResponse()).thenReturn(response);
+        when(context.getProxyResponse()).thenReturn(proxyResponse);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getRequest()).thenReturn(request);
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(response.getStatusCode()).thenReturn(200);
+        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
+        when(proxy.getRateLimiter().increase(any(), any(), any(), any()))
+                .thenReturn(Future.succeededFuture());
+        when(context.getUserId()).thenReturn("test-user");
+        doCallRealMethod().when(context).setDeployment(any());
+        doCallRealMethod().when(context).getDeployment();
+        doCallRealMethod().when(context).setResponseBody(any());
+        doCallRealMethod().when(context).getResponseBody();
+        doCallRealMethod().when(context).setTokenUsage(any());
+        doCallRealMethod().when(context).getTokenUsage();
+        context.setDeployment(deployment);
+
+        try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class);
+                var mockedJson = mockStatic(JsonUtil.class, CALLS_REAL_METHODS);
+                var mockedParser = mockStatic(TokenUsageParser.class);
+                var mockedCalculator = mockStatic(ModelCostCalculator.class, CALLS_REAL_METHODS)) {
+            mockedGenAi.when(() -> GenAiTraceAttributes.isEnabled(context)).thenReturn(true);
+            mockedParser.when(() -> TokenUsageParser.parse(any(JsonNode.class))).thenReturn(parsedUsage);
+
+            controller.handleNonStreamingResponse(proxyResponse, body).toCompletionStage().toCompletableFuture()
+                    .get(10, TimeUnit.SECONDS);
+
+            // the assertion that makes this a single-parse test: one readTree for the whole chain below
+            mockedJson.verify(() -> JsonUtil.tryParse(any(byte[].class)), times(1));
+
+            ArgumentCaptor<JsonNode> traced = ArgumentCaptor.forClass(JsonNode.class);
+            mockedGenAi.verify(() -> GenAiTraceAttributes.setResponseAttributes(
+                    eq(context), eq(InterfaceType.OPENAI_RESPONSES), traced.capture(), isNull()));
+            mockedGenAi.verify(() -> GenAiTraceAttributes.parseResponse(any(), any(), any()), never());
+
+            ArgumentCaptor<JsonNode> charged = ArgumentCaptor.forClass(JsonNode.class);
+            mockedParser.verify(() -> TokenUsageParser.parse(charged.capture()));
+            mockedParser.verify(() -> TokenUsageParser.parse(any(Buffer.class)), never());
+
+            ArgumentCaptor<ModelCostCalculator.ResponseSource> priced = ArgumentCaptor.forClass(ModelCostCalculator.ResponseSource.class);
+            mockedCalculator.verify(() -> ModelCostCalculator.resolveCost(any(), any(), any(), any(), priced.capture()));
+            assertInstanceOf(ModelCostCalculator.ResponseSource.Tree.class, priced.getValue());
+            JsonNode pricedTree = ((ModelCostCalculator.ResponseSource.Tree) priced.getValue()).responseTree();
+
+            assertSame(traced.getValue(), charged.getValue());
+            assertSame(traced.getValue(), pricedTree);
+            // the very node rewriteResponseId mutated, not a re-parse of the bytes it produced
+            assertEquals("dial_test_fixed-uuid-1234", traced.getValue().get("id").asText());
+            assertEquals(parsedUsage, context.getTokenUsage());
+        }
+    }
+
+    /**
+     * A non-200 upstream body is parsed on the same single path as a 200 one, so tracing is handed a tree
+     * here too and never falls back to reading the raw bytes itself - PR #2020 review item 1.
+     */
+    @Test
+    public void testNonStreamingErrorResponse_StillHandsTracingParsedTree(Vertx vertx) throws Throwable {
+        Model deployment = new Model();
+        deployment.setName("test");
+        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+        Buffer body = Buffer.buffer(normalizeJson("{\"error\": {\"message\": \"boom\"}}"));
+
+        when(proxyResponse.statusCode()).thenReturn(429);
+        when(upstreamRoute.get()).thenReturn(upstream);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        when(context.getResponse()).thenReturn(response);
+        when(context.getProxyResponse()).thenReturn(proxyResponse);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getRequest()).thenReturn(request);
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(response.getStatusCode()).thenReturn(429);
+        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        doCallRealMethod().when(context).setDeployment(any());
+        doCallRealMethod().when(context).getDeployment();
+        doCallRealMethod().when(context).setResponseBody(any());
+        doCallRealMethod().when(context).getResponseBody();
+        context.setDeployment(deployment);
+
+        try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class)) {
+            mockedGenAi.when(() -> GenAiTraceAttributes.isEnabled(context)).thenReturn(true);
+
+            controller.handleNonStreamingResponse(proxyResponse, body).toCompletionStage().toCompletableFuture()
+                    .get(10, TimeUnit.SECONDS);
+
+            ArgumentCaptor<JsonNode> traced = ArgumentCaptor.forClass(JsonNode.class);
+            mockedGenAi.verify(() -> GenAiTraceAttributes.setResponseAttributes(
+                    eq(context), eq(InterfaceType.OPENAI_RESPONSES), traced.capture(), isNull()));
+            mockedGenAi.verify(() -> GenAiTraceAttributes.parseResponse(any(), any(), any()), never());
+            assertEquals("boom", traced.getValue().path("error").path("message").asText());
+        }
     }
 
     private static Future<?> complete(VertxTestContext textContext) {
