@@ -132,7 +132,9 @@ public final class SpecMerger {
                         result.set(field, manVal.deepCopy());
                     } else {
                         if (skelVal.isObject() && manVal.isObject()) {
-                            if (skelVal.has("$ref") && !manVal.has("$ref")) {
+                            if (skelVal.has("$ref") != manVal.has("$ref")) {
+                                // The skeleton switched between a reference and an inline schema: take its
+                                // structure wholesale so a stale $ref (or stale inline keywords) never survives.
                                 ObjectNode mergedRef = (ObjectNode) skelVal.deepCopy();
                                 for (String docField : MANUAL_PREFERRED_FIELDS) {
                                     if (manVal.has(docField)) {

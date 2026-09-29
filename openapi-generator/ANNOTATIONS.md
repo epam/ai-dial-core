@@ -88,6 +88,10 @@ See [Schema Guide](SCHEMAS.md) for detailed modeling strategies.
 )
 ```
 
+On a DTO field, `@ApiSchema(nullable = true)` alone marks the property `nullable: true` (e.g. `MetadataBase.parentPath`,
+which is `null` at the bucket root). It applies only to inline primitive types (`String`, numbers, `Boolean`, …):
+OpenAPI 3.0 ignores siblings of `$ref`, so a nullable reference cannot be expressed this way.
+
 ### Examples
 
 ```java

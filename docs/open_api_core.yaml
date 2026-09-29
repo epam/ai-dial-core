@@ -14398,6 +14398,8 @@ components:
           type: string
         object:
           type: string
+          enum:
+          - application
         owner:
           type: string
         reference:
@@ -14427,6 +14429,8 @@ components:
           format: uri
         interface_configs:
           $ref: "#/components/schemas/MapStringInterfaceConfigData"
+      required:
+      - object
     ApplicationFunction:
       type: object
       properties:
@@ -15516,9 +15520,12 @@ components:
         name:
           type: string
         nodeType:
-          $ref: "#/components/schemas/NodeType"
+          type: string
+          enum:
+          - ITEM
         parentPath:
           type: string
+          nullable: true
         permissions:
           type: array
           items:
@@ -15537,6 +15544,8 @@ components:
           type: integer
         url:
           type: string
+      required:
+      - nodeType
     Condition:
       type: object
       properties:
@@ -16239,9 +16248,12 @@ components:
         name:
           type: string
         nodeType:
-          $ref: "#/components/schemas/NodeType"
+          type: string
+          enum:
+          - ITEM
         parentPath:
           type: string
+          nullable: true
         permissions:
           type: array
           items:
@@ -16260,6 +16272,8 @@ components:
           type: integer
         url:
           type: string
+      required:
+      - nodeType
     FunctionMapping:
       type: object
       properties:
@@ -16888,6 +16902,8 @@ components:
           type: string
         object:
           type: string
+          enum:
+          - model
         owner:
           type: string
         pricing:
@@ -16915,6 +16931,8 @@ components:
           format: uri
         interface_configs:
           $ref: "#/components/schemas/MapStringInterfaceConfigData"
+      required:
+      - object
     ModelType:
       type: string
       enum:
@@ -17315,9 +17333,12 @@ components:
         nextToken:
           type: string
         nodeType:
-          $ref: "#/components/schemas/NodeType"
+          type: string
+          enum:
+          - FOLDER
         parentPath:
           type: string
+          nullable: true
         permissions:
           type: array
           items:
@@ -17334,6 +17355,8 @@ components:
             $ref: "#/components/schemas/ShareMetadata"
         url:
           type: string
+      required:
+      - nodeType
     ResourceItemMetadata:
       type: object
       properties:
@@ -17348,9 +17371,12 @@ components:
         name:
           type: string
         nodeType:
-          $ref: "#/components/schemas/NodeType"
+          type: string
+          enum:
+          - ITEM
         parentPath:
           type: string
+          nullable: true
         permissions:
           type: array
           items:
@@ -17369,6 +17395,8 @@ components:
           type: integer
         url:
           type: string
+      required:
+      - nodeType
     ResourceLink:
       type: object
       properties:
@@ -17992,6 +18020,8 @@ components:
           type: string
         object:
           type: string
+          enum:
+          - toolset
         owner:
           type: string
         reference:
@@ -18021,6 +18051,8 @@ components:
           format: uri
         interface_configs:
           $ref: "#/components/schemas/MapStringInterfaceConfigData"
+      required:
+      - object
     ToolSetRepairControllerRepairResponse:
       type: object
       properties:
@@ -18163,12 +18195,8 @@ components:
           description: The user id as DIAL resolves it from the identity provider configuration (not necessarily the token's sub claim). Present only for user-based session authentication. Use this value as owner_user_id when retrieving credentials on behalf of the user.
         userClaims:
           type: object
-          additionalProperties:
-            type: array
-            description: Array representation of a specific claim value (normalized for backward compatibility)
-            items:
-              type: string
-          description: Normalized token claims. Present only for user-based session authentication.
+          additionalProperties: {}
+          description: "Token claims. Present only for user-based session authentication. String claims are normalized to a single-element string array for backward compatibility; all other claim values (numbers such as exp/iat, booleans, arrays, objects) are returned as-is."
         userDisplayName:
           type: string
           description: Human-readable caller name. For user-based session authentication it is resolved from the identity provider's configured userDisplayName claim path; for API key authentication it is the key's project name. Absent when not configured.

@@ -445,6 +445,23 @@ Account:
       service: "#/components/schemas/ServiceAccount"
 ```
 
+Plain JSON Schema validators (e.g. the ones MCP clients use for tool output) ignore `discriminator`, and subtypes
+without `additionalProperties: false` usually match every `oneOf` branch. So the generator also pins the
+discriminator property of each subtype — and of any class extending it — to its own value, and marks it required:
+
+```yaml
+UserAccount:
+  properties:
+    type:
+      type: string
+      enum:
+      - user
+  required:
+  - type
+```
+
+The runtime must always set that property to the mapped value (e.g. in the subtype's constructor).
+
 ---
 
 ## Best Practices
