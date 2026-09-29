@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.token;
 
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
 
@@ -102,5 +103,29 @@ public class MessagesTokenUsageParserTest {
         assertEquals(130, usage.getCompletionTokens());
         assertEquals(160, usage.getTotalTokens());
         assertEquals(5, usage.getPromptTokensDetails().getCachedTokens());
+    }
+
+    @Test
+    void parseTreeReadsTheTopLevelUsageObject() throws Exception {
+        JsonNode response = ProxyUtil.MAPPER.readTree(
+                "{\"id\":\"msg\",\"usage\":{\"input_tokens\":10,\"output_tokens\":8,\"cache_read_input_tokens\":2}}");
+
+        TokenUsage usage = MessagesTokenUsageParser.parse(response);
+
+        assertNotNull(usage);
+        assertEquals(12, usage.getPromptTokens());
+        assertEquals(8, usage.getCompletionTokens());
+        assertEquals(20, usage.getTotalTokens());
+        assertEquals(2, usage.getPromptTokensDetails().getCachedTokens());
+    }
+
+    @Test
+    void parseTreeReturnsNullWhenTheResponseCarriesNoUsage() throws Exception {
+        assertNull(MessagesTokenUsageParser.parse(ProxyUtil.MAPPER.readTree("{\"id\":\"msg\"}")));
+    }
+
+    @Test
+    void parseTreeReturnsNullForAnUnparseableResponse() {
+        assertNull(MessagesTokenUsageParser.parse(MissingNode.getInstance()));
     }
 }

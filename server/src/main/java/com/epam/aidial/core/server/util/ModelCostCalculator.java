@@ -28,6 +28,65 @@ import java.util.Scanner;
 @UtilityClass
 public class ModelCostCalculator {
 
+    /**
+     * The one representation of the response {@link #resolveCost} needs, supplied by the caller from
+     * whichever form it already holds - never both. A sealed type rather than a {@code Buffer} parameter
+     * sitting next to a {@code JsonNode} one: exactly one variant is ever constructed for a given call, so
+     * no method here is ever handed the response in two forms at once.
+     */
+    public sealed interface ResponseSource {
+        /**
+         * For a caller that already has the parsed response - the tree it parsed for its own processing.
+         */
+        record Tree(JsonNode responseTree) implements ResponseSource {
+        }
+
+        /**
+         * For a caller holding only the raw bytes - nothing has parsed them yet. Token pricing parses them
+         * here; character pricing scans them as-is, including per-SSE-frame for a still-streaming body.
+         */
+        record Body(Buffer responseBody) implements ResponseSource {
+        }
+    }
+
+    /**
+     * Resolves a deployment's cost for one call, reading only the representation of the response its
+     * pricing unit actually needs.
+     *
+     * @param requestBody the request bytes, needed only for character pricing - token pricing never reads it.
+     */
+    public static BigDecimal resolveCost(RoleBasedEntity roleBasedEntity, TokenUsage usage, Buffer requestBody,
+            InterfaceType interfaceType, ResponseSource response) {
+        if (!(roleBasedEntity instanceof Model model)) {
+            return null;
+        }
+        Pricing pricing = model.getPricing();
+        if (pricing == null) {
+            return null;
+        }
+        return switch (pricing.getUnit()) {
+            case "token" -> usage == null ? null
+                    : calculateTokenCost(usage, pricing, interfaceType, resolveTree(response));
+            case "char_without_whitespace" -> calculateCharCost(
+                    model.getType(), requestBody, response, pricing.getPrompt(), pricing.getCompletion());
+            default -> null;
+        };
+    }
+
+    private static JsonNode resolveTree(ResponseSource response) {
+        return switch (response) {
+            case ResponseSource.Tree tree -> tree.responseTree();
+            case ResponseSource.Body body -> body.responseBody() == null
+                    ? MissingNode.getInstance() : JsonUtil.tryParse(body.responseBody().getBytes());
+        };
+    }
+
+    /**
+     * Legacy path: for a caller with no already-parsed response (streaming, whose live accumulated node
+     * takes priority here over parsing {@code responseBody}, since a streamed body may not even be a single
+     * JSON document) - unchanged by the parse-once refactor. New callers that hold exactly one representation
+     * use {@link #resolveCost} instead.
+     */
     public static BigDecimal calculate(
             RoleBasedEntity roleBasedEntity, TokenUsage tokenUsage, Buffer requestBody, Buffer responseBody,
             InterfaceType interfaceType, JsonNode liveUsageNode) {
@@ -41,25 +100,35 @@ public class ModelCostCalculator {
         }
 
         return switch (pricing.getUnit()) {
-            case "token" -> calculate(tokenUsage, pricing, interfaceType, responseBody, liveUsageNode);
+            case "token" -> {
+                if (tokenUsage == null) {
+                    yield null;
+                }
+                // streaming: already accumulated live by a per-event Fn; non-streaming: one cheap whole-body parse
+                JsonNode nativeRoot = liveUsageNode != null ? liveUsageNode
+                        : responseBody == null ? MissingNode.getInstance() : JsonUtil.tryParse(responseBody.getBytes());
+                yield calculateTokenCost(tokenUsage, pricing, interfaceType, nativeRoot);
+            }
             case "char_without_whitespace" ->
-                    calculate(model.getType(), requestBody, responseBody, pricing.getPrompt(), pricing.getCompletion());
+                    calculateCharCost(model.getType(), requestBody, new ResponseSource.Body(responseBody), pricing.getPrompt(), pricing.getCompletion());
             default -> null;
         };
     }
 
-    private static BigDecimal calculate(TokenUsage tokenUsage, Pricing pricing, InterfaceType interfaceType,
-            Buffer responseBody, JsonNode liveUsageNode) {
+    /**
+     * Cost for a model priced per token. Takes only the parsed response - never the raw body - so the caller
+     * (which knows the pricing unit and therefore which representation is actually needed) never has to hand
+     * this a {@code Buffer} it would otherwise ignore. See {@link #calculateCharCost} for the other unit.
+     */
+    public static BigDecimal calculateTokenCost(TokenUsage tokenUsage, Pricing pricing, InterfaceType interfaceType,
+            JsonNode responseTree) {
         if (tokenUsage == null) {
             return null;
         }
         String promptRate = pricing.getPrompt();
         String completionRate = pricing.getCompletion();
 
-        // streaming: already accumulated live by a per-event Fn; non-streaming: one cheap whole-body parse
-        JsonNode nativeRoot = liveUsageNode != null ? liveUsageNode
-                : responseBody == null ? MissingNode.getInstance() : JsonUtil.tryParse(responseBody.getBytes());
-        UsageEvalContext evalContext = UsageEvalContext.build(interfaceType, nativeRoot);
+        UsageEvalContext evalContext = UsageEvalContext.build(interfaceType, responseTree);
 
         PromptTokensDetails details = tokenUsage.getPromptTokensDetails();
         long cachedTokens = evalContext.resolveCounter(StandardField.CACHED_READ_TOKENS)
@@ -81,13 +150,25 @@ public class ModelCostCalculator {
         return cost;
     }
 
-    private static BigDecimal calculate(ModelType modelType, Buffer requestBody, Buffer responseBody, String promptRate, String completionRate) {
-        if (requestBody == null || responseBody == null) {
-            log.error("Can't calculate model cost due to missing request or response body.");
+    /**
+     * Cost for a model priced per character. Reads whichever representation of the response
+     * {@code response} actually holds - the parsed tree directly, with no round trip, for the common
+     * non-streaming case; the raw bytes otherwise (streaming, or a caller that never parsed the body) -
+     * matching {@link #calculateTokenCost}'s single-representation contract for the other unit.
+     */
+    public static BigDecimal calculateCharCost(ModelType modelType, Buffer requestBody, ResponseSource response,
+            String promptRate, String completionRate) {
+        if (requestBody == null
+                || response instanceof ResponseSource.Body body && body.responseBody() == null) {
+            log.error("Can't calculate model cost due to missing request body.");
             return null;
         }
         RequestLengthResult requestLengthResult = getRequestContentLength(modelType, requestBody);
-        int responseLength = getResponseContentLength(modelType, responseBody, requestLengthResult.stream());
+        Integer responseLength = getResponseContentLength(modelType, response, requestLengthResult.stream());
+        if (responseLength == null) {
+            log.error("Can't calculate model cost due to missing response body.");
+            return null;
+        }
         BigDecimal cost = null;
         if (promptRate != null) {
             cost = new BigDecimal(requestLengthResult.length()).multiply(new BigDecimal(promptRate));
@@ -116,6 +197,56 @@ public class ModelCostCalculator {
         }
         BigDecimal delta = new BigDecimal(tokens).multiply(new BigDecimal(rate));
         return cost == null ? delta : cost.add(delta);
+    }
+
+    /**
+     * Reads the completion length from whichever representation {@code response} holds.
+     *
+     * @return null when a {@code Body} caller's buffer is missing - the one case {@link #calculateCharCost}
+     *         cannot price at all, matching the original null-body guard.
+     */
+    private static Integer getResponseContentLength(ModelType modelType, ResponseSource response, boolean isStreamingResponse) {
+        if (modelType == ModelType.EMBEDDING) {
+            return 0;
+        }
+        // the fast path: a non-streaming caller that already parsed the response reads that tree directly,
+        // with no re-serialize-then-reparse round trip. A body that IS streaming can never have parsed as
+        // one JsonNode in the first place (SSE framing isn't valid JSON), so a Tree here is only ever a
+        // genuinely single-document response - "isStreamingResponse" true at the same time means the
+        // request asked to stream but the response wasn't SSE after all; that mismatch is rare enough, and
+        // already handled below exactly as it always was, that it doesn't justify holding up the common case.
+        if (!isStreamingResponse && response instanceof ResponseSource.Tree tree) {
+            return getResponseContentLength(tree.responseTree());
+        }
+        Buffer responseBody = switch (response) {
+            case ResponseSource.Tree tree -> Buffer.buffer(ProxyUtil.convertToString(tree.responseTree()));
+            case ResponseSource.Body body -> body.responseBody();
+        };
+        if (responseBody == null) {
+            return null;
+        }
+        return getResponseContentLength(modelType, responseBody, isStreamingResponse);
+    }
+
+    /**
+     * The non-streaming byte-scan's exact logic, operating on an already-parsed tree instead of
+     * re-deserializing the bytes it was built from - no {@code JsonNode -> String/Buffer -> readTree}
+     * round trip, but otherwise the same traversal and the same {@code RuntimeException} wrapping as the
+     * {@code Buffer} branch below, so a malformed response fails identically either way.
+     */
+    private static int getResponseContentLength(JsonNode responseTree) {
+        try {
+            ObjectNode tree = (ObjectNode) responseTree;
+            ArrayNode choices = (ArrayNode) tree.get("choices");
+            if (choices == null) {
+                // skip error message
+                return 0;
+            }
+            JsonNode contentNode = choices.get(0).get("message").get("content");
+            return getLengthWithoutWhitespace(contentNode.textValue());
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private static int getResponseContentLength(ModelType modelType, Buffer responseBody, boolean isStreamingResponse) {

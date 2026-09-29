@@ -12,6 +12,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -77,6 +78,9 @@ public class MessagesCountTokensController extends MessagesBaseController {
         response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
         putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
         // count_tokens must NOT charge limits or collect token usage — just log and finalize.
+        // must run before end(): Vert.x ends the request's OTel span synchronously inside end(), after
+        // which further span attributes (dial.latency.*) are silently dropped
+        GenAiTraceAttributes.setLatencyAttributes(context);
         return response.end(body)
                 .transform(result -> {
                     proxy.getLogStore().save(AnalyticsLogContext.from(context, null));

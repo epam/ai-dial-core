@@ -186,6 +186,18 @@ public class AnalyticsLogContext {
      */
     @Nullable
     public static String assembleStreamingChatCompletionsResponse(@Nullable Buffer response) {
+        ObjectNode tree = assembleStreamingChatCompletionsResponseTree(response);
+        return tree == null ? null : ProxyUtil.convertToString(tree);
+    }
+
+    /**
+     * Same merge as {@link #assembleStreamingChatCompletionsResponse}, kept as a tree instead of a serialized
+     * string - {@link com.epam.aidial.core.server.ProxyContext#assembledChatCompletionsResponseTree()} caches
+     * it so the GenAI trace attributes can read it directly instead of re-parsing the string this class also
+     * builds for the analytics log.
+     */
+    @Nullable
+    public static ObjectNode assembleStreamingChatCompletionsResponseTree(@Nullable Buffer response) {
         if (response == null) {
             return null;
         }
@@ -219,7 +231,7 @@ public class AnalyticsLogContext {
 
             if (last == null) {
                 log.warn("no chunk is found in streaming response");
-                return "{}";
+                return ProxyUtil.MAPPER.createObjectNode();
             }
 
             ObjectNode result = ProxyUtil.MAPPER.createObjectNode();
@@ -257,10 +269,10 @@ public class AnalyticsLogContext {
 
                 result.set("choices", choices);
             }
-            return ProxyUtil.convertToString(result);
+            return result;
         } catch (Throwable e) {
             log.warn("Can't assemble streaming response", e);
-            return "{}";
+            return ProxyUtil.MAPPER.createObjectNode();
         }
     }
 }

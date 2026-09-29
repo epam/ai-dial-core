@@ -3,10 +3,10 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
@@ -24,7 +24,12 @@ import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.token.TokenUsageParser;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
+import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.JsonUtil;
+import com.epam.aidial.core.server.util.ModelCostCalculator;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -55,6 +60,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -64,13 +70,18 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
 import static com.epam.aidial.core.storage.http.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -80,13 +91,17 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -122,6 +137,53 @@ public class ResponsesControllerTest {
     void stubRequestPath() {
         // resolveRequestUri always consults the ingress path (even though the legacy flow ignores it)
         lenient().when(request.path()).thenReturn("/openai/v1/responses");
+    }
+
+    /**
+     * Wires the mocked {@code context} so the four latency timestamps round-trip through
+     * {@link AtomicLong}-backed getter/setter pairs - plain mock fields aren't volatile, and the
+     * controller sets/reads them from different {@code AsyncTaskExecutor}/Vert.x threads than the test
+     * thread, which also rules out asserting via a thread-confined {@code mockStatic(Span.class)} here
+     * (see {@code BaseInterceptorControllerTest}/{@code MessagesControllerTest} for that pattern on
+     * synchronous, same-thread call sites) - as if {@code genAiSpanAttributes} were on.
+     */
+    private Map<String, Object> enableLatencyTracing() {
+        Map<String, Object> tracingAttributes = new ConcurrentHashMap<>();
+        AtomicLong requestBodyTimestamp = new AtomicLong();
+        AtomicLong proxyConnectTimestamp = new AtomicLong();
+        AtomicLong proxyResponseTimestamp = new AtomicLong();
+        AtomicLong responseBodyTimestamp = new AtomicLong();
+        lenient().when(context.getTracingSettings()).thenReturn(new TracingSettings(true, false, List.of()));
+        lenient().when(context.getTracingAttributes()).thenReturn(tracingAttributes);
+        lenient().when(context.getRequestTimestamp()).thenReturn(1000L);
+        lenient().doAnswer(inv -> {
+            requestBodyTimestamp.set(inv.getArgument(0));
+            return null;
+        }).when(context).setRequestBodyTimestamp(anyLong());
+        lenient().when(context.getRequestBodyTimestamp()).thenAnswer(inv -> requestBodyTimestamp.get());
+        lenient().doAnswer(inv -> {
+            proxyConnectTimestamp.set(inv.getArgument(0));
+            return null;
+        }).when(context).setProxyConnectTimestamp(anyLong());
+        lenient().when(context.getProxyConnectTimestamp()).thenAnswer(inv -> proxyConnectTimestamp.get());
+        lenient().doAnswer(inv -> {
+            proxyResponseTimestamp.set(inv.getArgument(0));
+            return null;
+        }).when(context).setProxyResponseTimestamp(anyLong());
+        lenient().when(context.getProxyResponseTimestamp()).thenAnswer(inv -> proxyResponseTimestamp.get());
+        lenient().doAnswer(inv -> {
+            responseBodyTimestamp.set(inv.getArgument(0));
+            return null;
+        }).when(context).setResponseBodyTimestamp(anyLong());
+        lenient().when(context.getResponseBodyTimestamp()).thenAnswer(inv -> responseBodyTimestamp.get());
+        return tracingAttributes;
+    }
+
+    private static void assertLatencyPublished(Map<String, Object> tracingAttributes) {
+        assertNotNull(tracingAttributes.get("dial.latency.client_body_ms"));
+        assertNotNull(tracingAttributes.get("dial.latency.upstream_connect_ms"));
+        assertNotNull(tracingAttributes.get("dial.latency.upstream_header_ms"));
+        assertNotNull(tracingAttributes.get("dial.latency.upstream_body_ms"));
     }
 
     @Test
@@ -344,7 +406,7 @@ public class ResponsesControllerTest {
                 .thenReturn(deployment);
         when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
-        when(proxy.getRateLimiter().increase(any(), any(), any(), any(), any(), any(), any()))
+        when(proxy.getRateLimiter().increase(any(), any(), any(), any(), any(), any()))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getClient()).thenReturn(httpClient);
@@ -383,6 +445,7 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).getProxyApiKeyData();
         doCallRealMethod().when(context).setProxyResponse(any());
         doCallRealMethod().when(context).getProxyResponse();
+        Map<String, Object> tracingAttributes = enableLatencyTracing();
 
         controller.handle();
 
@@ -399,6 +462,12 @@ public class ResponsesControllerTest {
                 eq(PER_REQUEST_KEY),
                 argThat(arg ->
                         ProxyUtil.convertToString(updatedApiKeyData).equals(arg.apply("{}"))));
+        assertLatencyPublished(tracingAttributes);
+        // dial.latency.client_body_ms must cover only "receive/parse the client body" - the timestamp
+        // is taken in parseBody(), before the enhancement chain runs and re-serializes the body
+        InOrder requestBodyOrder = inOrder(context);
+        requestBodyOrder.verify(context).setRequestBodyTimestamp(anyLong());
+        requestBodyOrder.verify(context).setRequestBody(any());
     }
 
 
@@ -738,6 +807,7 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).isStreamingRequest();
         doCallRealMethod().when(context).setStoreResponse(anyBoolean());
         doCallRealMethod().when(context).isStoreResponse();
+        Map<String, Object> tracingAttributes = enableLatencyTracing();
 
         controller.handle();
 
@@ -755,6 +825,8 @@ public class ResponsesControllerTest {
         String completedEvent = endCaptor.getValue().toString();
         assertTrue(completedEvent.contains(expectedDialId));
         assertFalse(completedEvent.contains(upstreamId));
+
+        assertLatencyPublished(tracingAttributes);
     }
 
     @Test
@@ -921,6 +993,80 @@ public class ResponsesControllerTest {
                 && "/responses".equals(opts.getURI().toString())));
     }
 
+    /**
+     * {@code parseBody()} stamps {@code requestBodyTimestamp} right after the raw client body is read
+     * (PR #2020 item 2 fix, meant to make {@code dial.latency.client_body_ms} measure only "time to
+     * receive/parse the client body"). When the request is routed through an interceptor - even just a
+     * reentry hop between two interceptors, as here - {@code BaseInterceptorController.handleRequestBody()}
+     * must not stamp the *same* {@code context}'s {@code requestBodyTimestamp} again: doing so would
+     * silently push {@code dial.latency.client_body_ms} (and, since {@code upstream_connect_ms} is
+     * measured FROM {@code requestBodyTimestamp}, that too) later on every interceptor hop.
+     */
+    @Test
+    public void testInterceptorReentry_PreservesRequestBodyTimestampFromParseBody(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey(PER_REQUEST_KEY);
+        apiKeyData.setInterceptors(List.of("interceptor1", "interceptor2"));
+        apiKeyData.setInterceptorIndex(0);
+        apiKeyData.setInitialDeployment("test-model");
+        apiKeyData.setExecutionPath(List.of());
+
+        Interceptor interceptor2 = new Interceptor();
+        interceptor2.setResponsesEndpoint("http://interceptor2/responses");
+
+        Config config = new Config();
+        config.setInterceptors(Map.of("interceptor1", new Interceptor(), "interceptor2", interceptor2));
+
+        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
+
+        when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer("{\"model\":\"test-model\"}")));
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(context.getRequest()).thenReturn(request);
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(context.getInterceptors()).thenReturn(apiKeyData.getInterceptors());
+        when(context.getConfig()).thenReturn(config);
+        DeploymentService deploymentService = proxy.getDeploymentService();
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
+        when(proxy.getClient()).thenReturn(httpClient);
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        doAnswer(invocation -> {
+            testContext.completeNow();
+            return Future.failedFuture(new RuntimeException("abort"));
+        }).when(httpClient).request(any(RequestOptions.class));
+        doCallRealMethod().when(context).setDeployment(any());
+        doCallRealMethod().when(context).getDeployment();
+        doCallRealMethod().when(context).setProxyApiKeyData(any());
+        doCallRealMethod().when(context).getProxyApiKeyData();
+
+        // track every value setRequestBodyTimestamp is called with, in call order, AND back
+        // getRequestBodyTimestamp() with the same store - the fix's set-once guard reads it
+        List<Long> stampedValues = new ArrayList<>();
+        AtomicLong requestBodyTimestamp = new AtomicLong();
+        doAnswer(inv -> {
+            long value = inv.getArgument(0);
+            stampedValues.add(value);
+            requestBodyTimestamp.set(value);
+            return null;
+        }).when(context).setRequestBodyTimestamp(anyLong());
+        when(context.getRequestBodyTimestamp()).thenAnswer(inv -> requestBodyTimestamp.get());
+
+        controller.handle();
+
+        await(testContext);
+
+        // sanity: the interceptor hop did happen, same as the existing reentry test above
+        verify(httpClient).request(argThat(opts ->
+                "interceptor2".equals(opts.getHost())
+                && "/responses".equals(opts.getURI().toString())));
+
+        // stamped exactly once, by parseBody() - the interceptor hop's handleRequestBody() must not
+        // overwrite it with a later value.
+        assertEquals(1, stampedValues.size());
+    }
+
     @Test
     public void testLastInterceptorReentryUsesInitialDeployment(Vertx vertx, VertxTestContext textContext) throws Throwable {
         ApiKeyData apiKeyData = new ApiKeyData();
@@ -974,6 +1120,148 @@ public class ResponsesControllerTest {
         verify(httpClient).request(argThat(opts ->
                 "actual-model".equals(opts.getHost())
                 && "/responses".equals(opts.getURI().toString())));
+    }
+
+    /**
+     * The non-streaming Responses path parses the upstream body exactly once, in {@code rewriteResponseId},
+     * and that one tree is what tracing and token usage both read. Asserting on the instance is what makes
+     * this a single-parse test rather than a same-value test: a second {@code readTree} of the same bytes
+     * would produce an equal but distinct node, and the {@code never()} checks below would still pass.
+     * PR #2020 review items 1 and 4.
+     */
+    @Test
+    public void testNonStreamingResponse_ParsesBodyOnceAndSharesThatTree(Vertx vertx) throws Throwable {
+        Model deployment = new Model();
+        deployment.setName("test");
+        Pricing pricing = new Pricing();
+        pricing.setUnit("token");
+        pricing.setPrompt("0.1");
+        pricing.setCompletion("0.5");
+        deployment.setPricing(pricing);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+        Buffer body = Buffer.buffer(normalizeJson("""
+                {
+                    "id": "upstream-1",
+                    "output": [],
+                    "usage": {"input_tokens": 19, "output_tokens": 9, "total_tokens": 28}
+                }
+                """));
+        TokenUsage parsedUsage = new TokenUsage();
+        parsedUsage.setTotalTokens(28);
+
+        when(proxyResponse.statusCode()).thenReturn(200);
+        when(upstreamRoute.get()).thenReturn(upstream);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        when(context.getResponse()).thenReturn(response);
+        when(context.getProxyResponse()).thenReturn(proxyResponse);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getRequest()).thenReturn(request);
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(response.getStatusCode()).thenReturn(200);
+        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
+        when(proxy.getRateLimiter().increase(any(), any(), any(), any(), any(), any()))
+                .thenReturn(Future.succeededFuture());
+        when(context.getUserId()).thenReturn("test-user");
+        doCallRealMethod().when(context).setDeployment(any());
+        doCallRealMethod().when(context).getDeployment();
+        doCallRealMethod().when(context).setResponseBody(any());
+        doCallRealMethod().when(context).getResponseBody();
+        doCallRealMethod().when(context).setTokenUsage(any());
+        doCallRealMethod().when(context).getTokenUsage();
+        context.setDeployment(deployment);
+
+        try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class);
+                var mockedJson = mockStatic(JsonUtil.class, CALLS_REAL_METHODS);
+                var mockedParser = mockStatic(TokenUsageParser.class)) {
+            mockedGenAi.when(() -> GenAiTraceAttributes.isEnabled(context)).thenReturn(true);
+            mockedParser.when(() -> TokenUsageParser.parse(any(JsonNode.class))).thenReturn(parsedUsage);
+
+            controller.handleNonStreamingResponse(proxyResponse, body).toCompletionStage().toCompletableFuture()
+                    .get(10, TimeUnit.SECONDS);
+
+            // the assertion that makes this a single-parse test: one readTree for the whole chain below
+            mockedJson.verify(() -> JsonUtil.tryParse(any(byte[].class)), times(1));
+
+            ArgumentCaptor<JsonNode> traced = ArgumentCaptor.forClass(JsonNode.class);
+            mockedGenAi.verify(() -> GenAiTraceAttributes.setResponseAttributes(
+                    eq(context), eq(InterfaceType.OPENAI_RESPONSES), traced.capture(), isNull()));
+            mockedGenAi.verify(() -> GenAiTraceAttributes.parseResponse(any(), any(), any()), never());
+
+            ArgumentCaptor<JsonNode> charged = ArgumentCaptor.forClass(JsonNode.class);
+            mockedParser.verify(() -> TokenUsageParser.parse(charged.capture()));
+            mockedParser.verify(() -> TokenUsageParser.parse(any(Buffer.class)), never());
+
+            // rateLimiter is mocked, so pricing (ModelCostCalculator.resolveCost, invoked from inside its
+            // real increase()) is exercised in RateLimiterTest/ModelCostCalculatorTest instead; here the
+            // boundary this test controls is the ResponseSource it hands to rateLimiter.increase().
+            ArgumentCaptor<ModelCostCalculator.ResponseSource> priced = ArgumentCaptor.forClass(ModelCostCalculator.ResponseSource.class);
+            verify(proxy.getRateLimiter()).increase(eq(deployment), any(), any(), any(), any(), priced.capture());
+            assertInstanceOf(ModelCostCalculator.ResponseSource.Tree.class, priced.getValue());
+            JsonNode pricedTree = ((ModelCostCalculator.ResponseSource.Tree) priced.getValue()).responseTree();
+
+            assertSame(traced.getValue(), charged.getValue());
+            assertSame(traced.getValue(), pricedTree);
+            // the very node rewriteResponseId mutated, not a re-parse of the bytes it produced
+            assertEquals("dial_test_fixed-uuid-1234", traced.getValue().get("id").asText());
+            assertEquals(parsedUsage, context.getTokenUsage());
+        }
+    }
+
+    /**
+     * A non-200 upstream body skips {@code rewriteResponseId}'s rewrite/parse (only a 200 response gets its
+     * id rewritten), so tracing falls back to parsing the raw bytes itself here - unlike the 200 path in
+     * {@link #testNonStreamingResponse_ParsesBodyOnceAndSharesThatTree}, which shares one already-parsed tree.
+     */
+    @Test
+    public void testNonStreamingErrorResponse_StillHandsTracingParsedTree(Vertx vertx) throws Throwable {
+        Model deployment = new Model();
+        deployment.setName("test");
+        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+        Buffer body = Buffer.buffer(normalizeJson("{\"error\": {\"message\": \"boom\"}}"));
+
+        when(proxyResponse.statusCode()).thenReturn(429);
+        when(upstreamRoute.get()).thenReturn(upstream);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        when(context.getResponse()).thenReturn(response);
+        when(context.getProxyResponse()).thenReturn(proxyResponse);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getRequest()).thenReturn(request);
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(response.getStatusCode()).thenReturn(429);
+        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        doCallRealMethod().when(context).setDeployment(any());
+        doCallRealMethod().when(context).getDeployment();
+        doCallRealMethod().when(context).setResponseBody(any());
+        doCallRealMethod().when(context).getResponseBody();
+        context.setDeployment(deployment);
+
+        try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class)) {
+            mockedGenAi.when(() -> GenAiTraceAttributes.isEnabled(context)).thenReturn(true);
+            JsonNode errorTree = ProxyUtil.MAPPER.readTree(body.getBytes());
+            mockedGenAi.when(() -> GenAiTraceAttributes.parseResponse(eq(context), eq(InterfaceType.OPENAI_RESPONSES), eq(body)))
+                    .thenReturn(errorTree);
+
+            controller.handleNonStreamingResponse(proxyResponse, body).toCompletionStage().toCompletableFuture()
+                    .get(10, TimeUnit.SECONDS);
+
+            ArgumentCaptor<JsonNode> traced = ArgumentCaptor.forClass(JsonNode.class);
+            mockedGenAi.verify(() -> GenAiTraceAttributes.setResponseAttributes(
+                    eq(context), eq(InterfaceType.OPENAI_RESPONSES), traced.capture(), isNull()));
+            mockedGenAi.verify(() -> GenAiTraceAttributes.parseResponse(
+                    eq(context), eq(InterfaceType.OPENAI_RESPONSES), eq(body)));
+            assertEquals("boom", traced.getValue().path("error").path("message").asText());
+        }
     }
 
     private static Future<?> complete(VertxTestContext textContext) {

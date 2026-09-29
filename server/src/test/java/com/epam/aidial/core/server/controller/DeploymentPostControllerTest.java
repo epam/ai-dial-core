@@ -8,11 +8,13 @@ import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
+import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
@@ -21,15 +23,20 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
+import com.epam.aidial.core.server.util.JsonUtil;
+import com.epam.aidial.core.server.util.ModelCostCalculator;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.opentelemetry.api.trace.Span;
 import io.vertx.core.Future;
@@ -56,6 +63,7 @@ import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -79,18 +87,24 @@ import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.storage.http.HttpStatus.FORBIDDEN;
 import static com.epam.aidial.core.storage.http.HttpStatus.NOT_FOUND;
 import static com.epam.aidial.core.storage.http.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
+import static io.opentelemetry.api.common.AttributeKey.longKey;
 import static io.vertx.core.http.HttpHeaders.AUTHORIZATION;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -882,7 +896,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
@@ -892,11 +906,17 @@ public class DeploymentPostControllerTest {
         when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
-        controller.handleResponse(bufferingReadStream);
+        // the legacy path prices the call via ModelCostCalculator.calculate() before ever reaching
+        // rateLimiter.increase() - the resolved InterfaceType is only observable there
+        try (var mockedCalculator = mockStatic(ModelCostCalculator.class, CALLS_REAL_METHODS)) {
+            controller.handleResponse(bufferingReadStream);
 
-        ArgumentCaptor<InterfaceType> interfaceTypeCaptor = ArgumentCaptor.forClass(InterfaceType.class);
-        verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), interfaceTypeCaptor.capture(), any());
-        assertEquals(InterfaceType.OPENAI_CHAT_COMPLETIONS, interfaceTypeCaptor.getValue());
+            ArgumentCaptor<InterfaceType> interfaceTypeCaptor = ArgumentCaptor.forClass(InterfaceType.class);
+            mockedCalculator.verify(() -> ModelCostCalculator.calculate(
+                    eq(model), any(), any(), any(), interfaceTypeCaptor.capture(), any()));
+            assertEquals(InterfaceType.OPENAI_CHAT_COMPLETIONS, interfaceTypeCaptor.getValue());
+        }
+        verify(rateLimiter).increase(eq(model), any(), any(), any());
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(any(AnalyticsLogContext.class));
         verify(tokenStatsTracker).endSpan(eq(context));
@@ -917,7 +937,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
@@ -927,11 +947,14 @@ public class DeploymentPostControllerTest {
         when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
-        controller.handleResponse(bufferingReadStream);
+        try (var mockedCalculator = mockStatic(ModelCostCalculator.class, CALLS_REAL_METHODS)) {
+            controller.handleResponse(bufferingReadStream);
 
-        ArgumentCaptor<InterfaceType> interfaceTypeCaptor = ArgumentCaptor.forClass(InterfaceType.class);
-        verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), interfaceTypeCaptor.capture(), any());
-        assertEquals(InterfaceType.OPENAI_EMBEDDINGS, interfaceTypeCaptor.getValue());
+            ArgumentCaptor<InterfaceType> interfaceTypeCaptor = ArgumentCaptor.forClass(InterfaceType.class);
+            mockedCalculator.verify(() -> ModelCostCalculator.calculate(
+                    eq(model), any(), any(), any(), interfaceTypeCaptor.capture(), any()));
+            assertEquals(InterfaceType.OPENAI_EMBEDDINGS, interfaceTypeCaptor.getValue());
+        }
     }
 
     private Map<String, Object> getTracingAttributes() {
@@ -943,11 +966,11 @@ public class DeploymentPostControllerTest {
         when(context.getRequestBodyTimestamp()).thenReturn(1010L);
         when(context.getProxyConnectTimestamp()).thenReturn(1020L);
         when(context.getProxyResponseTimestamp()).thenReturn(1030L);
-        doAnswer(inv -> {
+        lenient().doAnswer(inv -> {
             responseBodyTimestamp.set(inv.getArgument(0));
             return null;
         }).when(context).setResponseBodyTimestamp(anyLong());
-        when(context.getResponseBodyTimestamp()).thenAnswer(inv -> responseBodyTimestamp.get());
+        lenient().when(context.getResponseBodyTimestamp()).thenAnswer(inv -> responseBodyTimestamp.get());
         return tracingAttributes;
     }
 
@@ -965,7 +988,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer("{}"));
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
@@ -989,6 +1012,400 @@ public class DeploymentPostControllerTest {
         }
     }
 
+    /**
+     * {@code handleResponse} (streaming chat completions) must publish {@code dial.latency.*} onto the
+     * still-recording span before {@code responseStream.end()}, since Vert.x ends the request's OTel
+     * span synchronously inside that call.
+     */
+    @Test
+    public void testHandleResponse_Model_PublishesLatencyAttributesToSpanBeforeResponseStreamEnds() {
+        Model model = new Model();
+        when(context.getDeployment()).thenReturn(model);
+        when(context.getUserId()).thenReturn("test-user");
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(proxy.getLogStore()).thenReturn(logStore);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        when(context.getResponseBody()).thenReturn(Buffer.buffer());
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(rateLimiter.increase(any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(context.getRequest()).thenReturn(request);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.uri()).thenReturn("/test");
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
+        getTracingAttributes();
+
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            when(span.isRecording()).thenReturn(true);
+            when(Span.current()).thenReturn(span);
+
+            controller.handleResponse(bufferingReadStream);
+
+            InOrder order = inOrder(span, bufferingReadStream);
+            order.verify(span).setAttribute(eq(longKey("dial.latency.client_body_ms")), anyLong());
+            order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_connect_ms")), anyLong());
+            order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_header_ms")), anyLong());
+            order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_body_ms")), anyLong());
+            order.verify(bufferingReadStream).end(response);
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.client_body_ms")), anyLong());
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.upstream_connect_ms")), anyLong());
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.upstream_header_ms")), anyLong());
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.upstream_body_ms")), anyLong());
+        }
+    }
+
+    /**
+     * The non-streaming Chat Completions body is parsed once - tracing, token usage, attachment collection,
+     * the usage_per_model rewrite and {@code ModelCostCalculator} all read that one tree. Asserting on
+     * instance identity, not just which overload ran, is what proves it: a caller that re-parsed the body
+     * into an equal-but-distinct node would still pass a weaker, value-based check.
+     */
+    @Test
+    public void testHandleNonStreamingChatCompletionResponse_ParsesBodyOnceAndSharesThatTree() {
+        Model model = new Model();
+        Pricing pricing = new Pricing();
+        pricing.setUnit("token");
+        pricing.setPrompt("0.1");
+        pricing.setCompletion("0.5");
+        model.setPricing(pricing);
+        when(context.getDeployment()).thenReturn(model);
+        when(context.getUserId()).thenReturn("test-user");
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(proxy.getLogStore()).thenReturn(logStore);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        when(context.getRequest()).thenReturn(request);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.uri()).thenReturn("/test");
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+        Buffer body = Buffer.buffer("{\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":8,\"total_tokens\":18}}");
+        getTracingAttributes();
+
+        try (var mockedJson = mockStatic(JsonUtil.class, CALLS_REAL_METHODS)) {
+            controller.handleNonStreamingChatCompletionResponse(proxyResponse, body);
+
+            // the assertion that makes this a single-parse test: one readTree for the whole chain below
+            mockedJson.verify(() -> JsonUtil.tryParse(any(byte[].class)), times(1));
+
+            // rateLimiter is mocked, so pricing (ModelCostCalculator.resolveCost, invoked from inside its
+            // real increase()) is exercised in RateLimiterTest/ModelCostCalculatorTest instead; here the
+            // boundary this test controls is the ResponseSource it hands to rateLimiter.increase() -
+            // identity, not just value, is what proves the tree was never re-parsed for pricing.
+            ArgumentCaptor<ModelCostCalculator.ResponseSource> priced = ArgumentCaptor.forClass(ModelCostCalculator.ResponseSource.class);
+            verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), priced.capture());
+            assertInstanceOf(ModelCostCalculator.ResponseSource.Tree.class, priced.getValue());
+            JsonNode pricedTree = ((ModelCostCalculator.ResponseSource.Tree) priced.getValue()).responseTree();
+
+            assertEquals(10, pricedTree.path("usage").path("prompt_tokens").asLong());
+            verify(context).setTokenUsage(any(TokenUsage.class));
+            verify(response).end(any(Buffer.class));
+        }
+    }
+
+    /**
+     * {@code handleNonStreamingChatCompletionResponse} must publish {@code dial.latency.*} onto the
+     * still-recording span before {@code response.end()}, for the same reason as the streaming path
+     * above.
+     */
+    @Test
+    public void testHandleNonStreamingChatCompletionResponse_PublishesLatencyAttributesToSpanBeforeResponseEnds() {
+        Model model = new Model();
+        when(context.getDeployment()).thenReturn(model);
+        when(context.getUserId()).thenReturn("test-user");
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.headers()).thenReturn(new HeadersMultiMap());
+        when(proxy.getLogStore()).thenReturn(logStore);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        when(context.getRequest()).thenReturn(request);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.uri()).thenReturn("/test");
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+        Buffer body = Buffer.buffer("{}");
+        getTracingAttributes();
+
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            when(span.isRecording()).thenReturn(true);
+            when(Span.current()).thenReturn(span);
+
+            controller.handleNonStreamingChatCompletionResponse(proxyResponse, body);
+
+            InOrder order = inOrder(span, response);
+            order.verify(span).setAttribute(eq(longKey("dial.latency.client_body_ms")), anyLong());
+            order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_connect_ms")), anyLong());
+            order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_header_ms")), anyLong());
+            order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_body_ms")), anyLong());
+            order.verify(response).end(any(Buffer.class));
+            // set once before end() - finalizeRequest() must not set them again afterward
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.client_body_ms")), anyLong());
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.upstream_connect_ms")), anyLong());
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.upstream_header_ms")), anyLong());
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.upstream_body_ms")), anyLong());
+        }
+    }
+
+    /**
+     * The client-disconnect/write-failure path shared by Chat Completions, Responses API, and
+     * Anthropic Messages streaming ({@code handleResponseError}) must publish {@code dial.latency.*}
+     * onto the still-recording span before {@code response.reset()}, since Vert.x ends the request's
+     * OTel span synchronously inside that call too, not just inside {@code end()}. It never publishes
+     * {@code upstream_body_ms} on this path - see {@link #testHandleResponseError_Model_NeverPublishesUpstreamBodyMs}
+     * for why that is deliberate, not an oversight.
+     */
+    @Test
+    public void testHandleResponseError_PublishesLatencyAttributesToSpanBeforeReset() {
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class);
+        when(context.getProxyRequest()).thenReturn(proxyRequest);
+        BufferingReadStream responseStream = mock(BufferingReadStream.class);
+        getTracingAttributes();
+
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            when(span.isRecording()).thenReturn(true);
+            when(Span.current()).thenReturn(span);
+
+            controller.handleResponseError(new RuntimeException("client disconnected"), responseStream);
+
+            InOrder order = inOrder(span, response);
+            order.verify(span).setAttribute(eq(longKey("dial.latency.client_body_ms")), anyLong());
+            order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_connect_ms")), anyLong());
+            order.verify(span).setAttribute(eq(longKey("dial.latency.upstream_header_ms")), anyLong());
+            order.verify(response).reset();
+            verify(span, never()).setAttribute(eq(longKey("dial.latency.upstream_body_ms")), anyLong());
+        }
+    }
+
+    /**
+     * Even when the deployment IS a {@link Model} - so {@code collectTokenUsage} and
+     * {@code responseBodyTimestamp} do run, asynchronously, once {@code responseStream} drains -
+     * {@code dial.latency.upstream_body_ms} must still never reach the span: {@code setLatencyAttributes}
+     * is only ever called once on this path, before {@code reset()}, and by the time the async chain
+     * below finishes, the span reset() already ended is no longer recording. This is intentional: making
+     * the disconnect path wait for the remaining upstream body before resetting would defeat the point
+     * of dropping a broken connection eagerly.
+     */
+    @Test
+    public void testHandleResponseError_Model_NeverPublishesUpstreamBodyMs() {
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.INTERNAL_SERVER_ERROR.getCode());
+        when(context.getDeployment()).thenReturn(new Model());
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(proxy.getLogStore()).thenReturn(logStore);
+        when(context.getRequest()).thenReturn(request);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.uri()).thenReturn("/test");
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        BufferingReadStream responseStream = mock(BufferingReadStream.class);
+        when(responseStream.endStreamFuture()).thenReturn(Future.succeededFuture());
+        when(responseStream.getContent()).thenReturn(Buffer.buffer("{}"));
+        getTracingAttributes();
+
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            when(span.isRecording()).thenReturn(true);
+            when(Span.current()).thenReturn(span);
+
+            controller.handleResponseError(new RuntimeException("client disconnected"), responseStream);
+
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.client_body_ms")), anyLong());
+            verify(span, never()).setAttribute(eq(longKey("dial.latency.upstream_body_ms")), anyLong());
+        }
+    }
+
+    /**
+     * {@code finalizeRequest()} must never call {@code GenAiTraceAttributes.setLatencyAttributes()}
+     * itself: every terminal path (the {@code respond(...)} helpers, {@code completeProxyResponse()}/
+     * {@code handleResponseError()} overrides in subclasses) already publishes latency attributes before
+     * {@code finalizeRequest()} runs. A duplicate call here would be a silent no-op at best (span already
+     * ended) and a duplicate span attribute at worst - see PR #2020 review item 5.
+     */
+    @Test
+    void testFinalizeRequest_NeverPublishesLatencyAttributes() {
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+
+        try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class)) {
+            controller.finalizeRequest();
+
+            mockedGenAi.verify(() -> GenAiTraceAttributes.setLatencyAttributes(any()), never());
+        }
+    }
+
+    /**
+     * {@code collectTokenUsage}'s {@code JsonNode} overload is for a caller that already parsed the
+     * response: it must hand that tree to tracing instead of letting tracing read the body again -
+     * PR #2020 review item 1.
+     */
+    @Test
+    void testCollectTokenUsage_JsonNodeOverload_ReusesParsedResponseWithoutReparsingBody() {
+        when(context.getDeployment()).thenReturn(new Model());
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.INTERNAL_SERVER_ERROR.getCode());
+        when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
+        JsonNode parsedResponse = ProxyUtil.MAPPER.createObjectNode().put("id", "resp-1");
+
+        try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class)) {
+            mockedGenAi.when(() -> GenAiTraceAttributes.isEnabled(context)).thenReturn(true);
+
+            controller.collectTokenUsage(parsedResponse, "resp-1");
+
+            mockedGenAi.verify(() -> GenAiTraceAttributes.setResponseAttributes(
+                    eq(context), any(), eq(parsedResponse), eq("resp-1")));
+            mockedGenAi.verify(() -> GenAiTraceAttributes.parseResponse(any(), any(), any()), never());
+        }
+    }
+
+    /**
+     * The symmetric case: a caller holding only the raw body has {@code GenAiTraceAttributes} derive its own
+     * view of the response (via {@code parseResponse}) rather than being handed one - PR #2020 review item 1.
+     */
+    @Test
+    void testCollectTokenUsage_BufferOverload_LetsTracingDeriveItsOwnView() {
+        when(context.getDeployment()).thenReturn(new Model());
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.INTERNAL_SERVER_ERROR.getCode());
+        when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
+        Buffer body = Buffer.buffer("{}");
+        JsonNode parsedResponse = ProxyUtil.MAPPER.createObjectNode().put("id", "resp-1");
+
+        try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class)) {
+            mockedGenAi.when(() -> GenAiTraceAttributes.isEnabled(context)).thenReturn(true);
+            mockedGenAi.when(() -> GenAiTraceAttributes.parseResponse(eq(context), any(), eq(body)))
+                    .thenReturn(parsedResponse);
+
+            controller.collectTokenUsage(body, "resp-1");
+
+            mockedGenAi.verify(() -> GenAiTraceAttributes.parseResponse(eq(context), any(), eq(body)));
+            mockedGenAi.verify(() -> GenAiTraceAttributes.setResponseAttributes(
+                    eq(context), any(), eq(parsedResponse), eq("resp-1")));
+        }
+    }
+
+    /**
+     * Billing must not depend on observability. Before the overload split, {@code collectTokenUsage} read
+     * usage out of whatever tree tracing happened to build - which for a streamed chat completion is the
+     * merged assembled tree, not the raw frames the byte-scan reads - so turning {@code genAiSpanAttributes}
+     * on could change the charged amount. Token usage is now read the same way either way.
+     */
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void testCollectTokenUsage_ChargesTheSameUsageWhetherOrNotTracingIsEnabled(boolean tracingEnabled) {
+        Model model = new Model();
+        model.setName("test");
+        when(context.getDeployment()).thenReturn(model);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
+        when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
+        when(context.getUserId()).thenReturn("test-user");
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(rateLimiter.increase(any(), any(), any(), any()))
+                .thenReturn(Future.succeededFuture());
+        Buffer body = Buffer.buffer("{\"usage\":{\"prompt_tokens\":19,\"completion_tokens\":9,\"total_tokens\":28}}");
+
+        try (var mockedGenAi = mockStatic(GenAiTraceAttributes.class)) {
+            mockedGenAi.when(() -> GenAiTraceAttributes.isEnabled(context)).thenReturn(tracingEnabled);
+
+            controller.collectTokenUsage(body, null);
+
+            ArgumentCaptor<TokenUsage> charged = ArgumentCaptor.forClass(TokenUsage.class);
+            verify(context).setTokenUsage(charged.capture());
+            assertEquals(19, charged.getValue().getPromptTokens());
+            assertEquals(9, charged.getValue().getCompletionTokens());
+            assertEquals(28, charged.getValue().getTotalTokens());
+        }
+    }
+
+    /**
+     * {@code collectResponseAttachments}'s JsonNode overload must hand the given tree straight to the
+     * attachment function, without serializing it back to a Buffer and parsing the same JSON again -
+     * PR #2020 review item 3.
+     */
+    @Test
+    void testCollectResponseAttachments_JsonNodeOverload_ReusesGivenTreeWithoutReparsing() {
+        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        JsonNode tree = ProxyUtil.MAPPER.createObjectNode().put("id", "resp-1");
+        CollectResponseAttachmentsFn fn = mock(CollectResponseAttachmentsFn.class);
+        when(fn.apply(any())).thenReturn(Future.succeededFuture(tree));
+
+        Future<Void> result = controller.collectResponseAttachments(tree, fn);
+
+        assertTrue(result.succeeded());
+        ArgumentCaptor<JsonNode> captor = ArgumentCaptor.forClass(JsonNode.class);
+        verify(fn).apply(captor.capture());
+        assertSame(tree, captor.getValue());
+    }
+
+    /**
+     * A response that isn't a JSON object has no attachments to collect. The JsonNode overload must report
+     * that the way the Buffer overload always has - by failing the future, which every caller logs and
+     * carries on from - rather than handing a non-object to the attachment function. Without this, a caller
+     * moving from the Buffer overload to the tree overload would silently change behaviour on a bad body.
+     */
+    @Test
+    void testCollectResponseAttachments_JsonNodeOverload_FailsForNonObjectResponse() {
+        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        CollectResponseAttachmentsFn fn = mock(CollectResponseAttachmentsFn.class);
+
+        Future<Void> result = controller.collectResponseAttachments(MissingNode.getInstance(), fn);
+
+        assertTrue(result.failed());
+        verify(fn, never()).apply(any());
+    }
+
+    /**
+     * The generic {@code respond(...)} helpers (used by every early-rejection path - bad request,
+     * forbidden, not found, etc.) publish {@code dial.latency.*} themselves before {@code context.respond(...)}
+     * ends the response/span, now that {@code finalizeRequest()} no longer does it a second time.
+     */
+    @Test
+    void testRespond_PublishesLatencyAttributesToSpanBeforeResponseEnds() {
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        getTracingAttributes();
+
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            when(span.isRecording()).thenReturn(true);
+            when(Span.current()).thenReturn(span);
+
+            controller.respond(BAD_REQUEST, "bad request");
+
+            InOrder order = inOrder(span, context);
+            order.verify(span).setAttribute(eq(longKey("dial.latency.client_body_ms")), anyLong());
+            order.verify(context).respond(BAD_REQUEST, "bad request");
+            verify(span, times(1)).setAttribute(eq(longKey("dial.latency.client_body_ms")), anyLong());
+        }
+    }
+
     @ParameterizedTest
     @NullSource
     @EnumSource(value = InterfaceMode.class, names = "PASSTHROUGH")
@@ -1008,7 +1425,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
@@ -1021,8 +1438,7 @@ public class DeploymentPostControllerTest {
         controller.handleResponse(bufferingReadStream);
 
         // an interface declaring no mode is what every config written before mode existed is: still charged
-        verify(rateLimiter).increase(
-                eq(model), any(), any(), any(), any(), eq(InterfaceType.OPENAI_CHAT_COMPLETIONS), any());
+        verify(rateLimiter).increase(eq(model), any(), any(), any());
     }
 
     @ParameterizedTest
@@ -1078,7 +1494,8 @@ public class DeploymentPostControllerTest {
         controller.handleResponse(bufferingReadStream);
 
         // the translator calls Core back for the completion; that inner request carries the usage to limits
-        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any());
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(any(AnalyticsLogContext.class));
         verify(bufferingReadStream).end(response);
@@ -1109,7 +1526,8 @@ public class DeploymentPostControllerTest {
 
         controller.handleResponse(bufferingReadStream);
 
-        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any());
         verify(tokenStatsTracker).getUsageStats(eq(context));
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(context).setUsagePerModel(any());
@@ -1155,7 +1573,8 @@ public class DeploymentPostControllerTest {
 
         controller.handleResponse(bufferingReadStream);
 
-        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any());
         verify(rateLimiter).recordAggregatedCost(eq("inner-app"), any(), eq(new BigDecimal("0.40")));
         verify(rateLimiter).recordAggregatedCost(eq("router-app"), any(), eq(new BigDecimal("0.40")));
         verify(bufferingReadStream).end(response);

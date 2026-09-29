@@ -16,9 +16,14 @@ import com.fasterxml.jackson.databind.node.MissingNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.propagation.TextMapGetter;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
+import io.vertx.core.http.HttpServerRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
@@ -28,8 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.function.Supplier;
 
 import static io.opentelemetry.api.common.AttributeKey.booleanKey;
 import static io.opentelemetry.api.common.AttributeKey.doubleKey;
@@ -40,11 +44,23 @@ import static io.opentelemetry.api.common.AttributeKey.stringKey;
 @Slf4j
 public final class GenAiTraceAttributes {
     /**
-     * Any version but the invalid {@code ff}: a version Core does not know still carries the trace and the
-     * parent id in the first three fields, and W3C requires a parser to read those and ignore what follows.
+     * Delegates traceparent parsing to the SDK: {@link W3CTraceContextPropagator} already implements the same
+     * forward-compat rule (a version Core does not know still carries the trace and parent id in the first three
+     * fields) and stays in sync with the W3C spec on its own, unlike a hand-rolled regex here. {@code keys} is
+     * never called by the propagator's {@code extract} - it looks up "traceparent"/"tracestate" by name - so it's
+     * a stub, and the header name itself lives only inside the propagator, never duplicated in this class.
      */
-    private static final Pattern TRACEPARENT_PATTERN = Pattern.compile(
-            "(?!ff)[0-9a-f]{2}-(?!0{32})([0-9a-f]{32})-(?!0{16})([0-9a-f]{16})-[0-9a-f]{2}(?:-.*)?");
+    private static final TextMapGetter<HttpServerRequest> TRACEPARENT_GETTER = new TextMapGetter<>() {
+        @Override
+        public Iterable<String> keys(HttpServerRequest carrier) {
+            return List.of();
+        }
+
+        @Override
+        public String get(HttpServerRequest carrier, String key) {
+            return carrier == null ? null : carrier.getHeader(key);
+        }
+    };
     private static final String CONVERSATION_ID_ATTRIBUTE = "gen_ai.conversation.id";
     private static final String PARENT_SPAN_ATTRIBUTE = "dial.request.parent_span.id";
     private static final String RESPONSE_STATUS_ATTRIBUTE = "gen_ai.response.status";
@@ -117,18 +133,14 @@ public final class GenAiTraceAttributes {
         }
     }
 
-    public static void setResponseAttributes(ProxyContext context, InterfaceType type, Buffer responseBody) {
-        setResponseAttributes(context, type, responseBody, null);
-    }
-
     /**
-     * @param responseId DIAL's own response id, or null to keep the body's. A streamed body is buffered before
-     *                   {@code ReplaceResponseIdFn} rewrites it, so the buffered bytes still carry the upstream id.
+     * For a caller that already parsed the body - either by its own processing, or via
+     * {@link #parseResponse(ProxyContext, InterfaceType, Buffer)} when it holds only raw bytes.
      */
-    public static void setResponseAttributes(ProxyContext context, InterfaceType type, Buffer responseBody, String responseId) {
+    public static void setResponseAttributes(ProxyContext context, InterfaceType type, JsonNode response, String responseId) {
         enrich(context, () -> {
             setOperationAttributes(context, type, operationName(type));
-            setResponseAttributes(context, type, responseTree(context, type, responseBody), responseId);
+            setResponseAttributesInternal(context, type, response, responseId);
             collectUpstreamCacheAttributes(context);
         });
     }
@@ -136,7 +148,7 @@ public final class GenAiTraceAttributes {
     /**
      * @param responseId overrides the body's own id when the caller knows the client-facing id; null keeps the body's.
      */
-    private static void setResponseAttributes(ProxyContext context, InterfaceType type, JsonNode response, String responseId) {
+    private static void setResponseAttributesInternal(ProxyContext context, InterfaceType type, JsonNode response, String responseId) {
         set(context, stringKey("gen_ai.response.id"), responseId == null ? text(response.get("id")) : clamp(responseId));
         set(context, stringKey("gen_ai.response.model"), text(response.get("model")));
         set(context, stringArrayKey("gen_ai.response.finish_reasons"), finishReasons(response, type));
@@ -159,16 +171,17 @@ public final class GenAiTraceAttributes {
     }
 
     /**
-     * @param responseId DIAL's own response id. A streamed body is buffered before {@code ReplaceResponseIdFn}
-     *                   rewrites it, so the buffered bytes still carry the upstream id.
+     * For a caller that already parsed the body - either by its own processing, or via
+     * {@link #parseResponse(ProxyContext, InterfaceType, Buffer)} when it holds only raw bytes.
      */
-    public static void setFetchResponseAttributes(ProxyContext context, Buffer responseBody, String responseId) {
-        enrich(context, () -> {
-            setOperationAttributes(context, InterfaceType.OPENAI_RESPONSES, "fetch_response");
-            JsonNode response = responseTree(context, InterfaceType.OPENAI_RESPONSES, responseBody);
-            setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, response, responseId);
-            collectUsageAttributes(context, tokenUsage(response.get("usage")));
-        });
+    public static void setFetchResponseAttributes(ProxyContext context, JsonNode response, String responseId) {
+        enrich(context, () -> setFetchResponseAttributesInternal(context, response, responseId));
+    }
+
+    private static void setFetchResponseAttributesInternal(ProxyContext context, JsonNode response, String responseId) {
+        setOperationAttributes(context, InterfaceType.OPENAI_RESPONSES, "fetch_response");
+        setResponseAttributesInternal(context, InterfaceType.OPENAI_RESPONSES, response, responseId);
+        collectUsageAttributes(context, tokenUsage(response.get("usage")));
     }
 
     /**
@@ -297,20 +310,65 @@ public final class GenAiTraceAttributes {
         return statusCode < 200 || statusCode >= 300 ? "failed" : "completed";
     }
 
-    private static JsonNode responseTree(ProxyContext context, InterfaceType type, Buffer responseBody) {
-        if (!isEventStream(context)) {
-            return parse(responseBody);
+    /**
+     * Derives tracing's view of a response the caller holds only as raw bytes: streaming-aware (a reduced
+     * view assembled from the SSE frames for a streamed request, not the buffered body) and capped at
+     * {@link #MAX_TRACED_BODY_BYTES}. That tree is tracing's alone; nothing outside this class may treat it
+     * as "the parsed response" for any other purpose. Never throws - a caller passes the result straight to
+     * {@link #setResponseAttributes(ProxyContext, InterfaceType, JsonNode, String)} or
+     * {@link #setFetchResponseAttributes(ProxyContext, JsonNode, String)} without its own try/catch, exactly
+     * as {@link #enrich} already shielded this same derivation when it ran inside those methods.
+     */
+    public static JsonNode parseResponse(ProxyContext context, InterfaceType type, Buffer responseBody) {
+        try {
+            if (!isEventStream(context)) {
+                return parse(responseBody);
+            }
+            return switch (type) {
+                // shared with the analytics log, which merges the same body once per streamed request
+                case OPENAI_CHAT_COMPLETIONS -> chatCompletionsTree(context);
+                // captured live by ExtractTerminalResponseFn / CollectMessagesTokenUsageFn while streaming; a run
+                // that never reached an attributable frame (failed/cancelled, or a fetch path that doesn't run
+                // that function) leaves nothing cached, and only then is the buffered stream scanned for it
+                case OPENAI_RESPONSES -> liveOrScanned(context, () -> {
+                    String assembled = context.getAssembledStreamingResponse();
+                    return assembled == null ? responsesEvent(responseBody) : parse(assembled);
+                });
+                case ANTHROPIC_MESSAGES -> liveOrScanned(context, () -> anthropicResponse(responseBody));
+                case OPENAI_EMBEDDINGS -> parse(responseBody);
+            };
+        } catch (Throwable e) {
+            log.warn("Failed to parse response for tracing", e);
+            return MissingNode.getInstance();
         }
-        String assembled = context.getAssembledStreamingResponse();
-        return switch (type) {
-            // shared with the analytics log, which merges the same body once per streamed request
-            case OPENAI_CHAT_COMPLETIONS -> parse(context.assembledChatCompletionsResponse());
-            // the terminal frame ExtractTerminalResponseFn already kept while streaming; a run that failed or
-            // was cancelled leaves none, and only then is the buffered stream scanned for it
-            case OPENAI_RESPONSES -> assembled == null ? responsesEvent(responseBody) : parse(assembled);
-            case ANTHROPIC_MESSAGES -> anthropicResponse(responseBody);
-            case OPENAI_EMBEDDINGS -> parse(responseBody);
-        };
+    }
+
+    /**
+     * @return the tree {@link ProxyContext#assembledChatCompletionsResponseTree()} already merged for the
+     *         analytics log. The same 512 KiB tracing limit as for non-streaming responses is preserved,
+     *         but the already assembled tree is reused instead of being parsed again.
+     */
+    private static JsonNode chatCompletionsTree(ProxyContext context) {
+        ObjectNode tree = context.assembledChatCompletionsResponseTree();
+        if (tree == null) {
+            return MissingNode.getInstance();
+        }
+        String assembledResponse = context.assembledChatCompletionsResponse();
+        if (assembledResponse == null
+                || assembledResponse.getBytes(StandardCharsets.UTF_8).length > MAX_TRACED_BODY_BYTES) {
+            return MissingNode.getInstance();
+        }
+        return tree;
+    }
+
+    /**
+     * Prefers whatever a per-event streaming function already cached on the context over the given fallback -
+     * set for {@code OPENAI_RESPONSES} by {@code ExtractTerminalResponseFn}, for {@code ANTHROPIC_MESSAGES} by
+     * {@code CollectMessagesTokenUsageFn}; null when that function never ran or never reached such a frame.
+     */
+    private static JsonNode liveOrScanned(ProxyContext context, Supplier<JsonNode> fallback) {
+        JsonNode live = context.getPricingUsageNode();
+        return live != null ? live : fallback.get();
     }
 
     /**
@@ -440,12 +498,10 @@ public final class GenAiTraceAttributes {
     }
 
     private static String parseParentSpanId(ProxyContext context) {
-        String traceparent = context.getRequest().getHeader("traceparent");
-        if (traceparent == null) {
-            return null;
-        }
-        Matcher matcher = TRACEPARENT_PATTERN.matcher(traceparent);
-        return matcher.matches() ? matcher.group(2) : null;
+        Context extracted = W3CTraceContextPropagator.getInstance()
+                .extract(Context.root(), context.getRequest(), TRACEPARENT_GETTER);
+        SpanContext spanContext = Span.fromContext(extracted).getSpanContext();
+        return spanContext.isValid() ? spanContext.getSpanId() : null;
     }
 
     private static TokenUsage tokenUsage(JsonNode usage) {

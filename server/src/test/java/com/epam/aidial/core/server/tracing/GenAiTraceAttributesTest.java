@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.opentelemetry.api.trace.Span;
 import io.vertx.core.MultiMap;
@@ -32,6 +33,7 @@ import static io.opentelemetry.api.common.AttributeKey.stringKey;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -51,7 +53,9 @@ class GenAiTraceAttributesTest {
                 .thenReturn("00-11111111111111111111111111111111-2222222222222222-01");
         ProxyContext context = context(proxy, request);
 
-        try (var ignored = mockStatic(Span.class)) {
+        // CALLS_REAL_METHODS: parseParentSpanId now goes through W3CTraceContextPropagator, which calls
+        // Span.wrap/Span.fromContext internally - only Span.current() below needs to be the mock's own answer
+        try (var ignored = mockStatic(Span.class, CALLS_REAL_METHODS)) {
             Span span = mock(Span.class);
             when(span.isRecording()).thenReturn(true);
             when(Span.current()).thenReturn(span);
@@ -213,7 +217,8 @@ class GenAiTraceAttributesTest {
                  "usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}
                 """);
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, responseTree, null);
 
         assertEquals("chat-1", context.getTracingAttributes().get("gen_ai.response.id"));
         assertEquals("gpt-4", context.getTracingAttributes().get("gen_ai.response.model"));
@@ -233,7 +238,8 @@ class GenAiTraceAttributesTest {
                 """);
         context.setResponseBody(body);
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, responseTree, null);
 
         assertEquals("chat-1", context.getTracingAttributes().get("gen_ai.response.id"));
         assertEquals(List.of("length"), context.getTracingAttributes().get("gen_ai.response.finish_reasons"));
@@ -251,7 +257,8 @@ class GenAiTraceAttributesTest {
                 data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}
                 """);
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.ANTHROPIC_MESSAGES, body);
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.ANTHROPIC_MESSAGES, body);
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.ANTHROPIC_MESSAGES, responseTree, null);
 
         assertEquals("msg-1", context.getTracingAttributes().get("gen_ai.response.id"));
         assertEquals("claude", context.getTracingAttributes().get("gen_ai.response.model"));
@@ -266,7 +273,8 @@ class GenAiTraceAttributesTest {
                 data: {"type":"response.completed","response":{"id":"resp-1","model":"gpt-4","status":"completed"}}
                 """);
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body);
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_RESPONSES, body);
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, responseTree, null);
 
         assertEquals("resp-1", context.getTracingAttributes().get("gen_ai.response.id"));
         assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
@@ -281,7 +289,8 @@ class GenAiTraceAttributesTest {
                 data: {"type":"response.completed","response":{"id":"upstream-1","model":"gpt-4","status":"completed"}}
                 """);
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body, "dial-1");
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_RESPONSES, body);
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, responseTree, "dial-1");
 
         assertEquals("dial-1", context.getTracingAttributes().get("gen_ai.response.id"));
         assertEquals("gpt-4", context.getTracingAttributes().get("gen_ai.response.model"));
@@ -295,8 +304,8 @@ class GenAiTraceAttributesTest {
         when(route.isCacheEntryStored()).thenReturn(true);
         context.setUpstreamRoute(route);
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
-                Buffer.buffer("{\"id\":\"chat-1\"}"));
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, Buffer.buffer("{\"id\":\"chat-1\"}"));
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, responseTree, null);
 
         assertEquals("prefix.body.messages[1]", context.getTracingAttributes().get("dial.upstream.cache.breakpoint_path"));
         assertEquals(true, context.getTracingAttributes().get("dial.upstream.cache.stored"));
@@ -307,8 +316,8 @@ class GenAiTraceAttributesTest {
         ProxyContext context = context(proxy(enabledSettings()));
         context.setUpstreamRoute(mock(UpstreamRoute.class));
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
-                Buffer.buffer("{\"id\":\"chat-1\"}"));
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, Buffer.buffer("{\"id\":\"chat-1\"}"));
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, responseTree, null);
 
         // "stored: false" against a path the upstream never reported would read as a failure to cache
         assertFalse(context.getTracingAttributes().containsKey("dial.upstream.cache.breakpoint_path"));
@@ -323,8 +332,8 @@ class GenAiTraceAttributesTest {
         when(route.getCacheBreakpointPath()).thenThrow(new IllegalStateException("boom"));
         context.setUpstreamRoute(route);
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
-                Buffer.buffer("{\"id\":\"chat-1\"}"));
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, Buffer.buffer("{\"id\":\"chat-1\"}"));
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, responseTree, null);
 
         // contained, not skipped: what was set before the throw survives
         assertEquals("chat-1", context.getTracingAttributes().get("gen_ai.response.id"));
@@ -340,7 +349,8 @@ class GenAiTraceAttributesTest {
                 data: {"type":"response.completed","response":{"id":"resp-1","model":"gpt-4","status":"completed"}}
                 """);
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body);
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_RESPONSES, body);
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, responseTree, null);
 
         assertEquals("resp-1", context.getTracingAttributes().get("gen_ai.response.id"));
         assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
@@ -413,7 +423,8 @@ class GenAiTraceAttributesTest {
         when(context.getResponse().getStatusCode()).thenReturn(500);
         Buffer body = Buffer.buffer("{\"error\":{\"message\":\"upstream is down\"}}");
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, responseTree, null);
 
         assertEquals("failed", context.getTracingAttributes().get("gen_ai.response.status"));
         assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.id"));
@@ -428,8 +439,8 @@ class GenAiTraceAttributesTest {
         // DIAL rewrote the status after a 200 upstream
         when(context.getResponse().getStatusCode()).thenReturn(502);
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
-                Buffer.buffer("{\"id\":\"chat-1\"}"));
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, Buffer.buffer("{\"id\":\"chat-1\"}"));
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, responseTree, null);
 
         assertEquals("failed", context.getTracingAttributes().get("gen_ai.response.status"));
     }
@@ -449,8 +460,8 @@ class GenAiTraceAttributesTest {
     @Test
     void setFailureStatusKeepsTheStatusAlreadyPublished() {
         ProxyContext context = context(proxy(enabledSettings()));
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES,
-                Buffer.buffer("{\"id\":\"resp-1\",\"status\":\"incomplete\"}"));
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_RESPONSES, Buffer.buffer("{\"id\":\"resp-1\",\"status\":\"incomplete\"}"));
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, responseTree, null);
 
         GenAiTraceAttributes.setFailureStatus(context, 500);
 
@@ -495,7 +506,8 @@ class GenAiTraceAttributesTest {
                 data: {"type":"response.failed","error":{"message":"boom"}}
                 """);
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body);
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_RESPONSES, body);
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, responseTree, null);
 
         assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.id"));
         // DIAL streamed the body successfully, so the client-facing 200 would read as "completed" -
@@ -512,7 +524,8 @@ class GenAiTraceAttributesTest {
                     data: {"type":"response.%s","response":{"id":"resp-1"}}
                     """.formatted(event, event));
 
-            GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body);
+            JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_RESPONSES, body);
+            GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, responseTree, null);
 
             assertEquals(event, context.getTracingAttributes().get("gen_ai.response.status"));
             assertEquals("resp-1", context.getTracingAttributes().get("gen_ai.response.id"));
@@ -530,7 +543,8 @@ class GenAiTraceAttributesTest {
                 data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}
                 """);
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.ANTHROPIC_MESSAGES, body);
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.ANTHROPIC_MESSAGES, body);
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.ANTHROPIC_MESSAGES, responseTree, null);
 
         assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.id"));
         assertEquals(List.of("end_turn"), context.getTracingAttributes().get("gen_ai.response.finish_reasons"));
@@ -541,7 +555,8 @@ class GenAiTraceAttributesTest {
         ProxyContext context = context(proxy(enabledSettings()));
         Buffer body = Buffer.buffer("{\"id\":\"resp-1\",\"model\":\"gpt-4\",\"status\":\"completed\"}");
 
-        GenAiTraceAttributes.setFetchResponseAttributes(context, body, "resp-1");
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_RESPONSES, body);
+        GenAiTraceAttributes.setFetchResponseAttributes(context, responseTree, "resp-1");
 
         assertEquals("fetch_response", context.getTracingAttributes().get("gen_ai.operation.name"));
         assertEquals("resp-1", context.getTracingAttributes().get("gen_ai.response.id"));
@@ -556,7 +571,8 @@ class GenAiTraceAttributesTest {
                 data: {"type":"response.completed","response":{"id":"upstream-1","model":"gpt-4"}}
                 """);
 
-        GenAiTraceAttributes.setFetchResponseAttributes(context, body, "dial-1");
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_RESPONSES, body);
+        GenAiTraceAttributes.setFetchResponseAttributes(context, responseTree, "dial-1");
 
         assertEquals("dial-1", context.getTracingAttributes().get("gen_ai.response.id"));
     }
@@ -640,11 +656,51 @@ class GenAiTraceAttributesTest {
                 data: {"type":"response.completed","response":{"id":"scanned","status":"completed"}}
                 """);
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body);
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_RESPONSES, body);
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, responseTree, null);
 
         assertEquals("resp-1", context.getTracingAttributes().get("gen_ai.response.id"));
         assertEquals("gpt-4", context.getTracingAttributes().get("gen_ai.response.model"));
         assertEquals("incomplete", context.getTracingAttributes().get("gen_ai.response.status"));
+    }
+
+    @Test
+    void setResponseAttributesPrefersTheLivePricingUsageNodeOverTheAssembledStringForResponsesApi() throws Exception {
+        // ExtractTerminalResponseFn caches the parsed terminal frame as pricingUsageNode during the same
+        // pass that built the assembled string - GenAiTraceAttributes reads that node directly rather than
+        // reparsing the string it would otherwise fall back to
+        ProxyContext context = streamingContext();
+        context.setPricingUsageNode(ProxyUtil.MAPPER.readTree(
+                "{\"id\":\"resp-live\",\"model\":\"gpt-4\",\"status\":\"completed\"}"));
+        context.setAssembledStreamingResponse("{\"id\":\"resp-from-string\",\"status\":\"incomplete\"}");
+        Buffer body = Buffer.buffer("event: response.completed\ndata: {\"type\":\"response.completed\","
+                + "\"response\":{\"id\":\"scanned\",\"status\":\"completed\"}}\n\n");
+
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_RESPONSES, body);
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, responseTree, null);
+
+        assertEquals("resp-live", context.getTracingAttributes().get("gen_ai.response.id"));
+        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
+    }
+
+    @Test
+    void setResponseAttributesPrefersTheLivePricingUsageNodeOverTheRawSseScanForAnthropic() throws Exception {
+        // CollectMessagesTokenUsageFn caches id/model/stop_reason on pricingUsageNode as it streams -
+        // GenAiTraceAttributes reads that instead of re-scanning the buffered SSE frames for the same fields
+        ProxyContext context = streamingContext();
+        context.setPricingUsageNode(ProxyUtil.MAPPER.readTree(
+                "{\"id\":\"msg-live\",\"model\":\"claude-3\",\"stop_reason\":\"end_turn\"}"));
+        Buffer body = Buffer.buffer("""
+                event: message_start
+                data: {"type":"message_start","message":{"id":"scanned","model":"claude-scanned"}}
+                """);
+
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.ANTHROPIC_MESSAGES, body);
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.ANTHROPIC_MESSAGES, responseTree, null);
+
+        assertEquals("msg-live", context.getTracingAttributes().get("gen_ai.response.id"));
+        assertEquals("claude-3", context.getTracingAttributes().get("gen_ai.response.model"));
+        assertEquals(List.of("end_turn"), context.getTracingAttributes().get("gen_ai.response.finish_reasons"));
     }
 
     @Test
@@ -653,22 +709,31 @@ class GenAiTraceAttributesTest {
         ProxyContext context = context(proxy(enabledSettings()));
         Buffer body = Buffer.buffer("{\"model\":\"embed\",\"data\":\"" + "0".repeat(600 * 1024) + "\"}");
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_EMBEDDINGS, body);
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_EMBEDDINGS, body);
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_EMBEDDINGS, responseTree, null);
 
         assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.model"));
         assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
         assertEquals("openai_embeddings", context.getTracingAttributes().get("dial.api"));
     }
 
+    /**
+     * The assembled tree ({@link com.epam.aidial.core.server.ProxyContext#assembledChatCompletionsResponseTree()})
+     * is reused rather than re-parsed, but it is still subject to the same 512 KiB tracing cap as a fresh
+     * parse - {@code chatCompletionsTree} checks the assembled string's byte length before handing the tree
+     * back, exactly as {@link #setResponseAttributesSkipsBodyTooLargeToTrace} checks it for a non-streamed body.
+     */
     @Test
-    void setResponseAttributesSkipsAssembledBodyOversizedInUtf8BytesButNotInChars() {
+    void setResponseAttributesSkipsTheAssembledChatCompletionsTreeWhenTooLarge() {
         ProxyContext context = streamingContext();
-        String oversizedAssembled = "{\"id\":\"chat-1\",\"model\":\"gpt-4\",\"choices\":[{\"content\":\""
-                + "中".repeat(200_000) + "\"}]}";
-        context.setAssembledStreamingResponse(oversizedAssembled);
-        Buffer body = Buffer.buffer("data: [DONE]\n\n");
+        String oversizedContent = "中".repeat(200_000);
+        Buffer body = Buffer.buffer("data: {\"id\":\"chat-1\",\"model\":\"gpt-4\",\"choices\":"
+                + "[{\"index\":0,\"delta\":{\"content\":\"" + oversizedContent + "\"},\"finish_reason\":\"stop\"}]}\n\n"
+                + "data: [DONE]\n\n");
+        context.setResponseBody(body);
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
+        JsonNode responseTree = GenAiTraceAttributes.parseResponse(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, responseTree, null);
 
         assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.id"));
         assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.model"));

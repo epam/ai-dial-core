@@ -61,8 +61,37 @@ public class RateLimiter {
     private final ConfigStore configStore;
 
     public Future<Void> increase(
-            RoleBasedEntity roleBasedEntity, String bucket, TokenUsage usage, Buffer requestBody, Buffer responseBody,
-            InterfaceType interfaceType, JsonNode liveUsageNode) {
+            RoleBasedEntity roleBasedEntity,
+            String bucket,
+            TokenUsage usage,
+            Buffer requestBody,
+            InterfaceType interfaceType,
+            ModelCostCalculator.ResponseSource response) {
+
+        try {
+            if (resourceService == null) {
+                return Future.succeededFuture();
+            }
+
+            BigDecimal cost = ModelCostCalculator.resolveCost(
+                    roleBasedEntity,
+                    usage,
+                    requestBody,
+                    interfaceType,
+                    response);
+
+            return increase(roleBasedEntity, bucket, usage, cost);
+        } catch (Throwable e) {
+            return Future.failedFuture(e);
+        }
+    }
+
+    /**
+     * @param cost the deployment's cost for this call, already computed by the caller from whichever
+     *             representation of the response it holds - {@link RateLimiter} itself never inspects a
+     *             response body in any form, only the result of pricing it.
+     */
+    public Future<Void> increase(RoleBasedEntity roleBasedEntity, String bucket, TokenUsage usage, BigDecimal cost) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {
@@ -70,8 +99,6 @@ public class RateLimiter {
             }
 
             RateLimitSchedule schedule = configStore.get().getRateLimitSchedule();
-            BigDecimal cost = ModelCostCalculator.calculate(
-                    roleBasedEntity, usage, requestBody, responseBody, interfaceType, liveUsageNode);
             Future<Void> costFuture;
             if (cost != null && cost.compareTo(BigDecimal.ZERO) > 0) {
                 if (usage != null) {

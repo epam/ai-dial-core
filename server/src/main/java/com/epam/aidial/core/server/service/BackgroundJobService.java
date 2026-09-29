@@ -23,6 +23,7 @@ import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
+import com.epam.aidial.core.server.util.ModelCostCalculator;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -245,17 +246,14 @@ public class BackgroundJobService {
                     Future<Void> limitFuture = Future.succeededFuture();
                     if (deployment instanceof Model && hasUsage) {
                         Buffer requestBody = Buffer.buffer(jobRecord.requestBody());
-                        // null liveUsageNode: this poller never streams, result.body() is a single
-                        // buffered document, so ModelCostCalculator parses it directly.
-                        limitFuture = rateLimiter.increase(
-                                deployment, responseMapping.getInitiatorBucket(), usage, requestBody, result.body(),
-                                InterfaceType.OPENAI_RESPONSES, null)
-                                .transform(limitResult -> {
-                                    if (limitResult.failed()) {
-                                        log.warn("Failed to increase limit", limitResult.cause());
-                                    }
-                                    return Future.<Void>succeededFuture();
-                                });
+                        limitFuture = rateLimiter.increase(deployment, responseMapping.getInitiatorBucket(), usage, requestBody, InterfaceType.OPENAI_RESPONSES,
+                                new ModelCostCalculator.ResponseSource.Body(result.body()))
+                            .transform(limitResult -> {
+                                if (limitResult.failed()) {
+                                    log.warn("Failed to increase limit", limitResult.cause());
+                                }
+                                return Future.<Void>succeededFuture();
+                            });
                     }
 
                     Future<List<UsagePerModel>> statsFuture = limitFuture.compose(ignored -> {

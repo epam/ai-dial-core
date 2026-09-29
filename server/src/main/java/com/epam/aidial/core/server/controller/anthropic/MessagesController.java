@@ -23,8 +23,11 @@ import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
@@ -139,14 +142,20 @@ public class MessagesController extends MessagesBaseController {
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
-    private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
+    @VisibleForTesting
+    Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
         context.setResponseBody(body);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         HttpServerResponse response = context.getResponse();
         ProxyUtil.copyResponse(response, proxyResponse);
         response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
         putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
-        return collectTokenUsage(body)
+        // parsed once here: both token usage and tracing read this tree, instead of each calling readTree
+        // on the same body. Nothing rewrites the body, so the client still gets the upstream bytes. A body
+        // that isn't valid JSON at all falls back to the Buffer overload instead of silently reporting no usage.
+        JsonNode responseTree = JsonUtil.tryParse(body.getBytes());
+        Future<Void> tokenUsageFuture = responseTree.isMissingNode() ? collectTokenUsage(body) : collectTokenUsage(responseTree, null);
+        return tokenUsageFuture
                 .transform(result -> {
                     if (result.failed()) {
                         log.warn("Failed to collect token usage", result.cause());
@@ -156,7 +165,8 @@ public class MessagesController extends MessagesBaseController {
                 });
     }
 
-    private void handleResponse(BufferingReadStream responseStream) {
+    @VisibleForTesting
+    void handleResponse(BufferingReadStream responseStream) {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
@@ -169,6 +179,10 @@ public class MessagesController extends MessagesBaseController {
     }
 
     private void completeProxyResponse(Runnable endResponse) {
+        // must run before endResponse.run(): Vert.x ends the request's OTel span synchronously inside
+        // response.end()/responseStream.end(), after which further span attributes (dial.latency.*) are
+        // silently dropped
+        GenAiTraceAttributes.setLatencyAttributes(context);
         endResponse.run();
         proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
         Upstream currentUpstream = context.getUpstreamRoute().get();
@@ -190,6 +204,15 @@ public class MessagesController extends MessagesBaseController {
             return context.getTokenUsage();
         }
         return MessagesTokenUsageParser.parse(responseBody);
+    }
+
+    @Override
+    protected TokenUsage parseTokenUsage(JsonNode response) {
+        if (context.isStreamingRequest()) {
+            // Populated event-by-event by CollectMessagesTokenUsageFn during streaming.
+            return context.getTokenUsage();
+        }
+        return MessagesTokenUsageParser.parse(response);
     }
 
     @Override

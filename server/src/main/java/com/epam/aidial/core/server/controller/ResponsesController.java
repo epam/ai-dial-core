@@ -45,7 +45,9 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -55,7 +57,6 @@ import io.vertx.core.http.HttpServerResponse;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
-import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -198,6 +199,9 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     private ResponsesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
+        // dial.latency.client_body_ms must reflect only the time to receive/parse the client body,
+        // consistently with ChatCompletionsController - not the enhancement/key/route work that follows
+        context.setRequestBodyTimestamp(System.currentTimeMillis());
         try {
             ObjectNode tree = ProxyUtil.parseObject(body);
             if (tree.has("previous_response_id")) {
@@ -261,7 +265,6 @@ public class ResponsesController extends BaseDeploymentPostController {
                         dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES,
                                 context.getConfig().getTranslators()), upstreamId);
 
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);
         sendRequest();
 
@@ -349,17 +352,18 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
-    private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
+    @VisibleForTesting
+    Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
         return rewriteResponseId(proxyResponse, body)
-                .compose(pair -> {
-                    String dialId = pair.getKey();
-                    Buffer rewritten = pair.getValue();
-                    context.setResponseBody(rewritten);
+                .compose(rewriteResult -> {
+                    String dialId = rewriteResult.dialId();
+                    Buffer serializedBody = rewriteResult.serializedBody();
+                    context.setResponseBody(serializedBody);
                     context.setResponseBodyTimestamp(System.currentTimeMillis());
                     HttpServerResponse response = context.getResponse();
                     ProxyUtil.copyResponse(response, proxyResponse);
                     response.setChunked(false);
-                    response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
+                    response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(serializedBody.length()));
                     putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
                     if (context.isBackgroundJob() && dialId != null) {
@@ -368,55 +372,82 @@ public class ResponsesController extends BaseDeploymentPostController {
                                     if (result.failed()) {
                                         log.warn("Failed to save background job record", result.cause());
                                     }
-                                    response.end(rewritten);
+                                    GenAiTraceAttributes.setLatencyAttributes(context);
+                                    response.end(serializedBody);
                                 });
                     } else {
-                        return collectTokenUsage(rewritten)
+                        // rewriteResponseId already parsed this response - tracing, token usage and attachment
+                        // collection all read that tree, so the body is never parsed a second time. A body
+                        // that isn't valid JSON at all (rewriteResponseId's parse then yields MissingNode)
+                        // falls back to the Buffer overloads instead of silently reporting no usage.
+                        JsonNode responseTree = rewriteResult.responseTree();
+                        boolean parsed = !responseTree.isMissingNode();
+                        Future<Void> tokenUsageFuture = parsed
+                                ? collectTokenUsage(responseTree, null)
+                                : collectTokenUsage(serializedBody, null);
+                        return tokenUsageFuture
                                 .transform(result -> {
                                     if (result.failed()) {
                                         log.warn("Failed to collect token usage", result.cause());
                                     }
-                                    return collectResponseAttachments(rewritten, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
+                                    CollectResponsesApiOutputAttachmentsFn attachmentsFn =
+                                            new CollectResponsesApiOutputAttachmentsFn(proxy, context);
+                                    return parsed
+                                            ? collectResponseAttachments(responseTree, attachmentsFn)
+                                            : collectResponseAttachments(serializedBody, attachmentsFn);
                                 })
                                 .onComplete(result -> {
                                     if (result.failed()) {
                                         log.warn("Failed to collect attachments from response", result.cause());
                                     }
-                                    response.end(rewritten);
+                                    // must run before end(): Vert.x ends the request's OTel span
+                                    // synchronously inside end(), after which further span attributes
+                                    // (dial.latency.*) are silently dropped
+                                    GenAiTraceAttributes.setLatencyAttributes(context);
+                                    response.end(serializedBody);
                                     completeProxyResponse(null);
                                 });
                     }
                 });
     }
 
-    private Future<Pair<String, Buffer>> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
+    /**
+     * @param responseTree   the parsed response - what tracing, token usage and attachment collection read.
+     *                       Never null: the body is parsed whatever the upstream status was.
+     * @param serializedBody the bytes to write to the client: the re-serialized tree when the id was rewritten,
+     *                       otherwise the upstream body untouched.
+     */
+    private record RewriteResult(String dialId, JsonNode responseTree, Buffer serializedBody) {
+    }
+
+    private Future<RewriteResult> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
         if (proxyResponse.statusCode() != 200) {
-            return Future.succeededFuture(Pair.of(null, body));
+            return Future.succeededFuture(new RewriteResult(null, MissingNode.getInstance(), body));
         }
-        JsonNode tree = JsonUtil.tryParse(body.getBytes());
-        if (!tree.isObject() || !(tree instanceof ObjectNode object)) {
+        JsonNode responseTree = JsonUtil.tryParse(body.getBytes());
+        if (!(responseTree instanceof ObjectNode responseObject)) {
             log.warn("Response body is not a JSON object, skipping rewrite. Deployment: {}. Endpoint: {}",
                     context.getDeployment().getName(),
                     context.getProxyRequestUri());
-            return Future.succeededFuture(Pair.of(null, body));
+            return Future.succeededFuture(new RewriteResult(null, responseTree, body));
         }
-        JsonNode idNode = object.path("id");
+        JsonNode idNode = responseObject.path("id");
         if (!idNode.isTextual()) {
             log.info("Response body doesn't contain 'id' field, skipping rewrite. Deployment: {}. Endpoint: {}",
                     context.getDeployment().getName(),
                     context.getProxyRequestUri());
-            return Future.succeededFuture(Pair.of(null, body));
+            return Future.succeededFuture(new RewriteResult(null, responseObject, body));
         }
 
         String upstreamId = idNode.asText();
         Upstream upstream = context.getUpstreamRoute().get();
         if (EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
-            EncryptedContentAffinityUtil.wrapOutputArray(object.path("output"), upstream.getId());
+            EncryptedContentAffinityUtil.wrapOutputArray(responseObject.path("output"), upstream.getId());
         }
         if (!context.isStoreResponse()) {
             String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
-            object.put("id", dialId);
-            return Future.succeededFuture(Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object))));
+            responseObject.put("id", dialId);
+            return Future.succeededFuture(new RewriteResult(dialId, responseObject, Buffer.buffer(JsonUtil.serialize(responseObject))));
         }
         ResponseMapping mapping = ResponseMapping.builder()
                 .upstreamResponseId(upstreamId)
@@ -427,12 +458,13 @@ public class ResponsesController extends BaseDeploymentPostController {
         return proxy.getTaskExecutor()
                 .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
                 .map(dialId -> {
-                    object.put("id", dialId);
-                    return Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object)));
+                    responseObject.put("id", dialId);
+                    return new RewriteResult(dialId, responseObject, Buffer.buffer(JsonUtil.serialize(responseObject)));
                 });
     }
 
-    private void handleStreamingResponse(BufferingReadStream responseStream, String dialId, String assembledStreamingResponse) {
+    @VisibleForTesting
+    void handleStreamingResponse(BufferingReadStream responseStream, String dialId, String assembledStreamingResponse) {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
@@ -453,6 +485,9 @@ public class ResponsesController extends BaseDeploymentPostController {
             if (result.failed()) {
                 log.warn("Failed to collect token usage", result.cause());
             }
+            // must run before end(): Vert.x ends the request's OTel span synchronously inside end(),
+            // after which further span attributes (dial.latency.*) are silently dropped
+            GenAiTraceAttributes.setLatencyAttributes(context);
             responseStream.end(context.getResponse());
             completeProxyResponse(assembledStreamingResponse);
         });

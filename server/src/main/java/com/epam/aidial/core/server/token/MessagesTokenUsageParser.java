@@ -39,6 +39,15 @@ public class MessagesTokenUsageParser {
     }
 
     /**
+     * For a caller that already parsed the response: reads its top-level {@code usage} object, null when the
+     * response carries none.
+     */
+    public TokenUsage parse(JsonNode response) {
+        JsonNode usage = response.get("usage");
+        return (usage != null && usage.isObject()) ? fromUsageNode(usage) : null;
+    }
+
+    /**
      * Builds a {@link TokenUsage} from a single Anthropic {@code usage} JSON node.
      */
     public TokenUsage fromUsageNode(JsonNode usage) {

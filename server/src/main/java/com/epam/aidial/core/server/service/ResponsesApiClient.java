@@ -25,20 +25,28 @@ public class ResponsesApiClient {
     private final HttpClientOptions clientOptions;
 
     public Future<HttpClientResponse> send(String url, HttpMethod method, Upstream upstream, String apiKey) {
+        return send(url, method, upstream, apiKey, () -> { });
+    }
+
+    public Future<HttpClientResponse> send(String url, HttpMethod method, Upstream upstream, String apiKey,
+            Runnable onConnected) {
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(url)
                 .setMethod(method)
                 .setConnectTimeout(clientOptions.getConnectTimeout())
                 .setIdleTimeout(clientOptions.getIdleTimeout());
         return httpClient.request(options)
-                .compose(request -> request.putHeader(Proxy.HEADER_API_KEY, apiKey)
+                .compose(request -> {
+                    onConnected.run();
+                    return request.putHeader(Proxy.HEADER_API_KEY, apiKey)
                             .putHeader(Proxy.HEADER_UPSTREAM_KEY,
                                     UpstreamInterfaceUtil.resolveKey(upstream, InterfaceType.OPENAI_RESPONSES))
                             .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT,
                                     UpstreamInterfaceUtil.resolveEndpoint(upstream, InterfaceType.OPENAI_RESPONSES))
                             .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA,
                                     UpstreamExtraDataMerger.merge(upstream, InterfaceType.OPENAI_RESPONSES))
-                            .send());
+                            .send();
+                });
     }
 
     private static boolean isTerminal(String status) {
@@ -47,18 +55,30 @@ public class ResponsesApiClient {
 
     @SneakyThrows
     public static TerminalResult parseTerminalBody(Buffer body) {
-        JsonNode node = ProxyUtil.MAPPER.readTree(body.getBytes());
-        if (!(node instanceof ObjectNode tree)) {
+        return parseTerminalBody(ProxyUtil.MAPPER.readTree(body.getBytes()), body);
+    }
+
+    /**
+     * For a caller that already parsed the response (e.g. to rewrite its id) - skips the parse this otherwise
+     * repeats.
+     *
+     * @param response the parsed response, the only thing inspected here.
+     * @param payload  the bytes to hand on in {@link TerminalResult} for the background job to persist - never
+     *                 parsed, so it is not a second representation to choose between.
+     */
+    @SneakyThrows
+    public static TerminalResult parseTerminalBody(JsonNode response, Buffer payload) {
+        if (!(response instanceof ObjectNode responseObject)) {
             throw new IllegalStateException("Response body is not a JSON object.");
         }
-        JsonNode statusNode = tree.path("status");
+        JsonNode statusNode = responseObject.path("status");
         if (!statusNode.isTextual() || !isTerminal(statusNode.asText())) {
             return null;
         }
-        JsonNode usageNode = tree.path("usage");
+        JsonNode usageNode = responseObject.path("usage");
         TokenUsage usage = usageNode.isObject()
                 ? ProxyUtil.MAPPER.treeToValue(usageNode, TokenUsage.class) : null;
-        return new TerminalResult(body, usage);
+        return new TerminalResult(payload, usage);
     }
 
     public record TerminalResult(Buffer body, TokenUsage usage) {
