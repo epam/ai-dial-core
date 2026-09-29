@@ -10,7 +10,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ResponseMetadata {
-    String upstreamId;
     String deploymentName;
     String initiatorBucket;
 }

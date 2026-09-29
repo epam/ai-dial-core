@@ -15,11 +15,13 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
+import com.epam.aidial.core.server.data.ResponseMetadata;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
 import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.EncryptedAffinityUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
@@ -118,15 +120,17 @@ public class ResponseItemController implements Controller {
     })
     public Future<?> handle() {
         return proxy.getTaskExecutor().submit(() -> {
-            EncryptedAffinityUtil.UnwrappedResponseId unwrapped = EncryptedAffinityUtil.unwrapResponseId(dialResponseId);
-            if (unwrapped == null) {
-                throw notFoundException(dialResponseId);
-            }
-            return unwrapped;
-        })
-                .compose(unwrapped ->
-                    checkNotDeletingActive(unwrapped.deploymentName())
-                        .map(ignored -> unwrapped))
+                    ResponseMetadata metadata = proxy.getResponseMetadataService().getMetadata(dialResponseId);
+                    if (metadata == null) {
+                        throw notFoundException(dialResponseId);
+                    }
+                    String initiatorBucket = BucketBuilder.buildInitiatorBucket(context);
+                    if (!initiatorBucket.equals(metadata.getInitiatorBucket())) {
+                        throw forbiddenException(dialResponseId);
+                    }
+                    return metadata.getDeploymentName();
+                })
+                .compose(this::checkNotDeletingActive)
                 .compose(this::dispatch)
                 .eventually(this::finalizeRequest)
                 .onFailure(error -> {
@@ -161,8 +165,8 @@ public class ResponseItemController implements Controller {
                         : Future.succeededFuture(deploymentName));
     }
 
-    private Future<Void> dispatch(EncryptedAffinityUtil.UnwrappedResponseId unwrapped) {
-        Deployment deployment = proxy.getDeploymentService().findDeployment(context, unwrapped.deploymentName());
+    private Future<Void> dispatch(String deploymentName) {
+        Deployment deployment = proxy.getDeploymentService().findDeployment(context, deploymentName);
         if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES,
                 context.getConfig().getTranslators()) == null) {
             return context.respond(HttpStatus.SERVICE_UNAVAILABLE, "Deployment for response_id does not support Responses API")
@@ -186,7 +190,7 @@ public class ResponseItemController implements Controller {
             }
         }
 
-        return withRequestBody(() -> forwardToUpstream(unwrapped, deployment));
+        return withRequestBody(() -> forwardToUpstream(deployment));
     }
 
     private Future<Void> withRequestBody(Supplier<Future<Void>> continuation) {
@@ -201,7 +205,11 @@ public class ResponseItemController implements Controller {
         return new ResponsesInterceptorController(proxy, context, dialResponseId, operation.pathMapping, interceptorIndex).handle().mapEmpty();
     }
 
-    private Future<Void> forwardToUpstream(EncryptedAffinityUtil.UnwrappedResponseId unwrapped, Deployment deployment) {
+    private Future<Void> forwardToUpstream(Deployment deployment) {
+        EncryptedAffinityUtil.UnwrappedResponseId unwrapped = EncryptedAffinityUtil.unwrapResponseId(dialResponseId);
+        if (unwrapped == null) {
+            return Future.failedFuture(notFoundException(dialResponseId));
+        }
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
                 .get(deployment,
                         null,
@@ -331,6 +339,16 @@ public class ResponseItemController implements Controller {
         response.getError().setDisplayMessage(errorMessage);
         response.getError().setType("invalid_request_error");
         return new HttpException(HttpStatus.NOT_FOUND, ProxyUtil.MAPPER.writeValueAsString(response));
+    }
+
+    @SneakyThrows
+    private static HttpException forbiddenException(String dialResponseId) {
+        ErrorData response = new ErrorData();
+        String errorMessage = "Access to response with id '%s' is forbidden.".formatted(dialResponseId);
+        response.getError().setMessage(errorMessage);
+        response.getError().setDisplayMessage(errorMessage);
+        response.getError().setType("invalid_request_error");
+        return new HttpException(HttpStatus.FORBIDDEN, ProxyUtil.MAPPER.writeValueAsString(response));
     }
 
     @RequiredArgsConstructor

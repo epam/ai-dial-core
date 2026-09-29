@@ -87,6 +87,7 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
             RequestObject request = parseRequest(requestBody);
             if (request != null) {
                 context.setStreamingRequest(request.isStreaming());
+                context.setStoreResponse(request.isStore());
                 if (ProxyUtil.processChain(request, enhancementFunctions)) {
                     context.setRequestBody(Buffer.buffer(request.serialize()));
                 }
@@ -178,17 +179,20 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
                 .onFailure(this::handleResponseError);
     }
 
-    protected void afterResponse(Buffer responseBody) {}
+    protected Future<Void> afterResponse(Buffer responseBody) {
+        return Future.succeededFuture();
+    }
 
     private void handleResponse(BufferingReadStream responseStream) {
         Buffer responseBody = responseStream.getContent();
-        afterResponse(responseBody);
-        collectResponseAttachments(responseBody, createAttachmentFn(proxy, context)).onComplete(result -> {
-            if (result.failed()) {
-                log.warn("Failed to collect attachments from response. Error:", result.cause());
-            }
-            completeProxyResponse(responseStream);
-        });
+        afterResponse(responseBody).compose(ignore ->
+                collectResponseAttachments(responseBody, createAttachmentFn(proxy, context))
+                        .onComplete(result -> {
+                    if (result.failed()) {
+                        log.warn("Failed to collect attachments from response. Error:", result.cause());
+                    }
+                    completeProxyResponse(responseStream);
+                }));
     }
 
     private void completeProxyResponse(BufferingReadStream responseStream) {

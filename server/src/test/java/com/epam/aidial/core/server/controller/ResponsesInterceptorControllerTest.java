@@ -34,6 +34,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -257,6 +258,38 @@ public class ResponsesInterceptorControllerTest {
         assertNotNull(updatedBody);
         ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(updatedBody.getBytes());
         assertEquals("name", tree.get("model").asText());
+    }
+
+    @Test
+    void handleRequestBody_setsStoreResponseFromRequestBody() throws IOException {
+        Interceptor interceptor = new Interceptor();
+        interceptor.setName("interceptor1");
+        interceptor.setResponsesEndpoint("http://localhost:4088/openai/v1/responses");
+        interceptor.setOverrideName("overrideName");
+
+        when(context.getDeployment()).thenReturn(interceptor);
+        when(context.getRequest()).thenReturn(request);
+        when(request.query()).thenReturn(null);
+        when(proxy.getClient()).thenReturn(mock(HttpClient.class, Answers.RETURNS_DEEP_STUBS));
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
+
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setInterceptorIndex(0);
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+
+        ResponsesInterceptorController controller = new ResponsesInterceptorController(proxy, context, 0);
+
+        String body = """
+                {
+                    "model": "test",
+                    "input": [],
+                    "store": true
+                }
+                """;
+        controller.handleRequestBody(Buffer.buffer(body));
+
+        verify(context).setStoreResponse(true);
     }
 
     @Test

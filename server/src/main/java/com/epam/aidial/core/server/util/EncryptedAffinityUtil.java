@@ -157,8 +157,6 @@ public class EncryptedAffinityUtil {
 
     public record UnwrappedResponseId(String upstreamId, String upstreamResponseId, String deploymentName) {}
 
-    // ── Internal helpers ──────────────────────────────────────────────────────
-
     @Nullable
     private String unwrapId(ObjectNode object) {
         JsonNode idNode = object.path("id");

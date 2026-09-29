@@ -20,6 +20,8 @@ import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -91,38 +93,39 @@ public class ResponsesInterceptorController extends BaseInterceptorController {
     }
 
     @Override
-    protected void afterResponse(Buffer responseBody) {
-        if (!context.isStoreResponse() || pathMapping != null) {
-            return;
-        }
-        String responseId = resolveResponseId(responseBody);
-        if (responseId == null) {
-            return;
-        }
-        ResponseMetadata metadata = ResponseMetadata.builder()
-                .upstreamId(null)
-                .deploymentName(context.getInitialDeployment())
-                .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
-                .build();
-        proxy.getTaskExecutor()
-                .submit(() -> {
-                    proxy.getResponseMetadataService().saveMetadata(responseId, metadata, EtagHeader.ANY);
-                    return null;
-                })
-                .onFailure(e -> log.warn("Failed to save response metadata for interceptor response {}", responseId, e));
-    }
-
-    private String resolveResponseId(Buffer responseBody) {
-        if (interceptedResponseId != null) {
-            return interceptedResponseId;
+    protected Future<Void> afterResponse(Buffer responseBody) {
+        if (pathMapping != null || interceptedResponseId != null) {
+            return Future.succeededFuture();
         }
         JsonNode tree = JsonUtil.tryParse(responseBody.getBytes());
-        return tree.path("id").asText(null);
+        String responseId = tree.path("id").asText(null);
+        return onResponseIdAvailable(responseId);
     }
 
     @Override
     protected InterfaceType interfaceType() {
         return InterfaceType.OPENAI_RESPONSES;
+    }
+
+    private Future<Void> onResponseIdAvailable(String responseId) {
+        if (context.isStoreResponse()) {
+            ResponseMetadata metadata = ResponseMetadata.builder()
+                    .deploymentName(context.getInitialDeployment())
+                    .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
+                    .build();
+            return proxy.getTaskExecutor()
+                    .<Void>submit(() -> {
+                        proxy.getResponseMetadataService().saveMetadata(responseId, metadata, EtagHeader.NEW_ONLY);
+                        return null;
+                    })
+                    .recover(exception -> exception instanceof HttpException httpException
+                            && httpException.getStatus() == HttpStatus.PRECONDITION_FAILED
+                            ? Future.succeededFuture()
+                            : Future.failedFuture(exception))
+                    .onFailure(e -> log.warn("Failed to save response metadata for interceptor response {}", responseId, e));
+        }
+
+        return Future.succeededFuture();
     }
 
     private class ResponseIdExtractorFn extends BaseResponseFunction {
@@ -132,13 +135,18 @@ public class ResponsesInterceptorController extends BaseInterceptorController {
 
         @Override
         public Future<JsonNode> apply(JsonNode tree) {
+            Future<JsonNode> result = Future.succeededFuture(tree);
             if (tree.get("response") instanceof ObjectNode response) {
                 JsonNode idNode = response.path("id");
                 if (idNode.isTextual()) {
+                    boolean firstTime = interceptedResponseId == null;
                     interceptedResponseId = idNode.asText();
+                    if (firstTime) {
+                        result = onResponseIdAvailable(interceptedResponseId).map(tree);
+                    }
                 }
             }
-            return Future.succeededFuture(tree);
+            return result;
         }
     }
 }
