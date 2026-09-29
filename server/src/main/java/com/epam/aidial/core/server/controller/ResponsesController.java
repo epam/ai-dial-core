@@ -351,45 +351,46 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
-        return rewrite(proxyResponse.statusCode(), body).compose(updatedBody -> {
-            context.setResponseBody(updatedBody);
+        return rewrite(proxyResponse.statusCode(), body).compose(rewritten -> {
+            context.setResponseBody(rewritten);
             context.setResponseBodyTimestamp(System.currentTimeMillis());
             HttpServerResponse response = context.getResponse();
             ProxyUtil.copyResponse(response, proxyResponse);
             response.setChunked(false);
-            response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(updatedBody.length()));
+            response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
             putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
-            if (context.isBackgroundJob()) {
-                response.end(updatedBody);
-                completeProxyResponse(null);
+            if (context.isBackgroundJob() && proxyResponse.statusCode() == 200) {
+                response.end(rewritten);
                 return Future.succeededFuture();
             }
 
-            return collectTokenUsage(updatedBody, dialId)
+            return collectTokenUsage(rewritten, dialId)
                     .transform(result -> {
                         if (result.failed()) {
                             log.warn("Failed to collect token usage", result.cause());
                         }
-                        return collectResponseAttachments(updatedBody, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
+                        return collectResponseAttachments(rewritten, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
                     })
                     .onComplete(result -> {
                         if (result.failed()) {
                             log.warn("Failed to collect attachments from response", result.cause());
                         }
-                        response.end(updatedBody);
+                        response.end(rewritten);
                         completeProxyResponse(null);
                     });
         });
     }
 
     private Future<Void> onDialResponseIdAvailable(String dialResponseId) {
+        Future<Void> result = Future.succeededFuture();
+
         if (context.isStoreResponse()) {
             ResponseMetadata metadata = ResponseMetadata.builder()
                     .deploymentName(context.getDeployment().getName())
                     .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
                     .build();
-            return proxy.getTaskExecutor()
+            result = proxy.getTaskExecutor()
                     .<Void>submit(() -> {
                         proxy.getResponseMetadataService().saveMetadata(dialResponseId, metadata, EtagHeader.NEW_ONLY);
                         return null;
@@ -397,11 +398,17 @@ public class ResponsesController extends BaseDeploymentPostController {
                     .onFailure(e -> log.warn("Failed to save response metadata for {}", dialResponseId, e));
         }
 
-        return Future.succeededFuture();
+        if (context.isBackgroundJob()) {
+            result = result.compose(ignored ->
+                    proxy.getBackgroundJobService().saveJob(dialResponseId, context)
+                            .onFailure(e -> log.warn("Failed to save background job for {}", dialResponseId, e)));
+        }
+
+        return result;
     }
 
     private Future<Buffer> rewrite(int statusCode, Buffer body) {
-        if (statusCode == 200) {
+        if (statusCode != 200) {
             return Future.succeededFuture(body);
         }
 
@@ -416,15 +423,15 @@ public class ResponsesController extends BaseDeploymentPostController {
         Upstream upstream = context.getUpstreamRoute().get();
         EncryptedAffinityUtil.wrapOutputArray(object.path("output"), upstream.getId());
 
-        Future<Void> result = Future.succeededFuture();
         JsonNode idNode = object.path("id");
         if (idNode.isTextual()) {
             String upstreamResponseId = idNode.asText();
             String dialResponseId = EncryptedAffinityUtil.wrapResponseId(upstream.getId(), upstreamResponseId, context.getDeployment().getName());
             object.put("id", dialResponseId);
-            result = onDialResponseIdAvailable(dialResponseId);
+            onDialResponseIdAvailable(dialResponseId)
+                    .onFailure(e -> log.warn("Failed to init response context for {}", dialResponseId, e));
         }
-        return result.map(Buffer.buffer(JsonUtil.serialize(object)));
+        return Future.succeededFuture(Buffer.buffer(JsonUtil.serialize(object)));
     }
 
     private void handleStreamingResponse(BufferingReadStream responseStream, String dialResponseId, String assembledStreamingResponse) {

@@ -99,7 +99,9 @@ public class ResponsesInterceptorController extends BaseInterceptorController {
         }
         JsonNode tree = JsonUtil.tryParse(responseBody.getBytes());
         String responseId = tree.path("id").asText(null);
-        return onResponseIdAvailable(responseId);
+        return responseId == null
+                ? Future.succeededFuture()
+                : onResponseIdAvailable(responseId);
     }
 
     @Override
@@ -108,12 +110,14 @@ public class ResponsesInterceptorController extends BaseInterceptorController {
     }
 
     private Future<Void> onResponseIdAvailable(String responseId) {
+        Future<Void> result = Future.succeededFuture();
+
         if (context.isStoreResponse()) {
             ResponseMetadata metadata = ResponseMetadata.builder()
                     .deploymentName(context.getInitialDeployment())
                     .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
                     .build();
-            return proxy.getTaskExecutor()
+            result = proxy.getTaskExecutor()
                     .<Void>submit(() -> {
                         proxy.getResponseMetadataService().saveMetadata(responseId, metadata, EtagHeader.NEW_ONLY);
                         return null;
@@ -125,7 +129,17 @@ public class ResponsesInterceptorController extends BaseInterceptorController {
                     .onFailure(e -> log.warn("Failed to save response metadata for interceptor response {}", responseId, e));
         }
 
-        return Future.succeededFuture();
+        if (context.isBackgroundJob()) {
+            result = result.compose(ignored ->
+                    proxy.getBackgroundJobService().saveJob(responseId, context)
+                            .recover(exception -> exception instanceof HttpException httpException
+                                    && httpException.getStatus() == HttpStatus.PRECONDITION_FAILED
+                                    ? Future.succeededFuture()
+                                    : Future.failedFuture(exception))
+                            .onFailure(e -> log.warn("Failed to save background job for interceptor response {}", responseId, e)));
+        }
+
+        return result;
     }
 
     private class ResponseIdExtractorFn extends BaseResponseFunction {

@@ -789,7 +789,7 @@ public class ResponsesControllerTest {
     }
 
     @Test
-    public void testBackgroundJobRecordSaved(Vertx vertx, VertxTestContext textContext) throws Throwable {
+    public void testBackgroundJobRecordSaved(Vertx vertx) {
         Application deployment = new Application();
         deployment.setName("test");
         deployment.setResponsesEndpoint("http://adapter/responses");
@@ -807,18 +807,13 @@ public class ResponsesControllerTest {
 
         when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         when(request.body()).thenReturn(Future.succeededFuture(requestBody));
-        when(request.headers()).thenReturn(new HeadersMultiMap());
         when(upstreamRoute.next()).thenReturn(upstream);
         when(upstreamRoute.get()).thenReturn(upstream);
         when(context.getRequest()).thenReturn(request);
-        when(context.getResponse()).thenReturn(response);
-        when(context.getUserId()).thenReturn("test-user");
         when(context.getConfig()).thenReturn(new Config());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
-        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
         when(proxyRequest.headers()).thenReturn(new HeadersMultiMap());
         when(proxyRequest.send(any(Buffer.class))).thenReturn(Future.succeededFuture(proxyResponse));
-        when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
         when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
@@ -833,28 +828,10 @@ public class ResponsesControllerTest {
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
-        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
-        doAnswer(invocation -> {
-            textContext.completeNow();
-            return Future.succeededFuture(Boolean.TRUE);
-        }).when(apiKeyStore).invalidatePerRequestApiKey(any());
         doCallRealMethod().when(context).setDeployment(any());
-        doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setRequestBody(any());
-        doCallRealMethod().when(context).getRequestBody();
-        doCallRealMethod().when(context).setResponseBody(any());
-        doCallRealMethod().when(context).getResponseBody();
-        doCallRealMethod().when(context).setUpstreamRoute(any());
-        doCallRealMethod().when(context).getUpstreamRoute();
-        doCallRealMethod().when(context).setProxyResponse(any());
-        doCallRealMethod().when(context).setStoreResponse(anyBoolean());
-        doCallRealMethod().when(context).isStoreResponse();
-        doCallRealMethod().when(context).setBackgroundJob(anyBoolean());
-        doCallRealMethod().when(context).isBackgroundJob();
 
         controller.handle();
-
-        await(textContext);
     }
 
     @Test

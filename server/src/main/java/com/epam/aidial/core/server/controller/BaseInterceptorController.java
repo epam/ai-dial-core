@@ -23,6 +23,7 @@ import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
 
 @Slf4j
@@ -85,14 +86,22 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         try {
             RequestObject request = parseRequest(requestBody);
+            Duration jobTtl = null;
             if (request != null) {
                 context.setStreamingRequest(request.isStreaming());
                 context.setStoreResponse(request.isStore());
                 if (ProxyUtil.processChain(request, enhancementFunctions)) {
                     context.setRequestBody(Buffer.buffer(request.serialize()));
                 }
+                if (request.isBackground()) {
+                    jobTtl = Duration.ofMillis(proxy.getBackgroundJobService().getJobTtlMs());
+                }
             }
-            proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
+            if (jobTtl != null) {
+                proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData(), jobTtl);
+            } else {
+                proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
+            }
         } catch (Throwable e) {
             if (e instanceof HttpException httpException) {
                 respond(httpException.getStatus(), httpException.getMessage());
@@ -188,11 +197,11 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
         afterResponse(responseBody).compose(ignore ->
                 collectResponseAttachments(responseBody, createAttachmentFn(proxy, context))
                         .onComplete(result -> {
-                    if (result.failed()) {
-                        log.warn("Failed to collect attachments from response. Error:", result.cause());
-                    }
-                    completeProxyResponse(responseStream);
-                }));
+                            if (result.failed()) {
+                                log.warn("Failed to collect attachments from response. Error:", result.cause());
+                            }
+                            completeProxyResponse(responseStream);
+                        }));
     }
 
     private void completeProxyResponse(BufferingReadStream responseStream) {

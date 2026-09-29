@@ -119,17 +119,7 @@ public class ResponseItemController implements Controller {
             )
     })
     public Future<?> handle() {
-        return proxy.getTaskExecutor().submit(() -> {
-                    ResponseMetadata metadata = proxy.getResponseMetadataService().getMetadata(dialResponseId);
-                    if (metadata == null) {
-                        throw notFoundException(dialResponseId);
-                    }
-                    String initiatorBucket = BucketBuilder.buildInitiatorBucket(context);
-                    if (!initiatorBucket.equals(metadata.getInitiatorBucket())) {
-                        throw forbiddenException(dialResponseId);
-                    }
-                    return metadata.getDeploymentName();
-                })
+        return proxy.getTaskExecutor().submit(this::resolveDeploymentName)
                 .compose(this::checkNotDeletingActive)
                 .compose(this::dispatch)
                 .eventually(this::finalizeRequest)
@@ -163,6 +153,18 @@ public class ResponseItemController implements Controller {
                 .compose(active -> active
                         ? Future.failedFuture(new HttpException(HttpStatus.CONFLICT, "Cannot delete response while background job is in progress"))
                         : Future.succeededFuture(deploymentName));
+    }
+
+    private String resolveDeploymentName() {
+        ResponseMetadata metadata = proxy.getResponseMetadataService().getMetadata(dialResponseId);
+        if (metadata == null) {
+            throw notFoundException(dialResponseId);
+        }
+        String initiatorBucket = BucketBuilder.buildInitiatorBucket(context);
+        if (!initiatorBucket.equals(metadata.getInitiatorBucket())) {
+            throw forbiddenException(dialResponseId);
+        }
+        return metadata.getDeploymentName();
     }
 
     private Future<Void> dispatch(String deploymentName) {
