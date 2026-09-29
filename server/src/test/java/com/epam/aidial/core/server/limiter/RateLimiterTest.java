@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
+import com.epam.aidial.core.config.PricingRate;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.server.FileUtil;
 import com.epam.aidial.core.server.Proxy;
@@ -613,8 +614,8 @@ public class RateLimiterTest {
         Model model = model("priced-model");
         Pricing pricing = new Pricing();
         pricing.setUnit("token");
-        pricing.setPrompt("0.001");
-        pricing.setCompletion("0.002");
+        pricing.setPrompt(PricingRate.flat("0.001"));
+        pricing.setCompletion(PricingRate.flat("0.002"));
         model.setPricing(pricing);
         stubInlineExecutor();
 
@@ -753,8 +754,8 @@ public class RateLimiterTest {
         Model priced = model("router-app");
         Pricing pricing = new Pricing();
         pricing.setUnit("token");
-        pricing.setPrompt("0.001");
-        pricing.setCompletion("0.001");
+        pricing.setPrompt(PricingRate.flat("0.001"));
+        pricing.setCompletion(PricingRate.flat("0.001"));
         priced.setPricing(pricing);
         Application router = new Application();
         router.setName("router-app");
@@ -1018,8 +1019,8 @@ public class RateLimiterTest {
         Model model = model("anthropic.claude-opus-4-8[1m]");
         Pricing pricing = new Pricing();
         pricing.setUnit("token");
-        pricing.setPrompt("0.001");
-        pricing.setCompletion("0.002");
+        pricing.setPrompt(PricingRate.flat("0.001"));
+        pricing.setCompletion(PricingRate.flat("0.002"));
         model.setPricing(pricing);
         stubInlineExecutor();
 

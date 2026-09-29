@@ -60,8 +60,8 @@ public class ModelCostCalculatorTest {
     public void testCalculate_TokenCost() {
         Model model = new Model();
         Pricing pricing = new Pricing();
-        pricing.setPrompt("0.1");
-        pricing.setCompletion("0.5");
+        pricing.setPrompt(flatRate("0.1"));
+        pricing.setCompletion(flatRate("0.5"));
         pricing.setUnit("token");
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
@@ -78,8 +78,8 @@ public class ModelCostCalculatorTest {
     public void testCalculate_TokenCost_CacheRatesUnset_MatchesLegacyCost() {
         Model model = new Model();
         Pricing pricing = new Pricing();
-        pricing.setPrompt("0.1");
-        pricing.setCompletion("0.5");
+        pricing.setPrompt(flatRate("0.1"));
+        pricing.setCompletion(flatRate("0.5"));
         pricing.setUnit("token");
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
@@ -100,8 +100,8 @@ public class ModelCostCalculatorTest {
     public void testCalculate_TokenCost_WithCacheReadWriteRates() {
         Model model = new Model();
         Pricing pricing = new Pricing();
-        pricing.setPrompt("0.1");
-        pricing.setCompletion("0.5");
+        pricing.setPrompt(flatRate("0.1"));
+        pricing.setCompletion(flatRate("0.5"));
         pricing.setCacheRead(flatRate("0.01"));
         pricing.setCacheWrite(flatRate("0.02"));
         pricing.setUnit("token");
@@ -124,8 +124,8 @@ public class ModelCostCalculatorTest {
     public void testCalculate_TokenCost_ExplicitZeroCacheReadRate() {
         Model model = new Model();
         Pricing pricing = new Pricing();
-        pricing.setPrompt("0.1");
-        pricing.setCompletion("0.5");
+        pricing.setPrompt(flatRate("0.1"));
+        pricing.setCompletion(flatRate("0.5"));
         pricing.setCacheRead(flatRate("0"));
         pricing.setUnit("token");
         model.setPricing(pricing);
@@ -147,8 +147,8 @@ public class ModelCostCalculatorTest {
         Model model = new Model();
         model.setType(ModelType.CHAT);
         Pricing pricing = new Pricing();
-        pricing.setPrompt("0.1");
-        pricing.setCompletion("0.5");
+        pricing.setPrompt(flatRate("0.1"));
+        pricing.setCompletion(flatRate("0.5"));
         pricing.setUnit("char_without_whitespace");
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
@@ -203,8 +203,8 @@ public class ModelCostCalculatorTest {
         Model model = new Model();
         model.setType(ModelType.CHAT);
         Pricing pricing = new Pricing();
-        pricing.setPrompt("0.1");
-        pricing.setCompletion("0.5");
+        pricing.setPrompt(flatRate("0.1"));
+        pricing.setCompletion(flatRate("0.5"));
         pricing.setUnit("char_without_whitespace");
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
@@ -260,8 +260,8 @@ public class ModelCostCalculatorTest {
         Model model = new Model();
         model.setType(ModelType.CHAT);
         Pricing pricing = new Pricing();
-        pricing.setPrompt("0.1");
-        pricing.setCompletion("0.5");
+        pricing.setPrompt(flatRate("0.1"));
+        pricing.setCompletion(flatRate("0.5"));
         pricing.setUnit("char_without_whitespace");
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
@@ -298,8 +298,8 @@ public class ModelCostCalculatorTest {
         Model model = new Model();
         model.setType(ModelType.CHAT);
         Pricing pricing = new Pricing();
-        pricing.setPrompt("0.1");
-        pricing.setCompletion("0.5");
+        pricing.setPrompt(flatRate("0.1"));
+        pricing.setCompletion(flatRate("0.5"));
         pricing.setUnit("char_without_whitespace");
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
@@ -348,8 +348,8 @@ public class ModelCostCalculatorTest {
         Model model = new Model();
         model.setType(ModelType.CHAT);
         Pricing pricing = new Pricing();
-        pricing.setPrompt("0.1");
-        pricing.setCompletion("0.5");
+        pricing.setPrompt(flatRate("0.1"));
+        pricing.setCompletion(flatRate("0.5"));
         pricing.setUnit("char_without_whitespace");
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
@@ -398,8 +398,8 @@ public class ModelCostCalculatorTest {
         Model model = new Model();
         model.setType(ModelType.EMBEDDING);
         Pricing pricing = new Pricing();
-        pricing.setPrompt("0.1");
-        pricing.setCompletion("0.5");
+        pricing.setPrompt(flatRate("0.1"));
+        pricing.setCompletion(flatRate("0.5"));
         pricing.setUnit("char_without_whitespace");
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
@@ -424,8 +424,8 @@ public class ModelCostCalculatorTest {
         Model model = new Model();
         model.setType(ModelType.EMBEDDING);
         Pricing pricing = new Pricing();
-        pricing.setPrompt("0.1");
-        pricing.setCompletion("0.5");
+        pricing.setPrompt(flatRate("0.1"));
+        pricing.setCompletion(flatRate("0.5"));
         pricing.setUnit("char_without_whitespace");
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
@@ -463,8 +463,8 @@ public class ModelCostCalculatorTest {
         Model model = new Model();
         Pricing pricing = new Pricing();
         pricing.setUnit("token");
-        pricing.setPrompt("0.000003");
-        pricing.setCompletion("0.000015");
+        pricing.setPrompt(flatRate("0.000003"));
+        pricing.setCompletion(flatRate("0.000015"));
         pricing.setCacheRead(node("promptTokens", Operator.GT, 200000, flatRate("0.0000006"), flatRate("0.0000003")));
         pricing.setCacheWrite(node("promptTokens", Operator.GT, 200000,
                 node("ttl", Operator.EQ, "1h", flatRate("0.000012"), flatRate("0.0000075")),
@@ -505,8 +505,8 @@ public class ModelCostCalculatorTest {
         Model model = new Model();
         Pricing pricing = new Pricing();
         pricing.setUnit("token");
-        pricing.setPrompt("0.0000025");
-        pricing.setCompletion("0.00001");
+        pricing.setPrompt(flatRate("0.0000025"));
+        pricing.setCompletion(flatRate("0.00001"));
         pricing.setCacheWrite(node("promptTokens", Operator.GT, 272000,
                 node("serviceTier", Operator.EQ, "flex", flatRate("0.00000625"), flatRate("0.0000125")),
                 node("serviceTier", Operator.EQ, "flex", flatRate("0.000003125"),
@@ -550,8 +550,8 @@ public class ModelCostCalculatorTest {
         Model model = new Model();
         Pricing pricing = new Pricing();
         pricing.setUnit("token");
-        pricing.setPrompt("0.0000025");
-        pricing.setCompletion("0.00001");
+        pricing.setPrompt(flatRate("0.0000025"));
+        pricing.setCompletion(flatRate("0.00001"));
         pricing.setCacheWrite(node("promptTokens", Operator.GT, 272000,
                 node("serviceTier", Operator.EQ, "flex", flatRate("0.00000625"), flatRate("0.0000125")),
                 node("serviceTier", Operator.EQ, "flex", flatRate("0.000003125"),
@@ -594,8 +594,8 @@ public class ModelCostCalculatorTest {
         Model model = new Model();
         Pricing pricing = new Pricing();
         pricing.setUnit("token");
-        pricing.setPrompt("0.1");
-        pricing.setCompletion("0.5");
+        pricing.setPrompt(flatRate("0.1"));
+        pricing.setCompletion(flatRate("0.5"));
         pricing.setCacheRead(node("serviceTier", Operator.EQ, "flex", flatRate("0.01"), flatRate("0.02")));
         model.setPricing(pricing);
 
@@ -623,8 +623,8 @@ public class ModelCostCalculatorTest {
         Model model = new Model();
         Pricing pricing = new Pricing();
         pricing.setUnit("token");
-        pricing.setPrompt("0.000003");
-        pricing.setCompletion("0.000015");
+        pricing.setPrompt(flatRate("0.000003"));
+        pricing.setCompletion(flatRate("0.000015"));
         pricing.setCacheRead(node("promptTokens", Operator.GT, 200000, flatRate("0.0000006"), flatRate("0.0000003")));
         pricing.setCacheWrite(node("promptTokens", Operator.GT, 200000,
                 node("ttl", Operator.EQ, "1h", flatRate("0.000012"), flatRate("0.0000075")),
@@ -660,5 +660,77 @@ public class ModelCostCalculatorTest {
                 .add(new BigDecimal("400").multiply(new BigDecimal("0.0000006")))
                 .add(new BigDecimal("100").multiply(new BigDecimal("0.000012")));
         assertEquals(expected, translationCost);
+    }
+
+    private static Pricing gpt56TerraStylePricing() {
+        Pricing pricing = new Pricing();
+        pricing.setUnit("token");
+        pricing.setPrompt(node("promptTokens", Operator.GT, 272000, flatRate("0.000004"), flatRate("0.000002")));
+        pricing.setCompletion(node("promptTokens", Operator.GT, 272000, flatRate("0.000018"), flatRate("0.000012")));
+        pricing.setCacheRead(node("promptTokens", Operator.GT, 272000, flatRate("0.0000004"), flatRate("0.0000002")));
+        pricing.setCacheWrite(node("promptTokens", Operator.GT, 272000, flatRate("0.000005"), flatRate("0.0000025")));
+        return pricing;
+    }
+
+    /** All four rate types are decision trees keyed off the same promptTokens>272000 threshold. */
+    @Test
+    public void testCalculate_DecisionTree_AllFourRateTypesBelowThreshold() {
+        Model model = new Model();
+        model.setPricing(gpt56TerraStylePricing());
+
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setPromptTokens(100000);
+        tokenUsage.setCompletionTokens(1000);
+
+        String response = """
+                {
+                  "usage": {
+                    "prompt_tokens": 100000,
+                    "prompt_tokens_details": { "cached_tokens": 2000, "cache_write_tokens": 500 },
+                    "completion_tokens": 1000
+                  }
+                }
+                """;
+
+        BigDecimal cost = ModelCostCalculator.calculate(model, tokenUsage, null, Buffer.buffer(response),
+                InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+
+        BigDecimal expected = new BigDecimal("100000").subtract(new BigDecimal("2000")).subtract(new BigDecimal("500"))
+                .multiply(new BigDecimal("0.000002"))
+                .add(new BigDecimal("1000").multiply(new BigDecimal("0.000012")))
+                .add(new BigDecimal("2000").multiply(new BigDecimal("0.0000002")))
+                .add(new BigDecimal("500").multiply(new BigDecimal("0.0000025")));
+        assertEquals(expected, cost);
+    }
+
+    /** Same config as above, but promptTokens crosses the 272000 threshold, so every rate uses its "ifTrue" tier. */
+    @Test
+    public void testCalculate_DecisionTree_AllFourRateTypesAboveThreshold() {
+        Model model = new Model();
+        model.setPricing(gpt56TerraStylePricing());
+
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setPromptTokens(300000);
+        tokenUsage.setCompletionTokens(1000);
+
+        String response = """
+                {
+                  "usage": {
+                    "prompt_tokens": 300000,
+                    "prompt_tokens_details": { "cached_tokens": 2000, "cache_write_tokens": 500 },
+                    "completion_tokens": 1000
+                  }
+                }
+                """;
+
+        BigDecimal cost = ModelCostCalculator.calculate(model, tokenUsage, null, Buffer.buffer(response),
+                InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+
+        BigDecimal expected = new BigDecimal("300000").subtract(new BigDecimal("2000")).subtract(new BigDecimal("500"))
+                .multiply(new BigDecimal("0.000004"))
+                .add(new BigDecimal("1000").multiply(new BigDecimal("0.000018")))
+                .add(new BigDecimal("2000").multiply(new BigDecimal("0.0000004")))
+                .add(new BigDecimal("500").multiply(new BigDecimal("0.000005")));
+        assertEquals(expected, cost);
     }
 }

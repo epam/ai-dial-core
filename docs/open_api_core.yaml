@@ -17030,9 +17030,9 @@ components:
       type: object
       properties:
         completion:
-          type: string
+          $ref: "#/components/schemas/PricingRate"
         prompt:
-          type: string
+          $ref: "#/components/schemas/PricingRate"
         unit:
           type: string
         cacheRead:
@@ -17043,9 +17043,9 @@ components:
       type: object
       properties:
         completion:
-          type: string
+          $ref: "#/components/schemas/PricingRate"
         prompt:
-          type: string
+          $ref: "#/components/schemas/PricingRate"
         unit:
           type: string
         cache_read:

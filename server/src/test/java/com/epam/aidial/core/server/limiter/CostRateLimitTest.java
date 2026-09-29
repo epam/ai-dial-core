@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
+import com.epam.aidial.core.config.PricingRate;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -180,8 +181,8 @@ public class CostRateLimitTest {
 
         Pricing pricing = new Pricing();
         pricing.setUnit("token");
-        pricing.setPrompt("0.001"); // $0.001 per prompt token
-        pricing.setCompletion("0.002"); // $0.002 per completion token
+        pricing.setPrompt(PricingRate.flat("0.001")); // $0.001 per prompt token
+        pricing.setCompletion(PricingRate.flat("0.002")); // $0.002 per completion token
         model.setPricing(pricing);
 
         proxyContext.setDeployment(model);
@@ -278,8 +279,8 @@ public class CostRateLimitTest {
 
         Pricing pricing = new Pricing();
         pricing.setUnit("token");
-        pricing.setPrompt("0.001"); // $0.001 per prompt token
-        pricing.setCompletion("0.002"); // $0.002 per completion token
+        pricing.setPrompt(PricingRate.flat("0.001")); // $0.001 per prompt token
+        pricing.setCompletion(PricingRate.flat("0.002")); // $0.002 per completion token
         model.setPricing(pricing);
 
         proxyContext.setDeployment(model);
@@ -360,8 +361,8 @@ public class CostRateLimitTest {
 
         Pricing pricing = new Pricing();
         pricing.setUnit("token");
-        pricing.setPrompt("0.001"); // $0.001 per prompt token
-        pricing.setCompletion("0.002"); // $0.002 per completion token
+        pricing.setPrompt(PricingRate.flat("0.001")); // $0.001 per prompt token
+        pricing.setCompletion(PricingRate.flat("0.002")); // $0.002 per completion token
         model.setPricing(pricing);
 
         // Mock vertx.executeBlocking
