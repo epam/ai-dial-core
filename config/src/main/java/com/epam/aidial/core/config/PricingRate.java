@@ -7,16 +7,16 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import lombok.Data;
 
 /**
- * A per-token pricing rate that is either a flat rate (the {@code rate} leaf shape, same
- * convention as {@code Pricing.prompt}/{@code Pricing.completion}) or a decision tree that
- * resolves to a rate based on a {@link Condition} evaluated against the active call's usage data.
- * Not tied to cache pricing specifically - it is used today only for {@code Pricing.cacheRead}/
- * {@code cacheWrite}, but nothing in its shape assumes that.
+ * A per-token pricing rate that is either a flat rate (the {@code rate} leaf shape) or a decision
+ * tree that resolves to a rate based on a {@link Condition} evaluated against the active call's
+ * usage data. Used for all four of {@code Pricing.prompt}/{@code completion}/{@code cacheRead}/
+ * {@code cacheWrite} - nothing in its shape is specific to any one of them.
  *
  * <p>Deliberately carries no class-level {@code @ApiSchema}: the string-or-tree union is declared
- * at each field that uses this type (see {@code Pricing.cacheRead}/{@code cacheWrite}), so this
- * class's own bean shape (including the recursive {@code ifTrue}/{@code ifFalse} fields) still
- * reflects normally wherever it's referenced as the object alternative of that union.
+ * at each field that uses this type (see {@code Pricing.prompt}/{@code completion}/
+ * {@code cacheRead}/{@code cacheWrite}), so this class's own bean shape (including the recursive
+ * {@code ifTrue}/{@code ifFalse} fields) still reflects normally wherever it's referenced as the
+ * object alternative of that union.
  */
 @Data
 @JsonDeserialize(using = PricingRateDeserializer.class)
@@ -33,5 +33,11 @@ public class PricingRate {
 
     public boolean isLeaf() {
         return rate != null;
+    }
+
+    public static PricingRate flat(String rate) {
+        PricingRate pricingRate = new PricingRate();
+        pricingRate.setRate(rate);
+        return pricingRate;
     }
 }
