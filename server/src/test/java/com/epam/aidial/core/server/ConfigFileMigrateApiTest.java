@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.config.MergedConfigStore;
@@ -141,6 +142,45 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
         Route route = store.get().getRoutes().get(canonicalId);
         assertNotNull(route, "Migrated route must be present in merged config");
         assertEquals("123456789", route.getUpstreams().get(0).getKey());
+    }
+
+    @Test
+    @SneakyThrows
+    @DialConfigLocation("dial-config/config-file-migrate.json")
+    void testMigrateApplicationPreservesAndEncryptsUpstreamSecret() {
+        String body = """
+                {"types": ["applications"]}
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, body,
+                "authorization", "admin");
+        verify(response, 200);
+        JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+        assertTrue(idsWithStatus(results, "migrated").contains("applications/platform/app-route-secret"),
+                () -> "Body: " + response.body());
+
+        // Raw blob must never carry the plaintext secret — only its ENC[...] envelope.
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION,
+                ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, "app-route-secret");
+        String rawBlob = resourceService.getResource(descriptor);
+        assertNotNull(rawBlob, "Migrated application blob must exist");
+        assertTrue(rawBlob.contains("ENC["), () -> "Route upstream secret must be encrypted at rest: " + rawBlob);
+        assertFalse(rawBlob.contains("app-route-secret-1"), () -> "Plaintext upstream key must not appear in blob: " + rawBlob);
+
+        // The merged in-memory Config must hold the plaintext.
+        MergedConfigStore store = (MergedConfigStore) dial.getProxy().getConfigStore();
+        Application application = store.get().getApplications().get("app-route-secret");
+        assertNotNull(application, "Migrated application must be present in merged config");
+        Route route = application.getRoutes().get("index-search");
+        assertNotNull(route, "Application route must be present");
+        assertEquals("app-route-secret-1", route.getUpstreams().get(0).getKey());
+
+        // GET must never leak the secret, encrypted or plaintext (WRITE_ONLY suppresses the field).
+        Response get = send(HttpMethod.GET, "/v1/applications/platform/app-route-secret", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertFalse(get.body().contains("app-route-secret-1"), () -> "GET must never leak upstream secrets: " + get.body());
+        assertFalse(get.body().contains("ENC["), () -> "GET must never leak ciphertext: " + get.body());
     }
 
     @Test

@@ -2,6 +2,9 @@ package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
@@ -140,6 +143,71 @@ public class ApplicationRouteApiTest extends ResourceBaseTest {
 
             verify(appResponse, 200, responseBody);
         }
+    }
+
+    @Test
+    public void testAppRouteWithUpstreamSecretIsEncryptedAtRestAndForwardedPlaintext() {
+        Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/app-route-secret", null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "App Route Secret",
+                "routes": {
+                        "index-search": {
+                          "paths": ["/v1/index(/[^/]+)*$"],
+                          "rewritePath": true,
+                          "methods": ["POST"],
+                          "upstreams": [{"endpoint": "http://localhost:4848", "key": "app-route-secret-1"}]
+                      }
+                  }
+                }
+                """);
+        Assertions.assertEquals(200, response.status());
+
+        // Raw blob must never carry the plaintext secret — only its ENC[...] envelope.
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(
+                "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/app-route-secret", encryptionService);
+        String rawBlob = resourceService.getResource(descriptor);
+        Assertions.assertNotNull(rawBlob, "Application blob must exist");
+        Assertions.assertTrue(rawBlob.contains("ENC["), "Upstream secret must be encrypted at rest: " + rawBlob);
+        Assertions.assertFalse(rawBlob.contains("app-route-secret-1"), "Plaintext upstream key must not appear in blob: " + rawBlob);
+
+        // Live routing must still forward the DECRYPTED plaintext secret to the upstream — this is
+        // the functional proof that ApplicationService#getApplication's unconditional decrypt keeps
+        // request routing working once route secrets are encrypted at rest.
+        String responseBody = """
+                {
+                 "content": "some result"
+                }
+                """;
+        try (TestWebServer server = new TestWebServer(4848)) {
+            TestWebServer.Handler handler = request -> {
+                Assertions.assertEquals("app-route-secret-1", request.getHeader("API-KEY"),
+                        "Upstream must receive the decrypted plaintext secret, not ciphertext");
+                MockResponse mockResponse = new MockResponse();
+                mockResponse.setResponseCode(200);
+                mockResponse.setBody(responseBody);
+                return mockResponse;
+            };
+            server.map(HttpMethod.POST, "/v1/index/search", handler);
+
+            String requestBody = """
+                    {
+                     "payload": "some content"
+                    }
+                    """;
+            String appPath = "/v1/deployments/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/app-route-secret/route/v1/index/search";
+            Response appResponse = send(HttpMethod.POST, appPath, null, requestBody);
+
+            verify(appResponse, 200, responseBody);
+        }
+
+        // GET must never leak the secret, encrypted or plaintext (WRITE_ONLY suppresses the field).
+        Response get = send(HttpMethod.GET,
+                "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/app-route-secret");
+        Assertions.assertEquals(200, get.status());
+        Assertions.assertFalse(get.body().contains("app-route-secret-1"), "GET must never leak upstream secrets: " + get.body());
+        Assertions.assertFalse(get.body().contains("ENC["), "GET must never leak ciphertext: " + get.body());
     }
 
     @Test

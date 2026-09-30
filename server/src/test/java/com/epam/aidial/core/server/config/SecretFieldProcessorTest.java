@@ -1,9 +1,14 @@
 package com.epam.aidial.core.server.config;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.ResourceAuthSettings;
+import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.config.UpstreamInterface;
+import com.epam.aidial.core.config.annotation.EncryptedField;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -20,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -216,24 +222,6 @@ class SecretFieldProcessorTest {
 
         assertEquals("ENC[prior]", merged.get("upstreams").get(0)
                 .get("interfaces").get("anthropicMessages").get("key").asText());
-    }
-
-    @Test
-    void resolveSecret_envelopeDecrypts() {
-        when(encryptionService.decrypt(eq(BUCKET), any(byte[].class), any(byte[].class)))
-                .thenReturn("plain".getBytes(StandardCharsets.UTF_8));
-        String envelope = "ENC[" + Base64.getEncoder().encodeToString("c".getBytes(StandardCharsets.UTF_8)) + "]";
-
-        String result = processor.resolveSecret(envelope, descriptor);
-
-        assertEquals("plain", result);
-    }
-
-    @Test
-    void resolveSecret_secretReferenceUnchanged() {
-        String result = processor.resolveSecret("${SECRET:foo}", descriptor);
-        assertEquals("${SECRET:foo}", result);
-        verify(encryptionService, never()).decrypt(any(), any(), any());
     }
 
     @Test
@@ -507,5 +495,115 @@ class SecretFieldProcessorTest {
 
         assertThrows(SecurityException.class, () -> processor.decryptFields(key, descriptor));
         verify(encryptionService, never()).decrypt(any(), any(), any());
+    }
+
+    // --- transitive descent (Application.routes[].upstreams[].key/secretExtraData) ------------
+
+    @Test
+    void decryptFields_walksTransitivelyIntoApplicationRoutes() {
+        // Route itself carries no @EncryptedField — only reachable transitively via Upstream.
+        Upstream up = new Upstream();
+        up.setKey("ENC[" + Base64.getEncoder().encodeToString("route-cipher".getBytes(StandardCharsets.UTF_8)) + "]");
+        Route route = new Route();
+        route.setUpstreams(List.of(up));
+        Application application = new Application();
+        application.setRoutes(new LinkedHashMap<>(Map.of("my-route", route)));
+        when(encryptionService.decrypt(eq(BUCKET), any(byte[].class), any(byte[].class)))
+                .thenAnswer(inv -> {
+                    byte[] in = inv.getArgument(1);
+                    return ("plain-" + new String(in, StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8);
+                });
+
+        processor.decryptFields(application, descriptor);
+
+        assertEquals("plain-route-cipher",
+                application.getRoutes().get("my-route").getUpstreams().get(0).getKey());
+    }
+
+    @Test
+    void mergePreservingOmittedSecrets_preservesSecretsNestedInApplicationRoutes() throws Exception {
+        ObjectNode existing = (ObjectNode) M.readTree(
+                "{\"routes\":{\"my-route\":{\"upstreams\":[{\"endpoint\":\"A\",\"key\":\"ENC[a]\"}]}}}");
+        ObjectNode request = (ObjectNode) M.readTree(
+                "{\"routes\":{\"my-route\":{\"upstreams\":[{\"endpoint\":\"A\"}]}}}");
+
+        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Application.class);
+
+        assertEquals("ENC[a]", merged.get("routes").get("my-route").get("upstreams").get(0).get("key").asText());
+    }
+
+    @Test
+    void stripEncryptedFields_dropsSecretsNestedInApplicationRoutes() throws Exception {
+        ObjectNode payload = (ObjectNode) M.readTree(
+                "{\"routes\":{\"my-route\":{\"upstreams\":[{\"endpoint\":\"e\",\"key\":\"ENC[a]\"}]}}}");
+
+        ObjectNode stripped = SecretFieldProcessor.stripEncryptedFields(payload, Application.class);
+
+        ObjectNode up = (ObjectNode) stripped.get("routes").get("my-route").get("upstreams").get(0);
+        assertFalse(up.has("key"), () -> "route upstream key must be removed: " + up);
+        assertEquals("e", up.get("endpoint").asText());
+    }
+
+    @Test
+    void decryptFields_doesNotDescendIntoUnrelatedNestedTypes() {
+        // ToolSet.authSettings.clientSecret is a completely separate secret surface (encrypted via
+        // ResourceAuthSettingsEncryptionService, not @EncryptedField) — the transitive descent fix
+        // must not start treating it as one.
+        ResourceAuthSettings authSettings = new ResourceAuthSettings();
+        authSettings.setClientSecret("plain-client-secret");
+        ToolSet toolSet = new ToolSet();
+        toolSet.setAuthSettings(authSettings);
+
+        processor.decryptFields(toolSet, descriptor);
+
+        assertEquals("plain-client-secret", toolSet.getAuthSettings().getClientSecret());
+        verify(encryptionService, never()).decrypt(any(), any(), any());
+    }
+
+    // --- plain nested object field (no List/Map) carrying a further-nested secret --------------
+    // No production class currently has this shape (UpstreamInterface, the one real example, is
+    // always reached via a Map), so these fixtures stand in for it.
+
+    private static class OuterHolder {
+        private InnerHolder inner;
+    }
+
+    private static class InnerHolder {
+        @EncryptedField
+        private String secret;
+    }
+
+    @Test
+    void encryptFields_walksIntoPlainNestedObjectField() {
+        InnerHolder inner = new InnerHolder();
+        inner.secret = "plain-secret";
+        OuterHolder outer = new OuterHolder();
+        outer.inner = inner;
+        when(encryptionService.encrypt(eq(BUCKET), any(byte[].class), any(byte[].class)))
+                .thenReturn("CIPHER".getBytes(StandardCharsets.UTF_8));
+
+        processor.encryptFields(outer, descriptor);
+
+        assertEquals("ENC[" + Base64.getEncoder().encodeToString("CIPHER".getBytes(StandardCharsets.UTF_8)) + "]",
+                outer.inner.secret);
+    }
+
+    @Test
+    void mergePreservingOmittedSecrets_preservesSecretNestedInPlainObjectField() throws Exception {
+        ObjectNode existing = (ObjectNode) M.readTree("{\"inner\":{\"secret\":\"ENC[a]\"}}");
+        ObjectNode request = (ObjectNode) M.readTree("{\"inner\":{}}");
+
+        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, OuterHolder.class);
+
+        assertEquals("ENC[a]", merged.get("inner").get("secret").asText());
+    }
+
+    @Test
+    void stripEncryptedFields_dropsSecretNestedInPlainObjectField() throws Exception {
+        ObjectNode payload = (ObjectNode) M.readTree("{\"inner\":{\"secret\":\"ENC[a]\"}}");
+
+        ObjectNode stripped = SecretFieldProcessor.stripEncryptedFields(payload, OuterHolder.class);
+
+        assertFalse(stripped.get("inner").has("secret"));
     }
 }

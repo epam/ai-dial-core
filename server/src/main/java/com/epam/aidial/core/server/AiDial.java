@@ -301,8 +301,8 @@ public class AiDial {
             UserExternalServiceService userExternalServiceService = new UserExternalServiceService(
                     resourceService, resourceAuthSettingsEncryptionService, encryptionService);
             ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
-                    externalServiceService, resourceService, lockService, operatorService, applicationSchemaService, catalogSchemaService,
-                    configStore, generator, settings("applications"));
+                    secretFieldProcessor, externalServiceService, resourceService, lockService, operatorService, applicationSchemaService,
+                    catalogSchemaService, configStore, generator, settings("applications"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService,
                     lockService, applicationSchemaService, clock, resourceCredentialsService);
             RuleService ruleService = new RuleService(resourceService);
