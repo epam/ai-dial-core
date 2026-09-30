@@ -9,10 +9,12 @@ import io.vertx.core.http.HttpConnection;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import io.vertx.core.net.SocketAddress;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -23,6 +25,77 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 public class ProxyUtilTest {
+
+    @AfterEach
+    public void resetHopByHopHeaders() {
+        ProxyUtil.init(new ProxySettings(List.of()));
+    }
+
+    @Test
+    public void testCopyHeaders_DefaultHopByHopHeaders_AreStripped() {
+        MultiMap from = new HeadersMultiMap()
+                .add("Connection", "keep-alive")
+                .add("X-Custom-Header", "value");
+        MultiMap to = new HeadersMultiMap();
+
+        ProxyUtil.copyHeaders(from, to);
+
+        assertNull(to.get("Connection"));
+        assertEquals("value", to.get("X-Custom-Header"));
+    }
+
+    @Test
+    public void testCopyHeaders_AdditionalHopByHopHeaders_AreStrippedAfterInit() {
+        ProxyUtil.init(new ProxySettings(List.of("x-custom-header")));
+
+        MultiMap from = new HeadersMultiMap()
+                .add("Connection", "keep-alive")
+                .add("X-Custom-Header", "value")
+                .add("X-Other-Header", "other");
+        MultiMap to = new HeadersMultiMap();
+
+        ProxyUtil.copyHeaders(from, to);
+
+        assertNull(to.get("Connection"));
+        assertNull(to.get("X-Custom-Header"));
+        assertEquals("other", to.get("X-Other-Header"));
+    }
+
+    @Test
+    public void testInit_RebuildsHeaderSet_NotAppendsToPreviousOne() {
+        ProxyUtil.init(new ProxySettings(List.of("x-custom-header")));
+        ProxyUtil.init(new ProxySettings(List.of()));
+
+        MultiMap from = new HeadersMultiMap()
+                .add("Connection", "keep-alive")
+                .add("X-Custom-Header", "value");
+        MultiMap to = new HeadersMultiMap();
+
+        ProxyUtil.copyHeaders(from, to);
+
+        assertNull(to.get("Connection"));
+        assertEquals("value", to.get("X-Custom-Header"));
+    }
+
+    @Test
+    public void testProxySettings_From_SkipsBlankEntries() {
+        io.vertx.core.json.JsonObject json = new io.vertx.core.json.JsonObject()
+                .put("additionalHopByHopHeaders", new io.vertx.core.json.JsonArray()
+                        .add("x-custom-header")
+                        .add("  "));
+
+        ProxySettings settings = ProxySettings.from(json);
+
+        assertEquals(List.of("x-custom-header"), settings.additionalHopByHopHeaders());
+    }
+
+    @Test
+    public void testProxySettings_From_MissingKey_DefaultsToEmptyList() {
+        ProxySettings settings = ProxySettings.from(new io.vertx.core.json.JsonObject());
+
+        assertEquals(List.of(), settings.additionalHopByHopHeaders());
+    }
+
     @Test
     public void testPromptSchemaValidation() {
         String validPromptJson = """
