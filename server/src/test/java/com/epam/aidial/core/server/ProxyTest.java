@@ -12,6 +12,7 @@ import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ExtractedClaims;
+import com.epam.aidial.core.server.security.IdpNotFoundException;
 import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -705,7 +706,7 @@ public class ProxyTest {
     }
 
     @Test
-    public void testHandle_WrongAccessTokenTreatedAsKey() {
+    public void testHandle_WrongAccessToken() {
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.GET);
         MultiMap headers = mock(MultiMap.class);
@@ -726,6 +727,36 @@ public class ProxyTest {
         config.setRoutes(routes);
         when(configStore.get()).thenReturn(config);
         when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Bad Authorization header")));
+        when(request.response()).thenReturn(response);
+        when(response.ended()).thenReturn(false);
+
+        proxy.handle(request);
+
+        verify(response).setStatusCode(UNAUTHORIZED.getCode());
+    }
+
+    @Test
+    public void testHandle_WrongAccessTokenTreatedAsKey() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(null);
+        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("bearer key1");
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
+        when(request.path()).thenReturn("/foo");
+
+        Config config = new Config();
+        Route route = new Route();
+        route.setMethods(Set.of("GET"));
+        route.setName("route");
+        route.setPaths(List.of(Pattern.compile("/foo")));
+        route.setResponse(new Route.Response());
+        LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
+        routes.put("route", route);
+        config.setRoutes(routes);
+        when(configStore.get()).thenReturn(config);
+        when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.failedFuture(new IdpNotFoundException("IdP is not found")));
         ApiKeyData apiKeyData = new ApiKeyData();
         Key originalKey = new Key();
         apiKeyData.setOriginalKey(originalKey);
