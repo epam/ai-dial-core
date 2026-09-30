@@ -366,7 +366,7 @@ public class Proxy implements Handler<HttpServerRequest> {
                     .transform(result -> {
                         if (result.failed()) {
                             if (!Strings.CI.startsWith(authorization, "bearer ")
-                                || !(result.cause() instanceof IdpNotFoundException)) {
+                                    || !(result.cause() instanceof IdpNotFoundException)) {
                                 log.debug("Can't extract claims from authorization header", result.cause());
                                 return Future.failedFuture(result.cause());
                             }
