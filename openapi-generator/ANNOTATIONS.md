@@ -180,7 +180,8 @@ Documents query, path, or header parameters.
     description = "User identifier",    // Parameter description
     schema = String.class,              // Java type (String, Integer, List, etc.)
     example = "usr_123",                // Example value
-    allowableValues = {"active", "inactive"}  // Enum values
+    allowableValues = {"active", "inactive"},  // Enum values
+    extensions = @ApiExtension(name = "x-...", value = "...")  // Vendor extensions on the parameter
 )
 ```
 
@@ -193,6 +194,14 @@ Document all path parameters (always required) and important query/header parame
 **Path parameter**:
 ```java
 @ApiParameter(name = "id", in = ParameterIn.PATH, required = true)
+```
+
+**Hierarchical path parameter** (the value may contain `/`, e.g. `folder/sub/file.txt`): mark it so clients
+such as MCP bridges keep the separators instead of percent-encoding them. `SpecAssemblerTest` fails if a
+`path`, `filePath` or `*_path` parameter is missing the marker.
+```java
+@ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
+        extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true"))
 ```
 
 **Query parameter with enum**:

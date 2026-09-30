@@ -6,6 +6,7 @@ import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -36,6 +37,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.mutable.MutableObject;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -83,7 +85,8 @@ public class ComplexResourceController extends AccessControlBaseController {
             tags = {"Skills"},
             parameters = {
                     @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
-                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The grouping folder path within the bucket.", required = true)
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The grouping folder path within the bucket.", required = true,
+                            extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true"))
             },
             responses = {
                     @ApiResponse(code = 400, description = "Path is a folder; use metadata listing"),
@@ -147,11 +150,12 @@ public class ComplexResourceController extends AccessControlBaseController {
             contentType = "multipart/form-data",
             parameters = {
                     @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
-                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true),
-                    @ApiParameter(name = "If-Match", in = ParameterIn.HEADER,
-                        description = "ETag of the version to replace. Use * to overwrite any existing version, or omit to create only if not exists.")
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true,
+                            extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
+                    @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_UPLOAD_SKILL),
+                    @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_SKILL)
             },
-            requestBody = @ApiSchema(implementation = byte[].class),
+            requestBody = @ApiSchema(implementation = List.class, typeArguments = {byte[].class}),
             responses = {
                     @ApiResponse(code = 200, description = "Folder resource uploaded successfully",
                             headers = {
@@ -160,7 +164,8 @@ public class ComplexResourceController extends AccessControlBaseController {
                     @ApiResponse(code = 400, description = "Bad request - invalid content type or malformed request"),
                     @ApiResponse(code = 403),
                     @ApiResponse(code = 404),
-                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch"),
+                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch, or the resource already exists "
+                            + "and If-None-Match: * was sent"),
                     @ApiResponse(code = 500)
             },
             extensions = {
@@ -211,7 +216,8 @@ public class ComplexResourceController extends AccessControlBaseController {
             tags = {"Skills"},
             parameters = {
                     @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
-                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The grouping folder path within the bucket.", required = true)
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The grouping folder path within the bucket.", required = true,
+                            extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true"))
             },
             responses = {
                     @ApiResponse(code = 200, description = "Grouping folder created successfully",
@@ -248,7 +254,8 @@ public class ComplexResourceController extends AccessControlBaseController {
             tags = {"Skills"},
             parameters = {
                     @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
-                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The grouping folder path within the bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The grouping folder path within the bucket.", required = true,
+                            extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                     @ApiParameter(name = "If-Match", in = ParameterIn.HEADER,
                             description = "ETag of the folder to delete. Use * to delete regardless of the current ETag.")
             },
@@ -286,7 +293,8 @@ public class ComplexResourceController extends AccessControlBaseController {
             tags = {"Skills"},
             parameters = {
                     @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
-                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true)
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true,
+                            extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true"))
             },
             responses = {
                     @ApiResponse(code = 200, description = "Folder resource downloaded as ZIP archive",
@@ -328,7 +336,8 @@ public class ComplexResourceController extends AccessControlBaseController {
             tags = {"Skills"},
             parameters = {
                     @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
-                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true,
+                            extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                     @ApiParameter(name = "If-Match", in = ParameterIn.HEADER,
                             description = "ETag of the version to delete. Use * to delete any existing version.")
             },
@@ -368,8 +377,10 @@ public class ComplexResourceController extends AccessControlBaseController {
             contentType = "multipart/form-data",
             parameters = {
                     @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
-                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true),
-                    @ApiParameter(name = "filePath", in = ParameterIn.PATH, description = "The relative path of the file within the skill.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true,
+                            extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
+                    @ApiParameter(name = "filePath", in = ParameterIn.PATH, description = "The relative path of the file within the skill.", required = true,
+                            extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                     @ApiParameter(name = "If-Match", in = ParameterIn.HEADER,
                             description = "ETag of the skill version. The file is added/replaced in the skill atomically.")
             },
@@ -444,14 +455,18 @@ public class ComplexResourceController extends AccessControlBaseController {
             tags = {"Skills"},
             parameters = {
                     @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
-                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true),
-                    @ApiParameter(name = "filePath", in = ParameterIn.PATH, description = "The relative path of the file within the skill.", required = true)
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true,
+                            extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
+                    @ApiParameter(name = "filePath", in = ParameterIn.PATH, description = "The relative path of the file within the skill.", required = true,
+                            extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true"))
             },
             responses = {
                     @ApiResponse(code = 200, description = "File downloaded successfully",
                             body = @ApiSchema(implementation = byte[].class),
                             headers = {
-                                    @ApiHeader(name = "ETag", description = "The ETag of the skill version"),
+                                    @ApiHeader(name = "ETag", description = "The ETag of this file in the current skill version. "
+                                            + "It is not the skill version ETag: for If-Match on skill uploads, use the ETag "
+                                            + "returned by downloadSkillFolder or by the last upload."),
                                     @ApiHeader(name = "Content-Type", description = "MIME type of the file"),
                                     @ApiHeader(name = "Content-Length", description = "Size of the file in bytes", schema = Long.class)
                             }),
@@ -486,8 +501,10 @@ public class ComplexResourceController extends AccessControlBaseController {
             tags = {"Skills"},
             parameters = {
                     @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
-                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true),
-                    @ApiParameter(name = "filePath", in = ParameterIn.PATH, description = "The relative path of the file within the skill.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true,
+                            extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
+                    @ApiParameter(name = "filePath", in = ParameterIn.PATH, description = "The relative path of the file within the skill.", required = true,
+                            extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                     @ApiParameter(name = "If-Match", in = ParameterIn.HEADER,
                             description = "ETag of the skill version. The file is removed from the skill atomically.")
             },
