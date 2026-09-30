@@ -1,11 +1,13 @@
 package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Condition;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Operator;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.PricingRate;
 import com.epam.aidial.core.config.Role;
@@ -170,6 +172,54 @@ public class ConfigPostProcessorTest {
         pricing.setUnit("token");
         pricing.setCacheRead(flatRate("0.01"));
         pricing.setCacheWrite(flatRate("0.02"));
+        model.setPricing(pricing);
+        config.getModels().put("model", model);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getModels().containsKey("model"));
+    }
+
+    @Test
+    void testSemanticAllowsFlatPromptCompletionRateWithoutTokenUnit() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        Pricing pricing = new Pricing();
+        pricing.setUnit("char_without_whitespace");
+        pricing.setPrompt(flatRate("0.56"));
+        pricing.setCompletion(flatRate("0.67"));
+        model.setPricing(pricing);
+        config.getModels().put("model", model);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getModels().containsKey("model"));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnDecisionTreePromptWithoutTokenUnit() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        Pricing pricing = new Pricing();
+        pricing.setUnit("char_without_whitespace");
+        pricing.setPrompt(decisionTree("promptTokens", 272000, flatRate("0.000004"), flatRate("0.000002")));
+        model.setPricing(pricing);
+        config.getModels().put("model", model);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAllowsDecisionTreePromptCompletionWithTokenUnit() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        Pricing pricing = new Pricing();
+        pricing.setUnit("token");
+        pricing.setPrompt(decisionTree("promptTokens", 272000, flatRate("0.000004"), flatRate("0.000002")));
+        pricing.setCompletion(decisionTree("promptTokens", 272000, flatRate("0.000018"), flatRate("0.000012")));
+        pricing.setCacheRead(decisionTree("promptTokens", 272000, flatRate("0.0000004"), flatRate("0.0000002")));
+        pricing.setCacheWrite(decisionTree("promptTokens", 272000, flatRate("0.000005"), flatRate("0.0000025")));
         model.setPricing(pricing);
         config.getModels().put("model", model);
 
@@ -656,6 +706,19 @@ public class ConfigPostProcessorTest {
     private static PricingRate flatRate(String rate) {
         PricingRate pricingRate = new PricingRate();
         pricingRate.setRate(rate);
+        return pricingRate;
+    }
+
+    private static PricingRate decisionTree(String field, Object value, PricingRate ifTrue, PricingRate ifFalse) {
+        Condition condition = new Condition();
+        condition.setField(field);
+        condition.setOperator(Operator.GT);
+        condition.setValue(value);
+
+        PricingRate pricingRate = new PricingRate();
+        pricingRate.setTest(condition);
+        pricingRate.setIfTrue(ifTrue);
+        pricingRate.setIfFalse(ifFalse);
         return pricingRate;
     }
 

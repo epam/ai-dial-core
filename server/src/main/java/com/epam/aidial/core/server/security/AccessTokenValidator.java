@@ -4,6 +4,7 @@ import com.auth0.jwk.UrlJwkProvider;
 import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.epam.aidial.core.config.ResourceAuthSettings;
+import com.epam.aidial.core.server.http.HttpProxySelector;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.server.vertx.FutureUtil;
 import com.google.common.annotations.VisibleForTesting;
@@ -13,9 +14,13 @@ import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.json.JsonObject;
+import io.vertx.core.net.ProxyOptions;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.MalformedURLException;
+import java.net.Proxy;
+import java.net.ProxySelector;
+import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
@@ -49,11 +54,17 @@ public class AccessTokenValidator {
             throw new IllegalArgumentException("At least one identity provider is required");
         }
         GetUserRoleFunctionFactory factory = new GetUserRoleFunctionFactory(client);
+        ProxyOptions proxyOptions = clientOptions.getProxyOptions();
+        ProxySelector jwksProxySelector = (proxyOptions == null) ? null
+                : new HttpProxySelector(proxyOptions, clientOptions.getNonProxyHosts());
         for (String idpKey : idpConfig.fieldNames()) {
             providers.add(new IdentityProvider(idpConfig.getJsonObject(idpKey), vertx, taskExecutor, client, clientOptions, jwksUrl -> {
                 try {
+                    URI uri = URI.create(jwksUrl);
+                    URL url = uri.toURL();
+                    Proxy proxy = (jwksProxySelector == null) ? null : jwksProxySelector.select(uri).getFirst();
                     // without timeouts a JWKS endpoint that never answers blocks the lookup forever, and the pending lookup stays cached
-                    return new UrlJwkProvider(new URL(jwksUrl), JWKS_TIMEOUT_MS, JWKS_TIMEOUT_MS);
+                    return new UrlJwkProvider(url, JWKS_TIMEOUT_MS, JWKS_TIMEOUT_MS, proxy);
                 } catch (MalformedURLException e) {
                     throw new IllegalArgumentException(e);
                 }

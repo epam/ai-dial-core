@@ -128,7 +128,11 @@ public class CostRateLimit {
     }
 
     /**
-     * Updates the limit statistics with the current usage.
+     * Adds this record's usage into the limit statistics, on top of whatever is already there.
+     * A {@link LimitStats} carries at most one direct-cost record's contribution and at most one
+     * aggregated-cost record's contribution, each collected by its own call to this method - since
+     * both start from the same zero baseline set by {@link LimitStats} creation, adding rather than
+     * overwriting makes the two contributions sum correctly regardless of which is collected first.
      *
      * @param timestamp The current timestamp
      * @param schedule The deployment-wide fixed-window schedule
@@ -140,9 +144,9 @@ public class CostRateLimit {
         BigDecimal weekTotal = week.reconcile(timestamp, CalendarPeriod.WEEK, schedule);
         BigDecimal monthTotal = month.reconcile(timestamp, CalendarPeriod.MONTH, schedule);
 
-        limitStats.getMinuteCostStats().setUsed(minuteTotal);
-        limitStats.getDayCostStats().setUsed(dayTotal);
-        limitStats.getWeekCostStats().setUsed(weekTotal);
-        limitStats.getMonthCostStats().setUsed(monthTotal);
+        limitStats.getMinuteCostStats().setUsed(limitStats.getMinuteCostStats().getUsed().add(minuteTotal));
+        limitStats.getDayCostStats().setUsed(limitStats.getDayCostStats().getUsed().add(dayTotal));
+        limitStats.getWeekCostStats().setUsed(limitStats.getWeekCostStats().getUsed().add(weekTotal));
+        limitStats.getMonthCostStats().setUsed(limitStats.getMonthCostStats().getUsed().add(monthTotal));
     }
 }

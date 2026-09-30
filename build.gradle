@@ -80,6 +80,12 @@ allprojects {
             force 'commons-beanutils:commons-beanutils:1.11.0'
             force "org.apache.httpcomponents.core5:httpcore5:${apache_httpcore5_version}"
             force "org.apache.httpcomponents.core5:httpcore5-h2:${apache_httpcore5_version}"
+            force "org.apache.httpcomponents.client5:httpclient5:${apache_httpclient5_version}"
+            // reactor-core / reactor-netty-http are pulled transitively (e.g. via the AWS SDK's
+            // netty-nio-client); force them to patched versions.
+            force "io.projectreactor:reactor-core:${reactor_core_version}"
+            force "io.projectreactor.netty:reactor-netty-core:${reactor_netty_http_version}"
+            force "io.projectreactor.netty:reactor-netty-http:${reactor_netty_http_version}"
         }
     }
 
