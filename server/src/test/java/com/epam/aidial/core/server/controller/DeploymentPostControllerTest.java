@@ -59,6 +59,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.List;
@@ -1036,7 +1037,7 @@ public class DeploymentPostControllerTest {
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
         when(tokenStatsTracker.getUsageStats(eq(context)))
-                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of())));
+                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of(), List.of())));
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
@@ -1053,6 +1054,49 @@ public class DeploymentPostControllerTest {
         verify(context).setUsagePerModel(any());
         verify(logStore).save(any(AnalyticsLogContext.class));
         verify(tokenStatsTracker).endSpan(eq(context));
+        verify(bufferingReadStream).end(response);
+    }
+
+    /**
+     * Every {@link TokenStatsTracker.AggregatedCost} collected for the current span's ancestors gets its
+     * own {@code recordAggregatedCost} write, kind-agnostic - it never branches on what kind of
+     * deployment an ancestor is, and it never touches {@code increase} (the caller's global/direct-cost
+     * path), since the two ledgers are entirely separate.
+     */
+    @Test
+    public void testHandleResponse_App_RecordsAggregatedCostPerAncestor() {
+        Application app = new Application();
+        when(context.getDeployment()).thenReturn(app);
+        when(context.getUserId()).thenReturn("test-user");
+
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(proxy.getLogStore()).thenReturn(logStore);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
+        when(context.getResponseBody()).thenReturn(Buffer.buffer());
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        List<TokenStatsTracker.AggregatedCost> aggregatedCosts = List.of(
+                new TokenStatsTracker.AggregatedCost("inner-app", new BigDecimal("0.40")),
+                new TokenStatsTracker.AggregatedCost("router-app", new BigDecimal("0.40")));
+        when(tokenStatsTracker.getUsageStats(eq(context)))
+                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of(), aggregatedCosts)));
+        when(rateLimiter.recordAggregatedCost(any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(context.getRequest()).thenReturn(request);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.uri()).thenReturn("/test");
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
+
+        controller.handleResponse(bufferingReadStream);
+
+        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any());
+        verify(rateLimiter).recordAggregatedCost(eq("inner-app"), any(), eq(new BigDecimal("0.40")));
+        verify(rateLimiter).recordAggregatedCost(eq("router-app"), any(), eq(new BigDecimal("0.40")));
         verify(bufferingReadStream).end(response);
     }
 

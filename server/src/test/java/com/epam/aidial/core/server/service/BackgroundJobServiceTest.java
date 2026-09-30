@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
@@ -51,6 +52,8 @@ import org.redisson.config.ConfigSupport;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -63,6 +66,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.isNull;
@@ -346,6 +350,47 @@ class BackgroundJobServiceTest {
 
         await(ctx);
         verify(apiKeyStore).invalidatePerRequestApiKey(any());
+    }
+
+    /**
+     * Mirrors {@code BaseDeploymentPostController}'s ancestor write for the synchronous request path:
+     * every {@link TokenStatsTracker.AggregatedCost} the trace update returns gets its own
+     * {@code recordAggregatedCost} write, using the response mapping's initiator bucket since there is
+     * no live {@code ProxyContext} on this polled/background path.
+     */
+    @Test
+    void tryCompleteRecordsAggregatedCostPerAncestor(VertxTestContext ctx) throws Throwable {
+        ResponseMapping mapping = buildMapping();
+        when(configStore.get()).thenReturn(mock(Config.class));
+
+        ApiKeyData decryptedKeyData = new ApiKeyData();
+        decryptedKeyData.setTraceId("trace-id");
+        decryptedKeyData.setSpanId("span-id");
+        when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.succeededFuture(decryptedKeyData));
+
+        List<TokenStatsTracker.AggregatedCost> aggregatedCosts = List.of(
+                new TokenStatsTracker.AggregatedCost("inner-app", new BigDecimal("0.40")),
+                new TokenStatsTracker.AggregatedCost("router-app", new BigDecimal("0.40")));
+        when(tokenStatsTracker.updateDeploymentStats(eq("trace-id"), eq("span-id"), eq(DEPLOYMENT_NAME), any()))
+                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of(), aggregatedCosts)));
+        when(rateLimiter.recordAggregatedCost(any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(apiKeyStore.invalidatePerRequestApiKey(any()))
+                .thenAnswer(inv -> {
+                    ctx.completeNow();
+                    return Future.succeededFuture(true);
+                });
+
+        TokenUsage usage = new TokenUsage();
+        usage.setTotalTokens(30);
+
+        service.saveJob(JOB_ID, proxyContext)
+                .compose(ignored -> service.tryComplete(
+                        JOB_ID, mapping, new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), usage)))
+                .onFailure(ctx::failNow);
+
+        await(ctx);
+        verify(rateLimiter).recordAggregatedCost(eq("inner-app"), eq(mapping.getInitiatorBucket()), eq(new BigDecimal("0.40")));
+        verify(rateLimiter).recordAggregatedCost(eq("router-app"), eq(mapping.getInitiatorBucket()), eq(new BigDecimal("0.40")));
     }
 
     @Test

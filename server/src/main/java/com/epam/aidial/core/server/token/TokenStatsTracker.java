@@ -16,6 +16,7 @@ import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -93,7 +94,8 @@ public class TokenStatsTracker {
     /**
      * Records usage self-reported by a deployment (Model or Application) and rolls it into the
      * subtree aggregate and per-deployment breakdown of every ancestor. Returns the resulting
-     * {@link UsageStats} for {@code spanId} itself, computed inside the same locked
+     * {@link UsageStats} for {@code spanId} itself - including the aggregated cost increments
+     * collected for every ancestor along the way - computed inside the same locked
      * read-modify-write so callers never need a separate read.
      */
     public Future<UsageStats> updateDeploymentStats(String traceId, String spanId, String deploymentName, TokenUsage tokenUsage) {
@@ -105,8 +107,9 @@ public class TokenStatsTracker {
                 if (traceContext == null) {
                     return null;
                 }
-                traceContext.updateStats(spanId, deploymentName, tokenUsage);
-                result[0] = traceContext.getUsageStats(spanId);
+                List<AggregatedCost> aggregatedCosts = traceContext.updateStats(spanId, deploymentName, tokenUsage);
+                UsageStats usageStats = traceContext.getUsageStats(spanId);
+                result[0] = new UsageStats(usageStats.total(), usageStats.usagePerModel(), aggregatedCosts);
                 return ProxyUtil.convertToString(traceContext);
             });
             return result[0];
@@ -121,7 +124,8 @@ public class TokenStatsTracker {
         void addSpan(ProxyContext context) {
             String spanId = context.getSpanId();
             String parentSpanId = context.getParentSpanId();
-            TokenStats tokenStats = new TokenStats(new TokenUsage(), parentSpanId);
+            String deploymentName = context.getDeployment() == null ? null : context.getDeployment().getName();
+            TokenStats tokenStats = new TokenStats(new TokenUsage(), parentSpanId, deploymentName);
             spans.put(spanId, tokenStats);
         }
 
@@ -130,13 +134,19 @@ public class TokenStatsTracker {
             if (tokenStats == null) {
                 return UsageStats.EMPTY;
             }
-            return new UsageStats(tokenStats.tokenUsage, toUsagePerModelList(tokenStats.usagePerModel));
+            return new UsageStats(tokenStats.tokenUsage, toUsagePerModelList(tokenStats.usagePerModel), List.of());
         }
 
-        void updateStats(String spanId, String deploymentName, TokenUsage tokenUsage) {
+        /**
+         * Rolls the reporting span's usage into every ancestor's subtree aggregate and per-model
+         * breakdown, and returns the aggregated-cost increment for each ancestor along the way.
+         * The mechanism is deployment-kind-agnostic: every span visited here is, by definition, an
+         * ancestor with a descendant call, whatever kind of deployment it turns out to be.
+         */
+        List<AggregatedCost> updateStats(String spanId, String deploymentName, TokenUsage tokenUsage) {
             TokenStats tokenStats = spans.get(spanId);
             if (tokenStats == null) {
-                return;
+                return List.of();
             }
             // self: the reporting deployment's own usage replaces whatever was here, except
             // aggCost, which keeps accumulating (a descendant may have already rolled its
@@ -145,6 +155,8 @@ public class TokenStatsTracker {
             // so its own breakdown only needs to cover what its descendants contributed.
             tokenStats.tokenUsage.assign(tokenUsage);
 
+            List<AggregatedCost> aggregatedCosts = new ArrayList<>();
+            BigDecimal delta = tokenUsage.getAggCost();
             String parentSpanId = tokenStats.parentSpanId;
             while (parentSpanId != null) {
                 tokenStats = spans.get(parentSpanId);
@@ -154,10 +166,14 @@ public class TokenStatsTracker {
                 }
                 // ancestors: only aggCost and the per-model breakdown roll up - raw token
                 // counts are never accumulated into an ancestor's own tokenUsage.
-                tokenStats.tokenUsage.increaseAggCost(tokenUsage.getAggCost());
+                tokenStats.tokenUsage.increaseAggCost(delta);
                 addUsagePerModel(tokenStats, deploymentName, tokenUsage);
+                if (tokenStats.deploymentName != null && delta != null && delta.signum() > 0) {
+                    aggregatedCosts.add(new AggregatedCost(tokenStats.deploymentName, delta));
+                }
                 parentSpanId = tokenStats.parentSpanId;
             }
+            return aggregatedCosts;
         }
 
         /**
@@ -194,24 +210,36 @@ public class TokenStatsTracker {
     public static class TokenStats {
         TokenUsage tokenUsage;
         String parentSpanId;
+        String deploymentName;
         List<ModelTokenUsage> usagePerModel = new ArrayList<>();
 
         public TokenStats() {
         }
 
-        public TokenStats(TokenUsage tokenUsage, String parentSpanId) {
+        public TokenStats(TokenUsage tokenUsage, String parentSpanId, String deploymentName) {
             this.tokenUsage = tokenUsage;
             this.parentSpanId = parentSpanId;
+            this.deploymentName = deploymentName;
         }
+    }
+
+    /**
+     * Aggregated-cost increment for one ancestor span, kind-agnostic: whatever kind of deployment
+     * {@code deploymentName} turns out to be, it is credited the same way once it has a descendant
+     * call rolling cost into it.
+     */
+    public record AggregatedCost(String deploymentName, BigDecimal cost) {
     }
 
     /**
      * @param total scalar subtree aggregate (drives cost/aggCost propagation), as before.
      * @param usagePerModel one entry per self-report from a descendant, indexed in report order;
      *                       repeated reports from the same deployment name are not merged.
+     * @param aggregatedCosts aggregated-cost increment for every ancestor visited by this report,
+     *                         empty for a pure read (nothing new is "known" outside an update).
      */
-    public record UsageStats(TokenUsage total, List<UsagePerModel> usagePerModel) {
-        public static final UsageStats EMPTY = new UsageStats(null, List.of());
+    public record UsageStats(TokenUsage total, List<UsagePerModel> usagePerModel, List<AggregatedCost> aggregatedCosts) {
+        public static final UsageStats EMPTY = new UsageStats(null, List.of(), List.of());
     }
 
     private static ResourceDescriptor toResource(String traceId) {
