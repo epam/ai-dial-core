@@ -293,6 +293,14 @@ public class ConfigManifestSupport {
                 throw new IllegalArgumentException(
                         "'name' in the platform bucket must not contain nested path segments: " + raw);
             }
+            if (!ConfigPostProcessor.ENTITY_NAME_PATTERN.matcher(rest).matches()) {
+                throw new IllegalArgumentException(
+                        "Invalid entity name segment: must match " + ConfigPostProcessor.ENTITY_NAME_PATTERN.pattern());
+            }
+            if ("ToolSet".equals(entry.kind()) && !ConfigPostProcessor.isValidToolSetKey(rest)) {
+                throw new IllegalArgumentException(
+                        "Invalid toolset name segment: must match " + ConfigPostProcessor.resourceKeyPattern());
+            }
             return new ParsedName(ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, rest);
         }
 
