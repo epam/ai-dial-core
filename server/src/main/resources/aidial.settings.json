@@ -134,7 +134,6 @@
     "additionalHopByHopHeaders": []
   },
   "backgroundJob": {
-    "localBaseUrl": "http://localhost:8080",
     "initialPollIntervalMs": 10000,
     "maxPollIntervalMs": 300000,
     "pollBackoffFactor": 2.0,

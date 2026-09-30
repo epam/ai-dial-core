@@ -59,6 +59,7 @@ public class BackgroundJobService {
     private final CredentialEncryptionService encryptionService;
     private final Settings settings;
     private BackgroundJobScheduler scheduler;
+    private volatile String localBaseUrl;
 
     public BackgroundJobService(
             Vertx vertx,
@@ -93,6 +94,10 @@ public class BackgroundJobService {
         scheduler = new BackgroundJobScheduler(vertx, redis, prefix, resourceService, taskExecutor,
                 settings, this::jobPoller, this::expireJob);
         scheduler.init();
+    }
+
+    public void setLocalBaseUrl(String url) {
+        this.localBaseUrl = url;
     }
 
     public Future<Void> saveJob(String dialId, ProxyContext context) {
@@ -170,7 +175,7 @@ public class BackgroundJobService {
 
     @VisibleForTesting
     Future<ResponsesApiClient.TerminalResult> poll(String dialId, String apiKey) {
-        String url = settings.getLocalBaseUrl() + "/openai/v1/responses/" + dialId;
+        String url = localBaseUrl + "/openai/v1/responses/" + dialId;
         return httpClient.request(new RequestOptions().setAbsoluteURI(url).setMethod(HttpMethod.GET))
                 .compose(request -> request.putHeader(Proxy.HEADER_API_KEY, apiKey).send())
                 .compose(response -> {
@@ -310,7 +315,6 @@ public class BackgroundJobService {
     @JsonIgnoreProperties(ignoreUnknown = true)
     @Data
     public static class Settings {
-        String localBaseUrl = "http://localhost:8080";
         long initialPollIntervalMs = TimeUnit.SECONDS.toMillis(10);
         long maxPollIntervalMs = TimeUnit.MINUTES.toMillis(5);
         double pollBackoffFactor = 2.0;
