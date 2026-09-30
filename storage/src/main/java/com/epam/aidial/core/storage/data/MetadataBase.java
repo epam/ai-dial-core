@@ -38,6 +38,10 @@ public abstract class MetadataBase {
 
     @JsonIgnore
     private ResourceDescriptor descriptor;
+    /**
+     * The resource name; {@code null} for the bucket root folder.
+     */
+    @ApiSchema(nullable = true)
     private String name;
     /**
      * The parent folder path; {@code null} for resources at the bucket root.

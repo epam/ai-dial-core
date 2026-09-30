@@ -144,7 +144,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Models"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Model name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Model name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
@@ -172,7 +173,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Models"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Model name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Model name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
@@ -200,7 +202,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Models"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Model name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Model name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
@@ -224,7 +227,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Interceptors"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Interceptor name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Interceptor name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
@@ -252,7 +256,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Interceptors"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Interceptor name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Interceptor name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
@@ -280,7 +285,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Interceptors"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Interceptor name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Interceptor name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
@@ -304,7 +310,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Translators"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Translator name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Translator name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
@@ -332,7 +339,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Translators"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Translator name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Translator name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
@@ -360,7 +368,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Translators"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Translator name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Translator name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
@@ -384,7 +393,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Roles"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Role name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Role name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
@@ -412,7 +422,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Roles"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Role name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Role name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
@@ -440,7 +451,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Roles"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Role name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Role name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
@@ -464,7 +476,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Keys"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Key name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Key name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
@@ -492,7 +505,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Keys"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Key name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Key name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
@@ -520,7 +534,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Keys"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Key name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Key name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
@@ -544,7 +559,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Routes"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Route name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Route name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
@@ -572,7 +588,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Routes"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Route name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Route name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
@@ -600,7 +617,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Routes"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Route name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Route name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
@@ -624,7 +642,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Schemas"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
@@ -653,7 +672,8 @@ public class ConfigResourceController implements Controller {
                     requestBody = @ApiSchema(schemaRef = "ApplicationTypeSchema"),
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
@@ -681,7 +701,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Schemas"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
@@ -705,7 +726,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Catalog"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
@@ -734,7 +756,8 @@ public class ConfigResourceController implements Controller {
                     requestBody = @ApiSchema(schemaRef = "CatalogSchema"),
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
@@ -762,7 +785,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Catalog"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
@@ -786,7 +810,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Global Settings"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Must be 'global'"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Must be 'global'",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
@@ -811,7 +836,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Global Settings"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Must be 'global'"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Must be 'global'",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
@@ -839,7 +865,8 @@ public class ConfigResourceController implements Controller {
                     tags = {"Global Settings"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Must be 'global'"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Must be 'global'",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
@@ -866,7 +893,8 @@ public class ConfigResourceController implements Controller {
                     operationId = "getPlatformApplication",
                     tags = {"Applications"},
                     parameters = {
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Application name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Application name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
@@ -893,7 +921,8 @@ public class ConfigResourceController implements Controller {
                     requestBody = @ApiSchema(implementation = Application.class),
                     tags = {"Applications"},
                     parameters = {
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Application name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Application name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
@@ -920,7 +949,8 @@ public class ConfigResourceController implements Controller {
                     operationId = "deletePlatformApplication",
                     tags = {"Applications"},
                     parameters = {
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Application name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Application name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
@@ -943,7 +973,8 @@ public class ConfigResourceController implements Controller {
                     operationId = "getPlatformToolSet",
                     tags = {"Toolsets"},
                     parameters = {
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Toolset name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Toolset name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
@@ -970,7 +1001,8 @@ public class ConfigResourceController implements Controller {
                     requestBody = @ApiSchema(implementation = ToolSet.class),
                     tags = {"Toolsets"},
                     parameters = {
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Toolset name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Toolset name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
@@ -997,7 +1029,8 @@ public class ConfigResourceController implements Controller {
                     operationId = "deletePlatformToolSet",
                     tags = {"Toolsets"},
                     parameters = {
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Toolset name"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Toolset name",
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {

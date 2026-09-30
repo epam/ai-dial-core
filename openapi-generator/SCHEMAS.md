@@ -363,6 +363,27 @@ requestBody:
           - file
 ```
 
+For endpoints that accept several files in one request, use `List.class` with `typeArguments = byte[].class`:
+
+```java
+requestBody = @ApiSchema(implementation = List.class, typeArguments = byte[].class)
+```
+
+Generates a `files` array (one multipart part per file; the part's filename is the relative path):
+```yaml
+schema:
+  type: object
+  required:
+    - files
+  properties:
+    files:
+      type: array
+      minItems: 1
+      items:
+        type: string
+        format: binary
+```
+
 ---
 
 ## Streaming Responses (SSE)

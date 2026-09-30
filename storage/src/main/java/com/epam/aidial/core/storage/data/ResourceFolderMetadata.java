@@ -1,5 +1,6 @@
 package com.epam.aidial.core.storage.data;
 
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -16,6 +17,10 @@ import java.util.List;
 @Accessors(chain = true)
 public class ResourceFolderMetadata extends MetadataBase {
 
+    /**
+     * The folder content; {@code null} for folders listed as items of another folder.
+     */
+    @ApiSchema(nullable = true)
     private List<? extends MetadataBase> items;
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String nextToken;
