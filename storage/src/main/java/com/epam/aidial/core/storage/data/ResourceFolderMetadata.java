@@ -17,9 +17,6 @@ import java.util.List;
 @Accessors(chain = true)
 public class ResourceFolderMetadata extends MetadataBase {
 
-    /**
-     * The folder content; {@code null} for folders listed as items of another folder.
-     */
     @ApiSchema(nullable = true)
     private List<? extends MetadataBase> items;
     @JsonInclude(JsonInclude.Include.NON_NULL)
