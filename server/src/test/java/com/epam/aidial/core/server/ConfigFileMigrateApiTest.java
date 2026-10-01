@@ -145,7 +145,7 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    @DialConfigLocation("dial-config/bracket-named-model.json")
+    @DialConfigLocation("dial-config/bracket-paren-named-model.json")
     void testMigrateModelWithUriUnsafeNameReportsEncodedReachableResourceUrl() {
         // A model name only has to be legal configuration; brackets are legal there but illegal in a
         // URI path, so resourceUrl must percent-encode the name for the admin API path to be reachable.
