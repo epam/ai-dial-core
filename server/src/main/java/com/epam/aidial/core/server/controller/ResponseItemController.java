@@ -262,7 +262,7 @@ public class ResponseItemController implements Controller {
         serverResponse.setStatusCode(proxyResponse.statusCode());
         if (operation == Operation.GET) {
             // after setStatusCode: the status fallback reads the client-facing code, still 200 by default before it
-            GenAiTraceAttributes.setFetchResponseAttributes(context, body, dialResponseId);
+            GenAiTraceAttributes.setFetchResponseAttributes(context, dialResponseId);
         }
         String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
         if (contentType != null) {
@@ -316,9 +316,8 @@ public class ResponseItemController implements Controller {
                 .endOnSuccess(false)
                 .to(response)
                 .onSuccess(ignored -> {
-                    // GET only, by the branch that got here: the buffered bytes are the raw upstream frames,
-                    // so the id has to come from us
-                    GenAiTraceAttributes.setFetchResponseAttributes(context, responseStream.getContent(), dialResponseId);
+                    // GET only, by the branch that got here
+                    GenAiTraceAttributes.setFetchResponseAttributes(context, dialResponseId);
                     responseStream.end(response);
                 })
                 .onFailure(error -> {
