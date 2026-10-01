@@ -342,7 +342,7 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
     @DialConfigLocation("dial-config/config-file-migrate-bad-schema.json")
     void testMigrateSchemaWithUnresolvableBlobNameReportsKeyOnly() {
         // The $id's last path segment ("bad~schema~name") has characters that don't match
-        // ConfigResourceController.ENTITY_NAME_PATTERN, so no blob name can ever be derived for it —
+        // ConfigPostProcessor.ENTITY_NAME_PATTERN, so no blob name can ever be derived for it —
         // the result must fall back to the $id as key, with no resourceUrl (nothing was, or could be,
         // written). Tildes are valid, unescaped URI characters, so the $id itself still passes the
         // config file's own schema-meta-schema validation at startup.

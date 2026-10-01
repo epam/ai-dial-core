@@ -419,8 +419,8 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         // The {name} segment may carry percent-encoded characters; the controller must decode at
         // the route boundary so the stored entity name and canonical id are the decoded form.
         // Repro from PR #1529 / thread r3249802671 — the decoding round-trip is the contract.
-        // The chosen name stays within the entity-name regex (design 02 §4 / 03 §3); decoding is
-        // exercised by sending '%' (as %25) and ':' (as %3A) which the controller URL-decodes.
+        // The chosen name stays within ENTITY_NAME_PATTERN; decoding is exercised by sending '%'
+        // (as %25) and ':' (as %3A) which the controller URL-decodes.
         String decoded = "model%25v1.0:beta";
         String encoded = "model%2525v1.0%3Abeta";
 
@@ -436,13 +436,31 @@ public class ModelWriteApiTest extends ResourceBaseTest {
 
     @Test
     void testPutRejectsOutOfContractName() {
-        // Names outside the documented set (design 02 §4 / 03 §3: ^[A-Za-z0-9._%:-]+$) must be
-        // rejected at the write surface. The decoded value of '%20' is a space, which is not
-        // in the allowed set; the controller returns 400. Adds a regression guard for the
-        // tightened contract introduced alongside the broadened character set (% and :).
+        // Names outside ENTITY_NAME_PATTERN must be rejected at the write surface. The decoded
+        // value of '%20' is a space, which is not in the allowed set; the controller returns 400.
         Response put = send(HttpMethod.PUT, "/v1/models/platform/has%20space", null,
                 MODEL_BODY_NO_SECRET, "authorization", "admin", "If-None-Match", "*");
         verify(put, 400);
+    }
+
+    @Test
+    void testPutGetWithExtendedCharsInName() {
+        // Covers every character ENTITY_NAME_PATTERN allows beyond the base alphanumeric/./-/_ set,
+        // in one name, so widening the pattern later just means adding a character here instead of
+        // a new test method: '@' is common in real-world deployment ids; '[' / ']' show up in
+        // legacy model ids carrying a context-window suffix (e.g. "claude-opus-4-8[1m]"). All are
+        // legal on every supported blob backend (Azure/S3/GCS/local filesystem). '@' is unreserved
+        // in a URL path segment, but '[' / ']' are reserved and must be percent-encoded.
+        String decoded = "org@model-v1[1m]";
+        String encoded = "org@model-v1%5B1m%5D";
+        verify(send(HttpMethod.PUT, "/v1/models/platform/" + encoded, null, MODEL_BODY_NO_SECRET,
+                "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response get = send(HttpMethod.GET, "/v1/models/platform/" + encoded, null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertTrue(get.body().contains("\"name\":\"" + decoded + "\""),
+                () -> "Expected extended characters preserved in name: " + get.body());
     }
 
     @Test
