@@ -333,8 +333,8 @@ class BackgroundJobServiceTest {
      */
     @Test
     void tryCompleteRecordsAggregatedCostPerAncestor(VertxTestContext ctx) throws Throwable {
-        ResponseMapping mapping = buildMapping();
         when(configStore.get()).thenReturn(mock(Config.class));
+        when(proxyContext.getDeployment().getName()).thenReturn("test-model");
 
         ApiKeyData decryptedKeyData = new ApiKeyData();
         decryptedKeyData.setTraceId("trace-id");
@@ -344,7 +344,7 @@ class BackgroundJobServiceTest {
         List<TokenStatsTracker.AggregatedCost> aggregatedCosts = List.of(
                 new TokenStatsTracker.AggregatedCost("inner-app", new BigDecimal("0.40")),
                 new TokenStatsTracker.AggregatedCost("router-app", new BigDecimal("0.40")));
-        when(tokenStatsTracker.updateDeploymentStats(eq("trace-id"), eq("span-id"), eq(DEPLOYMENT_NAME), any()))
+        when(tokenStatsTracker.updateDeploymentStats(eq("trace-id"), eq("span-id"), eq("test-model"), any()))
                 .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of(), aggregatedCosts)));
         when(rateLimiter.recordAggregatedCost(any(), any(), any())).thenReturn(Future.succeededFuture());
         when(apiKeyStore.invalidatePerRequestApiKey(any()))
@@ -358,12 +358,12 @@ class BackgroundJobServiceTest {
 
         service.saveJob(JOB_ID, proxyContext)
                 .compose(ignored -> service.tryComplete(
-                        JOB_ID, mapping, new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), usage)))
+                        JOB_ID, new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), usage)))
                 .onFailure(ctx::failNow);
 
         await(ctx);
-        verify(rateLimiter).recordAggregatedCost(eq("inner-app"), eq(mapping.getInitiatorBucket()), eq(new BigDecimal("0.40")));
-        verify(rateLimiter).recordAggregatedCost(eq("router-app"), eq(mapping.getInitiatorBucket()), eq(new BigDecimal("0.40")));
+        verify(rateLimiter).recordAggregatedCost(eq("inner-app"), eq("Users/test-user/"), eq(new BigDecimal("0.40")));
+        verify(rateLimiter).recordAggregatedCost(eq("router-app"), eq("Users/test-user/"), eq(new BigDecimal("0.40")));
     }
 
     @Test

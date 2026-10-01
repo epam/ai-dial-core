@@ -365,7 +365,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 return Future.succeededFuture();
             }
 
-            return collectTokenUsage(rewritten, dialId)
+            return collectTokenUsage(rewritten)
                     .transform(result -> {
                         if (result.failed()) {
                             log.warn("Failed to collect token usage", result.cause());
@@ -383,6 +383,16 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private Future<Void> onDialResponseIdAvailable(String dialResponseId) {
+        if (GenAiTraceAttributes.isEnabled(context)) {
+            try {
+                // interfaceType() reads the request path, which not every deployment kind reaching here has,
+                // and this runs before the client response is completed - tracing must not fail the request
+                GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), dialResponseId);
+            } catch (Throwable e) {
+                log.warn("Failed to set GenAI response trace attributes", e);
+            }
+        }
+
         Future<Void> result = Future.succeededFuture();
 
         if (context.isStoreResponse()) {
@@ -443,10 +453,10 @@ public class ResponsesController extends BaseDeploymentPostController {
         Future<Void> completionFuture;
         if (context.isBackgroundJob() && dialResponseId != null) {
             completionFuture = proxy.getBackgroundJobService().deleteJob(dialResponseId)
-                    .compose(deleted -> deleted ? collectTokenUsage(responseBody, dialResponseId) : Future.succeededFuture());
+                    .compose(deleted -> deleted ? collectTokenUsage(responseBody) : Future.succeededFuture());
         } else {
             // the buffered bytes are the raw upstream frames, so the id has to come from us
-            completionFuture = collectTokenUsage(responseBody, dialResponseId);
+            completionFuture = collectTokenUsage(responseBody);
         }
 
         completionFuture.onComplete(result -> {

@@ -184,22 +184,6 @@ public class BaseDeploymentPostController {
     }
 
     protected Future<Void> collectTokenUsage(Buffer responseBody) {
-        return collectTokenUsage(responseBody, null);
-    }
-
-    /**
-     * @param responseId DIAL's own response id when the caller knows it, null to publish none.
-     */
-    protected Future<Void> collectTokenUsage(Buffer responseBody, String responseId) {
-        if (GenAiTraceAttributes.isEnabled(context)) {
-            try {
-                // interfaceType() reads the request path, which not every deployment kind reaching here has,
-                // and this runs before the client response is completed - tracing must not fail the request
-                GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseId);
-            } catch (Throwable e) {
-                log.warn("Failed to set GenAI response trace attributes", e);
-            }
-        }
         if (context.getDeployment() instanceof Model model) {
             if (context.getResponse().getStatusCode() != HttpStatus.OK.getCode()) {
                 return Future.succeededFuture();

@@ -34,6 +34,7 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RedissonClient;
 
@@ -59,6 +60,7 @@ public class BackgroundJobService {
     private final CredentialEncryptionService encryptionService;
     private final Settings settings;
     private BackgroundJobScheduler scheduler;
+    @Setter
     private volatile String localBaseUrl;
 
     public BackgroundJobService(
@@ -96,51 +98,47 @@ public class BackgroundJobService {
         scheduler.init();
     }
 
-    public void setLocalBaseUrl(String url) {
-        this.localBaseUrl = url;
+    public Future<Void> saveJob(String dialResponseId, ProxyContext context) {
+        return saveJobRecord(dialResponseId, context)
+                .onSuccess(ignore -> scheduler.schedule(dialResponseId, System.currentTimeMillis() + settings.getInitialPollIntervalMs()));
     }
 
-    public Future<Void> saveJob(String dialId, ProxyContext context) {
-        return saveJobRecord(dialId, context)
-                .onSuccess(ignore -> scheduler.schedule(dialId, System.currentTimeMillis() + settings.getInitialPollIntervalMs()));
-    }
-
-    public Future<Boolean> isJobActive(String dialId) {
+    public Future<Boolean> isJobActive(String dialResponseId) {
         return taskExecutor.submit(() ->
-                resourceService.hasResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId)));
+                resourceService.hasResource(ResponseIdUtil.getBackgroundJobDescriptor(dialResponseId)));
     }
 
-    public Future<Boolean> deleteJob(String dialId) {
-        return deleteJobRecord(dialId)
+    public Future<Boolean> deleteJob(String dialResponseId) {
+        return deleteJobRecord(dialResponseId)
                 .compose(deleted -> {
                     if (!deleted) {
-                        log.info("Streaming job {} record already deleted, skipping completion processing", dialId);
+                        log.info("Streaming job {} record already deleted, skipping completion processing", dialResponseId);
                         return Future.succeededFuture(false);
                     }
-                    return scheduler.cancel(dialId)
+                    return scheduler.cancel(dialResponseId)
                             .recover(e -> {
-                                log.warn("Failed to remove streaming job {} from Redis schedule", dialId, e);
+                                log.warn("Failed to remove streaming job {} from Redis schedule", dialResponseId, e);
                                 return Future.succeededFuture();
                             })
                             .map(true);
                 });
     }
 
-    public Future<Void> tryComplete(String dialId, ResponsesApiClient.TerminalResult result) {
+    public Future<Void> tryComplete(String dialResponseId, ResponsesApiClient.TerminalResult result) {
         return taskExecutor.submit(() -> {
-            BackgroundJobRecord record = loadJobRecord(dialId);
+            BackgroundJobRecord record = loadJobRecord(dialResponseId);
             if (record == null) {
                 return null;
             }
-            boolean deleted = resourceService.deleteResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId), EtagHeader.ANY);
+            boolean deleted = resourceService.deleteResource(ResponseIdUtil.getBackgroundJobDescriptor(dialResponseId), EtagHeader.ANY);
             return deleted ? record : null;
         })
                 .compose(record -> {
                     if (record == null) {
                         return Future.succeededFuture();
                     }
-                    return processResult(dialId, record, result)
-                            .eventually(() -> scheduler.cancel(dialId));
+                    return processResult(dialResponseId, record, result)
+                            .eventually(() -> scheduler.cancel(dialResponseId));
                 });
     }
 
@@ -148,40 +146,40 @@ public class BackgroundJobService {
         return settings.getJobTtlMs();
     }
 
-    private Future<Void> saveJobRecord(String dialId, ProxyContext context) {
-        ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(dialId);
+    private Future<Void> saveJobRecord(String dialResponseId, ProxyContext context) {
+        ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(dialResponseId);
         BackgroundJobRecord record = BackgroundJobRecord.from(context, key -> encryptKey(descriptor, key));
         String json = ProxyUtil.convertToString(record);
         return taskExecutor.submit(() -> resourceService.putResource(descriptor, json, EtagHeader.NEW_ONLY)).mapEmpty();
     }
 
-    private Future<Boolean> deleteJobRecord(String dialId) {
+    private Future<Boolean> deleteJobRecord(String dialResponseId) {
         return taskExecutor.submit(() ->
-                resourceService.deleteResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId), EtagHeader.ANY));
+                resourceService.deleteResource(ResponseIdUtil.getBackgroundJobDescriptor(dialResponseId), EtagHeader.ANY));
     }
 
-    private BackgroundJobRecord loadJobRecord(String dialId) {
-        String json = resourceService.getResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId));
+    private BackgroundJobRecord loadJobRecord(String dialResponseId) {
+        String json = resourceService.getResource(ResponseIdUtil.getBackgroundJobDescriptor(dialResponseId));
         return ProxyUtil.convertToObject(json, BackgroundJobRecord.class);
     }
 
-    private Poller jobPoller(String dialId) {
-        BackgroundJobRecord record = loadJobRecord(dialId);
+    private Poller jobPoller(String dialResponseId) {
+        BackgroundJobRecord record = loadJobRecord(dialResponseId);
         if (record == null) {
             return null;
         }
-        return new Poller(dialId, record);
+        return new Poller(dialResponseId, record);
     }
 
     @VisibleForTesting
-    Future<ResponsesApiClient.TerminalResult> poll(String dialId, String apiKey) {
-        String url = localBaseUrl + "/openai/v1/responses/" + dialId;
+    Future<ResponsesApiClient.TerminalResult> poll(String dialResponseId, String apiKey) {
+        String url = localBaseUrl + "/openai/v1/responses/" + dialResponseId;
         return httpClient.request(new RequestOptions().setAbsoluteURI(url).setMethod(HttpMethod.GET))
                 .compose(request -> request.putHeader(Proxy.HEADER_API_KEY, apiKey).send())
                 .compose(response -> {
                     int statusCode = response.statusCode();
                     if (statusCode != 200) {
-                        return Future.failedFuture("Unexpected status " + statusCode + " from DIAL for background job " + dialId);
+                        return Future.failedFuture("Unexpected status " + statusCode + " from DIAL for background job " + dialResponseId);
                     }
                     return response.body().map(ResponsesApiClient::parseTerminalBody);
                 });
@@ -225,7 +223,7 @@ public class BackgroundJobService {
                             return Future.succeededFuture(List.of());
                         }
                         return tokenStatsTracker.updateDeploymentStats(traceId, spanId, jobRecord.deploymentName(), usage)
-                                .compose(stats -> recordAggregatedCosts(stats.aggregatedCosts(), responseMapping.getInitiatorBucket())
+                                .compose(stats -> recordAggregatedCosts(stats.aggregatedCosts(), jobRecord.initiatorBucket())
                                         .map(ignored2 -> stats.usagePerModel()));
                     });
 
@@ -282,27 +280,27 @@ public class BackgroundJobService {
     }
 
     private Future<Void> completeAndProcess(
-            String dialId, BackgroundJobRecord record, ResponsesApiClient.TerminalResult result) {
+            String dialResponseId, BackgroundJobRecord record, ResponsesApiClient.TerminalResult result) {
         return taskExecutor.submit(() ->
-                        resourceService.deleteResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId), EtagHeader.ANY))
+                        resourceService.deleteResource(ResponseIdUtil.getBackgroundJobDescriptor(dialResponseId), EtagHeader.ANY))
                 .compose(deleted -> {
                     if (deleted) {
-                        return processResult(dialId, record, result);
+                        return processResult(dialResponseId, record, result);
                     }
-                    log.info("Background job {} already completed by another handler, skipping processing", dialId);
+                    log.info("Background job {} already completed by another handler, skipping processing", dialResponseId);
                     return Future.succeededFuture();
                 });
     }
 
-    private void expireJob(String dialId) {
-        BackgroundJobRecord record = loadJobRecord(dialId);
+    private void expireJob(String dialResponseId) {
+        BackgroundJobRecord record = loadJobRecord(dialResponseId);
         if (record == null) {
             return;
         }
-        boolean deleted = resourceService.deleteResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId), EtagHeader.ANY);
+        boolean deleted = resourceService.deleteResource(ResponseIdUtil.getBackgroundJobDescriptor(dialResponseId), EtagHeader.ANY);
         if (deleted) {
-            processResult(dialId, record, null)
-                    .onFailure(e -> log.warn("BackgroundJobService: failed to finalize expired job {}", dialId, e));
+            processResult(dialResponseId, record, null)
+                    .onFailure(e -> log.warn("BackgroundJobService: failed to finalize expired job {}", dialResponseId, e));
         }
     }
 
@@ -328,22 +326,22 @@ public class BackgroundJobService {
 
     @RequiredArgsConstructor
     public class Poller {
-        private final String dialId;
+        private final String dialResponseId;
         private final BackgroundJobRecord record;
 
         public Future<Boolean> poll() {
-            String apiKey = decryptKey(ResponseIdUtil.getBackgroundJobDescriptor(dialId), record.perRequestKey());
-            return BackgroundJobService.this.poll(dialId, apiKey)
+            String apiKey = decryptKey(ResponseIdUtil.getBackgroundJobDescriptor(dialResponseId), record.perRequestKey());
+            return BackgroundJobService.this.poll(dialResponseId, apiKey)
                     .compose(result -> {
                         if (result != null) {
-                            return completeAndProcess(dialId, record, result).map(true);
+                            return completeAndProcess(dialResponseId, record, result).map(true);
                         }
                         return Future.succeededFuture(false);
                     });
         }
 
         public Future<Void> fail() {
-            return completeAndProcess(dialId, record, null);
+            return completeAndProcess(dialResponseId, record, null);
         }
     }
 }
