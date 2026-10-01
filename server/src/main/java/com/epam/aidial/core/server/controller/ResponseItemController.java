@@ -196,11 +196,12 @@ public class ResponseItemController implements Controller {
     }
 
     private Future<Void> withRequestBody(Supplier<Future<Void>> continuation) {
-        return context.getRequest().body()
+        context.getRequest().body()
                 .compose(body -> {
                     context.setRequestBody(body);
                     return continuation.get();
                 });
+        return Future.succeededFuture();
     }
 
     private Future<Void> handleInterceptor(int interceptorIndex) {
