@@ -1,6 +1,6 @@
 {
   "models": {
-    "anthropic.claude-opus-4-8(preview)[1m]": {
+    "anthropic.claude-opus-4-8[1m]": {
       "type": "chat",
       "endpoint": "http://localhost:4848/chat/completions"
     }
@@ -8,7 +8,7 @@
   "roles": {
     "default": {
       "limits": {
-        "anthropic.claude-opus-4-8(preview)[1m]": {
+        "anthropic.claude-opus-4-8[1m]": {
           "minute": "100",
           "day": "1000"
         }
