@@ -22,6 +22,7 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
+import com.epam.aidial.core.server.security.IdpNotFoundException;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.BackgroundJobService;
@@ -364,16 +365,21 @@ public class Proxy implements Handler<HttpServerRequest> {
                     .compose(extractedClaims -> Future.succeededFuture(new AuthorizationResult(new ApiKeyData(), extractedClaims)))
                     .transform(result -> {
                         if (result.failed()) {
-                            if (!Strings.CI.startsWith(authorization, "bearer ")) {
-                                return Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "Bad Authorization header"));
+                            if (Strings.CI.startsWith(authorization, "bearer ")
+                                    && result.cause() instanceof IdpNotFoundException) {
+                                // IdpNotFoundException indicates that JWT parsing failed and none of the IdP checks succeeded.
+                                // OpenAI's Responses API uses the Authorization header to send the API key.
+                                String token = AccessTokenValidator.extractTokenFromHeader(authorization);
+                                return apiKeyStore.getApiKeyData(token, clientIpAddress)
+                                        .map(apiKeyData -> new AuthorizationResult(apiKeyData, null))
+                                        .onFailure(error -> log.debug("Fallback to api key verification failed", error));
                             }
-                            // OpenAI's Responses API uses the Authorization header to send the API key.
-                            String token = AccessTokenValidator.extractTokenFromHeader(authorization);
-                            return apiKeyStore.getApiKeyData(token, clientIpAddress)
-                                    .map(apiKeyData -> new AuthorizationResult(apiKeyData, null));
+                            log.debug("Can't extract claims from authorization header", result.cause());
+                            return Future.failedFuture(result.cause());
                         }
                         return Future.succeededFuture(result.result());
-                    });
+                    })
+                    .recover(ignore -> Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "Bad Authorization header")));
         }
 
         // see https://github.com/epam/ai-dial-core/issues/675
