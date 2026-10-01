@@ -54,9 +54,12 @@ allprojects {
             // absent, it has its own 2.0.x version line.
             force "io.netty:netty-buffer:${netty_version}"
             force "io.netty:netty-codec:${netty_version}"
+            force "io.netty:netty-codec-classes-quic:${netty_version}"
             force "io.netty:netty-codec-dns:${netty_version}"
             force "io.netty:netty-codec-http:${netty_version}"
             force "io.netty:netty-codec-http2:${netty_version}"
+            force "io.netty:netty-codec-http3:${netty_version}"
+            force "io.netty:netty-codec-native-quic:${netty_version}"
             force "io.netty:netty-codec-socks:${netty_version}"
             force "io.netty:netty-common:${netty_version}"
             force "io.netty:netty-handler:${netty_version}"
