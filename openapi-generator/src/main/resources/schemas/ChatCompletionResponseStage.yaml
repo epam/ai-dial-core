@@ -10,6 +10,21 @@ properties:
       <br><br>
       In *non-streaming* responses, the `index` field is omitted because a stage's
       position is already determined by its place in the returned list.
+  parent_stage_index:
+    type: integer
+    minimum: 0
+    description: |-
+      Index of the parent stage. Present only for nested stages; absent for top-level stages.
+      <br><br>
+      In *streaming* responses, the field is sent only in the chunk that opens the stage and
+      refers to the parent's `index`. The parent is always announced before its children,
+      belongs to the same choice, and `parent_stage_index` is always less than `index`.
+      <br><br>
+      In *non-streaming* responses, `index` is omitted, and `parent_stage_index` is the
+      position of the parent stage in the `stages` array.
+      <br><br>
+      Clients that don't support nesting can ignore this field and show stages as a flat list.
+      A reference to an unknown parent should be shown as a top-level stage.
   name:
     type: string
     description: The name of the stage.
