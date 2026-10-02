@@ -14,12 +14,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.UnaryOperator;
 
 @Builder
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record BackgroundJobRecord(
-        String perRequestKey,
+        String encryptedPollingKey,
+        String encryptedPerRequestKey,
         Boolean isRootSpan,
         String traceId,
         String spanId,
@@ -44,9 +44,10 @@ public record BackgroundJobRecord(
         String upstreamEndpoint,
         String initiatorBucket) {
 
-    public static BackgroundJobRecord from(ProxyContext context, UnaryOperator<String> keyEncryptor) {
+    public static BackgroundJobRecord from(ProxyContext context, String encryptedPollingKey, String encryptedPerRequestKey) {
         return BackgroundJobRecord.builder()
-                .perRequestKey(keyEncryptor.apply(context.getProxyApiKeyData().getPerRequestKey()))
+                .encryptedPollingKey(encryptedPollingKey)
+                .encryptedPerRequestKey(encryptedPerRequestKey)
                 .isRootSpan(context.isOriginalRequest())
                 .traceId(context.getTraceId())
                 .spanId(context.getSpanId())

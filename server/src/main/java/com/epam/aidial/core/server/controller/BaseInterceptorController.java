@@ -90,6 +90,7 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
             if (request != null) {
                 context.setStreamingRequest(request.isStreaming());
                 context.setStoreResponse(request.isStore());
+                context.setBackgroundJob(request.isBackground());
                 if (ProxyUtil.processChain(request, enhancementFunctions)) {
                     context.setRequestBody(Buffer.buffer(request.serialize()));
                 }
@@ -200,14 +201,17 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
                             if (result.failed()) {
                                 log.warn("Failed to collect attachments from response. Error:", result.cause());
                             }
-                            completeProxyResponse(responseStream);
+                            boolean keepAlive = context.isBackgroundJob() && context.getProxyResponse().statusCode() == 200;
+                            completeProxyResponse(responseStream, keepAlive);
                         }));
     }
 
-    private void completeProxyResponse(BufferingReadStream responseStream) {
+    private void completeProxyResponse(BufferingReadStream responseStream, boolean keepAlive) {
         HttpServerResponse response = context.getResponse();
         responseStream.end(response);
-        finalizeRequest();
+        if (!keepAlive) {
+            finalizeRequest();
+        }
     }
 
     /**

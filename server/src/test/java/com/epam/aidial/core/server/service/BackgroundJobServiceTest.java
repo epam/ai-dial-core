@@ -43,6 +43,7 @@ import redis.embedded.RedisServer;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -146,6 +147,11 @@ class BackgroundJobServiceTest {
 
         lenient().when(encryptionService.encrypt(any(), any(), any())).thenAnswer(inv -> inv.getArgument(1));
         lenient().when(encryptionService.decrypt(any(), any(), any())).thenAnswer(inv -> inv.getArgument(1));
+        lenient().doAnswer(inv -> {
+            ApiKeyData data = inv.getArgument(0);
+            data.setPerRequestKey("test-polling-key");
+            return null;
+        }).when(apiKeyStore).assignPerRequestApiKey(any(ApiKeyData.class), any(Duration.class));
 
         BackgroundJobService.Settings settings = buildTestSettings(10);
         AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx,
@@ -170,6 +176,7 @@ class BackgroundJobServiceTest {
                 null, null,
                 configStore, null, null, null,
                 httpClient, null, encryptionService, new BackgroundJobService.Settings());
+        poller.setLocalBaseUrl("http://localhost");
     }
 
     @Test
@@ -236,7 +243,7 @@ class BackgroundJobServiceTest {
         service.saveJob(JOB_ID, proxyContext).onFailure(ctx::failNow);
 
         await(ctx);
-        verify(apiKeyStore).invalidatePerRequestApiKey(any());
+        verify(apiKeyStore, times(2)).invalidatePerRequestApiKey(any());
         verify(logStore, timeout(1000)).save(any());
     }
 
@@ -322,7 +329,7 @@ class BackgroundJobServiceTest {
                 .onFailure(ctx::failNow);
 
         await(ctx);
-        verify(apiKeyStore).invalidatePerRequestApiKey(any());
+        verify(apiKeyStore, times(2)).invalidatePerRequestApiKey(any());
     }
 
     /**

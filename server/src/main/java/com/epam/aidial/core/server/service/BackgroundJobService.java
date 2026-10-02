@@ -39,6 +39,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RedissonClient;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -148,9 +149,18 @@ public class BackgroundJobService {
 
     private Future<Void> saveJobRecord(String dialResponseId, ProxyContext context) {
         ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(dialResponseId);
-        BackgroundJobRecord record = BackgroundJobRecord.from(context, key -> encryptKey(descriptor, key));
-        String json = ProxyUtil.convertToString(record);
-        return taskExecutor.submit(() -> resourceService.putResource(descriptor, json, EtagHeader.NEW_ONLY)).mapEmpty();
+        return taskExecutor.submit(() -> {
+            ApiKeyData pollingKeyData = new ApiKeyData();
+            ApiKeyData.initFromContext(pollingKeyData, context);
+            apiKeyStore.assignPerRequestApiKey(pollingKeyData, Duration.ofMillis(settings.getJobTtlMs()));
+
+            String encryptedPollingKey = encryptKey(descriptor, pollingKeyData.getPerRequestKey());
+            String encryptedPerRequestKey = encryptKey(descriptor, context.getProxyApiKeyData().getPerRequestKey());
+            BackgroundJobRecord record = BackgroundJobRecord.from(context, encryptedPollingKey, encryptedPerRequestKey);
+            String json = ProxyUtil.convertToString(record);
+            resourceService.putResource(descriptor, json, EtagHeader.NEW_ONLY);
+            return null;
+        }).mapEmpty();
     }
 
     private Future<Boolean> deleteJobRecord(String dialResponseId) {
@@ -190,7 +200,8 @@ public class BackgroundJobService {
         Config config = configStore.get();
         Deployment deployment = config.selectDeployment(jobRecord.deploymentName());
         ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(responseId);
-        String perRequestKey = decryptKey(descriptor, jobRecord.perRequestKey());
+        String perRequestKey = decryptKey(descriptor, jobRecord.encryptedPerRequestKey());
+        String pollingKey = decryptKey(descriptor, jobRecord.encryptedPollingKey());
         TokenUsage usage = result == null ? null : result.usage();
         boolean hasUsage = usage != null && !usage.isEmpty();
 
@@ -214,7 +225,7 @@ public class BackgroundJobService {
                                     if (limitResult.failed()) {
                                         log.warn("Failed to increase limit", limitResult.cause());
                                     }
-                                    return Future.<Void>succeededFuture();
+                                    return Future.succeededFuture();
                                 });
                     }
 
@@ -232,7 +243,11 @@ public class BackgroundJobService {
                     }
 
                     Future<List<UsagePerModel>> finalStatsFuture = statsFuture;
-                    statsFuture.eventually(() -> invalidatePerRequestKey(perRequestKey))
+                    statsFuture.eventually(() -> {
+                        Future<Boolean> perKeyFuture = invalidatePerRequestKey(perRequestKey);
+                        Future<Boolean> pollingKeyFuture = invalidatePerRequestKey(pollingKey);
+                        return Future.all(perKeyFuture, pollingKeyFuture).mapEmpty();
+                    })
                             .onComplete(ignored -> {
                                 List<UsagePerModel> usagePerModel = finalStatsFuture.succeeded()
                                         ? finalStatsFuture.result() : List.of();
@@ -330,7 +345,7 @@ public class BackgroundJobService {
         private final BackgroundJobRecord record;
 
         public Future<Boolean> poll() {
-            String apiKey = decryptKey(ResponseIdUtil.getBackgroundJobDescriptor(dialResponseId), record.perRequestKey());
+            String apiKey = decryptKey(ResponseIdUtil.getBackgroundJobDescriptor(dialResponseId), record.encryptedPollingKey());
             return BackgroundJobService.this.poll(dialResponseId, apiKey)
                     .compose(result -> {
                         if (result != null) {
