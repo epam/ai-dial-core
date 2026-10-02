@@ -18,6 +18,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpClientRequest;
+import io.vertx.core.http.HttpClosedException;
 import io.vertx.core.http.HttpServerRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -283,5 +284,48 @@ public class ChatCompletionInterceptorControllerTest {
 
         verify(context).respond(eq(HttpStatus.BAD_GATEWAY), any(ErrorData.class));
         verify(context, never()).setProxyRequest(any());
+    }
+
+    @Test
+    void handleProxyResponseError_deadPooledConnection_retriesOnFreshConnection() {
+        Model deployment = new Model();
+        deployment.setName("my-interceptor");
+        deployment.setEndpoint("http://interceptor/openai/deployments/my-interceptor/chat/completions");
+        when(context.getDeployment()).thenReturn(deployment);
+        when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/original-model/chat/completions");
+        when(request.query()).thenReturn(null);
+
+        ChatCompletionInterceptorController controller =
+                new ChatCompletionInterceptorController(proxy, context, 0, InterfaceType.OPENAI_CHAT_COMPLETIONS);
+
+        // nothing reached the interceptor, so this is retried on a fresh connection instead of failing the request
+        controller.handleProxyResponseError(new HttpClosedException("Connection was closed"));
+
+        verify(proxy.getClient()).request(any());
+        verify(context, never()).respond(eq(HttpStatus.BAD_GATEWAY), any(ErrorData.class));
+    }
+
+    @Test
+    void handleProxyResponseError_deadPooledConnection_onlyRetriesOnce() {
+        Model deployment = new Model();
+        deployment.setName("my-interceptor");
+        deployment.setEndpoint("http://interceptor/openai/deployments/my-interceptor/chat/completions");
+        when(context.getDeployment()).thenReturn(deployment);
+        when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/original-model/chat/completions");
+        when(request.query()).thenReturn(null);
+        when(context.respond(eq(HttpStatus.BAD_GATEWAY), any(ErrorData.class)))
+                .thenReturn(Future.succeededFuture());
+
+        ChatCompletionInterceptorController controller =
+                new ChatCompletionInterceptorController(proxy, context, 0, InterfaceType.OPENAI_CHAT_COMPLETIONS);
+
+        controller.handleProxyResponseError(new HttpClosedException("Connection was closed"));
+        // the one-shot allowance is already spent, so a second dead connection falls through to BAD_GATEWAY
+        controller.handleProxyResponseError(new HttpClosedException("Connection was closed"));
+
+        verify(proxy.getClient()).request(any());
+        verify(context).respond(eq(HttpStatus.BAD_GATEWAY), any(ErrorData.class));
     }
 }

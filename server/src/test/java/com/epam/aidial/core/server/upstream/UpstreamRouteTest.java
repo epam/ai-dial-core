@@ -331,4 +331,32 @@ public class UpstreamRouteTest {
         assertNull(route.getCacheBreakpointPath());
         assertFalse(route.isCacheEntryStored());
     }
+
+    @Test
+    void testCanRetryDeadConnection_OnePerPick() {
+        Model model = new Model();
+        model.setName("model1");
+        model.setUpstreams(List.of(
+                new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null),
+                new Upstream("endpoint2", null, null, null, null, 1, 1, null, null, null)
+        ));
+
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
+        UpstreamRoute route = upstreamRouteProvider.get(model, cacheBreakpointContext);
+        route.next();
+
+        // the pooled connection died before anything reached the server: free to retry, and it costs no attempt
+        assertTrue(route.canRetryDeadConnection());
+        assertEquals(1, route.getAttemptCount());
+        // already used for this pick
+        assertFalse(route.canRetryDeadConnection());
+
+        // a real failure moves to the next upstream and resets the allowance for the new pick
+        route.fail(HttpStatus.BAD_GATEWAY, -1);
+        route.next();
+        assertEquals(2, route.getAttemptCount());
+        assertTrue(route.canRetryDeadConnection());
+        assertFalse(route.canRetryDeadConnection());
+    }
 }
