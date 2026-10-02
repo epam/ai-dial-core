@@ -21,7 +21,7 @@
       "share": {
         "FILE": {
           "max_accepted_users": 1,
-          "invitation_ttl": 72
+          "invitation_ttl": 24
         }
       }
     }
