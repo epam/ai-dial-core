@@ -120,7 +120,6 @@
       "x-claude-code-session-id",
       "thread-id",
       "x-session-id",
-      "x-dial-client-channel-id",
       "X-CONVERSATION-ID"
     ]
   },

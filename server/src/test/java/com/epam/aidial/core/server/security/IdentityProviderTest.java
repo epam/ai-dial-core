@@ -15,13 +15,17 @@ import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.Context;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.RequestOptions;
+import io.vertx.core.impl.ContextInternal;
+import io.vertx.core.impl.future.FutureInternal;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +37,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Field;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
@@ -42,18 +47,27 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -265,6 +279,44 @@ public class IdentityProviderTest {
             assertNotNull(claims);
             assertEquals(List.of("manager"), claims.userRoles());
         });
+    }
+
+    @Test
+    public void testExtractClaimsWithoutKid() throws Exception {
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+        Jwk jwk = mock(Jwk.class);
+        when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
+        // UrlJwkProvider resolves a null kid to the single key of the JWKS
+        when(jwkProvider.get(isNull())).thenReturn(jwk);
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+        String token = JWT.create().withClaim("roles", List.of("manager")).sign(algorithm);
+
+        ExtractedClaims claims = identityProvider.extractClaimsFromJwt(JWT.decode(token))
+                .toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
+
+        assertEquals(List.of("manager"), claims.userRoles());
+    }
+
+    @Test
+    public void testExtractClaimsWithBlankKidDoesNotTakeTheSingleKey() throws Exception {
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+        // a kid that is present but blank is looked up by that id; only a missing kid resolves to the single key
+        when(jwkProvider.get(eq(""))).thenThrow(new JwkException("no key found by a blank kid"));
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+        String token = JWT.create().withHeader(Map.of("kid", "")).withClaim("roles", List.of("manager")).sign(algorithm);
+
+        Future<ExtractedClaims> result = identityProvider.extractClaimsFromJwt(JWT.decode(token));
+
+        assertThrows(ExecutionException.class, () -> result.toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS));
+        verify(jwkProvider, never()).get(isNull());
     }
 
     @Test
@@ -1219,5 +1271,73 @@ public class IdentityProviderTest {
 
         assertThrows(NullPointerException.class,
                 () -> new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG"));
+    }
+
+    @Test
+    public void testCachedJwkFutureDoesNotPinRequestContext() throws Exception {
+        Vertx realVertx = Vertx.vertx();
+        try {
+            ContextInternal requestContext = (ContextInternal) realVertx.getOrCreateContext();
+            IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+            Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+            String token = JWT.create().withHeader(Map.of("kid", "kid1")).sign(algorithm);
+            Jwk jwk = mock(Jwk.class);
+            when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
+            // like AsyncTaskExecutor: the result future is bound to the calling request's context
+            when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+                Callable<?> callable = invocation.getArgument(0);
+                return requestContext.succeededFuture(callable.call());
+            });
+
+            identityProvider.extractClaimsFromJwt(JWT.decode(token));
+
+            Field field = IdentityProvider.class.getDeclaredField("cache");
+            field.setAccessible(true);
+            Map<?, ?> cache = (Map<?, ?>) field.get(identityProvider);
+            FutureInternal<?> cached = (FutureInternal<?>) cache.get(Optional.of("kid1"));
+            assertNotNull(cached);
+            assertNull(cached.context());
+        } finally {
+            realVertx.close().toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    public void testWaiterOnSharedJwkContinuesOnItsOwnContext() throws Exception {
+        Vertx realVertx = Vertx.vertx();
+        try {
+            IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+            Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+            DecodedJWT jwt = JWT.decode(JWT.create().withHeader(Map.of("kid", "kid1")).sign(algorithm));
+            Promise<Object> lookup = Promise.promise();
+            when(taskExecutor.submit(any(Callable.class))).thenReturn(lookup.future());
+
+            // one event loop: the three tasks below run in order, so the second request is always a waiter
+            ContextInternal loop = (ContextInternal) realVertx.getOrCreateContext();
+            ContextInternal first = loop.duplicate();
+            ContextInternal second = loop.duplicate();
+            CompletableFuture<Context> continuedOn = new CompletableFuture<>();
+            first.runOnContext(v -> identityProvider.extractClaimsFromJwt(jwt));
+            second.runOnContext(v -> identityProvider.extractClaimsFromJwt(jwt).onComplete(res -> continuedOn.complete(Vertx.currentContext())));
+            first.runOnContext(v -> lookup.fail(new JwkException("no key")));
+
+            assertSame(second, continuedOn.get(5, TimeUnit.SECONDS));
+        } finally {
+            realVertx.close().toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    public void testFailedJwkLookupIsNotCached() {
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+        DecodedJWT jwt = JWT.decode(JWT.create().withHeader(Map.of("kid", "kid1")).sign(algorithm));
+        // an Error escapes the lookup's own catch: the shared future fails and carries no result for the evictor to expire
+        when(taskExecutor.submit(any(Callable.class))).thenReturn(Future.failedFuture(new NoClassDefFoundError("jwk")));
+
+        identityProvider.extractClaimsFromJwt(jwt);
+        identityProvider.extractClaimsFromJwt(jwt);
+
+        verify(taskExecutor, times(2)).submit(any(Callable.class));
     }
 }

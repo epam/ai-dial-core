@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.log.LogAttributes;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
@@ -44,7 +45,7 @@ import java.util.stream.Stream;
 @Slf4j
 @Getter
 @Setter
-public class ProxyContext {
+public class ProxyContext implements LogAttributes {
     private static final Set<CharSequence> CORS_SAFE_LIST = Stream.of(
                     HttpHeaders.CACHE_CONTROL,
                     HttpHeaders.CONTENT_LANGUAGE,
@@ -228,6 +229,31 @@ public class ProxyContext {
      */
     public String getInitiatorId() {
         return userId != null ? userId : getProject();
+    }
+
+    @Override
+    public String getRequestMethod() {
+        return request.method().name();
+    }
+
+    @Override
+    public String getRequestUri() {
+        return request.uri();
+    }
+
+    @Override
+    public boolean isResponseEnded() {
+        return response.ended();
+    }
+
+    @Override
+    public String getStatusMessage() {
+        return response.getStatusMessage();
+    }
+
+    @Override
+    public int getStatusCode() {
+        return response.getStatusCode();
     }
 
     public boolean isSecuredApiKey() {

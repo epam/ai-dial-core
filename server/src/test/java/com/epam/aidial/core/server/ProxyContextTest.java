@@ -11,6 +11,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
@@ -22,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class ProxyContextTest {
 
@@ -104,6 +106,25 @@ public class ProxyContextTest {
             logger.setLevel(previous);
             logger.detachAppender(appender);
         }
+    }
+
+    @Test
+    public void testLogAttributesReadRequestAndResponse() {
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(new Key());
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.uri()).thenReturn("/v1/chat");
+        when(request.response().ended()).thenReturn(true);
+        when(request.response().getStatusCode()).thenReturn(502);
+        when(request.response().getStatusMessage()).thenReturn("Bad Gateway");
+        ProxyContext context = new ProxyContext(null, request, apiKeyData, null, "trace-id", "span-id", "01");
+
+        assertEquals("POST", context.getRequestMethod());
+        assertEquals("/v1/chat", context.getRequestUri());
+        assertTrue(context.isResponseEnded());
+        assertEquals(502, context.getStatusCode());
+        assertEquals("Bad Gateway", context.getStatusMessage());
     }
 
     private static ProxyContext context(ExtractedClaims claims) {

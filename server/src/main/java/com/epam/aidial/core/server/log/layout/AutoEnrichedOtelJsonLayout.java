@@ -6,11 +6,12 @@ import ch.qos.logback.classic.spi.ThrowableProxy;
 import ch.qos.logback.core.LayoutBase;
 import com.epam.aidial.core.server.AiDial;
 import com.epam.aidial.core.server.ContextManager;
-import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.log.LogAttributes;
 import com.epam.aidial.core.server.log.otl.OtelLogRecord;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -46,11 +47,20 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         String spanId = "";
         String traceFlags = "";
 
-        ProxyContext proxyContext = ContextManager.getProxyContext();
-        if (proxyContext != null) {
-            traceId = proxyContext.getTraceId();
-            spanId = proxyContext.getSpanId();
-            traceFlags = proxyContext.getTraceFlags();
+        Span currentSpan = Span.current();
+        LogAttributes logAttributes = ContextManager.getLogAttributes();
+        if (logAttributes != null) {
+            traceId = logAttributes.getTraceId();
+            spanId = logAttributes.getSpanId();
+            traceFlags = logAttributes.getTraceFlags();
+        } else {
+            // no ProxyContext yet (auth phase, early rejections): take the ids from the current span
+            SpanContext span = currentSpan.getSpanContext();
+            if (span.isValid()) {
+                traceId = span.getTraceId();
+                spanId = span.getSpanId();
+                traceFlags = span.getTraceFlags().asHex();
+            }
         }
 
         Map<String, Object> attributes = new LinkedHashMap<>();
@@ -60,17 +70,17 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         attributes.put("threadName", event.getThreadName());
 
         // Enrich attributes from context
-        enrichAttributesFromContext(event, attributes);
+        enrichAttributesFromContext(logAttributes, attributes);
         
         // Handle exception info
         enrichExceptionAttributes(event, attributes);
         
         // Enrich OpenTelemetry span
-        enrichOpenTelemetrySpan(event, attributes);
+        enrichOpenTelemetrySpan(currentSpan, attributes);
 
         // after the span pass: GenAiTraceAttributes already set these on the span, typed
-        if (proxyContext != null) {
-            attributes.putAll(proxyContext.getTracingAttributes());
+        if (logAttributes != null) {
+            attributes.putAll(logAttributes.getTracingAttributes());
         }
 
         Map<String, Object> resource = new HashMap<>();
@@ -93,18 +103,17 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
                 .build();
     }
 
-    private void enrichAttributesFromContext(ILoggingEvent event, Map<String, Object> attributes) {
-        ProxyContext proxyContext = ContextManager.getProxyContext();
-        if (proxyContext != null) {
-            attributes.put("user.project", proxyContext.getProject());
-            attributes.put("user.id", proxyContext.getUserId());
-            if (proxyContext.getRequest() != null) {
-                attributes.put("request.method", proxyContext.getRequest().method().name());
-                attributes.put("request.uri", proxyContext.getRequest().uri());
+    private void enrichAttributesFromContext(LogAttributes logAttributes, Map<String, Object> attributes) {
+        if (logAttributes != null) {
+            attributes.put("user.project", logAttributes.getProject());
+            attributes.put("user.id", logAttributes.getUserId());
+            if (logAttributes.getRequestMethod() != null) {
+                attributes.put("request.method", logAttributes.getRequestMethod());
+                attributes.put("request.uri", logAttributes.getRequestUri());
             }
-            if (proxyContext.getResponse().ended()) {
-                attributes.put("response.status", proxyContext.getResponse().getStatusMessage());
-                attributes.put("response.status.code", proxyContext.getResponse().getStatusCode());
+            if (logAttributes.isResponseEnded()) {
+                attributes.put("response.status", logAttributes.getStatusMessage());
+                attributes.put("response.status.code", logAttributes.getStatusCode());
             }
         }
     }
@@ -126,8 +135,7 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         }
     }
 
-    private void enrichOpenTelemetrySpan(ILoggingEvent event, Map<String, Object> attributes) {
-        Span currentSpan = Span.current();
+    private void enrichOpenTelemetrySpan(Span currentSpan, Map<String, Object> attributes) {
         if (!currentSpan.isRecording()) {
             return;
         }

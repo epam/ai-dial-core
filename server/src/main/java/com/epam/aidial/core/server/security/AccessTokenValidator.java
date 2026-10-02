@@ -6,6 +6,7 @@ import com.auth0.jwt.interfaces.DecodedJWT;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.server.http.HttpProxySelector;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.server.vertx.FutureUtil;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -35,6 +36,7 @@ import javax.annotation.Nullable;
 public class AccessTokenValidator {
 
     private static final long USER_INFO_EXP_PERIOD_MS = TimeUnit.MINUTES.toMillis(1);
+    private static final int JWKS_TIMEOUT_MS = (int) TimeUnit.SECONDS.toMillis(10);
 
     private final List<IdentityProvider> providers = new ArrayList<>();
 
@@ -61,7 +63,8 @@ public class AccessTokenValidator {
                     URI uri = URI.create(jwksUrl);
                     URL url = uri.toURL();
                     Proxy proxy = (jwksProxySelector == null) ? null : jwksProxySelector.select(uri).getFirst();
-                    return new UrlJwkProvider(url, null, null, proxy);
+                    // without timeouts a JWKS endpoint that never answers blocks the lookup forever, and the pending lookup stays cached
+                    return new UrlJwkProvider(url, JWKS_TIMEOUT_MS, JWKS_TIMEOUT_MS, proxy);
                 } catch (MalformedURLException e) {
                     throw new IllegalArgumentException(e);
                 }
@@ -130,12 +133,12 @@ public class AccessTokenValidator {
     }
 
     private Future<ExtractedClaims> extractClaimsFromUserInfo(String accessToken, Supplier<Future<UserInfoResult>> fn) {
-
-        return userInfoCache.computeIfAbsent(accessToken, k -> fn.get())
-                .map(UserInfoResult::claims).onFailure(error -> {
-                    /* we don't need to keep the failed response any longer */
-                    userInfoCache.remove(accessToken);
-                });
+        Future<UserInfoResult> shared = userInfoCache.computeIfAbsent(accessToken, k -> fn.get());
+        // the shared future completes on the first caller's context: continue on the current request's context instead
+        return FutureUtil.continueOnCallerContext(shared).map(UserInfoResult::claims).onFailure(error -> {
+            /* we don't need to keep the failed response any longer; a waiter runs late, so never evict a newer entry */
+            userInfoCache.remove(accessToken, shared);
+        });
     }
 
     /**

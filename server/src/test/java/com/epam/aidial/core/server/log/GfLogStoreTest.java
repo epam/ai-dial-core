@@ -9,6 +9,11 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.deltix.gflog.api.LogEntry;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.TraceFlags;
+import io.opentelemetry.api.trace.TraceState;
+import io.opentelemetry.context.Scope;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -18,6 +23,9 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -651,5 +659,38 @@ public class GfLogStoreTest {
         String json = "{" + member.substring(1) + "}";
         JsonNode root = ProxyUtil.MAPPER.readTree(json);
         return root.elements().next();
+    }
+
+    /**
+     * {@code save()} hands the record to the single gflog writer thread, which has no Vert.x/OTel context of its
+     * own: the request's trace context must be carried over, or every log line that thread emits (e.g. "Can't
+     * save log") has an empty TraceId/SpanId. The first getter {@code append} reads runs on that thread.
+     */
+    @SneakyThrows
+    @Test
+    public void testSaveCarriesTraceContextToWriterThread() {
+        SpanContext expected = SpanContext.create("aaaabbbbccccddddeeeeffff00001111", "1234567890abcdef",
+                TraceFlags.getSampled(), TraceState.getDefault());
+        AtomicReference<SpanContext> seenOnWriter = new AtomicReference<>();
+        AtomicReference<String> writerThread = new AtomicReference<>();
+        CountDownLatch written = new CountDownLatch(1);
+
+        AnalyticsLogContext logContext = mock(AnalyticsLogContext.class);
+        when(logContext.getRequestMethod()).thenReturn("POST");
+        when(logContext.getConversationId()).thenAnswer(invocation -> {
+            seenOnWriter.set(Span.current().getSpanContext());
+            writerThread.set(Thread.currentThread().getName());
+            written.countDown();
+            return null;
+        });
+
+        GfLogStore store = new GfLogStore(mock(AnalyticsSettings.class));
+        try (Scope ignored = Span.wrap(expected).makeCurrent()) {
+            store.save(logContext);
+        }
+
+        assertTrue(written.await(5, TimeUnit.SECONDS), "the writer thread never ran");
+        assertTrue(writerThread.get().startsWith("gflog-store-"), writerThread.get());
+        assertEquals(expected, seenOnWriter.get());
     }
 }
