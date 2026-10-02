@@ -145,10 +145,12 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    @DialConfigLocation("dial-config/bracket-named-model.json")
+    @DialConfigLocation("dial-config/bracket-paren-named-model.json")
     void testMigrateModelWithUriUnsafeNameReportsEncodedReachableResourceUrl() {
         // A model name only has to be legal configuration; brackets are legal there but illegal in a
         // URI path, so resourceUrl must percent-encode the name for the admin API path to be reachable.
+        // Parens are legal in both configuration and a URI path segment (RFC 3986 sub-delims), so the
+        // fixture's '(preview)' survives unescaped alongside the escaped '[1m]'.
         String body = """
                 {"types": ["models"]}
                 """;
@@ -160,8 +162,8 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
 
         JsonNode result = results.get(0);
         assertEquals("migrated", result.get("status").asText(), () -> "Body: " + response.body());
-        assertEquals("anthropic.claude-opus-4-8[1m]", result.get("key").asText(), () -> "Body: " + response.body());
-        String resourceUrl = "models/platform/anthropic.claude-opus-4-8%5B1m%5D";
+        assertEquals("anthropic.claude-opus-4-8(preview)[1m]", result.get("key").asText(), () -> "Body: " + response.body());
+        String resourceUrl = "models/platform/anthropic.claude-opus-4-8(preview)%5B1m%5D";
         assertEquals(resourceUrl, result.get("resourceUrl").asText(), () -> "Body: " + response.body());
 
         verify(send(HttpMethod.GET, "/v1/" + resourceUrl, null, "", "authorization", "admin"), 200);

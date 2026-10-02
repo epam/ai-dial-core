@@ -85,13 +85,14 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         // Covers every character ENTITY_NAME_PATTERN allows beyond the base alphanumeric/./-/_ set,
         // in one name, so widening the pattern later just means adding a character here instead of
         // a new test method: '@' is common in real-world deployment ids; '[' / ']' show up in
-        // legacy model ids carrying a context-window suffix (e.g. "claude-opus-4-8[1m]").
+        // legacy model ids carrying a context-window suffix (e.g. "claude-opus-4-8[1m]"); '(' / ')'
+        // show up in vendor-qualified ids (e.g. "gpt-4(preview)").
         String body = """
                 {
                   "manifests": [
                     {
                       "kind": "Model",
-                      "name": "models/platform/org@validate-model[1m]",
+                      "name": "models/platform/org@validate-model(preview)[1m]",
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"
