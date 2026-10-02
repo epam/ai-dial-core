@@ -50,6 +50,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -64,6 +65,7 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -297,6 +299,24 @@ public class IdentityProviderTest {
                 .toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
 
         assertEquals(List.of("manager"), claims.userRoles());
+    }
+
+    @Test
+    public void testExtractClaimsWithBlankKidDoesNotTakeTheSingleKey() throws Exception {
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+        // a kid that is present but blank is looked up by that id; only a missing kid resolves to the single key
+        when(jwkProvider.get(eq(""))).thenThrow(new JwkException("no key found by a blank kid"));
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+        String token = JWT.create().withHeader(Map.of("kid", "")).withClaim("roles", List.of("manager")).sign(algorithm);
+
+        Future<ExtractedClaims> result = identityProvider.extractClaimsFromJwt(JWT.decode(token));
+
+        assertThrows(ExecutionException.class, () -> result.toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS));
+        verify(jwkProvider, never()).get(isNull());
     }
 
     @Test

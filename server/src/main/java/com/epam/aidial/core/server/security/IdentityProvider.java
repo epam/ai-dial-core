@@ -73,7 +73,8 @@ public class IdentityProvider {
 
     private URL userInfoUrl;
 
-    // in memory cache store results obtained from JWK provider, keyed by kid (empty when the JWT has no kid)
+    // in memory cache store results obtained from JWK provider, keyed by kid: Optional.empty() is the key of a token
+    // without kid, while a blank kid is a regular key that matches no key of the JWKS and is rejected
     private final ConcurrentHashMap<Optional<String>, Future<JwkResult>> cache = new ConcurrentHashMap<>();
 
     // the name of the claim in JWT to extract user email
