@@ -50,6 +50,94 @@ public class AdminValidateApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testValidateRejectsOutOfContractEntityName() {
+        // /v1/admin/validate must enforce the same entity-name contract as the single-entity PUT —
+        // it must not greenlight a batch whose real-apply phase (or the direct REST endpoint) would
+        // reject the name.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/has space",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"
+                      }
+                    }
+                  ]
+                }
+                """;
+        // precheck defaults to true, so a single failing entity atomically rejects the whole batch
+        // with 422 (see testV03PrecheckTrueDanglingRefReturns422) rather than a 200 carrying a
+        // per-entity FAILED result.
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateAcceptsExtendedCharsInEntityName() {
+        // Covers every character ENTITY_NAME_PATTERN allows beyond the base alphanumeric/./-/_ set,
+        // in one name, so widening the pattern later just means adding a character here instead of
+        // a new test method: '@' is common in real-world deployment ids; '[' / ']' show up in
+        // legacy model ids carrying a context-window suffix (e.g. "claude-opus-4-8[1m]").
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/org@validate-model[1m]",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(0, parsed.get("failed").asInt());
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateRejectsInvalidToolSetName() {
+        // '.' passes ENTITY_NAME_PATTERN but fails isValidToolSetKey — validate must reject it,
+        // consistent with the single-entity PUT (PlatformAppToolsetApiTest) and real-apply.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "ToolSet",
+                      "name": "toolsets/platform/my.validate-toolset",
+                      "spec": {
+                        "transport": "http",
+                        "endpoint": "http://localhost:9876",
+                        "display_name": "Validate Toolset"
+                      }
+                    }
+                  ]
+                }
+                """;
+        // precheck defaults to true, so a single failing entity atomically rejects the whole batch
+        // with 422, same as testValidateRejectsOutOfContractEntityName above.
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt());
+    }
+
+    @Test
+    @SneakyThrows
     void testV02HappyPathAllKinds() {
         String body = """
                 {

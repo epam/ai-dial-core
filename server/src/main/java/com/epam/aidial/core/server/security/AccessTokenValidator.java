@@ -240,7 +240,7 @@ public class AccessTokenValidator {
                     return null;
                 }
             }
-            promise.fail("IdP is not found in Core settings to support user info endpoint for extracting user claims from access token.");
+            promise.fail(new IdpNotFoundException("IdP is not found in Core settings to support user info endpoint for extracting user claims from access token."));
             return null;
         }).onFailure(promise::fail);
         return promise.future();

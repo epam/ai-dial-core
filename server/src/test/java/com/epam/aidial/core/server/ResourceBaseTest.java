@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
+import com.epam.aidial.core.server.security.IdpNotFoundException;
 import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -215,6 +216,10 @@ public class ResourceBaseTest {
 
                         if (authorization.equals("no-subject")) {
                             return Future.succeededFuture(createSubjectLessClaims());
+                        }
+
+                        if (authorization.equals("Bearer proxyKey1")) {
+                            return Future.failedFuture(new IdpNotFoundException("Idp not found"));
                         }
 
                         return Future.failedFuture("Not authorized");

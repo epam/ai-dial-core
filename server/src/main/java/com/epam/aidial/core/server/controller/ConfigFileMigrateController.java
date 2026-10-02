@@ -10,6 +10,7 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.SchemaMigrationNameResolver;
 import com.epam.aidial.core.server.data.config.manifest.AdminApplyStatus;
@@ -238,9 +239,9 @@ public class ConfigFileMigrateController {
     /**
      * The percent-encoded admin API path (no leading {@code /v1/}) at which {@code canonicalId} is
      * reachable, matching the convention {@link ResourceDescriptor#getUrl()} uses elsewhere in the API
-     * — encoding matters here because a managed type's short name comes straight from an arbitrary
-     * file-config key (e.g. a model id containing {@code [}/{@code ]}) and isn't restricted the way
-     * {@code ConfigResourceController.ENTITY_NAME_PATTERN} restricts a PUT/DELETE name.
+     * — encoding matters here because {@link ConfigPostProcessor#ENTITY_NAME_PATTERN} allows several
+     * characters (e.g. {@code [}/{@code ]}) that are reserved in a URL path and must be escaped to stay
+     * reachable.
      */
     private static String resourceUrl(String canonicalId) {
         return canonicalId == null ? null : UrlUtil.encodePath(canonicalId);
@@ -308,7 +309,7 @@ public class ConfigFileMigrateController {
             Key fileKey = entry.getValue();
             String hash = HashUtil.sha256Hex(secret).substring(0, KEY_HASH_LENGTH);
             String project = fileKey.getProject();
-            String shortName = (project != null && ConfigResourceController.ENTITY_NAME_PATTERN.matcher(project).matches())
+            String shortName = (project != null && ConfigPostProcessor.ENTITY_NAME_PATTERN.matcher(project).matches())
                     ? project.toLowerCase(Locale.ROOT) + "-" + hash
                     : hash;
             String canonicalId = MergedConfigStore.canonicalId(ResourceTypes.PROJECT_KEY, ResourceDescriptor.PLATFORM_BUCKET, shortName);
