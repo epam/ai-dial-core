@@ -69,11 +69,22 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
             BiConsumer<String, String> headers, TagExtractor<R> tagExtractor) {
 
         String spanName = request instanceof HttpRequest req ? getClientSpanName(req) : operation;
-        io.opentelemetry.context.Context active = context == null ? null : context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
+        io.opentelemetry.context.Context active = context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
         if (active == null || active.get(RESPONSE_ENDED) == null) {
             return delegate.sendRequest(context, kind, policy, request, spanName, headers, tagExtractor);
         }
-        // hide the ended server span, so the delegate traces this call as it did before the context was restored
+        return sendRequestWithoutEndedServerSpan(context, active, kind, policy, request, spanName, headers, tagExtractor);
+    }
+
+    /**
+     * {@link #sendResponse} restores the ended server span for log correlation, and the delegate would take it as the
+     * parent of this client call. Hides it for the duration of the call, so the call is traced as it was before
+     * the span was restored.
+     */
+    private <R> O sendRequestWithoutEndedServerSpan(
+            Context context, io.opentelemetry.context.Context active, SpanKind kind, TracingPolicy policy, R request,
+            String spanName, BiConsumer<String, String> headers, TagExtractor<R> tagExtractor) {
+
         context.removeLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
         try {
             return delegate.sendRequest(context, kind, policy, request, spanName, headers, tagExtractor);
