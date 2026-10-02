@@ -44,7 +44,19 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
             Iterable<Map.Entry<String, String>> headers, TagExtractor<R> tagExtractor) {
 
         String spanName = request instanceof HttpServerRequest req ? getServerSpanName(req) : operation;
+        removeSpanRestoredAfterResponse(context);
         return delegate.receiveRequest(context, kind, policy, request, spanName, headers, tagExtractor);
+    }
+
+    /**
+     * The span {@link #sendResponse} restores belongs to the request whose response just ended. A new request
+     * must not start from it, even if its Vert.x context were ever shared with that request.
+     */
+    private static void removeSpanRestoredAfterResponse(Context context) {
+        io.opentelemetry.context.Context active = context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
+        if (active != null && active.get(RESPONSE_ENDED) != null) {
+            context.removeLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
+        }
     }
 
     @Override

@@ -26,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
@@ -65,6 +66,41 @@ class DialVertxTracerTest {
         Context context = vertx.getOrCreateContext();
         tracer.sendRequest(context, SpanKind.RPC, null, request, request.method().name(), null, null);
         verify(delegate, only()).sendRequest(context, SpanKind.RPC, null, request, expectedName, null, null);
+    }
+
+    @Test
+    void receiveRequestRemovesTheSpanRestoredAfterAnEarlierResponse(Vertx vertx) {
+        ContextInternal context = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
+        context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, io.opentelemetry.context.Context.root().with(Span.wrap(SpanContext.create(
+                "22510e56eb9b21f6b03dbc038cd8fb71", "b03dbc038cd8fb71", TraceFlags.getSampled(), TraceState.getDefault()))));
+        doAnswer(invocation -> context.removeLocal(VertxContextStorageProvider.ACTIVE_CONTEXT))
+                .when(delegate).sendResponse(any(), any(), any(), any(), any());
+        tracer.sendResponse(context, null, new Object(), null, null);
+        assertNotNull(context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
+        doAnswer(invocation -> {
+            assertNull(context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
+            return null;
+        }).when(delegate).receiveRequest(any(), any(), any(), any(), any(), any(), any());
+
+        tracer.receiveRequest(context, SpanKind.RPC, null, new Object(), "op", null, null);
+
+        verify(delegate).receiveRequest(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void receiveRequestKeepsLiveSpanOfTheContext(Vertx vertx) {
+        ContextInternal context = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
+        io.opentelemetry.context.Context live = io.opentelemetry.context.Context.root().with(Span.wrap(SpanContext.create(
+                "22510e56eb9b21f6b03dbc038cd8fb71", "b03dbc038cd8fb71", TraceFlags.getSampled(), TraceState.getDefault())));
+        context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, live);
+        doAnswer(invocation -> {
+            assertSame(live, context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
+            return null;
+        }).when(delegate).receiveRequest(any(), any(), any(), any(), any(), any(), any());
+
+        tracer.receiveRequest(context, SpanKind.RPC, null, new Object(), "op", null, null);
+
+        verify(delegate).receiveRequest(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

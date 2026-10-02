@@ -38,6 +38,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -51,6 +52,9 @@ class DialVertxTracerIntegrationTest {
     private final List<SpanData> exportedSpans = new CopyOnWriteArrayList<>();
     private final Map<String, CompletableFuture<String>> traceparentsSeenByUpstream = new ConcurrentHashMap<>();
     private final Map<String, SpanContext> currentSpanOfOutgoingCall = new ConcurrentHashMap<>();
+    private final Map<String, SpanContext> spanAtTheStartOfRequest = new ConcurrentHashMap<>();
+    private final Map<String, Boolean> recordingAtTheStartOfRequest = new ConcurrentHashMap<>();
+    private final Map<String, Integer> clientPortOfRequest = new ConcurrentHashMap<>();
 
     private Vertx vertx;
     private Vertx upstreamVertx;
@@ -125,8 +129,34 @@ class DialVertxTracerIntegrationTest {
         assertEquals(server.getSpanId(), current.getSpanId());
     }
 
+    @Test
+    void requestOnReusedConnectionStartsFromItsOwnLiveSpan() throws Exception {
+        java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                .version(java.net.http.HttpClient.Version.HTTP_1_1).build();
+        request(client, "ping_1");
+        // the response of the first request ended, so its server span ended and the tracer restored it
+        SpanData first = awaitServerSpans(1).get(0);
+        request(client, "ping_2");
+        List<SpanData> servers = awaitServerSpans(2);
+
+        assertEquals(clientPortOfRequest.get("ping_1"), clientPortOfRequest.get("ping_2"), "not the same connection");
+        SpanContext second = spanAtTheStartOfRequest.get("ping_2");
+        assertNotEquals(first.getSpanId(), second.getSpanId());
+        assertNotEquals(first.getTraceId(), second.getTraceId());
+        assertTrue(servers.stream().anyMatch(span -> span.getSpanId().equals(second.getSpanId())));
+        // a restored span is not recording: the second request must start from its own live span
+        assertTrue(recordingAtTheStartOfRequest.get("ping_2"));
+    }
+
     private void handle(HttpServerRequest request) {
         String call = request.path().substring(1);
+        spanAtTheStartOfRequest.put(call, Span.current().getSpanContext());
+        recordingAtTheStartOfRequest.put(call, Span.current().isRecording());
+        clientPortOfRequest.put(call, request.connection().remoteAddress().port());
+        if (call.startsWith("ping")) {
+            request.response().end("ok");
+            return;
+        }
         if ("before".equals(call)) {
             callUpstream(call).onComplete(ignored -> request.response().end("ok"));
             return;
@@ -151,7 +181,11 @@ class DialVertxTracerIntegrationTest {
     }
 
     private void request(String call) throws Exception {
-        HttpResponse<String> response = java.net.http.HttpClient.newHttpClient().send(
+        request(java.net.http.HttpClient.newHttpClient(), call);
+    }
+
+    private void request(java.net.http.HttpClient client, String call) throws Exception {
+        HttpResponse<String> response = client.send(
                 java.net.http.HttpRequest.newBuilder(URI.create("http://localhost:" + serverPort + "/" + call)).build(),
                 HttpResponse.BodyHandlers.ofString());
         assertEquals(200, response.statusCode());
@@ -175,6 +209,18 @@ class DialVertxTracerIntegrationTest {
             Thread.sleep(10);
         }
         throw new AssertionError("the server span was not exported: " + exportedSpans);
+    }
+
+    private List<SpanData> awaitServerSpans(int count) throws Exception {
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (System.currentTimeMillis() < deadline) {
+            List<SpanData> servers = exportedSpans.stream().filter(span -> span.getKind() == SpanKind.SERVER).toList();
+            if (servers.size() >= count) {
+                return servers;
+            }
+            Thread.sleep(10);
+        }
+        throw new AssertionError("expected " + count + " server spans: " + exportedSpans);
     }
 
     private SpanData clientSpan() throws Exception {
