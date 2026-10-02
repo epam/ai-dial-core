@@ -1,5 +1,9 @@
 package com.epam.aidial.core.server.upstream;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.InterfaceType;
@@ -18,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -235,5 +240,77 @@ public class UpstreamRouteProviderTest {
         Upstream result = route.next();
 
         assertEquals(upstream2, result);
+    }
+
+    @Test
+    public void testGet_NoPriorCacheHit_DoesNotLogWarning() {
+        Model model = new Model();
+        model.setName("model");
+        Upstream upstream1 = new Upstream();
+        upstream1.setEndpoint("upstream1");
+        upstream1.setTier(0);
+        upstream1.setWeight(2);
+        model.setUpstreams(List.of(upstream1));
+
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
+        // mirrors UpstreamCacheService.getCacheEntry's fallback for a breakpoint that was never cached before:
+        // id and endpoint are null, only the prefix path is carried
+        CachedUpstreamEntry entry = new CachedUpstreamEntry(null, null, "prefix", null);
+        when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
+
+        Logger logger = (Logger) LoggerFactory.getLogger(UpstreamRouteProvider.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        Level previous = logger.getLevel();
+        logger.setLevel(Level.WARN);
+        try {
+            UpstreamRoute route = provider.get(model, cacheBreakpointContext);
+            Upstream result = route.next();
+
+            assertEquals(upstream1, result);
+            assertTrue(appender.list.isEmpty(), appender.list::toString);
+        } finally {
+            logger.setLevel(previous);
+            logger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    public void testGet_StaleCachedUpstream_LogsWarning() {
+        Model model = new Model();
+        model.setName("model");
+        Upstream upstream1 = new Upstream();
+        upstream1.setEndpoint("upstream1");
+        upstream1.setTier(0);
+        upstream1.setWeight(2);
+        model.setUpstreams(List.of(upstream1));
+
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
+        // a real cache hit referencing an upstream that no longer exists in config
+        CachedUpstreamEntry entry = new CachedUpstreamEntry("removed-endpoint", "removed-id", "prefix", null);
+        when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
+
+        Logger logger = (Logger) LoggerFactory.getLogger(UpstreamRouteProvider.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        Level previous = logger.getLevel();
+        logger.setLevel(Level.WARN);
+        try {
+            UpstreamRoute route = provider.get(model, cacheBreakpointContext);
+            Upstream result = route.next();
+
+            assertEquals(upstream1, result);
+            assertEquals(1, appender.list.size(), appender.list::toString);
+            ILoggingEvent event = appender.list.get(0);
+            assertEquals(Level.WARN, event.getLevel());
+            assertTrue(event.getFormattedMessage().contains("removed-id"), event.getFormattedMessage());
+        } finally {
+            logger.setLevel(previous);
+            logger.detachAppender(appender);
+        }
     }
 }

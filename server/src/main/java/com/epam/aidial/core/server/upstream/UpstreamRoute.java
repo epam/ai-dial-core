@@ -55,6 +55,16 @@ public class UpstreamRoute {
     @Getter
     private int attemptCount;
 
+    /**
+     * Whether the current upstream pick may still be retried once more on a brand-new connection without
+     * being charged against {@link #attemptCount} or marking the upstream failed. A pooled keep-alive
+     * connection can die between being handed out of the pool and the request actually being written to
+     * it; since nothing reached the server in that case, resending once is safe and is not a sign the
+     * upstream itself is unhealthy. Reset to {@code true} every time {@link #next()} picks a new upstream,
+     * so each pick gets exactly one free retry.
+     */
+    private boolean connectionRetryAvailable;
+
     private final Set<Upstream> usedUpstreams = new HashSet<>();
 
     /**
@@ -107,6 +117,7 @@ public class UpstreamRoute {
             throw balancer.createUpstreamUnavailableException();
         }
         attemptCount++;
+        connectionRetryAvailable = true;
         if (upstreamCacheContext == null
                 || (upstreamCacheContext.getPolicy() != CachePolicy.CACHE_PRIORITY && attemptCount > 1)
                 || upstreamCacheContext.getOriginalUpstream() == null) {
@@ -126,6 +137,20 @@ public class UpstreamRoute {
     @Nullable
     public Upstream get() {
         return upstream;
+    }
+
+    /**
+     * Consumes the current upstream pick's one free connection retry, if it hasn't been used yet.
+     *
+     * @return true if a fresh connection to the same upstream may be attempted without failing it or
+     *         advancing {@link #attemptCount}; false if that allowance was already used for this pick
+     */
+    public boolean canRetryDeadConnection() {
+        if (!connectionRetryAvailable) {
+            return false;
+        }
+        connectionRetryAvailable = false;
+        return true;
     }
 
     public void fail(HttpStatus status) {
