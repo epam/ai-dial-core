@@ -1,6 +1,7 @@
 package com.epam.aidial.core.storage.data;
 
 import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ApiSubType;
 import com.epam.aidial.core.openapi.annotations.ApiSubTypes;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -37,7 +38,9 @@ public abstract class MetadataBase {
 
     @JsonIgnore
     private ResourceDescriptor descriptor;
+    @ApiSchema(nullable = true)
     private String name;
+    @ApiSchema(nullable = true)
     private String parentPath;
     private String bucket;
     private String url;

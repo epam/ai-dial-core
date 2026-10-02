@@ -17,6 +17,9 @@ final class ResponseSchemaFactory {
     private static final String TEXT_EVENT_STREAM = "text/event-stream";
     static final String MULTIPART_FORM_DATA = "multipart/form-data";
     static final String MULTIPART_FILE_PROPERTY = "file";
+    static final String MULTIPART_FILES_PROPERTY = "files";
+    private static final String MULTIPART_FILES_DESCRIPTION = "One multipart part per file. The part's filename is the "
+            + "file's relative path inside the resource (e.g. SKILL.md or scripts/run.py); the part name is ignored.";
 
     private ResponseSchemaFactory() {
     }
@@ -83,6 +86,25 @@ final class ResponseSchemaFactory {
         properties.put(MULTIPART_FILE_PROPERTY, binaryStringSchema());
         objectSchema.setProperties(properties);
         objectSchema.setRequired(List.of(MULTIPART_FILE_PROPERTY));
+        return objectSchema;
+    }
+
+    /**
+     * Multipart upload of several files, declared as {@code @ApiSchema(implementation = List.class,
+     * typeArguments = byte[].class)}.
+     */
+    public static Schema<?> multipartMultiFileUploadSchema() {
+        ArraySchema files = new ArraySchema();
+        files.setItems(binaryStringSchema());
+        files.setMinItems(1);
+        files.setDescription(MULTIPART_FILES_DESCRIPTION);
+
+        Schema<Object> objectSchema = new Schema<>();
+        objectSchema.setType("object");
+        Map<String, Schema> properties = new LinkedHashMap<>();
+        properties.put(MULTIPART_FILES_PROPERTY, files);
+        objectSchema.setProperties(properties);
+        objectSchema.setRequired(List.of(MULTIPART_FILES_PROPERTY));
         return objectSchema;
     }
 
@@ -330,6 +352,16 @@ final class ResponseSchemaFactory {
     public static boolean isMultipartBinaryUpload(ApiSchema schema, String contentType) {
         return MULTIPART_FORM_DATA.equals(contentType)
             && schema.implementation() == byte[].class;
+    }
+
+    /**
+     * Special case: multipart upload of several files ({@code List<byte[]>}).
+     */
+    public static boolean isMultipartMultiFileUpload(ApiSchema schema, String contentType) {
+        return MULTIPART_FORM_DATA.equals(contentType)
+            && schema.implementation() == List.class
+            && schema.typeArguments().length == 1
+            && schema.typeArguments()[0] == byte[].class;
     }
 
     /**
