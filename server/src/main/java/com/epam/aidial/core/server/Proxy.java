@@ -464,6 +464,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     private Future<?> processAuthorizationResult(ExtractedClaims extractedClaims,
                                                  HttpServerRequest request, ApiKeyData apiKeyData,
                                                  String traceId, String spanId, String traceFlags) {
+        // Clear context when the response is actually closed, not when controller completes
+        request.response().closeHandler(v -> ContextManager.clearContext());
         Future<?> future;
         try {
             ProxyContext context = new ProxyContext(this, request, apiKeyData, extractedClaims, traceId, spanId, traceFlags);

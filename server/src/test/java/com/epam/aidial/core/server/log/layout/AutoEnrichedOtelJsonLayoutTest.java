@@ -7,7 +7,8 @@ import ch.qos.logback.classic.spi.LoggingEvent;
 import ch.qos.logback.classic.spi.ThrowableProxy;
 import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.server.ContextManager;
-import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.log.LogAttributes;
+import com.epam.aidial.core.server.log.LogContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opentelemetry.api.trace.Span;
@@ -15,9 +16,6 @@ import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.TraceFlags;
 import io.opentelemetry.api.trace.TraceState;
 import io.vertx.core.Vertx;
-import io.vertx.core.http.HttpMethod;
-import io.vertx.core.http.HttpServerRequest;
-import io.vertx.core.http.HttpServerResponse;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -111,23 +109,20 @@ class AutoEnrichedOtelJsonLayoutTest {
     @Test
     void shouldEnrichFromProxyContextWithHttpStatus() throws Exception {
         // Setup ProxyContext
-        ProxyContext proxyContext = mock(ProxyContext.class);
-        HttpServerRequest request = mock(HttpServerRequest.class);
-        HttpServerResponse response = mock(HttpServerResponse.class);
+        LogAttributes logAttributes = mock(LogAttributes.class);
 
-        when(request.uri()).thenReturn("/v1/test");
-        when(request.method()).thenReturn(HttpMethod.POST);
 
-        when(response.getStatusCode()).thenReturn(200);
-        when(response.getStatusMessage()).thenReturn("OK");
-        when(response.ended()).thenReturn(true);
 
-        when(proxyContext.getProject()).thenReturn("test-project");
-        when(proxyContext.getUserId()).thenReturn("test-user");
-        when(proxyContext.getRequest()).thenReturn(request);
-        when(proxyContext.getResponse()).thenReturn(response);
+        when(logAttributes.getProject()).thenReturn("test-project");
+        when(logAttributes.getUserId()).thenReturn("test-user");
         
-        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        when(logAttributes.getRequestUri()).thenReturn("/v1/test");
+        when(logAttributes.getRequestMethod()).thenReturn("POST");
+        when(logAttributes.isResponseEnded()).thenReturn(true);
+        when(logAttributes.getStatusCode()).thenReturn(200);
+        when(logAttributes.getStatusMessage()).thenReturn("OK");
+
+        contextManagerMock.when(ContextManager::getLogAttributes).thenReturn(logAttributes);
 
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         Logger testLogger = context.getLogger("test.logger");
@@ -157,19 +152,15 @@ class AutoEnrichedOtelJsonLayoutTest {
         vertxMock.when(Vertx::currentContext).thenReturn(null);
         
         // Setup ProxyContext
-        ProxyContext proxyContext = mock(ProxyContext.class);
-        HttpServerRequest request = mock(HttpServerRequest.class);
-        HttpServerResponse response = mock(HttpServerResponse.class);
-        when(request.uri()).thenReturn("/v1/chat/completions");
-        when(request.method()).thenReturn(HttpMethod.POST);
-        when(response.ended()).thenReturn(false); // Response not ended yet
+        LogAttributes logAttributes = mock(LogAttributes.class);
         
-        when(proxyContext.getProject()).thenReturn("proxy-project");
-        when(proxyContext.getUserId()).thenReturn("proxy-user");
-        when(proxyContext.getRequest()).thenReturn(request);
-        when(proxyContext.getResponse()).thenReturn(response);
+        when(logAttributes.getProject()).thenReturn("proxy-project");
+        when(logAttributes.getUserId()).thenReturn("proxy-user");
         
-        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        when(logAttributes.getRequestUri()).thenReturn("/v1/chat/completions");
+        when(logAttributes.getRequestMethod()).thenReturn("POST");
+
+        contextManagerMock.when(ContextManager::getLogAttributes).thenReturn(logAttributes);
 
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         Logger testLogger = context.getLogger("test.logger");
@@ -198,7 +189,7 @@ class AutoEnrichedOtelJsonLayoutTest {
     void shouldUseUnknownForMissingFields() throws Exception {
         // No Vertx context and no ProxyContext
         vertxMock.when(Vertx::currentContext).thenReturn(null);
-        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        contextManagerMock.when(ContextManager::getLogAttributes).thenReturn(null);
 
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         Logger testLogger = context.getLogger("test.logger");
@@ -222,7 +213,7 @@ class AutoEnrichedOtelJsonLayoutTest {
     @Test
     void shouldTakeIdsFromCurrentSpanWithoutProxyContext() throws Exception {
         vertxMock.when(Vertx::currentContext).thenReturn(null);
-        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        contextManagerMock.when(ContextManager::getLogAttributes).thenReturn(null);
         when(currentSpan.getSpanContext()).thenReturn(SpanContext.create(
                 "22510e56eb9b21f6b03dbc038cd8fb71", "b03dbc038cd8fb71", TraceFlags.getSampled(), TraceState.getDefault()));
 
@@ -243,23 +234,20 @@ class AutoEnrichedOtelJsonLayoutTest {
     @Test
     void shouldEnrichFromProxyContextAndHttpStatusFromVertx() throws Exception {
         // Setup ProxyContext
-        ProxyContext proxyContext = mock(ProxyContext.class);
-        HttpServerRequest request = mock(HttpServerRequest.class);
-        HttpServerResponse response = mock(HttpServerResponse.class);
+        LogAttributes logAttributes = mock(LogAttributes.class);
 
-        when(request.uri()).thenReturn("/v1/models");
-        when(request.method()).thenReturn(HttpMethod.GET);
 
-        when(response.getStatusCode()).thenReturn(502);
-        when(response.getStatusMessage()).thenReturn("Bad Gateway");
-        when(response.ended()).thenReturn(true);
 
-        when(proxyContext.getProject()).thenReturn("proxy-project");
-        when(proxyContext.getUserId()).thenReturn("proxy-user");
-        when(proxyContext.getRequest()).thenReturn(request);
-        when(proxyContext.getResponse()).thenReturn(response);
+        when(logAttributes.getProject()).thenReturn("proxy-project");
+        when(logAttributes.getUserId()).thenReturn("proxy-user");
 
-        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        when(logAttributes.getRequestUri()).thenReturn("/v1/models");
+        when(logAttributes.getRequestMethod()).thenReturn("GET");
+        when(logAttributes.isResponseEnded()).thenReturn(true);
+        when(logAttributes.getStatusCode()).thenReturn(502);
+        when(logAttributes.getStatusMessage()).thenReturn("Bad Gateway");
+
+        contextManagerMock.when(ContextManager::getLogAttributes).thenReturn(logAttributes);
 
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         Logger testLogger = context.getLogger("test.logger");
@@ -286,15 +274,12 @@ class AutoEnrichedOtelJsonLayoutTest {
     @Test
     void shouldIncludeTraceContextFromProxyContext() throws Exception {
         // Setup ProxyContext with trace info
-        ProxyContext proxyContext = mock(ProxyContext.class);
-        HttpServerResponse response = mock(HttpServerResponse.class);
-        when(response.ended()).thenReturn(false);
-        when(proxyContext.getTraceId()).thenReturn("22510e56eb9b21f6b03dbc038cd8fb71");
-        when(proxyContext.getSpanId()).thenReturn("8a46c76f1554b00a");
-        when(proxyContext.getTraceFlags()).thenReturn("01");
-        when(proxyContext.getResponse()).thenReturn(response);
+        LogAttributes logAttributes = mock(LogAttributes.class);
+        when(logAttributes.getTraceId()).thenReturn("22510e56eb9b21f6b03dbc038cd8fb71");
+        when(logAttributes.getSpanId()).thenReturn("8a46c76f1554b00a");
+        when(logAttributes.getTraceFlags()).thenReturn("01");
         
-        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        contextManagerMock.when(ContextManager::getLogAttributes).thenReturn(logAttributes);
 
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         Logger testLogger = context.getLogger("test.logger");
@@ -316,16 +301,13 @@ class AutoEnrichedOtelJsonLayoutTest {
 
     @Test
     void shouldIncludeTracingAttributesAndKeepSpanSettersTyped() throws Exception {
-        ProxyContext proxyContext = mock(ProxyContext.class);
-        HttpServerResponse response = mock(HttpServerResponse.class);
-        when(response.ended()).thenReturn(false);
-        when(proxyContext.getResponse()).thenReturn(response);
+        LogAttributes logAttributes = mock(LogAttributes.class);
         Map<String, Object> tracingAttributes = new LinkedHashMap<>();
         tracingAttributes.put("gen_ai.conversation.id", "conversation-1");
         tracingAttributes.put("gen_ai.usage.input_tokens", 10L);
         tracingAttributes.put("gen_ai.request.encoding_formats", List.of("base64"));
-        when(proxyContext.getTracingAttributes()).thenReturn(tracingAttributes);
-        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        when(logAttributes.getTracingAttributes()).thenReturn(tracingAttributes);
+        contextManagerMock.when(ContextManager::getLogAttributes).thenReturn(logAttributes);
         when(currentSpan.isRecording()).thenReturn(true);
 
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
@@ -397,5 +379,49 @@ class AutoEnrichedOtelJsonLayoutTest {
             assertEquals(levels[i].toString(), jsonNode.get("SeverityText").asText());
             assertEquals(expectedSeverities[i], jsonNode.get("SeverityNumber").asInt());
         }
+    }
+
+    @Test
+    void shouldKeepAttributesFromSnapshotAfterProxyContextIsCleared() throws Exception {
+        Map<String, Object> tracingAttributes = new LinkedHashMap<>();
+        tracingAttributes.put("gen_ai.conversation.id", "conversation-1");
+        LogContext snapshot = new LogContext("22510e56eb9b21f6b03dbc038cd8fb71", "8a46c76f1554b00a", "01",
+                "snapshot-project", "snapshot-user", "POST", "/v1/chat", false, null, 0, tracingAttributes);
+        contextManagerMock.when(ContextManager::getLogAttributes).thenReturn(snapshot);
+
+        JsonNode jsonNode = objectMapper.readTree(layout.doLayout(event("late log after the connection closed")));
+
+        assertEquals("22510e56eb9b21f6b03dbc038cd8fb71", jsonNode.get("TraceId").asText());
+        assertEquals("8a46c76f1554b00a", jsonNode.get("SpanId").asText());
+        assertEquals("01", jsonNode.get("TraceFlags").asText());
+        JsonNode attributes = jsonNode.get("Attributes");
+        assertEquals("snapshot-project", attributes.get("user.project").asText());
+        assertEquals("snapshot-user", attributes.get("user.id").asText());
+        assertEquals("POST", attributes.get("request.method").asText());
+        assertEquals("/v1/chat", attributes.get("request.uri").asText());
+        assertEquals("conversation-1", attributes.get("gen_ai.conversation.id").asText());
+        assertNull(attributes.get("response.status.code"));
+    }
+
+    @Test
+    void shouldIncludeResponseStatusFromSnapshotWhenResponseEnded() throws Exception {
+        LogContext snapshot = new LogContext("t", "s", "01", "p", "u", "GET", "/x", true, "Bad Gateway", 502,
+                new LinkedHashMap<>());
+        contextManagerMock.when(ContextManager::getLogAttributes).thenReturn(snapshot);
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(event("late"))).get("Attributes");
+
+        assertEquals(502, attributes.get("response.status.code").asInt());
+        assertEquals("Bad Gateway", attributes.get("response.status").asText());
+    }
+
+    private static LoggingEvent event(String message) {
+        LoggingEvent event = new LoggingEvent();
+        event.setLoggerName("test.logger");
+        event.setLevel(Level.INFO);
+        event.setMessage(message);
+        event.setTimeStamp(System.currentTimeMillis());
+        event.setLoggerContext((LoggerContext) LoggerFactory.getILoggerFactory());
+        return event;
     }
 }

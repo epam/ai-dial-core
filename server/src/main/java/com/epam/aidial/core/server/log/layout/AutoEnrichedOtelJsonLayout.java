@@ -6,7 +6,7 @@ import ch.qos.logback.classic.spi.ThrowableProxy;
 import ch.qos.logback.core.LayoutBase;
 import com.epam.aidial.core.server.AiDial;
 import com.epam.aidial.core.server.ContextManager;
-import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.log.LogAttributes;
 import com.epam.aidial.core.server.log.otl.OtelLogRecord;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -48,11 +48,11 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         String traceFlags = "";
 
         Span currentSpan = Span.current();
-        ProxyContext proxyContext = ContextManager.getProxyContext();
-        if (proxyContext != null) {
-            traceId = proxyContext.getTraceId();
-            spanId = proxyContext.getSpanId();
-            traceFlags = proxyContext.getTraceFlags();
+        LogAttributes logAttributes = ContextManager.getLogAttributes();
+        if (logAttributes != null) {
+            traceId = logAttributes.getTraceId();
+            spanId = logAttributes.getSpanId();
+            traceFlags = logAttributes.getTraceFlags();
         } else {
             // no ProxyContext yet (auth phase, early rejections): take the ids from the current span
             SpanContext span = currentSpan.getSpanContext();
@@ -70,7 +70,7 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         attributes.put("threadName", event.getThreadName());
 
         // Enrich attributes from context
-        enrichAttributesFromContext(proxyContext, attributes);
+        enrichAttributesFromContext(logAttributes, attributes);
         
         // Handle exception info
         enrichExceptionAttributes(event, attributes);
@@ -79,8 +79,8 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         enrichOpenTelemetrySpan(currentSpan, attributes);
 
         // after the span pass: GenAiTraceAttributes already set these on the span, typed
-        if (proxyContext != null) {
-            attributes.putAll(proxyContext.getTracingAttributes());
+        if (logAttributes != null) {
+            attributes.putAll(logAttributes.getTracingAttributes());
         }
 
         Map<String, Object> resource = new HashMap<>();
@@ -103,17 +103,17 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
                 .build();
     }
 
-    private void enrichAttributesFromContext(ProxyContext proxyContext, Map<String, Object> attributes) {
-        if (proxyContext != null) {
-            attributes.put("user.project", proxyContext.getProject());
-            attributes.put("user.id", proxyContext.getUserId());
-            if (proxyContext.getRequest() != null) {
-                attributes.put("request.method", proxyContext.getRequest().method().name());
-                attributes.put("request.uri", proxyContext.getRequest().uri());
+    private void enrichAttributesFromContext(LogAttributes logAttributes, Map<String, Object> attributes) {
+        if (logAttributes != null) {
+            attributes.put("user.project", logAttributes.getProject());
+            attributes.put("user.id", logAttributes.getUserId());
+            if (logAttributes.getRequestMethod() != null) {
+                attributes.put("request.method", logAttributes.getRequestMethod());
+                attributes.put("request.uri", logAttributes.getRequestUri());
             }
-            if (proxyContext.getResponse().ended()) {
-                attributes.put("response.status", proxyContext.getResponse().getStatusMessage());
-                attributes.put("response.status.code", proxyContext.getResponse().getStatusCode());
+            if (logAttributes.isResponseEnded()) {
+                attributes.put("response.status", logAttributes.getStatusMessage());
+                attributes.put("response.status.code", logAttributes.getStatusCode());
             }
         }
     }
