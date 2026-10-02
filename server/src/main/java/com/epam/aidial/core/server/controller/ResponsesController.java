@@ -15,7 +15,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
-import com.epam.aidial.core.server.data.ResponseMapping;
+import com.epam.aidial.core.server.data.ResponseMetadata;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
@@ -24,7 +24,6 @@ import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
 import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
 import com.epam.aidial.core.server.function.ExtractTerminalResponseFn;
-import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.enhancement.ResolveEncryptedContentAffinityFn;
@@ -36,14 +35,14 @@ import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
-import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
+import com.epam.aidial.core.server.util.EncryptedAffinityUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -55,7 +54,6 @@ import io.vertx.core.http.HttpServerResponse;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
-import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -116,7 +114,10 @@ public class ResponsesController extends BaseDeploymentPostController {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
         context.getRequest().body()
-                .map(this::parseBody)
+                .map(body -> {
+                    context.setRequestBody(body);
+                    return parseBody(body);
+                })
                 .compose(this::dispatch)
                 .onFailure(this::handleRequestBodyError);
         return Future.succeededFuture();
@@ -182,7 +183,7 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         context.setTraceOperation("Send request to %s deployment".formatted(deployment.getName()));
         context.setDeployment(deployment);
-        List<String> interceptors = proxy.getDeploymentService().getInterceptors(context, deployment);
+        List<String> interceptors = proxy.getDeploymentService().getInterceptors(context, deployment, InterfaceType.OPENAI_RESPONSES);
         context.setInterceptors(interceptors);
 
         return null;
@@ -330,11 +331,11 @@ public class ResponsesController extends BaseDeploymentPostController {
         }
 
         ExtractTerminalResponseFn extractFn = new ExtractTerminalResponseFn(proxy, context);
-        ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context);
-        EncryptedContentWrapFn wrapFn = new EncryptedContentWrapFn(proxy, context);
+        EncryptedContentWrapFn wrapFn = new EncryptedContentWrapFn(
+                proxy, context, currentUpstream.getId(), this::onDialResponseIdAvailable);
         BufferingReadStream responseStream = createResponseStream(proxyResponse, () -> {
             CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
-            return new ResponsesSseListener(List.of(wrapFn, attachmentsFn, replaceIdFn, extractFn));
+            return new ResponsesSseListener(List.of(wrapFn, attachmentsFn, extractFn));
         });
 
         HttpServerResponse response = context.getResponse();
@@ -345,106 +346,117 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .endOnFailure(false)
                 .endOnSuccess(false)
                 .to(response)
-                .onSuccess(ignored -> handleStreamingResponse(responseStream, replaceIdFn.getDialId(), extractFn.getAssembledStreamingResponse()))
+                .onSuccess(ignored -> handleStreamingResponse(responseStream, wrapFn.getDialResponseId(), extractFn.getAssembledStreamingResponse()))
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
     private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
-        return rewriteResponseId(proxyResponse, body)
-                .compose(pair -> {
-                    String dialId = pair.getKey();
-                    Buffer rewritten = pair.getValue();
-                    context.setResponseBody(rewritten);
-                    context.setResponseBodyTimestamp(System.currentTimeMillis());
-                    HttpServerResponse response = context.getResponse();
-                    ProxyUtil.copyResponse(response, proxyResponse);
-                    response.setChunked(false);
-                    response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
-                    putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
+        return rewrite(proxyResponse.statusCode(), body).compose(rewritten -> {
+            context.setResponseBody(rewritten);
+            context.setResponseBodyTimestamp(System.currentTimeMillis());
+            HttpServerResponse response = context.getResponse();
+            ProxyUtil.copyResponse(response, proxyResponse);
+            response.setChunked(false);
+            response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
+            putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
-                    if (context.isBackgroundJob() && dialId != null) {
-                        return proxy.getBackgroundJobService().saveJob(dialId, context)
-                                .onComplete(result -> {
-                                    if (result.failed()) {
-                                        log.warn("Failed to save background job record", result.cause());
-                                    }
-                                    response.end(rewritten);
-                                });
-                    } else {
-                        return collectTokenUsage(rewritten, dialId)
-                                .transform(result -> {
-                                    if (result.failed()) {
-                                        log.warn("Failed to collect token usage", result.cause());
-                                    }
-                                    return collectResponseAttachments(rewritten, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
-                                })
-                                .onComplete(result -> {
-                                    if (result.failed()) {
-                                        log.warn("Failed to collect attachments from response", result.cause());
-                                    }
-                                    response.end(rewritten);
-                                    completeProxyResponse(null);
-                                });
-                    }
-                });
+            if (context.isBackgroundJob() && proxyResponse.statusCode() == 200) {
+                response.end(rewritten);
+                return Future.succeededFuture();
+            }
+
+            return collectTokenUsage(rewritten)
+                    .transform(result -> {
+                        if (result.failed()) {
+                            log.warn("Failed to collect token usage", result.cause());
+                        }
+                        return collectResponseAttachments(rewritten, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
+                    })
+                    .onComplete(result -> {
+                        if (result.failed()) {
+                            log.warn("Failed to collect attachments from response", result.cause());
+                        }
+                        response.end(rewritten);
+                        completeProxyResponse(null);
+                    });
+        });
     }
 
-    private Future<Pair<String, Buffer>> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
-        if (proxyResponse.statusCode() != 200) {
-            return Future.succeededFuture(Pair.of(null, body));
+    private Future<Void> onDialResponseIdAvailable(String dialResponseId) {
+        if (GenAiTraceAttributes.isEnabled(context)) {
+            try {
+                // interfaceType() reads the request path, which not every deployment kind reaching here has,
+                // and this runs before the client response is completed - tracing must not fail the request
+                GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), dialResponseId);
+            } catch (Throwable e) {
+                log.warn("Failed to set GenAI response trace attributes", e);
+            }
         }
+
+        Future<Void> result = Future.succeededFuture();
+
+        if (context.isStoreResponse()) {
+            ResponseMetadata metadata = ResponseMetadata.builder()
+                    .deploymentName(context.getDeployment().getName())
+                    .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
+                    .build();
+            result = proxy.getTaskExecutor()
+                    .<Void>submit(() -> {
+                        proxy.getResponseMetadataService().saveMetadata(dialResponseId, metadata, EtagHeader.NEW_ONLY);
+                        return null;
+                    })
+                    .onFailure(e -> log.warn("Failed to save response metadata for {}", dialResponseId, e));
+        }
+
+        if (context.isBackgroundJob()) {
+            result = result.compose(ignored ->
+                    proxy.getBackgroundJobService().saveJob(dialResponseId, context)
+                            .onFailure(e -> log.warn("Failed to save background job for {}", dialResponseId, e)));
+        }
+
+        return result;
+    }
+
+    private Future<Buffer> rewrite(int statusCode, Buffer body) {
+        if (statusCode != 200) {
+            return Future.succeededFuture(body);
+        }
+
         JsonNode tree = JsonUtil.tryParse(body.getBytes());
         if (!tree.isObject() || !(tree instanceof ObjectNode object)) {
             log.warn("Response body is not a JSON object, skipping rewrite. Deployment: {}. Endpoint: {}",
                     context.getDeployment().getName(),
                     context.getProxyRequestUri());
-            return Future.succeededFuture(Pair.of(null, body));
-        }
-        JsonNode idNode = object.path("id");
-        if (!idNode.isTextual()) {
-            log.info("Response body doesn't contain 'id' field, skipping rewrite. Deployment: {}. Endpoint: {}",
-                    context.getDeployment().getName(),
-                    context.getProxyRequestUri());
-            return Future.succeededFuture(Pair.of(null, body));
+            return Future.succeededFuture(body);
         }
 
-        String upstreamId = idNode.asText();
         Upstream upstream = context.getUpstreamRoute().get();
-        if (EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
-            EncryptedContentAffinityUtil.wrapOutputArray(object.path("output"), upstream.getId());
+        EncryptedAffinityUtil.wrapOutputArray(object.path("output"), upstream.getId());
+
+        JsonNode idNode = object.path("id");
+        if (idNode.isTextual()) {
+            String upstreamResponseId = idNode.asText();
+            String dialResponseId = EncryptedAffinityUtil.wrapResponseId(upstream.getId(), upstreamResponseId, context.getDeployment().getName());
+            object.put("id", dialResponseId);
+            onDialResponseIdAvailable(dialResponseId)
+                    .onFailure(e -> log.warn("Failed to init response context for {}", dialResponseId, e));
         }
-        if (!context.isStoreResponse()) {
-            String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
-            object.put("id", dialId);
-            return Future.succeededFuture(Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object))));
-        }
-        ResponseMapping mapping = ResponseMapping.builder()
-                .upstreamResponseId(upstreamId)
-                .upstreamKey(upstream.getId())
-                .deploymentName(context.getDeployment().getName())
-                .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
-                .build();
-        return proxy.getTaskExecutor()
-                .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
-                .map(dialId -> {
-                    object.put("id", dialId);
-                    return Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object)));
-                });
+        return Future.succeededFuture(Buffer.buffer(JsonUtil.serialize(object)));
     }
 
-    private void handleStreamingResponse(BufferingReadStream responseStream, String dialId, String assembledStreamingResponse) {
+    private void handleStreamingResponse(BufferingReadStream responseStream, String dialResponseId, String assembledStreamingResponse) {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         context.setAssembledStreamingResponse(assembledStreamingResponse);
 
         Future<Void> completionFuture;
-        if (context.isBackgroundJob() && dialId != null) {
-            completionFuture = proxy.getBackgroundJobService().deleteJob(dialId)
-                    .compose(deleted -> deleted ? collectTokenUsage(responseBody, dialId) : Future.succeededFuture());
+        if (context.isBackgroundJob() && dialResponseId != null) {
+            completionFuture = proxy.getBackgroundJobService().deleteJob(dialResponseId)
+                    .compose(deleted -> deleted ? collectTokenUsage(responseBody) : Future.succeededFuture());
         } else {
             // the buffered bytes are the raw upstream frames, so the id has to come from us
-            completionFuture = collectTokenUsage(responseBody, dialId);
+            completionFuture = collectTokenUsage(responseBody);
         }
 
         completionFuture.onComplete(result -> {

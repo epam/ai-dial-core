@@ -9,9 +9,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ResponseMapping {
-    String upstreamResponseId;
-    String upstreamKey;
+public class ResponseMetadata {
     String deploymentName;
     String initiatorBucket;
 }

@@ -6,11 +6,11 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
-import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
+import com.epam.aidial.core.server.util.EncryptedAffinityUtil;
 
 /**
  * Resolves the upstream config id encoded into an incoming Responses API request's echoed encrypted content
- * items (see {@link EncryptedContentAffinityUtil}), unwraps those items back to their provider-native shape,
+ * items (see {@link EncryptedAffinityUtil}), unwraps those items back to their provider-native shape,
  * and stores the resolved id via {@link RequestObject#setEncryptedUpstreamId(String)} so the controller can
  * force routing back to the originating upstream.
  */
@@ -22,7 +22,7 @@ public class ResolveEncryptedContentAffinityFn extends BaseRequestFunction<Reque
 
     @Override
     public Boolean apply(RequestObject request) {
-        if (!EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
+        if (!EncryptedAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
             return false;
         }
         if (!(request instanceof ResponsesApiRequest responsesRequest)) {
@@ -36,7 +36,7 @@ public class ResolveEncryptedContentAffinityFn extends BaseRequestFunction<Reque
         boolean exists = model.getUpstreams().stream()
                 .anyMatch(upstream -> resolvedUpstreamId.equals(upstream.getId()));
         if (!exists) {
-            throw EncryptedContentAffinityUtil.upstreamUnavailableException(resolvedUpstreamId);
+            throw EncryptedAffinityUtil.upstreamUnavailableException(resolvedUpstreamId);
         }
         request.setEncryptedUpstreamId(resolvedUpstreamId);
         return false;
