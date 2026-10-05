@@ -47,6 +47,9 @@ import static org.junit.jupiter.api.Assertions.fail;
 @SuppressWarnings("checkstyle:LineLength")
 public class DeploymentPostApiTest extends ResourceBaseTest {
 
+    private static final String CHAT_COMPLETION_ANSWER = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"gpt-35-turbo\","
+            + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";
+
     @Test
     public void testCollectTokenUsageStats_WhenClientClosesConnection() throws IOException {
         String responseBody = """
@@ -181,13 +184,11 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
 
     @Test
     public void testDeploymentFeaturesHeaderSentForChatCompletions() {
-        String answer = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"gpt-35-turbo\","
-                + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";
         MutableObject<RecordedRequest> captured = new MutableObject<>();
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/chat/completions", request -> {
                 captured.setValue(request);
-                return TestWebServer.createResponse(200, answer, "Content-Type", "application/json");
+                return TestWebServer.createResponse(200, CHAT_COMPLETION_ANSWER, "Content-Type", "application/json");
             });
 
             // a client-supplied value must not survive: the header is set by the core, not forwarded
@@ -205,13 +206,11 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
 
     @Test
     public void testDefaultHeadersSentForChatCompletions() {
-        String answer = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"gpt-35-turbo\","
-                + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";
         MutableObject<RecordedRequest> captured = new MutableObject<>();
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/chat/completions", request -> {
                 captured.setValue(request);
-                return TestWebServer.createResponse(200, answer, "Content-Type", "application/json");
+                return TestWebServer.createResponse(200, CHAT_COMPLETION_ANSWER, "Content-Type", "application/json");
             });
 
             Response response = send(HttpMethod.POST, "/openai/deployments/default-headers-model/chat/completions", null,
@@ -229,13 +228,11 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
 
     @Test
     public void testDefaultHeadersDoNotOverrideClientHeaders() {
-        String answer = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"gpt-35-turbo\","
-                + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";
         MutableObject<RecordedRequest> captured = new MutableObject<>();
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/chat/completions", request -> {
                 captured.setValue(request);
-                return TestWebServer.createResponse(200, answer, "Content-Type", "application/json");
+                return TestWebServer.createResponse(200, CHAT_COMPLETION_ANSWER, "Content-Type", "application/json");
             });
 
             Response response = send(HttpMethod.POST, "/openai/deployments/default-headers-model/chat/completions", null,
@@ -257,7 +254,7 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/chat/completions", request -> {
                 captured.setValue(request);
-                return TestWebServer.createResponse(200, answer, "Content-Type", "application/json");
+                return TestWebServer.createResponse(200, CHAT_COMPLETION_ANSWER, "Content-Type", "application/json");
             });
 
             // the pre-interfaces endpoint serves embeddings too, and the deployment-level headers reach it
@@ -414,23 +411,12 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
      */
     @Test
     public void testTraceContextIsScopedPerRequest_OnOneKeepAliveConnection() throws Exception {
-        String answer = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"gpt-35-turbo\","
-                + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";
-        String body = "{\"model\":\"gpt-3-turbo\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
         HttpClient oneConnection = dial.getVertx().createHttpClient(new HttpClientOptions().setMaxPoolSize(1));
         try (TestWebServer server = new TestWebServer(4848); JsonLogCapture logs = JsonLogCapture.attach()) {
-            server.map(HttpMethod.POST, "/chat/completions", 200, answer, "Content-Type", "application/json");
+            server.map(HttpMethod.POST, "/chat/completions", 200, CHAT_COMPLETION_ANSWER, "Content-Type", "application/json");
 
             for (String apiKey : List.of("proxyKey1", "proxyKey2")) {
-                int status = oneConnection.request(new RequestOptions()
-                                .setMethod(HttpMethod.POST)
-                                .setAbsoluteURI("http://127.0.0.1:" + serverPort + "/openai/deployments/gpt-3-turbo/chat/completions")
-                                .putHeader("api-key", apiKey)
-                                .putHeader("content-type", "application/json"))
-                        .compose(request -> request.send(body))
-                        .compose(response -> response.body().map(response.statusCode()))
-                        .toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
-                assertEquals(200, status);
+                assertEquals(200, sendChatCompletion(oneConnection, apiKey));
             }
 
             List<JsonNode> sent = logs.await("Sent response to client", 2);
@@ -450,22 +436,11 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
      */
     @Test
     public void testProxyContextIsReleasedAfterRequest_WhileConnectionsStayAlive() throws Exception {
-        String answer = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"gpt-35-turbo\","
-                + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";
-        String body = "{\"model\":\"gpt-3-turbo\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
         HttpClient keepAliveClient = dial.getVertx().createHttpClient(new HttpClientOptions().setMaxPoolSize(1).setKeepAlive(true));
         try (TestWebServer server = new TestWebServer(4848); JsonLogCapture logs = JsonLogCapture.attach()) {
-            server.map(HttpMethod.POST, "/chat/completions", 200, answer, "Content-Type", "application/json");
+            server.map(HttpMethod.POST, "/chat/completions", 200, CHAT_COMPLETION_ANSWER, "Content-Type", "application/json");
 
-            int status = keepAliveClient.request(new RequestOptions()
-                            .setMethod(HttpMethod.POST)
-                            .setAbsoluteURI("http://127.0.0.1:" + serverPort + "/openai/deployments/gpt-3-turbo/chat/completions")
-                            .putHeader("api-key", "proxyKey1")
-                            .putHeader("content-type", "application/json"))
-                    .compose(request -> request.send(body))
-                    .compose(response -> response.body().map(response.statusCode()))
-                    .toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
-            assertEquals(200, status);
+            assertEquals(200, sendChatCompletion(keepAliveClient, "proxyKey1"));
             logs.await("Sent response to client");
             List<WeakReference<ProxyContext>> seen = logs.proxyContexts();
             assertFalse(seen.isEmpty());
@@ -481,6 +456,17 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
         } finally {
             keepAliveClient.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
         }
+    }
+
+    private int sendChatCompletion(HttpClient client, String apiKey) throws Exception {
+        return client.request(new RequestOptions()
+                        .setMethod(HttpMethod.POST)
+                        .setAbsoluteURI("http://127.0.0.1:" + serverPort + "/openai/deployments/gpt-3-turbo/chat/completions")
+                        .putHeader("api-key", apiKey)
+                        .putHeader("content-type", "application/json"))
+                .compose(request -> request.send("{\"model\":\"gpt-3-turbo\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"))
+                .compose(response -> response.body().map(response.statusCode()))
+                .toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
     }
 
     private static CloseableHttpClient createHttpClient() {

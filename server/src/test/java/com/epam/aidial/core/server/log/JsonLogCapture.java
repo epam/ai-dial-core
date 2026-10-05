@@ -64,14 +64,14 @@ public class JsonLogCapture extends AppenderBase<ILoggingEvent> implements AutoC
         long deadline = System.currentTimeMillis() + 10_000;
         while (true) {
             List<JsonNode> found = lines.stream()
-                    .filter(line -> line.get("Body").asText().startsWith(bodyPrefix))
+                    .filter(line -> line.path("Body").asText().startsWith(bodyPrefix))
                     .toList();
             if (found.size() >= count) {
                 return found;
             }
             if (System.currentTimeMillis() > deadline) {
                 throw new AssertionError("Expected " + count + " log line(s) starting with '" + bodyPrefix + "', got "
-                        + found.size() + ". Captured bodies: " + lines.stream().map(line -> line.get("Body").asText()).toList());
+                        + found.size() + ". Captured bodies: " + lines.stream().map(line -> line.path("Body").asText()).toList());
             }
             Thread.sleep(50);
         }

@@ -51,6 +51,16 @@ class ContextManagerTest {
     }
 
     @Test
+    void proxyContextIsNotStoredOnSharedContext() throws Exception {
+        Context shared = vertx.getOrCreateContext();
+        ProxyContext proxyContext = mock(ProxyContext.class);
+
+        on(shared, () -> set(proxyContext));
+
+        assertNull(on(shared, ContextManager::getProxyContext));
+    }
+
+    @Test
     void proxyContextIsCollectedWithItsRequestContext() throws Exception {
         WeakReference<ProxyContext> stored = storeOnThrowawayRequestContext();
 
