@@ -325,6 +325,10 @@ public class ControllerSelector {
             ResponsesController controller = new ResponsesController(proxy, context);
             return controller::handle;
         });
+        post(RouteTemplate.LLM_RESPONSES_API_UNVERSIONED, (proxy, context, pathMatcher) -> {
+            ResponsesController controller = new ResponsesController(proxy, context);
+            return controller::handle;
+        });
         // count_tokens first: matching is first-registered-wins, so the more specific path must not
         // be swallowed if a greedy /messages/(?<id>...) route is ever added.
         post(RouteTemplate.LLM_MESSAGES_API_COUNT_TOKENS, (proxy, context, pathMatcher) -> {

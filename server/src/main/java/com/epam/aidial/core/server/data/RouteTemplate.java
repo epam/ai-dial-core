@@ -33,6 +33,10 @@ public enum RouteTemplate {
             "^/+openai/v1/responses$",
             "/openai/v1/responses"
     ),
+    LLM_RESPONSES_API_UNVERSIONED(
+            "^/+openai/responses$",
+            "/openai/responses"
+    ),
     LLM_RESPONSES_API_CANCEL(
             "^/+openai/v1/responses/(?<id>[^/]+)/cancel$",
             "/openai/v1/responses/{id}/cancel"

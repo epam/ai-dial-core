@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiOperations;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
@@ -84,31 +85,58 @@ public class ResponsesController extends BaseDeploymentPostController {
         return InterfaceType.OPENAI_RESPONSES;
     }
 
-    @ApiOperation(
-            method = "POST",
-            path = "/openai/v1/responses",
-            operationId = "createResponse",
-            requestBody = @ApiSchema(implementation = ResponsesApiRequest.class),
-            tags = {"LLM"},
-            parameters = {
-                    @ApiParameter(name = "Content-Type", in = ParameterIn.HEADER, required = true,
-                            description = "Must be application/json"),
-                    @ApiParameter(name = HEADER_CACHE_POLICY, in = ParameterIn.HEADER,
-                            description = OpenApiDescriptions.CACHE_POLICY,
-                            allowableValues = {"availability-priority", "cache-priority"})
-            },
-            responses = {
-                    @ApiResponse(code = 200, description = "Success"),
-                    @ApiResponse(code = 400),
-                    @ApiResponse(code = 403),
-                    @ApiResponse(code = 404),
-                    @ApiResponse(code = 415),
-                    @ApiResponse(code = 429, description = "Rate limit exceeded", body = @ApiSchema(implementation = ErrorData.class)),
-                    @ApiResponse(code = 500),
-                    @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
-                    @ApiResponse(code = 503)
-            }
-    )
+    @ApiOperations({
+            @ApiOperation(
+                    method = "POST",
+                    path = "/openai/v1/responses",
+                    operationId = "createResponse",
+                    requestBody = @ApiSchema(implementation = ResponsesApiRequest.class),
+                    tags = {"LLM"},
+                    parameters = {
+                            @ApiParameter(name = "Content-Type", in = ParameterIn.HEADER, required = true,
+                                    description = "Must be application/json"),
+                            @ApiParameter(name = HEADER_CACHE_POLICY, in = ParameterIn.HEADER,
+                                    description = OpenApiDescriptions.CACHE_POLICY,
+                                    allowableValues = {"availability-priority", "cache-priority"})
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 415),
+                            @ApiResponse(code = 429, description = "Rate limit exceeded", body = @ApiSchema(implementation = ErrorData.class)),
+                            @ApiResponse(code = 500),
+                            @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
+                            @ApiResponse(code = 503)
+                    }
+            ),
+            @ApiOperation(
+                    method = "POST",
+                    path = "/openai/responses",
+                    operationId = "createResponseUnversioned",
+                    requestBody = @ApiSchema(implementation = ResponsesApiRequest.class),
+                    tags = {"LLM"},
+                    parameters = {
+                            @ApiParameter(name = "Content-Type", in = ParameterIn.HEADER, required = true,
+                                    description = "Must be application/json"),
+                            @ApiParameter(name = HEADER_CACHE_POLICY, in = ParameterIn.HEADER,
+                                    description = OpenApiDescriptions.CACHE_POLICY,
+                                    allowableValues = {"availability-priority", "cache-priority"})
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 415),
+                            @ApiResponse(code = 429, description = "Rate limit exceeded", body = @ApiSchema(implementation = ErrorData.class)),
+                            @ApiResponse(code = 500),
+                            @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
+                            @ApiResponse(code = 503)
+                    }
+            )
+    })
     public Future<?> handle() {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
         if (!Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {

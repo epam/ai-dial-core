@@ -1417,6 +1417,85 @@ paths:
       - lang: cURL
         label: CURL
         source: "curl https://chat.<company>.com/openai/models/gpt-4 \\\n  -H \"Api-Key: DIAL_API_KEY\"          \n"
+  /openai/responses:
+    post:
+      tags:
+      - LLM
+      summary: /openai/responses
+      operationId: createResponseUnversioned
+      parameters:
+      - name: Content-Type
+        in: header
+        description: Must be application/json
+        required: true
+        schema:
+          type: string
+      - name: X-DIAL-CACHE-POLICY
+        in: header
+        description: Upstream selection policy for prompt-caching deployments (availability-priority or cache-priority).
+        required: false
+        schema:
+          type: string
+          enum:
+          - availability-priority
+          - cache-priority
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResponsesApiRequest"
+        required: true
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "415":
+          description: Unsupported Media Type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Bad Gateway - failed to connect to upstream server
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "503":
+          description: "The engine is currently overloaded, please try again later."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /openai/toolsets:
     get:
       tags:
