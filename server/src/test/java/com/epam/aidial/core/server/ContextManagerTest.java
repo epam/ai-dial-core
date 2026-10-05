@@ -18,7 +18,8 @@ import static org.mockito.Mockito.mock;
 
 /**
  * Why {@link ContextManager} has no clear step: the entry lives in the request's own duplicated Vert.x context,
- * which is invisible to other requests and is collected with the request.
+ * which is invisible to other requests, and it is a weak reference, so even a context held beyond its request
+ * cannot keep the ProxyContext alive.
  */
 class ContextManagerTest {
 
@@ -62,22 +63,38 @@ class ContextManagerTest {
 
     @Test
     void proxyContextIsCollectedWithItsRequestContext() throws Exception {
-        WeakReference<ProxyContext> stored = storeOnThrowawayRequestContext();
+        WeakReference<ProxyContext> stored = storeOn(requestContext());
 
+        awaitCollected(stored);
+    }
+
+    @Test
+    void pinnedRequestContextDoesNotKeepProxyContextAlive() throws Exception {
+        // a request context held beyond its request, e.g. by a cached future created on it, must not hold the
+        // request's ProxyContext (and its request/response bodies) with it: the reference stored is weak
+        ContextInternal pinned = requestContext();
+        WeakReference<ProxyContext> stored = storeOn(pinned);
+
+        awaitCollected(stored);
+
+        assertNull(on(pinned, ContextManager::getProxyContext));
+    }
+
+    private static WeakReference<ProxyContext> storeOn(Context requestContext) throws Exception {
+        ProxyContext proxyContext = mock(ProxyContext.class);
+        on(requestContext, () -> set(proxyContext));
+        return new WeakReference<>(proxyContext);
+    }
+
+    private static void awaitCollected(WeakReference<ProxyContext> stored) throws InterruptedException {
         long deadline = System.currentTimeMillis() + 10_000;
         while (stored.get() != null) {
             if (System.currentTimeMillis() > deadline) {
-                fail("ProxyContext is still reachable after its request context was dropped");
+                fail("ProxyContext is still reachable after its last strong reference was dropped");
             }
             System.gc();
             Thread.sleep(50);
         }
-    }
-
-    private WeakReference<ProxyContext> storeOnThrowawayRequestContext() throws Exception {
-        ProxyContext proxyContext = mock(ProxyContext.class);
-        on(requestContext(), () -> set(proxyContext));
-        return new WeakReference<>(proxyContext);
     }
 
     /**
