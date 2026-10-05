@@ -15,6 +15,7 @@ import com.sun.net.httpserver.HttpServer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonObject;
 import okhttp3.mockwebserver.MockResponse;
@@ -383,7 +384,16 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
             server.map(HttpMethod.POST, "/chat/completions", request -> {
                 try {
                     client.close(); // the client goes away while the core is still waiting for the upstream
-                    Thread.sleep(500); // let the core observe the disconnect before the upstream answers
+                    // answer only once the core has observed the disconnect: closed() flips in the same event-loop
+                    // task that runs the response close handlers, where the ProxyContext used to be cleared
+                    HttpServerResponse response = logs.proxyContexts().get(0).get().getResponse();
+                    long deadline = System.currentTimeMillis() + 10_000;
+                    while (!response.closed()) {
+                        if (System.currentTimeMillis() > deadline) {
+                            throw new IllegalStateException("The core did not observe the client disconnect");
+                        }
+                        Thread.sleep(10);
+                    }
                 } catch (IOException | InterruptedException e) {
                     throw new RuntimeException(e);
                 }
