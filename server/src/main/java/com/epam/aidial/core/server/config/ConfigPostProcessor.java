@@ -13,6 +13,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
+import com.epam.aidial.core.config.PricingRate;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.RoleBasedEntity;
@@ -68,6 +69,12 @@ import javax.annotation.Nullable;
 @Slf4j
 public final class ConfigPostProcessor {
 
+    // Allowed characters for a client-chosen entity short name, applied to the URL-decoded segment.
+    // Shared by every write surface that accepts one — the single-entity PUT/DELETE endpoints
+    // (ConfigResourceController), the batch apply/validate endpoints (ConfigManifestSupport), and
+    // the file-config migration tool (ConfigFileMigrateController, SchemaMigrationNameResolver) —
+    // so none of them can be used to bypass what the others enforce.
+    public static final Pattern ENTITY_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9._%:@\\[\\]()-]+$");
     private static final Pattern RESOURCE_KEY_PATTERN = Pattern.compile("^[A-Za-z0-9-_]+$");
     private static final AuthSettingsValidatorFactory AUTH_SETTINGS_VALIDATOR_FACTORY = new AuthSettingsValidatorFactory();
 
@@ -362,21 +369,31 @@ public final class ConfigPostProcessor {
     }
 
     /**
-     * Validates that {@code pricing.cacheRead}/{@code cacheWrite} are only set when
-     * {@code pricing.unit == "token"} — those rates are meaningless for the
-     * {@code char_without_whitespace} unit, which prices on character counts rather than
-     * {@link com.epam.aidial.core.server.token.TokenUsage}'s reported cache token counts.
+     * Validates that {@code pricing.cacheRead}/{@code cacheWrite} (in any shape) and a decision-tree
+     * rate on {@code pricing.prompt}/{@code completion} are only used when
+     * {@code pricing.unit == "token"}. Cache rates have no meaning outside token-based pricing; a
+     * decision tree's {@code test} evaluates token-based usage fields, which are likewise meaningless
+     * for the {@code char_without_whitespace} unit that prices on character counts rather than
+     * {@link com.epam.aidial.core.server.token.TokenUsage}'s reported token counts. A flat
+     * {@code prompt}/{@code completion} rate has no such restriction, since it's just a per-character
+     * price under that unit.
      */
     public static void validatePricing(Model model, List<ValidationWarning> warnings) {
         Pricing pricing = model.getPricing();
-        if (pricing == null) {
+        if (pricing == null || "token".equals(pricing.getUnit())) {
             return;
         }
         boolean hasCacheRate = pricing.getCacheRead() != null || pricing.getCacheWrite() != null;
-        if (hasCacheRate && !"token".equals(pricing.getUnit())) {
+        boolean hasDecisionTreeRate = isDecisionTree(pricing.getPrompt()) || isDecisionTree(pricing.getCompletion());
+        if (hasCacheRate || hasDecisionTreeRate) {
             warnings.add(new ValidationWarning("pricing",
-                    messageWithEntityPrefix("Model", model.getName(), "cacheRead/cacheWrite pricing requires pricing.unit = \"token\"")));
+                    messageWithEntityPrefix("Model", model.getName(),
+                            "Decision-tree cacheRead/cacheWrite and prompt/completion pricing require pricing.unit = \"token\"")));
         }
+    }
+
+    private static boolean isDecisionTree(PricingRate pricingRate) {
+        return pricingRate != null && !pricingRate.isLeaf();
     }
 
     /**

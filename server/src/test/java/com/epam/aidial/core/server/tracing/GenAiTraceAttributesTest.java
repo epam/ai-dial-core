@@ -13,9 +13,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.opentelemetry.api.trace.Span;
 import io.vertx.core.MultiMap;
-import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
-import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -206,85 +204,36 @@ class GenAiTraceAttributesTest {
     }
 
     @Test
-    void setResponseAttributesCoversNonStreamingChatResponse() {
+    void setResponseAttributesPublishesOperationAndClientStatusOnly() {
         ProxyContext context = context(proxy(enabledSettings()));
-        Buffer body = Buffer.buffer("""
-                {"id":"chat-1","model":"gpt-4","choices":[{"finish_reason":"stop"}],
-                 "usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}
-                """);
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
 
-        assertEquals("chat-1", context.getTracingAttributes().get("gen_ai.response.id"));
-        assertEquals("gpt-4", context.getTracingAttributes().get("gen_ai.response.model"));
-        assertEquals(List.of("stop"), context.getTracingAttributes().get("gen_ai.response.finish_reasons"));
+        assertEquals("chat", context.getTracingAttributes().get("gen_ai.operation.name"));
+        assertEquals("openai_chat_completions", context.getTracingAttributes().get("dial.api"));
         assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
+        // these would need the response body parsed
+        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.id"));
+        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.model"));
+        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.finish_reasons"));
     }
 
     @Test
-    void setResponseAttributesCoversStreamingChatResponse() {
-        ProxyContext context = streamingContext();
-        Buffer body = Buffer.buffer("""
-                data: {"id":"chat-1","model":"gpt-4","choices":[{"index":0,"finish_reason":null}]}
+    void setResponseAttributesPublishesTheClientFacingId() {
+        ProxyContext context = context(proxy(enabledSettings()));
 
-                data: {"id":"chat-1","model":"gpt-4","choices":[{"index":0,"finish_reason":"length"}]}
-
-                data: [DONE]
-                """);
-        context.setResponseBody(body);
-
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
-
-        assertEquals("chat-1", context.getTracingAttributes().get("gen_ai.response.id"));
-        assertEquals(List.of("length"), context.getTracingAttributes().get("gen_ai.response.finish_reasons"));
-        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
-    }
-
-    @Test
-    void setResponseAttributesCoversStreamingAnthropicResponse() {
-        ProxyContext context = streamingContext();
-        Buffer body = Buffer.buffer("""
-                event: message_start
-                data: {"type":"message_start","message":{"id":"msg-1","model":"claude"}}
-
-                event: message_delta
-                data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}
-                """);
-
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.ANTHROPIC_MESSAGES, body);
-
-        assertEquals("msg-1", context.getTracingAttributes().get("gen_ai.response.id"));
-        assertEquals("claude", context.getTracingAttributes().get("gen_ai.response.model"));
-        assertEquals(List.of("end_turn"), context.getTracingAttributes().get("gen_ai.response.finish_reasons"));
-    }
-
-    @Test
-    void setResponseAttributesCoversStreamingResponsesApi() {
-        ProxyContext context = streamingContext();
-        Buffer body = Buffer.buffer("""
-                event: response.completed
-                data: {"type":"response.completed","response":{"id":"resp-1","model":"gpt-4","status":"completed"}}
-                """);
-
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body);
-
-        assertEquals("resp-1", context.getTracingAttributes().get("gen_ai.response.id"));
-        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
-    }
-
-    @Test
-    void setResponseAttributesPublishesTheClientFacingIdNotTheUpstreamOne() {
-        ProxyContext context = streamingContext();
-        // the buffered frames are the raw upstream ones, so they still carry the upstream id
-        Buffer body = Buffer.buffer("""
-                event: response.completed
-                data: {"type":"response.completed","response":{"id":"upstream-1","model":"gpt-4","status":"completed"}}
-                """);
-
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body, "dial-1");
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, "dial-1");
 
         assertEquals("dial-1", context.getTracingAttributes().get("gen_ai.response.id"));
-        assertEquals("gpt-4", context.getTracingAttributes().get("gen_ai.response.model"));
+    }
+
+    @Test
+    void setResponseAttributesClampsOversizedResponseId() {
+        ProxyContext context = context(proxy(enabledSettings()));
+
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, "r".repeat(1000));
+
+        assertEquals("r".repeat(256), context.getTracingAttributes().get("gen_ai.response.id"));
     }
 
     @Test
@@ -295,8 +244,7 @@ class GenAiTraceAttributesTest {
         when(route.isCacheEntryStored()).thenReturn(true);
         context.setUpstreamRoute(route);
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
-                Buffer.buffer("{\"id\":\"chat-1\"}"));
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
 
         assertEquals("prefix.body.messages[1]", context.getTracingAttributes().get("dial.upstream.cache.breakpoint_path"));
         assertEquals(true, context.getTracingAttributes().get("dial.upstream.cache.stored"));
@@ -307,8 +255,7 @@ class GenAiTraceAttributesTest {
         ProxyContext context = context(proxy(enabledSettings()));
         context.setUpstreamRoute(mock(UpstreamRoute.class));
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
-                Buffer.buffer("{\"id\":\"chat-1\"}"));
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
 
         // "stored: false" against a path the upstream never reported would read as a failure to cache
         assertFalse(context.getTracingAttributes().containsKey("dial.upstream.cache.breakpoint_path"));
@@ -323,26 +270,9 @@ class GenAiTraceAttributesTest {
         when(route.getCacheBreakpointPath()).thenThrow(new IllegalStateException("boom"));
         context.setUpstreamRoute(route);
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
-                Buffer.buffer("{\"id\":\"chat-1\"}"));
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
 
         // contained, not skipped: what was set before the throw survives
-        assertEquals("chat-1", context.getTracingAttributes().get("gen_ai.response.id"));
-    }
-
-    @Test
-    void setResponseAttributesReadsStreamsWhoseFramesCarryNoEventName() {
-        // a translator emitting bare data: lines must not silently lose its response attributes
-        ProxyContext context = streamingContext();
-        Buffer body = Buffer.buffer("""
-                data: {"type":"response.output_text.delta","delta":"hi"}
-
-                data: {"type":"response.completed","response":{"id":"resp-1","model":"gpt-4","status":"completed"}}
-                """);
-
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body);
-
-        assertEquals("resp-1", context.getTracingAttributes().get("gen_ai.response.id"));
         assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
     }
 
@@ -411,9 +341,8 @@ class GenAiTraceAttributesTest {
     void setResponseAttributesReportsFailedStatusOnErrorResponse() {
         ProxyContext context = context(proxy(enabledSettings()));
         when(context.getResponse().getStatusCode()).thenReturn(500);
-        Buffer body = Buffer.buffer("{\"error\":{\"message\":\"upstream is down\"}}");
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
 
         assertEquals("failed", context.getTracingAttributes().get("gen_ai.response.status"));
         assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.id"));
@@ -428,8 +357,7 @@ class GenAiTraceAttributesTest {
         // DIAL rewrote the status after a 200 upstream
         when(context.getResponse().getStatusCode()).thenReturn(502);
 
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS,
-                Buffer.buffer("{\"id\":\"chat-1\"}"));
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
 
         assertEquals("failed", context.getTracingAttributes().get("gen_ai.response.status"));
     }
@@ -449,12 +377,11 @@ class GenAiTraceAttributesTest {
     @Test
     void setFailureStatusKeepsTheStatusAlreadyPublished() {
         ProxyContext context = context(proxy(enabledSettings()));
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES,
-                Buffer.buffer("{\"id\":\"resp-1\",\"status\":\"incomplete\"}"));
+        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, "resp-1");
 
         GenAiTraceAttributes.setFailureStatus(context, 500);
 
-        assertEquals("incomplete", context.getTracingAttributes().get("gen_ai.response.status"));
+        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
     }
 
     @Test
@@ -488,77 +415,29 @@ class GenAiTraceAttributesTest {
     }
 
     @Test
-    void setResponseAttributesSurvivesTerminalResponsesEventWithoutResponseObject() {
-        ProxyContext context = streamingContext();
-        Buffer body = Buffer.buffer("""
-                event: response.failed
-                data: {"type":"response.failed","error":{"message":"boom"}}
-                """);
-
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body);
-
-        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.id"));
-        // DIAL streamed the body successfully, so the client-facing 200 would read as "completed" -
-        // only the terminal event type knows the run failed
-        assertEquals("failed", context.getTracingAttributes().get("gen_ai.response.status"));
-    }
-
-    @Test
-    void setResponseAttributesDerivesEachTerminalResponsesEventStatus() {
-        for (String event : List.of("failed", "cancelled", "incomplete")) {
-            ProxyContext context = streamingContext();
-            Buffer body = Buffer.buffer("""
-                    event: response.%s
-                    data: {"type":"response.%s","response":{"id":"resp-1"}}
-                    """.formatted(event, event));
-
-            GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body);
-
-            assertEquals(event, context.getTracingAttributes().get("gen_ai.response.status"));
-            assertEquals("resp-1", context.getTracingAttributes().get("gen_ai.response.id"));
-        }
-    }
-
-    @Test
-    void setResponseAttributesSurvivesAnthropicMessageStartWithoutMessage() {
-        ProxyContext context = streamingContext();
-        Buffer body = Buffer.buffer("""
-                event: message_start
-                data: {"type":"message_start"}
-
-                event: message_delta
-                data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}
-                """);
-
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.ANTHROPIC_MESSAGES, body);
-
-        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.id"));
-        assertEquals(List.of("end_turn"), context.getTracingAttributes().get("gen_ai.response.finish_reasons"));
-    }
-
-    @Test
-    void setFetchResponseAttributesUsesFetchOperation() {
+    void setFetchResponseAttributesUsesFetchOperationAndDialResponseId() {
         ProxyContext context = context(proxy(enabledSettings()));
-        Buffer body = Buffer.buffer("{\"id\":\"resp-1\",\"model\":\"gpt-4\",\"status\":\"completed\"}");
 
-        GenAiTraceAttributes.setFetchResponseAttributes(context, body, "resp-1");
+        GenAiTraceAttributes.setFetchResponseAttributes(context, "dial-1");
 
         assertEquals("fetch_response", context.getTracingAttributes().get("gen_ai.operation.name"));
-        assertEquals("resp-1", context.getTracingAttributes().get("gen_ai.response.id"));
+        assertEquals("openai_responses", context.getTracingAttributes().get("dial.api"));
+        assertEquals("dial-1", context.getTracingAttributes().get("gen_ai.response.id"));
+        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
+        // the fetched body is not parsed, so it contributes no model, finish reason or usage
+        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.model"));
+        assertFalse(context.getTracingAttributes().containsKey("gen_ai.usage.input_tokens"));
+        assertFalse(context.getTracingAttributes().containsKey("dial.usage.total_tokens"));
     }
 
     @Test
-    void setFetchResponseAttributesPublishesDialResponseIdNotTheUpstreamOne() {
-        ProxyContext context = streamingContext();
-        // the buffered bytes are the raw upstream frames, before ReplaceResponseIdFn rewrote the id
-        Buffer body = Buffer.buffer("""
-                event: response.completed
-                data: {"type":"response.completed","response":{"id":"upstream-1","model":"gpt-4"}}
-                """);
+    void setFetchResponseAttributesReportsFailedStatusOnErrorResponse() {
+        ProxyContext context = context(proxy(enabledSettings()));
+        when(context.getResponse().getStatusCode()).thenReturn(404);
 
-        GenAiTraceAttributes.setFetchResponseAttributes(context, body, "dial-1");
+        GenAiTraceAttributes.setFetchResponseAttributes(context, "dial-1");
 
-        assertEquals("dial-1", context.getTracingAttributes().get("gen_ai.response.id"));
+        assertEquals("failed", context.getTracingAttributes().get("gen_ai.response.status"));
     }
 
     @Test
@@ -630,51 +509,6 @@ class GenAiTraceAttributesTest {
         assertEquals("2222222222222222", context.getTracingAttributes().get("dial.request.parent_span.id"));
     }
 
-    @Test
-    void setResponseAttributesReusesTheTerminalResponsesFrameAlreadyExtracted() {
-        ProxyContext context = streamingContext();
-        // ExtractTerminalResponseFn kept this while streaming; the buffered frames are never scanned again
-        context.setAssembledStreamingResponse("{\"id\":\"resp-1\",\"model\":\"gpt-4\",\"status\":\"incomplete\"}");
-        Buffer body = Buffer.buffer("""
-                event: response.completed
-                data: {"type":"response.completed","response":{"id":"scanned","status":"completed"}}
-                """);
-
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, body);
-
-        assertEquals("resp-1", context.getTracingAttributes().get("gen_ai.response.id"));
-        assertEquals("gpt-4", context.getTracingAttributes().get("gen_ai.response.model"));
-        assertEquals("incomplete", context.getTracingAttributes().get("gen_ai.response.status"));
-    }
-
-    @Test
-    void setResponseAttributesSkipsBodyTooLargeToTrace() {
-        // an embeddings body of vectors is not worth a parse of its own - the outcome still is
-        ProxyContext context = context(proxy(enabledSettings()));
-        Buffer body = Buffer.buffer("{\"model\":\"embed\",\"data\":\"" + "0".repeat(600 * 1024) + "\"}");
-
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_EMBEDDINGS, body);
-
-        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.model"));
-        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
-        assertEquals("openai_embeddings", context.getTracingAttributes().get("dial.api"));
-    }
-
-    @Test
-    void setResponseAttributesSkipsAssembledBodyOversizedInUtf8BytesButNotInChars() {
-        ProxyContext context = streamingContext();
-        String oversizedAssembled = "{\"id\":\"chat-1\",\"model\":\"gpt-4\",\"choices\":[{\"content\":\""
-                + "中".repeat(200_000) + "\"}]}";
-        context.setAssembledStreamingResponse(oversizedAssembled);
-        Buffer body = Buffer.buffer("data: [DONE]\n\n");
-
-        GenAiTraceAttributes.setResponseAttributes(context, InterfaceType.OPENAI_CHAT_COMPLETIONS, body);
-
-        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.id"));
-        assertFalse(context.getTracingAttributes().containsKey("gen_ai.response.model"));
-        assertEquals("completed", context.getTracingAttributes().get("gen_ai.response.status"));
-    }
-
     private static ProxyContext context(Proxy proxy, HttpServerRequest request) {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(new Key());
@@ -687,18 +521,6 @@ class GenAiTraceAttributesTest {
 
     private static ProxyContext context(Proxy proxy) {
         return context(proxy, mock(HttpServerRequest.class, RETURNS_DEEP_STUBS));
-    }
-
-    /**
-     * A context whose upstream response is SSE: the content type is the only streaming signal.
-     */
-    private static ProxyContext streamingContext() {
-        ProxyContext context = context(proxy(enabledSettings()));
-        HttpClientResponse proxyResponse = mock(HttpClientResponse.class);
-        when(proxyResponse.statusCode()).thenReturn(200);
-        when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("text/event-stream");
-        context.setProxyResponse(proxyResponse);
-        return context;
     }
 
     private static Proxy proxy(TracingSettings settings) {

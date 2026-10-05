@@ -2,32 +2,19 @@ package com.epam.aidial.core.server.tracing;
 
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.sse.SseEvent;
-import com.epam.aidial.core.server.sse.SseEventListener;
-import com.epam.aidial.core.server.sse.SseParser;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
-import com.epam.aidial.core.server.util.JsonUtil;
-import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.MissingNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
-import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientResponse;
-import io.vertx.core.http.HttpHeaders;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.Strings;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -49,19 +36,8 @@ public final class GenAiTraceAttributes {
     private static final String PARENT_SPAN_ATTRIBUTE = "dial.request.parent_span.id";
     private static final String RESPONSE_STATUS_ATTRIBUTE = "gen_ai.response.status";
     private static final String API_ATTRIBUTE = "dial.api";
-    private static final String RESPONSES_EVENT_PREFIX = "response.";
-    private static final String DEFAULT_SSE_EVENT = "message";
-    private static final Set<String> TERMINAL_RESPONSES_EVENTS =
-            Set.of("response.completed", "response.incomplete", "response.failed", "response.cancelled");
-    private static final Set<String> ANTHROPIC_ATTRIBUTE_EVENTS = Set.of("message_start", "message_delta");
     private static final int MAX_ATTRIBUTE_LENGTH = 256;
     private static final int MAX_ATTRIBUTE_VALUES = 32;
-    /**
-     * Above this a response body is not parsed for attributes. Tracing's parse is its own, on top of the one
-     * token accounting already does, and an embeddings body is dominated by vectors that carry no attribute.
-     */
-    private static final int MAX_TRACED_BODY_BYTES = 512 * 1024;
-    private static final int SSE_LINE_BUFFER_SIZE = 1024;
 
     private GenAiTraceAttributes() {
     }
@@ -117,30 +93,22 @@ public final class GenAiTraceAttributes {
         }
     }
 
-    public static void setResponseAttributes(ProxyContext context, InterfaceType type, Buffer responseBody) {
-        setResponseAttributes(context, type, responseBody, null);
-    }
-
     /**
-     * @param responseId DIAL's own response id, or null to keep the body's. A streamed body is buffered before
-     *                   {@code ReplaceResponseIdFn} rewrites it, so the buffered bytes still carry the upstream id.
+     * @param responseId DIAL's own response id, or null when there is none to publish. The body is never parsed
+     *                   for tracing: an upstream id is not what the client sees, and the outcome comes from the
+     *                   client-facing status.
      */
-    public static void setResponseAttributes(ProxyContext context, InterfaceType type, Buffer responseBody, String responseId) {
+    public static void setResponseAttributes(ProxyContext context, InterfaceType type, String responseId) {
         enrich(context, () -> {
             setOperationAttributes(context, type, operationName(type));
-            setResponseAttributes(context, type, responseTree(context, type, responseBody), responseId);
+            collectResponseAttributes(context, responseId);
             collectUpstreamCacheAttributes(context);
         });
     }
 
-    /**
-     * @param responseId overrides the body's own id when the caller knows the client-facing id; null keeps the body's.
-     */
-    private static void setResponseAttributes(ProxyContext context, InterfaceType type, JsonNode response, String responseId) {
-        set(context, stringKey("gen_ai.response.id"), responseId == null ? text(response.get("id")) : clamp(responseId));
-        set(context, stringKey("gen_ai.response.model"), text(response.get("model")));
-        set(context, stringArrayKey("gen_ai.response.finish_reasons"), finishReasons(response, type));
-        set(context, stringKey(RESPONSE_STATUS_ATTRIBUTE), responseStatus(context, response));
+    private static void collectResponseAttributes(ProxyContext context, String responseId) {
+        set(context, stringKey("gen_ai.response.id"), responseId == null ? null : clamp(responseId));
+        set(context, stringKey(RESPONSE_STATUS_ATTRIBUTE), responseStatus(context));
     }
 
     /**
@@ -158,16 +126,10 @@ public final class GenAiTraceAttributes {
         set(context, booleanKey("dial.upstream.cache.stored"), route.isCacheEntryStored());
     }
 
-    /**
-     * @param responseId DIAL's own response id. A streamed body is buffered before {@code ReplaceResponseIdFn}
-     *                   rewrites it, so the buffered bytes still carry the upstream id.
-     */
-    public static void setFetchResponseAttributes(ProxyContext context, Buffer responseBody, String responseId) {
+    public static void setFetchResponseAttributes(ProxyContext context, String responseId) {
         enrich(context, () -> {
             setOperationAttributes(context, InterfaceType.OPENAI_RESPONSES, "fetch_response");
-            JsonNode response = responseTree(context, InterfaceType.OPENAI_RESPONSES, responseBody);
-            setResponseAttributes(context, InterfaceType.OPENAI_RESPONSES, response, responseId);
-            collectUsageAttributes(context, tokenUsage(response.get("usage")));
+            collectResponseAttributes(context, responseId);
         });
     }
 
@@ -269,158 +231,11 @@ public final class GenAiTraceAttributes {
         };
     }
 
-    private static List<String> finishReasons(JsonNode response, InterfaceType type) {
-        List<String> result = new ArrayList<>();
-        if (type == InterfaceType.OPENAI_CHAT_COMPLETIONS) {
-            for (JsonNode choice : response.path("choices")) {
-                if (result.size() >= MAX_ATTRIBUTE_VALUES) {
-                    break;
-                }
-                addText(result, choice.get("finish_reason"));
-            }
-        } else if (type == InterfaceType.ANTHROPIC_MESSAGES) {
-            addText(result, response.get("stop_reason"));
-        } else if (type == InterfaceType.OPENAI_RESPONSES) {
-            addText(result, response.path("incomplete_details").get("reason"));
-        }
-        return result.isEmpty() ? null : result;
-    }
-
-    private static String responseStatus(ProxyContext context, JsonNode response) {
-        String status = text(response.get("status"));
-        if (status != null) {
-            return status;
-        }
+    private static String responseStatus(ProxyContext context) {
         // the client-facing status, as everywhere else on this path: DIAL may rewrite a 200 upstream,
         // and a request short-circuited before any upstream call must not read as a success
         int statusCode = context.getResponse().getStatusCode();
         return statusCode < 200 || statusCode >= 300 ? "failed" : "completed";
-    }
-
-    private static JsonNode responseTree(ProxyContext context, InterfaceType type, Buffer responseBody) {
-        if (!isEventStream(context)) {
-            return parse(responseBody);
-        }
-        String assembled = context.getAssembledStreamingResponse();
-        return switch (type) {
-            // shared with the analytics log, which merges the same body once per streamed request
-            case OPENAI_CHAT_COMPLETIONS -> parse(context.assembledChatCompletionsResponse());
-            // the terminal frame ExtractTerminalResponseFn already kept while streaming; a run that failed or
-            // was cancelled leaves none, and only then is the buffered stream scanned for it
-            case OPENAI_RESPONSES -> assembled == null ? responsesEvent(responseBody) : parse(assembled);
-            case ANTHROPIC_MESSAGES -> anthropicResponse(responseBody);
-            case OPENAI_EMBEDDINGS -> parse(responseBody);
-        };
-    }
-
-    /**
-     * @return {@link MissingNode} for a body too large to be worth tracing's own parse - every attribute it
-     *         carries is optional, and the status fallback needs no body at all.
-     */
-    private static JsonNode parse(Buffer body) {
-        return body == null || body.length() > MAX_TRACED_BODY_BYTES
-                ? MissingNode.getInstance()
-                : JsonUtil.tryParse(body.getBytes());
-    }
-
-    private static JsonNode parse(String body) {
-        return body == null || body.getBytes(StandardCharsets.UTF_8).length > MAX_TRACED_BODY_BYTES
-                ? MissingNode.getInstance()
-                : JsonUtil.tryParse(body);
-    }
-
-    private static JsonNode responsesEvent(Buffer responseBody) {
-        JsonNode[] terminal = new JsonNode[1];
-        forEachSseEvent(responseBody, (name, data) -> {
-            if (terminal[0] != null || !(isUnlabelled(name) || TERMINAL_RESPONSES_EVENTS.contains(name))) {
-                return;
-            }
-            JsonNode event = JsonUtil.tryParse(data.getBytes(StandardCharsets.UTF_8));
-            String type = text(event.get("type"));
-            if (type != null && TERMINAL_RESPONSES_EVENTS.contains(type)) {
-                terminal[0] = terminalResponse(event, type);
-            }
-        });
-        return terminal[0] == null ? ProxyUtil.MAPPER.createObjectNode() : terminal[0];
-    }
-
-    private static JsonNode terminalResponse(JsonNode event, String type) {
-        // path, not get: a truncated or error-only terminal frame carries no response object
-        JsonNode response = event.path("response");
-        if (text(response.get("status")) != null) {
-            return response;
-        }
-        // the client-facing status is 200 - DIAL did stream a body - so the event type is the only
-        // thing left that can tell a failed or cancelled run from a completed one
-        ObjectNode derived = response instanceof ObjectNode object ? object : ProxyUtil.MAPPER.createObjectNode();
-        return derived.put("status", type.substring(RESPONSES_EVENT_PREFIX.length()));
-    }
-
-    private static JsonNode anthropicResponse(Buffer responseBody) {
-        ObjectNode result = ProxyUtil.MAPPER.createObjectNode();
-        forEachSseEvent(responseBody, (name, data) -> {
-            if (!isUnlabelled(name) && !ANTHROPIC_ATTRIBUTE_EVENTS.contains(name)) {
-                return;
-            }
-            JsonNode event = JsonUtil.tryParse(data.getBytes(StandardCharsets.UTF_8));
-            String type = text(event.get("type"));
-            if ("message_start".equals(type)) {
-                // path, not get: a truncated frame carries no message object
-                JsonNode message = event.path("message");
-                result.set("id", message.get("id"));
-                result.set("model", message.get("model"));
-            } else if ("message_delta".equals(type)) {
-                result.set("stop_reason", event.path("delta").get("stop_reason"));
-            }
-        });
-        return result;
-    }
-
-    /**
-     * An upstream that labels its frames lets the scan skip the JSON parse on everything but the two or three
-     * frames that carry attributes; one that emits bare {@code data:} lines forces a parse to find out.
-     */
-    private static boolean isUnlabelled(String eventName) {
-        return eventName == null || DEFAULT_SSE_EVENT.equals(eventName);
-    }
-
-    /**
-     * Hands each frame to the consumer and retains nothing. Collecting the whole stream instead would allocate
-     * a JsonNode per frame, on the event loop, to read one or two fields out of the last of them.
-     */
-    private static void forEachSseEvent(Buffer responseBody, BiConsumer<String, String> consumer) {
-        SseParser parser = new SseParser(SSE_LINE_BUFFER_SIZE, new SseEventListener() {
-            @Override
-            public void onEvent(SseEvent event) {
-                String data = event.getData();
-                if (data != null && !data.isBlank() && !"[DONE]".equals(data.trim())) {
-                    consumer.accept(event.getEvent(), data);
-                }
-            }
-
-            @Override
-            public void onComment(String comment) {
-                // not an event
-            }
-
-            @Override
-            public void onComplete() {
-                // nothing to flush
-            }
-        });
-        try {
-            parser.parse(responseBody);
-            parser.finish();
-        } finally {
-            // pooled Netty buffer
-            parser.close();
-        }
-    }
-
-    private static boolean isEventStream(ProxyContext context) {
-        HttpClientResponse response = context.getProxyResponse();
-        String contentType = response == null ? null : response.getHeader(HttpHeaders.CONTENT_TYPE);
-        return Strings.CI.contains(contentType, "text/event-stream");
     }
 
     private static String resolveConversationId(ProxyContext context) {
@@ -446,14 +261,6 @@ public final class GenAiTraceAttributes {
         }
         Matcher matcher = TRACEPARENT_PATTERN.matcher(traceparent);
         return matcher.matches() ? matcher.group(2) : null;
-    }
-
-    private static TokenUsage tokenUsage(JsonNode usage) {
-        try {
-            return ProxyUtil.MAPPER.convertValue(usage, TokenUsage.class);
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
     }
 
     public static boolean isEnabled(ProxyContext context) {

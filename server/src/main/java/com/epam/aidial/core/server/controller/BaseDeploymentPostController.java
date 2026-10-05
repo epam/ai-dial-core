@@ -48,10 +48,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
@@ -188,14 +188,14 @@ public class BaseDeploymentPostController {
     }
 
     /**
-     * @param responseId DIAL's own response id when the caller knows it, null to take the id from the body.
+     * @param responseId DIAL's own response id when the caller knows it, null to publish none.
      */
     protected Future<Void> collectTokenUsage(Buffer responseBody, String responseId) {
         if (GenAiTraceAttributes.isEnabled(context)) {
             try {
                 // interfaceType() reads the request path, which not every deployment kind reaching here has,
                 // and this runs before the client response is completed - tracing must not fail the request
-                GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseBody, responseId);
+                GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseId);
             } catch (Throwable e) {
                 log.warn("Failed to set GenAI response trace attributes", e);
             }
@@ -305,7 +305,29 @@ public class BaseDeploymentPostController {
                 context.setTokenUsage(forLog);
                 GenAiTraceAttributes.setUsageAttributes(context, forLog);
             }
-            return Future.<Void>succeededFuture();
+            return recordAggregatedCosts(stats.aggregatedCosts());
+        });
+    }
+
+    /**
+     * Persists each ancestor's aggregated-cost increment collected by this report - deployment-kind-agnostic,
+     * on its own ledger apart from the caller's global spend and from any deployment's own direct-cost record.
+     * Never fails the request: a write failure here is logged and swallowed, same as {@link #increaseLimits}.
+     */
+    private Future<Void> recordAggregatedCosts(List<TokenStatsTracker.AggregatedCost> aggregatedCosts) {
+        if (aggregatedCosts.isEmpty()) {
+            return Future.succeededFuture();
+        }
+        String bucket = BucketBuilder.buildInitiatorBucket(context);
+        List<Future<Void>> futures = new ArrayList<>(aggregatedCosts.size());
+        for (TokenStatsTracker.AggregatedCost cost : aggregatedCosts) {
+            futures.add(proxy.getRateLimiter().recordAggregatedCost(cost.deploymentName(), bucket, cost.cost()));
+        }
+        return Future.all(futures).<Void>transform(result -> {
+            if (result.failed()) {
+                log.warn("Failed to record aggregated cost", result.cause());
+            }
+            return Future.succeededFuture();
         });
     }
 

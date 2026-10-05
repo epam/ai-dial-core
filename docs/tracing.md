@@ -68,8 +68,8 @@ present — a missing value is omitted, never written as `null` or `""`.
 | `dial.api`                              | `openai_chat_completions`, `anthropic_messages`, `openai_responses`, `openai_embeddings`                                                                   |
 | `gen_ai.provider.name`                  | Always `dial` — the upstream provider is never published                                                                                                  |
 | `gen_ai.request.*`                      | `model`, `stream`, `max_tokens`, `temperature`, `top_p`, `stop_sequences`, `choice.count`, `frequency_penalty`, `presence_penalty`, `seed`, `reasoning.level`, `previous_response.id`, `encoding_formats` |
-| `gen_ai.response.*`                     | `id` (always the id the client sees — for Responses that is DIAL's own, not the upstream's), `model`, `finish_reasons`, `status` (from the body, else derived from the status the client receives) |
-| `gen_ai.usage.*`                        | `input_tokens`, `output_tokens`, `cache_read.input_tokens`, `cache_write.input_tokens`, `reasoning.output_tokens`. On a `fetch_response` these come from the fetched body and are charged to no limit, so a sum over spans must exclude that operation or it counts one generation again per fetch |
+| `gen_ai.response.*`                     | `id` (only when DIAL owns the id the client sees — Responses create and fetch; omitted for Chat Completions, Anthropic Messages and Embeddings), `status` (`completed` or `failed`, derived from the status the client receives). `model` and `finish_reasons` are not published |
+| `gen_ai.usage.*`                        | `input_tokens`, `output_tokens`, `cache_read.input_tokens`, `cache_write.input_tokens`, `reasoning.output_tokens`. Taken from the token usage Core already collected for limits and cost; a `fetch_response` publishes none |
 | `dial.usage.total_tokens`               | Core's own total, not the upstream's                                                                                                                      |
 | `dial.upstream.attempts`                | The `X-UPSTREAM-ATTEMPTS` the client receives — how many upstream attempts the load balancer spent on the request                                          |
 | `dial.upstream.cache.breakpoint_path`   | The prefix path the upstream reported caching via `X-DIAL-CACHE-BREAKPOINT-PATH`. Absent when the upstream reported none                                   |
@@ -82,11 +82,10 @@ String attribute values are capped at 256 characters and list attributes at 32 e
 names, response ids and stop sequences are caller- or upstream-controlled and every attribute is
 replayed onto each log record of the request.
 
-Response attributes are read from the body only while it is under 512 KB. Above that — an embeddings
-response is mostly vectors, and carries no id or finish reason — the body is left unparsed and the
-outcome is still reported from the status the client receives. Streamed bodies are never scanned
-twice: the merged chat completions body and the terminal Responses frame are the same ones the
-analytics log already assembled.
+The response body is never parsed for tracing, so no response attribute costs an extra parse. Response
+attributes come from Core's own state: the id DIAL assigned, the status the client receives, and the
+token usage already collected for limits. A run that fails inside a successful stream (for example a
+`response.failed` event) is therefore still reported as `completed`.
 
 Enrichment can never fail a request: it runs on the critical path, before the client response is
 completed, so a failure is logged and the response proceeds without the attributes.

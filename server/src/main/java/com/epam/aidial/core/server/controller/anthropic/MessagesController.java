@@ -172,13 +172,20 @@ public class MessagesController extends MessagesBaseController {
         endResponse.run();
         proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
         Upstream currentUpstream = context.getUpstreamRoute().get();
-        log.info("Sent response to client. Deployment: {}. Interface: {}. Endpoint: {}. Upstream: {}. Length: {}. Tokens: {}.",
+        log.info("Sent response to client. Deployment: {}. Interface: {}. Endpoint: {}. Upstream: {}. Length: {}."
+                        + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",
                 context.getDeployment().getName(),
                 InterfaceType.ANTHROPIC_MESSAGES.getValue(),
                 context.getProxyRequestUri(),
                 currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
                 context.getResponseBody() == null ? 0 : context.getResponseBody().length(),
-                context.getTokenUsage() == null ? "N/A" : context.getTokenUsage());
+                context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
+                context.getRequestBodyTimestamp() - context.getRequestTimestamp(),
+                context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
+                context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
+                context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
+                context.getTokenUsage() == null ? "N/A" : context.getTokenUsage(),
+                currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
         finalizeRequest();
     }

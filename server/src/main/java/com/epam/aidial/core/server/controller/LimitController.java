@@ -1,6 +1,8 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.RoleBasedEntity;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
@@ -11,24 +13,37 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.data.UserLimitStats;
+import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 public class LimitController {
+
+    private static final String MODEL_TYPE = "model";
+    private static final String APPLICATION_TYPE = "application";
 
     private final Proxy proxy;
 
     private final ProxyContext context;
 
+    private final DeploymentService deploymentService;
+    private final ApplicationService applicationService;
+
     public LimitController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
         this.context = context;
+        this.deploymentService = proxy.getDeploymentService();
+        this.applicationService = proxy.getApplicationService();
     }
 
     @ApiOperation(
@@ -70,10 +85,16 @@ public class LimitController {
                     @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = UserLimitStats.class)),
                     @ApiResponse(code = 401),
                     @ApiResponse(code = 500)
+            },
+            parameters = {
+                    @ApiParameter(name = "deploymentTypes", in = ParameterIn.QUERY,
+                            schema = String[].class,
+                            description = OpenApiDescriptions.DEPLOYMENT_TYPES,
+                            allowableValues = {MODEL_TYPE, APPLICATION_TYPE})
             }
     )
     public Future<?> getUserLimits() {
-        return respondWithUserStats(false);
+        return respondWithUserStats(false, getDeploymentTypes());
     }
 
     @ApiOperation(
@@ -85,17 +106,25 @@ public class LimitController {
                     @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = UserLimitStats.class)),
                     @ApiResponse(code = 401),
                     @ApiResponse(code = 500)
+            },
+            parameters = {
+                    @ApiParameter(name = "deploymentTypes", in = ParameterIn.QUERY,
+                            schema = String[].class,
+                            description = OpenApiDescriptions.DEPLOYMENT_TYPES,
+                            allowableValues = {MODEL_TYPE, APPLICATION_TYPE})
             }
     )
     public Future<?> getUserUsage() {
-        return respondWithUserStats(true);
+        return respondWithUserStats(true, getDeploymentTypes());
     }
 
-    private Future<?> respondWithUserStats(boolean dropEmpty) {
-        // no executor hop: listAccessibleModels only streams over the in-memory config, and
-        // getUserStats submits the blocking part itself
-        List<Model> models = listAccessibleModels();
-        proxy.getRateLimiter().getUserStats(context, models, dropEmpty)
+    private Set<String> getDeploymentTypes() {
+        return Set.of(context.getRequest().getParam("deploymentTypes", MODEL_TYPE).split(","));
+    }
+
+    private Future<?> respondWithUserStats(boolean dropEmpty, Set<String> deploymentTypes) {
+        proxy.getTaskExecutor().submit(() -> listAccessibleDeployments(deploymentTypes))
+                .compose(deployments -> proxy.getRateLimiter().getUserStats(context, deployments, dropEmpty))
                 .onSuccess(stats -> context.respond(HttpStatus.OK, stats))
                 .onFailure(this::handleUserLimitsError);
 
@@ -103,13 +132,39 @@ public class LimitController {
     }
 
     /**
-     * Only models are reported: DIAL never writes rate-limit counters for applications, toolsets or routes,
-     * so an entry for one would report zeros against a limit that cannot fire. See {@link UserLimitStats}.
+     * Enumerates the deployments to report on, selected purely from config/resources before any storage
+     * listing runs - so requesting more {@code deploymentTypes} costs no extra listing. Model reporting is
+     * unchanged from before this parameter existed: DIAL writes direct-cost rate-limit counters for every
+     * Model. Application reporting covers a deployment's <i>aggregated</i> cost - what rolled up from
+     * descendants it called in a chain - not a self-reported direct cost, since DIAL never writes a
+     * direct-cost counter for an Application. See {@link UserLimitStats}.
+     *
+     * <p>A custom application is listed by name only ({@link DeploymentService#listDeploymentNames}),
+     * never fully extracted: {@link com.epam.aidial.core.server.limiter.RateLimiter} only ever calls
+     * {@link RoleBasedEntity#getName()}/{@link RoleBasedEntity#getUserRoles()} on these entries, so
+     * reading every accessible application's full body and resolving its schema/mcp/viewerUrl on top
+     * would be pure waste here.
      */
-    private List<Model> listAccessibleModels() {
-        return context.getConfig().getModels().values().stream()
-                .filter(model -> model.hasAccess(context.getUserRoles()))
-                .toList();
+    private List<RoleBasedEntity> listAccessibleDeployments(Set<String> deploymentTypes) {
+        List<RoleBasedEntity> deployments = new ArrayList<>();
+        if (deploymentTypes.contains(MODEL_TYPE)) {
+            for (Model model : context.getConfig().getModels().values()) {
+                if (model.hasAccess(context.getUserRoles())) {
+                    deployments.add(model);
+                }
+            }
+        }
+        if (deploymentTypes.contains(APPLICATION_TYPE)) {
+            for (Application application : context.getConfig().getApplications().values()) {
+                if (application.hasAccess(context.getUserRoles())) {
+                    deployments.add(application);
+                }
+            }
+            if (applicationService.isIncludeCustomApps()) {
+                deployments.addAll(deploymentService.listDeploymentNames(context, ResourceTypes.APPLICATION, Application::new));
+            }
+        }
+        return deployments;
     }
 
     private void handleUserLimitsError(Throwable error) {
