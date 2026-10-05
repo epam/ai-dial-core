@@ -8,6 +8,7 @@ import ch.qos.logback.classic.spi.ThrowableProxy;
 import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.server.ContextManager;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.tracing.CorrelationIds;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opentelemetry.api.trace.Span;
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.KeyValuePair;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -319,6 +321,80 @@ class AutoEnrichedOtelJsonLayoutTest {
         assertEquals(10, attributes.get("gen_ai.usage.input_tokens").asInt());
         assertEquals("base64", attributes.get("gen_ai.request.encoding_formats").get(0).asText());
         verify(currentSpan, never()).setAttribute("gen_ai.usage.input_tokens", "10");
+    }
+
+    @Test
+    void shouldFallBackToEventKeyValuePairsWhenNoProxyContext() throws Exception {
+        // No ProxyContext - e.g. a late upstream callback logging after client disconnect cleared it
+        vertxMock.when(Vertx::currentContext).thenReturn(null);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+
+        CorrelationIds ids = new CorrelationIds("22510e56eb9b21f6b03dbc038cd8fb71", "8a46c76f1554b00a", "01",
+                "conv-1", "late-project", "late-user");
+
+        LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        Logger testLogger = context.getLogger("test.logger");
+
+        LoggingEvent event = new LoggingEvent();
+        event.setLoggerName(testLogger.getName());
+        event.setLevel(Level.WARN);
+        event.setMessage("Proxy failed to receive response header from origin");
+        event.setTimeStamp(System.currentTimeMillis());
+        event.setLoggerContext(context);
+        event.setKeyValuePairs(List.of(
+                new KeyValuePair(CorrelationIds.TRACE_ID_KEY, ids.traceId()),
+                new KeyValuePair(CorrelationIds.SPAN_ID_KEY, ids.spanId()),
+                new KeyValuePair(CorrelationIds.TRACE_FLAGS_KEY, ids.traceFlags()),
+                new KeyValuePair(CorrelationIds.CONVERSATION_ID_KEY, ids.conversationId()),
+                new KeyValuePair(CorrelationIds.PROJECT_KEY, ids.project()),
+                new KeyValuePair(CorrelationIds.USER_ID_KEY, ids.userId())));
+
+        String result = layout.doLayout(event);
+        JsonNode jsonNode = objectMapper.readTree(result);
+
+        assertEquals("22510e56eb9b21f6b03dbc038cd8fb71", jsonNode.get("TraceId").asText());
+        assertEquals("8a46c76f1554b00a", jsonNode.get("SpanId").asText());
+        assertEquals("01", jsonNode.get("TraceFlags").asText());
+
+        JsonNode attributes = jsonNode.get("Attributes");
+        assertEquals("conv-1", attributes.get(CorrelationIds.CONVERSATION_ID_KEY).asText());
+        assertEquals("late-project", attributes.get(CorrelationIds.PROJECT_KEY).asText());
+        assertEquals("late-user", attributes.get(CorrelationIds.USER_ID_KEY).asText());
+    }
+
+    @Test
+    void shouldIgnoreEventKeyValuePairsWhenProxyContextIsLive() throws Exception {
+        // A live ProxyContext already provides correlation data - the event's own key/value pairs
+        // (if any) must not override it, so the two sources never disagree for the same log line.
+        ProxyContext proxyContext = mock(ProxyContext.class);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(response.ended()).thenReturn(false);
+        when(proxyContext.getResponse()).thenReturn(response);
+        when(proxyContext.getTraceId()).thenReturn("live-trace");
+        when(proxyContext.getSpanId()).thenReturn("live-span");
+        when(proxyContext.getTraceFlags()).thenReturn("01");
+        when(proxyContext.getProject()).thenReturn("live-project");
+        when(proxyContext.getUserId()).thenReturn("live-user");
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+
+        LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        Logger testLogger = context.getLogger("test.logger");
+
+        LoggingEvent event = new LoggingEvent();
+        event.setLoggerName(testLogger.getName());
+        event.setLevel(Level.INFO);
+        event.setMessage("Connected to origin");
+        event.setTimeStamp(System.currentTimeMillis());
+        event.setLoggerContext(context);
+        event.setKeyValuePairs(List.of(
+                new KeyValuePair(CorrelationIds.TRACE_ID_KEY, "stale-trace"),
+                new KeyValuePair(CorrelationIds.PROJECT_KEY, "stale-project")));
+
+        String result = layout.doLayout(event);
+        JsonNode jsonNode = objectMapper.readTree(result);
+
+        assertEquals("live-trace", jsonNode.get("TraceId").asText());
+        assertEquals("live-project", jsonNode.get("Attributes").get("user.project").asText());
     }
 
     @Test

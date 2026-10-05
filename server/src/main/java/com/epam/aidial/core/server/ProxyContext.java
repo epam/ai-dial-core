@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.CorrelationIds;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -186,7 +187,12 @@ public class ProxyContext {
         response.setStatusCode(status).end(body);
 
         if (status < 200 || status >= 300) {
-            log.warn("Responding with error. Body: {}", body);
+            // the one funnel above means this can be the tail of a late upstream callback too (e.g.
+            // nextUpstream()'s "No route" after a retry) - same correlation fix as the controllers:
+            // read ids straight off this object, not via ContextManager, which a disconnect may have
+            // already cleared by now.
+            CorrelationIds.from(this).addTo(log.atWarn())
+                    .log("Responding with error. Body: {}", body);
         }
 
         return Future.succeededFuture();

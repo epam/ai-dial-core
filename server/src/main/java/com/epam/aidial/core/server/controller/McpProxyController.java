@@ -22,6 +22,7 @@ import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
+import com.epam.aidial.core.server.tracing.CorrelationIds;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -202,7 +203,8 @@ public class McpProxyController implements Controller {
      */
     private void handleProxyRequest(HttpClientRequest proxyRequest) {
         HttpConnection connection = proxyRequest.connection();
-        log.info("Connected to origin: {}", connection.remoteAddress());
+        CorrelationIds.from(context).addTo(log.atInfo())
+                .log("Connected to origin: {}", connection.remoteAddress());
 
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
@@ -241,8 +243,9 @@ public class McpProxyController implements Controller {
      */
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
         int responseStatusCode = proxyResponse.statusCode();
-        log.info("Received response header from origin: status={}, headers={}", responseStatusCode,
-                proxyResponse.headers().size());
+        CorrelationIds.from(context).addTo(log.atInfo())
+                .log("Received response header from origin: status={}, headers={}", responseStatusCode,
+                        proxyResponse.headers().size());
 
         if ((responseStatusCode == 307 || responseStatusCode == 308) && tryFollowRedirect(proxyResponse)) {
             return;
@@ -505,7 +508,8 @@ public class McpProxyController implements Controller {
      * Called when proxy failed to connect to the origin.
      */
     private void handleProxyConnectionError(Throwable error) {
-        log.warn("Can't connect to origin: {}", error.getMessage());
+        CorrelationIds.from(context).addTo(log.atWarn())
+                .log("Can't connect to origin: {}", error.getMessage());
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
         upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
@@ -519,7 +523,8 @@ public class McpProxyController implements Controller {
      * Called when proxy failed to send request to the origin.
      */
     private void handleProxyRequestError(Throwable error) {
-        log.warn("Can't send request to origin: {}", error.getMessage());
+        CorrelationIds.from(context).addTo(log.atWarn())
+                .log("Can't send request to origin: {}", error.getMessage());
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
         upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
@@ -533,7 +538,8 @@ public class McpProxyController implements Controller {
      * Called when proxy failed to send response to the client.
      */
     private void handleResponseError(Throwable error) {
-        log.warn("Can't send response to client: {}", error.getMessage());
+        CorrelationIds.from(context).addTo(log.atWarn())
+                .log("Can't send response to client: {}", error.getMessage());
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
         finalizeRequest();

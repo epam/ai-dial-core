@@ -16,6 +16,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.tracing.CorrelationIds;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
@@ -221,8 +222,9 @@ public class DeploymentFeatureController {
      * Called when proxy connected to the origin.
      */
     void handleProxyRequest(HttpClientRequest proxyRequest) {
-        log.info("Connected to origin. Address: {}",
-                proxyRequest.connection().remoteAddress());
+        CorrelationIds.from(context).addTo(log.atInfo())
+                .log("Connected to origin. Address: {}",
+                        proxyRequest.connection().remoteAddress());
 
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
@@ -274,8 +276,9 @@ public class DeploymentFeatureController {
      * Called when proxy received the response headers from the origin.
      */
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
-        log.info("Received response header from origin: status={}, headers={}", proxyResponse.statusCode(),
-                proxyResponse.headers().size());
+        CorrelationIds.from(context).addTo(log.atInfo())
+                .log("Received response header from origin: status={}, headers={}", proxyResponse.statusCode(),
+                        proxyResponse.headers().size());
 
         BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024));
@@ -318,7 +321,8 @@ public class DeploymentFeatureController {
      */
     private void handleProxyConnectionError(Throwable error) {
         respond(HttpStatus.BAD_GATEWAY, "connection error to origin");
-        log.warn("Can't connect to origin: {}", error.getMessage());
+        CorrelationIds.from(context).addTo(log.atWarn())
+                .log("Can't connect to origin: {}", error.getMessage());
     }
 
     /**
@@ -326,14 +330,16 @@ public class DeploymentFeatureController {
      */
     private void handleProxyRequestError(Throwable error) {
         respond(HttpStatus.BAD_GATEWAY, "deployment responded with error");
-        log.warn("Can't send request to origin: {}", error.getMessage());
+        CorrelationIds.from(context).addTo(log.atWarn())
+                .log("Can't send request to origin: {}", error.getMessage());
     }
 
     /**
      * Called when proxy failed to send response to the client.
      */
     private void handleResponseError(Throwable error) {
-        log.warn("Can't send response to client: {}", error.getMessage());
+        CorrelationIds.from(context).addTo(log.atWarn())
+                .log("Can't send response to client: {}", error.getMessage());
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
         finalizeRequest();

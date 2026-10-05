@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequest
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.tracing.CorrelationIds;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -234,10 +235,11 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     private void handleProxyResponseError(Throwable error) {
         // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
         context.getUpstreamRoute().fail(HttpStatus.BAD_GATEWAY);
-        log.warn("Proxy failed to receive response header from origin. Deployment: {}. Address: {}. Error:",
-                context.getDeployment().getName(),
-                context.getProxyRequest().connection().remoteAddress(),
-                error);
+        CorrelationIds.from(context).addTo(log.atWarn())
+                .setCause(error)
+                .log("Proxy failed to receive response header from origin. Deployment: {}. Address: {}.",
+                        context.getDeployment().getName(),
+                        context.getProxyRequest().connection().remoteAddress());
 
         sendRequest(); // try next
     }

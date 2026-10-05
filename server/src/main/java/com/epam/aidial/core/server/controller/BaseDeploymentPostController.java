@@ -19,6 +19,7 @@ import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.CorrelationIds;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
@@ -148,9 +149,10 @@ public class BaseDeploymentPostController {
         response.getError().setMessage(errorMessage);
         response.getError().setDisplayMessage(errorMessage);
         respond(HttpStatus.BAD_GATEWAY, response);
-        log.warn("Can't connect to origin.  Deployment: {}. Address: {}. Error: {}",
-                context.getDeployment().getName(),
-                context.getProxyRequestUri(), error.getMessage());
+        CorrelationIds.from(context).addTo(log.atWarn())
+                .log("Can't connect to origin.  Deployment: {}. Address: {}. Error: {}",
+                        context.getDeployment().getName(),
+                        context.getProxyRequestUri(), error.getMessage());
     }
 
     protected void handleRequestBodyError(Throwable error) {
@@ -163,7 +165,11 @@ public class BaseDeploymentPostController {
      */
     protected void handleResponseError(Throwable error, BufferingReadStream responseStream) {
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
-        log.warn("Can't send response to client. Error:", error);
+        // This is literally the client-disconnect-mid-response case, so it's the most exposed of all the
+        // late-callback logs here to ContextManager's ProxyContext already being cleared - same fix applies.
+        CorrelationIds.from(context).addTo(log.atWarn())
+                .setCause(error)
+                .log("Can't send response to client.");
         Deployment deployment = context.getDeployment();
         if (deployment instanceof Model) {
             // make sure we collect token usage in case if client accidentally closed the connection
@@ -401,9 +407,13 @@ public class BaseDeploymentPostController {
     }
 
     protected Future<HttpClientResponse> sendProxyRequest(HttpClientRequest proxyRequest, InterfaceType type) {
-        log.info("Connected to origin. Deployment: {}. Address: {}",
-                context.getDeployment().getName(),
-                proxyRequest.connection().remoteAddress());
+        // Correlation ids are read fresh here and used only for this one log call - not stored anywhere -
+        // so this line stays correct even if ContextManager's ProxyContext was already cleared by the time
+        // a later callback on this same upstream call (handleProxyResponse/handleProxyResponseError) logs.
+        CorrelationIds.from(context).addTo(log.atInfo())
+                .log("Connected to origin. Deployment: {}. Address: {}",
+                        context.getDeployment().getName(),
+                        proxyRequest.connection().remoteAddress());
 
         MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
         if (!context.getDeployment().isForwardAuthToken()) {
@@ -474,7 +484,10 @@ public class BaseDeploymentPostController {
             return true;
         } catch (HttpException e) {
             respond(e);
-            log.warn("No route. Deployment: {}", context.getDeployment().getName());
+            // reached from a retry inside handleProxyResponse/handleProxyResponseError too, so this can be
+            // a late callback after client disconnect the same way those are - same correlation fix applies.
+            CorrelationIds.from(context).addTo(log.atWarn())
+                    .log("No route. Deployment: {}", context.getDeployment().getName());
         }
 
         return false;

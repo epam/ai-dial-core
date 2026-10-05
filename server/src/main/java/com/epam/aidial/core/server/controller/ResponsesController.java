@@ -33,6 +33,7 @@ import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.tracing.CorrelationIds;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
@@ -310,9 +311,10 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private void handleProxyRequest(HttpClientRequest proxyRequest) {
-        log.info("Connected to origin. Deployment: {}. Address: {}",
-                context.getDeployment().getName(),
-                proxyRequest.connection().remoteAddress());
+        CorrelationIds.from(context).addTo(log.atInfo())
+                .log("Connected to origin. Deployment: {}. Address: {}",
+                        context.getDeployment().getName(),
+                        proxyRequest.connection().remoteAddress());
 
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
@@ -325,11 +327,12 @@ public class ResponsesController extends BaseDeploymentPostController {
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         Upstream currentUpstream = upstreamRoute.get();
-        log.info("Received header from origin. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Headers: {}. Upstream.extraData: {}",
-                context.getDeployment().getName(),
-                context.getProxyRequestUri(),
-                currentUpstream == null ? "N/A" : currentUpstream.getResponsesEndpoint(),
-                proxyResponse.statusCode(), proxyResponse.headers().size(), currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
+        CorrelationIds.from(context).addTo(log.atInfo())
+                .log("Received header from origin. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Headers: {}. Upstream.extraData: {}",
+                        context.getDeployment().getName(),
+                        context.getProxyRequestUri(),
+                        currentUpstream == null ? "N/A" : currentUpstream.getResponsesEndpoint(),
+                        proxyResponse.statusCode(), proxyResponse.headers().size(), currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
         int responseStatusCode = proxyResponse.statusCode();
         if (isRetriableError(responseStatusCode)) {
@@ -487,19 +490,20 @@ public class ResponsesController extends BaseDeploymentPostController {
     private void completeProxyResponse(String assembledStreamingResponse) {
         proxy.getLogStore().save(AnalyticsLogContext.from(context, assembledStreamingResponse));
         Upstream currentUpstream = context.getUpstreamRoute().get();
-        log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
-                        + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",
-                context.getDeployment().getName(),
-                context.getProxyRequestUri(),
-                currentUpstream == null ? "N/A" : currentUpstream.getResponsesEndpoint(),
-                context.getResponseBody().length(),
-                context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
-                context.getRequestBodyTimestamp() - context.getRequestTimestamp(),
-                context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
-                context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
-                context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
-                context.getTokenUsage() == null ? "N/A" : context.getTokenUsage(),
-                currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
+        CorrelationIds.from(context).addTo(log.atInfo())
+                .log("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
+                                + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",
+                        context.getDeployment().getName(),
+                        context.getProxyRequestUri(),
+                        currentUpstream == null ? "N/A" : currentUpstream.getResponsesEndpoint(),
+                        context.getResponseBody().length(),
+                        context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
+                        context.getRequestBodyTimestamp() - context.getRequestTimestamp(),
+                        context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
+                        context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
+                        context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
+                        context.getTokenUsage() == null ? "N/A" : context.getTokenUsage(),
+                        currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
         finalizeRequest();
     }
@@ -508,10 +512,11 @@ public class ResponsesController extends BaseDeploymentPostController {
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
         upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
-        log.warn("Proxy failed to receive response header from origin. Deployment: {}. Address: {}. Error:",
-                context.getDeployment().getName(),
-                context.getProxyRequest().connection().remoteAddress(),
-                error);
+        CorrelationIds.from(context).addTo(log.atWarn())
+                .setCause(error)
+                .log("Proxy failed to receive response header from origin. Deployment: {}. Address: {}.",
+                        context.getDeployment().getName(),
+                        context.getProxyRequest().connection().remoteAddress());
 
         sendRequest(); // try next
     }

@@ -22,6 +22,7 @@ import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.tracing.CorrelationIds;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -172,20 +173,21 @@ public class MessagesController extends MessagesBaseController {
         endResponse.run();
         proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
         Upstream currentUpstream = context.getUpstreamRoute().get();
-        log.info("Sent response to client. Deployment: {}. Interface: {}. Endpoint: {}. Upstream: {}. Length: {}."
-                        + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",
-                context.getDeployment().getName(),
-                InterfaceType.ANTHROPIC_MESSAGES.getValue(),
-                context.getProxyRequestUri(),
-                currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
-                context.getResponseBody() == null ? 0 : context.getResponseBody().length(),
-                context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
-                context.getRequestBodyTimestamp() - context.getRequestTimestamp(),
-                context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
-                context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
-                context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
-                context.getTokenUsage() == null ? "N/A" : context.getTokenUsage(),
-                currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
+        CorrelationIds.from(context).addTo(log.atInfo())
+                .log("Sent response to client. Deployment: {}. Interface: {}. Endpoint: {}. Upstream: {}. Length: {}."
+                                + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",
+                        context.getDeployment().getName(),
+                        InterfaceType.ANTHROPIC_MESSAGES.getValue(),
+                        context.getProxyRequestUri(),
+                        currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
+                        context.getResponseBody() == null ? 0 : context.getResponseBody().length(),
+                        context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
+                        context.getRequestBodyTimestamp() - context.getRequestTimestamp(),
+                        context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
+                        context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
+                        context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
+                        context.getTokenUsage() == null ? "N/A" : context.getTokenUsage(),
+                        currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
         finalizeRequest();
     }

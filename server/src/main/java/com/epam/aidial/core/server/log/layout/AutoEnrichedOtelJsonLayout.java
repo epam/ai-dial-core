@@ -8,15 +8,18 @@ import com.epam.aidial.core.server.AiDial;
 import com.epam.aidial.core.server.ContextManager;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.log.otl.OtelLogRecord;
+import com.epam.aidial.core.server.tracing.CorrelationIds;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opentelemetry.api.trace.Span;
+import org.slf4j.event.KeyValuePair;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -51,6 +54,15 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
             traceId = proxyContext.getTraceId();
             spanId = proxyContext.getSpanId();
             traceFlags = proxyContext.getTraceFlags();
+        } else {
+            // A late upstream callback (sendProxyRequest/handleProxyResponse/handleProxyResponseError
+            // running after the client already disconnected and ContextManager's ProxyContext was
+            // cleared) may supply its own correlation ids explicitly via the SLF4J fluent API
+            // (log.atWarn().addKeyValue(...)). These live only on this one LoggingEvent - no ambient
+            // or shared state is read here, same as every other per-event field above.
+            traceId = orElse(getEventKeyValue(event, CorrelationIds.TRACE_ID_KEY), traceId);
+            spanId = orElse(getEventKeyValue(event, CorrelationIds.SPAN_ID_KEY), spanId);
+            traceFlags = orElse(getEventKeyValue(event, CorrelationIds.TRACE_FLAGS_KEY), traceFlags);
         }
 
         Map<String, Object> attributes = new LinkedHashMap<>();
@@ -61,7 +73,11 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
 
         // Enrich attributes from context
         enrichAttributesFromContext(event, attributes);
-        
+
+        if (proxyContext == null) {
+            enrichAttributesFromEvent(event, attributes);
+        }
+
         // Handle exception info
         enrichExceptionAttributes(event, attributes);
         
@@ -107,6 +123,40 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
                 attributes.put("response.status.code", proxyContext.getResponse().getStatusCode());
             }
         }
+    }
+
+    /**
+     * Fallback for a log line with no live {@link ProxyContext} (e.g. a late upstream callback after client
+     * disconnect): picks up only the correlation fields a caller supplied explicitly via {@link CorrelationIds},
+     * read off this one event's {@link ILoggingEvent#getKeyValuePairs()} - not from any ambient store.
+     */
+    private void enrichAttributesFromEvent(ILoggingEvent event, Map<String, Object> attributes) {
+        putIfPresent(attributes, CorrelationIds.CONVERSATION_ID_KEY, getEventKeyValue(event, CorrelationIds.CONVERSATION_ID_KEY));
+        putIfPresent(attributes, CorrelationIds.PROJECT_KEY, getEventKeyValue(event, CorrelationIds.PROJECT_KEY));
+        putIfPresent(attributes, CorrelationIds.USER_ID_KEY, getEventKeyValue(event, CorrelationIds.USER_ID_KEY));
+    }
+
+    private static void putIfPresent(Map<String, Object> attributes, String key, String value) {
+        if (value != null) {
+            attributes.put(key, value);
+        }
+    }
+
+    private static String orElse(String value, String fallback) {
+        return value != null ? value : fallback;
+    }
+
+    private static String getEventKeyValue(ILoggingEvent event, String key) {
+        List<KeyValuePair> keyValuePairs = event.getKeyValuePairs();
+        if (keyValuePairs == null) {
+            return null;
+        }
+        for (KeyValuePair kv : keyValuePairs) {
+            if (key.equals(kv.key)) {
+                return kv.value == null ? null : kv.value.toString();
+            }
+        }
+        return null;
     }
 
     private void enrichExceptionAttributes(ILoggingEvent event, Map<String, Object> attributes) {

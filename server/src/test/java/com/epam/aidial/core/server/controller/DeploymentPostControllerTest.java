@@ -1,5 +1,8 @@
 package com.epam.aidial.core.server.controller;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
@@ -9,6 +12,7 @@ import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.server.ContextManager;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -21,6 +25,7 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.tracing.CorrelationIds;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -59,6 +64,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
+import org.slf4j.event.KeyValuePair;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -81,6 +88,7 @@ import static com.epam.aidial.core.storage.http.HttpStatus.NOT_FOUND;
 import static com.epam.aidial.core.storage.http.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
 import static io.vertx.core.http.HttpHeaders.AUTHORIZATION;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
@@ -91,6 +99,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -356,6 +365,64 @@ public class DeploymentPostControllerTest {
         controller.handle("app1");
 
         verify(context).respond(any(HttpException.class));
+    }
+
+    /**
+     * {@code nextUpstream()}'s "No route" log is reached from a retry inside
+     * {@code handleProxyResponse}/{@code handleProxyResponseError} - the same late-callback path as A1 - so
+     * it must not depend on {@code ContextManager}'s Vert.x-Context-local {@link ProxyContext} lookup, which
+     * a client disconnect can have already cleared by then. This test has no real Vert.x event-loop context
+     * at all, so {@link ContextManager#getProxyContext()} is already null here (worse than the cleared-after
+     * case), yet the log line must still carry the correct ids - because {@link CorrelationIds#from}
+     * reads them directly off the controller's own {@code context} field, never through {@code ContextManager}.
+     */
+    @Test
+    public void testNextUpstream_NoRouteCarriesCorrelationIdsEvenWithoutContextManager() {
+        when(context.getTraceId()).thenReturn("trace-no-route");
+        when(context.getSpanId()).thenReturn("span-no-route");
+        when(context.getTraceFlags()).thenReturn("01");
+        when(context.getProject()).thenReturn("project-no-route");
+        when(context.getUserId()).thenReturn("user-no-route");
+        when(context.getRequestHeader(Proxy.HEADER_CONVERSATION_ID)).thenReturn("conv-no-route");
+
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        doThrow(new HttpException(BAD_GATEWAY, "no route")).when(upstreamRoute).next();
+
+        Application application = new Application();
+        application.setName("app1");
+        when(context.getDeployment()).thenReturn(application);
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+
+        Logger logger = (Logger) LoggerFactory.getLogger(BaseDeploymentPostController.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        boolean result;
+        try {
+            assertNull(ContextManager.getProxyContext(), "precondition: no real Vert.x context in this test");
+
+            result = controller.nextUpstream();
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        assertFalse(result);
+        ILoggingEvent event = appender.list.stream()
+                .filter(e -> e.getFormattedMessage().startsWith("No route"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("\"No route\" was not logged: " + appender.list));
+
+        Map<String, String> ids = new HashMap<>();
+        for (KeyValuePair kv : event.getKeyValuePairs()) {
+            ids.put(kv.key, String.valueOf(kv.value));
+        }
+        assertEquals("trace-no-route", ids.get(CorrelationIds.TRACE_ID_KEY));
+        assertEquals("span-no-route", ids.get(CorrelationIds.SPAN_ID_KEY));
+        assertEquals("01", ids.get(CorrelationIds.TRACE_FLAGS_KEY));
+        assertEquals("conv-no-route", ids.get(CorrelationIds.CONVERSATION_ID_KEY));
+        assertEquals("project-no-route", ids.get(CorrelationIds.PROJECT_KEY));
+        assertEquals("user-no-route", ids.get(CorrelationIds.USER_ID_KEY));
     }
 
 

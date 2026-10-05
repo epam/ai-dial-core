@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.tracing.CorrelationIds;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -139,7 +140,8 @@ class RouteRequestBodyHandler {
      * Called when proxy connected to the origin.
      */
     private void handleProxyRequest(HttpClientRequest proxyRequest) {
-        log.info("Connected to origin: {}", proxyRequest.connection().remoteAddress());
+        CorrelationIds.from(context).addTo(log.atInfo())
+                .log("Connected to origin: {}", proxyRequest.connection().remoteAddress());
 
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
@@ -162,8 +164,9 @@ class RouteRequestBodyHandler {
      */
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
         int responseStatusCode = proxyResponse.statusCode();
-        log.info("Received response header from origin: status={}, headers={}", responseStatusCode,
-                proxyResponse.headers().size());
+        CorrelationIds.from(context).addTo(log.atInfo())
+                .log("Received response header from origin: status={}, headers={}", responseStatusCode,
+                        proxyResponse.headers().size());
 
         if (responseStatusCode == HttpStatus.TOO_MANY_REQUESTS.getCode()) {
             UpstreamRoute upstreamRoute = context.getUpstreamRoute();
@@ -232,7 +235,8 @@ class RouteRequestBodyHandler {
      * Called when proxy failed to connect to the origin.
      */
     private void handleProxyConnectionError(Throwable error) {
-        log.warn("Can't connect to origin: {}", error.getMessage());
+        CorrelationIds.from(context).addTo(log.atWarn())
+                .log("Can't connect to origin: {}", error.getMessage());
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
         upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
@@ -246,7 +250,8 @@ class RouteRequestBodyHandler {
      * Called when proxy failed to send request to the origin.
      */
     private void handleProxyRequestError(Throwable error) {
-        log.warn("Can't send request to origin: {}", error.getMessage());
+        CorrelationIds.from(context).addTo(log.atWarn())
+                .log("Can't send request to origin: {}", error.getMessage());
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
         upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
@@ -260,7 +265,8 @@ class RouteRequestBodyHandler {
      * Called when proxy failed to send response to the client.
      */
     private void handleResponseError(Throwable error) {
-        log.warn("Can't send response to client: {}", error.getMessage());
+        CorrelationIds.from(context).addTo(log.atWarn())
+                .log("Can't send response to client: {}", error.getMessage());
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
         controller.finalizeRequest();
