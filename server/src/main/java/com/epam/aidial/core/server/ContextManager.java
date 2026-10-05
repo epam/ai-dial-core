@@ -10,16 +10,20 @@ public class ContextManager {
     private static final String PROXY_CONTEXT_KEY = "proxyContext";
 
     /**
-     * Set ProxyContext in Vertx context only.
-     * This simplifies context management by storing the entire ProxyContext object.
-     * The AutoEnrichedOtelJsonLayout will extract fields directly from ProxyContext.
+     * Stores the ProxyContext in the current Vert.x context, where {@code AutoEnrichedOtelJsonLayout} reads it to
+     * enrich every log line of the request.
+     *
+     * <p>Vert.x runs each HTTP server request on its own duplicated context, and the upstream calls made from it
+     * dispatch their callbacks on that same context. So the entry is visible to every callback of the request,
+     * including the ones that run after the client has disconnected, is never visible to another request, and is
+     * garbage-collected together with the request. There is deliberately no clear step: clearing on response close
+     * made the log lines of those late callbacks lose their trace id and user attributes.
      */
     public static void setProxyContext(ProxyContext proxyContext) {
         if (proxyContext == null) {
             return;
         }
 
-        // Store only the ProxyContext object in Vertx context
         Context vertxContext = Vertx.currentContext();
         if (vertxContext != null) {
             vertxContext.putLocal(PROXY_CONTEXT_KEY, proxyContext);
@@ -35,16 +39,5 @@ public class ContextManager {
             return vertxContext.getLocal(PROXY_CONTEXT_KEY);
         }
         return null;
-    }
-
-    /**
-     * Clear context data from Vertx context.
-     */
-    public static void clearContext() {
-        // Clear ProxyContext from Vertx context
-        Context vertxContext = Vertx.currentContext();
-        if (vertxContext != null) {
-            vertxContext.removeLocal(PROXY_CONTEXT_KEY);
-        }
     }
 }

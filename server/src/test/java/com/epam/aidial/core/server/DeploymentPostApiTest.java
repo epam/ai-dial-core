@@ -3,14 +3,19 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.data.LimitStats;
+import com.epam.aidial.core.server.log.JsonLogCapture;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.util.Compression;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.net.httpserver.HttpServer;
+import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonObject;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -27,8 +32,12 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -356,6 +365,78 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
                     """,
                     "content-type", Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
             verify(response, 200);
+        }
+    }
+
+    /**
+     * A client disconnect used to clear the ProxyContext from the request's Vert.x context while the upstream call
+     * was still in flight, so the log lines of its remaining callbacks lost their trace id and user attributes.
+     */
+    @Test
+    public void testLateLogLinesKeepTraceContext_WhenClientClosesConnection() throws IOException {
+        String responseBody = """
+                data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":"stop","delta":{"content":"hi"}}],"usage":{"completion_tokens": 1, "prompt_tokens": 1, "total_tokens": 2}}\r
+                data: [DONE]\r
+                """;
+        try (TestWebServer server = new TestWebServer(4848);
+                CloseableHttpClient client = createHttpClient();
+                JsonLogCapture logs = JsonLogCapture.attach()) {
+            server.map(HttpMethod.POST, "/chat/completions", request -> {
+                try {
+                    client.close(); // the client goes away while the core is still waiting for the upstream
+                    Thread.sleep(500); // let the core observe the disconnect before the upstream answers
+                } catch (IOException | InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                return new MockResponse().setResponseCode(200).setChunkedBody(responseBody, 200);
+            });
+            try {
+                client.execute(createHttpUriRequest(), response -> null);
+            } catch (IOException e) {
+                // the client closed its own connection
+            }
+
+            JsonNode beforeDisconnect = logs.await("Connected to origin");
+            JsonNode afterDisconnect = logs.await("Received header from origin");
+
+            String traceId = beforeDisconnect.get("TraceId").asText();
+            assertFalse(traceId.isEmpty());
+            assertEquals(traceId, afterDisconnect.get("TraceId").asText());
+            assertEquals("EPM-RTC-GPT", afterDisconnect.get("Attributes").path("user.project").asText());
+        }
+    }
+
+    /**
+     * Two requests on one keep-alive connection run on the same event loop. Nothing is cleared between them, and
+     * each still sees only its own ProxyContext: the entry lives in the per-request duplicated context.
+     */
+    @Test
+    public void testTraceContextIsScopedPerRequest_OnOneKeepAliveConnection() throws Exception {
+        String answer = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"gpt-35-turbo\","
+                + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";
+        String body = "{\"model\":\"gpt-3-turbo\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+        HttpClient oneConnection = dial.getVertx().createHttpClient(new HttpClientOptions().setMaxPoolSize(1));
+        try (TestWebServer server = new TestWebServer(4848); JsonLogCapture logs = JsonLogCapture.attach()) {
+            server.map(HttpMethod.POST, "/chat/completions", 200, answer, "Content-Type", "application/json");
+
+            for (String apiKey : List.of("proxyKey1", "proxyKey2")) {
+                int status = oneConnection.request(new RequestOptions()
+                                .setMethod(HttpMethod.POST)
+                                .setAbsoluteURI("http://127.0.0.1:" + serverPort + "/openai/deployments/gpt-3-turbo/chat/completions")
+                                .putHeader("api-key", apiKey)
+                                .putHeader("content-type", "application/json"))
+                        .compose(request -> request.send(body))
+                        .compose(response -> response.body().map(response.statusCode()))
+                        .toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
+                assertEquals(200, status);
+            }
+
+            List<JsonNode> sent = logs.await("Sent response to client", 2);
+            assertEquals(List.of("EPM-RTC-GPT", "EPM-RTC-RAIL"),
+                    sent.stream().map(line -> line.get("Attributes").path("user.project").asText()).toList());
+            assertNotEquals(sent.get(0).get("TraceId").asText(), sent.get(1).get("TraceId").asText());
+        } finally {
+            oneConnection.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
         }
     }
 
