@@ -218,6 +218,11 @@ public class ControllerSelector {
             LimitController controller = new LimitController(proxy, context);
             return () -> controller.getDeploymentLimits(deploymentId);
         });
+        get(RouteTemplate.DEPLOYMENT_USAGE, (proxy, context, pathMatcher) -> {
+            String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
+            LimitController controller = new LimitController(proxy, context);
+            return () -> controller.getDeploymentUsage(deploymentId);
+        });
         get(RouteTemplate.CONFIGURATION, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             Function<Deployment, String> getter = (model) -> Optional.ofNullable(model)

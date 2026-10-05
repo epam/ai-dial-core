@@ -206,6 +206,10 @@ public enum RouteTemplate {
             "^/v1/deployments/(?<id>.+?)/limits$",
             "/v1/deployments/{id}/limits"
     ),
+    DEPLOYMENT_USAGE(
+            "^/v1/deployments/(?<id>.+?)/usage$",
+            "/v1/deployments/{id}/usage"
+    ),
 
     DEPLOYMENT_ROUTES(
             "^/+v1/deployments/(?<id>.+)/route(?<routePath>/.+?)$",
