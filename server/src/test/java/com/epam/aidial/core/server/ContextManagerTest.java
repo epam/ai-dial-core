@@ -2,24 +2,25 @@ package com.epam.aidial.core.server;
 
 import io.vertx.core.Context;
 import io.vertx.core.Vertx;
+import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.impl.HttpServerRequestInternal;
 import io.vertx.core.impl.ContextInternal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
-import java.lang.ref.WeakReference;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Why {@link ContextManager} has no clear step: the entry lives in the request's own duplicated Vert.x context,
- * which is invisible to other requests, and it is a weak reference, so even a context held beyond its request
- * cannot keep the ProxyContext alive.
+ * which is invisible to other requests. That it is collected with the request is checked end to end in
+ * {@code DeploymentPostApiTest.testProxyContextIsReleasedAfterRequest_WhileConnectionsStayAlive}.
  */
 class ContextManagerTest {
 
@@ -35,8 +36,8 @@ class ContextManagerTest {
         // two requests on the same event loop, e.g. sequential requests over one keep-alive connection
         ContextInternal first = requestContext();
         ContextInternal second = requestContext();
-        ProxyContext firstProxyContext = mock(ProxyContext.class);
-        ProxyContext secondProxyContext = mock(ProxyContext.class);
+        ProxyContext firstProxyContext = proxyContextOf(first);
+        ProxyContext secondProxyContext = proxyContextOf(second);
 
         on(first, () -> set(firstProxyContext));
 
@@ -52,49 +53,29 @@ class ContextManagerTest {
     }
 
     @Test
-    void proxyContextIsNotStoredOnSharedContext() throws Exception {
-        Context shared = vertx.getOrCreateContext();
-        ProxyContext proxyContext = mock(ProxyContext.class);
+    void proxyContextIsStoredOnItsRequestContextWhateverContextIsCurrent() throws Exception {
+        // a continuation that hopped onto another request's context, or onto the shared event-loop context,
+        // must still file the entry under its own request
+        ContextInternal own = requestContext();
+        ContextInternal other = requestContext();
+        ProxyContext proxyContext = proxyContextOf(own);
 
-        on(shared, () -> set(proxyContext));
+        on(other, () -> set(proxyContext));
+        on(own.unwrap(), () -> set(proxyContext));
 
-        assertNull(on(shared, ContextManager::getProxyContext));
+        assertSame(proxyContext, on(own, ContextManager::getProxyContext));
+        assertNull(on(other, ContextManager::getProxyContext));
+        assertNull(on(own.unwrap(), ContextManager::getProxyContext));
     }
 
     @Test
-    void proxyContextIsCollectedWithItsRequestContext() throws Exception {
-        WeakReference<ProxyContext> stored = storeOn(requestContext());
-
-        awaitCollected(stored);
-    }
-
-    @Test
-    void pinnedRequestContextDoesNotKeepProxyContextAlive() throws Exception {
-        // a request context held beyond its request, e.g. by a cached future created on it, must not hold the
-        // request's ProxyContext (and its request/response bodies) with it: the reference stored is weak
-        ContextInternal pinned = requestContext();
-        WeakReference<ProxyContext> stored = storeOn(pinned);
-
-        awaitCollected(stored);
-
-        assertNull(on(pinned, ContextManager::getProxyContext));
-    }
-
-    private static WeakReference<ProxyContext> storeOn(Context requestContext) throws Exception {
+    void requestWithoutVertxContextStoresNothing() throws Exception {
         ProxyContext proxyContext = mock(ProxyContext.class);
-        on(requestContext, () -> set(proxyContext));
-        return new WeakReference<>(proxyContext);
-    }
+        when(proxyContext.getRequest()).thenReturn(mock(HttpServerRequest.class));
 
-    private static void awaitCollected(WeakReference<ProxyContext> stored) throws InterruptedException {
-        long deadline = System.currentTimeMillis() + 10_000;
-        while (stored.get() != null) {
-            if (System.currentTimeMillis() > deadline) {
-                fail("ProxyContext is still reachable after its last strong reference was dropped");
-            }
-            System.gc();
-            Thread.sleep(50);
-        }
+        on(requestContext(), () -> set(proxyContext));
+
+        assertNull(on(requestContext(), ContextManager::getProxyContext));
     }
 
     /**
@@ -103,6 +84,14 @@ class ContextManagerTest {
      */
     private ContextInternal requestContext() {
         return ((ContextInternal) vertx.getOrCreateContext()).duplicate();
+    }
+
+    private static ProxyContext proxyContextOf(ContextInternal requestContext) {
+        HttpServerRequestInternal request = mock(HttpServerRequestInternal.class);
+        when(request.context()).thenReturn(requestContext);
+        ProxyContext proxyContext = mock(ProxyContext.class);
+        when(proxyContext.getRequest()).thenReturn(request);
+        return proxyContext;
     }
 
     private static Void set(ProxyContext proxyContext) {

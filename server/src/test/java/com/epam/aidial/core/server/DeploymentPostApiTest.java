@@ -255,7 +255,7 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/chat/completions", request -> {
                 captured.setValue(request);
-                return TestWebServer.createResponse(200, CHAT_COMPLETION_ANSWER, "Content-Type", "application/json");
+                return TestWebServer.createResponse(200, answer, "Content-Type", "application/json");
             });
 
             // the pre-interfaces endpoint serves embeddings too, and the deployment-level headers reach it

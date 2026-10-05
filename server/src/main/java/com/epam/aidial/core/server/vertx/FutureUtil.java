@@ -9,10 +9,8 @@ import lombok.experimental.UtilityClass;
 public class FutureUtil {
 
     /**
-     * Continues a future shared between requests on the calling request's context. A shared future completes on
-     * the context of whichever request completes it, so without this a waiter's continuation would run on another
-     * request's context and store its ProxyContext there. Promise.promise() has no context, so the caller's context
-     * is bound explicitly (none in plain unit tests).
+     * Continues a future shared between requests on the calling request's context instead of the context of the
+     * request that completes it. Off any Vert.x context (plain unit tests) the continuation runs where it completes.
      */
     public static <T> Future<T> continueOnCallerContext(Future<T> shared) {
         ContextInternal caller = ContextInternal.current();

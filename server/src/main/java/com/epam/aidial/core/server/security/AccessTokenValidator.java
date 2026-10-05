@@ -134,8 +134,8 @@ public class AccessTokenValidator {
         Future<UserInfoResult> shared = userInfoCache.computeIfAbsent(accessToken, k -> fn.get());
         // the shared future completes on the first caller's context: continue on the current request's context
         return FutureUtil.continueOnCallerContext(shared).map(UserInfoResult::claims).onFailure(error -> {
-            /* we don't need to keep the failed response any longer */
-            userInfoCache.remove(accessToken);
+            /* we don't need to keep the failed response any longer; a waiter runs late, so never evict a newer entry */
+            userInfoCache.remove(accessToken, shared);
         });
     }
 
