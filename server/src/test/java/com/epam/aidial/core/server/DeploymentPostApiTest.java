@@ -29,6 +29,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.ref.WeakReference;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -41,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 @SuppressWarnings("checkstyle:LineLength")
 public class DeploymentPostApiTest extends ResourceBaseTest {
@@ -437,6 +439,47 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
             assertNotEquals(sent.get(0).get("TraceId").asText(), sent.get(1).get("TraceId").asText());
         } finally {
             oneConnection.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
+        }
+    }
+
+    /**
+     * Without a clear step the ProxyContext must still go away with its request: neither Vert.x (server connection,
+     * client pool) nor the core (timers, caches) may keep it reachable once the request is over. Both the client's
+     * and the upstream connection stay open and idle (keep-alive) during the check: the lifetime of the entry is the
+     * request's, not the connection's.
+     */
+    @Test
+    public void testProxyContextIsReleasedAfterRequest_WhileConnectionsStayAlive() throws Exception {
+        String answer = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"gpt-35-turbo\","
+                + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";
+        String body = "{\"model\":\"gpt-3-turbo\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+        HttpClient keepAliveClient = dial.getVertx().createHttpClient(new HttpClientOptions().setMaxPoolSize(1).setKeepAlive(true));
+        try (TestWebServer server = new TestWebServer(4848); JsonLogCapture logs = JsonLogCapture.attach()) {
+            server.map(HttpMethod.POST, "/chat/completions", 200, answer, "Content-Type", "application/json");
+
+            int status = keepAliveClient.request(new RequestOptions()
+                            .setMethod(HttpMethod.POST)
+                            .setAbsoluteURI("http://127.0.0.1:" + serverPort + "/openai/deployments/gpt-3-turbo/chat/completions")
+                            .putHeader("api-key", "proxyKey1")
+                            .putHeader("content-type", "application/json"))
+                    .compose(request -> request.send(body))
+                    .compose(response -> response.body().map(response.statusCode()))
+                    .toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
+            assertEquals(200, status);
+            logs.await("Sent response to client");
+            List<WeakReference<ProxyContext>> seen = logs.proxyContexts();
+            assertFalse(seen.isEmpty());
+
+            long deadline = System.currentTimeMillis() + 10_000;
+            while (seen.stream().anyMatch(ref -> ref.get() != null)) {
+                if (System.currentTimeMillis() > deadline) {
+                    fail("ProxyContext is still reachable after the request ended although nothing cleared it");
+                }
+                System.gc();
+                Thread.sleep(100);
+            }
+        } finally {
+            keepAliveClient.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
         }
     }
 
