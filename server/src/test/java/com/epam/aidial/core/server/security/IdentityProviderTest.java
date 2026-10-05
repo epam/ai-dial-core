@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.security;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.AppenderBase;
 import ch.qos.logback.core.read.ListAppender;
 import com.auth0.jwk.Jwk;
 import com.auth0.jwk.JwkException;
@@ -11,7 +12,12 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.epam.aidial.core.config.AuthenticationType;
+import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.ResourceAuthSettings;
+import com.epam.aidial.core.server.ContextManager;
+import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.log.layout.AutoEnrichedOtelJsonLayout;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -23,6 +29,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
+import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.impl.future.FutureInternal;
@@ -50,6 +57,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
@@ -64,6 +72,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -1323,6 +1332,174 @@ public class IdentityProviderTest {
 
             assertSame(second, continuedOn.get(5, TimeUnit.SECONDS));
         } finally {
+            realVertx.close().toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    public void testNoRouteAndSentResponseLogsKeepTheirOwnTraceIdOnColdSharedJwkLookup() throws Exception {
+        // Reproduces the mechanism behind the production symptom this fix addresses: "No route" and "Sent
+        // response to client" are ordinary log statements emitted, after authorization, on whatever Vert.x
+        // Context ContextManager.setProxyContext() registered the request's ProxyContext on. Before this fix,
+        // a "waiter" request's JWK lookup resolved on the "filler" request's Context, so every log emitted
+        // afterwards on the waiter's request - including those two - read the filler's trace id instead of its
+        // own. Neither log statement does anything special: they are fixed automatically once Context
+        // propagation across the shared cache is correct, which is what this test asserts end to end through
+        // AutoEnrichedOtelJsonLayout's actual rendered output.
+        Vertx realVertx = Vertx.vertx();
+        AutoEnrichedOtelJsonLayout layout = new AutoEnrichedOtelJsonLayout();
+        Logger logger = (Logger) LoggerFactory.getLogger("test.trace-correlation");
+        List<String> renderedLogs = new CopyOnWriteArrayList<>();
+        AppenderBase<ILoggingEvent> appender = new AppenderBase<>() {
+            @Override
+            protected void append(ILoggingEvent event) {
+                // rendered synchronously, on whatever Context is current - exactly how the real (synchronous)
+                // console appender invokes this layout from the log call itself
+                renderedLogs.add(layout.doLayout(event));
+            }
+        };
+        appender.start();
+        logger.addAppender(appender);
+        Level previousLevel = logger.getLevel();
+        logger.setLevel(Level.WARN);
+        try {
+            IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+            Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+            DecodedJWT jwt = JWT.decode(JWT.create().withHeader(Map.of("kid", "kid1")).sign(algorithm));
+            Jwk jwk = mock(Jwk.class);
+            Promise<Object> lookup = Promise.promise();
+            when(taskExecutor.submit(any(Callable.class))).thenReturn(lookup.future());
+
+            // "No route" request: a 502 after exhausting upstreams
+            HttpServerRequest requestA = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+            when(requestA.response().ended()).thenReturn(true);
+            when(requestA.response().getStatusCode()).thenReturn(502);
+            when(requestA.response().getStatusMessage()).thenReturn("Bad Gateway");
+            ApiKeyData apiKeyDataA = new ApiKeyData();
+            apiKeyDataA.setOriginalKey(new Key());
+            ProxyContext proxyContextA = new ProxyContext(null, requestA, apiKeyDataA, null, "trace-A", "span-A", "01");
+
+            // "Sent response to client" request: a normal 200
+            HttpServerRequest requestB = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+            when(requestB.response().ended()).thenReturn(true);
+            when(requestB.response().getStatusCode()).thenReturn(200);
+            when(requestB.response().getStatusMessage()).thenReturn("OK");
+            ApiKeyData apiKeyDataB = new ApiKeyData();
+            apiKeyDataB.setOriginalKey(new Key());
+            ProxyContext proxyContextB = new ProxyContext(null, requestB, apiKeyDataB, null, "trace-B", "span-B", "01");
+
+            // one event loop, shared cache key: B is always the waiter on A's in-flight lookup
+            ContextInternal loop = (ContextInternal) realVertx.getOrCreateContext();
+            ContextInternal contextA = loop.duplicate();
+            ContextInternal contextB = loop.duplicate();
+            CompletableFuture<Void> loggedA = new CompletableFuture<>();
+            CompletableFuture<Void> loggedB = new CompletableFuture<>();
+
+            contextA.runOnContext(v -> {
+                ContextManager.setProxyContext(proxyContextA);
+                identityProvider.extractClaimsFromJwt(jwt).onComplete(res -> {
+                    logger.warn("No route. Deployment: {}", "depA");
+                    loggedA.complete(null);
+                });
+            });
+            contextB.runOnContext(v -> {
+                ContextManager.setProxyContext(proxyContextB);
+                identityProvider.extractClaimsFromJwt(jwt).onComplete(res -> {
+                    logger.warn("Sent response to client. Deployment: {}", "depB");
+                    loggedB.complete(null);
+                });
+            });
+            // resolves the shared lookup while tagged as contextA - the production case where A's own JWK
+            // fetch (the filler) is what completes the entry B is waiting on
+            contextA.runOnContext(v -> lookup.complete(jwk));
+
+            loggedA.get(5, TimeUnit.SECONDS);
+            loggedB.get(5, TimeUnit.SECONDS);
+
+            String logForA = renderedLogs.stream().filter(s -> s.contains("depA")).findFirst().orElseThrow();
+            String logForB = renderedLogs.stream().filter(s -> s.contains("depB")).findFirst().orElseThrow();
+            assertTrue(logForA.contains("\"TraceId\":\"trace-A\""), logForA);
+            assertTrue(logForA.contains("\"response.status.code\":502"), logForA);
+            assertFalse(logForA.contains("trace-B"), logForA);
+            assertTrue(logForB.contains("\"TraceId\":\"trace-B\""), logForB);
+            assertTrue(logForB.contains("\"response.status.code\":200"), logForB);
+            assertFalse(logForB.contains("trace-A"), logForB);
+        } finally {
+            logger.detachAppender(appender);
+            logger.setLevel(previousLevel);
+            realVertx.close().toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    public void testWaiterKeepsItsOwnTraceIdEvenWhenTheFillersRequestAlreadyClosed() throws Exception {
+        // The production lifecycle case: by the time a slow shared JWK lookup resolves, the filler request's own
+        // connection may have already closed (ContextManager.clearContext() already ran on its Context) - e.g. it
+        // errored out independently while this lookup was still in flight. The waiter (B) must still read its OWN
+        // ProxyContext from its OWN Context when it finally continues, not null and not the filler's.
+        Vertx realVertx = Vertx.vertx();
+        AutoEnrichedOtelJsonLayout layout = new AutoEnrichedOtelJsonLayout();
+        Logger logger = (Logger) LoggerFactory.getLogger("test.trace-correlation");
+        List<String> renderedLogs = new CopyOnWriteArrayList<>();
+        AppenderBase<ILoggingEvent> appender = new AppenderBase<>() {
+            @Override
+            protected void append(ILoggingEvent event) {
+                renderedLogs.add(layout.doLayout(event));
+            }
+        };
+        appender.start();
+        logger.addAppender(appender);
+        Level previousLevel = logger.getLevel();
+        logger.setLevel(Level.WARN);
+        try {
+            IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+            Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+            DecodedJWT jwt = JWT.decode(JWT.create().withHeader(Map.of("kid", "kid1")).sign(algorithm));
+            Jwk jwk = mock(Jwk.class);
+            Promise<Object> lookup = Promise.promise();
+            when(taskExecutor.submit(any(Callable.class))).thenReturn(lookup.future());
+
+            HttpServerRequest requestA = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+            ApiKeyData apiKeyDataA = new ApiKeyData();
+            apiKeyDataA.setOriginalKey(new Key());
+            ProxyContext proxyContextA = new ProxyContext(null, requestA, apiKeyDataA, null, "trace-A", "span-A", "01");
+
+            HttpServerRequest requestB = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+            when(requestB.response().ended()).thenReturn(true);
+            when(requestB.response().getStatusCode()).thenReturn(200);
+            when(requestB.response().getStatusMessage()).thenReturn("OK");
+            ApiKeyData apiKeyDataB = new ApiKeyData();
+            apiKeyDataB.setOriginalKey(new Key());
+            ProxyContext proxyContextB = new ProxyContext(null, requestB, apiKeyDataB, null, "trace-B", "span-B", "01");
+
+            ContextInternal loop = (ContextInternal) realVertx.getOrCreateContext();
+            ContextInternal contextA = loop.duplicate();
+            ContextInternal contextB = loop.duplicate();
+            CompletableFuture<Void> loggedB = new CompletableFuture<>();
+
+            contextA.runOnContext(v -> {
+                ContextManager.setProxyContext(proxyContextA);
+                identityProvider.extractClaimsFromJwt(jwt);
+            });
+            contextB.runOnContext(v -> {
+                ContextManager.setProxyContext(proxyContextB);
+                identityProvider.extractClaimsFromJwt(jwt).onComplete(res -> {
+                    logger.warn("Sent response to client. Deployment: {}", "depB");
+                    loggedB.complete(null);
+                });
+            });
+            // A's own connection closes - its ProxyContext is cleared - before the shared lookup resolves
+            contextA.runOnContext(v -> ContextManager.clearContext());
+            contextA.runOnContext(v -> lookup.complete(jwk));
+
+            loggedB.get(5, TimeUnit.SECONDS);
+
+            String logForB = renderedLogs.stream().filter(s -> s.contains("depB")).findFirst().orElseThrow();
+            assertTrue(logForB.contains("\"TraceId\":\"trace-B\""), logForB);
+            assertFalse(logForB.contains("trace-A"), logForB);
+        } finally {
+            logger.detachAppender(appender);
+            logger.setLevel(previousLevel);
             realVertx.close().toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
         }
     }

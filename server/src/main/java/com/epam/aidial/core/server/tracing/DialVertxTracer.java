@@ -3,20 +3,15 @@ package com.epam.aidial.core.server.tracing;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.controller.ControllerSelector;
 import com.epam.aidial.core.server.controller.ControllerTemplate;
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.SpanContext;
-import io.opentelemetry.context.ContextKey;
 import io.vertx.core.Context;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.impl.HttpRequestHead;
-import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.spi.observability.HttpRequest;
 import io.vertx.core.spi.tracing.SpanKind;
 import io.vertx.core.spi.tracing.TagExtractor;
 import io.vertx.core.spi.tracing.VertxTracer;
 import io.vertx.core.tracing.TracingPolicy;
-import io.vertx.tracing.opentelemetry.VertxContextStorageProvider;
 
 import java.util.List;
 import java.util.Map;
@@ -28,9 +23,6 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
             Proxy.HEALTH_CHECK_PATH,
             Proxy.VERSION_PATH
     );
-
-    // marks the context restored after the response ended: it is for log correlation only, not a parent for new spans
-    private static final ContextKey<Boolean> RESPONSE_ENDED = ContextKey.named("dial-response-ended");
 
     private final VertxTracer<I, O> delegate;
 
@@ -44,35 +36,14 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
             Iterable<Map.Entry<String, String>> headers, TagExtractor<R> tagExtractor) {
 
         String spanName = request instanceof HttpServerRequest req ? getServerSpanName(req) : operation;
-        removeSpanRestoredAfterResponse(context);
         return delegate.receiveRequest(context, kind, policy, request, spanName, headers, tagExtractor);
-    }
-
-    /**
-     * The span {@link #sendResponse} restores belongs to the request whose response just ended. A new request
-     * must not start from it, even if its Vert.x context were ever shared with that request.
-     */
-    private static void removeSpanRestoredAfterResponse(Context context) {
-        io.opentelemetry.context.Context active = context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
-        if (active != null && active.get(RESPONSE_ENDED) != null) {
-            context.removeLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
-        }
     }
 
     @Override
     public <R> void sendResponse(
             Context context, R response, I payload, Throwable failure, TagExtractor<R> tagExtractor) {
 
-        io.opentelemetry.context.Context active = context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
-        SpanContext span = active == null ? SpanContext.getInvalid() : Span.fromContext(active).getSpanContext();
-        // ends the span and closes its scope, so lines logged after response.end() would lose the trace
         delegate.sendResponse(context, response, payload, failure, tagExtractor);
-        // payload == null: the delegate owned no span; slot still set: the scope close restored an outer live context
-        if (payload != null && span.isValid() && ((ContextInternal) context).isDuplicate()
-                && context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT) == null) {
-            // the request's duplicated context dies with the request, so nothing leaks to the next one; Span.wrap is non-recording
-            context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, active.with(Span.wrap(span)).with(RESPONSE_ENDED, true));
-        }
     }
 
     @Override
@@ -81,28 +52,7 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
             BiConsumer<String, String> headers, TagExtractor<R> tagExtractor) {
 
         String spanName = request instanceof HttpRequest req ? getClientSpanName(req) : operation;
-        io.opentelemetry.context.Context active = context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
-        if (active == null || active.get(RESPONSE_ENDED) == null) {
-            return delegate.sendRequest(context, kind, policy, request, spanName, headers, tagExtractor);
-        }
-        return sendRequestWithoutEndedServerSpan(context, active, kind, policy, request, spanName, headers, tagExtractor);
-    }
-
-    /**
-     * {@link #sendResponse} restores the ended server span for log correlation, and the delegate would take it as the
-     * parent of this client call. Hides it for the duration of the call, so the call is traced as it was before
-     * the span was restored.
-     */
-    private <R> O sendRequestWithoutEndedServerSpan(
-            Context context, io.opentelemetry.context.Context active, SpanKind kind, TracingPolicy policy, R request,
-            String spanName, BiConsumer<String, String> headers, TagExtractor<R> tagExtractor) {
-
-        context.removeLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
-        try {
-            return delegate.sendRequest(context, kind, policy, request, spanName, headers, tagExtractor);
-        } finally {
-            context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, active);
-        }
+        return delegate.sendRequest(context, kind, policy, request, spanName, headers, tagExtractor);
     }
 
     @Override
