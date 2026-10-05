@@ -42,6 +42,8 @@ import java.util.function.Supplier;
 import static com.epam.aidial.core.config.InterfaceType.ANTHROPIC_MESSAGES;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_CHAT_COMPLETIONS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -56,6 +58,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 public class MergedConfigStoreTest {
+
+    private static final String INVALID_MODEL_NAME = "model-with-unservable-interface";
 
     @Mock
     private Vertx vertx;
@@ -292,6 +296,57 @@ public class MergedConfigStoreTest {
                 .setAction(ResourceEvent.Action.CREATE));
 
         verify(taskExecutor, times(1)).submit(any());
+    }
+
+    @Test
+    public void testSkipOnStartupRecordsInvalidBlobModelInsteadOfFailingInit() {
+        stubInvalidInterfaceModel(INVALID_MODEL_NAME);
+        when(fileConfigStore.get()).thenReturn(new Config());
+
+        MergedConfigStore store = newStore(MergedConfigStore.MODE_SKIP_ON_STARTUP);
+        store.init(fileConfigStore);
+
+        assertFalse(store.get().getModels().containsKey(INVALID_MODEL_NAME));
+        Map<String, InvalidEntityRecord> invalidModels = store.getInvalidEntities().get(ResourceTypes.MODEL);
+        assertEquals(1, invalidModels.size());
+        InvalidEntityRecord record = invalidModels.get("models/platform/" + INVALID_MODEL_NAME);
+        assertTrue(record.getReason().contains("declares no base_url"), record::getReason);
+    }
+
+    @Test
+    public void testSkipOnStartupAbortsRebuildAfterInit() {
+        when(fileConfigStore.get()).thenReturn(new Config());
+        MergedConfigStore store = newStore(MergedConfigStore.MODE_SKIP_ON_STARTUP);
+        store.init(fileConfigStore);
+        assertTrue(store.getInvalidEntities().isEmpty());
+
+        // The same entity that boots fine now arrives on a post-startup rebuild: skipping is over.
+        stubInvalidInterfaceModel(INVALID_MODEL_NAME);
+
+        assertThrows(InvalidEntityException.class, store::rebuildNow);
+    }
+
+    @Test
+    public void testModeIsCaseInsensitiveAndUnknownFallsBackToAbort() {
+        assertEquals(MergedConfigStore.MODE_SKIP_ON_STARTUP, newStore("SKIPONSTARTUP").getOnInvalidEntity());
+        assertEquals(MergedConfigStore.MODE_SKIP, newStore("SKIP").getOnInvalidEntity());
+        assertEquals(MergedConfigStore.MODE_ABORT, newStore("skip-on-boot").getOnInvalidEntity());
+        assertEquals(MergedConfigStore.MODE_ABORT, newStore(null).getOnInvalidEntity());
+    }
+
+    private MergedConfigStore newStore(String onInvalidEntity) {
+        return new MergedConfigStore(
+                vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
+                secretFieldProcessor, lockService, onInvalidEntity,
+                externalServiceService, resourceAuthSettingsEncryptionService);
+    }
+
+    // Semantic violation, not a parse error (those skip in every mode): an interface with no provider url.
+    private void stubInvalidInterfaceModel(String name) {
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.MODEL, "platform", "platform/", name);
+        stubListResources(ResourceTypes.MODEL, List.of(Pair.of(new ResourceItemMetadata(descriptor),
+                "{\"type\":\"chat\",\"interfaces\":{\"openai_chat_completions\":{}}}")));
     }
 
     @SuppressWarnings("unchecked")

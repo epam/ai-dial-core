@@ -8,10 +8,11 @@ import java.util.List;
 /**
  * Raised by {@link ConfigPostProcessor}'s semantic pass when an individual entity
  * violates a runtime invariant. {@link MergedConfigStore} catches and routes the
- * exception per the {@code config.reload.onInvalidEntity} setting: under
- * {@code abort} it propagates and the rebuild is rolled back; under {@code skip}
- * the offender is recorded in the invalid-entity sibling store and dropped from
- * the merged {@code Config} (design 02 §4.1).
+ * exception per the {@code config.onInvalidEntity} setting: under {@code abort} it
+ * propagates and the rebuild is rolled back; under {@code skip} the offender is
+ * recorded in the invalid-entity sibling store and dropped from the merged
+ * {@code Config}; under {@code skipOnStartup} the initial rebuild records-and-drops
+ * and every rebuild after it aborts (design 02 §4.1).
  *
  * <p>{@code mapKey} is the entry's key as iterated — the canonical ID for blob
  * entries ({@code models/platform/gpt-4}) and the simple name for file-defined
