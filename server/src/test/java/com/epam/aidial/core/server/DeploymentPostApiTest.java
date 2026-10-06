@@ -18,6 +18,7 @@ import io.vertx.core.http.HttpConnection;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
+import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.json.JsonObject;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -28,6 +29,7 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -52,6 +54,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 @SuppressWarnings("checkstyle:LineLength")
 public class DeploymentPostApiTest extends ResourceBaseTest {
 
+    private static final String CHAT_URI = "/openai/deployments/gpt-3-turbo/chat/completions";
     private static final String CHAT_COMPLETION_ANSWER = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"gpt-35-turbo\","
             + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";
 
@@ -384,13 +387,13 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
                 """;
         try (TestWebServer server = new TestWebServer(4848);
                 CloseableHttpClient client = createHttpClient();
-                JsonLogCapture logs = JsonLogCapture.attach()) {
+                JsonLogCapture logs = JsonLogCapture.attach(CHAT_URI)) {
             server.map(HttpMethod.POST, "/chat/completions", request -> {
                 try {
                     client.close(); // the client goes away while the core is still waiting for the upstream
                     // answer only once the core has observed the disconnect: closed() flips in the same event-loop
                     // task that runs the response close handlers, where the ProxyContext used to be cleared
-                    HttpServerResponse response = logs.awaitProxyContext("/gpt-3-turbo/chat/completions").getResponse();
+                    HttpServerResponse response = logs.awaitProxyContext().getResponse();
                     long deadline = System.currentTimeMillis() + 10_000;
                     while (!response.closed()) {
                         if (System.currentTimeMillis() > deadline) {
@@ -426,7 +429,7 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
     @Test
     public void testTraceContextIsScopedPerRequest_OnOneKeepAliveConnection() throws Exception {
         HttpClient oneConnection = dial.getVertx().createHttpClient(new HttpClientOptions().setMaxPoolSize(1));
-        try (TestWebServer server = new TestWebServer(4848); JsonLogCapture logs = JsonLogCapture.attach()) {
+        try (TestWebServer server = new TestWebServer(4848); JsonLogCapture logs = JsonLogCapture.attach(CHAT_URI)) {
             server.map(HttpMethod.POST, "/chat/completions", 200, CHAT_COMPLETION_ANSWER, "Content-Type", "application/json");
 
             List<HttpConnection> connections = new ArrayList<>();
@@ -453,12 +456,12 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
     @Test
     public void testProxyContextIsReleasedAfterRequest_WhileConnectionsStayAlive() throws Exception {
         HttpClient keepAliveClient = dial.getVertx().createHttpClient(new HttpClientOptions().setMaxPoolSize(1).setKeepAlive(true));
-        try (TestWebServer server = new TestWebServer(4848); JsonLogCapture logs = JsonLogCapture.attach()) {
+        try (TestWebServer server = new TestWebServer(4848); JsonLogCapture logs = JsonLogCapture.attach(CHAT_URI)) {
             server.map(HttpMethod.POST, "/chat/completions", 200, CHAT_COMPLETION_ANSWER, "Content-Type", "application/json");
 
             assertEquals(200, sendChatCompletion(keepAliveClient, "proxyKey1"));
             logs.await("Sent response to client");
-            List<WeakReference<ProxyContext>> seen = logs.proxyContexts("/gpt-3-turbo/chat/completions");
+            List<WeakReference<ProxyContext>> seen = logs.proxyContexts();
             assertFalse(seen.isEmpty());
 
             long deadline = System.currentTimeMillis() + 10_000;
@@ -474,6 +477,30 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
         }
     }
 
+    /**
+     * Authorization may wait on a lookup shared with another request and complete on that request's context. Proxy
+     * puts the request back on its own context before the controller runs, so the request's log lines carry its own
+     * ids whatever the validators do internally. A GET is used because a POST controller continues inside the body
+     * callback, which Vert.x dispatches on the request's own context anyway and would hide a missing guard.
+     */
+    @Test
+    public void testRequestStaysOnItsOwnContext_WhenAuthorizationCompletesOnAnotherContext() {
+        String uri = "/v1/files/missing-bucket/missing.txt";
+        ContextInternal otherRequestContext = ((ContextInternal) dial.getVertx().getOrCreateContext()).duplicate();
+        Mockito.doAnswer(invocation -> otherRequestContext.succeededFuture(createClaims("default")))
+                .when(validator).extractClaims("hopper");
+        // no URI filter: a line logged off the request's context carries no request.uri and must still be seen
+        try (JsonLogCapture logs = JsonLogCapture.attach()) {
+            Response response = send(HttpMethod.GET, uri, null, null, "authorization", "hopper");
+
+            assertNotEquals(200, response.status());
+            JsonNode line = logs.await("Responding with error");
+            assertEquals(uri, line.get("Attributes").path("request.uri").asText(), line.toString());
+            assertFalse(line.get("TraceId").asText().isEmpty(), line.toString());
+            assertEquals("default", line.get("Attributes").path("user.id").asText());
+        }
+    }
+
     private int sendChatCompletion(HttpClient client, String apiKey) throws Exception {
         return sendChatCompletion(client, apiKey, connection -> { });
     }
@@ -481,7 +508,7 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
     private int sendChatCompletion(HttpClient client, String apiKey, Consumer<HttpConnection> onConnection) throws Exception {
         return client.request(new RequestOptions()
                         .setMethod(HttpMethod.POST)
-                        .setAbsoluteURI("http://127.0.0.1:" + serverPort + "/openai/deployments/gpt-3-turbo/chat/completions")
+                        .setAbsoluteURI("http://127.0.0.1:" + serverPort + CHAT_URI)
                         .putHeader("api-key", apiKey)
                         .putHeader("content-type", "application/json"))
                 .compose(request -> {

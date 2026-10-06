@@ -44,7 +44,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -73,9 +72,8 @@ public class IdentityProvider {
 
     private URL userInfoUrl;
 
-    // in memory cache store results obtained from JWK provider, keyed by kid; Optional.empty() is the key of a token
-    // without kid, which the provider resolves to the single key of the JWKS, and cannot collide with a real kid
-    private final ConcurrentHashMap<Optional<String>, Future<JwkResult>> cache = new ConcurrentHashMap<>();
+    // in memory cache store results obtained from JWK provider
+    private final ConcurrentHashMap<String, Future<JwkResult>> cache = new ConcurrentHashMap<>();
 
     // the name of the claim in JWT to extract user email
     private final String loggingKey;
@@ -286,7 +284,7 @@ public class IdentityProvider {
 
     private void evictExpiredJwks() {
         long currentTime = System.currentTimeMillis();
-        for (Map.Entry<Optional<String>, Future<JwkResult>> entry : cache.entrySet()) {
+        for (Map.Entry<String, Future<JwkResult>> entry : cache.entrySet()) {
             Future<JwkResult> future = entry.getValue();
             if (future.result() != null && future.result().expirationTime() <= currentTime) {
                 cache.remove(entry.getKey());
@@ -329,7 +327,12 @@ public class IdentityProvider {
     }
 
     private Future<JwkResult> getJwk(String kid) {
-        return FutureUtil.shareLookup(cache, Optional.ofNullable(kid), () -> taskExecutor.submit(() -> {
+        if (kid == null) {
+            // rejected, as before, but without the NullPointerException the cache used to throw on a null key;
+            // accepting such tokens against a single-key JWKS needs cache invalidation on key rotation first
+            return Future.failedFuture(new JwkException("JWT has no kid header"));
+        }
+        return FutureUtil.shareLookup(cache, kid, () -> taskExecutor.submit(() -> {
             JwkResult jwkResult;
             long currentTime = System.currentTimeMillis();
             try {

@@ -26,13 +26,20 @@ public class JsonLogCapture extends AppenderBase<ILoggingEvent> implements AutoC
     private final Logger root = (Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
     private final AutoEnrichedOtelJsonLayout layout = new AutoEnrichedOtelJsonLayout();
     private final List<JsonNode> lines = new CopyOnWriteArrayList<>();
-    private final List<Seen> proxyContexts = new CopyOnWriteArrayList<>();
-
-    private record Seen(WeakReference<ProxyContext> reference, String uri) {
-    }
+    private final List<WeakReference<ProxyContext>> proxyContexts = new CopyOnWriteArrayList<>();
+    private String uriPart;
 
     public static JsonLogCapture attach() {
+        return attach(null);
+    }
+
+    /**
+     * Captures only log lines of requests whose URI contains {@code uriPart}. The capture sees every log line in the
+     * JVM, so without the filter a late line of another test's request could satisfy or spoil a check.
+     */
+    public static JsonLogCapture attach(String uriPart) {
         JsonLogCapture capture = new JsonLogCapture();
+        capture.uriPart = uriPart;
         capture.setContext(capture.root.getLoggerContext());
         capture.layout.setContext(capture.root.getLoggerContext());
         capture.start();
@@ -44,38 +51,40 @@ public class JsonLogCapture extends AppenderBase<ILoggingEvent> implements AutoC
     @SneakyThrows
     protected void append(ILoggingEvent event) {
         ProxyContext proxyContext = ContextManager.getProxyContext();
+        String uri = proxyContext == null || proxyContext.getRequest() == null ? "" : proxyContext.getRequest().uri();
+        if (uriPart != null && !uri.contains(uriPart)) {
+            return;
+        }
         if (proxyContext != null) {
-            String uri = proxyContext.getRequest() == null ? "" : proxyContext.getRequest().uri();
-            proxyContexts.add(new Seen(new WeakReference<>(proxyContext), uri));
+            proxyContexts.add(new WeakReference<>(proxyContext));
         }
         lines.add(MAPPER.readTree(layout.doLayout(event)));
     }
 
     /**
-     * Weak references to every ProxyContext the logging thread saw for requests whose URI contains {@code uriPart},
-     * to check they are released once those requests are over. The capture sees every log line in the JVM, so the
-     * filter keeps another test's leftovers out.
+     * Weak references to every ProxyContext the captured log lines were enriched from, to check they are released
+     * once their requests are over.
      */
-    public List<WeakReference<ProxyContext>> proxyContexts(String uriPart) {
-        return proxyContexts.stream().filter(seen -> seen.uri().contains(uriPart)).map(Seen::reference).toList();
+    public List<WeakReference<ProxyContext>> proxyContexts() {
+        return proxyContexts;
     }
 
     /**
-     * Waits for the first ProxyContext a log line of a request whose URI contains {@code uriPart} was enriched from.
+     * Waits for the first ProxyContext a captured log line was enriched from.
      */
     @SneakyThrows
-    public ProxyContext awaitProxyContext(String uriPart) {
+    public ProxyContext awaitProxyContext() {
         long deadline = System.currentTimeMillis() + 10_000;
         while (true) {
-            for (WeakReference<ProxyContext> reference : proxyContexts(uriPart)) {
+            for (WeakReference<ProxyContext> reference : proxyContexts) {
                 ProxyContext proxyContext = reference.get();
                 if (proxyContext != null) {
                     return proxyContext;
                 }
             }
             if (System.currentTimeMillis() > deadline) {
-                throw new AssertionError("No log line of a request to '" + uriPart + "' was enriched from a ProxyContext."
-                        + " Captured bodies: " + lines.stream().map(line -> line.path("Body").asText()).toList());
+                throw new AssertionError("No captured log line was enriched from a ProxyContext. Captured bodies: "
+                        + lines.stream().map(line -> line.path("Body").asText()).toList());
             }
             Thread.sleep(50);
         }
