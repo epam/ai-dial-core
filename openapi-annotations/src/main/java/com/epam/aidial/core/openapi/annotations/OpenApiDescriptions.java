@@ -179,6 +179,9 @@ public final class OpenApiDescriptions {
     public static final String INTERFACE_TYPE =
             "Filter deployments by the interface types they support (chat, embedding, mcp, custom_ui, all).";
 
+    public static final String DEPLOYMENT_NAME_TYPES =
+            "Filter deployment names by kind (model, application, toolset). Defaults to all kinds.";
+
     public static final String DEPLOYMENT_TYPES =
             "Which deployment kinds to report on (model, application). Defaults to model.";
 

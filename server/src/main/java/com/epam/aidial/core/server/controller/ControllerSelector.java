@@ -218,6 +218,11 @@ public class ControllerSelector {
             LimitController controller = new LimitController(proxy, context);
             return () -> controller.getDeploymentLimits(deploymentId);
         });
+        get(RouteTemplate.DEPLOYMENT_USAGE, (proxy, context, pathMatcher) -> {
+            String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
+            LimitController controller = new LimitController(proxy, context);
+            return () -> controller.getDeploymentUsage(deploymentId);
+        });
         get(RouteTemplate.CONFIGURATION, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             Function<Deployment, String> getter = (model) -> Optional.ofNullable(model)
@@ -307,6 +312,10 @@ public class ControllerSelector {
             DeploymentController controller = new DeploymentController(proxy, context);
             return controller::listDeployments;
         })));
+        get(RouteTemplate.DEPLOYMENT_NAMES, (proxy, context, pathMatcher) -> {
+            DeploymentController controller = new DeploymentController(proxy, context);
+            return controller::listDeploymentNames;
+        });
         get(RouteTemplate.LLM_RESPONSES_API_BY_ID, (proxy, context, pathMatcher) -> {
             String id = UrlUtil.decodePath(pathMatcher.group("id"));
             return new ResponseItemController(proxy, context, id, ResponseItemController.Operation.GET);
@@ -326,6 +335,10 @@ public class ControllerSelector {
             return controller::handle;
         });
         post(RouteTemplate.LLM_RESPONSES_API, (proxy, context, pathMatcher) -> {
+            ResponsesController controller = new ResponsesController(proxy, context);
+            return controller::handle;
+        });
+        post(RouteTemplate.LLM_RESPONSES_API_UNVERSIONED, (proxy, context, pathMatcher) -> {
             ResponsesController controller = new ResponsesController(proxy, context);
             return controller::handle;
         });

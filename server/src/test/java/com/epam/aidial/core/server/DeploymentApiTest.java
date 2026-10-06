@@ -93,6 +93,80 @@ public class DeploymentApiTest extends ResourceBaseTest {
 
     @DialConfigLocation("dial-config/deployment-interfaces-listing.json")
     @Test
+    public void testListDeploymentNames() throws JsonProcessingException {
+        Response response = send(HttpMethod.GET, "/v1/deployment-names", null, null);
+        verify(response, 200);
+        assertEquals(Map.of(
+                "app", "application",
+                "schema-app", "application",
+                "embedding-ada", "model",
+                "gpt-4", "model",
+                "git", "toolset"), collectNames(response));
+
+        response = send(HttpMethod.GET, "/v1/deployment-names", "type=model", null);
+        verify(response, 200);
+        assertEquals(Map.of("embedding-ada", "model", "gpt-4", "model"), collectNames(response));
+
+        response = send(HttpMethod.GET, "/v1/deployment-names", "type=model,toolset", null);
+        verify(response, 200);
+        assertEquals(Map.of("embedding-ada", "model", "gpt-4", "model", "git", "toolset"), collectNames(response));
+
+        response = send(HttpMethod.GET, "/v1/deployment-names", "type=all", null);
+        verify(response, 200);
+        assertEquals(5, collectNames(response).size());
+
+        verify(send(HttpMethod.GET, "/v1/deployment-names", "type=bogus", null), 400);
+        verify(send(HttpMethod.GET, "/v1/deployment-names", "type=model,bogus", null), 400);
+    }
+
+    @DialConfigLocation("dial-config/deployment-interfaces-listing.json")
+    @Test
+    public void testListDeploymentNamesIncludesCustomResources() throws JsonProcessingException {
+        String bucket = "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST";
+        verify(send(HttpMethod.PUT, "/v1/applications/" + bucket + "/my%20app", null, """
+                {
+                "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_toolset_type",
+                "applicationProperties": {
+                  "property1": "foo",
+                  "property2": "bar"
+                  }
+                }
+                """), 200);
+        verify(send(HttpMethod.PUT, "/v1/toolsets/" + bucket + "/my-toolset", null, """
+                {
+                "endpoint": "http://toolset/v1/mcp",
+                "transport": "HTTP",
+                "authSettings": {
+                   "authenticationType": "NONE"
+                }
+                }
+                """), 200);
+
+        Map<String, String> names = collectNames(send(HttpMethod.GET, "/v1/deployment-names", null, null));
+        assertEquals(7, names.size());
+        assertEquals("application", names.get("applications/" + bucket + "/my%20app"));
+        assertEquals("toolset", names.get("toolsets/" + bucket + "/my-toolset"));
+
+        names = collectNames(send(HttpMethod.GET, "/v1/deployment-names", "type=application", null));
+        assertEquals(3, names.size());
+        assertFalse(names.containsKey("toolsets/" + bucket + "/my-toolset"));
+
+        names = collectNames(send(HttpMethod.GET, "/v1/deployment-names", "type=toolset", null));
+        assertEquals(Map.of("git", "toolset", "toolsets/" + bucket + "/my-toolset", "toolset"), names);
+    }
+
+    private static Map<String, String> collectNames(Response response) throws JsonProcessingException {
+        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
+        Map<String, String> namesToObjects = new HashMap<>();
+        for (JsonNode item : body) {
+            namesToObjects.put(item.get("id").asText(), item.get("object").asText());
+        }
+        assertEquals(body.size(), namesToObjects.size());
+        return namesToObjects;
+    }
+
+    @DialConfigLocation("dial-config/deployment-interfaces-listing.json")
+    @Test
     public void testGetDeployment() throws JsonProcessingException {
         // a model, an application and a toolset are returned in the very same shape the listing uses
         JsonNode model = readDeployment(send(HttpMethod.GET, "/v1/deployments/gpt-4"));
