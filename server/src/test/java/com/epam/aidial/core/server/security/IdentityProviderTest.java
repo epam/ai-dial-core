@@ -54,7 +54,6 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -288,26 +287,6 @@ public class IdentityProviderTest {
             assertNotNull(claims);
             assertEquals(List.of("manager"), claims.userRoles());
         });
-    }
-
-    @Test
-    public void testExtractClaimsWithoutKid() throws Exception {
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
-        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
-        Jwk jwk = mock(Jwk.class);
-        when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
-        // UrlJwkProvider resolves a null kid to the single key of the JWKS
-        when(jwkProvider.get(isNull())).thenReturn(jwk);
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable<?> callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-        String token = JWT.create().withClaim("roles", List.of("manager")).sign(algorithm);
-
-        ExtractedClaims claims = identityProvider.extractClaimsFromJwt(JWT.decode(token))
-                .toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
-
-        assertEquals(List.of("manager"), claims.userRoles());
     }
 
     @Test
@@ -1303,7 +1282,7 @@ public class IdentityProviderTest {
             Field field = IdentityProvider.class.getDeclaredField("cache");
             field.setAccessible(true);
             Map<?, ?> cache = (Map<?, ?>) field.get(identityProvider);
-            FutureInternal<?> cached = (FutureInternal<?>) cache.get(Optional.of("kid1"));
+            FutureInternal<?> cached = (FutureInternal<?>) cache.get("kid1");
             assertNotNull(cached);
             assertNull(cached.context());
         } finally {

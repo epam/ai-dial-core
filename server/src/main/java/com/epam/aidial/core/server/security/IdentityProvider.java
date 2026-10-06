@@ -44,7 +44,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -73,9 +72,8 @@ public class IdentityProvider {
 
     private URL userInfoUrl;
 
-    // in memory cache store results obtained from JWK provider, keyed by kid: Optional.empty() is the key of a token
-    // without kid, while a blank kid is a regular key that matches no key of the JWKS and is rejected
-    private final ConcurrentHashMap<Optional<String>, Future<JwkResult>> cache = new ConcurrentHashMap<>();
+    // in memory cache store results obtained from JWK provider
+    private final ConcurrentHashMap<String, Future<JwkResult>> cache = new ConcurrentHashMap<>();
 
     // the name of the claim in JWT to extract user email
     private final String loggingKey;
@@ -286,7 +284,7 @@ public class IdentityProvider {
 
     private void evictExpiredJwks() {
         long currentTime = System.currentTimeMillis();
-        for (Map.Entry<Optional<String>, Future<JwkResult>> entry : cache.entrySet()) {
+        for (Map.Entry<String, Future<JwkResult>> entry : cache.entrySet()) {
             Future<JwkResult> future = entry.getValue();
             if (future.result() != null && future.result().expirationTime() <= currentTime) {
                 cache.remove(entry.getKey());
@@ -329,9 +327,7 @@ public class IdentityProvider {
     }
 
     private Future<JwkResult> getJwk(String kid) {
-        // a JWT may omit kid: the provider then resolves the single key in the JWKS, but ConcurrentHashMap rejects null keys
-        Optional<String> cacheKey = Optional.ofNullable(kid);
-        Future<JwkResult> shared = cache.computeIfAbsent(cacheKey, key -> {
+        Future<JwkResult> shared = cache.computeIfAbsent(kid, key -> {
             // the cached future must be context-less: a context-bound one would pin the first request's context
             // (and its ProxyContext with request/response bodies) for the whole cache TTL
             Promise<JwkResult> lookup = Promise.promise();
@@ -339,7 +335,7 @@ public class IdentityProvider {
                 JwkResult jwkResult;
                 long currentTime = System.currentTimeMillis();
                 try {
-                    Jwk jwk = jwkProvider.get(kid);
+                    Jwk jwk = jwkProvider.get(key);
                     jwkResult = new JwkResult(jwk, null, currentTime + positiveCacheExpirationMs);
                 } catch (Exception e) {
                     jwkResult = new JwkResult(null, e, currentTime + negativeCacheExpirationMs);
@@ -349,7 +345,7 @@ public class IdentityProvider {
             return lookup.future();
         });
         // a lookup that fails outside the catch above (an Error, a rejected task) has no result for the evictor to expire
-        return FutureUtil.continueOnCallerContext(shared).onFailure(error -> cache.remove(cacheKey, shared));
+        return FutureUtil.continueOnCallerContext(shared).onFailure(error -> cache.remove(kid, shared));
     }
 
     private Future<DecodedJWT> verifyJwt(DecodedJWT jwt) {
