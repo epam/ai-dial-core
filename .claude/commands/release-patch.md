@@ -65,8 +65,8 @@ Arguments: `$ARGUMENTS` — first the release branch (e.g. `release-0.9`), then 
 
    ### Backported PRs
 
-   - #{n1} — {original title}
-   - #{n2} — {original title}
+   - #{n1}
+   - #{n2}
 
    ### Conflicts
 
