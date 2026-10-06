@@ -168,16 +168,10 @@ public class SecretFieldProcessor {
         }
     }
 
-    // Pair each target (request) element with its preserved source (blob) element. The matcher keys
-    // on the canonical JSON name "endpoint" (blobs are always written via the canonical mapper, so
-    // the field is present under that name) and falls back to index pairing when "endpoint" is
-    // absent — preserving prior behavior for non-keyed arrays. Iteration follows the request, so the
-    // desired set/order wins; duplicate endpoints match in relative order (stable two-pointer).
-    // Contract: endpoint-less elements use strict same-index pairing only. A consumed or
-    // out-of-bounds index slot yields no preservation (request value, possibly null, wins) — this is
-    // deterministic and never throws. Because an endpoint match can consume the slot an endpoint-less
-    // element would otherwise take, clients mixing endpoint-keyed and endpoint-less elements in one
-    // array must supply secrets explicitly for the unkeyed elements (or avoid the mix).
+    // Pairs each target (request) element with its source (blob) element to preserve omitted secrets:
+    // by "endpoint", then "baseUrl" (for endpoint-less, interface-routed upstreams), falling back to
+    // same-index pairing when neither is present. Mixing identified and unidentified elements in one
+    // array can let an identity match consume the slot an unidentified element would otherwise take.
     private void mergeArray(ArrayNode targets, ArrayNode sources, Class<?> nestedType) {
         boolean[] consumed = new boolean[sources.size()];
         for (int i = 0; i < targets.size(); i++) {
@@ -196,21 +190,27 @@ public class SecretFieldProcessor {
     private int matchSourceIndex(ObjectNode targetObj, ArrayNode sources, boolean[] consumed, int targetIndex) {
         JsonNode endpointNode = targetObj.get("endpoint");
         if (endpointNode != null && endpointNode.isTextual()) {
-            String endpoint = endpointNode.textValue();
-            for (int j = 0; j < sources.size(); j++) {
-                if (consumed[j] || !(sources.get(j) instanceof ObjectNode sourceObj)) {
-                    continue;
-                }
-                JsonNode sourceEndpoint = sourceObj.get("endpoint");
-                if (sourceEndpoint != null && sourceEndpoint.isTextual()
-                        && endpoint.equals(sourceEndpoint.textValue())) {
-                    return j;
-                }
-            }
-            return -1;
+            return matchByField(sources, consumed, "endpoint", endpointNode.textValue());
+        }
+        JsonNode baseUrlNode = targetObj.get("baseUrl");
+        if (baseUrlNode != null && baseUrlNode.isTextual()) {
+            return matchByField(sources, consumed, "baseUrl", baseUrlNode.textValue());
         }
         if (targetIndex < sources.size() && !consumed[targetIndex] && sources.get(targetIndex).isObject()) {
             return targetIndex;
+        }
+        return -1;
+    }
+
+    private static int matchByField(ArrayNode sources, boolean[] consumed, String field, String value) {
+        for (int j = 0; j < sources.size(); j++) {
+            if (consumed[j] || !(sources.get(j) instanceof ObjectNode sourceObj)) {
+                continue;
+            }
+            JsonNode sourceValue = sourceObj.get(field);
+            if (sourceValue != null && sourceValue.isTextual() && value.equals(sourceValue.textValue())) {
+                return j;
+            }
         }
         return -1;
     }
@@ -353,21 +353,11 @@ public class SecretFieldProcessor {
     }
 
     private static Class<?> elementClassWithEncryptedField(Field field) {
-        java.lang.reflect.Type generic = field.getGenericType();
-        if (!(generic instanceof java.lang.reflect.ParameterizedType pt)) {
-            return null;
-        }
         if (!Collection.class.isAssignableFrom(field.getType())) {
             return null;
         }
-        java.lang.reflect.Type[] args = pt.getActualTypeArguments();
-        if (args.length != 1) {
-            return null;
-        }
-        if (args[0] instanceof Class<?> elementClass && classHasEncryptedField(elementClass)) {
-            return elementClass;
-        }
-        return null;
+        Class<?> elementClass = resolveNestedClass(field);
+        return (elementClass != null && classHasEncryptedField(elementClass)) ? elementClass : null;
     }
 
     /**
@@ -376,21 +366,11 @@ public class SecretFieldProcessor {
      * passes have to descend into it the same way they descend into arrays.
      */
     private static Class<?> valueClassWithEncryptedField(Field field) {
-        java.lang.reflect.Type generic = field.getGenericType();
-        if (!(generic instanceof java.lang.reflect.ParameterizedType pt)) {
-            return null;
-        }
         if (!Map.class.isAssignableFrom(field.getType())) {
             return null;
         }
-        java.lang.reflect.Type[] args = pt.getActualTypeArguments();
-        if (args.length != 2) {
-            return null;
-        }
-        if (args[1] instanceof Class<?> valueClass && classHasEncryptedField(valueClass)) {
-            return valueClass;
-        }
-        return null;
+        Class<?> valueClass = resolveNestedClass(field);
+        return (valueClass != null && classHasEncryptedField(valueClass)) ? valueClass : null;
     }
 
     /**

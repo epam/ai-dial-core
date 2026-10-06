@@ -256,7 +256,7 @@ public class AiDial {
             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService = new ResourceAuthSettingsEncryptionService(
                     credentialEncryptionService);
             ExternalServiceService externalServiceService = new ExternalServiceService(
-                    resourceService, resourceAuthSettingsEncryptionService, resourceCredentialsService);
+                    resourceService, resourceAuthSettingsEncryptionService, resourceCredentialsService, secretFieldProcessor);
 
             String onInvalidEntity = settings("config").getString("onInvalidEntity", MergedConfigStore.MODE_ABORT);
             boolean softValidation = settings("config").getJsonObject("write", new JsonObject())
@@ -269,7 +269,6 @@ public class AiDial {
                     vertx, settings("config"), null,
                     List.of(cfg -> mergedConfigStore.requestRebuild()));
             mergedConfigStore.init(fileConfigStore);
-            ConfigStore configStore = mergedConfigStore;
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
 
             // Hoisted ahead of ApplicationSchemaService construction: SKILL resource existence
@@ -282,8 +281,8 @@ public class AiDial {
                     resourceService, lockService, storage, complexResourceSettings);
 
             ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(
-                    resourceService, configStore, complexResourceService, encryptionService, httpProxySelector);
-            CatalogSchemaService catalogSchemaService = new CatalogSchemaService(resourceService, configStore, encryptionService);
+                    resourceService, mergedConfigStore, complexResourceService, encryptionService, httpProxySelector);
+            CatalogSchemaService catalogSchemaService = new CatalogSchemaService(resourceService, mergedConfigStore, encryptionService);
 
             ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
                     resourceCredentialsService, tokenRefreshStrategyFactory, resourceRegistrationService);
@@ -302,13 +301,13 @@ public class AiDial {
                     resourceService, resourceAuthSettingsEncryptionService, encryptionService);
             ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
                     secretFieldProcessor, externalServiceService, resourceService, lockService, operatorService, applicationSchemaService,
-                    catalogSchemaService, configStore, generator, settings("applications"));
+                    catalogSchemaService, mergedConfigStore, generator, settings("applications"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService,
                     lockService, applicationSchemaService, clock, resourceCredentialsService);
             RuleService ruleService = new RuleService(resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
-            RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService, configStore);
+            RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService, mergedConfigStore);
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,
                     accessService, encryptionService, operatorService, generator, settings("codeInterpreter"));
 
@@ -367,11 +366,11 @@ public class AiDial {
                     Json.decodeValue(settings("backgroundJob").toBuffer(), Settings.class);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(),
-                    responseMappingService, resourceService, taskExecutor, configStore, apiKeyStore, rateLimiter, tokenStatsTracker,
+                    responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
                     upstreamRouteProvider, responsesApiClient, logStore, credentialEncryptionService, backgroundJobSettings);
             backgroundJobService.init();
 
-            proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,
+            proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, mergedConfigStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,

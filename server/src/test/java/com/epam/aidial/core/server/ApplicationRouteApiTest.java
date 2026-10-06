@@ -211,6 +211,53 @@ public class ApplicationRouteApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testAppRouteUpstreamSecretPreservedWhenOmittedOnUpdate() {
+        String appPath = "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/app-route-secret-preserved";
+        Response created = send(HttpMethod.PUT, appPath, null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "App Route Secret Preserved",
+                "routes": {
+                        "index-search": {
+                          "paths": ["/v1/index(/[^/]+)*$"],
+                          "rewritePath": true,
+                          "methods": ["POST"],
+                          "upstreams": [{"endpoint": "http://localhost:4848", "key": "app-route-secret-2"}]
+                      }
+                  }
+                }
+                """);
+        Assertions.assertEquals(200, created.status(), () -> created.body());
+
+        // Re-PUT the same application without resending the secret (as a client that only ever
+        // sees the WRITE_ONLY-suppressed GET response would): the stored secret must be preserved,
+        // not wiped.
+        Response updated = send(HttpMethod.PUT, appPath, null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "App Route Secret Preserved - Updated",
+                "routes": {
+                        "index-search": {
+                          "paths": ["/v1/index(/[^/]+)*$"],
+                          "rewritePath": true,
+                          "methods": ["POST"],
+                          "upstreams": [{"endpoint": "http://localhost:4848"}]
+                      }
+                  }
+                }
+                """);
+        Assertions.assertEquals(200, updated.status(), () -> updated.body());
+
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(
+                "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/app-route-secret-preserved", encryptionService);
+        String rawBlob = resourceService.getResource(descriptor);
+        Assertions.assertNotNull(rawBlob, "Application blob must exist");
+        Assertions.assertTrue(rawBlob.contains("ENC["),
+                () -> "Upstream secret omitted from the update must be preserved, still encrypted: " + rawBlob);
+    }
+
+    @Test
     public void testSchemaRichAppRoute() {
         Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, """
                 {

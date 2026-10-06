@@ -12,6 +12,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
@@ -1135,6 +1136,46 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
                 }
                 """, "authorization", "user");
         assertEquals(400, put.status(), () -> put.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testExternalServiceWritePreservesEncryptedRouteUpstreamSecret() throws Exception {
+        String appUrl = createPlainDynamicApp("user", "mgmt-route-secret-app");
+        Response withRoute = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                {
+                    "endpoint": "http://localhost:7001/v1/x",
+                    "display_name": "Mgmt App",
+                    "routes": {
+                        "index-search": {
+                            "paths": ["/v1/index(/[^/]+)*$"],
+                            "rewritePath": true,
+                            "methods": ["POST"],
+                            "upstreams": [{"endpoint": "http://localhost:4848", "key": "route-secret-1"}]
+                        }
+                    }
+                }
+                """, "authorization", "user");
+        assertEquals(200, withRoute.status(), () -> withRoute.body());
+
+        Response put = send(HttpMethod.PUT, "/v1/" + appUrl + "/external-services/billing-api", null, """
+                {
+                    "display_name": "Billing",
+                    "auth_settings": {
+                        "authentication_type": "API_KEY",
+                        "api_key_header": "X-API-Key"
+                    }
+                }
+                """, "authorization", "user");
+        assertEquals(200, put.status(), () -> put.body());
+
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(appUrl, encryptionService);
+        String rawBlob = dial.getProxy().getResourceService().getResource(descriptor);
+        assertNotNull(rawBlob, "Application blob must exist");
+        assertTrue(rawBlob.contains("ENC["),
+                () -> "Route-upstream secret must survive an external-service write, still encrypted: " + rawBlob);
+        assertFalse(rawBlob.contains("route-secret-1"),
+                () -> "Plaintext upstream key must not appear in blob: " + rawBlob);
     }
 
     @Test

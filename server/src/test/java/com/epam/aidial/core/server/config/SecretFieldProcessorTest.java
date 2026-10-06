@@ -448,6 +448,21 @@ class SecretFieldProcessorTest {
     }
 
     @Test
+    void baseUrlReorderingDoesNotSwapSecrets() throws Exception {
+        // Endpoint-less upstreams (interface-based routing) are identified by baseUrl instead.
+        // Reordering them in the request must not fall through to index pairing and swap secrets.
+        ObjectNode existing = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"baseUrl\":\"A\",\"key\":\"ENC[a]\"},{\"baseUrl\":\"B\",\"key\":\"ENC[b]\"}]}");
+        ObjectNode request = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"baseUrl\":\"B\"},{\"baseUrl\":\"A\"}]}");
+
+        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+
+        assertEquals("ENC[b]", merged.get("upstreams").get(0).get("key").asText());
+        assertEquals("ENC[a]", merged.get("upstreams").get(1).get("key").asText());
+    }
+
+    @Test
     void plaintextShapedLikeEnvelopeGetsEncrypted() {
         Key key = new Key();
         key.setKey("ENC[not-base64!]");

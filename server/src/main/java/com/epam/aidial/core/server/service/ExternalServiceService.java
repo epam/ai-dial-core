@@ -8,6 +8,8 @@ import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
+import com.epam.aidial.core.server.config.SecretFieldProcessor;
+import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
@@ -40,6 +42,7 @@ public class ExternalServiceService {
     private final ResourceService resourceService;
     private final ResourceAuthSettingsEncryptionService encryptionService;
     private final ResourceCredentialsService resourceCredentialsService;
+    private final SecretFieldProcessor secretFieldProcessor;
 
     /**
      * On an application write: validate, drop computed statuses, preserve omitted client_secrets, encrypt
@@ -149,7 +152,7 @@ public class ExternalServiceService {
             app.getExternalServices().put(serviceId, service);
             persisted.capture(service);
             encryptSecrets(resource, app);
-            return ProxyUtil.convertToString(app);
+            return serializeEncrypted(resource, app);
         });
         persisted.restoreOn(service);
         // After commit, like the application write path: the old-type record must not survive under the new type.
@@ -169,8 +172,18 @@ public class ExternalServiceService {
             if (app.getExternalServices() == null || app.getExternalServices().remove(serviceId) == null) {
                 throw new ResourceNotFoundException("External service '%s' not found".formatted(serviceId));
             }
-            return ProxyUtil.convertToString(app);
+            return serializeEncrypted(resource, app);
         });
+    }
+
+    // Unlike ProxyUtil.convertToString, this honors routes[].upstreams[].key/secretExtraData
+    // (@EncryptedField, WRITE_ONLY) as read-write instead of dropping them, then decrypts the object
+    // back to plaintext in place so the caller keeps working with a plaintext application afterward.
+    private String serializeEncrypted(ResourceDescriptor resource, Application application) {
+        secretFieldProcessor.encryptFields(application, resource);
+        String blobBody = ConfigEntityCodec.serializeForBlob(application);
+        secretFieldProcessor.decryptFields(application, resource);
+        return blobBody;
     }
 
     public void encryptSecrets(ResourceDescriptor resource, Application application) {
