@@ -17,6 +17,7 @@ import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
+import io.vertx.core.http.HttpClosedException;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
@@ -30,6 +31,15 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
 
     private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
     private final int interceptorIndex;
+
+    /**
+     * Whether a connection-closed failure may still be retried once more on a fresh connection. A pooled
+     * keep-alive connection can die between being handed out of the pool and the request actually being
+     * written to it; since nothing reached the interceptor in that case, resending once is safe. There is
+     * no upstream list to fail over to here, so this is a plain one-shot guard rather than the per-pick
+     * allowance {@code UpstreamRoute} tracks for model deployments.
+     */
+    private boolean connectionRetryAvailable = true;
 
     protected BaseInterceptorController(Proxy proxy, ProxyContext context, int interceptorIndex,
             List<BaseRequestFunction<RequestObject>> enhancementFunctions) {
@@ -146,6 +156,13 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
      */
     @VisibleForTesting
     void handleProxyResponseError(Throwable error) {
+        if (error instanceof HttpClosedException && connectionRetryAvailable) {
+            connectionRetryAvailable = false;
+            log.warn("Pooled connection to interceptor was already closed before the request could be sent. "
+                    + "Retrying once on a fresh connection. Error:", error);
+            sendRequest();
+            return;
+        }
         HttpClientRequest proxyRequest = context.getProxyRequest();
         // N/A: send() has not set proxyRequest yet (tests / call before connect).
         log.warn("Proxy failed to receive response header from origin. Address: {}. Error:",

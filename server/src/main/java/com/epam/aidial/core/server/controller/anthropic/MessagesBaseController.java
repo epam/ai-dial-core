@@ -29,6 +29,7 @@ import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
+import io.vertx.core.http.HttpClosedException;
 import io.vertx.core.http.HttpHeaders;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -185,10 +186,14 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                 respond(HttpStatus.SERVICE_UNAVAILABLE, "Upstream is missing required id");
                 return;
             }
-            createProxyRequest(InterfaceType.ANTHROPIC_MESSAGES)
-                    .onSuccess(this::handleProxyRequest)
-                    .onFailure(this::handleProxyConnectionError);
+            sendRequestToCurrentUpstream();
         }
+    }
+
+    private void sendRequestToCurrentUpstream() {
+        createProxyRequest(InterfaceType.ANTHROPIC_MESSAGES)
+                .onSuccess(this::handleProxyRequest)
+                .onFailure(this::handleProxyConnectionError);
     }
 
     private void handleProxyRequest(HttpClientRequest proxyRequest) {
@@ -232,8 +237,16 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     }
 
     private void handleProxyResponseError(Throwable error) {
+        UpstreamRoute upstreamRoute = context.getUpstreamRoute();
+        if (error instanceof HttpClosedException && upstreamRoute.canRetryDeadConnection()) {
+            log.warn("Pooled connection to origin was already closed before the request could be sent. "
+                            + "Deployment: {}. Retrying once on a fresh connection. Error:",
+                    context.getDeployment().getName(), error);
+            sendRequestToCurrentUpstream();
+            return;
+        }
         // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
-        context.getUpstreamRoute().fail(HttpStatus.BAD_GATEWAY);
+        upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
         log.warn("Proxy failed to receive response header from origin. Deployment: {}. Address: {}. Error:",
                 context.getDeployment().getName(),
                 context.getProxyRequest().connection().remoteAddress(),
