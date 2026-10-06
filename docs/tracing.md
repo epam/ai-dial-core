@@ -96,13 +96,20 @@ Which request attributes apply depends on the API surface: `stop_sequences`, `ch
 
 ## Storage and rate-limit spans
 
-Core adds child spans for the blocking work a request does off the event loop. They are emitted
+Core adds child spans for the storage, Redis, identity and key-management work a request does. They are emitted
 only inside a traced request, so background jobs (resource sync, sweeps, bulk loads on their own
 executor) start no traces of their own. They do not depend on `genAiSpanAttributes`.
 
 | Span                                                     | Covers                                                                        | Attributes                                    |
 |----------------------------------------------------------|-------------------------------------------------------------------------------|-----------------------------------------------|
+| `auth.api_key.lookup`                                    | Reading a per-request API key from Redis                                      |                                               |
+| `auth.api_key.assign`                                    | Storing the per-request API key handed to the upstream deployment             |                                               |
+| `auth.jwks.fetch`                                        | Fetching an identity provider's signing key; once per key id while it is cached |                                             |
+| `deployment.resolve`                                     | Finding the requested deployment and checking access and user consent         |                                               |
 | `rate_limit.check`                                       | The token, request and cost limit checks before a request is forwarded        | `dial.deployment`, `dial.rate_limit.status`   |
+| `usage.start`, `usage.read`, `usage.update`, `usage.end` | Maintaining the per-trace usage record used for cost and token roll-up        |                                               |
+| `oauth.request`                                          | A call to an authorization server: token exchange, metadata discovery, registration | `http.request.method`, `server.address`, `http.response.status_code` |
+| `kms.encrypt`, `kms.decrypt`                             | A call to the configured AWS, Azure or GCP key management service             |                                               |
 | `resource.get`, `resource.compute`, `resource.put`, `resource.delete` | A `ResourceService` operation, including Redis access and lock waits | `dial.resource.type`; `resource.get` also has `dial.cache.hit` (`false` when the value was read from blob storage) |
 | `blob.<operation>`                                       | One blob storage call: `load`, `store`, `meta`, `exists`, `delete`, `copy`, `list`, and the multipart upload calls | `blob.load`: `dial.blob.found`; `blob.store`: `dial.blob.size` |
 

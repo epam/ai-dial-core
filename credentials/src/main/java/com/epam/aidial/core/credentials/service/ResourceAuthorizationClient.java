@@ -5,6 +5,7 @@ import com.epam.aidial.core.credentials.util.JsonMapperUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.util.Compression;
+import com.epam.aidial.core.storage.util.Tracing;
 import com.google.common.annotations.VisibleForTesting;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -28,8 +29,9 @@ public class ResourceAuthorizationClient {
 
     private final HttpClient httpClient;
     private final HttpHeadersHandler httpHeadersHandler;
+    private final Tracing tracing;
 
-    public ResourceAuthorizationClient(@Nullable ProxySelector proxySelector) {
+    public ResourceAuthorizationClient(@Nullable ProxySelector proxySelector, Tracing tracing) {
         HttpClient.Builder builder = HttpClient.newBuilder();
         builder.connectTimeout(Duration.of(5, ChronoUnit.SECONDS));
         if (proxySelector != null) {
@@ -37,6 +39,7 @@ public class ResourceAuthorizationClient {
         }
         this.httpClient = builder.build();
         this.httpHeadersHandler = new HttpHeadersHandler();
+        this.tracing = tracing;
     }
 
     @SuppressWarnings("unused")
@@ -44,6 +47,7 @@ public class ResourceAuthorizationClient {
     private ResourceAuthorizationClient(HttpClient httpClient, HttpHeadersHandler httpHeadersHandler) {
         this.httpClient = httpClient;
         this.httpHeadersHandler = httpHeadersHandler;
+        this.tracing = Tracing.NOOP;
     }
 
     public <R> R executeGet(String url, Class<R> responseType) {
@@ -82,12 +86,21 @@ public class ResourceAuthorizationClient {
         return execute(request, responseType);
     }
 
-    @SneakyThrows
     private <R> R execute(HttpRequest request, Class<R> responseType) {
+        return tracing.trace("oauth.request", () -> {
+            Tracing.currentSpan().setAttribute("http.request.method", request.method());
+            Tracing.currentSpan().setAttribute("server.address", request.uri().getHost());
+            return send(request, responseType);
+        });
+    }
+
+    @SneakyThrows
+    private <R> R send(HttpRequest request, Class<R> responseType) {
         try {
             HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
 
             int status = response.statusCode();
+            Tracing.currentSpan().setAttribute("http.response.status_code", status);
             String body = decodeBody(response);
 
             if (status != 200 && status != 201) {

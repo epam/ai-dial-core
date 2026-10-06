@@ -164,7 +164,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         } else {
             deploymentName = request.getModel();
         }
-        return proxy.getTaskExecutor().submit(() -> setupDeployment(deploymentName))
+        return proxy.getTaskExecutor().submit(() -> proxy.getTracing().trace("deployment.resolve", () -> setupDeployment(deploymentName)))
                 .compose(ignore -> {
                     if (context.hasNextInterceptor()) {
                         context.setInitialDeployment(context.getDeployment().getName());

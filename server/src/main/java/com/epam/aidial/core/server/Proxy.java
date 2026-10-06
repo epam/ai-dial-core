@@ -63,6 +63,7 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.Tracing;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
 import io.vertx.core.Future;
@@ -205,6 +206,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ConfigApplyService configApplyService;
     private final ConfigValidationService configValidationService;
     private final TracingSettings tracingSettings;
+    private final Tracing tracing;
 
     @Override
     public void handle(HttpServerRequest request) {

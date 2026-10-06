@@ -146,11 +146,11 @@ public class DeploymentPostController extends BaseChatCompletionController {
     }
 
     private Future<?> handleDeployment(String deploymentId) {
-        return proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findDeployment(context, deploymentId))
-                .compose(dep -> proxy.getTaskExecutor().submit(() -> {
-                    proxy.getConsentService().verifyUserConsent(context, dep, requestedInterface());
-                    return dep;
-                }))
+        return proxy.getTaskExecutor().submit(() -> proxy.getTracing().trace("deployment.resolve", () -> {
+            Deployment dep = proxy.getDeploymentService().findDeployment(context, deploymentId);
+            proxy.getConsentService().verifyUserConsent(context, dep, requestedInterface());
+            return dep;
+        }))
                 .map(dep -> {
                     Features features = dep.resolveFeatures(requestedInterface());
                     boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;

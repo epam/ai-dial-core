@@ -13,6 +13,7 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.RedisUtil;
+import com.epam.aidial.core.storage.util.Tracing;
 import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +46,7 @@ public class ApiKeyStore {
     public static final String API_KEY_DATA_LOCATION = API_KEY_DATA_BUCKET + PATH_SEPARATOR;
 
     private final AsyncTaskExecutor taskExecutor;
+    private final Tracing tracing;
     private final RedissonClient redis;
     private final String prefix;
 
@@ -58,8 +60,9 @@ public class ApiKeyStore {
      */
     private final ReentrantLock mutationLock = new ReentrantLock();
 
-    public ApiKeyStore(AsyncTaskExecutor taskExecutor, RedissonClient redis, String prefix, JsonObject settings) {
+    public ApiKeyStore(AsyncTaskExecutor taskExecutor, RedissonClient redis, String prefix, JsonObject settings, Tracing tracing) {
         this.taskExecutor = taskExecutor;
+        this.tracing = tracing;
         this.redis = redis;
         this.prefix = prefix;
         this.ttl = Duration.ofSeconds(settings.getInteger("ttl", 1800));
@@ -82,15 +85,18 @@ public class ApiKeyStore {
     }
 
     public void assignPerRequestApiKey(ApiKeyData data, Duration customTtl) {
-        String perRequestKey = generateKey();
-        data.setPerRequestKey(perRequestKey);
-        String json = ProxyUtil.convertToString(data);
-        String redisKey = toRedisKey(perRequestKey);
-        RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
-        if (!bucket.setIfAbsent(json)) {
-            throw new IllegalStateException(String.format("API key %s already exists in Redis storage", perRequestKey));
-        }
-        bucket.expire(customTtl);
+        tracing.trace("auth.api_key.assign", () -> {
+            String perRequestKey = generateKey();
+            data.setPerRequestKey(perRequestKey);
+            String json = ProxyUtil.convertToString(data);
+            String redisKey = toRedisKey(perRequestKey);
+            RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
+            if (!bucket.setIfAbsent(json)) {
+                throw new IllegalStateException(String.format("API key %s already exists in Redis storage", perRequestKey));
+            }
+            bucket.expire(customTtl);
+            return null;
+        });
     }
 
     public void updatePerRequestApiKey(String key, Function<String, String> fn) {
@@ -127,11 +133,11 @@ public class ApiKeyStore {
             return validateIpAddressRange(apiKeyData, clientIpAddress);
         }
         String redisKey = toRedisKey(key);
-        return taskExecutor.submit(() -> {
+        return taskExecutor.submit(() -> tracing.trace("auth.api_key.lookup", () -> {
             RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
             String json = bucket.get();
             return ProxyUtil.convertToObject(json, ApiKeyData.class);
-        }).compose(result -> {
+        })).compose(result -> {
             if (result == null) {
                 return Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "Unknown api key"));
             }

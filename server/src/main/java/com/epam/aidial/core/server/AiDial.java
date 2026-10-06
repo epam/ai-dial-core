@@ -210,7 +210,7 @@ public class AiDial {
 
             if (accessTokenValidator == null) {
                 String claimsLogLevel = settings.getString("claimsLogLevel", "DEBUG");
-                accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, taskExecutor, client, clientOptions, claimsLogLevel);
+                accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, taskExecutor, client, clientOptions, claimsLogLevel, tracing);
             }
 
             if (storage == null) {
@@ -228,8 +228,8 @@ public class AiDial {
             resourceService = new ResourceService(
                     timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix(), () -> podId, tracing);
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
-            ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"));
-            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
+            ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"), tracing);
+            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService(tracing);
             SecretFieldProcessor secretFieldProcessor = new SecretFieldProcessor(
                     credentialEncryptionService,
                     new BucketInfo(ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION));
@@ -242,7 +242,7 @@ public class AiDial {
             // CatalogSchemaService below (which DO depend on configStore) stay after it.
             TimeProvider timeProvider = new TimeProvider();
             TokenRefreshStrategyFactory tokenRefreshStrategyFactory = new TokenRefreshStrategyFactory(timeProvider);
-            ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient(httpProxySelector);
+            ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient(httpProxySelector, tracing);
             List<String> allowedRedirectUris = getAllowedRedirectUris();
             TokenService tokenService = new TokenService(resourceAuthorizationClient, allowedRedirectUris);
             McpHttpClientBuilder.Settings mcpHttpClientBuilderSettings = Json.decodeValue(
@@ -321,7 +321,7 @@ public class AiDial {
             ConfigValidationService configValidationService = new ConfigValidationService(
                     resourceService, mergedConfigStore.isSoftValidation(), catalogSchemaService);
 
-            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, resourceService);
+            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, resourceService, tracing);
 
             HeartbeatService heartbeatService = new HeartbeatService(
                     vertx, taskExecutor, settings("resources").getLong("heartbeatPeriod"));
@@ -385,7 +385,7 @@ public class AiDial {
                     printAuthorizationHeader,
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,
-                    TracingSettings.from(settings("tracing")));
+                    TracingSettings.from(settings("tracing")), tracing);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -430,14 +430,14 @@ public class AiDial {
         return new ResourceRegistrationService(authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService, allowedRedirectUris);
     }
 
-    private CredentialEncryptionService getCredentialEncryptionService() {
+    private CredentialEncryptionService getCredentialEncryptionService(Tracing tracing) {
         JsonObject toolsetSecurity = settings("toolsets").getJsonObject("security", new JsonObject());
         KmsSettings kmsSettings = Json.decodeValue(toolsetSecurity
                 .getJsonObject("kms", new JsonObject()).toBuffer(), KmsSettings.class);
         EncryptionSettings encryptionSettings = Json.decodeValue(toolsetSecurity
                 .getJsonObject("encryption", new JsonObject()).toBuffer(), EncryptionSettings.class);
         ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator(encryptionSettings);
-        KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings);
+        KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings, tracing);
         ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
                 resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache());
         ContentEncryptionKeyService contentEncryptionKeyService = getContentEncryptionKeyService(contentEncryptionKeyManager);
