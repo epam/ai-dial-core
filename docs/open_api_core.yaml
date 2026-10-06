@@ -5003,6 +5003,11 @@ paths:
       operationId: getDeploymentLimits
       description: |
         Call this endpoint to get information about spent limits for a given deployment.
+
+        Only `*TokenStats` and `*RequestStats` are scoped to this deployment. `*CostStats` here is the
+        caller's *account-wide* cost budget and spend - the same figures on every deployment this caller
+        queries - not this deployment's own cost. For this deployment's own attributed spend, call
+        `GET /v1/deployments/{deployment_name}/usage` instead.
       parameters:
       - name: deployment_name
         in: path
@@ -5340,6 +5345,76 @@ paths:
         required: true
       tags:
       - Deployment Feature
+  /v1/deployments/{deployment_name}/usage:
+    get:
+      tags:
+      - Limits
+      summary: "/v1/deployments/{deployment_name}/usage"
+      operationId: getDeploymentUsage
+      description: |
+        Returns limits and current usage for exactly one deployment, attributing cost correctly where
+        `/v1/deployments/{deployment_name}/limits` cannot: token and request stats are capped by this
+        deployment's own limit, and `*CostStats` here is this deployment's own attributed spend (direct
+        plus any aggregated cost rolled up from a chain it drove), not the caller's account-wide budget.
+        Since no per-deployment cost cap exists, cost `total` is always the unlimited sentinel
+        `9223372036854775807` (`Long.MAX_VALUE`).
+
+        This is the single-deployment equivalent of a `deployments[deployment_name]` entry in
+        `GET /v1/user/usage` - same figures, same caveats about trailing vs calendar-aligned windows and
+        `resetsAt` - without downloading the whole account's usage report to find one entry. A deployment
+        that was never used still returns 200 with `used: 0` against its real limits, not 404; a
+        deployment name the caller cannot access, or that does not exist, returns 404.
+      parameters:
+      - name: deployment_name
+        in: path
+        description: The name of the deployment.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LimitStats"
+              examples:
+                Example:
+                  value:
+                    dayTokenStats:
+                      total: 1000000
+                      used: 3222
+                      resetsAt: 2026-10-02T00:00:00Z
+                    weekTokenStats:
+                      total: 9223372036854775807
+                      used: 3222
+                      resetsAt: 2026-10-05T00:00:00Z
+                    dayCostStats:
+                      total: 9223372036854775807
+                      used: 0.028953
+                      resetsAt: 2026-10-02T00:00:00Z
+                    weekCostStats:
+                      total: 9223372036854775807
+                      used: 0.028953
+                      resetsAt: 2026-10-05T00:00:00Z
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/files/{bucket}/{file_path}:
     get:
       tags:

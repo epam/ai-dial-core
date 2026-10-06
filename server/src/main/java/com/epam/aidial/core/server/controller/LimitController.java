@@ -78,6 +78,36 @@ public class LimitController {
 
     @ApiOperation(
             method = "GET",
+            path = "/v1/deployments/{deployment_name}/usage",
+            operationId = "getDeploymentUsage",
+            tags = {"Limits"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = LimitStats.class)),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            },
+            parameters = {
+                    @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME)
+            }
+    )
+    public Future<?> getDeploymentUsage(String deploymentId) {
+        proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findDeployment(context, deploymentId))
+                .compose(dep -> proxy.getRateLimiter().getDeploymentUsage(dep, context))
+                .onSuccess(limitStats -> {
+                    if (limitStats == null) {
+                        context.respond(HttpStatus.NOT_FOUND);
+                    } else {
+                        context.respond(HttpStatus.OK, limitStats);
+                    }
+                }).onFailure(error -> handleRequestError(deploymentId, error));
+
+        return Future.succeededFuture();
+    }
+
+    @ApiOperation(
+            method = "GET",
             path = "/v1/user/limits",
             operationId = "getUserLimits",
             tags = {"Limits"},
