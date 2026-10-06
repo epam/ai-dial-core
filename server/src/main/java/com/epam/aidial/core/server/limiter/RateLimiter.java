@@ -24,6 +24,7 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.Tracing;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -59,6 +60,8 @@ public class RateLimiter {
     private final ResourceService resourceService;
 
     private final ConfigStore configStore;
+
+    private final Tracing tracing;
 
     public Future<Void> increase(
             RoleBasedEntity roleBasedEntity, String bucket, TokenUsage usage, Buffer requestBody, Buffer responseBody,
@@ -134,7 +137,12 @@ public class RateLimiter {
                 return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied", "Access denied", -1));
             }
 
-            return taskExecutor.submit(() -> checkLimit(context, limit, roleBasedEntity));
+            return taskExecutor.submit(() -> tracing.trace("rate_limit.check", () -> {
+                Tracing.currentSpan().setAttribute("dial.deployment", name);
+                RateLimitResult result = checkLimit(context, limit, roleBasedEntity);
+                Tracing.currentSpan().setAttribute("dial.rate_limit.status", result.status().getCode());
+                return result;
+            }));
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }

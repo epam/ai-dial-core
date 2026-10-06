@@ -3,7 +3,10 @@ package com.epam.aidial.core.storage.blobstore;
 import com.epam.aidial.core.storage.blobstore.credential.CredentialProvider;
 import com.epam.aidial.core.storage.blobstore.credential.CredentialProviderFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.util.Tracing;
 import com.google.common.collect.ImmutableSet;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.Timer;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jclouds.ContextBuilder;
@@ -33,9 +36,11 @@ import org.jclouds.logging.slf4j.config.SLF4JLoggingModule;
 import org.jclouds.s3.domain.ObjectMetadataBuilder;
 
 import java.io.Closeable;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.Callable;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -45,6 +50,11 @@ public class BlobStorage implements Closeable {
     // To avoid additional request for each blob in the listing we try to recognize blob content type by its extension.
     // Default value is binary/octet-stream, see org.jclouds.s3.domain.ObjectMetadataBuilder
     private static final String DEFAULT_CONTENT_TYPE = ObjectMetadataBuilder.create().build().getContentMetadata().getContentType();
+
+    private static final Duration[] OPERATION_LATENCY_BUCKETS = {
+        Duration.ofMillis(5), Duration.ofMillis(10), Duration.ofMillis(25), Duration.ofMillis(50), Duration.ofMillis(100),
+        Duration.ofMillis(250), Duration.ofMillis(500), Duration.ofSeconds(1), Duration.ofMillis(2500), Duration.ofSeconds(5)
+    };
 
     private final BlobStoreContext storeContext;
     private final BlobStore blobStore;
@@ -58,7 +68,14 @@ public class BlobStorage implements Closeable {
     @Getter
     private final long maxUploadedFileSize;
 
+    private final Tracing tracing;
+
     public BlobStorage(Storage config) {
+        this(config, Tracing.NOOP);
+    }
+
+    public BlobStorage(Storage config, Tracing tracing) {
+        this.tracing = tracing;
         String provider = config.getProvider();
         ContextBuilder builder = ContextBuilder.newBuilder(provider);
         if (config.getEndpoint() != null) {
@@ -89,7 +106,7 @@ public class BlobStorage implements Closeable {
     public MultipartUpload initMultipartUpload(String absoluteFilePath, String contentType, Map<String, String> userMetadata) {
         String storageLocation = getStorageLocation(absoluteFilePath);
         BlobMetadata metadata = buildBlobMetadata(storageLocation, contentType, bucketName, userMetadata);
-        return blobStore.initiateMultipartUpload(bucketName, metadata, PutOptions.NONE);
+        return measure("init_multipart_upload", () -> blobStore.initiateMultipartUpload(bucketName, metadata, PutOptions.NONE));
     }
 
     /**
@@ -101,7 +118,7 @@ public class BlobStorage implements Closeable {
      */
     @SuppressWarnings("UnstableApiUsage") // multipart upload uses beta API
     public MultipartPart storeMultipartPart(MultipartUpload multipart, int part, Payload payload) {
-        return blobStore.uploadMultipartPart(multipart, part, payload);
+        return measure("store_multipart_part", () -> blobStore.uploadMultipartPart(multipart, part, payload));
     }
 
     /**
@@ -110,7 +127,7 @@ public class BlobStorage implements Closeable {
      */
     @SuppressWarnings("UnstableApiUsage") // multipart upload uses beta API
     public String completeMultipartUpload(MultipartUpload multipart, List<MultipartPart> parts) {
-        return blobStore.completeMultipartUpload(multipart, parts);
+        return measure("complete_multipart_upload", () -> blobStore.completeMultipartUpload(multipart, parts));
     }
 
     /**
@@ -119,7 +136,10 @@ public class BlobStorage implements Closeable {
      */
     @SuppressWarnings("UnstableApiUsage") // multipart upload uses beta API
     public void abortMultipartUpload(MultipartUpload multipart) {
-        blobStore.abortMultipartUpload(multipart);
+        measure("abort_multipart_upload", () -> {
+            blobStore.abortMultipartUpload(multipart);
+            return null;
+        });
     }
 
     /**
@@ -145,7 +165,10 @@ public class BlobStorage implements Closeable {
                 .userMetadata(metadata)
                 .build();
 
-        blobStore.putBlob(bucketName, blob);
+        measure("store", () -> {
+            Tracing.currentSpan().setAttribute("dial.blob.size", data.length);
+            return blobStore.putBlob(bucketName, blob);
+        });
     }
 
     /**
@@ -156,17 +179,21 @@ public class BlobStorage implements Closeable {
      */
     public Blob load(String filePath) {
         String storageLocation = getStorageLocation(filePath);
-        return blobStore.getBlob(bucketName, storageLocation);
+        return measure("load", () -> {
+            Blob blob = blobStore.getBlob(bucketName, storageLocation);
+            Tracing.currentSpan().setAttribute("dial.blob.found", blob != null);
+            return blob;
+        });
     }
 
     public boolean exists(String filePath) {
         String storageLocation = getStorageLocation(filePath);
-        return blobStore.blobExists(bucketName, storageLocation);
+        return measure("exists", () -> blobStore.blobExists(bucketName, storageLocation));
     }
 
     public BlobMetadata meta(String filePath) {
         String storageLocation = getStorageLocation(filePath);
-        return blobStore.blobMetadata(bucketName, storageLocation);
+        return measure("meta", () -> blobStore.blobMetadata(bucketName, storageLocation));
     }
 
     /**
@@ -176,7 +203,10 @@ public class BlobStorage implements Closeable {
      */
     public void delete(String filePath) {
         String storageLocation = getStorageLocation(filePath);
-        blobStore.removeBlob(bucketName, storageLocation);
+        measure("delete", () -> {
+            blobStore.removeBlob(bucketName, storageLocation);
+            return null;
+        });
     }
 
     public boolean copy(String fromPath, String toPath, Map<String, String> userMetadata) {
@@ -187,14 +217,14 @@ public class BlobStorage implements Closeable {
             BlobMetadata blobMetadata = meta(fromPath);
             copyOptions = CopyOptions.builder().contentMetadata(blobMetadata.getContentMetadata()).userMetadata(userMetadata).build();
         }
-        blobStore.copyBlob(bucketName, getStorageLocation(fromPath), bucketName, getStorageLocation(toPath), copyOptions);
+        measure("copy", () -> blobStore.copyBlob(bucketName, getStorageLocation(fromPath), bucketName, getStorageLocation(toPath), copyOptions));
         return true;
     }
 
     public PageSet<? extends StorageMetadata> list(String absoluteFilePath, String afterMarker, int maxResults, boolean recursive) {
         ListContainerOptions options = buildListContainerOptions(absoluteFilePath, maxResults, recursive, afterMarker);
 
-        PageSet<? extends StorageMetadata> originalSet = blobStore.list(bucketName, options);
+        PageSet<? extends StorageMetadata> originalSet = measure("list", () -> blobStore.list(bucketName, options));
         if (prefix == null) {
             return originalSet;
         }
@@ -211,6 +241,23 @@ public class BlobStorage implements Closeable {
                 .toList();
 
         return new PageSetImpl<>(resultSet, nextMarker);
+    }
+
+    private <T> T measure(String operation, Callable<T> work) {
+        Timer.Sample sample = Timer.start();
+        String outcome = "error";
+        try {
+            T result = tracing.trace("blob." + operation, work);
+            outcome = "success";
+            return result;
+        } finally {
+            sample.stop(Timer.builder("dial_blob_operation")
+                    .description("Latency of blob storage calls")
+                    .tag("operation", operation)
+                    .tag("outcome", outcome)
+                    .serviceLevelObjectives(OPERATION_LATENCY_BUCKETS)
+                    .register(Metrics.globalRegistry));
+        }
     }
 
     private String removePrefix(String path) {

@@ -16,6 +16,7 @@ import com.epam.aidial.core.storage.util.Compression;
 import com.epam.aidial.core.storage.util.EtagBuilder;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.epam.aidial.core.storage.util.RedisUtil;
+import com.epam.aidial.core.storage.util.Tracing;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
@@ -65,6 +66,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
@@ -155,6 +157,7 @@ public class ResourceService implements AutoCloseable {
     private final String resourceQueue;
     private final Map<String, Long> resourceTypeExpiration;
     private final Supplier<String> senderPodIdSupplier;
+    private final Tracing tracing;
 
     public ResourceService(TimerService timerService,
                            RedissonClient redis,
@@ -172,6 +175,18 @@ public class ResourceService implements AutoCloseable {
                            Settings settings,
                            String prefix,
                            Supplier<String> senderPodIdSupplier) {
+        this(timerService, redis, blobStore, lockService, settings, prefix, senderPodIdSupplier, Tracing.NOOP);
+    }
+
+    public ResourceService(TimerService timerService,
+                           RedissonClient redis,
+                           BlobStorage blobStore,
+                           LockService lockService,
+                           Settings settings,
+                           String prefix,
+                           Supplier<String> senderPodIdSupplier,
+                           Tracing tracing) {
+        this.tracing = tracing;
         this.redis = redis;
         this.blobStore = blobStore;
         this.lockService = lockService;
@@ -554,28 +569,33 @@ public class ResourceService implements AutoCloseable {
 
     @Nullable
     private Pair<ResourceItemMetadata, byte[]> getResourceBytesWithMetadata(ResourceDescriptor descriptor, EtagHeader etagHeader, boolean lock) {
-        String redisKey = redisKey(descriptor);
-        Result result = redisGet(redisKey, true);
+        return trace("resource.get", descriptor, () -> {
+            String redisKey = redisKey(descriptor);
+            Result result = redisGet(redisKey, true);
+            boolean cacheHit = true;
 
-        if (result == null) {
-            try (var ignore = lock ? lockService.lock(redisKey) : null) {
-                result = redisGet(redisKey, true);
+            if (result == null) {
+                try (var ignore = lock ? lockService.lock(redisKey) : null) {
+                    result = redisGet(redisKey, true);
 
-                if (result == null) {
-                    String blobKey = blobKey(descriptor);
-                    result = blobGet(blobKey, true);
-                    redisPut(redisKey, result);
+                    if (result == null) {
+                        cacheHit = false;
+                        String blobKey = blobKey(descriptor);
+                        result = blobGet(blobKey, true);
+                        redisPut(redisKey, result);
+                    }
                 }
             }
-        }
+            Tracing.currentSpan().setAttribute("dial.cache.hit", cacheHit);
 
-        etagHeader.validate(result.etag);
+            etagHeader.validate(result.etag);
 
-        if (result.exists()) {
-            return Pair.of(toResourceItemMetadata(descriptor, result), result.body);
-        }
+            if (result.exists()) {
+                return Pair.of(toResourceItemMetadata(descriptor, result), result.body);
+            }
 
-        return null;
+            return null;
+        });
     }
 
     public ResourceStream getResourceStream(ResourceDescriptor resource, EtagHeader etagHeader) throws IOException {
@@ -651,6 +671,17 @@ public class ResourceService implements AutoCloseable {
     }
 
     private ResourceItemMetadata putResource(
+            ResourceDescriptor descriptor,
+            byte[] body,
+            EtagHeader etagHeader,
+            String contentType,
+            String author,
+            boolean lock,
+            @Nullable Map<String, String> eventMetadata) {
+        return trace("resource.put", descriptor, () -> putResourceTraced(descriptor, body, etagHeader, contentType, author, lock, eventMetadata));
+    }
+
+    private ResourceItemMetadata putResourceTraced(
             ResourceDescriptor descriptor,
             byte[] body,
             EtagHeader etagHeader,
@@ -879,6 +910,10 @@ public class ResourceService implements AutoCloseable {
     }
 
     public ResourceItemMetadata computeResourceBytes(ResourceDescriptor descriptor, EtagHeader etag, String author, Function<byte[], byte[]> fn) {
+        return trace("resource.compute", descriptor, () -> computeResourceBytesTraced(descriptor, etag, author, fn));
+    }
+
+    private ResourceItemMetadata computeResourceBytesTraced(ResourceDescriptor descriptor, EtagHeader etag, String author, Function<byte[], byte[]> fn) {
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lockService.lock(redisKey)) {
@@ -913,6 +948,11 @@ public class ResourceService implements AutoCloseable {
     }
 
     public boolean deleteResource(ResourceDescriptor descriptor, EtagHeader etag, boolean lock,
+            @Nullable Map<String, String> eventMetadata) {
+        return trace("resource.delete", descriptor, () -> deleteResourceTraced(descriptor, etag, lock, eventMetadata));
+    }
+
+    private boolean deleteResourceTraced(ResourceDescriptor descriptor, EtagHeader etag, boolean lock,
             @Nullable Map<String, String> eventMetadata) {
         String redisKey = redisKey(descriptor);
 
@@ -1050,6 +1090,13 @@ public class ResourceService implements AutoCloseable {
         }
 
         return redisSync(redisKey);
+    }
+
+    private <T> T trace(String name, ResourceDescriptor descriptor, Callable<T> work) {
+        return tracing.trace(name, () -> {
+            Tracing.currentSpan().setAttribute("dial.resource.type", descriptor.getType().name());
+            return work.call();
+        });
     }
 
     private boolean blobExists(String key) {
