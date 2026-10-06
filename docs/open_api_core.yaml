@@ -18352,6 +18352,13 @@ components:
           type: string
         interfaces:
           $ref: "#/components/schemas/MapStringUpstreamInterface"
+        authType:
+          $ref: "#/components/schemas/UpstreamAuthType"
+    UpstreamAuthType:
+      type: string
+      enum:
+      - API_KEY
+      - BEARER
     UpstreamInterface:
       type: object
       properties:
