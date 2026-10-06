@@ -307,6 +307,10 @@ public class ControllerSelector {
             DeploymentController controller = new DeploymentController(proxy, context);
             return controller::listDeployments;
         })));
+        get(RouteTemplate.DEPLOYMENT_NAMES, (proxy, context, pathMatcher) -> {
+            DeploymentController controller = new DeploymentController(proxy, context);
+            return controller::listDeploymentNames;
+        });
         get(RouteTemplate.LLM_RESPONSES_API_BY_ID, (proxy, context, pathMatcher) -> {
             String id = UrlUtil.decodePath(pathMatcher.group("id"));
             return new ResponseItemController(proxy, context, id, ResponseItemController.Operation.GET);

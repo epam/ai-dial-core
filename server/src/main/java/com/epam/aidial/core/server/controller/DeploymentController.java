@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
+import com.epam.aidial.core.config.RoleBasedEntity;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -19,6 +20,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.extraction.ApplicationDeploymentExtractor;
 import com.epam.aidial.core.server.data.ApplicationData;
 import com.epam.aidial.core.server.data.DeploymentData;
+import com.epam.aidial.core.server.data.DeploymentNameData;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ToolSetData;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
@@ -37,8 +39,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Predicate;
 
 import static com.epam.aidial.core.server.controller.ModelController.createModel;
@@ -51,6 +55,10 @@ public class DeploymentController {
     private static final String MCP_IFACE = "mcp";
     private static final String CUSTOM_UI_IFACE = "custom_ui";
     private static final String ALL_IFACE = "all";
+    private static final String MODEL_TYPE = "model";
+    private static final String APPLICATION_TYPE = "application";
+    private static final String TOOLSET_TYPE = "toolset";
+    private static final Set<String> DEPLOYMENT_NAME_TYPES = Set.of(MODEL_TYPE, APPLICATION_TYPE, TOOLSET_TYPE);
     private final Proxy proxy;
     private final ProxyContext context;
     private final DeploymentService.DeploymentExtractor appExtractor;
@@ -169,6 +177,76 @@ public class DeploymentController {
         return Future.succeededFuture();
     }
 
+
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/deployment-names",
+            operationId = "listDeploymentNames",
+            tags = {"Deployment listing"},
+            parameters = {
+                    @ApiParameter(name = "type", in = ParameterIn.QUERY,
+                            schema = String[].class,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME_TYPES,
+                            allowableValues = {"model", "application", "toolset"})
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = List.class, typeArguments = {DeploymentNameData.class})),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 500)
+            }
+    )
+    public Future<?> listDeploymentNames() {
+        Set<String> types = new LinkedHashSet<>(List.of(context.getRequest().getParam("type", "all").split(",")));
+        if (types.remove(ALL_IFACE)) {
+            types.addAll(DEPLOYMENT_NAME_TYPES);
+        }
+        if (!DEPLOYMENT_NAME_TYPES.containsAll(types)) {
+            context.respond(HttpStatus.BAD_REQUEST, "Unknown deployment type in: " + types);
+            return Future.succeededFuture();
+        }
+
+        proxy.getTaskExecutor().submit(() -> listDeploymentNames(types))
+                .onSuccess(names -> context.respond(HttpStatus.OK, names))
+                .onFailure(error -> {
+                    log.error("Error occurred on listing deployment names", error);
+                    context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
+                });
+
+        return Future.succeededFuture();
+    }
+
+    private List<DeploymentNameData> listDeploymentNames(Set<String> types) {
+        Config config = context.getConfig();
+        List<DeploymentNameData> names = new ArrayList<>();
+        if (types.contains(MODEL_TYPE)) {
+            addAccessibleNames(names, config.getModels().values(), MODEL_TYPE);
+        }
+        if (types.contains(APPLICATION_TYPE)) {
+            addAccessibleNames(names, config.getApplications().values(), APPLICATION_TYPE);
+            if (applicationService.isIncludeCustomApps()) {
+                addNames(names, deploymentService.listDeploymentNames(context, ResourceTypes.APPLICATION, Application::new), APPLICATION_TYPE);
+            }
+        }
+        if (types.contains(TOOLSET_TYPE)) {
+            addAccessibleNames(names, config.getToolsets().values(), TOOLSET_TYPE);
+            addNames(names, deploymentService.listDeploymentNames(context, ResourceTypes.TOOL_SET, ToolSet::new), TOOLSET_TYPE);
+        }
+        return names;
+    }
+
+    private void addAccessibleNames(List<DeploymentNameData> names, Iterable<? extends RoleBasedEntity> entities, String object) {
+        for (RoleBasedEntity entity : entities) {
+            if (entity.hasAccess(context.getUserRoles())) {
+                names.add(new DeploymentNameData(entity.getName(), object));
+            }
+        }
+    }
+
+    private static void addNames(List<DeploymentNameData> names, Iterable<? extends RoleBasedEntity> entities, String object) {
+        for (RoleBasedEntity entity : entities) {
+            names.add(new DeploymentNameData(entity.getName(), object));
+        }
+    }
 
     @ApiOperation(
             method = "GET",
