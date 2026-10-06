@@ -44,10 +44,10 @@ public class ResourceAuthorizationClient {
 
     @SuppressWarnings("unused")
     @VisibleForTesting
-    private ResourceAuthorizationClient(HttpClient httpClient, HttpHeadersHandler httpHeadersHandler) {
+    private ResourceAuthorizationClient(HttpClient httpClient, HttpHeadersHandler httpHeadersHandler, Tracing tracing) {
         this.httpClient = httpClient;
         this.httpHeadersHandler = httpHeadersHandler;
-        this.tracing = Tracing.NOOP;
+        this.tracing = tracing;
     }
 
     public <R> R executeGet(String url, Class<R> responseType) {

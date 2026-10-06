@@ -3,11 +3,13 @@ package com.epam.aidial.core.credentials.service.metadata;
 import com.epam.aidial.core.credentials.data.registration.AuthorizationServerProtectedResourceMetadata;
 import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
+import com.epam.aidial.core.storage.util.Tracing;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.mockito.Spy;
 
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
@@ -37,6 +39,9 @@ class ProtectedResourceMetadataServiceTest {
 
     @Mock
     private HttpClient httpClient;
+
+    @Spy
+    private Tracing tracing = Tracing.NOOP;
 
     @InjectMocks
     private ResourceAuthorizationClient client;

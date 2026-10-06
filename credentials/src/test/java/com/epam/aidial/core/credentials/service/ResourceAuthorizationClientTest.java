@@ -2,6 +2,7 @@ package com.epam.aidial.core.credentials.service;
 
 import com.epam.aidial.core.credentials.service.metadata.HttpHeadersHandler;
 import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.util.Tracing;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.mockito.Spy;
 
 import java.io.ByteArrayOutputStream;
 import java.net.ConnectException;
@@ -42,6 +44,9 @@ class ResourceAuthorizationClientTest {
 
     @Mock
     private HttpHeadersHandler httpHeadersHandler;
+
+    @Spy
+    private Tracing tracing = Tracing.NOOP;
 
     @InjectMocks
     private ResourceAuthorizationClient resourceAuthorizationClient;
