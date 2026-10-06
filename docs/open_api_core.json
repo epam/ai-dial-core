@@ -2058,6 +2058,134 @@
         ]
       }
     },
+    "/openai/responses": {
+      "post": {
+        "tags": [
+          "LLM"
+        ],
+        "summary": "/openai/responses",
+        "operationId": "createResponseUnversioned",
+        "parameters": [
+          {
+            "name": "Content-Type",
+            "in": "header",
+            "description": "Must be application/json",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-DIAL-CACHE-POLICY",
+            "in": "header",
+            "description": "Upstream selection policy for prompt-caching deployments (availability-priority or cache-priority).",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "availability-priority",
+                "cache-priority"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponsesApiRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorData"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorData"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorData"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorData"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorData"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The server had an error while processing your request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorData"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway - failed to connect to upstream server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorData"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The engine is currently overloaded, please try again later.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/openai/toolsets": {
       "get": {
         "tags": [
@@ -7230,6 +7358,66 @@
         ]
       }
     },
+    "/v1/deployment-names": {
+      "get": {
+        "tags": [
+          "Deployment listing"
+        ],
+        "summary": "/v1/deployment-names",
+        "operationId": "listDeploymentNames",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "description": "Filter deployment names by kind (model, application, toolset). Defaults to all kinds.",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "model",
+                  "application",
+                  "toolset"
+                ]
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListDeploymentNameData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorData"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The server had an error while processing your request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/deployments": {
       "get": {
         "tags": [
@@ -7595,7 +7783,7 @@
         ],
         "summary": "/v1/deployments/{deployment_name}/limits",
         "operationId": "getDeploymentLimits",
-        "description": "Call this endpoint to get information about spent limits for a given deployment.\n",
+        "description": "Call this endpoint to get information about spent limits for a given deployment.\n\nOnly `*TokenStats` and `*RequestStats` are scoped to this deployment. `*CostStats` here is the\ncaller's *account-wide* cost budget and spend - the same figures on every deployment this caller\nqueries - not this deployment's own cost. For this deployment's own attributed spend, call\n`GET /v1/deployments/{deployment_name}/usage` instead.\n",
         "parameters": [
           {
             "name": "deployment_name",
@@ -8139,6 +8327,95 @@
         "tags": [
           "Deployment Feature"
         ]
+      }
+    },
+    "/v1/deployments/{deployment_name}/usage": {
+      "get": {
+        "tags": [
+          "Limits"
+        ],
+        "summary": "/v1/deployments/{deployment_name}/usage",
+        "operationId": "getDeploymentUsage",
+        "description": "Returns limits and current usage for exactly one deployment, attributing cost correctly where\n`/v1/deployments/{deployment_name}/limits` cannot: token and request stats are capped by this\ndeployment's own limit, and `*CostStats` here is this deployment's own attributed spend (direct\nplus any aggregated cost rolled up from a chain it drove), not the caller's account-wide budget.\nSince no per-deployment cost cap exists, cost `total` is always the unlimited sentinel\n`9223372036854775807` (`Long.MAX_VALUE`).\n\nThis is the single-deployment equivalent of a `deployments[deployment_name]` entry in\n`GET /v1/user/usage` - same figures, same caveats about trailing vs calendar-aligned windows and\n`resetsAt` - without downloading the whole account's usage report to find one entry. A deployment\nthat was never used still returns 200 with `used: 0` against its real limits, not 404; a\ndeployment name the caller cannot access, or that does not exist, returns 404.\n",
+        "parameters": [
+          {
+            "name": "deployment_name",
+            "in": "path",
+            "description": "The name of the deployment.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LimitStats"
+                },
+                "examples": {
+                  "Example": {
+                    "value": {
+                      "dayTokenStats": {
+                        "total": 1000000,
+                        "used": 3222,
+                        "resetsAt": "2026-10-02T00:00:00Z"
+                      },
+                      "weekTokenStats": {
+                        "total": 9223372036854775807,
+                        "used": 3222,
+                        "resetsAt": "2026-10-05T00:00:00Z"
+                      },
+                      "dayCostStats": {
+                        "total": 9223372036854775807,
+                        "used": 0.028953,
+                        "resetsAt": "2026-10-02T00:00:00Z"
+                      },
+                      "weekCostStats": {
+                        "total": 9223372036854775807,
+                        "used": 0.028953,
+                        "resetsAt": "2026-10-05T00:00:00Z"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorData"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorData"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The server had an error while processing your request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorData"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/files/{bucket}/{file_path}": {
@@ -23708,6 +23985,11 @@
             "type": "string",
             "description": "The execution status of the stage. Available status values:\n\n* `null`: The stage is in progress.\n* `completed`: The stage is completed.\n* `failed`: The stage is failed.",
             "nullable": true
+          },
+          "parent_stage_index": {
+            "minimum": 0,
+            "type": "integer",
+            "description": "Index of the parent stage. Present only for nested stages; absent for top-level stages.\n<br><br>\nIn *streaming* responses, the field is sent only in the chunk that opens the stage and\nrefers to the parent's `index`. The parent is always announced before its children,\nbelongs to the same choice, and `parent_stage_index` is always less than `index`.\n<br><br>\nIn *non-streaming* responses, `index` is omitted, and `parent_stage_index` is the\nposition of the parent stage in the `stages` array.\n<br><br>\nClients that don't support nesting can ignore this field and show stages as a flat list.\nA reference to an unknown parent should be shown as a top-level stage."
           }
         }
       },
@@ -24539,6 +24821,17 @@
           },
           "overridePaths": {
             "$ref": "#/components/schemas/MapStringString"
+          }
+        }
+      },
+      "DeploymentNameData": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string"
           }
         }
       },
@@ -25562,6 +25855,12 @@
         "type": "array",
         "items": {
           "$ref": "#/components/schemas/DeploymentData"
+        }
+      },
+      "ListDeploymentNameData": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/DeploymentNameData"
         }
       },
       "ListExternalServiceData": {
