@@ -59,4 +59,10 @@ public class Upstream {
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     @JsonAlias({"interfaces", "dial:interfaces"})
     private Map<String, UpstreamInterface> interfaces = Map.of();
+    /**
+     * HTTP header/scheme used to carry {@link #key} to this upstream on the route path. API_KEY (default)
+     * sends it as {@code API-KEY: <key>}; BEARER sends it as {@code Authorization: Bearer <key>}.
+     */
+    @JsonAlias({"authType", "auth_type"})
+    private UpstreamAuthType authType = UpstreamAuthType.API_KEY;
 }

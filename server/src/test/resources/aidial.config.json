@@ -56,6 +56,11 @@
       "methods": ["GET"],
       "upstreams": [{"endpoint": "http://localhost:9876"}]
     },
+    "bearer": {
+      "paths": ["/v1/bearer"],
+      "methods": ["GET"],
+      "upstreams": [{"endpoint": "http://localhost:9876", "key": "bearerKey123", "authType": "BEARER"}]
+    },
     "vector_store_query": {
       "paths": ["/v1/vector_store(/[^/]+)*$"],
       "rewritePath": true,
@@ -112,7 +117,7 @@
           "paths": ["/v1/index(/[^/]+)*$"],
           "rewritePath": true,
           "methods": ["POST", "PUT", "DELETE"],
-          "upstreams": [{"endpoint": "http://localhost:4848"}],
+          "upstreams": [{"endpoint": "http://localhost:4848", "key": "indexSearchKey123", "authType": "BEARER"}],
           "attachmentPaths": {
             "requestBody": ["@.attachments[*].url"],
             "responseBody": ["@.result.attachedFiles"]
