@@ -58,6 +58,7 @@ import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.AuthSettingsResolver;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.server.vertx.FutureUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -305,7 +306,9 @@ public class Proxy implements Handler<HttpServerRequest> {
         String traceFlags = spanContext.getTraceFlags().asHex();
 
         request.pause();
-        Future<AuthorizationResult> authorizationResultFuture = authorizeRequest(request);
+        // authorization may wait on a lookup shared with another request and complete on that request's context;
+        // continue on this request's own context whatever happened inside
+        Future<AuthorizationResult> authorizationResultFuture = FutureUtil.continueOnCallerContext(authorizeRequest(request));
         authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, request, result.apiKeyData, traceId, spanId, traceFlags))
                 .onFailure(error -> handleError(error, request))
                 .onComplete(ignore -> request.resume());

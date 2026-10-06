@@ -20,7 +20,8 @@ public class ContextManager {
     private static final String PROXY_CONTEXT_KEY = "proxyContext";
 
     /**
-     * Stores into the request's own context whatever context is current; a request without one (tests) stores nothing.
+     * Stores the entry in the request's own context regardless of the current context. A request without a Vert.x
+     * context (tests) stores nothing.
      */
     public static void setProxyContext(ProxyContext proxyContext) {
         if (proxyContext != null && proxyContext.getRequest() instanceof HttpServerRequestInternal request) {

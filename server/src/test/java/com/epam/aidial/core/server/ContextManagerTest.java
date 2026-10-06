@@ -73,9 +73,12 @@ class ContextManagerTest {
         ProxyContext proxyContext = mock(ProxyContext.class);
         when(proxyContext.getRequest()).thenReturn(mock(HttpServerRequest.class));
 
-        on(requestContext(), () -> set(proxyContext));
+        ContextInternal current = requestContext();
 
-        assertNull(on(requestContext(), ContextManager::getProxyContext));
+        on(current, () -> set(proxyContext));
+
+        // in particular it must not fall back to the current context
+        assertNull(on(current, ContextManager::getProxyContext));
     }
 
     /**

@@ -344,10 +344,12 @@ public class IdentityProvider {
             }).onComplete(lookup);
             return lookup.future();
         });
-        // the shared future completes on the first caller's context: continue on the current request's context.
-        // A lookup that fails outside the catch above (an Error, a rejected task) has no result for the evictor
-        // to expire, so drop it here
-        return FutureUtil.continueOnCallerContext(shared).onFailure(error -> cache.remove(kid, shared));
+        // an Error inside the lookup fails the shared future with no result for the evictor to expire: drop it in the
+        // same step as the failure, before another request can pick it up from the cache (a rejected task throws out
+        // of computeIfAbsent and caches nothing)
+        shared.onFailure(error -> cache.remove(kid, shared));
+        // the shared future completes on the first caller's context: continue on the current request's context
+        return FutureUtil.continueOnCallerContext(shared);
     }
 
     private Future<DecodedJWT> verifyJwt(DecodedJWT jwt) {
