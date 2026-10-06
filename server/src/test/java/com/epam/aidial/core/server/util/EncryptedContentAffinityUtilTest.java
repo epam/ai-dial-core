@@ -163,6 +163,41 @@ public class EncryptedContentAffinityUtilTest {
     }
 
     @Test
+    void wrapSseItemIdWrapsItemIdField() {
+        ObjectNode event = ProxyUtil.MAPPER.createObjectNode();
+        event.put("type", "response.reasoning_summary_part.added");
+        event.put("item_id", "rs_original");
+        event.put("output_index", 0);
+
+        EncryptedContentAffinityUtil.wrapSseItemId(event, "upstream-a", "deploy-x");
+        assertTrue(event.path("item_id").asText().startsWith("dialenc_"));
+
+        // verify that the wrapped item_id round-trips through resolveAndUnwrap by checking it
+        // decodes as a valid wrapped id wrapping "rs_original"
+        ObjectNode syntheticItem = ProxyUtil.MAPPER.createObjectNode();
+        syntheticItem.put("type", "reasoning");
+        syntheticItem.put("id", event.path("item_id").asText());
+        ArrayNode input = ProxyUtil.MAPPER.createArrayNode();
+        input.add(syntheticItem);
+
+        List<EncryptedContentAffinityUtil.ResolvedAffinity> resolved = EncryptedContentAffinityUtil.resolveAndUnwrap(input);
+        assertEquals(1, resolved.size());
+        assertEquals("upstream-a", resolved.get(0).upstreamId());
+        assertEquals("deploy-x", resolved.get(0).deploymentName());
+        assertEquals("rs_original", syntheticItem.path("id").asText());
+    }
+
+    @Test
+    void wrapSseItemIdIsNoOpWhenItemIdAbsent() {
+        ObjectNode event = ProxyUtil.MAPPER.createObjectNode();
+        event.put("type", "response.reasoning_summary_part.added");
+
+        EncryptedContentAffinityUtil.wrapSseItemId(event, "upstream-a", "deploy-x");
+
+        assertFalse(event.has("item_id"));
+    }
+
+    @Test
     void upstreamUnavailableExceptionCarriesCodeAndStatus() {
         HttpException exception = EncryptedContentAffinityUtil.upstreamUnavailableException("upstream-x");
         assertEquals(HttpStatus.CONFLICT, exception.getStatus());

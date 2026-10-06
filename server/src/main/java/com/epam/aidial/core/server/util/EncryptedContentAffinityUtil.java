@@ -71,6 +71,13 @@ public class EncryptedContentAffinityUtil {
         }
     }
 
+    public void wrapSseItemId(ObjectNode event, String encryptedUpstreamId, String deploymentName) {
+        JsonNode itemIdNode = event.path("item_id");
+        if (itemIdNode.isTextual()) {
+            event.put("item_id", wrapId(encryptedUpstreamId, deploymentName, itemIdNode.asText()));
+        }
+    }
+
     public void wrapOutputArray(JsonNode output, String encryptedUpstreamId, String deploymentName) {
         if (!(output instanceof ArrayNode array)) {
             return;
