@@ -37,6 +37,10 @@ public enum RouteTemplate {
             "^/+openai/v1/responses$",
             "/openai/v1/responses"
     ),
+    LLM_RESPONSES_API_UNVERSIONED(
+            "^/+openai/responses$",
+            "/openai/responses"
+    ),
     LLM_RESPONSES_API_CANCEL(
             "^/+openai/v1/responses/(?<id>[^/]+)/cancel$",
             "/openai/v1/responses/{id}/cancel"
@@ -201,6 +205,10 @@ public enum RouteTemplate {
     DEPLOYMENT_LIMITS(
             "^/v1/deployments/(?<id>.+?)/limits$",
             "/v1/deployments/{id}/limits"
+    ),
+    DEPLOYMENT_USAGE(
+            "^/v1/deployments/(?<id>.+?)/usage$",
+            "/v1/deployments/{id}/usage"
     ),
 
     DEPLOYMENT_ROUTES(

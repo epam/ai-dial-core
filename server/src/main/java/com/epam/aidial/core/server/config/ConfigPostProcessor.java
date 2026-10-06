@@ -74,7 +74,7 @@ public final class ConfigPostProcessor {
     // (ConfigResourceController), the batch apply/validate endpoints (ConfigManifestSupport), and
     // the file-config migration tool (ConfigFileMigrateController, SchemaMigrationNameResolver) —
     // so none of them can be used to bypass what the others enforce.
-    public static final Pattern ENTITY_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9._%:@\\[\\]-]+$");
+    public static final Pattern ENTITY_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9._%:@\\[\\]()-]+$");
     private static final Pattern RESOURCE_KEY_PATTERN = Pattern.compile("^[A-Za-z0-9-_]+$");
     private static final AuthSettingsValidatorFactory AUTH_SETTINGS_VALIDATOR_FACTORY = new AuthSettingsValidatorFactory();
 

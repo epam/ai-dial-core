@@ -117,6 +117,45 @@ public class LimitApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testGetDeploymentUsage_UnknownModel() {
+        Response response = send(HttpMethod.GET, "/v1/deployments/unknown-model/usage", null, null);
+        verify(response, 404);
+    }
+
+    @Test
+    public void testGetDeploymentUsage_AccessDenied() {
+        Response response = send(HttpMethod.GET, "/v1/deployments/gpt-4/usage", null, null);
+        verify(response, 403);
+    }
+
+    @Test
+    public void testGetDeploymentUsage_UnusedDeploymentReportsZeros() {
+        Response response = send(HttpMethod.GET, "/v1/deployments/test-model-v1/usage", null, null);
+        verify(response, 200);
+        JsonNode body = readJson(response);
+        assertEquals(0, body.get("dayTokenStats").get("used").asLong());
+        assertEquals(0, new BigDecimal("0").compareTo(body.get("dayCostStats").get("used").decimalValue()));
+    }
+
+    /**
+     * Unlike {@code /limits}, whose {@code *CostStats} are the caller's account-wide budget/spend, this
+     * endpoint's cost stats are this one deployment's own attributed spend - identical to its entry in
+     * the bulk {@code /v1/user/usage} report, and a bare {@link com.epam.aidial.core.server.data.LimitStats}
+     * rather than a map entry.
+     */
+    @Test
+    public void testGetDeploymentUsage_ReportsOwnCostNotAccountWideCost() {
+        completion("gpt-3-turbo");
+
+        JsonNode usage = readJson(send(HttpMethod.GET, "/v1/deployments/gpt-3-turbo/usage", null, null));
+        JsonNode bulkUsage = deployment(getUserUsage(), "gpt-3-turbo");
+        for (String window : List.of("minuteTokenStats", "dayTokenStats", "weekTokenStats", "monthTokenStats",
+                "hourRequestStats", "dayRequestStats", "minuteCostStats", "dayCostStats", "weekCostStats", "monthCostStats")) {
+            assertEquals(bulkUsage.get(window).toString(), usage.get(window).toString(), window);
+        }
+    }
+
+    @Test
     public void testGetUserLimits_Success() {
         JsonNode body = getUserLimits();
 

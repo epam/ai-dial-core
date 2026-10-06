@@ -937,13 +937,14 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         // Covers every character ENTITY_NAME_PATTERN allows beyond the base alphanumeric/./-/_ set,
         // in one name, so widening the pattern later just means adding a character here instead of
         // a new test method: '@' is common in real-world deployment ids; '[' / ']' show up in
-        // legacy model ids carrying a context-window suffix (e.g. "claude-opus-4-8[1m]").
+        // legacy model ids carrying a context-window suffix (e.g. "claude-opus-4-8[1m]"); '(' / ')'
+        // show up in vendor-qualified ids (e.g. "gpt-4(preview)").
         String body = """
                 {
                   "manifests": [
                     {
                       "kind": "Model",
-                      "name": "models/platform/org@apply-model[1m]",
+                      "name": "models/platform/org@apply-model(preview)[1m]",
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"
@@ -956,7 +957,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         verify(response, 200);
         JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
-        verify(send(HttpMethod.GET, "/v1/models/platform/org@apply-model%5B1m%5D", null, "",
+        verify(send(HttpMethod.GET, "/v1/models/platform/org@apply-model(preview)%5B1m%5D", null, "",
                 "authorization", "admin"), 200);
     }
 

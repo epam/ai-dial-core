@@ -448,11 +448,12 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         // Covers every character ENTITY_NAME_PATTERN allows beyond the base alphanumeric/./-/_ set,
         // in one name, so widening the pattern later just means adding a character here instead of
         // a new test method: '@' is common in real-world deployment ids; '[' / ']' show up in
-        // legacy model ids carrying a context-window suffix (e.g. "claude-opus-4-8[1m]"). All are
-        // legal on every supported blob backend (Azure/S3/GCS/local filesystem). '@' is unreserved
-        // in a URL path segment, but '[' / ']' are reserved and must be percent-encoded.
-        String decoded = "org@model-v1[1m]";
-        String encoded = "org@model-v1%5B1m%5D";
+        // legacy model ids carrying a context-window suffix (e.g. "claude-opus-4-8[1m]"); '(' / ')'
+        // show up in vendor-qualified ids (e.g. "gpt-4(preview)"). All are legal on every supported
+        // blob backend (Azure/S3/GCS/local filesystem). '@' and '(' / ')' are unreserved in a URL
+        // path segment, but '[' / ']' are reserved and must be percent-encoded.
+        String decoded = "org@model-v1(preview)[1m]";
+        String encoded = "org@model-v1(preview)%5B1m%5D";
         verify(send(HttpMethod.PUT, "/v1/models/platform/" + encoded, null, MODEL_BODY_NO_SECRET,
                 "authorization", "admin", "If-None-Match", "*"), 200);
 

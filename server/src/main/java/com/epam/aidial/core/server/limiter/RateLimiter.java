@@ -166,6 +166,62 @@ public class RateLimiter {
     }
 
     /**
+     * Reports a single deployment's own attributed usage - unlike {@link #getLimitStats}, whose
+     * {@code *CostStats} are the caller's account-wide budget/spend, this deployment's token/request
+     * stats are capped by its real {@link Limit} and its cost stats are the deployment's own direct +
+     * aggregated spend against the unlimited sentinel, since no per-deployment cost cap exists.
+     */
+    public Future<LimitStats> getDeploymentUsage(RoleBasedEntity roleBasedEntity, ProxyContext context) {
+        try {
+            // skip checking limits if redis is not available
+            if (resourceService == null) {
+                return Future.succeededFuture();
+            }
+            Limit limit = getLimitByUser(context, roleBasedEntity);
+            return taskExecutor.submit(() -> collectDeploymentUsage(context, limit, roleBasedEntity.getName()));
+        } catch (Throwable e) {
+            return Future.failedFuture(e);
+        }
+    }
+
+    private LimitStats collectDeploymentUsage(ProxyContext context, Limit limit, String name) {
+        String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
+        RateLimitSchedule schedule = context.getConfig().getRateLimitSchedule();
+        long timestamp = System.currentTimeMillis();
+        Map<String, StatsTarget> targetsByRecordPath = new HashMap<>();
+        LimitStats limitStats = buildDeploymentLimitStats(bucketLocation, limit, name, timestamp, schedule, targetsByRecordPath);
+        List<Pair<ResourceItemMetadata, String>> records = loadLimitRecords(bucketLocation, targetsByRecordPath.keySet());
+        for (Pair<ResourceItemMetadata, String> loaded : records) {
+            String path = loaded.getKey().getDescriptor().getAbsoluteFilePath();
+            StatsTarget target = targetsByRecordPath.get(path);
+            target.type().collect(loaded.getValue(), target.stats(), timestamp, schedule);
+        }
+        return limitStats;
+    }
+
+    /**
+     * Builds a single deployment's {@link LimitStats} and wires its token/request/cost record paths into
+     * {@code targetsByRecordPath}, so both {@link #collectUserStats} (many deployments, one listing) and
+     * {@link #collectDeploymentUsage} (one deployment) assemble the same per-deployment shape.
+     */
+    private LimitStats buildDeploymentLimitStats(
+            String bucketLocation, Limit limit, String name, long timestamp,
+            RateLimitSchedule schedule, Map<String, StatsTarget> targetsByRecordPath) {
+        // DEFAULT_COST_LIMIT leaves every cost window at the unlimited sentinel: an entry reports the
+        // deployment's attributed spend, and only the global budget can cap it
+        LimitStats limitStats = create(limit, DEFAULT_COST_LIMIT, timestamp, schedule);
+        targetsByRecordPath.put(getLimitAbsolutePath(bucketLocation, getPathToTokens(name)),
+                new StatsTarget(limitStats, LimitType.TOKENS));
+        targetsByRecordPath.put(getLimitAbsolutePath(bucketLocation, getPathToRequests(name)),
+                new StatsTarget(limitStats, LimitType.REQUESTS));
+        targetsByRecordPath.put(getLimitAbsolutePath(bucketLocation, getPathToDeploymentCosts(name)),
+                new StatsTarget(limitStats, LimitType.COSTS));
+        targetsByRecordPath.put(getLimitAbsolutePath(bucketLocation, getPathToAggregatedCosts(name)),
+                new StatsTarget(limitStats, LimitType.AGGREGATED_COSTS));
+        return limitStats;
+    }
+
+    /**
      * Collects limits and rolling usage for every deployment the caller can access.
      *
      * <p>The key set comes from config, so a deployment the caller can no longer access cannot be reported
@@ -201,17 +257,7 @@ public class RateLimiter {
         for (RoleBasedEntity deployment : deployments) {
             String name = deployment.getName();
             Limit limit = getLimitByUser(context, deployment);
-            // DEFAULT_COST_LIMIT leaves every cost window at the unlimited sentinel: an entry reports the
-            // deployment's attributed spend, and only the global budget can cap it
-            LimitStats limitStats = create(limit, DEFAULT_COST_LIMIT, timestamp, schedule);
-            String tokensPath = getLimitAbsolutePath(bucketLocation, getPathToTokens(name));
-            String requestsPath = getLimitAbsolutePath(bucketLocation, getPathToRequests(name));
-            String costsPath = getLimitAbsolutePath(bucketLocation, getPathToDeploymentCosts(name));
-            String aggregatedCostsPath = getLimitAbsolutePath(bucketLocation, getPathToAggregatedCosts(name));
-            targetsByRecordPath.put(tokensPath, new StatsTarget(limitStats, LimitType.TOKENS));
-            targetsByRecordPath.put(requestsPath, new StatsTarget(limitStats, LimitType.REQUESTS));
-            targetsByRecordPath.put(costsPath, new StatsTarget(limitStats, LimitType.COSTS));
-            targetsByRecordPath.put(aggregatedCostsPath, new StatsTarget(limitStats, LimitType.AGGREGATED_COSTS));
+            LimitStats limitStats = buildDeploymentLimitStats(bucketLocation, limit, name, timestamp, schedule, targetsByRecordPath);
             statsByDeployment.put(name, limitStats);
         }
 
