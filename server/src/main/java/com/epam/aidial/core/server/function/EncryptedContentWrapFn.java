@@ -43,6 +43,7 @@ public class EncryptedContentWrapFn extends BaseResponseFunction {
             EncryptedContentAffinityUtil.wrapOutputArray(response.path("output"), encryptedUpstreamId, deploymentName);
         } else if (tree instanceof ObjectNode event
                 && ("response.reasoning_summary_part.added".equals(type)
+                        || "response.reasoning_summary_text.delta".equals(type)
                         || "response.reasoning_summary_text.done".equals(type)
                         || "response.reasoning_summary_part.done".equals(type))) {
             EncryptedContentAffinityUtil.wrapSseItemId(event, encryptedUpstreamId, deploymentName);
