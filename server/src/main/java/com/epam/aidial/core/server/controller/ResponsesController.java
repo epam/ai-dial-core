@@ -439,7 +439,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         String upstreamId = idNode.asText();
         Upstream upstream = context.getUpstreamRoute().get();
         if (EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
-            EncryptedContentAffinityUtil.wrapOutputArray(object.path("output"), upstream.getId());
+            EncryptedContentAffinityUtil.wrapOutputArray(object.path("output"), upstream.getId(), context.getDeployment().getName());
         }
         if (!context.isStoreResponse()) {
             String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());

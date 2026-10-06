@@ -33,11 +33,12 @@ public class EncryptedContentWrapFn extends BaseResponseFunction {
         String encryptedUpstreamId = explicitEncryptedUpstreamId != null
                 ? explicitEncryptedUpstreamId
                 : context.getUpstreamRoute().get().getId();
+        String deploymentName = context.getDeployment().getName();
 
         if (tree.get("item") instanceof ObjectNode item && "response.output_item.done".equals(tree.path("type").asText())) {
-            EncryptedContentAffinityUtil.wrapOutputItem(item, encryptedUpstreamId);
+            EncryptedContentAffinityUtil.wrapOutputItem(item, encryptedUpstreamId, deploymentName);
         } else if (tree.get("response") instanceof ObjectNode response) {
-            EncryptedContentAffinityUtil.wrapOutputArray(response.path("output"), encryptedUpstreamId);
+            EncryptedContentAffinityUtil.wrapOutputArray(response.path("output"), encryptedUpstreamId, deploymentName);
         }
         return Future.succeededFuture(tree);
     }

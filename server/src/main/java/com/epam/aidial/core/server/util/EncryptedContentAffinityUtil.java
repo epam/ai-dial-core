@@ -11,8 +11,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.SneakyThrows;
 import lombok.experimental.UtilityClass;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.LinkedHashSet;
+import java.util.List;
 import javax.annotation.Nullable;
 
 /**
@@ -32,6 +33,9 @@ public class EncryptedContentAffinityUtil {
     private static final String CONTENT_WRAP_PREFIX = "dialenc:";
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder DECODER = Base64.getUrlDecoder();
+
+    public record ResolvedAffinity(String upstreamId, @Nullable String deploymentName) {
+    }
 
     public boolean hasConfiguredUpstreams(Deployment deployment) {
         // Even though there is no ambiguity when there is only one upstream,
@@ -54,60 +58,52 @@ public class EncryptedContentAffinityUtil {
      * {@code include=reasoning.encrypted_content} was not requested) so a later turn that echoes the item back
      * by id alone still carries affinity. No-op if the item is not a reasoning item.
      */
-    public void wrapOutputItem(JsonNode item, String encryptedUpstreamId) {
+    public void wrapOutputItem(JsonNode item, String encryptedUpstreamId, String deploymentName) {
         if (!isReasoningItem(item) || !(item instanceof ObjectNode object)) {
             return;
         }
         JsonNode idNode = object.path("id");
         if (idNode.isTextual()) {
-            object.put("id", wrapId(encryptedUpstreamId, idNode.asText()));
+            object.put("id", wrapId(encryptedUpstreamId, deploymentName, idNode.asText()));
         }
         if (isEncryptedItem(object)) {
-            object.put("encrypted_content", wrapContent(encryptedUpstreamId, object.path("encrypted_content").asText()));
+            object.put("encrypted_content", wrapContent(encryptedUpstreamId, deploymentName, object.path("encrypted_content").asText()));
         }
     }
 
-    public void wrapOutputArray(JsonNode output, String encryptedUpstreamId) {
+    public void wrapOutputArray(JsonNode output, String encryptedUpstreamId, String deploymentName) {
         if (!(output instanceof ArrayNode array)) {
             return;
         }
         for (JsonNode item : array) {
-            wrapOutputItem(item, encryptedUpstreamId);
+            wrapOutputItem(item, encryptedUpstreamId, deploymentName);
         }
     }
 
     /**
      * Unwraps every wrapped {@code id}/{@code encrypted_content} field found in {@code input}, mutating it in
-     * place back to the provider-native shape, and returns the upstream config id they agreed on.
+     * place back to the provider-native shape, and returns the unique resolved affinities (deduplicated by full
+     * record equality) found across all items.
      *
-     * @return the resolved upstream config id, or {@code null} if nothing wrapped was found
-     * @throws HttpException 400 {@code conflicting_encrypted_content_affinity} if items disagree
+     * @return unique resolved affinities; empty if nothing wrapped was found
      */
-    @Nullable
-    public String resolveAndUnwrap(ArrayNode input) {
-        String resolvedUpstreamId = null;
+    public List<ResolvedAffinity> resolveAndUnwrap(ArrayNode input) {
+        LinkedHashSet<ResolvedAffinity> resolved = new LinkedHashSet<>();
         for (JsonNode item : input) {
             if (!(item instanceof ObjectNode object)) {
                 continue;
             }
-            String upstreamFromId = unwrapId(object);
-            String upstreamFromContent = unwrapContent(object);
-            for (String candidate : new String[] {upstreamFromId, upstreamFromContent}) {
-                if (candidate == null) {
-                    continue;
-                }
-                if (resolvedUpstreamId == null) {
-                    resolvedUpstreamId = candidate;
-                } else if (!resolvedUpstreamId.equals(candidate)) {
-                    throw conflictingAffinityException();
+            for (ResolvedAffinity candidate : new ResolvedAffinity[] {unwrapId(object), unwrapContent(object)}) {
+                if (candidate != null) {
+                    resolved.add(candidate);
                 }
             }
         }
-        return resolvedUpstreamId;
+        return List.copyOf(resolved);
     }
 
     @Nullable
-    private String unwrapId(ObjectNode object) {
+    private ResolvedAffinity unwrapId(ObjectNode object) {
         JsonNode idNode = object.path("id");
         if (!idNode.isTextual() || !idNode.asText().startsWith(ID_WRAP_PREFIX)) {
             return null;
@@ -122,7 +118,7 @@ public class EncryptedContentAffinityUtil {
                 return null;
             }
             object.put("id", originalId);
-            return encryptedUpstreamId;
+            return new ResolvedAffinity(encryptedUpstreamId, payload.path("d").asText(null));
         } catch (Exception e) {
             // malformed/garbage wrapper - treat as not wrapped, pass through untouched
             return null;
@@ -130,7 +126,7 @@ public class EncryptedContentAffinityUtil {
     }
 
     @Nullable
-    private String unwrapContent(ObjectNode object) {
+    private ResolvedAffinity unwrapContent(ObjectNode object) {
         JsonNode contentNode = object.path("encrypted_content");
         if (!contentNode.isTextual() || !contentNode.asText().startsWith(CONTENT_WRAP_PREFIX)) {
             return null;
@@ -140,34 +136,44 @@ public class EncryptedContentAffinityUtil {
         if (separator < 0) {
             return null;
         }
-        String encodedUpstreamId = wrapped.substring(0, separator);
+        String encodedPayload = wrapped.substring(0, separator);
         String originalContent = wrapped.substring(separator + 1);
         try {
-            String encryptedUpstreamId = new String(DECODER.decode(encodedUpstreamId), StandardCharsets.UTF_8);
+            byte[] decoded = DECODER.decode(encodedPayload);
+            JsonNode payload = ProxyUtil.MAPPER.readTree(decoded);
+            String encryptedUpstreamId = payload.path("u").asText(null);
+            if (encryptedUpstreamId == null) {
+                return null;
+            }
             object.put("encrypted_content", originalContent);
-            return encryptedUpstreamId;
-        } catch (IllegalArgumentException e) {
+            return new ResolvedAffinity(encryptedUpstreamId, payload.path("d").asText(null));
+        } catch (Exception e) {
             // malformed/garbage wrapper - treat as not wrapped, pass through untouched
             return null;
         }
     }
 
     @SneakyThrows
-    private String wrapId(String encryptedUpstreamId, String originalId) {
+    private String wrapId(String encryptedUpstreamId, String deploymentName, String originalId) {
         ObjectNode payload = ProxyUtil.MAPPER.createObjectNode();
         payload.put("u", encryptedUpstreamId);
+        payload.put("d", deploymentName);
         payload.put("o", originalId);
         return ID_WRAP_PREFIX + ENCODER.encodeToString(ProxyUtil.MAPPER.writeValueAsBytes(payload));
     }
 
-    private String wrapContent(String encryptedUpstreamId, String originalContent) {
+    @SneakyThrows
+    private String wrapContent(String encryptedUpstreamId, String deploymentName, String originalContent) {
+        ObjectNode payload = ProxyUtil.MAPPER.createObjectNode();
+        payload.put("u", encryptedUpstreamId);
+        payload.put("d", deploymentName);
         return CONTENT_WRAP_PREFIX
-                + ENCODER.encodeToString(encryptedUpstreamId.getBytes(StandardCharsets.UTF_8))
+                + ENCODER.encodeToString(ProxyUtil.MAPPER.writeValueAsBytes(payload))
                 + ";" + originalContent;
     }
 
     @SneakyThrows
-    private HttpException conflictingAffinityException() {
+    public HttpException conflictingAffinityException() {
         ErrorData response = new ErrorData();
         String message = "Conflicting encrypted content affinity across input items.";
         response.getError().setMessage(message);

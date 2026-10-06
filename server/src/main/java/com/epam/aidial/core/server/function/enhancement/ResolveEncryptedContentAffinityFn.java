@@ -7,6 +7,11 @@ import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
+import lombok.extern.slf4j.Slf4j;
+
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Resolves the upstream config id encoded into an incoming Responses API request's echoed encrypted content
@@ -14,6 +19,7 @@ import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
  * and stores the resolved id via {@link RequestObject#setEncryptedUpstreamId(String)} so the controller can
  * force routing back to the originating upstream.
  */
+@Slf4j
 public class ResolveEncryptedContentAffinityFn extends BaseRequestFunction<RequestObject> {
 
     public ResolveEncryptedContentAffinityFn(Proxy proxy, ProxyContext context) {
@@ -28,11 +34,25 @@ public class ResolveEncryptedContentAffinityFn extends BaseRequestFunction<Reque
         if (!(request instanceof ResponsesApiRequest responsesRequest)) {
             return false;
         }
-        String resolvedUpstreamId = responsesRequest.resolveAndUnwrapEncryptedContentAffinity();
-        if (resolvedUpstreamId == null) {
+        Model model = (Model) context.getDeployment();
+        List<EncryptedContentAffinityUtil.ResolvedAffinity> results = responsesRequest.resolveAndUnwrapEncryptedContentAffinity();
+        if (results.isEmpty()) {
             return false;
         }
-        Model model = (Model) context.getDeployment();
+        Set<String> upstreamIds = results.stream()
+                .map(EncryptedContentAffinityUtil.ResolvedAffinity::upstreamId)
+                .collect(Collectors.toSet());
+        if (upstreamIds.size() > 1) {
+            throw EncryptedContentAffinityUtil.conflictingAffinityException();
+        }
+        String currentDeploymentName = model.getName();
+        for (EncryptedContentAffinityUtil.ResolvedAffinity result : results) {
+            if (result.deploymentName() != null && !result.deploymentName().equals(currentDeploymentName)) {
+                log.warn("Deployment mismatch: encrypted content was produced by '{}' but current deployment is '{}'",
+                        result.deploymentName(), currentDeploymentName);
+            }
+        }
+        String resolvedUpstreamId = results.getFirst().upstreamId();
         boolean exists = model.getUpstreams().stream()
                 .anyMatch(upstream -> resolvedUpstreamId.equals(upstream.getId()));
         if (!exists) {
