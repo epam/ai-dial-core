@@ -327,7 +327,7 @@ public class IdentityProvider {
     }
 
     private Future<JwkResult> getJwk(String kid) {
-        Future<JwkResult> shared = cache.computeIfAbsent(kid, key -> {
+        return FutureUtil.shared(cache, kid, () -> {
             // the cached future must be context-less: the executor's future is bound to the calling request's
             // context and would pin it, and with it the ProxyContext stored there after authorization, for the TTL
             Promise<JwkResult> lookup = Promise.promise();
@@ -335,7 +335,7 @@ public class IdentityProvider {
                 JwkResult jwkResult;
                 long currentTime = System.currentTimeMillis();
                 try {
-                    Jwk jwk = jwkProvider.get(key);
+                    Jwk jwk = jwkProvider.get(kid);
                     jwkResult = new JwkResult(jwk, null, currentTime + positiveCacheExpirationMs);
                 } catch (Exception e) {
                     jwkResult = new JwkResult(null, e, currentTime + negativeCacheExpirationMs);
@@ -344,12 +344,6 @@ public class IdentityProvider {
             }).onComplete(lookup);
             return lookup.future();
         });
-        // an Error inside the lookup fails the shared future with no result for the evictor to expire: drop it in the
-        // same step as the failure, before another request can pick it up from the cache (a rejected task throws out
-        // of computeIfAbsent and caches nothing)
-        shared.onFailure(error -> cache.remove(kid, shared));
-        // the shared future completes on the first caller's context: continue on the current request's context
-        return FutureUtil.continueOnCallerContext(shared);
     }
 
     private Future<DecodedJWT> verifyJwt(DecodedJWT jwt) {

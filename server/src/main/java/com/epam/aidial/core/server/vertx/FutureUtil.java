@@ -5,6 +5,9 @@ import io.vertx.core.Promise;
 import io.vertx.core.impl.ContextInternal;
 import lombok.experimental.UtilityClass;
 
+import java.util.concurrent.ConcurrentMap;
+import java.util.function.Supplier;
+
 @UtilityClass
 public class FutureUtil {
 
@@ -18,5 +21,18 @@ public class FutureUtil {
         Promise<T> promise = caller != null ? caller.promise() : Promise.promise();
         shared.onComplete(promise);
         return promise.future();
+    }
+
+    /**
+     * Shares one lookup between all requests asking for the same key. The lookup must return a context-less future
+     * (a cached future bound to a request's context would pin that context for as long as it is cached). A failed
+     * lookup leaves the cache in the same step as the failure, so no later request picks the failure up, and each
+     * caller continues on its own context.
+     */
+    public static <K, V> Future<V> shared(ConcurrentMap<K, Future<V>> cache, K key, Supplier<Future<V>> lookup) {
+        Future<V> shared = cache.computeIfAbsent(key, k -> lookup.get());
+        // outside computeIfAbsent on purpose: an already failed future would fire this inside the mapping function
+        shared.onFailure(error -> cache.remove(key, shared));
+        return continueOnCallerContext(shared);
     }
 }

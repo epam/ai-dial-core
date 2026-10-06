@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.net.httpserver.HttpServer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
+import io.vertx.core.http.HttpConnection;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
@@ -34,14 +35,17 @@ import java.lang.ref.WeakReference;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -425,9 +429,11 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
         try (TestWebServer server = new TestWebServer(4848); JsonLogCapture logs = JsonLogCapture.attach()) {
             server.map(HttpMethod.POST, "/chat/completions", 200, CHAT_COMPLETION_ANSWER, "Content-Type", "application/json");
 
+            List<HttpConnection> connections = new ArrayList<>();
             for (String apiKey : List.of("proxyKey1", "proxyKey2")) {
-                assertEquals(200, sendChatCompletion(oneConnection, apiKey));
+                assertEquals(200, sendChatCompletion(oneConnection, apiKey, connections::add));
             }
+            assertSame(connections.get(0), connections.get(1), "both requests must share one connection");
 
             List<JsonNode> sent = logs.await("Sent response to client", 2);
             assertEquals(List.of("EPM-RTC-GPT", "EPM-RTC-RAIL"),
@@ -469,12 +475,19 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
     }
 
     private int sendChatCompletion(HttpClient client, String apiKey) throws Exception {
+        return sendChatCompletion(client, apiKey, connection -> { });
+    }
+
+    private int sendChatCompletion(HttpClient client, String apiKey, Consumer<HttpConnection> onConnection) throws Exception {
         return client.request(new RequestOptions()
                         .setMethod(HttpMethod.POST)
                         .setAbsoluteURI("http://127.0.0.1:" + serverPort + "/openai/deployments/gpt-3-turbo/chat/completions")
                         .putHeader("api-key", apiKey)
                         .putHeader("content-type", "application/json"))
-                .compose(request -> request.send("{\"model\":\"gpt-3-turbo\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"))
+                .compose(request -> {
+                    onConnection.accept(request.connection());
+                    return request.send("{\"model\":\"gpt-3-turbo\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}");
+                })
                 .compose(response -> response.body().map(response.statusCode()))
                 .toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
     }
