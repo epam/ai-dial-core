@@ -784,6 +784,112 @@ public class RateLimiterTest {
     }
 
     /**
+     * {@code getDeploymentUsage} must report the same deployment-attributed cost as the corresponding
+     * entry in {@code getUserStats} - both are now built by the same shared helper - while its token
+     * stats are still capped by the deployment's real {@link Limit}, not the unlimited sentinel.
+     */
+    @Test
+    public void testGetDeploymentUsage_CostIsAttributedToTheDeploymentNotTheAccount() {
+        Config config = new Config();
+        Role role = new Role();
+        Limit limit = new Limit();
+        limit.setDay(5000);
+        role.setLimits(Map.of("priced-model", limit));
+        role.setCostLimit(costLimit("100"));
+        config.setRoles(Map.of("role", role));
+
+        ProxyContext proxyContext = userContext(config, List.of("role"));
+        Model model = model("priced-model");
+        Pricing pricing = new Pricing();
+        pricing.setUnit("token");
+        pricing.setPrompt(PricingRate.flat("0.001"));
+        pricing.setCompletion(PricingRate.flat("0.002"));
+        model.setPricing(pricing);
+        stubInlineExecutor();
+
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setPromptTokens(1000);
+        tokenUsage.setCompletionTokens(2000);
+        tokenUsage.setTotalTokens(3000);
+        assertNull(rateLimiter.increase(
+                model, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+
+        LimitStats usage = rateLimiter.getDeploymentUsage(model, proxyContext).result();
+
+        assertNotNull(usage);
+        // token stats come from the deployment's own Limit, same as /limits
+        assertEquals(5000, usage.getDayTokenStats().getTotal());
+        assertEquals(3000, usage.getDayTokenStats().getUsed());
+        // cost is this deployment's own attributed spend, against the unlimited sentinel - not the
+        // account's role-level budget of 100
+        BigDecimal expected = new BigDecimal("5.000");
+        assertEquals(0, expected.compareTo(usage.getDayCostStats().getUsed()));
+        assertEquals(Long.MAX_VALUE, usage.getDayCostStats().getTotal().longValueExact());
+    }
+
+    /**
+     * Direct cost and aggregated cost sum into the one reported field here exactly as they do for the
+     * matching entry inside {@code getUserStats} - both paths share {@code buildDeploymentLimitStats}.
+     */
+    @Test
+    public void testGetDeploymentUsage_SumsDirectAndAggregatedCost() {
+        Config config = new Config();
+        Role role = new Role();
+        role.setLimits(Map.of());
+        role.setCostLimit(costLimit("100"));
+        config.setRoles(Map.of("role", role));
+
+        ProxyContext proxyContext = userContext(config, List.of("role"));
+        Model priced = model("router-app");
+        Pricing pricing = new Pricing();
+        pricing.setUnit("token");
+        pricing.setPrompt(PricingRate.flat("0.001"));
+        pricing.setCompletion(PricingRate.flat("0.001"));
+        priced.setPricing(pricing);
+        stubInlineExecutor();
+
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setPromptTokens(100);
+        tokenUsage.setCompletionTokens(100);
+        tokenUsage.setTotalTokens(200);
+        // direct cost: 0.001 * 100 + 0.001 * 100 = 0.200
+        assertNull(rateLimiter.increase(
+                priced, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+        assertNull(rateLimiter.recordAggregatedCost("router-app", bucket, new BigDecimal("0.40")).cause());
+        assertNull(rateLimiter.recordAggregatedCost("router-app", bucket, new BigDecimal("0.10")).cause());
+
+        LimitStats usage = rateLimiter.getDeploymentUsage(priced, proxyContext).result();
+
+        assertNotNull(usage);
+        // 0.200 direct + 0.40 + 0.10 aggregated = 0.700, summed into the one existing field
+        assertEquals(0, new BigDecimal("0.700").compareTo(usage.getDayCostStats().getUsed()));
+        assertEquals(0, new BigDecimal("0.700").compareTo(usage.getMonthCostStats().getUsed()));
+    }
+
+    /**
+     * A deployment that was never used still reports 200 with zeroed usage against its real limits,
+     * rather than 404 - the same contract {@code /limits} already honors.
+     */
+    @Test
+    public void testGetDeploymentUsage_UnusedDeploymentReportsZeros() {
+        Config config = new Config();
+        Role role = new Role();
+        role.setLimits(Map.of());
+        config.setRoles(Map.of("role", role));
+
+        ProxyContext proxyContext = userContext(config, List.of("role"));
+        Model model = model("untouched-model");
+        stubInlineExecutor();
+
+        LimitStats usage = rateLimiter.getDeploymentUsage(model, proxyContext).result();
+
+        assertNotNull(usage);
+        assertEquals(0, usage.getDayTokenStats().getUsed());
+        assertEquals(0, BigDecimal.ZERO.compareTo(usage.getDayCostStats().getUsed()));
+    }
+
+    /**
      * The primary use case this feature exists for: a router Application whose only activity is
      * aggregated cost must still surface on {@code GET /v1/user/usage} (dropEmpty=true) - the aggregated
      * write lands in the same {@code used} field {@code hasUsage} already checks, so no separate
