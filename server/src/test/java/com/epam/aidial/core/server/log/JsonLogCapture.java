@@ -26,7 +26,10 @@ public class JsonLogCapture extends AppenderBase<ILoggingEvent> implements AutoC
     private final Logger root = (Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
     private final AutoEnrichedOtelJsonLayout layout = new AutoEnrichedOtelJsonLayout();
     private final List<JsonNode> lines = new CopyOnWriteArrayList<>();
-    private final List<WeakReference<ProxyContext>> proxyContexts = new CopyOnWriteArrayList<>();
+    private final List<Seen> proxyContexts = new CopyOnWriteArrayList<>();
+
+    private record Seen(WeakReference<ProxyContext> reference, String uri) {
+    }
 
     public static JsonLogCapture attach() {
         JsonLogCapture capture = new JsonLogCapture();
@@ -42,35 +45,37 @@ public class JsonLogCapture extends AppenderBase<ILoggingEvent> implements AutoC
     protected void append(ILoggingEvent event) {
         ProxyContext proxyContext = ContextManager.getProxyContext();
         if (proxyContext != null) {
-            proxyContexts.add(new WeakReference<>(proxyContext));
+            String uri = proxyContext.getRequest() == null ? "" : proxyContext.getRequest().uri();
+            proxyContexts.add(new Seen(new WeakReference<>(proxyContext), uri));
         }
         lines.add(MAPPER.readTree(layout.doLayout(event)));
     }
 
     /**
-     * Weak references to every ProxyContext the logging thread saw, to check they are released once their
-     * requests are over.
+     * Weak references to every ProxyContext the logging thread saw for requests whose URI contains {@code uriPart},
+     * to check they are released once those requests are over. The capture sees every log line in the JVM, so the
+     * filter keeps another test's leftovers out.
      */
-    public List<WeakReference<ProxyContext>> proxyContexts() {
-        return proxyContexts;
+    public List<WeakReference<ProxyContext>> proxyContexts(String uriPart) {
+        return proxyContexts.stream().filter(seen -> seen.uri().contains(uriPart)).map(Seen::reference).toList();
     }
 
     /**
-     * Waits for the first ProxyContext a log line of the request under test was enriched from.
+     * Waits for the first ProxyContext a log line of a request whose URI contains {@code uriPart} was enriched from.
      */
     @SneakyThrows
-    public ProxyContext awaitProxyContext() {
+    public ProxyContext awaitProxyContext(String uriPart) {
         long deadline = System.currentTimeMillis() + 10_000;
         while (true) {
-            for (WeakReference<ProxyContext> reference : proxyContexts) {
+            for (WeakReference<ProxyContext> reference : proxyContexts(uriPart)) {
                 ProxyContext proxyContext = reference.get();
                 if (proxyContext != null) {
                     return proxyContext;
                 }
             }
             if (System.currentTimeMillis() > deadline) {
-                throw new AssertionError("No log line was enriched from a ProxyContext. Captured bodies: "
-                        + lines.stream().map(line -> line.path("Body").asText()).toList());
+                throw new AssertionError("No log line of a request to '" + uriPart + "' was enriched from a ProxyContext."
+                        + " Captured bodies: " + lines.stream().map(line -> line.path("Body").asText()).toList());
             }
             Thread.sleep(50);
         }

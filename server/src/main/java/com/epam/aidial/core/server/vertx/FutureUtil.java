@@ -25,8 +25,7 @@ public class FutureUtil {
 
     /**
      * Runs one lookup per key for all requests asking for it. The cached future is context-free whatever the lookup
-     * returns, a failed lookup leaves the cache in the same step as the failure, and each caller continues on its
-     * own context.
+     * returns, a failed lookup leaves the cache as soon as it fails, and each caller continues on its own context.
      */
     public static <K, V> Future<V> shareLookup(ConcurrentMap<K, Future<V>> cache, K key, Supplier<Future<V>> lookup) {
         Promise<V> fresh = Promise.promise();

@@ -390,7 +390,7 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
                     client.close(); // the client goes away while the core is still waiting for the upstream
                     // answer only once the core has observed the disconnect: closed() flips in the same event-loop
                     // task that runs the response close handlers, where the ProxyContext used to be cleared
-                    HttpServerResponse response = logs.awaitProxyContext().getResponse();
+                    HttpServerResponse response = logs.awaitProxyContext("/gpt-3-turbo/chat/completions").getResponse();
                     long deadline = System.currentTimeMillis() + 10_000;
                     while (!response.closed()) {
                         if (System.currentTimeMillis() > deadline) {
@@ -458,7 +458,7 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
 
             assertEquals(200, sendChatCompletion(keepAliveClient, "proxyKey1"));
             logs.await("Sent response to client");
-            List<WeakReference<ProxyContext>> seen = logs.proxyContexts();
+            List<WeakReference<ProxyContext>> seen = logs.proxyContexts("/gpt-3-turbo/chat/completions");
             assertFalse(seen.isEmpty());
 
             long deadline = System.currentTimeMillis() + 10_000;
