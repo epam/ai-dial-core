@@ -221,6 +221,11 @@ public enum RouteTemplate {
             "/v1/deployments"
     ),
 
+    DEPLOYMENT_NAMES(
+            "^/+v1/deployment-names$",
+            "/v1/deployment-names"
+    ),
+
     // Operations
     SHARE_RESOURCE_OPERATIONS(
             "^/v1/ops/resource/share/(create|list|discard|revoke|copy)$",

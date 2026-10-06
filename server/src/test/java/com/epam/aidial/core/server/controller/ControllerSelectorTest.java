@@ -521,6 +521,18 @@ public class ControllerSelectorTest {
     }
 
     @Test
+    public void testSelectListDeploymentNamesController() {
+        when(request.path()).thenReturn("/v1/deployment-names");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        assertNotNull(controller);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        assertInstanceOf(DeploymentController.class, lambda.getCapturedArg(0));
+        assertEquals("listDeploymentNames", lambda.getImplMethodName());
+    }
+
+    @Test
     public void testSelectGetDeploymentInfoController() {
         when(request.path()).thenReturn("/v1/deployments/name");
         when(request.method()).thenReturn(HttpMethod.GET);
