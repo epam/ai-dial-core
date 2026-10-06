@@ -13,7 +13,7 @@ Arguments: `$ARGUMENTS` — first the release branch (e.g. `release-0.9`), then 
 ## Preconditions
 
 - Abort if fewer than 2 arguments are given.
-- Abort if the working tree is dirty (`git status --porcelain` is not empty).
+- Abort if the working tree is dirty (`git status --porcelain --untracked-files=no` is not empty); untracked files are ignored.
 - `git fetch origin --tags`, then verify `origin/{release}` exists. If not, list available `origin/release-*` branches and stop.
 
 ## Steps
@@ -31,7 +31,7 @@ Arguments: `$ARGUMENTS` — first the release branch (e.g. `release-0.9`), then 
 
    Sort the commits by merge order on `origin/development` (oldest first, e.g. `git rev-list --reverse origin/development` filtered to the resolved SHAs), regardless of argument order. Print the final PR → SHA order before continuing.
 
-3. **Create the patch branch**. Compute `{next_release_version}`: take `git describe --tags --abbrev=0 origin/{release}` (e.g. `0.9.2`) and increment the patch number (`0.9.3`). If no tag is found, ask the human. Then:
+3. **Create the patch branch**. Compute `{next_release_version}`: take `git describe --tags --abbrev=0 origin/{release}` (e.g. `0.9.2`) and increment the patch number (`0.9.3`). If no tag is found, ask the human. A previous aborted run or an open patch PR leaves the tag unchanged, so first check that the name is free locally (`git rev-parse --verify --quiet patch-{next_release_version}`) and on origin (`git ls-remote --exit-code --heads origin patch-{next_release_version}`). If either exists, ask the human whether to delete it or use a suffix (`patch-{next_release_version}-2`); never overwrite it. Then:
    ```
    git checkout -b patch-{next_release_version}
    ```
