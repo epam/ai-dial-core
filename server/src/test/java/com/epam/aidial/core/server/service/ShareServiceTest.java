@@ -93,6 +93,33 @@ class ShareServiceTest {
         assertEquals(new InvitationLink("/v1/invitations/invitationId"), invitationLink);
     }
 
+    @Test
+    void initializeShare_whenNoRoleLimitConfigured_shouldUseInvitationServiceDefaultTtl() {
+        // Given
+        ShareResourcesRequest request = createValidShareResourcesRequest();
+
+        when(encryptionService.encrypt(anyString())).thenReturn("encryptedBucket");
+        when(encryptionService.decrypt(anyString())).thenReturn("decryptedBucket/");
+        when(invitationService.getDefaultTtlInHours()).thenReturn(336L);
+
+        ProxyContext context = mock(ProxyContext.class, RETURNS_DEEP_STUBS);
+        when(context.getUserId()).thenReturn("userSub");
+        when(context.getUserDisplayName()).thenReturn("userDisplayName");
+        when(context.getConfig().getRoles()).thenReturn(Map.of());
+
+        Invitation invitation = new Invitation();
+        invitation.setId("invitationId");
+        when(invitationService.createInvitation(anyString(), anyString(), anyList(), anyString(), anyInt(), anyLong()))
+                .thenReturn(invitation);
+
+        // When
+        shareService.initializeShare(context, request);
+
+        // Then
+        ArgumentCaptor<Long> ttlCaptor = ArgumentCaptor.forClass(Long.class);
+        verify(invitationService).createInvitation(anyString(), anyString(), anyList(), anyString(), anyInt(), ttlCaptor.capture());
+        assertEquals(336L, ttlCaptor.getValue());
+    }
 
     private ShareResourcesRequest createValidShareResourcesRequest() {
         Set<SharedResource> resources = new HashSet<>();
