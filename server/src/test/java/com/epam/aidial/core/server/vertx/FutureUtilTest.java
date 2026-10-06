@@ -5,6 +5,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.impl.ContextInternal;
+import io.vertx.core.impl.future.FutureInternal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -16,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -72,11 +74,11 @@ class FutureUtilTest {
         ConcurrentMap<String, Future<String>> cache = new ConcurrentHashMap<>();
         int[] lookups = {0};
 
-        String first = FutureUtil.shared(cache, "k", () -> {
+        String first = FutureUtil.shareLookup(cache, "k", () -> {
             lookups[0]++;
             return Future.succeededFuture("v");
         }).toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
-        String second = FutureUtil.shared(cache, "k", () -> Future.succeededFuture("other"))
+        String second = FutureUtil.shareLookup(cache, "k", () -> Future.succeededFuture("other"))
                 .toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
 
         assertEquals("v", first);
@@ -89,7 +91,7 @@ class FutureUtilTest {
     void sharedDropsTheFailedLookupInTheSameStepAsTheFailure() {
         ConcurrentMap<String, Future<String>> cache = new ConcurrentHashMap<>();
         Promise<String> lookup = Promise.promise();
-        FutureUtil.shared(cache, "k", lookup::future);
+        FutureUtil.shareLookup(cache, "k", lookup::future);
         assertTrue(cache.containsKey("k"));
 
         lookup.fail(new IllegalStateException("boom"));
@@ -102,12 +104,25 @@ class FutureUtilTest {
     void sharedDoesNotEvictTheEntryThatReplacedTheFailedOne() {
         ConcurrentMap<String, Future<String>> cache = new ConcurrentHashMap<>();
         Promise<String> failing = Promise.promise();
-        FutureUtil.shared(cache, "k", failing::future);
+        FutureUtil.shareLookup(cache, "k", failing::future);
         Future<String> replacement = Future.succeededFuture("fresh");
         cache.put("k", replacement);
 
         failing.fail(new IllegalStateException("boom"));
 
         assertSame(replacement, cache.get("k"));
+    }
+
+    @Test
+    void sharedLookupIsCachedContextFreeEvenWhenTheLookupReturnsOneBoundToTheRequest() throws Exception {
+        ConcurrentMap<String, Future<String>> cache = new ConcurrentHashMap<>();
+        ContextInternal requestContext = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
+
+        String value = FutureUtil.shareLookup(cache, "k", () -> requestContext.succeededFuture("v"))
+                .toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
+
+        assertEquals("v", value);
+        // a cached future bound to a request's context would pin that context for as long as it is cached
+        assertNull(((FutureInternal<?>) cache.get("k")).context());
     }
 }

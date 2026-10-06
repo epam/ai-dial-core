@@ -131,7 +131,7 @@ public class AccessTokenValidator {
     }
 
     private Future<ExtractedClaims> extractClaimsFromUserInfo(String accessToken, Supplier<Future<UserInfoResult>> fn) {
-        return FutureUtil.shared(userInfoCache, accessToken, fn).map(UserInfoResult::claims);
+        return FutureUtil.shareLookup(userInfoCache, accessToken, fn).map(UserInfoResult::claims);
     }
 
     /**

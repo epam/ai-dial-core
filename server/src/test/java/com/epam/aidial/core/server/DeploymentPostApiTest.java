@@ -390,7 +390,7 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
                     client.close(); // the client goes away while the core is still waiting for the upstream
                     // answer only once the core has observed the disconnect: closed() flips in the same event-loop
                     // task that runs the response close handlers, where the ProxyContext used to be cleared
-                    HttpServerResponse response = logs.proxyContexts().get(0).get().getResponse();
+                    HttpServerResponse response = logs.awaitProxyContext().getResponse();
                     long deadline = System.currentTimeMillis() + 10_000;
                     while (!response.closed()) {
                         if (System.currentTimeMillis() > deadline) {

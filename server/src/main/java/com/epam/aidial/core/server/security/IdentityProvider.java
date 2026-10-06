@@ -327,23 +327,17 @@ public class IdentityProvider {
     }
 
     private Future<JwkResult> getJwk(String kid) {
-        return FutureUtil.shared(cache, kid, () -> {
-            // the cached future must be context-less: the executor's future is bound to the calling request's
-            // context and would pin it, and with it the ProxyContext stored there after authorization, for the TTL
-            Promise<JwkResult> lookup = Promise.promise();
-            taskExecutor.submit(() -> {
-                JwkResult jwkResult;
-                long currentTime = System.currentTimeMillis();
-                try {
-                    Jwk jwk = jwkProvider.get(kid);
-                    jwkResult = new JwkResult(jwk, null, currentTime + positiveCacheExpirationMs);
-                } catch (Exception e) {
-                    jwkResult = new JwkResult(null, e, currentTime + negativeCacheExpirationMs);
-                }
-                return jwkResult;
-            }).onComplete(lookup);
-            return lookup.future();
-        });
+        return FutureUtil.shareLookup(cache, kid, () -> taskExecutor.submit(() -> {
+            JwkResult jwkResult;
+            long currentTime = System.currentTimeMillis();
+            try {
+                Jwk jwk = jwkProvider.get(kid);
+                jwkResult = new JwkResult(jwk, null, currentTime + positiveCacheExpirationMs);
+            } catch (Exception e) {
+                jwkResult = new JwkResult(null, e, currentTime + negativeCacheExpirationMs);
+            }
+            return jwkResult;
+        }));
     }
 
     private Future<DecodedJWT> verifyJwt(DecodedJWT jwt) {

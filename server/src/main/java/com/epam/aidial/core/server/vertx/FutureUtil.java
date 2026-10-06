@@ -24,15 +24,21 @@ public class FutureUtil {
     }
 
     /**
-     * Shares one lookup between all requests asking for the same key. The lookup must return a context-less future
-     * (a cached future bound to a request's context would pin that context for as long as it is cached). A failed
-     * lookup leaves the cache in the same step as the failure, so no later request picks the failure up, and each
-     * caller continues on its own context.
+     * Runs one lookup per key for all requests asking for it. The cached future is context-free whatever the lookup
+     * returns, a failed lookup leaves the cache in the same step as the failure, and each caller continues on its
+     * own context.
      */
-    public static <K, V> Future<V> shared(ConcurrentMap<K, Future<V>> cache, K key, Supplier<Future<V>> lookup) {
-        Future<V> shared = cache.computeIfAbsent(key, k -> lookup.get());
-        // outside computeIfAbsent on purpose: an already failed future would fire this inside the mapping function
-        shared.onFailure(error -> cache.remove(key, shared));
+    public static <K, V> Future<V> shareLookup(ConcurrentMap<K, Future<V>> cache, K key, Supplier<Future<V>> lookup) {
+        Promise<V> fresh = Promise.promise();
+        Future<V> mine = fresh.future();
+        Future<V> shared = cache.computeIfAbsent(key, k -> {
+            lookup.get().onComplete(fresh);
+            return mine;
+        });
+        if (shared == mine) {
+            // registered by the creator only, and outside computeIfAbsent: an already failed lookup fires it at once
+            shared.onFailure(error -> cache.remove(key, shared));
+        }
         return continueOnCallerContext(shared);
     }
 }

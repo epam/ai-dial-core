@@ -56,6 +56,27 @@ public class JsonLogCapture extends AppenderBase<ILoggingEvent> implements AutoC
     }
 
     /**
+     * Waits for the first ProxyContext a log line of the request under test was enriched from.
+     */
+    @SneakyThrows
+    public ProxyContext awaitProxyContext() {
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (true) {
+            for (WeakReference<ProxyContext> reference : proxyContexts) {
+                ProxyContext proxyContext = reference.get();
+                if (proxyContext != null) {
+                    return proxyContext;
+                }
+            }
+            if (System.currentTimeMillis() > deadline) {
+                throw new AssertionError("No log line was enriched from a ProxyContext. Captured bodies: "
+                        + lines.stream().map(line -> line.path("Body").asText()).toList());
+            }
+            Thread.sleep(50);
+        }
+    }
+
+    /**
      * Waits for {@code count} lines whose body starts with {@code bodyPrefix}; late callbacks log after the client
      * call has already returned.
      */
