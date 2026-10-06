@@ -4759,6 +4759,44 @@ paths:
       - lang: cURL
         label: CURL
         source: "curl -X DELETE https://chat.<company>.com/v1/conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/folder2/conversation_name \\\n  -H \"Api-Key: DIAL_API_KEY\"    \n"
+  /v1/deployment-names:
+    get:
+      tags:
+      - Deployment listing
+      summary: /v1/deployment-names
+      operationId: listDeploymentNames
+      parameters:
+      - name: type
+        in: query
+        description: "Filter deployment names by kind (model, application, toolset). Defaults to all kinds."
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - model
+            - application
+            - toolset
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDeploymentNameData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/deployments:
     get:
       tags:
@@ -16063,6 +16101,13 @@ components:
           $ref: "#/components/schemas/Features"
         overridePaths:
           $ref: "#/components/schemas/MapStringString"
+    DeploymentNameData:
+      type: object
+      properties:
+        id:
+          type: string
+        object:
+          type: string
     EmbeddingResponse:
       required:
       - data
@@ -16753,6 +16798,10 @@ components:
       type: array
       items:
         $ref: "#/components/schemas/DeploymentData"
+    ListDeploymentNameData:
+      type: array
+      items:
+        $ref: "#/components/schemas/DeploymentNameData"
     ListExternalServiceData:
       type: array
       items:
