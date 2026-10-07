@@ -12,6 +12,7 @@ import io.vertx.core.spi.tracing.SpanKind;
 import io.vertx.core.spi.tracing.TagExtractor;
 import io.vertx.core.spi.tracing.VertxTracer;
 import io.vertx.core.tracing.TracingPolicy;
+import io.vertx.tracing.opentelemetry.VertxContextStorageProvider;
 
 import java.util.List;
 import java.util.Map;
@@ -39,11 +40,21 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
         return delegate.receiveRequest(context, kind, policy, request, spanName, headers, tagExtractor);
     }
 
+    /**
+     * The delegate ends the server span and closes its scope, which resets the request's Vert.x context to the root
+     * OTel context, so logs written after the response (late upstream callbacks, client disconnect) reach the OTLP
+     * appender without a trace id. The span's OTel context is put back: the request's duplicated context is not
+     * shared with other requests and is collected with the request.
+     */
     @Override
     public <R> void sendResponse(
             Context context, R response, I payload, Throwable failure, TagExtractor<R> tagExtractor) {
 
+        Object active = context == null ? null : context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
         delegate.sendResponse(context, response, payload, failure, tagExtractor);
+        if (active != null) {
+            context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, active);
+        }
     }
 
     @Override

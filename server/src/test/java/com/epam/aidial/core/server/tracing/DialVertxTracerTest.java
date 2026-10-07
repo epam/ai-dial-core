@@ -1,13 +1,23 @@
 package com.epam.aidial.core.server.tracing;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.sdk.OpenTelemetrySdk;
+import io.opentelemetry.sdk.trace.ReadableSpan;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.vertx.core.Context;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.impl.HttpRequestHead;
 import io.vertx.core.http.impl.HttpServerRequestInternal;
+import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.spi.tracing.SpanKind;
+import io.vertx.core.spi.tracing.TagExtractor;
 import io.vertx.core.spi.tracing.VertxTracer;
+import io.vertx.core.tracing.TracingPolicy;
 import io.vertx.junit5.VertxExtension;
+import io.vertx.tracing.opentelemetry.OpenTelemetryTracingFactory;
+import io.vertx.tracing.opentelemetry.VertxContextStorageProvider;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -18,6 +28,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.only;
 import static org.mockito.Mockito.verify;
@@ -53,6 +65,25 @@ class DialVertxTracerTest {
         Context context = vertx.getOrCreateContext();
         tracer.sendRequest(context, SpanKind.RPC, null, request, request.method().name(), null, null);
         verify(delegate, only()).sendRequest(context, SpanKind.RPC, null, request, expectedName, null, null);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void sendResponseKeepsSpanContextOnRequestContext(Vertx vertx) {
+        OpenTelemetrySdk openTelemetry = OpenTelemetrySdk.builder().setTracerProvider(SdkTracerProvider.builder().build()).build();
+        VertxTracer<Object, Object> otelTracer = (VertxTracer<Object, Object>) new OpenTelemetryTracingFactory(openTelemetry).tracer(null);
+        DialVertxTracer<Object, Object> dialTracer = new DialVertxTracer<>(otelTracer);
+        Context context = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
+
+        Object operation = dialTracer.receiveRequest(context, SpanKind.RPC, TracingPolicy.ALWAYS, "request", "op", List.of(), TagExtractor.empty());
+        Span span = Span.fromContext(context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
+        assertTrue(span.getSpanContext().isValid());
+
+        dialTracer.sendResponse(context, "response", operation, null, TagExtractor.empty());
+
+        assertTrue(((ReadableSpan) span).hasEnded());
+        Span after = Span.fromContext(context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
+        assertEquals(span.getSpanContext(), after.getSpanContext());
     }
 
     public static List<Arguments> receiveRequestDatasource() {
