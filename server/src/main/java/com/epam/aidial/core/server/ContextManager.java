@@ -4,7 +4,6 @@ import io.vertx.core.Context;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.impl.HttpServerRequestInternal;
 import lombok.experimental.UtilityClass;
-import lombok.extern.slf4j.Slf4j;
 
 /**
  * Keeps the ProxyContext of a request in that request's own Vert.x context for {@code AutoEnrichedOtelJsonLayout}.
@@ -12,24 +11,18 @@ import lombok.extern.slf4j.Slf4j;
  * the entry is visible to all of them, invisible to other requests, and collected with the request. There is no
  * clear step on purpose: clearing on response close dropped the entry while late callbacks still had to log.
  */
-@Slf4j
 @UtilityClass
 public class ContextManager {
 
     private static final String PROXY_CONTEXT_KEY = "proxyContext";
 
     /**
-     * Stores the entry in the request's own context regardless of the current context.
+     * Stores the entry in the request's own context regardless of the current context. A request that is not
+     * Vert.x's own implementation (mocks) has no context to store into.
      */
     public static void setProxyContext(ProxyContext proxyContext) {
-        if (proxyContext == null) {
-            return;
-        }
-        if (proxyContext.getRequest() instanceof HttpServerRequestInternal request) {
+        if (proxyContext != null && proxyContext.getRequest() instanceof HttpServerRequestInternal request) {
             request.context().putLocal(PROXY_CONTEXT_KEY, proxyContext);
-        } else {
-            // only mocks get here; a real request without a context would leave every log line unenriched
-            log.warn("Request {} has no Vert.x context, log lines of this request carry no trace id", proxyContext.getRequest());
         }
     }
 
