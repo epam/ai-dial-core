@@ -150,9 +150,14 @@ public class ApplicationRouteController extends BaseRouteController {
     }
 
     @Override
-    protected MultiMap excludeHeaders() {
+    protected boolean supportsUpstreamAuthType() {
+        return false;
+    }
+
+    @Override
+    protected MultiMap excludeHeaders(boolean bearer) {
         Deployment deployment = context.getDeployment();
-        MultiMap excludeHeaders = super.excludeHeaders();
+        MultiMap excludeHeaders = super.excludeHeaders(bearer);
         if (!deployment.isForwardAuthToken()) {
             excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
         }

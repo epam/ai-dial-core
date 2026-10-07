@@ -43,6 +43,28 @@ public class ApplicationRouteApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testAppRouteIgnoresUpstreamAuthType() {
+        // the statically-configured "app-route" application's "index-search" upstream carries a key
+        // and authType: BEARER - application routes must ignore authType and keep sending API-KEY
+        String responseBody = "OK";
+        try (TestWebServer server = new TestWebServer(4848)) {
+            TestWebServer.Handler handler = request -> {
+                Assertions.assertEquals("indexSearchKey123", request.getHeader(Proxy.HEADER_API_KEY));
+                Assertions.assertNull(request.getHeader("Authorization"));
+                MockResponse mockResponse = new MockResponse();
+                mockResponse.setResponseCode(200);
+                mockResponse.setBody(responseBody);
+                return mockResponse;
+            };
+            server.map(HttpMethod.POST, "/v1/index/search", handler);
+
+            Response response = send(HttpMethod.POST, "/v1/deployments/app-route/route/v1/index/search", null, "{}");
+
+            verify(response, 200, responseBody);
+        }
+    }
+
+    @Test
     public void testRouteStillWorksAfterUpstreamsHiddenInList() throws Exception {
         // Non-admin caller lists the statically-configured app-route application - upstreams must be hidden
         Response response = send(HttpMethod.GET, "/openai/applications/app-route");

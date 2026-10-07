@@ -765,7 +765,10 @@ public final class MergedConfigStore implements ConfigStore {
                 case APPLICATION -> ConfigPostProcessor.validateSingleApplication(next, mapKey, onSkip);
                 case TOOL_SET -> ConfigPostProcessor.setNameAsMapKey(next.getToolsets(), mapKey);
                 case PROJECT_KEY, APP_TYPE_SCHEMA, CATALOG_SCHEMA -> { /* no post-processing */ }
-                case ROUTE -> ConfigPostProcessor.sortRoutesInPlace(next);
+                case ROUTE -> {
+                    ConfigPostProcessor.sortRoutesInPlace(next);
+                    ConfigPostProcessor.validateSingleRoute(next, mapKey, onSkip);
+                }
                 default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
             }
         } catch (RuntimeException error) {
