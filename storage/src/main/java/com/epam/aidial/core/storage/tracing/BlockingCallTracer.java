@@ -1,5 +1,6 @@
 package com.epam.aidial.core.storage.tracing;
 
+import com.epam.aidial.core.storage.http.HttpException;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
@@ -43,8 +44,11 @@ public class BlockingCallTracer {
         try {
             return work.call();
         } catch (Throwable e) {
-            span.recordException(e);
-            span.setStatus(StatusCode.ERROR);
+            // client errors such as a failed If-Match precondition are expected outcomes, not storage failures
+            if (!(e instanceof HttpException http) || http.getStatus().is5xx()) {
+                span.recordException(e);
+                span.setStatus(StatusCode.ERROR);
+            }
             throw e;
         } finally {
             if (previous == null) {

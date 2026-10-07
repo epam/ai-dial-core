@@ -1,5 +1,7 @@
 package com.epam.aidial.core.storage.tracing;
 
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.context.Scope;
@@ -89,6 +91,22 @@ class BlockingCallTracerTest {
         assertEquals(StatusCode.ERROR, blob.getStatus().getStatusCode());
         assertEquals(1, blob.getEvents().size());
         assertFalse(BlockingCallTracer.currentSpan().getSpanContext().isValid());
+    }
+
+    @Test
+    void testClientErrorDoesNotMarkSpan() {
+        Span request = openTelemetry.getTracer("test").spanBuilder("request").startSpan();
+        try (Scope ignore = request.makeCurrent()) {
+            assertThrows(HttpException.class, () -> tracing.trace("resource.put", () -> {
+                throw new HttpException(HttpStatus.PRECONDITION_FAILED, "etag mismatch");
+            }));
+        } finally {
+            request.end();
+        }
+
+        SpanData resource = find(exporter.getFinishedSpanItems(), "resource.put");
+        assertEquals(StatusCode.UNSET, resource.getStatus().getStatusCode());
+        assertTrue(resource.getEvents().isEmpty());
     }
 
     private static SpanData find(List<SpanData> spans, String name) {
