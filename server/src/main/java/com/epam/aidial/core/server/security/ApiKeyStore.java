@@ -87,10 +87,9 @@ public class ApiKeyStore {
         String json = ProxyUtil.convertToString(data);
         String redisKey = toRedisKey(perRequestKey);
         RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
-        if (!bucket.setIfAbsent(json)) {
+        if (!bucket.setIfAbsent(json, customTtl)) {
             throw new IllegalStateException(String.format("API key %s already exists in Redis storage", perRequestKey));
         }
-        bucket.expire(customTtl);
     }
 
     public void updatePerRequestApiKey(String key, Function<String, String> fn) {

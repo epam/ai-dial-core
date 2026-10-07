@@ -178,7 +178,7 @@ public class ResponsesController extends BaseDeploymentPostController {
     private Future<Void> proceedToDeployment(ResponsesApiRequest request, String deploymentName) {
         return verifyLimit()
                 .compose(ignore -> proxy.getTokenStatsTracker().startSpan(context)
-                        .map(ignored -> handleRequestBody(request)))
+                        .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request))))
                 .otherwise(error -> handleRequestError(deploymentName, error));
     }
 

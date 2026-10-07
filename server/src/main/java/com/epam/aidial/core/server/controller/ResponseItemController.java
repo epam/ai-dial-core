@@ -121,7 +121,7 @@ public class ResponseItemController implements Controller {
     public Future<?> handle() {
         return proxy.getTaskExecutor().submit(this::loadMapping)
                 .compose(this::checkNotDeletingActive)
-                .compose(this::dispatch)
+                .compose(mapping -> proxy.getTaskExecutor().submit(() -> dispatch(mapping)).compose(dispatched -> dispatched))
                 .eventually(this::finalizeRequest)
                 .onFailure(error -> {
                     if (!context.getResponse().ended()) {

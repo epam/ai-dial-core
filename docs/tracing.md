@@ -93,3 +93,23 @@ completed, so a failure is logged and the response proceeds without the attribut
 Which request attributes apply depends on the API surface: `stop_sequences`, `choice.count`,
 `frequency_penalty`, `presence_penalty` and `seed` come from Chat Completions,
 `previous_response.id` from Responses, `encoding_formats` from Embeddings.
+
+## Storage and rate-limit spans
+
+Core adds child spans for the blocking work a request does off the event loop. They are emitted
+only inside a traced request, so background jobs (resource sync, sweeps, bulk loads on their own
+executor) start no traces of their own. They do not depend on `genAiSpanAttributes`.
+
+| Span                                                     | Covers                                                                        | Attributes                                    |
+|----------------------------------------------------------|-------------------------------------------------------------------------------|-----------------------------------------------|
+| `rate_limit.check`                                       | The token, request and cost limit checks before a request is forwarded        | `dial.deployment`, `dial.rate_limit.status`   |
+| `resource.get`, `resource.compute`, `resource.put`, `resource.delete` | A `ResourceService` operation, including Redis access and lock waits | `dial.resource.type`; `resource.get` also has `dial.cache.hit` (`false` when the value was read from blob storage) |
+| `blob.<operation>`                                       | One blob storage call: `load`, `store`, `meta`, `exists`, `delete`, `copy`, `list`, and the multipart upload calls | `blob.load`: `dial.blob.found`; `blob.store`: `dial.blob.size` |
+
+`blob.load` ends when the blob storage returns the blob, so it does not include reading the payload
+stream. Redis calls get no spans of their own: the time a `resource.*` span spends outside its
+`blob.*` children is Redis access and lock waits.
+
+The same blob storage calls are measured by the `dial_blob_operation` timer, tagged by `operation`
+and `outcome` (`success` or `error`), with buckets from 5 ms to 5 s. Unlike the spans, the timer
+also records calls made outside a request.
