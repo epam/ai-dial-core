@@ -123,7 +123,7 @@ public class ChatCompletionsController extends BaseChatCompletionController {
     private Future<Void> proceedToDeployment(ChatCompletionRequest request, String deploymentName) {
         return verifyLimit()
                 .compose(ignore -> proxy.getTokenStatsTracker().startSpan(context)
-                        .map(ignored -> handleRequestBody(request)))
+                        .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request))))
                 .otherwise(error -> handleRequestError(deploymentName, error));
     }
 
