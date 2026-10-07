@@ -26,6 +26,7 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.json.Json;
@@ -124,7 +125,7 @@ public class CostRateLimitTest {
         // lenient() since not every test method calls increase()
         ConfigStore configStore = mock(ConfigStore.class);
         lenient().when(configStore.get()).thenReturn(new Config());
-        rateLimiter = new RateLimiter(taskExecutor, resourceService, configStore);
+        rateLimiter = new RateLimiter(taskExecutor, resourceService, configStore, BlockingCallTracer.NOOP);
     }
 
     private static Proxy mockProxy(Config config) {
