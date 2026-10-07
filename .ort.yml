@@ -1,6 +1,14 @@
 ---
 analyzer:
   skip_excluded: true
+  package_managers:
+    GradleInspector:
+      options:
+        # HACK: Bypass foojay Temurin JDK auto-provisioning (broken since 2026-10-06,
+        # see https://github.com/foojayio/discoapi/issues/165) by downloading a
+        # fixed Temurin 21 build directly. Overrides the ai-dial-ci provided javaVersion option
+        # TODO: Remove this once upgraded to a newer Gradle version and/or Java version, or when the foojay API is fixed
+        customJdkUrl: "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz"
 excludes:
   scopes:
     - pattern: "annotationProcessor"

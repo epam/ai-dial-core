@@ -16,6 +16,7 @@ import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.config.UpstreamAuthType;
 import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import org.junit.jupiter.api.Test;
@@ -226,6 +227,36 @@ public class ConfigPostProcessorTest {
         ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
 
         assertTrue(config.getModels().containsKey("model"));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnRouteBearerUpstreamWithoutKey() {
+        Config config = newMutableConfig();
+        Upstream upstream = new Upstream();
+        upstream.setEndpoint("https://openrouter.ai/api/v1/chat/completions");
+        upstream.setAuthType(UpstreamAuthType.BEARER);
+        Route route = new Route();
+        route.setUpstreams(List.of(upstream));
+        config.getRoutes().put("openrouter", route);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAllowsRouteBearerUpstreamWithKey() {
+        Config config = newMutableConfig();
+        Upstream upstream = new Upstream();
+        upstream.setEndpoint("https://openrouter.ai/api/v1/chat/completions");
+        upstream.setKey("openrouter-key");
+        upstream.setAuthType(UpstreamAuthType.BEARER);
+        Route route = new Route();
+        route.setUpstreams(List.of(upstream));
+        config.getRoutes().put("openrouter", route);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getRoutes().containsKey("openrouter"));
     }
 
     @Test
