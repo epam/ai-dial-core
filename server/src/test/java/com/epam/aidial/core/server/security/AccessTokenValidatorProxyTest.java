@@ -4,6 +4,7 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.epam.aidial.core.server.TestWebServer;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
@@ -78,7 +79,7 @@ public class AccessTokenValidatorProxyTest {
                 .put("idp1", JsonObject.of("jwksUrl", JWKS_URL, "rolePath", "role1"));
         HttpClient client = mock(HttpClient.class);
         AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx, new JsonObject(Map.of("useVirtualThreads", false)));
-        return new AccessTokenValidator(idpConfig, vertx, taskExecutor, client, clientOptions, "DEBUG");
+        return new AccessTokenValidator(idpConfig, vertx, taskExecutor, client, clientOptions, "DEBUG", BlockingCallTracer.NOOP);
     }
 
     private static String signedToken() throws NoSuchAlgorithmException {

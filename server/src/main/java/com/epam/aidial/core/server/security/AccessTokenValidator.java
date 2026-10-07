@@ -45,12 +45,7 @@ public class AccessTokenValidator {
 
     public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client,
                                 String claimsLogLevel) {
-        this(idpConfig, vertx, taskExecutor, client, new HttpClientOptions(), claimsLogLevel);
-    }
-
-    public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client,
-                                HttpClientOptions clientOptions, String claimsLogLevel) {
-        this(idpConfig, vertx, taskExecutor, client, clientOptions, claimsLogLevel, BlockingCallTracer.NOOP);
+        this(idpConfig, vertx, taskExecutor, client, new HttpClientOptions(), claimsLogLevel, BlockingCallTracer.NOOP);
     }
 
     public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client,

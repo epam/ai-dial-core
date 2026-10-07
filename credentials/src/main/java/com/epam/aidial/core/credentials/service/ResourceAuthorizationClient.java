@@ -7,7 +7,7 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.epam.aidial.core.storage.util.Compression;
 import com.google.common.annotations.VisibleForTesting;
-import lombok.SneakyThrows;
+import io.opentelemetry.api.trace.Span;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.core5.http.ContentType;
 
@@ -88,19 +88,26 @@ public class ResourceAuthorizationClient {
 
     private <R> R execute(HttpRequest request, Class<R> responseType) {
         return tracing.trace("oauth.request", () -> {
-            BlockingCallTracer.currentSpan().setAttribute("http.request.method", request.method());
-            BlockingCallTracer.currentSpan().setAttribute("server.address", request.uri().getHost());
-            return send(request, responseType);
-        });
-    }
-
-    @SneakyThrows
-    private <R> R send(HttpRequest request, Class<R> responseType) {
-        try {
-            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            Span span = BlockingCallTracer.currentSpan();
+            span.setAttribute("http.request.method", request.method());
+            span.setAttribute("server.address", request.uri().getHost());
+            HttpResponse<byte[]> response;
+            try {
+                response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            } catch (ConnectException e) {
+                // the message ends up on the span, so the query string is left out
+                String endpoint = request.uri().toString().split("\\?", 2)[0];
+                if (hasUnresolvedAddressException(e)) {
+                    throw new IllegalArgumentException(
+                            "Connection failed: The specified endpoint '%s' is invalid or unreachable.".formatted(endpoint), e);
+                }
+                ConnectException error = new ConnectException("Cannot connect to %s".formatted(endpoint));
+                error.initCause(e);
+                throw error;
+            }
 
             int status = response.statusCode();
-            BlockingCallTracer.currentSpan().setAttribute("http.response.status_code", status);
+            span.setAttribute("http.response.status_code", status);
             String body = decodeBody(response);
 
             if (status != 200 && status != 201) {
@@ -118,13 +125,7 @@ public class ResourceAuthorizationClient {
             checkOauthError(body, request.uri());
 
             return JsonMapperUtil.convertToObject(body, responseType);
-        } catch (ConnectException e) {
-            if (hasUnresolvedAddressException(e)) {
-                throw new IllegalArgumentException(
-                        "Connection failed: The specified endpoint '%s' is invalid or unreachable.".formatted(request.uri()));
-            }
-            throw new ConnectException("Cannot connect to %s".formatted(request.uri()));
-        }
+        });
     }
 
     private static boolean hasUnresolvedAddressException(Throwable ex) {
