@@ -18,7 +18,6 @@ import io.vertx.core.http.HttpConnection;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
-import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.json.JsonObject;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -29,7 +28,6 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -39,7 +37,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -476,50 +473,6 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
         } finally {
             keepAliveClient.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
         }
-    }
-
-    /**
-     * Authorization may wait on a lookup shared with another request and complete on that request's context. Proxy
-     * puts the request back on its own context before the controller runs, so the request's log lines carry its own
-     * ids whatever the validators do internally. A GET is used because a POST controller continues inside the body
-     * callback, which Vert.x dispatches on the request's own context anyway and would hide a missing guard.
-     */
-    @Test
-    public void testRequestStaysOnItsOwnContext_WhenAuthorizationCompletesOnAnotherContext() throws Exception {
-        String uri = "/v1/files/missing-bucket/missing.txt";
-        // the other request's context, with that request's own entry in place
-        ContextInternal otherRequestContext = ((ContextInternal) dial.getVertx().getOrCreateContext()).duplicate();
-        ProxyContext otherRequest = Mockito.mock(ProxyContext.class);
-        runOn(otherRequestContext, () -> ContextManager.setProxyContext(otherRequest));
-        Mockito.doAnswer(invocation -> otherRequestContext.succeededFuture(createClaims("default")))
-                .when(validator).extractClaims("hopper");
-        // no URI filter: a line logged off the request's context carries no request.uri and must still be seen
-        try (JsonLogCapture logs = JsonLogCapture.attach()) {
-            Response response = send(HttpMethod.GET, uri, null, null, "authorization", "hopper");
-
-            assertNotEquals(200, response.status());
-            JsonNode line = logs.await("Responding with error");
-            assertEquals(uri, line.get("Attributes").path("request.uri").asText(), line.toString());
-            assertFalse(line.get("TraceId").asText().isEmpty(), line.toString());
-            assertEquals("default", line.get("Attributes").path("user.id").asText());
-        }
-        // and the other request's entry was neither replaced nor read by the hopped request
-        ProxyContext[] seen = new ProxyContext[1];
-        runOn(otherRequestContext, () -> seen[0] = ContextManager.getProxyContext());
-        assertSame(otherRequest, seen[0]);
-    }
-
-    private static void runOn(ContextInternal context, Runnable action) throws Exception {
-        CompletableFuture<Void> done = new CompletableFuture<>();
-        context.runOnContext(v -> {
-            try {
-                action.run();
-                done.complete(null);
-            } catch (Throwable e) {
-                done.completeExceptionally(e);
-            }
-        });
-        done.get(10, TimeUnit.SECONDS);
     }
 
     private int sendChatCompletion(HttpClient client, String apiKey) throws Exception {

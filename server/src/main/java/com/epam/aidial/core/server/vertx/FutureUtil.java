@@ -16,7 +16,7 @@ public class FutureUtil {
      * request that completes it. Called from a worker or virtual thread that dispatches a context, the continuation
      * moves to that context's event loop. Off any Vert.x context (plain unit tests) it runs where it completes.
      */
-    public static <T> Future<T> continueOnCallerContext(Future<T> shared) {
+    static <T> Future<T> continueOnCallerContext(Future<T> shared) {
         ContextInternal caller = ContextInternal.current();
         Promise<T> promise = caller != null ? caller.promise() : Promise.promise();
         shared.onComplete(promise);

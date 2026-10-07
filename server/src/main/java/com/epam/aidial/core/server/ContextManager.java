@@ -9,8 +9,8 @@ import lombok.experimental.UtilityClass;
  * Vert.x gives every HTTP server request a duplicated context and runs the request's upstream callbacks on it, so
  * the entry is visible to all of them, invisible to other requests, and collected with the request. There is no
  * clear step on purpose: clearing on response close dropped the entry while late callbacks still had to log.
- * {@code Proxy} stores the entry right after it has put the request back on its own context (see
- * {@code FutureUtil.continueOnCallerContext}), so the current context here is the request's own.
+ * Lookups shared between requests (the auth caches) continue each caller on its own context
+ * ({@code FutureUtil.shareLookup}), so the current context when {@code Proxy} stores the entry is the request's own.
  */
 @UtilityClass
 public class ContextManager {
@@ -19,7 +19,7 @@ public class ContextManager {
 
     public static void setProxyContext(ProxyContext proxyContext) {
         Context vertxContext = Vertx.currentContext();
-        if (proxyContext != null && vertxContext != null) {
+        if (vertxContext != null) {
             vertxContext.putLocal(PROXY_CONTEXT_KEY, proxyContext);
         }
     }
