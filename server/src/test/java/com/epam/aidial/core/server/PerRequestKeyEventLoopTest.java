@@ -8,16 +8,17 @@ import io.netty.channel.ChannelPromise;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.json.JsonObject;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.redisson.client.NettyHook;
 
-import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Queue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -35,6 +36,12 @@ public class PerRequestKeyEventLoopTest extends ResourceBaseTest {
     private static final String CHAT_BODY = "{\"model\":\"gpt-3-turbo\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
     private static final String CHAT_ANSWER = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"gpt-3-turbo\","
             + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";
+    private static final String MESSAGES_BODY = "{\"model\":\"claude-ns\",\"max_tokens\":100,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+    private static final String MESSAGES_ANSWER = "{\"id\":\"msg_01\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-ns\","
+            + "\"content\":[{\"type\":\"text\",\"text\":\"hi\"}],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}";
+    private static final String RESPONSES_BODY = "{\"model\":\"gpt-3-turbo\",\"store\":false,\"input\":\"hi\"}";
+    private static final String RESPONSES_ANSWER = "{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"gpt-3-turbo\","
+            + "\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}";
 
     private final List<String> eventLoopBlocks = new CopyOnWriteArrayList<>();
 
@@ -49,91 +56,54 @@ public class PerRequestKeyEventLoopTest extends ResourceBaseTest {
                         .put("nettyHook", new JsonObject().put("class", SlowRedisHook.class.getName())));
     }
 
-    @Test
-    void legacyChatCompletionsDoesNotBlockEventLoop() {
-        try (TestWebServer server = new TestWebServer(4848)) {
-            server.map(HttpMethod.POST, "/chat/completions", request ->
-                    TestWebServer.createResponse(200, CHAT_ANSWER, "Content-Type", "application/json"));
-
-            sendWithSlowRedis(HttpMethod.POST, "/openai/deployments/gpt-3-turbo/chat/completions", CHAT_BODY);
-        }
-        assertEventLoopNotBlocked();
-    }
-
-    @Test
-    void openAiV1ChatCompletionsDoesNotBlockEventLoop() {
-        try (TestWebServer server = new TestWebServer(4848)) {
-            server.map(HttpMethod.POST, "/chat/completions", request ->
-                    TestWebServer.createResponse(200, CHAT_ANSWER, "Content-Type", "application/json"));
-
-            sendWithSlowRedis(HttpMethod.POST, "/openai/v1/chat/completions", CHAT_BODY);
-        }
-        assertEventLoopNotBlocked();
-    }
-
-    @Test
-    void anthropicMessagesDoesNotBlockEventLoop() {
-        String answer = "{\"id\":\"msg_01\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-ns\","
-                + "\"content\":[{\"type\":\"text\",\"text\":\"hi\"}],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}";
-        try (TestWebServer server = new TestWebServer(4848)) {
-            server.map(HttpMethod.POST, "/anthropic/v1/messages", request ->
-                    TestWebServer.createResponse(200, answer, "Content-Type", "application/json"));
-
-            sendWithSlowRedis(HttpMethod.POST, "/anthropic/v1/messages",
-                    "{\"model\":\"claude-ns\",\"max_tokens\":100,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}");
-        }
-        assertEventLoopNotBlocked();
-    }
-
-    @Test
-    void openAiResponsesDoesNotBlockEventLoop() {
-        String answer = "{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"gpt-3-turbo\",\"output\":[],"
-                + "\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}";
-        try (TestWebServer server = new TestWebServer(4848)) {
-            server.map(HttpMethod.POST, "/openai/v1/responses", request ->
-                    TestWebServer.createResponse(200, answer, "Content-Type", "application/json"));
-
-            sendWithSlowRedis(HttpMethod.POST, "/openai/v1/responses",
-                    "{\"model\":\"gpt-3-turbo\",\"store\":false,\"input\":\"hi\"}");
-        }
-        assertEventLoopNotBlocked();
+    static Stream<Arguments> endpoints() {
+        return Stream.of(
+                // control: already offloads the body handler to the task executor
+                Arguments.of("/openai/deployments/gpt-3-turbo/chat/completions", CHAT_BODY, "/chat/completions", CHAT_ANSWER),
+                Arguments.of("/openai/v1/chat/completions", CHAT_BODY, "/chat/completions", CHAT_ANSWER),
+                Arguments.of("/anthropic/v1/messages", MESSAGES_BODY, "/anthropic/v1/messages", MESSAGES_ANSWER),
+                Arguments.of("/openai/v1/responses", RESPONSES_BODY, "/openai/v1/responses", RESPONSES_ANSWER));
     }
 
     /**
      * Sends one warm-up request with fast Redis (class loading and JIT on the first request may exceed
      * the event-loop budget), then the measured one with slow Redis writes and the checker armed.
      */
-    private void sendWithSlowRedis(HttpMethod method, String path, String body) {
-        verify(send(method, path, null, body, "content-type", "application/json"), 200);
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("endpoints")
+    void requestDoesNotBlockEventLoopOnRedis(String path, String body, String upstreamPath, String upstreamAnswer) {
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, upstreamPath, request ->
+                    TestWebServer.createResponse(200, upstreamAnswer, "Content-Type", "application/json"));
 
-        ((VertxInternal) dial.getVertx()).blockedThreadChecker().setThreadBlockedHandler(event -> {
-            Thread thread = event.thread();
-            StackTraceElement[] frames = thread.getStackTrace();
-            // only blocking Redis calls count: slow CI boxes may stall the event loop in logging or JIT linking too
-            if (Arrays.stream(frames).noneMatch(frame -> frame.getClassName().startsWith("org.redisson."))) {
-                return;
+            verify(send(HttpMethod.POST, path, null, body, "content-type", "application/json"), 200);
+
+            ((VertxInternal) dial.getVertx()).blockedThreadChecker().setThreadBlockedHandler(event -> {
+                Thread thread = event.thread();
+                StackTraceElement[] frames = thread.getStackTrace();
+                // only blocking Redis calls count: slow CI boxes may stall the event loop in logging or JIT linking too
+                if (Arrays.stream(frames).noneMatch(frame -> frame.getClassName().startsWith("org.redisson."))) {
+                    return;
+                }
+                String stack = Arrays.stream(frames)
+                        .map(frame -> "\tat " + frame)
+                        .collect(Collectors.joining("\n"));
+                eventLoopBlocks.add(thread.getName() + " blocked for " + TimeUnit.NANOSECONDS.toMillis(event.duration()) + " ms\n" + stack);
+            });
+            SlowRedisHook.enabled = true;
+            try {
+                verify(send(HttpMethod.POST, path, null, body, "content-type", "application/json"), 200);
+            } finally {
+                SlowRedisHook.enabled = false;
             }
-            String stack = Arrays.stream(frames)
-                    .map(frame -> "\tat " + frame)
-                    .collect(Collectors.joining("\n"));
-            eventLoopBlocks.add(thread.getName() + " blocked for " + TimeUnit.NANOSECONDS.toMillis(event.duration()) + " ms\n" + stack);
-        });
-        SlowRedisHook.enabled = true;
-        try {
-            verify(send(method, path, null, body, "content-type", "application/json"), 200);
-        } finally {
-            SlowRedisHook.enabled = false;
         }
-    }
-
-    private void assertEventLoopNotBlocked() {
         assertTrue(eventLoopBlocks.isEmpty(), () -> "Event loop was blocked:\n" + eventLoopBlocks.getFirst());
     }
 
     /**
      * Redisson netty hook delaying every outgoing Redis command by {@link #REDIS_WRITE_DELAY_MS} while enabled.
-     * Writes stay FIFO per channel (Redisson matches replies to commands by order), so a write issued after
-     * disabling still waits for the delayed ones before it. Instantiated by Redisson from the {@code redis.nettyHook} setting.
+     * Redisson runs its own netty threads, so sleeping here is invisible to the Vert.x blocked-thread checker.
+     * Instantiated by Redisson from the {@code redis.nettyHook} setting.
      */
     public static class SlowRedisHook implements NettyHook {
 
@@ -146,37 +116,16 @@ public class PerRequestKeyEventLoopTest extends ResourceBaseTest {
         @Override
         public void afterChannelInitialization(Channel channel) {
             channel.pipeline().addFirst(new ChannelOutboundHandlerAdapter() {
-                // accessed only from the channel's event loop
-                private final Queue<DelayedWrite> queue = new ArrayDeque<>();
-
                 @Override
-                public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
-                    if (!enabled && queue.isEmpty()) {
-                        ctx.write(msg, promise);
-                        return;
+                public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+                    if (enabled) {
+                        // ponytail: concurrent writes on one netty thread are delayed serially; ~10 of them would hit
+                        // Redisson's 3 s timeout, schedule the write instead if a test ever issues that many
+                        Thread.sleep(REDIS_WRITE_DELAY_MS);
                     }
-                    long due = System.nanoTime() + (enabled ? TimeUnit.MILLISECONDS.toNanos(REDIS_WRITE_DELAY_MS) : 0);
-                    queue.add(new DelayedWrite(msg, promise, due));
-                    if (queue.size() == 1) {
-                        drainLater(ctx);
-                    }
-                }
-
-                private void drainLater(ChannelHandlerContext ctx) {
-                    ctx.executor().schedule(() -> {
-                        while (!queue.isEmpty() && queue.peek().due() <= System.nanoTime()) {
-                            DelayedWrite write = queue.poll();
-                            ctx.writeAndFlush(write.msg(), write.promise());
-                        }
-                        if (!queue.isEmpty()) {
-                            drainLater(ctx);
-                        }
-                    }, Math.max(0, queue.peek().due() - System.nanoTime()), TimeUnit.NANOSECONDS);
+                    ctx.write(msg, promise);
                 }
             });
-        }
-
-        private record DelayedWrite(Object msg, ChannelPromise promise, long due) {
         }
     }
 }
