@@ -44,6 +44,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -182,17 +183,26 @@ public class ResponseItemController implements Controller {
             context.setInterceptors(apiKeyData.getInterceptors());
             int nextIndex = apiKeyData.getInterceptorIndex() + 1;
             if (nextIndex < apiKeyData.getInterceptors().size()) {
-                return handleInterceptor(nextIndex);
+                return withRequestBody(() -> handleInterceptor(nextIndex));
             }
         } else {
             context.setInterceptors(proxy.getDeploymentService().getInterceptors(context, deployment));
             if (context.hasNextInterceptor()) {
                 context.setInitialDeployment(deployment.getName());
-                return handleInterceptor(0);
+                return withRequestBody(() -> handleInterceptor(0));
             }
         }
 
-        return forwardToUpstream(mapping, deployment);
+        return withRequestBody(() -> forwardToUpstream(mapping, deployment));
+    }
+
+    private Future<Void> withRequestBody(Supplier<Future<Void>> continuation) {
+        context.getRequest().body()
+                .compose(body -> {
+                    context.setRequestBody(body);
+                    return continuation.get();
+                });
+        return Future.succeededFuture();
     }
 
     private Future<Void> handleInterceptor(int interceptorIndex) {
