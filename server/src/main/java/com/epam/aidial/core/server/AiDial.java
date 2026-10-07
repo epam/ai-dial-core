@@ -100,6 +100,7 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.core.instrument.Clock;
@@ -192,7 +193,7 @@ public class AiDial {
             ProxyUtil.init(ProxySettings.from(settings("proxy")));
             VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
             setupMetrics(vertxOptions);
-            setupTracing(vertxOptions);
+            BlockingCallTracer tracing = new BlockingCallTracer(setupTracing(vertxOptions));
 
             vertx = Vertx.vertx(vertxOptions);
             HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
@@ -214,7 +215,7 @@ public class AiDial {
 
             if (storage == null) {
                 Storage storageConfig = Json.decodeValue(settings("storage").toBuffer(), Storage.class);
-                storage = new BlobStorage(storageConfig);
+                storage = new BlobStorage(storageConfig, tracing);
             }
             encryptionService = new EncryptionService(settings("encryption"));
 
@@ -225,7 +226,7 @@ public class AiDial {
             ResourceService.Settings resourceServiceSettings = getResourceSettings();
             String podId = UUID.randomUUID().toString();
             resourceService = new ResourceService(
-                    timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix(), () -> podId);
+                    timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix(), () -> podId, tracing);
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"));
             CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
@@ -308,7 +309,7 @@ public class AiDial {
             RuleService ruleService = new RuleService(resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
-            RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService, configStore);
+            RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService, configStore, tracing);
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,
                     accessService, encryptionService, operatorService, generator, settings("codeInterpreter"));
 
@@ -669,7 +670,7 @@ public class AiDial {
         options.setMetricsOptions(micrometer);
     }
 
-    private static void setupTracing(VertxOptions vertxOptions) {
+    private static OpenTelemetry setupTracing(VertxOptions vertxOptions) {
         String otlMetricExporter = getOtlSetting("OTEL_METRICS_EXPORTER", "otel.metrics.exporter");
         if (otlMetricExporter == null) {
             System.setProperty("otel.metrics.exporter", "none");
@@ -695,6 +696,7 @@ public class AiDial {
         OpenTelemetryOptions otelOpts = new OpenTelemetryOptions(openTelemetry);
         otelOpts.setFactory(new DialTracingFactory(otelOpts.getFactory()));
         vertxOptions.setTracingOptions(otelOpts);
+        return openTelemetry;
     }
 
     private static String getOtlSetting(String envVar, String systemProperty) {
