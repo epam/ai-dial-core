@@ -273,6 +273,7 @@ public class SecretFieldProcessor {
             return null;
         }
     }
+
     private void recurseInto(Object child, byte[] aad, boolean encrypt, boolean lenient) {
         if (child == null) {
             return;
