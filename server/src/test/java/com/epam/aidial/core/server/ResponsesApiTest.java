@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.data.LimitStats;
-import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
+import com.epam.aidial.core.server.util.EncryptedAffinityUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -243,13 +243,13 @@ public class ResponsesApiTest extends ResourceBaseTest {
             itemA.put("type", "reasoning");
             itemA.put("id", "rs_1");
             itemA.put("encrypted_content", "cipher-1");
-            EncryptedContentAffinityUtil.wrapOutputItem(itemA, "up-a");
+            EncryptedAffinityUtil.wrapOutputItem(itemA, "up-a");
 
             ObjectNode itemB = ProxyUtil.MAPPER.createObjectNode();
             itemB.put("type", "reasoning");
             itemB.put("id", "rs_2");
             itemB.put("encrypted_content", "cipher-2");
-            EncryptedContentAffinityUtil.wrapOutputItem(itemB, "up-b");
+            EncryptedAffinityUtil.wrapOutputItem(itemB, "up-b");
 
             String requestBody = "{\"model\":\"responses-cache\",\"stream\":false,\"store\":false,"
                     + "\"input\":[" + itemA + "," + itemB + "]}";
@@ -268,7 +268,7 @@ public class ResponsesApiTest extends ResourceBaseTest {
             item.put("type", "reasoning");
             item.put("id", "rs_1");
             item.put("encrypted_content", "cipher-1");
-            EncryptedContentAffinityUtil.wrapOutputItem(item, "up-nonexistent");
+            EncryptedAffinityUtil.wrapOutputItem(item, "up-nonexistent");
 
             String requestBody = "{\"model\":\"responses-cache\",\"stream\":false,\"store\":false,"
                     + "\"input\":[" + item + "]}";

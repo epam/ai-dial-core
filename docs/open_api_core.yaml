@@ -17704,7 +17704,7 @@ components:
       - PROJECT_KEY
       - ROUTE
       - GLOBAL_SETTINGS
-      - RESPONSE_MAPPING
+      - RESPONSE_METADATA
       - SKILL
       - BACKGROUND_JOB
     ResponseFormatJsonObject:

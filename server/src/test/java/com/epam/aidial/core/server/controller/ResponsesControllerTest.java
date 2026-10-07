@@ -13,18 +13,17 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
-import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
-import com.epam.aidial.core.server.service.ResponseMappingService;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.EncryptedAffinityUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -351,7 +350,6 @@ public class ResponsesControllerTest {
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         when(httpClient.request(any())).thenReturn(Future.succeededFuture(proxyRequest));
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
-        when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
 
         when(proxy.getTokenStatsTracker().startSpan(context))
                 .thenReturn(Future.succeededFuture());
@@ -390,7 +388,8 @@ public class ResponsesControllerTest {
 
         verify(httpClient).request(argThat(req ->
                 "/responses?arg=value".equals(req.getURI().toString())));
-        assertEquals(responseBody, context.getResponseBody());
+        String expectedDialId = EncryptedAffinityUtil.wrapResponseId("endpoint", "dial_test_fixed-uuid-1234", "test");
+        assertEquals(expectedDialId, ProxyUtil.MAPPER.readTree(context.getResponseBody().getBytes()).path("id").asText());
         assertEquals(tokenUsage, context.getTokenUsage());
         // Ensure the list of attached files is updated before it's saved
         verify(apiKeyStore).assignPerRequestApiKey(argThat(arg ->
@@ -469,7 +468,6 @@ public class ResponsesControllerTest {
         when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
-        when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
 
         when(proxy.getTokenStatsTracker().startSpan(context))
                 .thenReturn(Future.succeededFuture());
@@ -500,7 +498,8 @@ public class ResponsesControllerTest {
 
         await(textContext);
 
-        assertEquals(responseBody, context.getResponseBody());
+        String expectedDialId = EncryptedAffinityUtil.wrapResponseId("endpoint", "dial_test_fixed-uuid-1234", "test");
+        assertEquals(expectedDialId, ProxyUtil.MAPPER.readTree(context.getResponseBody().getBytes()).path("id").asText());
 
         TokenUsage expectedOwnUsage = new TokenUsage();
         expectedOwnUsage.setPromptTokens(19);
@@ -562,13 +561,7 @@ public class ResponsesControllerTest {
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         Buffer requestBody = Buffer.buffer("{\"model\":\"test\",\"background\":true}");
         Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-resp-id\",\"status\":\"completed\"}");
-        String expectedDialId = "dial_test_fixed-uuid-1234";
-        ResponseMapping expectedMapping = ResponseMapping.builder()
-                .upstreamResponseId("upstream-resp-id")
-                .upstreamKey("endpoint")
-                .deploymentName("test")
-                .initiatorBucket("Users/test-user/")
-                .build();
+        String expectedDialId = EncryptedAffinityUtil.wrapResponseId("endpoint", "upstream-resp-id", "test");
 
         when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         when(request.body()).thenReturn(Future.succeededFuture(requestBody));
@@ -602,9 +595,6 @@ public class ResponsesControllerTest {
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getTokenStatsTracker().getUsageStats(context))
                 .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of(), List.of())));
-        ResponseMappingService responseMappingService = proxy.getResponseMappingService();
-        when(responseMappingService.saveMapping(any(), any())).thenReturn(expectedDialId);
-
         when(context.getUserId()).thenReturn("test-user");
         doAnswer(invocation -> {
             textContext.completeNow();
@@ -629,7 +619,6 @@ public class ResponsesControllerTest {
 
         await(textContext);
 
-        verify(responseMappingService).saveMapping(eq(context), eq(expectedMapping));
         ArgumentCaptor<Buffer> bodyCaptor = ArgumentCaptor.forClass(Buffer.class);
         verify(response).end(bodyCaptor.capture());
         JsonNode sentJson = ProxyUtil.MAPPER.readTree(bodyCaptor.getValue().getBytes());
@@ -650,7 +639,7 @@ public class ResponsesControllerTest {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         String upstreamId = "upstream-resp-stream";
-        String expectedDialId = "dial_test_fixed-uuid-1234";
+        String expectedDialId = EncryptedAffinityUtil.wrapResponseId("endpoint", upstreamId, "test");
         String sseContent = "event: response.created\n"
                 + "data: {\"response\":{\"id\":\"" + upstreamId + "\"}}\n\n"
                 + "event: response.completed\n"
@@ -713,7 +702,6 @@ public class ResponsesControllerTest {
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(context.getUserId()).thenReturn("test-user");
-        when(proxy.getResponseMappingService().saveMapping(any(), any())).thenReturn(expectedDialId);
         when(proxy.getBackgroundJobService().deleteJob(anyString())).thenReturn(Future.succeededFuture(Boolean.TRUE));
 
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
@@ -737,7 +725,6 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).setStreamingRequest(anyBoolean());
         doCallRealMethod().when(context).isStreamingRequest();
         doCallRealMethod().when(context).setStoreResponse(anyBoolean());
-        doCallRealMethod().when(context).isStoreResponse();
 
         controller.handle();
 
@@ -802,12 +789,13 @@ public class ResponsesControllerTest {
     }
 
     @Test
-    public void testBackgroundJobRecordSaved(Vertx vertx, VertxTestContext textContext) throws Throwable {
+    public void testBackgroundJobRecordSaved(Vertx vertx) {
         Application deployment = new Application();
         deployment.setName("test");
         deployment.setResponsesEndpoint("http://adapter/responses");
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
@@ -816,21 +804,16 @@ public class ResponsesControllerTest {
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         Buffer requestBody = Buffer.buffer("{\"model\":\"test\",\"background\":true}");
         Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-resp-id\",\"status\":\"completed\"}");
-        String expectedDialId = "dial_test_fixed-uuid-1234";
 
         when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         when(request.body()).thenReturn(Future.succeededFuture(requestBody));
-        when(request.headers()).thenReturn(new HeadersMultiMap());
         when(upstreamRoute.next()).thenReturn(upstream);
         when(upstreamRoute.get()).thenReturn(upstream);
         when(context.getRequest()).thenReturn(request);
-        when(context.getResponse()).thenReturn(response);
         when(context.getConfig()).thenReturn(new Config());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
-        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
         when(proxyRequest.headers()).thenReturn(new HeadersMultiMap());
         when(proxyRequest.send(any(Buffer.class))).thenReturn(Future.succeededFuture(proxyResponse));
-        when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
         when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
@@ -845,28 +828,10 @@ public class ResponsesControllerTest {
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
-        when(proxy.getResponseMappingService().saveMapping(any(), any())).thenReturn(expectedDialId);
-        when(context.getUserId()).thenReturn("test-user");
-        when(proxy.getBackgroundJobService().saveJob(anyString(), any())).thenAnswer(invocation -> {
-            textContext.completeNow();
-            return Future.<Void>succeededFuture();
-        });
         doCallRealMethod().when(context).setDeployment(any());
-        doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setRequestBody(any());
-        doCallRealMethod().when(context).getRequestBody();
-        doCallRealMethod().when(context).setResponseBody(any());
-        doCallRealMethod().when(context).setUpstreamRoute(any());
-        doCallRealMethod().when(context).getUpstreamRoute();
-        doCallRealMethod().when(context).setProxyResponse(any());
-        doCallRealMethod().when(context).setStoreResponse(anyBoolean());
-        doCallRealMethod().when(context).isStoreResponse();
-        doCallRealMethod().when(context).setBackgroundJob(anyBoolean());
-        doCallRealMethod().when(context).isBackgroundJob();
 
         controller.handle();
-
-        await(textContext);
     }
 
     @Test
@@ -909,6 +874,8 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setProxyApiKeyData(any());
         doCallRealMethod().when(context).getProxyApiKeyData();
+        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).getRequestBody();
 
         controller.handle();
 

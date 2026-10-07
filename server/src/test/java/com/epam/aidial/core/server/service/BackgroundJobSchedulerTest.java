@@ -470,7 +470,8 @@ class BackgroundJobSchedulerTest {
         String encodedKey = Base64.getEncoder().encodeToString(
                 "test-per-request-key".getBytes(StandardCharsets.UTF_8));
         return BackgroundJobRecord.builder()
-                .perRequestKey(encodedKey)
+                .encryptedPollingKey(encodedKey)
+                .encryptedPerRequestKey(encodedKey)
                 .isRootSpan(false)
                 .requestBody("{}")
                 .build();

@@ -3,6 +3,8 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Interceptor;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -18,6 +20,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -111,12 +114,47 @@ public class DeploymentServiceTest {
     @Test
     public void testGetInterceptors() {
         when(config.getGlobalInterceptors()).thenReturn(List.of("i1", "i2"));
+        when(config.getInterceptors()).thenReturn(Map.of());
         Application application = new Application();
         when(applicationSchemaService.getInterceptors(application)).thenReturn(List.of("i3", "i2"));
         application.setInterceptors(List.of("i4", "i3"));
 
-        List<String> result = service.getInterceptors(context, application);
+        List<String> result = service.getInterceptors(context, application, InterfaceType.OPENAI_CHAT_COMPLETIONS);
 
         assertEquals(List.of("i1", "i2", "i3", "i4"), result);
+    }
+
+    @Test
+    public void testGetInterceptors_WhenInterceptorDoesNotServeRequestedInterface_ThenItIsSkipped() {
+        when(config.getGlobalInterceptors()).thenReturn(List.of("i1", "i2"));
+        Application application = new Application();
+        when(applicationSchemaService.getInterceptors(application)).thenReturn(List.of());
+        application.setInterceptors(List.of());
+
+        Interceptor responsesOnly = new Interceptor();
+        responsesOnly.setResponsesEndpoint("http://responses-interceptor");
+        Interceptor chatCompletionsOnly = new Interceptor();
+        chatCompletionsOnly.setEndpoint("http://chat-interceptor");
+        when(config.getInterceptors()).thenReturn(Map.of("i1", responsesOnly, "i2", chatCompletionsOnly));
+        when(config.getTranslators()).thenReturn(Map.of());
+
+        List<String> chatResult = service.getInterceptors(context, application, InterfaceType.OPENAI_CHAT_COMPLETIONS);
+        assertEquals(List.of("i2"), chatResult);
+
+        List<String> responsesResult = service.getInterceptors(context, application, InterfaceType.OPENAI_RESPONSES);
+        assertEquals(List.of("i1"), responsesResult);
+    }
+
+    @Test
+    public void testGetInterceptors_WhenInterceptorNameDoesNotResolve_ThenItIsKept() {
+        when(config.getGlobalInterceptors()).thenReturn(List.of("unknown"));
+        when(config.getInterceptors()).thenReturn(Map.of());
+        Application application = new Application();
+        when(applicationSchemaService.getInterceptors(application)).thenReturn(List.of());
+        application.setInterceptors(List.of());
+
+        List<String> result = service.getInterceptors(context, application, InterfaceType.OPENAI_CHAT_COMPLETIONS);
+
+        assertEquals(List.of("unknown"), result);
     }
 }

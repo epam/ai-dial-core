@@ -23,6 +23,7 @@ import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
 
 @Slf4j
@@ -67,15 +68,11 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
                 context.getDeployment().getName(),
                 context.getRequest().headers().size());
 
-        return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
-            context.getRequest().body()
-                    .onSuccess(body -> proxy.getTaskExecutor().submit(() -> {
-                        handleRequestBody(body);
-                        return null;
-                    }).onFailure(this::handleError))
-                    .onFailure(this::handleRequestBodyError);
-            return null;
-        });
+        return proxy.getTokenStatsTracker().startSpan(context).map(ignore ->
+                proxy.getTaskExecutor().submit(() -> {
+                    handleRequestBody(context.getRequestBody());
+                    return null;
+                }).onFailure(this::handleError));
     }
 
     private void handleError(Throwable error) {
@@ -89,13 +86,23 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         try {
             RequestObject request = parseRequest(requestBody);
+            Duration jobTtl = null;
             if (request != null) {
                 context.setStreamingRequest(request.isStreaming());
+                context.setStoreResponse(request.isStore());
+                context.setBackgroundJob(request.isBackground());
                 if (ProxyUtil.processChain(request, enhancementFunctions)) {
                     context.setRequestBody(Buffer.buffer(request.serialize()));
                 }
+                if (request.isBackground()) {
+                    jobTtl = Duration.ofMillis(proxy.getBackgroundJobService().getJobTtlMs());
+                }
             }
-            proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
+            if (jobTtl != null) {
+                proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData(), jobTtl);
+            } else {
+                proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
+            }
         } catch (Throwable e) {
             if (e instanceof HttpException httpException) {
                 respond(httpException.getStatus(), httpException.getMessage());
@@ -182,20 +189,29 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
                 .onFailure(this::handleResponseError);
     }
 
-    private void handleResponse(BufferingReadStream responseStream) {
-        Buffer responseBody = responseStream.getContent();
-        collectResponseAttachments(responseBody, createAttachmentFn(proxy, context)).onComplete(result -> {
-            if (result.failed()) {
-                log.warn("Failed to collect attachments from response. Error:", result.cause());
-            }
-            completeProxyResponse(responseStream);
-        });
+    protected Future<Void> afterResponse(Buffer responseBody) {
+        return Future.succeededFuture();
     }
 
-    private void completeProxyResponse(BufferingReadStream responseStream) {
+    private void handleResponse(BufferingReadStream responseStream) {
+        Buffer responseBody = responseStream.getContent();
+        afterResponse(responseBody).compose(ignore ->
+                collectResponseAttachments(responseBody, createAttachmentFn(proxy, context))
+                        .onComplete(result -> {
+                            if (result.failed()) {
+                                log.warn("Failed to collect attachments from response. Error:", result.cause());
+                            }
+                            boolean keepAlive = context.isBackgroundJob() && context.getProxyResponse().statusCode() == 200;
+                            completeProxyResponse(responseStream, keepAlive);
+                        }));
+    }
+
+    private void completeProxyResponse(BufferingReadStream responseStream, boolean keepAlive) {
         HttpServerResponse response = context.getResponse();
         responseStream.end(response);
-        finalizeRequest();
+        if (!keepAlive) {
+            finalizeRequest();
+        }
     }
 
     /**

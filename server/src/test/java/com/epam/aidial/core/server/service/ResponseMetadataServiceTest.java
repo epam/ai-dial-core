@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.NodeType;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
@@ -21,7 +22,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.concurrent.Callable;
-import java.util.function.Supplier;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -33,12 +33,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-public class ResponseMappingServiceTest {
+public class ResponseMetadataServiceTest {
 
     private static final long DEFAULT_TTL = 30L * 24 * 60 * 60 * 1000;
-
-    @Mock
-    private Supplier<String> generator;
 
     @Mock
     private ResourceService resourceService;
@@ -49,11 +46,11 @@ public class ResponseMappingServiceTest {
     @Mock
     private AsyncTaskExecutor taskExecutor;
 
-    private ResponseMappingService service;
+    private ResponseMetadataService service;
 
     @BeforeEach
     void setUp() {
-        service = new ResponseMappingService(vertx, generator, resourceService);
+        service = new ResponseMetadataService(vertx, resourceService);
     }
 
     private void triggerCleanup() {
@@ -72,55 +69,58 @@ public class ResponseMappingServiceTest {
     @Test
     void testCleanup_deletesExpiredItem() {
         long createdAt = System.currentTimeMillis() - DEFAULT_TTL - 1000;
+        String dialId = "enc-dial-id-abc";
 
         ResourceItemMetadata folderItem = new ResourceItemMetadata();
         folderItem.setNodeType(NodeType.FOLDER);
-        folderItem.setName("deploy1");
+        folderItem.setName(dialId);
 
         ResourceFolderMetadata rootFolder = new ResourceFolderMetadata();
         rootFolder.setItems(List.of(folderItem));
 
         ResourceItemMetadata expiredItem = new ResourceItemMetadata();
         expiredItem.setNodeType(NodeType.ITEM);
-        expiredItem.setName("uuid-abc");
+        expiredItem.setName(ResponseIdUtil.METADATA_FILE);
         expiredItem.setCreatedAt(createdAt);
 
-        ResourceFolderMetadata deployFolder = new ResourceFolderMetadata();
-        deployFolder.setItems(List.of(expiredItem));
+        ResourceFolderMetadata dialIdFolder = new ResourceFolderMetadata();
+        dialIdFolder.setItems(List.of(expiredItem));
 
         when(resourceService.getFolderMetadata(any(), any(), anyInt(), anyBoolean()))
                 .thenReturn(rootFolder)
-                .thenReturn(deployFolder);
+                .thenReturn(dialIdFolder);
 
         triggerCleanup();
 
         ResourceDescriptor expected = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.RESPONSE_MAPPING, "response_mappings", "response_mappings/", "deploy1/uuid-abc");
+                ResourceTypes.RESPONSE_METADATA, "response_mappings", "response_mappings/",
+                dialId + "/" + ResponseIdUtil.METADATA_FILE);
         verify(resourceService).deleteResource(eq(expected), eq(EtagHeader.ANY));
     }
 
     @Test
     void testCleanup_skipsNonExpiredItem() {
         long createdAt = System.currentTimeMillis() - DEFAULT_TTL + 60_000;
+        String dialId = "enc-dial-id-fresh";
 
         ResourceItemMetadata folderItem = new ResourceItemMetadata();
         folderItem.setNodeType(NodeType.FOLDER);
-        folderItem.setName("deploy1");
+        folderItem.setName(dialId);
 
         ResourceFolderMetadata rootFolder = new ResourceFolderMetadata();
         rootFolder.setItems(List.of(folderItem));
 
         ResourceItemMetadata freshItem = new ResourceItemMetadata();
         freshItem.setNodeType(NodeType.ITEM);
-        freshItem.setName("uuid-fresh");
+        freshItem.setName(ResponseIdUtil.METADATA_FILE);
         freshItem.setCreatedAt(createdAt);
 
-        ResourceFolderMetadata deployFolder = new ResourceFolderMetadata();
-        deployFolder.setItems(List.of(freshItem));
+        ResourceFolderMetadata dialIdFolder = new ResourceFolderMetadata();
+        dialIdFolder.setItems(List.of(freshItem));
 
         when(resourceService.getFolderMetadata(any(), any(), anyInt(), anyBoolean()))
                 .thenReturn(rootFolder)
-                .thenReturn(deployFolder);
+                .thenReturn(dialIdFolder);
 
         triggerCleanup();
 
@@ -158,67 +158,70 @@ public class ResponseMappingServiceTest {
     @Test
     void testCleanup_deleteFailureIsSwallowed() {
         long createdAt = System.currentTimeMillis() - DEFAULT_TTL - 1000;
+        String dialId = "enc-dial-id-err";
 
         ResourceItemMetadata folderItem = new ResourceItemMetadata();
         folderItem.setNodeType(NodeType.FOLDER);
-        folderItem.setName("deploy1");
+        folderItem.setName(dialId);
 
         ResourceFolderMetadata rootFolder = new ResourceFolderMetadata();
         rootFolder.setItems(List.of(folderItem));
 
         ResourceItemMetadata expiredItem = new ResourceItemMetadata();
         expiredItem.setNodeType(NodeType.ITEM);
-        expiredItem.setName("uuid-err");
+        expiredItem.setName(ResponseIdUtil.METADATA_FILE);
         expiredItem.setCreatedAt(createdAt);
 
-        ResourceFolderMetadata deployFolder = new ResourceFolderMetadata();
-        deployFolder.setItems(List.of(expiredItem));
+        ResourceFolderMetadata dialIdFolder = new ResourceFolderMetadata();
+        dialIdFolder.setItems(List.of(expiredItem));
 
         when(resourceService.getFolderMetadata(any(), any(), anyInt(), anyBoolean()))
                 .thenReturn(rootFolder)
-                .thenReturn(deployFolder);
+                .thenReturn(dialIdFolder);
         when(resourceService.deleteResource(any(), any())).thenThrow(new RuntimeException("storage error"));
 
         triggerCleanup(); // must not throw
     }
 
     @Test
-    void testCleanup_paginatesDeploymentFolder() {
+    void testCleanup_paginatesDialIdFolder() {
         long createdAt = System.currentTimeMillis() - DEFAULT_TTL - 1000;
+        String dialId = "enc-dial-id-paginated";
 
         ResourceItemMetadata folderItem = new ResourceItemMetadata();
         folderItem.setNodeType(NodeType.FOLDER);
-        folderItem.setName("deploy1");
+        folderItem.setName(dialId);
 
         ResourceFolderMetadata rootFolder = new ResourceFolderMetadata();
         rootFolder.setItems(List.of(folderItem));
 
         ResourceItemMetadata freshItem = new ResourceItemMetadata();
         freshItem.setNodeType(NodeType.ITEM);
-        freshItem.setName("uuid-fresh");
+        freshItem.setName("other-file");
         freshItem.setCreatedAt(System.currentTimeMillis());
 
-        ResourceFolderMetadata deployFolderPage1 = new ResourceFolderMetadata();
-        deployFolderPage1.setItems(List.of(freshItem));
-        deployFolderPage1.setNextToken("page2-token");
+        ResourceFolderMetadata dialIdFolderPage1 = new ResourceFolderMetadata();
+        dialIdFolderPage1.setItems(List.of(freshItem));
+        dialIdFolderPage1.setNextToken("page2-token");
 
         ResourceItemMetadata expiredItem = new ResourceItemMetadata();
         expiredItem.setNodeType(NodeType.ITEM);
-        expiredItem.setName("uuid-old");
+        expiredItem.setName(ResponseIdUtil.METADATA_FILE);
         expiredItem.setCreatedAt(createdAt);
 
-        ResourceFolderMetadata deployFolderPage2 = new ResourceFolderMetadata();
-        deployFolderPage2.setItems(List.of(expiredItem));
+        ResourceFolderMetadata dialIdFolderPage2 = new ResourceFolderMetadata();
+        dialIdFolderPage2.setItems(List.of(expiredItem));
 
         when(resourceService.getFolderMetadata(any(), any(), anyInt(), anyBoolean()))
                 .thenReturn(rootFolder)
-                .thenReturn(deployFolderPage1)
-                .thenReturn(deployFolderPage2);
+                .thenReturn(dialIdFolderPage1)
+                .thenReturn(dialIdFolderPage2);
 
         triggerCleanup();
 
         ResourceDescriptor expected = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.RESPONSE_MAPPING, "response_mappings", "response_mappings/", "deploy1/uuid-old");
+                ResourceTypes.RESPONSE_METADATA, "response_mappings", "response_mappings/",
+                dialId + "/" + ResponseIdUtil.METADATA_FILE);
         verify(resourceService).deleteResource(eq(expected), eq(EtagHeader.ANY));
     }
 }

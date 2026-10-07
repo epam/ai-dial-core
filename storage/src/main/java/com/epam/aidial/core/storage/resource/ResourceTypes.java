@@ -33,7 +33,7 @@ public enum ResourceTypes implements ResourceType {
     PROJECT_KEY("project_keys", "keys", true, TimeUnit.DAYS.toMillis(30)),
     ROUTE("routes", true, TimeUnit.DAYS.toMillis(30)),
     GLOBAL_SETTINGS("settings", true, TimeUnit.DAYS.toMillis(30)),
-    RESPONSE_MAPPING("response_mappings", true, TimeUnit.MINUTES.toMillis(5)),
+    RESPONSE_METADATA("response_metadata", true, TimeUnit.MINUTES.toMillis(5)),
     SKILL("skills", false, TimeUnit.MINUTES.toMillis(5)),
     BACKGROUND_JOB("background_jobs", true, TimeUnit.MINUTES.toMillis(5));
 
@@ -74,7 +74,7 @@ public enum ResourceTypes implements ResourceType {
             case "project_keys", "keys" -> PROJECT_KEY;
             case "routes" -> ROUTE;
             case "settings" -> GLOBAL_SETTINGS;
-            case "response_mappings" -> RESPONSE_MAPPING;
+            case "response_metadata" -> RESPONSE_METADATA;
             case "skills" -> SKILL;
             default -> throw new IllegalArgumentException("Unsupported resource type: " + group);
         };
