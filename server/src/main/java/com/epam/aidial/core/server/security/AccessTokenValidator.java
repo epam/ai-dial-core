@@ -6,6 +6,7 @@ import com.auth0.jwt.interfaces.DecodedJWT;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.server.http.HttpProxySelector;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.server.vertx.FutureUtil;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -130,12 +131,7 @@ public class AccessTokenValidator {
     }
 
     private Future<ExtractedClaims> extractClaimsFromUserInfo(String accessToken, Supplier<Future<UserInfoResult>> fn) {
-
-        return userInfoCache.computeIfAbsent(accessToken, k -> fn.get())
-                .map(UserInfoResult::claims).onFailure(error -> {
-                    /* we don't need to keep the failed response any longer */
-                    userInfoCache.remove(accessToken);
-                });
+        return FutureUtil.shareLookup(userInfoCache, accessToken, fn).map(UserInfoResult::claims);
     }
 
     /**
