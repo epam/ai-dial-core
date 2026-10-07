@@ -5,12 +5,16 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+
+import java.util.Base64;
 
 public class ApplicationRouteApiTest extends ResourceBaseTest {
 
@@ -230,6 +234,99 @@ public class ApplicationRouteApiTest extends ResourceBaseTest {
         Assertions.assertEquals(200, get.status());
         Assertions.assertFalse(get.body().contains("app-route-secret-1"), "GET must never leak upstream secrets: " + get.body());
         Assertions.assertFalse(get.body().contains("ENC["), "GET must never leak ciphertext: " + get.body());
+    }
+
+    @Test
+    public void testAppRouteWithOneCorruptedUpstreamSecretStillForwardsTheOtherPlaintext() throws Exception {
+        Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/app-route-mixed", null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "App Route Mixed",
+                "routes": {
+                        "route-bad": {
+                          "paths": ["/v1/other(/[^/]+)*$"],
+                          "rewritePath": true,
+                          "methods": ["POST"],
+                          "upstreams": [{"endpoint": "http://localhost:4848", "key": "route-bad-secret"}]
+                      },
+                        "route-good": {
+                          "paths": ["/v1/index(/[^/]+)*$"],
+                          "rewritePath": true,
+                          "methods": ["POST"],
+                          "upstreams": [{"endpoint": "http://localhost:4848", "key": "route-good-secret"}]
+                      }
+                  }
+                }
+                """);
+        Assertions.assertEquals(200, response.status());
+
+        // Plant a corrupted envelope under route-bad only, bypassing the API's encrypt path, to
+        // simulate ciphertext that can no longer be decrypted (rotated key, bit rot). It must be
+        // structurally valid (correct Base64, long enough) so encryptFields' "already enveloped"
+        // check leaves it alone instead of healing it by re-encrypting it as plaintext on the next
+        // write - the actual decrypt call must be the one that fails.
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(
+                "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/app-route-mixed", encryptionService);
+        String corruptedEnvelope = "ENC[" + Base64.getEncoder().encodeToString(new byte[64]) + "]";
+        JsonNode rawBlob = ProxyUtil.MAPPER.readTree(resourceService.getResource(descriptor));
+        ((ObjectNode) rawBlob.get("routes").get("route-bad").get("upstreams").get(0))
+                .put("key", corruptedEnvelope);
+        resourceService.putResource(descriptor, rawBlob.toString(), EtagHeader.ANY, null, false);
+
+        // route-good must still decrypt and forward its plaintext secret, unaffected by route-bad's
+        // corrupted one — this is the proof that a bad secret no longer blocks every field visited
+        // after it in SecretFieldProcessor's walk order.
+        String responseBody = """
+                {
+                 "content": "some result"
+                }
+                """;
+        try (TestWebServer server = new TestWebServer(4848)) {
+            TestWebServer.Handler handler = request -> {
+                Assertions.assertEquals("route-good-secret", request.getHeader("API-KEY"),
+                        "Upstream must receive the decrypted plaintext secret, not ciphertext");
+                MockResponse mockResponse = new MockResponse();
+                mockResponse.setResponseCode(200);
+                mockResponse.setBody(responseBody);
+                return mockResponse;
+            };
+            server.map(HttpMethod.POST, "/v1/index/search", handler);
+
+            String requestBody = """
+                    {
+                     "payload": "some content"
+                    }
+                    """;
+            String appPath = "/v1/deployments/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/app-route-mixed/route/v1/index/search";
+            Response appResponse = send(HttpMethod.POST, appPath, null, requestBody);
+
+            verify(appResponse, 200, responseBody);
+        }
+
+        // The write path must also tolerate the corrupted secret: a PUT that re-saves the application
+        // (e.g. touching an unrelated field) must not 500 just because route-bad can't be decrypted.
+        Response resaved = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/app-route-mixed", null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "App Route Mixed - Resaved",
+                "routes": {
+                        "route-bad": {
+                          "paths": ["/v1/other(/[^/]+)*$"],
+                          "rewritePath": true,
+                          "methods": ["POST"],
+                          "upstreams": [{"endpoint": "http://localhost:4848"}]
+                      },
+                        "route-good": {
+                          "paths": ["/v1/index(/[^/]+)*$"],
+                          "rewritePath": true,
+                          "methods": ["POST"],
+                          "upstreams": [{"endpoint": "http://localhost:4848"}]
+                      }
+                  }
+                }
+                """);
+        Assertions.assertEquals(200, resaved.status(), () -> resaved.body());
     }
 
     @Test

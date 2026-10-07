@@ -179,10 +179,13 @@ public class ExternalServiceService {
     // Unlike ProxyUtil.convertToString, this honors routes[].upstreams[].key/secretExtraData
     // (@EncryptedField, WRITE_ONLY) as read-write instead of dropping them, then decrypts the object
     // back to plaintext in place so the caller keeps working with a plaintext application afterward.
+    // The blob is already written correctly by this point, so the decrypt-back step is lenient: a
+    // field that can't be decrypted must not fail the write just to restore an in-memory value the
+    // callers here only use for a WRITE_ONLY-suppressing response.
     private String serializeEncrypted(ResourceDescriptor resource, Application application) {
         secretFieldProcessor.encryptFields(application, resource);
         String blobBody = ConfigEntityCodec.serializeForBlob(application);
-        secretFieldProcessor.decryptFields(application, resource);
+        secretFieldProcessor.decryptFieldsLenient(application, resource);
         return blobBody;
     }
 

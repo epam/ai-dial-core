@@ -512,6 +512,43 @@ class SecretFieldProcessorTest {
         verify(encryptionService, never()).decrypt(any(), any(), any());
     }
 
+    @Test
+    void decryptFieldsLenient_nullsFailingFieldInsteadOfThrowing() {
+        Key key = new Key();
+        key.setKey("ENC[!!!]");
+
+        processor.decryptFieldsLenient(key, descriptor);
+
+        assertNull(key.getKey());
+        verify(encryptionService, never()).decrypt(any(), any(), any());
+    }
+
+    // A bad route must not also leave every route visited after it in the walk order stuck
+    // undecrypted (ciphertext sent upstream as a literal key) — only the bad one is dropped.
+    @Test
+    void decryptFieldsLenient_dropsOnlyTheFailingRouteAndDecryptsTheRest() {
+        Upstream good = new Upstream();
+        good.setKey("ENC[" + Base64.getEncoder().encodeToString("good-cipher".getBytes(StandardCharsets.UTF_8)) + "]");
+        Upstream bad = new Upstream();
+        bad.setKey("ENC[!!!]");
+        Route goodRoute = new Route();
+        goodRoute.setUpstreams(List.of(good));
+        Route badRoute = new Route();
+        badRoute.setUpstreams(List.of(bad));
+        Application application = new Application();
+        application.setRoutes(new LinkedHashMap<>(Map.of("r-good", goodRoute, "r-bad", badRoute)));
+        when(encryptionService.decrypt(eq(BUCKET), any(byte[].class), any(byte[].class)))
+                .thenAnswer(inv -> {
+                    byte[] in = inv.getArgument(1);
+                    return ("plain-" + new String(in, StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8);
+                });
+
+        processor.decryptFieldsLenient(application, descriptor);
+
+        assertEquals("plain-good-cipher", application.getRoutes().get("r-good").getUpstreams().get(0).getKey());
+        assertNull(application.getRoutes().get("r-bad").getUpstreams().get(0).getKey());
+    }
+
     // --- transitive descent (Application.routes[].upstreams[].key/secretExtraData) ------------
 
     @Test

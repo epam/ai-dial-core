@@ -7,6 +7,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
@@ -22,6 +23,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+@Slf4j
 public class SecretFieldProcessor {
 
     private static final String ENC_PREFIX = "ENC[";
@@ -45,7 +47,7 @@ public class SecretFieldProcessor {
             return;
         }
         byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
-        walk(entity, aad, true);
+        walk(entity, aad, true, false);
     }
 
     public void decryptFields(Object entity, ResourceDescriptor descriptor) {
@@ -53,7 +55,20 @@ public class SecretFieldProcessor {
             return;
         }
         byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
-        walk(entity, aad, false);
+        walk(entity, aad, false, false);
+    }
+
+    /**
+     * As {@link #decryptFields}, but a field that fails to decrypt is set to null and logged instead of
+     * aborting the walk - used where one bad secret must not block every other field in the same object
+     * graph from decrypting, or block the write that follows from completing.
+     */
+    public void decryptFieldsLenient(Object entity, ResourceDescriptor descriptor) {
+        if (entity == null) {
+            return;
+        }
+        byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
+        walk(entity, aad, false, true);
     }
 
     /**
@@ -215,7 +230,7 @@ public class SecretFieldProcessor {
         return -1;
     }
 
-    private void walk(Object entity, byte[] aad, boolean encrypt) {
+    private void walk(Object entity, byte[] aad, boolean encrypt, boolean lenient) {
         if (entity == null) {
             return;
         }
@@ -224,8 +239,7 @@ public class SecretFieldProcessor {
             try {
                 if (field.isAnnotationPresent(EncryptedField.class) && field.getType() == String.class) {
                     String value = (String) field.get(entity);
-                    String transformed = encrypt ? encryptValue(value, aad, field.getName())
-                            : decryptValue(value, aad, field.getName());
+                    String transformed = transform(value, aad, field.getName(), cls, encrypt, lenient);
                     // Reference identity, not Objects.equals: encrypt/decrypt return the *input*
                     // reference unchanged on no-op paths (null/empty, already enveloped,
                     // ${secret:...} placeholders). Skipping field.set in those cases avoids a
@@ -236,31 +250,47 @@ public class SecretFieldProcessor {
                     continue;
                 }
                 Object child = field.get(entity);
-                recurseInto(child, aad, encrypt);
+                recurseInto(child, aad, encrypt, lenient);
             } catch (IllegalAccessException e) {
                 throw new IllegalStateException("Reflection failure on " + cls.getName() + "." + field.getName(), e);
             }
         }
     }
 
-    private void recurseInto(Object child, byte[] aad, boolean encrypt) {
+    // Lenient mode only ever applies to decrypt: an encrypt failure must still fail the write rather
+    // than silently persist null in place of a real secret.
+    private String transform(String value, byte[] aad, String fieldName, Class<?> cls, boolean encrypt, boolean lenient) {
+        if (encrypt) {
+            return encryptValue(value, aad, fieldName);
+        }
+        if (!lenient) {
+            return decryptValue(value, aad, fieldName);
+        }
+        try {
+            return decryptValue(value, aad, fieldName);
+        } catch (SecurityException e) {
+            log.warn("Can't decrypt field '{}' on {}, dropping it: {}", fieldName, cls.getSimpleName(), e.getMessage());
+            return null;
+        }
+    }
+    private void recurseInto(Object child, byte[] aad, boolean encrypt, boolean lenient) {
         if (child == null) {
             return;
         }
         if (child instanceof Collection<?> collection) {
             for (Object item : collection) {
                 if (item != null && classHasEncryptedField(item.getClass())) {
-                    walk(item, aad, encrypt);
+                    walk(item, aad, encrypt, lenient);
                 }
             }
         } else if (child instanceof Map<?, ?> map) {
             for (Object value : map.values()) {
                 if (value != null && classHasEncryptedField(value.getClass())) {
-                    walk(value, aad, encrypt);
+                    walk(value, aad, encrypt, lenient);
                 }
             }
         } else if (classHasEncryptedField(child.getClass())) {
-            walk(child, aad, encrypt);
+            walk(child, aad, encrypt, lenient);
         }
     }
 

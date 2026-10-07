@@ -187,13 +187,10 @@ public class ApplicationService {
     // A read must not 500 just because one route's secret can't be decrypted (corrupted ciphertext,
     // rotated key) — every response surface already suppresses the field via @JsonProperty(WRITE_ONLY)
     // regardless of its decrypted state, so a read degrades gracefully; only a routing attempt against
-    // that specific upstream fails downstream.
+    // that specific upstream fails downstream. Lenient so a bad secret doesn't also leave every route
+    // visited after it in the walk order stuck undecrypted (ciphertext sent upstream as a literal key).
     private void decryptRouteSecretsTolerant(Application application, ResourceDescriptor resource) {
-        try {
-            secretFieldProcessor.decryptFields(application, resource);
-        } catch (SecurityException e) {
-            log.warn("Can't decrypt route-upstream secrets of application '{}': {}", resource.getUrl(), e.getMessage());
-        }
+        secretFieldProcessor.decryptFieldsLenient(application, resource);
     }
 
     public void putApplication(ResourceDescriptor resource, EtagHeader etag, String author,
@@ -283,12 +280,15 @@ public class ApplicationService {
      * Encrypts {@code application}'s route-upstream secrets, serializes via {@link ConfigEntityCodec
      * #serializeForBlob} (not {@link ProxyUtil#convertToString}, which drops them), then decrypts back
      * to plaintext in place. Every write in this class must go through this, or an encrypted route
-     * secret is silently dropped on the next write.
+     * secret is silently dropped on the next write. The blob is already written correctly by this
+     * point, so the decrypt-back step is lenient: a field that can't be decrypted (e.g. corrupted by
+     * an earlier bug) must not fail the write just to restore an in-memory value every caller here
+     * only uses for a WRITE_ONLY-suppressing response.
      */
     private String serializeEncrypted(ResourceDescriptor resource, Application application) {
         secretFieldProcessor.encryptFields(application, resource);
         String blobBody = ConfigEntityCodec.serializeForBlob(application);
-        secretFieldProcessor.decryptFields(application, resource);
+        secretFieldProcessor.decryptFieldsLenient(application, resource);
         return blobBody;
     }
 

@@ -13,14 +13,17 @@ import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.slf4j.LoggerFactory;
 
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -1176,6 +1179,56 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
                 () -> "Route-upstream secret must survive an external-service write, still encrypted: " + rawBlob);
         assertFalse(rawBlob.contains("route-secret-1"),
                 () -> "Plaintext upstream key must not appear in blob: " + rawBlob);
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testExternalServiceWriteSucceedsWithCorruptedRouteUpstreamSecret() throws Exception {
+        String appUrl = createPlainDynamicApp("user", "mgmt-corrupted-route-secret-app");
+        Response withRoute = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                {
+                    "endpoint": "http://localhost:7001/v1/x",
+                    "display_name": "Mgmt App",
+                    "routes": {
+                        "index-search": {
+                            "paths": ["/v1/index(/[^/]+)*$"],
+                            "rewritePath": true,
+                            "methods": ["POST"],
+                            "upstreams": [{"endpoint": "http://localhost:4848", "key": "route-secret-1"}]
+                        }
+                    }
+                }
+                """, "authorization", "user");
+        assertEquals(200, withRoute.status(), () -> withRoute.body());
+
+        // Plant a corrupted envelope, bypassing the API's encrypt path, to simulate ciphertext that
+        // can no longer be decrypted (rotated key, bit rot). It must be structurally valid (correct
+        // Base64, long enough) so encryptFields' "already enveloped" check leaves it untouched instead
+        // of healing it by re-encrypting it as plaintext on the next write.
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(appUrl, encryptionService);
+        String corruptedEnvelope = "ENC[" + Base64.getEncoder().encodeToString(new byte[64]) + "]";
+        JsonNode rawBlob = ProxyUtil.MAPPER.readTree(resourceService.getResource(descriptor));
+        ((ObjectNode) rawBlob.get("routes").get("index-search").get("upstreams").get(0))
+                .put("key", corruptedEnvelope);
+        resourceService.putResource(descriptor, rawBlob.toString(), EtagHeader.ANY, null, false);
+
+        // ExternalServiceService#serializeEncrypted's post-write decrypt-back-to-plaintext step must
+        // not fail the write just because the application also carries an undecryptable route secret.
+        Response put = send(HttpMethod.PUT, "/v1/" + appUrl + "/external-services/billing-api", null, """
+                {
+                    "display_name": "Billing",
+                    "auth_settings": {
+                        "authentication_type": "API_KEY",
+                        "api_key_header": "X-API-Key"
+                    }
+                }
+                """, "authorization", "user");
+        assertEquals(200, put.status(), () -> put.body());
+
+        Response delete = send(HttpMethod.DELETE, "/v1/" + appUrl + "/external-services/billing-api",
+                null, "", "authorization", "user");
+        assertEquals(200, delete.status(), () -> delete.body());
     }
 
     @Test
