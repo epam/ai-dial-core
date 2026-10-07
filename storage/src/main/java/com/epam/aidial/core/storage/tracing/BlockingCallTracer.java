@@ -1,4 +1,4 @@
-package com.epam.aidial.core.storage.util;
+package com.epam.aidial.core.storage.tracing;
 
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
@@ -18,15 +18,15 @@ import java.util.concurrent.Callable;
  * current there from a worker thread could re-parent spans the event loop creates meanwhile.
  * Work outside a traced request is not traced, so background jobs such as resource sync start no root traces.
  */
-public class Tracing {
+public class BlockingCallTracer {
 
-    public static final Tracing NOOP = new Tracing(OpenTelemetry.noop());
+    public static final BlockingCallTracer NOOP = new BlockingCallTracer(OpenTelemetry.noop());
 
     private static final ThreadLocal<Context> ACTIVE = new ThreadLocal<>();
 
     private final Tracer tracer;
 
-    public Tracing(OpenTelemetry openTelemetry) {
+    public BlockingCallTracer(OpenTelemetry openTelemetry) {
         this.tracer = openTelemetry.getTracer("com.epam.aidial.core");
     }
 

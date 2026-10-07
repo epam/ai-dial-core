@@ -11,12 +11,12 @@ import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.data.ResourceUpload;
 import com.epam.aidial.core.storage.data.UserMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.epam.aidial.core.storage.util.Base58;
 import com.epam.aidial.core.storage.util.Compression;
 import com.epam.aidial.core.storage.util.EtagBuilder;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.epam.aidial.core.storage.util.RedisUtil;
-import com.epam.aidial.core.storage.util.Tracing;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
@@ -157,7 +157,7 @@ public class ResourceService implements AutoCloseable {
     private final String resourceQueue;
     private final Map<String, Long> resourceTypeExpiration;
     private final Supplier<String> senderPodIdSupplier;
-    private final Tracing tracing;
+    private final BlockingCallTracer tracing;
 
     public ResourceService(TimerService timerService,
                            RedissonClient redis,
@@ -175,7 +175,7 @@ public class ResourceService implements AutoCloseable {
                            Settings settings,
                            String prefix,
                            Supplier<String> senderPodIdSupplier) {
-        this(timerService, redis, blobStore, lockService, settings, prefix, senderPodIdSupplier, Tracing.NOOP);
+        this(timerService, redis, blobStore, lockService, settings, prefix, senderPodIdSupplier, BlockingCallTracer.NOOP);
     }
 
     public ResourceService(TimerService timerService,
@@ -185,7 +185,7 @@ public class ResourceService implements AutoCloseable {
                            Settings settings,
                            String prefix,
                            Supplier<String> senderPodIdSupplier,
-                           Tracing tracing) {
+                           BlockingCallTracer tracing) {
         this.tracing = tracing;
         this.redis = redis;
         this.blobStore = blobStore;
@@ -586,7 +586,7 @@ public class ResourceService implements AutoCloseable {
                     }
                 }
             }
-            Tracing.currentSpan().setAttribute("dial.cache.hit", cacheHit);
+            BlockingCallTracer.currentSpan().setAttribute("dial.cache.hit", cacheHit);
 
             etagHeader.validate(result.etag);
 
@@ -1094,7 +1094,7 @@ public class ResourceService implements AutoCloseable {
 
     private <T> T trace(String name, ResourceDescriptor descriptor, Callable<T> work) {
         return tracing.trace(name, () -> {
-            Tracing.currentSpan().setAttribute("dial.resource.type", descriptor.getType().name());
+            BlockingCallTracer.currentSpan().setAttribute("dial.resource.type", descriptor.getType().name());
             return work.call();
         });
     }

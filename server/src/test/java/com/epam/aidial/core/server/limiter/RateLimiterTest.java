@@ -34,8 +34,8 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.epam.aidial.core.storage.util.EtagHeader;
-import com.epam.aidial.core.storage.util.Tracing;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpServerRequest;
 import org.junit.jupiter.api.AfterAll;
@@ -161,7 +161,7 @@ public class RateLimiterTest {
         // lenient() since not every test method calls increase()
         ConfigStore configStore = mock(ConfigStore.class);
         lenient().when(configStore.get()).thenReturn(new Config());
-        rateLimiter = new RateLimiter(taskExecutor, resourceService, configStore, Tracing.NOOP);
+        rateLimiter = new RateLimiter(taskExecutor, resourceService, configStore, BlockingCallTracer.NOOP);
     }
 
     @AfterEach
@@ -1098,7 +1098,7 @@ public class RateLimiterTest {
             return page;
         }).when(listingWithAgedRecord).getFolderMetadata(any(), any(), anyInt(), anyBoolean());
         // this instance never calls increase(), so its ConfigStore is never actually read
-        RateLimiter limiter = new RateLimiter(taskExecutor, listingWithAgedRecord, mock(ConfigStore.class), Tracing.NOOP);
+        RateLimiter limiter = new RateLimiter(taskExecutor, listingWithAgedRecord, mock(ConfigStore.class), BlockingCallTracer.NOOP);
 
         Future<UserLimitStats> future = limiter.getUserStats(proxyContext, List.of(model), false);
 
