@@ -22,6 +22,7 @@ import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.config.UpstreamAuthType;
 import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
@@ -112,6 +113,7 @@ public final class ConfigPostProcessor {
                                        @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
         Set<String> deploymentIds = new HashSet<>();
         sortRoutes(config);
+        processRoutes(config, onSkip);
         processTranslators(config, onSkip);
         processModels(config, deploymentIds, onSkip);
         processApplications(config, deploymentIds, onSkip);
@@ -243,6 +245,29 @@ public final class ConfigPostProcessor {
         onSkip.accept(ResourceTypes.INTERCEPTOR, new InvalidEntityException(ResourceTypes.INTERCEPTOR, mapKey, warnings));
     }
 
+    /**
+     * Targeted per-type helper for {@link MergedConfigStore}'s partial-update path — validates the
+     * single written route's upstreams via {@link #validateRouteUpstreams}, after the route sort that
+     * already runs for every ROUTE write ({@link #sortRoutesInPlace}).
+     */
+    static void validateSingleRoute(Config config, String mapKey,
+                                    @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Route route = config.getRoutes().get(mapKey);
+        if (route == null) {
+            return;
+        }
+        List<ValidationWarning> warnings = new ArrayList<>();
+        validateRouteUpstreams("Route", mapKey, route, warnings);
+        if (warnings.isEmpty()) {
+            return;
+        }
+        if (onSkip == null) {
+            throw new InvalidEntityException(ResourceTypes.ROUTE, mapKey, warnings);
+        }
+        config.getRoutes().remove(mapKey);
+        onSkip.accept(ResourceTypes.ROUTE, new InvalidEntityException(ResourceTypes.ROUTE, mapKey, warnings));
+    }
+
     static <T extends RoleBasedEntity> void setNameAsMapKey(Map<String, T> entities, String mapKey) {
         T entity = entities.get(mapKey);
         if (entity != null) {
@@ -309,6 +334,50 @@ public final class ConfigPostProcessor {
         routes.clear();
         for (Route route : sortedRoutes) {
             routes.put(route.getName(), route);
+        }
+    }
+
+    /**
+     * Validates every top-level route's upstreams. Routes have no deployment-id namespace to
+     * dedupe (the config map key is already unique), so unlike {@link #processModels} this only
+     * runs {@link #validateRouteUpstreams}.
+     */
+    private static void processRoutes(Config config, @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Iterator<Map.Entry<String, Route>> iterator = config.getRoutes().entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, Route> entry = iterator.next();
+            String name = entry.getKey();
+            Route route = entry.getValue();
+            List<ValidationWarning> warnings = new ArrayList<>();
+            validateRouteUpstreams("Route", name, route, warnings);
+            if (warnings.isEmpty()) {
+                continue;
+            }
+            if (onSkip == null) {
+                throw new InvalidEntityException(ResourceTypes.ROUTE, name, warnings);
+            }
+            iterator.remove();
+            onSkip.accept(ResourceTypes.ROUTE, new InvalidEntityException(ResourceTypes.ROUTE, name, warnings));
+        }
+    }
+
+    /**
+     * Validates an upstream declaring {@code authType: BEARER}: it must also carry a {@code key}, or
+     * the route-forwarding path silently falls back to sending the caller's own per-request DIAL key
+     * under {@code API-KEY} instead, ignoring {@code authType} entirely.
+     */
+    public static void validateRouteUpstreams(String entityLabel, @Nullable String entityName, Route route,
+                                              List<ValidationWarning> warnings) {
+        List<Upstream> upstreams = route.getUpstreams();
+        if (upstreams == null) {
+            return;
+        }
+        for (int i = 0; i < upstreams.size(); i++) {
+            Upstream upstream = upstreams.get(i);
+            if (upstream.getAuthType() == UpstreamAuthType.BEARER && upstream.getKey() == null) {
+                warnings.add(new ValidationWarning("upstreams[" + i + "].authType",
+                        messageWithEntityPrefix(entityLabel, entityName, "authType 'BEARER' requires a key")));
+            }
         }
     }
 

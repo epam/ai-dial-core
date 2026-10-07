@@ -206,6 +206,10 @@ public enum RouteTemplate {
             "^/v1/deployments/(?<id>.+?)/limits$",
             "/v1/deployments/{id}/limits"
     ),
+    DEPLOYMENT_USAGE(
+            "^/v1/deployments/(?<id>.+?)/usage$",
+            "/v1/deployments/{id}/usage"
+    ),
 
     DEPLOYMENT_ROUTES(
             "^/+v1/deployments/(?<id>.+)/route(?<routePath>/.+?)$",
@@ -215,6 +219,11 @@ public enum RouteTemplate {
     DEPLOYMENT_LISTING(
             "^/+v1/deployments$",
             "/v1/deployments"
+    ),
+
+    DEPLOYMENT_NAMES(
+            "^/+v1/deployment-names$",
+            "/v1/deployment-names"
     ),
 
     // Operations

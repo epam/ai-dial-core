@@ -29,6 +29,7 @@ A list of upstream servers with their parameters. Use to configure [load balanci
 
 * `endpoint`: One or more backend URLs (e.g., http://, https://, ws://, wss://) to which requests are sent. Supports HTTP and WebSocket protocols. When multiple endpoints are provided, round-robin load balancing and automatic fallback can be enabled among the hosts.
 * `key`: API key, token, or credential passed to the upstream. 
+* `authType`: How `key` is sent to the upstream. One of `API_KEY` (default) - sent as `API-KEY: <key>`, or `BEARER` - sent as `Authorization: Bearer <key>` (e.g. required by OpenRouter). `BEARER` requires `key` to be set. Only honored on top-level `routes` (this section); routes defined under an application's own `routes` ignore it and keep sending `API-KEY`, with `Authorization` governed solely by the application's `forwardAuthToken`.
 * `weight`: Weight for upstream endpoint; positive number represents an endpoint capacity, zero or negative disables this endpoint from routing. Higher = more traffic share. Default value: 1.
 * `tier`: Specifies tier group for the endpoint. Only positive numbers allowed. All requests will be routed to the endpoints with the highest tier (the lowest tier value), other endpoints (with lower tier/higher tier value) may be used only if the highest tier endpoints are unavailable. Default value: 0 - highest tier. Refer to [load balancing](https://docs.dialx.ai/platform/core/load-balancer) to learn more.
 * `extraData`: Additional metadata containing any information that is passed to the upstream's endpoint. It can be a JSON or String.
@@ -68,6 +69,18 @@ A list of upstream servers with their parameters. Use to configure [load balanci
         {
           "endpoint": "wss://${AZURE_FOUNDRY_PROJECT_NAME}.cognitiveservices.azure.com/openai/realtime",
           "key": "${AZURE_FOUNDRY_API_KEY}"
+        }
+      ]
+    },
+    "openrouter": {
+      "paths": ["/v1/chat/completions"],
+      "rewritePath": true,
+      "methods": ["POST"],
+      "upstreams": [
+        {
+          "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+          "key": "${OPENROUTER_API_KEY}",
+          "authType": "BEARER"
         }
       ]
     }
