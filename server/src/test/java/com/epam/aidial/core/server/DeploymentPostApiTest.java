@@ -39,6 +39,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -484,9 +485,12 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
      * callback, which Vert.x dispatches on the request's own context anyway and would hide a missing guard.
      */
     @Test
-    public void testRequestStaysOnItsOwnContext_WhenAuthorizationCompletesOnAnotherContext() {
+    public void testRequestStaysOnItsOwnContext_WhenAuthorizationCompletesOnAnotherContext() throws Exception {
         String uri = "/v1/files/missing-bucket/missing.txt";
+        // the other request's context, with that request's own entry in place
         ContextInternal otherRequestContext = ((ContextInternal) dial.getVertx().getOrCreateContext()).duplicate();
+        ProxyContext otherRequest = Mockito.mock(ProxyContext.class);
+        runOn(otherRequestContext, () -> ContextManager.setProxyContext(otherRequest));
         Mockito.doAnswer(invocation -> otherRequestContext.succeededFuture(createClaims("default")))
                 .when(validator).extractClaims("hopper");
         // no URI filter: a line logged off the request's context carries no request.uri and must still be seen
@@ -499,6 +503,23 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
             assertFalse(line.get("TraceId").asText().isEmpty(), line.toString());
             assertEquals("default", line.get("Attributes").path("user.id").asText());
         }
+        // and the other request's entry was neither replaced nor read by the hopped request
+        ProxyContext[] seen = new ProxyContext[1];
+        runOn(otherRequestContext, () -> seen[0] = ContextManager.getProxyContext());
+        assertSame(otherRequest, seen[0]);
+    }
+
+    private static void runOn(ContextInternal context, Runnable action) throws Exception {
+        CompletableFuture<Void> done = new CompletableFuture<>();
+        context.runOnContext(v -> {
+            try {
+                action.run();
+                done.complete(null);
+            } catch (Throwable e) {
+                done.completeExceptionally(e);
+            }
+        });
+        done.get(10, TimeUnit.SECONDS);
     }
 
     private int sendChatCompletion(HttpClient client, String apiKey) throws Exception {

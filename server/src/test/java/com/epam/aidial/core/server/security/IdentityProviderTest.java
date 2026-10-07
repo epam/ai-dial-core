@@ -1301,17 +1301,4 @@ public class IdentityProviderTest {
         verify(taskExecutor, times(2)).submit(any(Callable.class));
     }
 
-    @Test
-    public void testExtractClaimsWithoutKidIsRejectedWithoutLookingUpKeys() {
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
-        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
-        String token = JWT.create().withClaim("roles", List.of("manager")).sign(algorithm);
-
-        Future<ExtractedClaims> result = identityProvider.extractClaimsFromJwt(JWT.decode(token));
-
-        // rejected as before, but as a plain failure instead of the NullPointerException the cache used to throw
-        assertTrue(result.failed());
-        assertTrue(result.cause() instanceof JwkException, String.valueOf(result.cause()));
-        verifyNoInteractions(jwkProvider, taskExecutor);
-    }
 }

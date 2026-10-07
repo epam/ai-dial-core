@@ -327,11 +327,6 @@ public class IdentityProvider {
     }
 
     private Future<JwkResult> getJwk(String kid) {
-        if (kid == null) {
-            // rejected, as before, but without the NullPointerException the cache used to throw on a null key;
-            // accepting such tokens against a single-key JWKS needs cache invalidation on key rotation first
-            return Future.failedFuture(new JwkException("JWT has no kid header"));
-        }
         return FutureUtil.shareLookup(cache, kid, () -> taskExecutor.submit(() -> {
             JwkResult jwkResult;
             long currentTime = System.currentTimeMillis();

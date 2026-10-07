@@ -28,18 +28,16 @@ public class FutureUtil {
      * returns, a failed lookup leaves the cache as soon as it fails, and each caller continues on its own context.
      */
     public static <K, V> Future<V> shareLookup(ConcurrentMap<K, Future<V>> cache, K key, Supplier<Future<V>> lookup) {
-        Future<V> shared = cache.get(key);
-        if (shared == null) {
-            Promise<V> fresh = Promise.promise();
-            Future<V> mine = fresh.future();
-            shared = cache.computeIfAbsent(key, k -> {
-                lookup.get().onComplete(fresh);
-                return mine;
-            });
-            if (shared == mine) {
-                // registered by the creator only, and outside computeIfAbsent: an already failed lookup fires it at once
-                shared.onFailure(error -> cache.remove(key, mine));
-            }
+        Promise<V> fresh = Promise.promise();
+        Future<V> mine = fresh.future();
+        Future<V> shared = cache.computeIfAbsent(key, k -> {
+            lookup.get().onComplete(fresh);
+            return mine;
+        });
+        if (shared == mine) {
+            // registered by the creator only, and outside computeIfAbsent: an already failed lookup fires it at once.
+            // A lookup that reports its failure as a value (the JWK cache's negative result) is not affected.
+            shared.onFailure(error -> cache.remove(key, mine));
         }
         return continueOnCallerContext(shared);
     }

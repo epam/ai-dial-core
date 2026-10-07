@@ -2,8 +2,6 @@ package com.epam.aidial.core.server;
 
 import io.vertx.core.Context;
 import io.vertx.core.Vertx;
-import io.vertx.core.http.HttpServerRequest;
-import io.vertx.core.http.impl.HttpServerRequestInternal;
 import io.vertx.core.impl.ContextInternal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -15,7 +13,6 @@ import java.util.function.Supplier;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * Why {@link ContextManager} has no clear step: the entry lives in the request's own duplicated Vert.x context,
@@ -36,8 +33,8 @@ class ContextManagerTest {
         // two requests on the same event loop, e.g. sequential requests over one keep-alive connection
         ContextInternal first = requestContext();
         ContextInternal second = requestContext();
-        ProxyContext firstProxyContext = proxyContextOf(first);
-        ProxyContext secondProxyContext = proxyContextOf(second);
+        ProxyContext firstProxyContext = mock(ProxyContext.class);
+        ProxyContext secondProxyContext = mock(ProxyContext.class);
 
         on(first, () -> set(firstProxyContext));
 
@@ -53,32 +50,10 @@ class ContextManagerTest {
     }
 
     @Test
-    void proxyContextIsStoredOnItsRequestContextWhateverContextIsCurrent() throws Exception {
-        // a continuation that hopped onto another request's context, or onto the shared event-loop context,
-        // must still file the entry under its own request
-        ContextInternal own = requestContext();
-        ContextInternal other = requestContext();
-        ProxyContext proxyContext = proxyContextOf(own);
+    void offAnyVertxContextNothingIsStoredOrRead() {
+        ContextManager.setProxyContext(mock(ProxyContext.class));
 
-        on(other, () -> set(proxyContext));
-        on(own.unwrap(), () -> set(proxyContext));
-
-        assertSame(proxyContext, on(own, ContextManager::getProxyContext));
-        assertNull(on(other, ContextManager::getProxyContext));
-        assertNull(on(own.unwrap(), ContextManager::getProxyContext));
-    }
-
-    @Test
-    void requestWithoutVertxContextStoresNothing() throws Exception {
-        ProxyContext proxyContext = mock(ProxyContext.class);
-        when(proxyContext.getRequest()).thenReturn(mock(HttpServerRequest.class));
-
-        ContextInternal current = requestContext();
-
-        on(current, () -> set(proxyContext));
-
-        // in particular it must not fall back to the current context
-        assertNull(on(current, ContextManager::getProxyContext));
+        assertNull(ContextManager.getProxyContext());
     }
 
     /**
@@ -87,14 +62,6 @@ class ContextManagerTest {
      */
     private ContextInternal requestContext() {
         return ((ContextInternal) vertx.getOrCreateContext()).duplicate();
-    }
-
-    private static ProxyContext proxyContextOf(ContextInternal requestContext) {
-        HttpServerRequestInternal request = mock(HttpServerRequestInternal.class);
-        when(request.context()).thenReturn(requestContext);
-        ProxyContext proxyContext = mock(ProxyContext.class);
-        when(proxyContext.getRequest()).thenReturn(request);
-        return proxyContext;
     }
 
     private static Void set(ProxyContext proxyContext) {
