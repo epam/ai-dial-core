@@ -124,11 +124,13 @@ public class ResponseItemController implements Controller {
                 .compose(this::checkNotDeletingActive)
                 .compose(mapping -> proxy.getTaskExecutor().submit(() -> dispatch(mapping)).compose(dispatched -> dispatched))
                 .eventually(this::finalizeRequest)
-                .onFailure(error -> {
-                    if (!context.getResponse().ended()) {
-                        context.respond(error, "Failed to process response operation");
-                    }
-                });
+                .onFailure(this::handleError);
+    }
+
+    private void handleError(Throwable error) {
+        if (!context.getResponse().ended()) {
+            context.respond(error, "Failed to process response operation");
+        }
     }
 
     private Future<Void> finalizeRequest() {
@@ -201,7 +203,9 @@ public class ResponseItemController implements Controller {
                 .compose(body -> {
                     context.setRequestBody(body);
                     return continuation.get();
-                });
+                })
+                .eventually(this::finalizeRequest)
+                .onFailure(this::handleError);
         return Future.succeededFuture();
     }
 
@@ -210,22 +214,29 @@ public class ResponseItemController implements Controller {
     }
 
     private Future<Void> forwardToUpstream(ResponseMapping mapping, Deployment deployment) {
-        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
-                .get(deployment,
-                        null,
-                        dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES,
-                                context.getConfig().getTranslators()),
-                        mapping.getUpstreamKey());
-        Upstream upstream = upstreamRoute.next();
+        Upstream upstream;
+        String targetUrl;
+        ApiKeyData proxyApiKeyData;
+        try {
+            UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
+                    .get(deployment,
+                            null,
+                            dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES,
+                                    context.getConfig().getTranslators()),
+                            mapping.getUpstreamKey());
+            upstream = upstreamRoute.next();
 
-        String targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment,
-                context.getConfig().getTranslators(), operation.pathMapping, mapping.getUpstreamResponseId(),
-                context.getRequest().query());
+            targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment,
+                    context.getConfig().getTranslators(), operation.pathMapping, mapping.getUpstreamResponseId(),
+                    context.getRequest().query());
 
-        ApiKeyData proxyApiKeyData = new ApiKeyData();
-        ApiKeyData.initFromContext(proxyApiKeyData, context);
-        context.setProxyApiKeyData(proxyApiKeyData);
-        proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+            proxyApiKeyData = new ApiKeyData();
+            ApiKeyData.initFromContext(proxyApiKeyData, context);
+            context.setProxyApiKeyData(proxyApiKeyData);
+            proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+        } catch (Throwable e) {
+            return Future.failedFuture(e);
+        }
 
         return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, proxyApiKeyData.getPerRequestKey())
                 .compose(response -> {

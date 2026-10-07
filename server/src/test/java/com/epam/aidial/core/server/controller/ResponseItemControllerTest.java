@@ -169,6 +169,7 @@ public class ResponseItemControllerTest {
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
         when(context.getUserId()).thenReturn("test-user");
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(200)).thenReturn(response);
@@ -223,6 +224,7 @@ public class ResponseItemControllerTest {
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
         when(context.getUserId()).thenReturn("test-user");
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(200)).thenReturn(response);
@@ -270,6 +272,7 @@ public class ResponseItemControllerTest {
         when(context.getRequest()).thenReturn(serverRequest);
         when(context.getUserId()).thenReturn("test-user");
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(200)).thenReturn(response);
         when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
@@ -315,6 +318,7 @@ public class ResponseItemControllerTest {
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
         when(context.getUserId()).thenReturn("test-user");
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(200)).thenReturn(response);
@@ -357,6 +361,7 @@ public class ResponseItemControllerTest {
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
         when(context.getUserId()).thenReturn("test-user");
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(400)).thenReturn(response);
@@ -444,6 +449,8 @@ public class ResponseItemControllerTest {
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(context.getUserId()).thenReturn("test-user");
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getRequest()).thenReturn(serverRequest);
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(context.getResponse()).thenReturn(response);
         when(response.ended()).thenReturn(false);
         when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> complete(testContext));
@@ -486,6 +493,7 @@ public class ResponseItemControllerTest {
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
         when(context.getUserId()).thenReturn("test-user");
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(200)).thenReturn(response);
@@ -536,6 +544,7 @@ public class ResponseItemControllerTest {
         when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any()))
                 .thenReturn(Future.succeededFuture(proxyResponse));
         when(context.getRequest()).thenReturn(serverRequest);
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(serverRequest.query()).thenReturn("stream=true");
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(proxyResponse.statusCode()).thenReturn(200);

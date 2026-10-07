@@ -210,7 +210,7 @@ public class DeploymentPostController extends BaseChatCompletionController {
                         return new ChatCompletionInterceptorController(proxy, context, interceptorIndex, requestedInterface()).handle();
                     }))
                     .onFailure(this::handleRequestBodyError);
-            return null;
+            return Future.succeededFuture();
         } else { // all interceptors are completed we should call the initial deployment
             return handleDeployment(context.getApiKeyData().getInitialDeployment());
         }
