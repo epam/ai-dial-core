@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RouteApiTest extends ResourceBaseTest {
@@ -193,6 +194,19 @@ class RouteApiTest extends ResourceBaseTest {
 
             response = send(HttpMethod.GET, path, null, null, headers);
             assertTrue(response.ok());
+        }
+    }
+
+    @Test
+    void routeBearerAuthType() {
+        TestWebServer.Handler handler = request -> {
+            assertEquals("Bearer bearerKey123", request.getHeader("Authorization"));
+            assertNull(request.getHeader(Proxy.HEADER_API_KEY));
+            return new MockResponse().setBody(request.getPath());
+        };
+        try (TestWebServer ignored = new TestWebServer(9876, handler)) {
+            Response resp = send(HttpMethod.GET, "/v1/bearer", null, null, "api-key", "vstore_user_key");
+            assertEquals(200, resp.status());
         }
     }
 
