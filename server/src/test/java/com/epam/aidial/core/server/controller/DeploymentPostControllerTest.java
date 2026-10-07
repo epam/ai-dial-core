@@ -30,7 +30,7 @@ import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.epam.aidial.core.storage.util.Tracing;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.opentelemetry.api.trace.Span;
 import io.vertx.core.Future;
@@ -133,7 +133,7 @@ public class DeploymentPostControllerTest {
     void stubConfig() {
         // the controller resolves translator references against the request's config on every routing step
         lenient().when(context.getConfig()).thenReturn(new Config());
-        lenient().when(proxy.getTracing()).thenReturn(Tracing.NOOP);
+        lenient().when(proxy.getTracing()).thenReturn(BlockingCallTracer.NOOP);
     }
 
     @SuppressWarnings("checkstyle:LineLength")
@@ -463,7 +463,7 @@ public class DeploymentPostControllerTest {
     public void testHandleRequestBody_OverrideModelName() throws IOException {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, null, 0, 0, null, null, null));
+        when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, null, 0, 0, null, null, null, null));
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
@@ -506,7 +506,7 @@ public class DeploymentPostControllerTest {
     public void testHandleRequestBody_NotOverrideModelName() throws IOException {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, null, 0, 0, null, null, null));
+        when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, null, 0, 0, null, null, null, null));
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
@@ -548,7 +548,7 @@ public class DeploymentPostControllerTest {
     public void testHandleRequestBody_OverrideModelName_Application() throws IOException {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, null, 0, 0, null, null, null));
+        when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, null, 0, 0, null, null, null, null));
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
@@ -590,7 +590,7 @@ public class DeploymentPostControllerTest {
     public void testHandleRequestBody_SkillAutoShared_WhenReadable() {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, null, 0, 0, null, null, null));
+        when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, null, 0, 0, null, null, null, null));
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);

@@ -5,7 +5,7 @@ import com.azure.security.keyvault.keys.cryptography.CryptographyClient;
 import com.azure.security.keyvault.keys.cryptography.CryptographyClientBuilder;
 import com.azure.security.keyvault.keys.cryptography.models.KeyWrapAlgorithm;
 import com.epam.aidial.core.credentials.data.configuration.KmsSettings;
-import com.epam.aidial.core.storage.util.Tracing;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.google.cloud.kms.v1.KeyManagementServiceClient;
 import com.google.cloud.kms.v1.KeyManagementServiceSettings;
 import lombok.SneakyThrows;
@@ -19,7 +19,7 @@ import java.util.Objects;
 @UtilityClass
 public class KeyManagementServiceFactory {
 
-    public KeyManagementService create(KmsSettings kmsSettings, Tracing tracing) {
+    public KeyManagementService create(KmsSettings kmsSettings, BlockingCallTracer tracing) {
         if (kmsSettings == null || kmsSettings.getProvider() == null || "unencrypted".equals(kmsSettings.getProvider())) {
             return new SimpleKeyManagementService();
         }
@@ -38,7 +38,7 @@ public class KeyManagementServiceFactory {
         return traced(service, tracing);
     }
 
-    private static KeyManagementService traced(KeyManagementService service, Tracing tracing) {
+    private static KeyManagementService traced(KeyManagementService service, BlockingCallTracer tracing) {
         return new KeyManagementService() {
             @Override
             public byte[] encrypt(byte[] plain) {

@@ -58,10 +58,10 @@ public class UpstreamRouteTest {
         Model model = new Model();
         model.setName("model1");
         model.setUpstreams(List.of(
-                new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null),
-                new Upstream("endpoint2", null, null, null, null, 1, 1, null, null, null),
-                new Upstream("endpoint3", null, null, null, null, 1, 1, null, null, null),
-                new Upstream("endpoint4", null, null, null, null, 1, 1, null, null, null)
+                new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null, null),
+                new Upstream("endpoint2", null, null, null, null, 1, 1, null, null, null, null),
+                new Upstream("endpoint3", null, null, null, null, 1, 1, null, null, null, null),
+                new Upstream("endpoint4", null, null, null, null, 1, 1, null, null, null, null)
         ));
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
@@ -108,8 +108,8 @@ public class UpstreamRouteTest {
         Model model = new Model();
         model.setName("model1");
         model.setUpstreams(List.of(
-                new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null),
-                new Upstream("endpoint2", null, null, null, null, 1, 1, null, null, null)
+                new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null, null),
+                new Upstream("endpoint2", null, null, null, null, 1, 1, null, null, null, null)
         ));
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
@@ -141,8 +141,8 @@ public class UpstreamRouteTest {
         Model model = new Model();
         model.setName("model1");
         model.setUpstreams(List.of(
-                new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null),
-                new Upstream("endpoint2", null, null, null, null, 1, 1, null, null, null)
+                new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null, null),
+                new Upstream("endpoint2", null, null, null, null, 1, 1, null, null, null, null)
         ));
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
@@ -165,8 +165,8 @@ public class UpstreamRouteTest {
         Model model = new Model();
         model.setName("model1");
         model.setUpstreams(List.of(
-                new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null),
-                new Upstream("endpoint2", null, null, null, null, 1, 1, null, null, null)
+                new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null, null),
+                new Upstream("endpoint2", null, null, null, null, 1, 1, null, null, null, null)
         ));
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
@@ -189,8 +189,8 @@ public class UpstreamRouteTest {
         Model model = new Model();
         model.setName("model1");
         model.setUpstreams(List.of(
-                new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null),
-                new Upstream("endpoint2", null, null, null, null, 1, 1, null, null, null)
+                new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null, null),
+                new Upstream("endpoint2", null, null, null, null, 1, 1, null, null, null, null)
         ));
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
@@ -224,8 +224,8 @@ public class UpstreamRouteTest {
         Model model = new Model();
         model.setName("model1");
         model.setUpstreams(List.of(
-                new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null),
-                new Upstream("endpoint2", null, null, null, null, 1, 1, null, null, null)
+                new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null, null),
+                new Upstream("endpoint2", null, null, null, null, 1, 1, null, null, null, null)
         ));
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
@@ -257,8 +257,8 @@ public class UpstreamRouteTest {
         Model model = new Model();
         model.setName("model1");
         model.setUpstreams(List.of(
-                new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null),
-                new Upstream("endpoint2", null, null, null, null, 1, 1, null, null, null)
+                new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null, null),
+                new Upstream("endpoint2", null, null, null, null, 1, 1, null, null, null, null)
         ));
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
@@ -290,8 +290,8 @@ public class UpstreamRouteTest {
         Model model = new Model();
         model.setName("model1");
         model.setUpstreams(List.of(
-                new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null),
-                new Upstream("endpoint2", null, null, null, null, 1, 0, null, null, null)
+                new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null, null),
+                new Upstream("endpoint2", null, null, null, null, 1, 0, null, null, null, null)
         ));
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
@@ -317,7 +317,7 @@ public class UpstreamRouteTest {
     void testSuccess_UpstreamAskedForNoCache() {
         Model model = new Model();
         model.setName("model1");
-        model.setUpstreams(List.of(new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null)));
+        model.setUpstreams(List.of(new Upstream("endpoint1", null, null, null, null, 1, 1, null, null, null, null)));
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         UpstreamRoute route = upstreamRouteProvider.get(model, null);

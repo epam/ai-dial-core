@@ -12,8 +12,8 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.epam.aidial.core.storage.util.RedisUtil;
-import com.epam.aidial.core.storage.util.Tracing;
 import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
@@ -46,7 +46,7 @@ public class ApiKeyStore {
     public static final String API_KEY_DATA_LOCATION = API_KEY_DATA_BUCKET + PATH_SEPARATOR;
 
     private final AsyncTaskExecutor taskExecutor;
-    private final Tracing tracing;
+    private final BlockingCallTracer tracing;
     private final RedissonClient redis;
     private final String prefix;
 
@@ -60,7 +60,7 @@ public class ApiKeyStore {
      */
     private final ReentrantLock mutationLock = new ReentrantLock();
 
-    public ApiKeyStore(AsyncTaskExecutor taskExecutor, RedissonClient redis, String prefix, JsonObject settings, Tracing tracing) {
+    public ApiKeyStore(AsyncTaskExecutor taskExecutor, RedissonClient redis, String prefix, JsonObject settings, BlockingCallTracer tracing) {
         this.taskExecutor = taskExecutor;
         this.tracing = tracing;
         this.redis = redis;
@@ -91,10 +91,9 @@ public class ApiKeyStore {
             String json = ProxyUtil.convertToString(data);
             String redisKey = toRedisKey(perRequestKey);
             RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
-            if (!bucket.setIfAbsent(json)) {
+            if (!bucket.setIfAbsent(json, customTtl)) {
                 throw new IllegalStateException(String.format("API key %s already exists in Redis storage", perRequestKey));
             }
-            bucket.expire(customTtl);
             return null;
         });
     }

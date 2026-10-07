@@ -4,8 +4,8 @@ import com.epam.aidial.core.credentials.service.metadata.HttpHeadersHandler;
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.epam.aidial.core.storage.util.Compression;
-import com.epam.aidial.core.storage.util.Tracing;
 import com.google.common.annotations.VisibleForTesting;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -29,9 +29,9 @@ public class ResourceAuthorizationClient {
 
     private final HttpClient httpClient;
     private final HttpHeadersHandler httpHeadersHandler;
-    private final Tracing tracing;
+    private final BlockingCallTracer tracing;
 
-    public ResourceAuthorizationClient(@Nullable ProxySelector proxySelector, Tracing tracing) {
+    public ResourceAuthorizationClient(@Nullable ProxySelector proxySelector, BlockingCallTracer tracing) {
         HttpClient.Builder builder = HttpClient.newBuilder();
         builder.connectTimeout(Duration.of(5, ChronoUnit.SECONDS));
         if (proxySelector != null) {
@@ -44,7 +44,7 @@ public class ResourceAuthorizationClient {
 
     @SuppressWarnings("unused")
     @VisibleForTesting
-    private ResourceAuthorizationClient(HttpClient httpClient, HttpHeadersHandler httpHeadersHandler, Tracing tracing) {
+    private ResourceAuthorizationClient(HttpClient httpClient, HttpHeadersHandler httpHeadersHandler, BlockingCallTracer tracing) {
         this.httpClient = httpClient;
         this.httpHeadersHandler = httpHeadersHandler;
         this.tracing = tracing;
@@ -88,8 +88,8 @@ public class ResourceAuthorizationClient {
 
     private <R> R execute(HttpRequest request, Class<R> responseType) {
         return tracing.trace("oauth.request", () -> {
-            Tracing.currentSpan().setAttribute("http.request.method", request.method());
-            Tracing.currentSpan().setAttribute("server.address", request.uri().getHost());
+            BlockingCallTracer.currentSpan().setAttribute("http.request.method", request.method());
+            BlockingCallTracer.currentSpan().setAttribute("server.address", request.uri().getHost());
             return send(request, responseType);
         });
     }
@@ -100,7 +100,7 @@ public class ResourceAuthorizationClient {
             HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
 
             int status = response.statusCode();
-            Tracing.currentSpan().setAttribute("http.response.status_code", status);
+            BlockingCallTracer.currentSpan().setAttribute("http.response.status_code", status);
             String body = decodeBody(response);
 
             if (status != 200 && status != 201) {

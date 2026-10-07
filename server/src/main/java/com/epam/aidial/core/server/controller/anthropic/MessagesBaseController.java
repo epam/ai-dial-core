@@ -88,7 +88,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                     return proxy.getTaskExecutor().submit(() -> proxy.getTracing().trace("deployment.resolve", () -> setupDeployment(model)))
                             .compose(ignore -> verifyLimit())
                             .compose(ignore -> proxy.getTokenStatsTracker().startSpan(context)
-                                    .map(ignored -> handleRequestBody(request)))
+                                    .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request))))
                             .otherwise(error -> handleRequestError(model, error));
                 })
                 .onFailure(this::handleRequestBodyError);

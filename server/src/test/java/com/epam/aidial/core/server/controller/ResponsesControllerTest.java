@@ -31,7 +31,7 @@ import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.epam.aidial.core.storage.util.Tracing;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -123,7 +123,7 @@ public class ResponsesControllerTest {
     void stubRequestPath() {
         // resolveRequestUri always consults the ingress path (even though the legacy flow ignores it)
         lenient().when(request.path()).thenReturn("/openai/v1/responses");
-        lenient().when(proxy.getTracing()).thenReturn(Tracing.NOOP);
+        lenient().when(proxy.getTracing()).thenReturn(BlockingCallTracer.NOOP);
     }
 
     @Test
@@ -257,7 +257,7 @@ public class ResponsesControllerTest {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null, null);
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setSourceDeployment("test-deployment");
         apiKeyData.setPerRequestKey(PER_REQUEST_KEY);
@@ -414,7 +414,7 @@ public class ResponsesControllerTest {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null, null);
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         Buffer requestBody = Buffer.buffer("{\"model\":\"test\"}");
@@ -559,7 +559,7 @@ public class ResponsesControllerTest {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null, null);
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         Buffer requestBody = Buffer.buffer("{\"model\":\"test\",\"background\":true}");
@@ -648,7 +648,7 @@ public class ResponsesControllerTest {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null, null);
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         String upstreamId = "upstream-resp-stream";
@@ -766,7 +766,7 @@ public class ResponsesControllerTest {
         deployment.setResponsesEndpoint("http://adapter/responses");
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, null, null, null);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, null, null, null, null);
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
 
@@ -813,7 +813,7 @@ public class ResponsesControllerTest {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null, null);
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         Buffer requestBody = Buffer.buffer("{\"model\":\"test\",\"background\":true}");
@@ -938,7 +938,7 @@ public class ResponsesControllerTest {
 
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "http://actual-model/responses", null, null, null, 0, 0, "endpoint", null, null);
+        Upstream upstream = new Upstream(null, "http://actual-model/responses", null, null, null, 0, 0, "endpoint", null, null, null);
 
         when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer("{\"model\":\"ignored\"}")));

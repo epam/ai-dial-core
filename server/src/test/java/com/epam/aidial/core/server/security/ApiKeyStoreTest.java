@@ -9,7 +9,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.epam.aidial.core.storage.util.Tracing;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
 import org.apache.commons.lang3.mutable.MutableObject;
@@ -94,7 +94,7 @@ public class ApiKeyStoreTest {
         for (String key : keys.getKeys()) {
             keys.delete(key);
         }
-        store = new ApiKeyStore(taskExecutor, redissonClient, null, new JsonObject(), Tracing.NOOP);
+        store = new ApiKeyStore(taskExecutor, redissonClient, null, new JsonObject(), BlockingCallTracer.NOOP);
     }
 
     @Test

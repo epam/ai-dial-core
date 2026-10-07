@@ -1,5 +1,6 @@
-package com.epam.aidial.core.storage.util;
+package com.epam.aidial.core.storage.tracing;
 
+import com.epam.aidial.core.storage.http.HttpException;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
@@ -18,15 +19,15 @@ import java.util.concurrent.Callable;
  * current there from a worker thread could re-parent spans the event loop creates meanwhile.
  * Work outside a traced request is not traced, so background jobs such as resource sync start no root traces.
  */
-public class Tracing {
+public class BlockingCallTracer {
 
-    public static final Tracing NOOP = new Tracing(OpenTelemetry.noop());
+    public static final BlockingCallTracer NOOP = new BlockingCallTracer(OpenTelemetry.noop());
 
     private static final ThreadLocal<Context> ACTIVE = new ThreadLocal<>();
 
     private final Tracer tracer;
 
-    public Tracing(OpenTelemetry openTelemetry) {
+    public BlockingCallTracer(OpenTelemetry openTelemetry) {
         this.tracer = openTelemetry.getTracer("com.epam.aidial.core");
     }
 
@@ -43,8 +44,11 @@ public class Tracing {
         try {
             return work.call();
         } catch (Throwable e) {
-            span.recordException(e);
-            span.setStatus(StatusCode.ERROR);
+            // client errors such as a failed If-Match precondition are expected outcomes, not storage failures
+            if (!(e instanceof HttpException http) || http.getStatus().is5xx()) {
+                span.recordException(e);
+                span.setStatus(StatusCode.ERROR);
+            }
             throw e;
         } finally {
             if (previous == null) {

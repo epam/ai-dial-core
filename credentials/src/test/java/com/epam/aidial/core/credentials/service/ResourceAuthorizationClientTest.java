@@ -2,7 +2,7 @@ package com.epam.aidial.core.credentials.service;
 
 import com.epam.aidial.core.credentials.service.metadata.HttpHeadersHandler;
 import com.epam.aidial.core.storage.http.HttpException;
-import com.epam.aidial.core.storage.util.Tracing;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -46,7 +46,7 @@ class ResourceAuthorizationClientTest {
     private HttpHeadersHandler httpHeadersHandler;
 
     @Spy
-    private Tracing tracing = Tracing.NOOP;
+    private BlockingCallTracer tracing = BlockingCallTracer.NOOP;
 
     @InjectMocks
     private ResourceAuthorizationClient resourceAuthorizationClient;

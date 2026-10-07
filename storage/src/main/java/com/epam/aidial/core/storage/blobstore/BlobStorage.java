@@ -3,7 +3,7 @@ package com.epam.aidial.core.storage.blobstore;
 import com.epam.aidial.core.storage.blobstore.credential.CredentialProvider;
 import com.epam.aidial.core.storage.blobstore.credential.CredentialProviderFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.util.Tracing;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.google.common.collect.ImmutableSet;
 import io.micrometer.core.instrument.Metrics;
 import io.micrometer.core.instrument.Timer;
@@ -68,13 +68,13 @@ public class BlobStorage implements Closeable {
     @Getter
     private final long maxUploadedFileSize;
 
-    private final Tracing tracing;
+    private final BlockingCallTracer tracing;
 
     public BlobStorage(Storage config) {
-        this(config, Tracing.NOOP);
+        this(config, BlockingCallTracer.NOOP);
     }
 
-    public BlobStorage(Storage config, Tracing tracing) {
+    public BlobStorage(Storage config, BlockingCallTracer tracing) {
         this.tracing = tracing;
         String provider = config.getProvider();
         ContextBuilder builder = ContextBuilder.newBuilder(provider);
@@ -166,7 +166,7 @@ public class BlobStorage implements Closeable {
                 .build();
 
         measure("store", () -> {
-            Tracing.currentSpan().setAttribute("dial.blob.size", data.length);
+            BlockingCallTracer.currentSpan().setAttribute("dial.blob.size", data.length);
             return blobStore.putBlob(bucketName, blob);
         });
     }
@@ -181,7 +181,7 @@ public class BlobStorage implements Closeable {
         String storageLocation = getStorageLocation(filePath);
         return measure("load", () -> {
             Blob blob = blobStore.getBlob(bucketName, storageLocation);
-            Tracing.currentSpan().setAttribute("dial.blob.found", blob != null);
+            BlockingCallTracer.currentSpan().setAttribute("dial.blob.found", blob != null);
             return blob;
         });
     }

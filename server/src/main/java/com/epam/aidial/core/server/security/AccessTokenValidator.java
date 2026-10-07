@@ -7,7 +7,7 @@ import com.auth0.jwt.interfaces.DecodedJWT;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.server.http.HttpProxySelector;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
-import com.epam.aidial.core.storage.util.Tracing;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -49,11 +49,11 @@ public class AccessTokenValidator {
 
     public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client,
                                 HttpClientOptions clientOptions, String claimsLogLevel) {
-        this(idpConfig, vertx, taskExecutor, client, clientOptions, claimsLogLevel, Tracing.NOOP);
+        this(idpConfig, vertx, taskExecutor, client, clientOptions, claimsLogLevel, BlockingCallTracer.NOOP);
     }
 
     public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client,
-                                HttpClientOptions clientOptions, String claimsLogLevel, Tracing tracing) {
+                                HttpClientOptions clientOptions, String claimsLogLevel, BlockingCallTracer tracing) {
         int size = idpConfig.size();
         if (size < 1) {
             throw new IllegalArgumentException("At least one identity provider is required");

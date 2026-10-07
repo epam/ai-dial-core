@@ -1,5 +1,7 @@
-package com.epam.aidial.core.storage.util;
+package com.epam.aidial.core.storage.tracing;
 
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.context.Scope;
@@ -20,11 +22,11 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class TracingTest {
+class BlockingCallTracerTest {
 
     private InMemorySpanExporter exporter;
     private OpenTelemetrySdk openTelemetry;
-    private Tracing tracing;
+    private BlockingCallTracer tracing;
 
     @BeforeEach
     void setUp() {
@@ -32,7 +34,7 @@ class TracingTest {
         openTelemetry = OpenTelemetrySdk.builder()
                 .setTracerProvider(SdkTracerProvider.builder().addSpanProcessor(SimpleSpanProcessor.create(exporter)).build())
                 .build();
-        tracing = new Tracing(openTelemetry);
+        tracing = new BlockingCallTracer(openTelemetry);
     }
 
     @AfterEach
@@ -43,7 +45,7 @@ class TracingTest {
     @Test
     void testNoSpanOutsideTracedRequest() {
         String result = tracing.trace("blob.load", () -> {
-            assertFalse(Tracing.currentSpan().getSpanContext().isValid());
+            assertFalse(BlockingCallTracer.currentSpan().getSpanContext().isValid());
             return "value";
         });
 
@@ -56,7 +58,7 @@ class TracingTest {
         Span request = openTelemetry.getTracer("test").spanBuilder("request").startSpan();
         try (Scope ignore = request.makeCurrent()) {
             tracing.trace("resource.get", () -> {
-                Tracing.currentSpan().setAttribute("dial.cache.hit", false);
+                BlockingCallTracer.currentSpan().setAttribute("dial.cache.hit", false);
                 return tracing.trace("blob.load", () -> null);
             });
         } finally {
@@ -69,7 +71,7 @@ class TracingTest {
         assertEquals(resource.getSpanId(), blob.getParentSpanId());
         assertEquals(request.getSpanContext().getSpanId(), resource.getParentSpanId());
         assertEquals(false, resource.getAttributes().asMap().values().iterator().next());
-        assertFalse(Tracing.currentSpan().getSpanContext().isValid());
+        assertFalse(BlockingCallTracer.currentSpan().getSpanContext().isValid());
     }
 
     @Test
@@ -88,7 +90,23 @@ class TracingTest {
         SpanData blob = find(exporter.getFinishedSpanItems(), "blob.store");
         assertEquals(StatusCode.ERROR, blob.getStatus().getStatusCode());
         assertEquals(1, blob.getEvents().size());
-        assertFalse(Tracing.currentSpan().getSpanContext().isValid());
+        assertFalse(BlockingCallTracer.currentSpan().getSpanContext().isValid());
+    }
+
+    @Test
+    void testClientErrorDoesNotMarkSpan() {
+        Span request = openTelemetry.getTracer("test").spanBuilder("request").startSpan();
+        try (Scope ignore = request.makeCurrent()) {
+            assertThrows(HttpException.class, () -> tracing.trace("resource.put", () -> {
+                throw new HttpException(HttpStatus.PRECONDITION_FAILED, "etag mismatch");
+            }));
+        } finally {
+            request.end();
+        }
+
+        SpanData resource = find(exporter.getFinishedSpanItems(), "resource.put");
+        assertEquals(StatusCode.UNSET, resource.getStatus().getStatusCode());
+        assertTrue(resource.getEvents().isEmpty());
     }
 
     private static SpanData find(List<SpanData> spans, String name) {

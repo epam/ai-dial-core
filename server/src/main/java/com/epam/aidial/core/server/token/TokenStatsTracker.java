@@ -7,8 +7,8 @@ import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.epam.aidial.core.storage.util.EtagHeader;
-import com.epam.aidial.core.storage.util.Tracing;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.vertx.core.Future;
 import lombok.AllArgsConstructor;
@@ -33,7 +33,7 @@ public class TokenStatsTracker {
 
     private final AsyncTaskExecutor taskExecutor;
     private final ResourceService resourceService;
-    private final Tracing tracing;
+    private final BlockingCallTracer tracing;
 
     /**
      * Starts current span.
