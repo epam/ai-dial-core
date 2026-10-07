@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.storage.util.UrlUtil;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -8,6 +9,7 @@ import io.netty.channel.ChannelPromise;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.json.JsonObject;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -65,10 +67,6 @@ public class PerRequestKeyEventLoopTest extends ResourceBaseTest {
                 Arguments.of("/openai/v1/responses", RESPONSES_BODY, "/openai/v1/responses", RESPONSES_ANSWER));
     }
 
-    /**
-     * Sends one warm-up request with fast Redis (class loading and JIT on the first request may exceed
-     * the event-loop budget), then the measured one with slow Redis writes and the checker armed.
-     */
     @ParameterizedTest(name = "{0}")
     @MethodSource("endpoints")
     void requestDoesNotBlockEventLoopOnRedis(String path, String body, String upstreamPath, String upstreamAnswer) {
@@ -76,26 +74,67 @@ public class PerRequestKeyEventLoopTest extends ResourceBaseTest {
             server.map(HttpMethod.POST, upstreamPath, request ->
                     TestWebServer.createResponse(200, upstreamAnswer, "Content-Type", "application/json"));
 
-            verify(send(HttpMethod.POST, path, null, body, "content-type", "application/json"), 200);
+            sendWithSlowRedis(HttpMethod.POST, path, body);
+        }
+    }
 
-            ((VertxInternal) dial.getVertx()).blockedThreadChecker().setThreadBlockedHandler(event -> {
-                Thread thread = event.thread();
-                StackTraceElement[] frames = thread.getStackTrace();
-                // only blocking Redis calls count: slow CI boxes may stall the event loop in logging or JIT linking too
-                if (Arrays.stream(frames).noneMatch(frame -> frame.getClassName().startsWith("org.redisson."))) {
-                    return;
+    /**
+     * Response-item operations resolve the deployment of the stored response; a custom application is read from storage.
+     */
+    @Test
+    void responseItemOfCustomApplicationDoesNotBlockEventLoopOnRedis() {
+        Response response = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "user");
+        verify(response, 200);
+        String app = "applications/%s/responses-app".formatted(new JsonObject(response.body()).getString("bucket"));
+        verify(send(HttpMethod.PUT, "/v1/" + app, null, """
+                {
+                  "endpoint": "http://localhost:4848/chat/completions",
+                  "responses_endpoint": "http://localhost:4848/openai/v1/responses",
+                  "display_name": "Responses App"
                 }
-                String stack = Arrays.stream(frames)
-                        .map(frame -> "\tat " + frame)
-                        .collect(Collectors.joining("\n"));
-                eventLoopBlocks.add(thread.getName() + " blocked for " + TimeUnit.NANOSECONDS.toMillis(event.duration()) + " ms\n" + stack);
-            });
-            SlowRedisHook.enabled = true;
-            try {
-                verify(send(HttpMethod.POST, path, null, body, "content-type", "application/json"), 200);
-            } finally {
-                SlowRedisHook.enabled = false;
+                """, "authorization", "user"), 200);
+
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/v1/responses", request ->
+                    TestWebServer.createResponse(200, RESPONSES_ANSWER, "Content-Type", "application/json"));
+            server.map(HttpMethod.GET, "/openai/v1/responses/resp_1", request ->
+                    TestWebServer.createResponse(200, RESPONSES_ANSWER, "Content-Type", "application/json"));
+
+            response = send(HttpMethod.POST, "/openai/v1/responses", null, """
+                    {"model":"%s","store":true,"input":"hi"}
+                    """.formatted(app), "authorization", "user", "content-type", "application/json");
+            verify(response, 200);
+            String responseId = new JsonObject(response.body()).getString("id");
+
+            sendWithSlowRedis(HttpMethod.GET, "/openai/v1/responses/" + UrlUtil.encodePathSegment(responseId), null, "authorization", "user");
+        }
+    }
+
+    /**
+     * Sends one warm-up request with fast Redis (class loading and JIT on the first request may exceed
+     * the event-loop budget), then the measured one with slow Redis writes and the checker armed.
+     */
+    private void sendWithSlowRedis(HttpMethod method, String path, String body, String... headers) {
+        String[] allHeaders = Stream.concat(Stream.of(headers), Stream.of("content-type", "application/json")).toArray(String[]::new);
+        verify(send(method, path, null, body, allHeaders), 200);
+
+        ((VertxInternal) dial.getVertx()).blockedThreadChecker().setThreadBlockedHandler(event -> {
+            Thread thread = event.thread();
+            StackTraceElement[] frames = thread.getStackTrace();
+            // only blocking Redis calls count: slow CI boxes may stall the event loop in logging or JIT linking too
+            if (Arrays.stream(frames).noneMatch(frame -> frame.getClassName().startsWith("org.redisson."))) {
+                return;
             }
+            String stack = Arrays.stream(frames)
+                    .map(frame -> "\tat " + frame)
+                    .collect(Collectors.joining("\n"));
+            eventLoopBlocks.add(thread.getName() + " blocked for " + TimeUnit.NANOSECONDS.toMillis(event.duration()) + " ms\n" + stack);
+        });
+        SlowRedisHook.enabled = true;
+        try {
+            verify(send(method, path, null, body, allHeaders), 200);
+        } finally {
+            SlowRedisHook.enabled = false;
         }
         assertTrue(eventLoopBlocks.isEmpty(), () -> "Event loop was blocked:\n" + eventLoopBlocks.getFirst());
     }

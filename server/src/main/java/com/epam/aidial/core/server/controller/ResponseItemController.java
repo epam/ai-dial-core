@@ -121,7 +121,7 @@ public class ResponseItemController implements Controller {
     public Future<?> handle() {
         return proxy.getTaskExecutor().submit(this::loadMapping)
                 .compose(this::checkNotDeletingActive)
-                .compose(this::dispatch)
+                .compose(mapping -> proxy.getTaskExecutor().submit(() -> dispatch(mapping)).compose(dispatched -> dispatched))
                 .eventually(this::finalizeRequest)
                 .onFailure(error -> {
                     if (!context.getResponse().ended()) {
@@ -215,11 +215,9 @@ public class ResponseItemController implements Controller {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         ApiKeyData.initFromContext(proxyApiKeyData, context);
         context.setProxyApiKeyData(proxyApiKeyData);
-        return proxy.getTaskExecutor().submit(() -> {
-            proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
-            return null;
-        })
-                .compose(ignored -> proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, proxyApiKeyData.getPerRequestKey()))
+        proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+
+        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, proxyApiKeyData.getPerRequestKey())
                 .compose(response -> {
                     context.setProxyResponse(response);
                     String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
