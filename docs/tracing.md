@@ -100,14 +100,6 @@ Core adds child spans for the storage, Redis, identity and key-management work a
 only inside a traced request, so background jobs (resource sync, sweeps, bulk loads on their own
 executor) start no traces of their own. They do not depend on `genAiSpanAttributes`.
 
-The request's trace context stays on the request after the response is sent, so work the request
-still does afterwards (cleanup such as `resource.delete`, an upstream retry after the client
-disconnected, an application deployment that continues after `200`) is part of the same trace: its
-spans are children of the server span and can start after it ends, and its log lines keep the
-trace id. On a WebSocket route this work can run for as long as the socket is open, and on a
-deployment for minutes; with tail sampling in the collector, spans that arrive after the sampling
-decision has left its cache can be exported as a separate trace fragment.
-
 | Span                                                     | Covers                                                                        | Attributes                                    |
 |----------------------------------------------------------|-------------------------------------------------------------------------------|-----------------------------------------------|
 | `auth.api_key.lookup`                                    | Reading a per-request API key from Redis                                      |                                               |
@@ -129,3 +121,13 @@ with each deployment's usage and deleted when the trace ends) shows up as `resou
 The same blob storage calls are measured by the `dial_blob_operation` timer, tagged by `operation`
 and `outcome` (`success` or `error`), with buckets from 5 ms to 5 s. Unlike the spans, the timer
 also records calls made outside a request.
+
+## Trace context after the response
+
+The request's trace context stays on the request after the response is sent, so work the request
+still does afterwards (cleanup such as `resource.delete`, an upstream retry after the client
+disconnected, an application deployment that continues after `200`) is part of the same trace: its
+spans are children of the server span and can start after it ends, and its log lines keep the
+trace id. On a WebSocket route this work can run for as long as the socket is open, and on a
+deployment for minutes; with tail sampling in the collector, spans that arrive after the sampling
+decision has left its cache can be exported as a separate trace fragment.

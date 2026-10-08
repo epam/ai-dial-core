@@ -35,6 +35,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -50,11 +51,6 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @ExtendWith(VertxExtension.class)
 class DialVertxTracerTest {
-
-    static {
-        // as AiDial.start(): OTel's Context.current() reads the request's Vert.x context
-        System.setProperty("io.opentelemetry.context.contextStorageProvider", "io.vertx.tracing.opentelemetry.VertxContextStorageProvider");
-    }
 
     @Mock
     private VertxTracer<?, ?> delegate;
@@ -99,8 +95,9 @@ class DialVertxTracerTest {
         dialTracer.sendResponse(context, "response", operation, null, TagExtractor.empty());
 
         assertTrue(((ReadableSpan) span).hasEnded());
-        Span after = Span.fromContext(context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
-        assertEquals(span.getSpanContext(), after.getSpanContext());
+        io.opentelemetry.context.Context after = context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
+        assertNotNull(after);
+        assertEquals(span.getSpanContext(), Span.fromContext(after).getSpanContext());
         // ending the span never takes the context off the request, so no thread on it can see it missing
         verify(context, never()).removeLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
     }
@@ -138,10 +135,8 @@ class DialVertxTracerTest {
                 .listen(0)
                 .compose(server -> vertx.createHttpClient().request(HttpMethod.GET, server.actualPort(), "localhost", "/v1/bucket"))
                 .compose(HttpClientRequest::send)
-                .onComplete(testContext.succeeding(response -> {
-                    responded.flag();
-                    vertx.close();
-                }));
+                .onComplete(ignored -> vertx.close())
+                .onComplete(testContext.succeeding(response -> responded.flag()));
     }
 
     public static List<Arguments> receiveRequestDatasource() {

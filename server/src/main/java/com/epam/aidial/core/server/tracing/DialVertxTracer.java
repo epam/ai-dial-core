@@ -38,9 +38,8 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
      * that reset would drop the trace id from logs written after the response (late upstream callbacks, client
      * disconnect) before the OTLP appender reads it. The delegate therefore gets a scratch duplicate, and the span's
      * OTel context is copied onto the request's context, where nothing removes it: the request's duplicated context is
-     * not shared with other requests and is collected with the request. Spans started after the response (blocking
-     * calls, outbound requests such as a retry) therefore stay in the request's trace as children of the ended server
-     * span.
+     * not shared with other requests and is collected with the request. For what this means for spans started after
+     * the response, see "Trace context after the response" in docs/tracing.md.
      */
     @Override
     public <R> I receiveRequest(
