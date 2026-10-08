@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.function.enhancement;
 
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
@@ -39,22 +40,32 @@ public class ResolveEncryptedContentAffinityFn extends BaseRequestFunction<Reque
         if (results.isEmpty()) {
             return false;
         }
-        Set<String> upstreamIds = results.stream()
-                .map(EncryptedContentAffinityUtil.ResolvedAffinity::upstreamId)
-                .collect(Collectors.toSet());
-        if (upstreamIds.size() > 1) {
-            throw EncryptedContentAffinityUtil.conflictingAffinityException();
-        }
         String currentDeploymentName = model.getName();
+        String resolvedUpstreamId = null;
         for (EncryptedContentAffinityUtil.ResolvedAffinity result : results) {
+            if (result.upstreamId() == null) {
+                log.warn("Upstream ID is null. Blind routing may result in errors on the model side.");
+                continue;
+            }
+
+            if (resolvedUpstreamId == null) {
+                resolvedUpstreamId = result.upstreamId();
+            } else if (!resolvedUpstreamId.equals(result.upstreamId())) {
+                throw EncryptedContentAffinityUtil.conflictingAffinityException();
+            }
+
             if (result.deploymentName() != null && !result.deploymentName().equals(currentDeploymentName)) {
                 log.warn("Deployment mismatch: encrypted content was produced by '{}' but current deployment is '{}'",
                         result.deploymentName(), currentDeploymentName);
             }
         }
-        String resolvedUpstreamId = results.getFirst().upstreamId();
+        if (resolvedUpstreamId == null) {
+            return false;
+        }
+
         boolean exists = model.getUpstreams().stream()
-                .anyMatch(upstream -> resolvedUpstreamId.equals(upstream.getId()));
+                .map(Upstream::getId)
+                .anyMatch(resolvedUpstreamId::equals);
         if (!exists) {
             throw EncryptedContentAffinityUtil.upstreamUnavailableException(resolvedUpstreamId);
         }

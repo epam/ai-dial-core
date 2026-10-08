@@ -34,7 +34,8 @@ public class EncryptedContentAffinityUtil {
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder DECODER = Base64.getUrlDecoder();
 
-    public record ResolvedAffinity(String upstreamId, @Nullable String deploymentName) {
+    public record ResolvedAffinity(@Nullable String upstreamId, @Nullable String deploymentName) {
+        public static final ResolvedAffinity EMPTY = new ResolvedAffinity(null, null);
     }
 
     public boolean hasConfiguredUpstreams(Deployment deployment) {
@@ -100,20 +101,16 @@ public class EncryptedContentAffinityUtil {
             if (!(item instanceof ObjectNode object)) {
                 continue;
             }
-            for (ResolvedAffinity candidate : new ResolvedAffinity[] {unwrapId(object), unwrapContent(object)}) {
-                if (candidate != null) {
-                    resolved.add(candidate);
-                }
-            }
+            resolved.add(unwrapId(object));
+            resolved.add(unwrapContent(object));
         }
         return List.copyOf(resolved);
     }
 
-    @Nullable
     private ResolvedAffinity unwrapId(ObjectNode object) {
         JsonNode idNode = object.path("id");
         if (!idNode.isTextual() || !idNode.asText().startsWith(ID_WRAP_PREFIX)) {
-            return null;
+            return ResolvedAffinity.EMPTY;
         }
         String wrapped = idNode.asText().substring(ID_WRAP_PREFIX.length());
         try {
@@ -122,26 +119,25 @@ public class EncryptedContentAffinityUtil {
             String encryptedUpstreamId = payload.path("u").asText(null);
             String originalId = payload.path("o").asText(null);
             if (encryptedUpstreamId == null || originalId == null) {
-                return null;
+                return ResolvedAffinity.EMPTY;
             }
             object.put("id", originalId);
             return new ResolvedAffinity(encryptedUpstreamId, payload.path("d").asText(null));
         } catch (Exception e) {
             // malformed/garbage wrapper - treat as not wrapped, pass through untouched
-            return null;
+            return ResolvedAffinity.EMPTY;
         }
     }
 
-    @Nullable
     private ResolvedAffinity unwrapContent(ObjectNode object) {
         JsonNode contentNode = object.path("encrypted_content");
         if (!contentNode.isTextual() || !contentNode.asText().startsWith(CONTENT_WRAP_PREFIX)) {
-            return null;
+            return ResolvedAffinity.EMPTY;
         }
         String wrapped = contentNode.asText().substring(CONTENT_WRAP_PREFIX.length());
         int separator = wrapped.indexOf(';');
         if (separator < 0) {
-            return null;
+            return ResolvedAffinity.EMPTY;
         }
         String encodedPayload = wrapped.substring(0, separator);
         String originalContent = wrapped.substring(separator + 1);
@@ -150,13 +146,13 @@ public class EncryptedContentAffinityUtil {
             JsonNode payload = ProxyUtil.MAPPER.readTree(decoded);
             String encryptedUpstreamId = payload.path("u").asText(null);
             if (encryptedUpstreamId == null) {
-                return null;
+                return ResolvedAffinity.EMPTY;
             }
             object.put("encrypted_content", originalContent);
             return new ResolvedAffinity(encryptedUpstreamId, payload.path("d").asText(null));
         } catch (Exception e) {
             // malformed/garbage wrapper - treat as not wrapped, pass through untouched
-            return null;
+            return ResolvedAffinity.EMPTY;
         }
     }
 
