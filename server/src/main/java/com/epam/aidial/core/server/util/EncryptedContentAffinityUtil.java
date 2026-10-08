@@ -98,7 +98,7 @@ public class EncryptedContentAffinityUtil {
     public List<ResolvedAffinity> resolveAndUnwrap(ArrayNode input) {
         LinkedHashSet<ResolvedAffinity> resolved = new LinkedHashSet<>();
         for (JsonNode item : input) {
-            if (!(item instanceof ObjectNode object)) {
+            if (!(item instanceof ObjectNode object) || !isReasoningItem(object)) {
                 continue;
             }
             resolved.add(unwrapId(object));
