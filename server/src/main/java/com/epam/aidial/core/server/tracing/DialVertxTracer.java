@@ -44,7 +44,8 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
      * The delegate ends the server span and closes its scope, which resets the request's Vert.x context to the root
      * OTel context, so logs written after the response (late upstream callbacks, client disconnect) reach the OTLP
      * appender without a trace id. The span's OTel context is put back: the request's duplicated context is not
-     * shared with other requests and is collected with the request.
+     * shared with other requests and is collected with the request. Spans started after the response (blocking calls,
+     * outbound requests such as a retry) therefore stay in the request's trace as children of the ended server span.
      */
     @Override
     public <R> void sendResponse(
