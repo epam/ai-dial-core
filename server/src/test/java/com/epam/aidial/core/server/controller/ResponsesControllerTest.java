@@ -31,6 +31,7 @@ import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -122,6 +123,7 @@ public class ResponsesControllerTest {
     void stubRequestPath() {
         // resolveRequestUri always consults the ingress path (even though the legacy flow ignores it)
         lenient().when(request.path()).thenReturn("/openai/v1/responses");
+        lenient().when(proxy.getBlockingCallTracer()).thenReturn(BlockingCallTracer.NOOP);
     }
 
     @Test
