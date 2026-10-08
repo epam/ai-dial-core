@@ -61,7 +61,7 @@ public class RateLimiter {
 
     private final ConfigStore configStore;
 
-    private final BlockingCallTracer tracing;
+    private final BlockingCallTracer blockingCallTracer;
 
     public Future<Void> increase(
             RoleBasedEntity roleBasedEntity, String bucket, TokenUsage usage, Buffer requestBody, Buffer responseBody,
@@ -137,7 +137,7 @@ public class RateLimiter {
                 return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied", "Access denied", -1));
             }
 
-            return taskExecutor.submit(() -> tracing.trace("rate_limit.check", () -> {
+            return taskExecutor.submit(() -> blockingCallTracer.trace("rate_limit.check", () -> {
                 BlockingCallTracer.currentSpan().setAttribute("dial.deployment", name);
                 RateLimitResult result = checkLimit(context, limit, roleBasedEntity);
                 BlockingCallTracer.currentSpan().setAttribute("dial.rate_limit.status", result.status().getCode());

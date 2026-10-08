@@ -26,7 +26,7 @@ class BlockingCallTracerTest {
 
     private InMemorySpanExporter exporter;
     private OpenTelemetrySdk openTelemetry;
-    private BlockingCallTracer tracing;
+    private BlockingCallTracer blockingCallTracer;
 
     @BeforeEach
     void setUp() {
@@ -34,7 +34,7 @@ class BlockingCallTracerTest {
         openTelemetry = OpenTelemetrySdk.builder()
                 .setTracerProvider(SdkTracerProvider.builder().addSpanProcessor(SimpleSpanProcessor.create(exporter)).build())
                 .build();
-        tracing = new BlockingCallTracer(openTelemetry);
+        blockingCallTracer = new BlockingCallTracer(openTelemetry);
     }
 
     @AfterEach
@@ -44,7 +44,7 @@ class BlockingCallTracerTest {
 
     @Test
     void testNoSpanOutsideTracedRequest() {
-        String result = tracing.trace("blob.load", () -> {
+        String result = blockingCallTracer.trace("blob.load", () -> {
             assertFalse(BlockingCallTracer.currentSpan().getSpanContext().isValid());
             return "value";
         });
@@ -57,9 +57,9 @@ class BlockingCallTracerTest {
     void testNestedSpansUnderRequestSpan() {
         Span request = openTelemetry.getTracer("test").spanBuilder("request").startSpan();
         try (Scope ignore = request.makeCurrent()) {
-            tracing.trace("resource.get", () -> {
+            blockingCallTracer.trace("resource.get", () -> {
                 BlockingCallTracer.currentSpan().setAttribute("dial.cache.hit", false);
-                return tracing.trace("blob.load", () -> null);
+                return blockingCallTracer.trace("blob.load", () -> null);
             });
         } finally {
             request.end();
@@ -79,7 +79,7 @@ class BlockingCallTracerTest {
         IllegalStateException error = new IllegalStateException("boom");
         Span request = openTelemetry.getTracer("test").spanBuilder("request").startSpan();
         try (Scope ignore = request.makeCurrent()) {
-            IllegalStateException thrown = assertThrows(IllegalStateException.class, () -> tracing.trace("blob.store", () -> {
+            IllegalStateException thrown = assertThrows(IllegalStateException.class, () -> blockingCallTracer.trace("blob.store", () -> {
                 throw error;
             }));
             assertSame(error, thrown);
@@ -97,7 +97,7 @@ class BlockingCallTracerTest {
     void testClientErrorDoesNotMarkSpan() {
         Span request = openTelemetry.getTracer("test").spanBuilder("request").startSpan();
         try (Scope ignore = request.makeCurrent()) {
-            assertThrows(HttpException.class, () -> tracing.trace("resource.put", () -> {
+            assertThrows(HttpException.class, () -> blockingCallTracer.trace("resource.put", () -> {
                 throw new HttpException(HttpStatus.PRECONDITION_FAILED, "etag mismatch");
             }));
         } finally {

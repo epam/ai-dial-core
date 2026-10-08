@@ -109,7 +109,7 @@ public class ChatCompletionsController extends BaseChatCompletionController {
                 return Future.succeededFuture();
             }
         }
-        return proxy.getTaskExecutor().submit(() -> setupDeployment(deploymentName))
+        return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(deploymentName)))
                 .compose(ignore -> {
                     if (context.hasNextInterceptor()) {
                         context.setInitialDeployment(context.getDeployment().getName());
