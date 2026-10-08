@@ -307,7 +307,7 @@ public class ResponseItemController implements Controller {
             return body;
         }
         if (EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
-            EncryptedContentAffinityUtil.wrapOutputArray(object.path("output"), mapping.getUpstreamKey());
+            EncryptedContentAffinityUtil.wrapOutputArray(object.path("output"), mapping.getUpstreamKey(), mapping.getDeploymentName());
         }
         JsonNode idNode = object.path("id");
         if (idNode.isTextual() && mapping.getUpstreamResponseId().equals(idNode.asText())) {
