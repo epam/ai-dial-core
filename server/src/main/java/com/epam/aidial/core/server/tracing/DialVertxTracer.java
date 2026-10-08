@@ -7,6 +7,7 @@ import io.vertx.core.Context;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.impl.HttpRequestHead;
+import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.spi.observability.HttpRequest;
 import io.vertx.core.spi.tracing.SpanKind;
 import io.vertx.core.spi.tracing.TagExtractor;
@@ -31,31 +32,40 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
         this.delegate = delegate;
     }
 
+    /**
+     * The delegate makes the server span current on the context it is given and returns a scope that the delegate's
+     * {@code sendResponse} closes, which resets that context to the parent OTel context. Run on the request's context,
+     * that reset would drop the trace id from logs written after the response (late upstream callbacks, client
+     * disconnect) before the OTLP appender reads it. The delegate therefore gets a scratch duplicate, and the span's
+     * OTel context is copied onto the request's context, where nothing removes it: the request's duplicated context is
+     * not shared with other requests and is collected with the request. Spans started after the response (blocking
+     * calls, outbound requests such as a retry) therefore stay in the request's trace as children of the ended server
+     * span.
+     */
     @Override
     public <R> I receiveRequest(
             Context context, SpanKind kind, TracingPolicy policy, R request, String operation,
             Iterable<Map.Entry<String, String>> headers, TagExtractor<R> tagExtractor) {
 
         String spanName = request instanceof HttpServerRequest req ? getServerSpanName(req) : operation;
-        return delegate.receiveRequest(context, kind, policy, request, spanName, headers, tagExtractor);
+        Context scratch = ((ContextInternal) context).duplicate();
+        Object parent = context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
+        if (parent != null) {
+            scratch.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, parent);
+        }
+        I operationState = delegate.receiveRequest(scratch, kind, policy, request, spanName, headers, tagExtractor);
+        Object active = scratch.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
+        if (active != null) {
+            context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, active);
+        }
+        return operationState;
     }
 
-    /**
-     * The delegate ends the server span and closes its scope, which resets the request's Vert.x context to the root
-     * OTel context, so logs written after the response (late upstream callbacks, client disconnect) reach the OTLP
-     * appender without a trace id. The span's OTel context is put back: the request's duplicated context is not
-     * shared with other requests and is collected with the request. Spans started after the response (blocking calls,
-     * outbound requests such as a retry) therefore stay in the request's trace as children of the ended server span.
-     */
     @Override
     public <R> void sendResponse(
             Context context, R response, I payload, Throwable failure, TagExtractor<R> tagExtractor) {
 
-        Object active = context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
         delegate.sendResponse(context, response, payload, failure, tagExtractor);
-        if (active != null) {
-            context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, active);
-        }
     }
 
     @Override

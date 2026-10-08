@@ -37,8 +37,13 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.only;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -65,7 +70,7 @@ class DialVertxTracerTest {
         when(request.method()).thenReturn(method);
 
         tracer.receiveRequest(request.context(), SpanKind.RPC, null, request, request.method().name(), null, null);
-        verify(delegate, only()).receiveRequest(request.context(), SpanKind.RPC, null, request, expectedName, null, null);
+        verify(delegate, only()).receiveRequest(any(), eq(SpanKind.RPC), isNull(), eq(request), eq(expectedName), isNull(), isNull());
     }
 
     @ParameterizedTest
@@ -85,7 +90,7 @@ class DialVertxTracerTest {
         OpenTelemetrySdk openTelemetry = OpenTelemetrySdk.builder().build();
         VertxTracer<Object, Object> otelTracer = (VertxTracer<Object, Object>) new OpenTelemetryTracingFactory(openTelemetry).tracer(null);
         DialVertxTracer<Object, Object> dialTracer = new DialVertxTracer<>(otelTracer);
-        Context context = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
+        Context context = spy(((ContextInternal) vertx.getOrCreateContext()).duplicate());
 
         Object operation = dialTracer.receiveRequest(context, SpanKind.RPC, TracingPolicy.ALWAYS, "request", "op", List.of(), TagExtractor.empty());
         Span span = Span.fromContext(context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
@@ -96,6 +101,8 @@ class DialVertxTracerTest {
         assertTrue(((ReadableSpan) span).hasEnded());
         Span after = Span.fromContext(context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
         assertEquals(span.getSpanContext(), after.getSpanContext());
+        // ending the span never takes the context off the request, so no thread on it can see it missing
+        verify(context, never()).removeLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
     }
 
     @Test
