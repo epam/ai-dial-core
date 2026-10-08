@@ -2,6 +2,8 @@ package com.epam.aidial.core.server.tracing;
 
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
+import io.opentelemetry.context.propagation.ContextPropagators;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.ReadableSpan;
 import io.vertx.core.Context;
@@ -35,6 +37,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -63,7 +66,7 @@ class DialVertxTracerTest {
     @AfterEach
     void closeTracedVertx() {
         if (tracedVertx != null) {
-            tracedVertx.close();
+            tracedVertx.close().toCompletionStage().toCompletableFuture().join();
         }
     }
 
@@ -77,8 +80,11 @@ class DialVertxTracerTest {
         when(request.method()).thenReturn(method);
 
         tracer.receiveRequest(request.context(), SpanKind.RPC, null, request, method.name(), null, null);
-        // the delegate works on a scratch context, so the scope it closes in sendResponse never touches the request's
-        verify(delegate, only()).receiveRequest(argThat(scratch -> scratch != context), eq(SpanKind.RPC), isNull(), eq(request), eq(expectedName), isNull(), isNull());
+        // the delegate works on a scratch duplicate of the request's context, so the scope it closes in sendResponse never touches the request's
+        ContextInternal root = ((ContextInternal) context).unwrap();
+        verify(delegate, only()).receiveRequest(
+                argThat(scratch -> scratch instanceof ContextInternal dup && dup.isDuplicate() && dup.unwrap() == root),
+                eq(SpanKind.RPC), isNull(), eq(request), eq(expectedName), isNull(), isNull());
     }
 
     @ParameterizedTest
@@ -109,6 +115,23 @@ class DialVertxTracerTest {
         assertEquals(span.getSpanContext(), Span.fromContext(after).getSpanContext());
         // ending the span never takes the context off the request, so no thread on it can see it missing
         verify(context, never()).removeLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
+    }
+
+    @Test
+    void receiveRequestParentsSpanOnIncomingTraceparent(Vertx vertx) {
+        DialVertxTracer<Object, Object> dialTracer = otelTracer();
+        Context context = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
+        String traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+        String parentSpanId = "00f067aa0ba902b7";
+        List<Map.Entry<String, String>> headers = List.of(Map.entry("traceparent", "00-%s-%s-01".formatted(traceId, parentSpanId)));
+
+        Object operation = dialTracer.receiveRequest(context, SpanKind.RPC, TracingPolicy.PROPAGATE, "request", "op", headers, TagExtractor.empty());
+
+        // the scratch duplicate has fresh locals like the per-request context Vert.x hands in, so header parenting still works
+        assertNotNull(operation);
+        ReadableSpan span = (ReadableSpan) Span.fromContext(context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
+        assertEquals(traceId, span.getSpanContext().getTraceId());
+        assertEquals(parentSpanId, span.getParentSpanContext().getSpanId());
     }
 
     // IGNORE starts no span; PROPAGATE starts none without an incoming traceparent
@@ -155,7 +178,10 @@ class DialVertxTracerTest {
 
     @SuppressWarnings("unchecked")
     private static DialVertxTracer<Object, Object> otelTracer() {
-        VertxTracer<Object, Object> otel = (VertxTracer<Object, Object>) new OpenTelemetryTracingFactory(OpenTelemetrySdk.builder().build()).tracer(null);
+        OpenTelemetrySdk sdk = OpenTelemetrySdk.builder()
+                .setPropagators(ContextPropagators.create(W3CTraceContextPropagator.getInstance()))
+                .build();
+        VertxTracer<Object, Object> otel = (VertxTracer<Object, Object>) new OpenTelemetryTracingFactory(sdk).tracer(null);
         return new DialVertxTracer<>(otel);
     }
 
