@@ -243,13 +243,13 @@ public class ResponsesApiTest extends ResourceBaseTest {
             itemA.put("type", "reasoning");
             itemA.put("id", "rs_1");
             itemA.put("encrypted_content", "cipher-1");
-            EncryptedContentAffinityUtil.wrapOutputItem(itemA, "up-a");
+            EncryptedContentAffinityUtil.wrapOutputItem(itemA, "up-a", "responses-cache");
 
             ObjectNode itemB = ProxyUtil.MAPPER.createObjectNode();
             itemB.put("type", "reasoning");
             itemB.put("id", "rs_2");
             itemB.put("encrypted_content", "cipher-2");
-            EncryptedContentAffinityUtil.wrapOutputItem(itemB, "up-b");
+            EncryptedContentAffinityUtil.wrapOutputItem(itemB, "up-b", "responses-cache");
 
             String requestBody = "{\"model\":\"responses-cache\",\"stream\":false,\"store\":false,"
                     + "\"input\":[" + itemA + "," + itemB + "]}";
@@ -268,7 +268,7 @@ public class ResponsesApiTest extends ResourceBaseTest {
             item.put("type", "reasoning");
             item.put("id", "rs_1");
             item.put("encrypted_content", "cipher-1");
-            EncryptedContentAffinityUtil.wrapOutputItem(item, "up-nonexistent");
+            EncryptedContentAffinityUtil.wrapOutputItem(item, "up-nonexistent", "responses-cache");
 
             String requestBody = "{\"model\":\"responses-cache\",\"stream\":false,\"store\":false,"
                     + "\"input\":[" + item + "]}";
