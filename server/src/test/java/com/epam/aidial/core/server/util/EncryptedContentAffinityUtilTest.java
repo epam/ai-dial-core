@@ -81,11 +81,12 @@ public class EncryptedContentAffinityUtilTest {
 
         ArrayNode input = ProxyUtil.MAPPER.createArrayNode();
         input.add(item);
+        List<EncryptedContentAffinityUtil.ResolvedAffinity> expected = List.of(
+                new EncryptedContentAffinityUtil.ResolvedAffinity("upstream-a", "deploy-x"),
+                EncryptedContentAffinityUtil.ResolvedAffinity.EMPTY);
 
         List<EncryptedContentAffinityUtil.ResolvedAffinity> resolved = EncryptedContentAffinityUtil.resolveAndUnwrap(input);
-        assertEquals(1, resolved.size());
-        assertEquals("upstream-a", resolved.get(0).upstreamId());
-        assertEquals("rs_original", item.path("id").asText());
+        assertEquals(expected, resolved);
     }
 
     @Test
@@ -97,8 +98,10 @@ public class EncryptedContentAffinityUtilTest {
 
         ArrayNode input = ProxyUtil.MAPPER.createArrayNode();
         input.add(item);
+        List<EncryptedContentAffinityUtil.ResolvedAffinity> expected = List.of(
+                EncryptedContentAffinityUtil.ResolvedAffinity.EMPTY);
 
-        assertTrue(EncryptedContentAffinityUtil.resolveAndUnwrap(input).isEmpty());
+        assertEquals(expected, EncryptedContentAffinityUtil.resolveAndUnwrap(input));
         assertEquals("rs_original", item.path("id").asText());
         assertEquals("cipher-text", item.path("encrypted_content").asText());
     }
@@ -112,8 +115,10 @@ public class EncryptedContentAffinityUtilTest {
 
         ArrayNode input = ProxyUtil.MAPPER.createArrayNode();
         input.add(item);
+        List<EncryptedContentAffinityUtil.ResolvedAffinity> expected = List.of(
+                EncryptedContentAffinityUtil.ResolvedAffinity.EMPTY);
 
-        assertTrue(EncryptedContentAffinityUtil.resolveAndUnwrap(input).isEmpty());
+        assertEquals(expected, EncryptedContentAffinityUtil.resolveAndUnwrap(input));
         assertEquals("dialenc_not-valid-base64!!", item.path("id").asText());
         assertEquals("dialenc:not-valid-base64!!;cipher-text", item.path("encrypted_content").asText());
     }
@@ -179,11 +184,12 @@ public class EncryptedContentAffinityUtilTest {
         syntheticItem.put("id", event.path("item_id").asText());
         ArrayNode input = ProxyUtil.MAPPER.createArrayNode();
         input.add(syntheticItem);
+        List<EncryptedContentAffinityUtil.ResolvedAffinity> expected = List.of(
+                new EncryptedContentAffinityUtil.ResolvedAffinity("upstream-a", "deploy-x"),
+                EncryptedContentAffinityUtil.ResolvedAffinity.EMPTY);
 
         List<EncryptedContentAffinityUtil.ResolvedAffinity> resolved = EncryptedContentAffinityUtil.resolveAndUnwrap(input);
-        assertEquals(1, resolved.size());
-        assertEquals("upstream-a", resolved.get(0).upstreamId());
-        assertEquals("deploy-x", resolved.get(0).deploymentName());
+        assertEquals(expected, resolved);
         assertEquals("rs_original", syntheticItem.path("id").asText());
     }
 
