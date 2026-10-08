@@ -1,18 +1,18 @@
 # Static Setting for Tracing
 
 DIAL Core always emits OpenTelemetry spans for incoming requests. The `tracing` section of
-`aidial.settings.json` adds *opt-in* enrichment on top of that: [OTel GenAI semantic-convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
+`aidial.settings.json` controls the enrichment on top of that: [OTel GenAI semantic-convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
 attributes, a conversation/session correlation id taken from a request header, and response
 headers that hand the caller Core's own trace and span ids.
 
-Everything here is off by default, and nothing here ever publishes prompts, completions, tool
+Everything here is on by default, and nothing here ever publishes prompts, completions, tool
 payloads, API keys, arbitrary headers, or upstream provider names.
 
 These are static settings, so they are read once at startup: changing them needs a restart.
 
 > This section used to live in the dynamic config (`aidial.config.json`). A leftover `tracing` block
-> there is ignored rather than rejected, so move it to `aidial.settings.json` or the enrichment
-> silently stays off.
+> there is ignored rather than rejected, so move it to `aidial.settings.json` or your settings are
+> silently replaced by the defaults.
 
 ## tracing
 

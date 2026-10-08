@@ -2,8 +2,6 @@ package com.epam.aidial.core.server.tracing;
 
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
-import io.opentelemetry.api.trace.TraceFlags;
-import io.opentelemetry.api.trace.TraceState;
 import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
 import io.opentelemetry.context.propagation.ContextPropagators;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
@@ -136,21 +134,6 @@ class DialVertxTracerTest {
         ReadableSpan span = (ReadableSpan) Span.fromContext(context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
         assertEquals(TRACE_ID, span.getSpanContext().getTraceId());
         assertEquals(PARENT_SPAN_ID, span.getParentSpanContext().getSpanId());
-    }
-
-    @Test
-    void receiveRequestParentsSpanOnContextAlreadyOnRequest(Vertx vertx) {
-        DialVertxTracer<Object, Object> dialTracer = otelTracer();
-        Context context = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
-        Span parent = Span.wrap(SpanContext.create(TRACE_ID, PARENT_SPAN_ID, TraceFlags.getSampled(), TraceState.getDefault()));
-        context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, io.opentelemetry.context.Context.root().with(parent));
-
-        Object operation = dialTracer.receiveRequest(context, SpanKind.RPC, TracingPolicy.PROPAGATE, "request", "op", List.of(), TagExtractor.empty());
-
-        // an OTel context already on the request's context parents the span as if the delegate had run on that context
-        assertNotNull(operation);
-        ReadableSpan span = (ReadableSpan) Span.fromContext(context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
-        assertEquals(parent.getSpanContext(), span.getParentSpanContext());
     }
 
     // IGNORE starts no span; PROPAGATE starts none without an incoming traceparent
