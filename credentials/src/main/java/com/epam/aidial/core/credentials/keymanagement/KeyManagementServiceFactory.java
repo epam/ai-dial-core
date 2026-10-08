@@ -19,7 +19,7 @@ import java.util.Objects;
 @UtilityClass
 public class KeyManagementServiceFactory {
 
-    public KeyManagementService create(KmsSettings kmsSettings, BlockingCallTracer tracing) {
+    public KeyManagementService create(KmsSettings kmsSettings, BlockingCallTracer blockingCallTracer) {
         if (kmsSettings == null || kmsSettings.getProvider() == null || "unencrypted".equals(kmsSettings.getProvider())) {
             return new SimpleKeyManagementService();
         }
@@ -35,19 +35,19 @@ public class KeyManagementServiceFactory {
         } else {
             throw new IllegalArgumentException("Unknown toolsets.security.kms.provider: %s.".formatted(provider));
         }
-        return traced(service, tracing);
+        return traced(service, blockingCallTracer);
     }
 
-    private static KeyManagementService traced(KeyManagementService service, BlockingCallTracer tracing) {
+    private static KeyManagementService traced(KeyManagementService service, BlockingCallTracer blockingCallTracer) {
         return new KeyManagementService() {
             @Override
             public byte[] encrypt(byte[] plain) {
-                return tracing.trace("kms.encrypt", () -> service.encrypt(plain));
+                return blockingCallTracer.trace("kms.encrypt", () -> service.encrypt(plain));
             }
 
             @Override
             public byte[] decrypt(byte[] encrypted) {
-                return tracing.trace("kms.decrypt", () -> service.decrypt(encrypted));
+                return blockingCallTracer.trace("kms.decrypt", () -> service.decrypt(encrypted));
             }
         };
     }

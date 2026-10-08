@@ -206,7 +206,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ConfigApplyService configApplyService;
     private final ConfigValidationService configValidationService;
     private final TracingSettings tracingSettings;
-    private final BlockingCallTracer tracing;
+    private final BlockingCallTracer blockingCallTracer;
 
     @Override
     public void handle(HttpServerRequest request) {

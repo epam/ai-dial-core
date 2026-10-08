@@ -46,7 +46,7 @@ public class ApiKeyStore {
     public static final String API_KEY_DATA_LOCATION = API_KEY_DATA_BUCKET + PATH_SEPARATOR;
 
     private final AsyncTaskExecutor taskExecutor;
-    private final BlockingCallTracer tracing;
+    private final BlockingCallTracer blockingCallTracer;
     private final RedissonClient redis;
     private final String prefix;
 
@@ -60,9 +60,9 @@ public class ApiKeyStore {
      */
     private final ReentrantLock mutationLock = new ReentrantLock();
 
-    public ApiKeyStore(AsyncTaskExecutor taskExecutor, RedissonClient redis, String prefix, JsonObject settings, BlockingCallTracer tracing) {
+    public ApiKeyStore(AsyncTaskExecutor taskExecutor, RedissonClient redis, String prefix, JsonObject settings, BlockingCallTracer blockingCallTracer) {
         this.taskExecutor = taskExecutor;
-        this.tracing = tracing;
+        this.blockingCallTracer = blockingCallTracer;
         this.redis = redis;
         this.prefix = prefix;
         this.ttl = Duration.ofSeconds(settings.getInteger("ttl", 1800));
@@ -85,7 +85,7 @@ public class ApiKeyStore {
     }
 
     public void assignPerRequestApiKey(ApiKeyData data, Duration customTtl) {
-        tracing.trace("auth.api_key.assign", () -> {
+        blockingCallTracer.trace("auth.api_key.assign", () -> {
             String perRequestKey = generateKey();
             data.setPerRequestKey(perRequestKey);
             String json = ProxyUtil.convertToString(data);
@@ -132,7 +132,7 @@ public class ApiKeyStore {
             return validateIpAddressRange(apiKeyData, clientIpAddress);
         }
         String redisKey = toRedisKey(key);
-        return taskExecutor.submit(() -> tracing.trace("auth.api_key.lookup", () -> {
+        return taskExecutor.submit(() -> blockingCallTracer.trace("auth.api_key.lookup", () -> {
             RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
             String json = bucket.get();
             return ProxyUtil.convertToObject(json, ApiKeyData.class);

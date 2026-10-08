@@ -133,7 +133,7 @@ public class DeploymentPostControllerTest {
     void stubConfig() {
         // the controller resolves translator references against the request's config on every routing step
         lenient().when(context.getConfig()).thenReturn(new Config());
-        lenient().when(proxy.getTracing()).thenReturn(BlockingCallTracer.NOOP);
+        lenient().when(proxy.getBlockingCallTracer()).thenReturn(BlockingCallTracer.NOOP);
     }
 
     @SuppressWarnings("checkstyle:LineLength")

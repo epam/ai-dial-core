@@ -41,7 +41,7 @@ class ProtectedResourceMetadataServiceTest {
     private HttpClient httpClient;
 
     @Spy
-    private BlockingCallTracer tracing = BlockingCallTracer.NOOP;
+    private BlockingCallTracer blockingCallTracer = BlockingCallTracer.NOOP;
 
     @InjectMocks
     private ResourceAuthorizationClient client;

@@ -46,7 +46,7 @@ class ResourceAuthorizationClientTest {
     private HttpHeadersHandler httpHeadersHandler;
 
     @Spy
-    private BlockingCallTracer tracing = BlockingCallTracer.NOOP;
+    private BlockingCallTracer blockingCallTracer = BlockingCallTracer.NOOP;
 
     @InjectMocks
     private ResourceAuthorizationClient resourceAuthorizationClient;

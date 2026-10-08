@@ -146,7 +146,7 @@ public class DeploymentPostController extends BaseChatCompletionController {
     }
 
     private Future<?> handleDeployment(String deploymentId) {
-        return proxy.getTaskExecutor().submit(() -> proxy.getTracing().trace("deployment.resolve", () -> {
+        return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> {
             Deployment dep = proxy.getDeploymentService().findDeployment(context, deploymentId);
             proxy.getConsentService().verifyUserConsent(context, dep, requestedInterface());
             return dep;

@@ -49,7 +49,7 @@ public class AccessTokenValidator {
     }
 
     public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client,
-                                HttpClientOptions clientOptions, String claimsLogLevel, BlockingCallTracer tracing) {
+                                HttpClientOptions clientOptions, String claimsLogLevel, BlockingCallTracer blockingCallTracer) {
         int size = idpConfig.size();
         if (size < 1) {
             throw new IllegalArgumentException("At least one identity provider is required");
@@ -65,7 +65,7 @@ public class AccessTokenValidator {
                     URL url = uri.toURL();
                     Proxy proxy = (jwksProxySelector == null) ? null : jwksProxySelector.select(uri).getFirst();
                     JwkProvider jwkProvider = new UrlJwkProvider(url, null, null, proxy);
-                    return kid -> tracing.trace("auth.jwks.fetch", () -> jwkProvider.get(kid));
+                    return kid -> blockingCallTracer.trace("auth.jwks.fetch", () -> jwkProvider.get(kid));
                 } catch (MalformedURLException e) {
                     throw new IllegalArgumentException(e);
                 }

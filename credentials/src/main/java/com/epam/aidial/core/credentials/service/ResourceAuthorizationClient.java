@@ -29,9 +29,9 @@ public class ResourceAuthorizationClient {
 
     private final HttpClient httpClient;
     private final HttpHeadersHandler httpHeadersHandler;
-    private final BlockingCallTracer tracing;
+    private final BlockingCallTracer blockingCallTracer;
 
-    public ResourceAuthorizationClient(@Nullable ProxySelector proxySelector, BlockingCallTracer tracing) {
+    public ResourceAuthorizationClient(@Nullable ProxySelector proxySelector, BlockingCallTracer blockingCallTracer) {
         HttpClient.Builder builder = HttpClient.newBuilder();
         builder.connectTimeout(Duration.of(5, ChronoUnit.SECONDS));
         if (proxySelector != null) {
@@ -39,15 +39,15 @@ public class ResourceAuthorizationClient {
         }
         this.httpClient = builder.build();
         this.httpHeadersHandler = new HttpHeadersHandler();
-        this.tracing = tracing;
+        this.blockingCallTracer = blockingCallTracer;
     }
 
     @SuppressWarnings("unused")
     @VisibleForTesting
-    private ResourceAuthorizationClient(HttpClient httpClient, HttpHeadersHandler httpHeadersHandler, BlockingCallTracer tracing) {
+    private ResourceAuthorizationClient(HttpClient httpClient, HttpHeadersHandler httpHeadersHandler, BlockingCallTracer blockingCallTracer) {
         this.httpClient = httpClient;
         this.httpHeadersHandler = httpHeadersHandler;
-        this.tracing = tracing;
+        this.blockingCallTracer = blockingCallTracer;
     }
 
     public <R> R executeGet(String url, Class<R> responseType) {
@@ -87,7 +87,7 @@ public class ResourceAuthorizationClient {
     }
 
     private <R> R execute(HttpRequest request, Class<R> responseType) {
-        return tracing.trace("oauth.request", () -> {
+        return blockingCallTracer.trace("oauth.request", () -> {
             Span span = BlockingCallTracer.currentSpan();
             span.setAttribute("http.request.method", request.method());
             span.setAttribute("server.address", request.uri().getHost());
