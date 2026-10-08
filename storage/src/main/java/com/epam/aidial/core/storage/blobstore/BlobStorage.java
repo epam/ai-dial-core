@@ -68,14 +68,14 @@ public class BlobStorage implements Closeable {
     @Getter
     private final long maxUploadedFileSize;
 
-    private final BlockingCallTracer tracing;
+    private final BlockingCallTracer blockingCallTracer;
 
     public BlobStorage(Storage config) {
         this(config, BlockingCallTracer.NOOP);
     }
 
-    public BlobStorage(Storage config, BlockingCallTracer tracing) {
-        this.tracing = tracing;
+    public BlobStorage(Storage config, BlockingCallTracer blockingCallTracer) {
+        this.blockingCallTracer = blockingCallTracer;
         String provider = config.getProvider();
         ContextBuilder builder = ContextBuilder.newBuilder(provider);
         if (config.getEndpoint() != null) {
@@ -247,7 +247,7 @@ public class BlobStorage implements Closeable {
         Timer.Sample sample = Timer.start();
         String outcome = "error";
         try {
-            T result = tracing.trace("blob." + operation, work);
+            T result = blockingCallTracer.trace("blob." + operation, work);
             outcome = "success";
             return result;
         } finally {

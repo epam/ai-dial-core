@@ -34,10 +34,8 @@ public class TokenStatsTracker {
     private final ResourceService resourceService;
 
     /**
-     * Starts current span.
-     * <p>
-     *     Note. The method is blocking and shouldn't be run in the event loop thread.
-     * </p>
+     * Adds the request to the usage record of its trace (a {@code DEPLOYMENT_COST_STATS} resource).
+     * The resource update runs on the task executor.
      */
     public Future<Void> startSpan(ProxyContext context) {
         return taskExecutor.submit(() -> {
