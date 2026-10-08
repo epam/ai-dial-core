@@ -67,7 +67,7 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
                 context.getDeployment().getName(),
                 context.getRequest().headers().size());
 
-        return proxy.getTokenStatsTracker().startSpan(context).map(ignore ->
+        return proxy.getTokenStatsTracker().startSpan(context).compose(ignore ->
                 proxy.getTaskExecutor().submit(() -> {
                     handleRequestBody(context.getRequestBody());
                     return null;
