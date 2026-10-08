@@ -85,6 +85,4 @@ test {
         exceptionFormat = "full"
     }
     useJUnitPlatform()
-    // as AiDial.start(): OTel picks its context storage once per JVM, so set it before any test touches Context
-    systemProperty 'io.opentelemetry.context.contextStorageProvider', 'io.vertx.tracing.opentelemetry.VertxContextStorageProvider'
 }

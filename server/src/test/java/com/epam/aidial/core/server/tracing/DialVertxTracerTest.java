@@ -23,10 +23,12 @@ import io.vertx.junit5.VertxTestContext;
 import io.vertx.tracing.opentelemetry.OpenTelemetryOptions;
 import io.vertx.tracing.opentelemetry.OpenTelemetryTracingFactory;
 import io.vertx.tracing.opentelemetry.VertxContextStorageProvider;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -38,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -56,17 +58,27 @@ class DialVertxTracerTest {
     private VertxTracer<?, ?> delegate;
     @InjectMocks
     private DialVertxTracer<?, ?> tracer;
+    private Vertx tracedVertx;
+
+    @AfterEach
+    void closeTracedVertx() {
+        if (tracedVertx != null) {
+            tracedVertx.close();
+        }
+    }
 
     @ParameterizedTest
     @MethodSource("receiveRequestDatasource")
     void receiveRequest(HttpMethod method, String path, String expectedName, Vertx vertx) {
         HttpServerRequestInternal request = mock(HttpServerRequestInternal.class);
-        when(request.context()).thenReturn(vertx.getOrCreateContext());
+        Context context = vertx.getOrCreateContext();
+        when(request.context()).thenReturn(context);
         when(request.path()).thenReturn(path);
         when(request.method()).thenReturn(method);
 
-        tracer.receiveRequest(request.context(), SpanKind.RPC, null, request, request.method().name(), null, null);
-        verify(delegate, only()).receiveRequest(any(), eq(SpanKind.RPC), isNull(), eq(request), eq(expectedName), isNull(), isNull());
+        tracer.receiveRequest(request.context(), SpanKind.RPC, null, request, method.name(), null, null);
+        // the delegate works on a scratch context, so the scope it closes in sendResponse never touches the request's
+        verify(delegate, only()).receiveRequest(argThat(scratch -> scratch != context), eq(SpanKind.RPC), isNull(), eq(request), eq(expectedName), isNull(), isNull());
     }
 
     @ParameterizedTest
@@ -81,11 +93,8 @@ class DialVertxTracerTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void sendResponseKeepsSpanContextOnRequestContext(Vertx vertx) {
-        OpenTelemetrySdk openTelemetry = OpenTelemetrySdk.builder().build();
-        VertxTracer<Object, Object> otelTracer = (VertxTracer<Object, Object>) new OpenTelemetryTracingFactory(openTelemetry).tracer(null);
-        DialVertxTracer<Object, Object> dialTracer = new DialVertxTracer<>(otelTracer);
+        DialVertxTracer<Object, Object> dialTracer = otelTracer();
         Context context = spy(((ContextInternal) vertx.getOrCreateContext()).duplicate());
 
         Object operation = dialTracer.receiveRequest(context, SpanKind.RPC, TracingPolicy.ALWAYS, "request", "op", List.of(), TagExtractor.empty());
@@ -102,13 +111,18 @@ class DialVertxTracerTest {
         verify(context, never()).removeLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
     }
 
-    @Test
-    void sendResponseWithoutSpanContextLeavesRequestContextEmpty(Vertx vertx) {
+    // IGNORE starts no span; PROPAGATE starts none without an incoming traceparent
+    @ParameterizedTest
+    @EnumSource(value = TracingPolicy.class, names = {"IGNORE", "PROPAGATE"})
+    void receiveRequestWithoutSpanLeavesRequestContextEmpty(TracingPolicy policy, Vertx vertx) {
+        DialVertxTracer<Object, Object> dialTracer = otelTracer();
         Context context = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
 
-        tracer.sendResponse(context, null, null, null, null);
+        Object operation = dialTracer.receiveRequest(context, SpanKind.RPC, policy, "request", "op", List.of(), TagExtractor.empty());
+        assertNull(operation);
+        assertNull(context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
 
-        verify(delegate, only()).sendResponse(context, null, null, null, null);
+        dialTracer.sendResponse(context, "response", operation, null, TagExtractor.empty());
         assertNull(context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
     }
 
@@ -116,11 +130,12 @@ class DialVertxTracerTest {
     void spanStaysCurrentAfterResponseEnd(VertxTestContext testContext) {
         OpenTelemetryOptions options = new OpenTelemetryOptions(OpenTelemetrySdk.builder().build());
         options.setFactory(new DialTracingFactory(options.getFactory()));
-        Vertx vertx = Vertx.vertx(new VertxOptions().setTracingOptions(options));
+        // closed in @AfterEach, once both checkpoints are flagged, so closing cannot race the server-side afterEnd
+        tracedVertx = Vertx.vertx(new VertxOptions().setTracingOptions(options));
         Checkpoint afterEnd = testContext.checkpoint();
         Checkpoint responded = testContext.checkpoint();
 
-        vertx.createHttpServer(new HttpServerOptions().setTracingPolicy(TracingPolicy.ALWAYS))
+        tracedVertx.createHttpServer(new HttpServerOptions().setTracingPolicy(TracingPolicy.ALWAYS))
                 .requestHandler(request -> {
                     SpanContext during = Span.current().getSpanContext();
                     request.response().end().onComplete(testContext.succeeding(ignored -> testContext.verify(() -> {
@@ -133,10 +148,15 @@ class DialVertxTracerTest {
                     });
                 })
                 .listen(0)
-                .compose(server -> vertx.createHttpClient().request(HttpMethod.GET, server.actualPort(), "localhost", "/v1/bucket"))
+                .compose(server -> tracedVertx.createHttpClient().request(HttpMethod.GET, server.actualPort(), "localhost", "/v1/bucket"))
                 .compose(HttpClientRequest::send)
-                .onComplete(ignored -> vertx.close())
                 .onComplete(testContext.succeeding(response -> responded.flag()));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static DialVertxTracer<Object, Object> otelTracer() {
+        VertxTracer<Object, Object> otel = (VertxTracer<Object, Object>) new OpenTelemetryTracingFactory(OpenTelemetrySdk.builder().build()).tracer(null);
+        return new DialVertxTracer<>(otel);
     }
 
     public static List<Arguments> receiveRequestDatasource() {
