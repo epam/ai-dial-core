@@ -51,7 +51,7 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
     public <R> void sendResponse(
             Context context, R response, I payload, Throwable failure, TagExtractor<R> tagExtractor) {
 
-        Object active = context == null ? null : context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
+        Object active = context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
         delegate.sendResponse(context, response, payload, failure, tagExtractor);
         if (active != null) {
             context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, active);
