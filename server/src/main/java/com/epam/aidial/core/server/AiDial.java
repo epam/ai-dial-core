@@ -105,6 +105,7 @@ import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.core.instrument.Clock;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Metrics;
 import io.micrometer.prometheus.PrometheusConfig;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
@@ -172,6 +173,7 @@ public class AiDial {
 
     private PrometheusMeterRegistry prometheusRegistry;
     private OtlpMeterRegistry otlpRegistry;
+    private Gauge eventLoopStallGauge;
 
     private AccessTokenValidator accessTokenValidator;
 
@@ -197,7 +199,9 @@ public class AiDial {
             BlockingCallTracer blockingCallTracer = new BlockingCallTracer(setupTracing(vertxOptions));
 
             vertx = Vertx.vertx(vertxOptions);
-            EventLoopLagProbe.start(vertx);
+            if (prometheusRegistry != null || otlpRegistry != null) {
+                eventLoopStallGauge = EventLoopLagProbe.start(vertx);
+            }
             HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
             // upstream bodies (including SSE streams) are parsed/proxied, so they must be decoded
             clientOptions.setDecompressionSupported(true);
@@ -492,6 +496,10 @@ public class AiDial {
             }
             if (otlpRegistry != null) {
                 Metrics.removeRegistry(otlpRegistry);
+            }
+            if (eventLoopStallGauge != null) {
+                // the gauge watches this vertx's loops, a restarted instance registers its own
+                Metrics.globalRegistry.remove(eventLoopStallGauge);
             }
             close(vertx, Vertx::close);
             if (prometheusRegistry != null) {

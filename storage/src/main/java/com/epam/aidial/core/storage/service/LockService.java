@@ -9,6 +9,7 @@ import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -29,17 +30,23 @@ public class LockService {
     private static final long PERIOD = TimeUnit.SECONDS.toMicros(300);
     private static final long WAIT_MIN = TimeUnit.MILLISECONDS.toNanos(1);
     private static final long WAIT_MAX = TimeUnit.MILLISECONDS.toNanos(128);
+    // an uncontended wait is a Redis round-trip, well under the 1 ms the default histogram starts at
+    private static final Duration[] LATENCY_BUCKETS = {
+        Duration.ofNanos(100_000), Duration.ofNanos(250_000), Duration.ofNanos(500_000), Duration.ofMillis(1),
+        Duration.ofMillis(2), Duration.ofMillis(5), Duration.ofMillis(10), Duration.ofMillis(25), Duration.ofMillis(50),
+        Duration.ofMillis(100), Duration.ofMillis(250), Duration.ofMillis(500), Duration.ofSeconds(1), Duration.ofSeconds(5)
+    };
 
     @Getter
     private final String prefix;
     private final RScript script;
     private final ConcurrentHashMap<String, LocalLock> locks;
-    // lock() only: tryLock() never waits and is used by background sweeps, not request paths
+    // lock() only: tryLock() never waits, and its holds (e.g. an application deployment) are not measured either
     private final Timer localWaitTimer = waitTimer("local");
     private final Timer redisWaitTimer = waitTimer("redis");
     private final Timer holdTimer = Timer.builder("dial_lock_hold")
             .description("Time a lock taken with lock() is held")
-            .publishPercentileHistogram()
+            .serviceLevelObjectives(LATENCY_BUCKETS)
             .register(Metrics.globalRegistry);
 
     private static class LocalLock {
@@ -71,12 +78,13 @@ public class LockService {
         LocalLock localLock = acquireLocalLock(id);
         long waitStart = System.nanoTime();
         localLock.lock();
-        long localAcquired = System.nanoTime();
-        localWaitTimer.record(localAcquired - waitStart, TimeUnit.NANOSECONDS);
+        long acquired;
 
         // A Redis failure here must not leak the held local lock: it is a plain ReentrantLock,
         // so a leaked hold would block every subsequent lock() on this key until pod restart.
         try {
+            long localAcquired = System.nanoTime();
+            localWaitTimer.record(localAcquired - waitStart, TimeUnit.NANOSECONDS);
             long ttl = tryLock(id, owner);
             long interval = WAIT_MIN;
             // it seems the lock has been acquired by another instance of Core
@@ -85,26 +93,29 @@ public class LockService {
                 interval = Math.min(2 * interval, Math.min(WAIT_MAX, ttl + 1));
                 ttl = tryLock(id, owner);
             }
+            acquired = System.nanoTime();
+            redisWaitTimer.record(acquired - localAcquired, TimeUnit.NANOSECONDS);
         } catch (Throwable e) {
             localLock.unlock();
             releaseLocalLock(id);
             throw e;
         }
-        long acquired = System.nanoTime();
-        redisWaitTimer.record(acquired - localAcquired, TimeUnit.NANOSECONDS);
 
         return () -> {
-            holdTimer.record(System.nanoTime() - acquired, TimeUnit.NANOSECONDS);
+            long heldNanos = System.nanoTime() - acquired;
+            // unlock first: the lock must be released even if recording fails
             unlock(id, owner, localLock);
+            holdTimer.record(heldNanos, TimeUnit.NANOSECONDS);
         };
     }
 
     private static Timer waitTimer(String phase) {
-        // local: other threads of this pod hold the key; redis: another pod holds it (spin with backoff)
+        // local: other threads of this pod hold the key;
+        // redis: the Redis round-trip, plus the spin with backoff while another pod holds the key
         return Timer.builder("dial_lock_wait")
                 .description("Time lock() waits before the lock is acquired")
                 .tag("phase", phase)
-                .publishPercentileHistogram()
+                .serviceLevelObjectives(LATENCY_BUCKETS)
                 .register(Metrics.globalRegistry);
     }
 

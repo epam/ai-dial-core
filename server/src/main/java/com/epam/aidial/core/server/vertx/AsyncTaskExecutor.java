@@ -13,6 +13,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.util.concurrent.Executors.newThreadPerTaskExecutor;
@@ -27,7 +28,7 @@ public class AsyncTaskExecutor {
     private static final AtomicInteger ACTIVE_TASKS = new AtomicInteger();
     private static final Timer START_DELAY_TIMER = Timer.builder("dial_async_task_start_delay")
             .description("Time from submit() until the task starts running")
-            .publishPercentileHistogram()
+            .serviceLevelObjectives(EventLoopLagProbe.LATENCY_BUCKETS)
             .register(Metrics.globalRegistry);
 
     static {
@@ -58,15 +59,26 @@ public class AsyncTaskExecutor {
      */
     public <T> Future<T> submit(Callable<T> blockingCall) {
         long submitted = System.nanoTime();
-        ACTIVE_TASKS.incrementAndGet();
+        AtomicBoolean started = new AtomicBoolean();
         Callable<T> measuredCall = () -> {
-            START_DELAY_TIMER.record(System.nanoTime() - submitted, TimeUnit.NANOSECONDS);
+            started.set(true);
             try {
+                START_DELAY_TIMER.record(System.nanoTime() - submitted, TimeUnit.NANOSECONDS);
                 return blockingCall.call();
             } finally {
                 ACTIVE_TASKS.decrementAndGet();
             }
         };
+        ACTIVE_TASKS.incrementAndGet();
+        Future<T> result = execute(measuredCall);
+        // a closed vertx fails the future without ever running the task
+        if (result.failed() && !started.get()) {
+            ACTIVE_TASKS.decrementAndGet();
+        }
+        return result;
+    }
+
+    private <T> Future<T> execute(Callable<T> measuredCall) {
         if (!useVirtualThreads) {
             return vertx.executeBlocking(measuredCall, false);
         }
