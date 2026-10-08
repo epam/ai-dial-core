@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.vertx;
 
+import com.epam.aidial.core.storage.service.LockService;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Metrics;
 import io.micrometer.core.instrument.Timer;
@@ -7,13 +8,15 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.impl.ContextInternal;
+import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.json.JsonObject;
 
+import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.util.concurrent.Executors.newThreadPerTaskExecutor;
@@ -28,7 +31,7 @@ public class AsyncTaskExecutor {
     private static final AtomicInteger ACTIVE_TASKS = new AtomicInteger();
     private static final Timer START_DELAY_TIMER = Timer.builder("dial_async_task_start_delay")
             .description("Time from submit() until the task starts running")
-            .serviceLevelObjectives(EventLoopLagProbe.LATENCY_BUCKETS)
+            .serviceLevelObjectives(LockService.LATENCY_BUCKETS)
             .register(Metrics.globalRegistry);
 
     static {
@@ -46,9 +49,21 @@ public class AsyncTaskExecutor {
      */
     private final boolean useVirtualThreads;
 
+    /**
+     * Submitted tasks counted in ACTIVE_TASKS that have not started: whoever removes a task first uncounts it.
+     */
+    private final Set<Object> notStarted = ConcurrentHashMap.newKeySet();
+
     public AsyncTaskExecutor(Vertx vertx, JsonObject settings) {
         this.vertx = vertx;
         useVirtualThreads = settings.getBoolean("useVirtualThreads", Boolean.TRUE);
+        if (!useVirtualThreads) {
+            // closing vertx drops the tasks queued in the worker pool without running or failing them
+            ((VertxInternal) vertx).addCloseHook(completion -> {
+                notStarted.forEach(this::uncountIfNotStarted);
+                completion.complete();
+            });
+        }
     }
 
     /**
@@ -59,23 +74,39 @@ public class AsyncTaskExecutor {
      */
     public <T> Future<T> submit(Callable<T> blockingCall) {
         long submitted = System.nanoTime();
-        AtomicBoolean started = new AtomicBoolean();
+        Object task = new Object();
         Callable<T> measuredCall = () -> {
-            started.set(true);
+            // false when the close hook has already uncounted the task
+            boolean counted = notStarted.remove(task);
             try {
                 START_DELAY_TIMER.record(System.nanoTime() - submitted, TimeUnit.NANOSECONDS);
                 return blockingCall.call();
             } finally {
-                ACTIVE_TASKS.decrementAndGet();
+                if (counted) {
+                    ACTIVE_TASKS.decrementAndGet();
+                }
             }
         };
         ACTIVE_TASKS.incrementAndGet();
-        Future<T> result = execute(measuredCall);
+        notStarted.add(task);
+        Future<T> result;
+        try {
+            result = execute(measuredCall);
+        } catch (Throwable e) {
+            uncountIfNotStarted(task);
+            throw e;
+        }
         // a closed vertx fails the future without ever running the task
-        if (result.failed() && !started.get()) {
-            ACTIVE_TASKS.decrementAndGet();
+        if (result.failed()) {
+            uncountIfNotStarted(task);
         }
         return result;
+    }
+
+    private void uncountIfNotStarted(Object task) {
+        if (notStarted.remove(task)) {
+            ACTIVE_TASKS.decrementAndGet();
+        }
     }
 
     private <T> Future<T> execute(Callable<T> measuredCall) {

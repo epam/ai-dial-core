@@ -1,9 +1,11 @@
 package com.epam.aidial.core.server.vertx;
 
 import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.core.VertxOptions;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AsyncTaskExecutorTest {
 
@@ -43,6 +46,7 @@ class AsyncTaskExecutorTest {
         CompletableFuture<Void> release = new CompletableFuture<>();
         CompletableFuture<Double> activeDuringTask = new CompletableFuture<>();
 
+        long startDelaysBefore = meterRegistry.find("dial_async_task_start_delay").timers().stream().mapToLong(Timer::count).sum();
         CompletableFuture<String> result = executor.submit(() -> {
             activeDuringTask.complete(activeTasks());
             release.get(5, TimeUnit.SECONDS);
@@ -53,7 +57,7 @@ class AsyncTaskExecutorTest {
         release.complete(null);
         assertEquals("done", result.get(5, TimeUnit.SECONDS));
         assertEquals(0, activeTasks());
-        assertEquals(1, meterRegistry.get("dial_async_task_start_delay").timer().count());
+        assertEquals(startDelaysBefore + 1, meterRegistry.get("dial_async_task_start_delay").timer().count());
     }
 
     @ParameterizedTest
@@ -76,8 +80,27 @@ class AsyncTaskExecutorTest {
 
         Future<String> result = executor.submit(() -> "never runs");
 
+        assertTrue(result.failed());
         assertInstanceOf(RejectedExecutionException.class, result.cause());
         assertEquals(0, activeTasks());
+    }
+
+    @Test
+    void taskDroppedByClosingVertxIsNoLongerActive() throws Exception {
+        Vertx closing = Vertx.vertx(new VertxOptions().setWorkerPoolSize(1));
+        AsyncTaskExecutor executor = new AsyncTaskExecutor(closing, new JsonObject().put("useVirtualThreads", false));
+        CompletableFuture<Void> running = new CompletableFuture<>();
+        executor.submit(() -> {
+            running.complete(null);
+            return new CompletableFuture<>().get(5, TimeUnit.SECONDS);
+        });
+        running.get(5, TimeUnit.SECONDS);
+        executor.submit(() -> "queued behind the blocked task, dropped on close");
+        assertEquals(2, activeTasks());
+
+        closing.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
+
+        awaitNoActiveTasks();
     }
 
     /**

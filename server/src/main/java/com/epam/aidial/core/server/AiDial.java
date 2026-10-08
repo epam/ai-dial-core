@@ -489,6 +489,10 @@ public class AiDial {
             close(complexResourceSweepService);
             close(mcpHttpClientBuilder);
             close(discoveryMcpHttpClientBuilder);
+            if (eventLoopStallGauge != null) {
+                // before the registries are unhooked, or they never see the removal and keep reading a stall that grows during vertx.close()
+                EventLoopLagProbe.stop(eventLoopStallGauge);
+            }
             // Unhook from the global composite before vertx.close() so its shutdown metrics
             // stop flowing here; close the registries only after vertx has flushed its own.
             if (prometheusRegistry != null) {
@@ -496,10 +500,6 @@ public class AiDial {
             }
             if (otlpRegistry != null) {
                 Metrics.removeRegistry(otlpRegistry);
-            }
-            if (eventLoopStallGauge != null) {
-                // the gauge watches this vertx's loops, a restarted instance registers its own
-                Metrics.globalRegistry.remove(eventLoopStallGauge);
             }
             close(vertx, Vertx::close);
             if (prometheusRegistry != null) {

@@ -30,8 +30,8 @@ public class LockService {
     private static final long PERIOD = TimeUnit.SECONDS.toMicros(300);
     private static final long WAIT_MIN = TimeUnit.MILLISECONDS.toNanos(1);
     private static final long WAIT_MAX = TimeUnit.MILLISECONDS.toNanos(128);
-    // an uncontended wait is a Redis round-trip, well under the 1 ms the default histogram starts at
-    private static final Duration[] LATENCY_BUCKETS = {
+    // an uncontended lock wait (a Redis round-trip), event-loop lag and task start delay are well under the 1 ms the default histogram starts at
+    public static final Duration[] LATENCY_BUCKETS = {
         Duration.ofNanos(100_000), Duration.ofNanos(250_000), Duration.ofNanos(500_000), Duration.ofMillis(1),
         Duration.ofMillis(2), Duration.ofMillis(5), Duration.ofMillis(10), Duration.ofMillis(25), Duration.ofMillis(50),
         Duration.ofMillis(100), Duration.ofMillis(250), Duration.ofMillis(500), Duration.ofSeconds(1), Duration.ofSeconds(5)

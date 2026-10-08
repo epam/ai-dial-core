@@ -30,7 +30,7 @@ class EventLoopLagProbeTest {
     @AfterEach
     void tearDown() throws Exception {
         if (stallGauge != null) {
-            Metrics.globalRegistry.remove(stallGauge);
+            EventLoopLagProbe.stop(stallGauge);
         }
         Metrics.removeRegistry(meterRegistry);
         vertx.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);

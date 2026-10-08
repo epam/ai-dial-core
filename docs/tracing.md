@@ -138,7 +138,8 @@ The event-loop metrics are only registered when a Prometheus or OTLP registry is
 | `dial_event_loop_stall`                 | gauge | Seconds since the event loop that has gone longest without running its probe last ran it; about 0.1 when healthy                          |
 
 Locks taken with `tryLock()` (sweeps, application deployment, code interpreter session cleanup) never
-wait, and their holds are not measured. `dial_event_loop_lag` is recorded only when a stalled loop
-runs the probe again, so a loop that stays blocked shows up in `dial_event_loop_stall` instead. In
+wait, and their holds are not measured. `dial_event_loop_lag` is recorded on every probe run, about 10 samples per second per loop,
+so a stall shows up in its high buckets and max, not in its count. A stall is only recorded once
+the loop runs the probe again, so a loop that stays blocked shows up in `dial_event_loop_stall` instead. In
 worker-pool mode (`asyncTaskExecutor.useVirtualThreads=false`) the Vert.x `vertx_pool_*` metrics
 report the same pool as the two `dial_async_*` metrics.
