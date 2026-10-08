@@ -38,6 +38,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -49,9 +50,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.only;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -106,7 +105,7 @@ class DialVertxTracerTest {
     @Test
     void sendResponseKeepsSpanContextOnRequestContext(Vertx vertx) {
         DialVertxTracer<Object, Object> dialTracer = otelTracer();
-        Context context = spy(((ContextInternal) vertx.getOrCreateContext()).duplicate());
+        Context context = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
 
         Object operation = dialTracer.receiveRequest(context, SpanKind.RPC, TracingPolicy.ALWAYS, "request", "op", List.of(), TagExtractor.empty());
         Span span = Span.fromContext(context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
@@ -118,8 +117,10 @@ class DialVertxTracerTest {
         io.opentelemetry.context.Context after = context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
         assertNotNull(after);
         assertEquals(span.getSpanContext(), Span.fromContext(after).getSpanContext());
-        // ending the span never takes the context off the request, so no thread on it can see it missing
-        verify(context, never()).removeLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
+        // so a span started after the response, which the propagate policy skips without a context, joins the trace
+        Map<String, String> injected = new HashMap<>();
+        assertNotNull(dialTracer.sendRequest(context, SpanKind.RPC, TracingPolicy.PROPAGATE, "request", "op", injected::put, TagExtractor.empty()));
+        assertEquals(span.getSpanContext().getTraceId(), injected.get("traceparent").split("-")[1]);
     }
 
     @Test

@@ -62,16 +62,11 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
         return operationState;
     }
 
-    /**
-     * The request's context is handed through although {@link #receiveRequest} attached the span on the scratch
-     * duplicate: the delegate ends the span through the operation state and never reads this context, and the scope
-     * it closes is the one bound to the scratch duplicate. A delegate that did consult this context would need the
-     * scratch duplicate carried in the operation state instead.
-     */
     @Override
     public <R> void sendResponse(
             Context context, R response, I payload, Throwable failure, TagExtractor<R> tagExtractor) {
 
+        // the delegate ends the span through the payload and never reads the context, so the scratch duplicate need not be carried here
         delegate.sendResponse(context, response, payload, failure, tagExtractor);
     }
 
