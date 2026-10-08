@@ -2,6 +2,8 @@ package com.epam.aidial.core.server.tracing;
 
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.TraceFlags;
+import io.opentelemetry.api.trace.TraceState;
 import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
 import io.opentelemetry.context.propagation.ContextPropagators;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
@@ -56,6 +58,9 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @ExtendWith(VertxExtension.class)
 class DialVertxTracerTest {
+
+    private static final String TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736";
+    private static final String PARENT_SPAN_ID = "00f067aa0ba902b7";
 
     @Mock
     private VertxTracer<?, ?> delegate;
@@ -121,17 +126,30 @@ class DialVertxTracerTest {
     void receiveRequestParentsSpanOnIncomingTraceparent(Vertx vertx) {
         DialVertxTracer<Object, Object> dialTracer = otelTracer();
         Context context = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
-        String traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
-        String parentSpanId = "00f067aa0ba902b7";
-        List<Map.Entry<String, String>> headers = List.of(Map.entry("traceparent", "00-%s-%s-01".formatted(traceId, parentSpanId)));
+        List<Map.Entry<String, String>> headers = List.of(Map.entry("traceparent", "00-%s-%s-01".formatted(TRACE_ID, PARENT_SPAN_ID)));
 
         Object operation = dialTracer.receiveRequest(context, SpanKind.RPC, TracingPolicy.PROPAGATE, "request", "op", headers, TagExtractor.empty());
 
-        // the scratch duplicate has fresh locals like the per-request context Vert.x hands in, so header parenting still works
+        // the scratch duplicate is handed to the delegate in place of the request's context, so header parenting must still work
         assertNotNull(operation);
         ReadableSpan span = (ReadableSpan) Span.fromContext(context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
-        assertEquals(traceId, span.getSpanContext().getTraceId());
-        assertEquals(parentSpanId, span.getParentSpanContext().getSpanId());
+        assertEquals(TRACE_ID, span.getSpanContext().getTraceId());
+        assertEquals(PARENT_SPAN_ID, span.getParentSpanContext().getSpanId());
+    }
+
+    @Test
+    void receiveRequestParentsSpanOnContextAlreadyOnRequest(Vertx vertx) {
+        DialVertxTracer<Object, Object> dialTracer = otelTracer();
+        Context context = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
+        Span parent = Span.wrap(SpanContext.create(TRACE_ID, PARENT_SPAN_ID, TraceFlags.getSampled(), TraceState.getDefault()));
+        context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, io.opentelemetry.context.Context.root().with(parent));
+
+        Object operation = dialTracer.receiveRequest(context, SpanKind.RPC, TracingPolicy.PROPAGATE, "request", "op", List.of(), TagExtractor.empty());
+
+        // an OTel context already on the request's context parents the span as if the delegate had run on that context
+        assertNotNull(operation);
+        ReadableSpan span = (ReadableSpan) Span.fromContext(context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
+        assertEquals(parent.getSpanContext(), span.getParentSpanContext());
     }
 
     // IGNORE starts no span; PROPAGATE starts none without an incoming traceparent

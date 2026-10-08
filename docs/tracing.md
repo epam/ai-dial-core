@@ -130,4 +130,6 @@ disconnected, an application deployment that continues after `200`) is part of t
 spans are children of the server span and can start after it ends, and its log lines keep the
 trace id. On a WebSocket route this work can run for as long as the socket is open, and on a
 deployment for minutes; with tail sampling in the collector, spans that arrive after the sampling
-decision has left its cache can be exported as a separate trace fragment.
+decision has left its cache can be exported as a separate trace fragment. The request also keeps
+the ended server span, with its attributes and events, referenced for as long as the request's
+context lives, so an open WebSocket holds its server span in memory until the socket closes.
