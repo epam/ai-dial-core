@@ -1,5 +1,8 @@
 package com.epam.aidial.core.server.vertx;
 
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.Timer;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -9,6 +12,8 @@ import io.vertx.core.json.JsonObject;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.util.concurrent.Executors.newThreadPerTaskExecutor;
 
@@ -18,10 +23,19 @@ import static java.util.concurrent.Executors.newThreadPerTaskExecutor;
 public class AsyncTaskExecutor {
 
     private static final Executor VIRTUAL_THREAD_PER_TASK_EXECUTOR;
+    // static: every executor instance shares one gauge, and a gauge only holds a weak reference to its value
+    private static final AtomicInteger ACTIVE_TASKS = new AtomicInteger();
+    private static final Timer START_DELAY_TIMER = Timer.builder("dial_async_task_start_delay")
+            .description("Time from submit() until the task starts running")
+            .publishPercentileHistogram()
+            .register(Metrics.globalRegistry);
 
     static {
         ThreadFactory threadFactory = Thread.ofVirtual().name("dial.x-virtual-thread-", 0).factory();
         VIRTUAL_THREAD_PER_TASK_EXECUTOR = newThreadPerTaskExecutor(threadFactory);
+        Gauge.builder("dial_async_tasks_active", ACTIVE_TASKS, AtomicInteger::get)
+                .description("Tasks submitted and not finished yet")
+                .register(Metrics.globalRegistry);
     }
 
     private final Vertx vertx;
@@ -43,15 +57,25 @@ public class AsyncTaskExecutor {
      * @return the result of the blocking cal
      */
     public <T> Future<T> submit(Callable<T> blockingCall) {
+        long submitted = System.nanoTime();
+        ACTIVE_TASKS.incrementAndGet();
+        Callable<T> measuredCall = () -> {
+            START_DELAY_TIMER.record(System.nanoTime() - submitted, TimeUnit.NANOSECONDS);
+            try {
+                return blockingCall.call();
+            } finally {
+                ACTIVE_TASKS.decrementAndGet();
+            }
+        };
         if (!useVirtualThreads) {
-            return vertx.executeBlocking(blockingCall, false);
+            return vertx.executeBlocking(measuredCall, false);
         }
         ContextInternal context = (ContextInternal) vertx.getOrCreateContext();
         Promise<T> promise = context.promise();
 
         Runnable task = () -> context.dispatch(() -> {
             try {
-                T output = blockingCall.call();
+                T output = measuredCall.call();
                 promise.complete(output);
             } catch (Throwable error) {
                 promise.fail(error);
