@@ -85,7 +85,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                 .compose(request -> {
                     String model = request.getModel();
                     deploymentId = model;
-                    return proxy.getTaskExecutor().submit(() -> setupDeployment(model))
+                    return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(model)))
                             .compose(ignore -> verifyLimit())
                             .compose(ignore -> proxy.getTokenStatsTracker().startSpan(context)
                                     .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request))))

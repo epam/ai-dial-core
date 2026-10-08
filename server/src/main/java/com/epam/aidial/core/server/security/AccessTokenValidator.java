@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.security;
 
+import com.auth0.jwk.JwkProvider;
 import com.auth0.jwk.UrlJwkProvider;
 import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.auth0.jwt.interfaces.DecodedJWT;
@@ -7,6 +8,7 @@ import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.server.http.HttpProxySelector;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.server.vertx.FutureUtil;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -43,11 +45,11 @@ public class AccessTokenValidator {
 
     public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client,
                                 String claimsLogLevel) {
-        this(idpConfig, vertx, taskExecutor, client, new HttpClientOptions(), claimsLogLevel);
+        this(idpConfig, vertx, taskExecutor, client, new HttpClientOptions(), claimsLogLevel, BlockingCallTracer.NOOP);
     }
 
     public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client,
-                                HttpClientOptions clientOptions, String claimsLogLevel) {
+                                HttpClientOptions clientOptions, String claimsLogLevel, BlockingCallTracer blockingCallTracer) {
         int size = idpConfig.size();
         if (size < 1) {
             throw new IllegalArgumentException("At least one identity provider is required");
@@ -62,7 +64,8 @@ public class AccessTokenValidator {
                     URI uri = URI.create(jwksUrl);
                     URL url = uri.toURL();
                     Proxy proxy = (jwksProxySelector == null) ? null : jwksProxySelector.select(uri).getFirst();
-                    return new UrlJwkProvider(url, null, null, proxy);
+                    JwkProvider jwkProvider = new UrlJwkProvider(url, null, null, proxy);
+                    return kid -> blockingCallTracer.trace("auth.jwks.fetch", () -> jwkProvider.get(kid));
                 } catch (MalformedURLException e) {
                     throw new IllegalArgumentException(e);
                 }

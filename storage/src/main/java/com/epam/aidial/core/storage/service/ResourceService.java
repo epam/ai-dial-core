@@ -157,7 +157,7 @@ public class ResourceService implements AutoCloseable {
     private final String resourceQueue;
     private final Map<String, Long> resourceTypeExpiration;
     private final Supplier<String> senderPodIdSupplier;
-    private final BlockingCallTracer tracing;
+    private final BlockingCallTracer blockingCallTracer;
 
     public ResourceService(TimerService timerService,
                            RedissonClient redis,
@@ -185,8 +185,8 @@ public class ResourceService implements AutoCloseable {
                            Settings settings,
                            String prefix,
                            Supplier<String> senderPodIdSupplier,
-                           BlockingCallTracer tracing) {
-        this.tracing = tracing;
+                           BlockingCallTracer blockingCallTracer) {
+        this.blockingCallTracer = blockingCallTracer;
         this.redis = redis;
         this.blobStore = blobStore;
         this.lockService = lockService;
@@ -1093,7 +1093,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     private <T> T trace(String name, ResourceDescriptor descriptor, Callable<T> work) {
-        return tracing.trace(name, () -> {
+        return blockingCallTracer.trace(name, () -> {
             BlockingCallTracer.currentSpan().setAttribute("dial.resource.type", descriptor.getType().name());
             return work.call();
         });
