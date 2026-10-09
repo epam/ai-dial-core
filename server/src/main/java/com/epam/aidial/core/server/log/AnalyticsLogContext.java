@@ -52,6 +52,9 @@ public class AnalyticsLogContext {
     private final String parentDeployment;
     private final List<String> executionPath;
 
+    // set only for requests served by a configured route
+    private final String routeName;
+
     private final String requestProtocol;
     private final String requestMethod;
     private final String requestUri;
@@ -89,6 +92,7 @@ public class AnalyticsLogContext {
                 .parentDeployment(getParentDeployment(
                         context.getSourceDeployment(), context.getInterceptors(), context.getExecutionPath()))
                 .executionPath(context.getExecutionPath())
+                .routeName(context.getRoute() != null ? context.getRoute().getName() : null)
                 .requestProtocol(context.getRequest().version().alpnName().toUpperCase())
                 .requestMethod(context.getRequest().method().name())
                 .requestUri(context.getRequest().uri())
