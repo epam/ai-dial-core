@@ -1,18 +1,18 @@
 # Static Setting for Tracing
 
 DIAL Core always emits OpenTelemetry spans for incoming requests. The `tracing` section of
-`aidial.settings.json` adds *opt-in* enrichment on top of that: [OTel GenAI semantic-convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
+`aidial.settings.json` controls the enrichment on top of that: [OTel GenAI semantic-convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
 attributes, a conversation/session correlation id taken from a request header, and response
 headers that hand the caller Core's own trace and span ids.
 
-Everything here is off by default, and nothing here ever publishes prompts, completions, tool
+Everything here is on by default, and nothing here ever publishes prompts, completions, tool
 payloads, API keys, arbitrary headers, or upstream provider names.
 
 These are static settings, so they are read once at startup: changing them needs a restart.
 
 > This section used to live in the dynamic config (`aidial.config.json`). A leftover `tracing` block
-> there is ignored rather than rejected, so move it to `aidial.settings.json` or the enrichment
-> silently stays off.
+> there is ignored rather than rejected, so move it to `aidial.settings.json` or your settings are
+> silently replaced by the defaults.
 
 ## tracing
 
@@ -143,3 +143,23 @@ so a stall shows up in its high buckets and max, not in its count. A stall is on
 the loop runs the probe again, so a loop that stays blocked shows up in `dial_event_loop_stall` instead. In
 worker-pool mode (`asyncTaskExecutor.useVirtualThreads=false`) the Vert.x `vertx_pool_*` metrics
 report the same pool as the two `dial_async_*` metrics.
+
+## Trace context after the response
+
+The request's trace context stays on the request after the response is sent, so work the request
+still does afterwards (cleanup such as `resource.delete`, an upstream retry after the client
+disconnected, an application deployment that continues after `200`) is part of the same trace: its
+spans are children of the server span and can start after it ends, and its log lines keep the
+trace id. On a WebSocket route this work can run for as long as the socket is open, and on a
+deployment for minutes; with tail sampling in the collector, spans that arrive after the sampling
+decision has left its cache can be exported as a separate trace fragment. The request also keeps
+the ended server span, with its attributes and events, referenced for as long as the request's
+context lives, so an open WebSocket holds its server span in memory until the socket closes.
+
+Core keeps the context by starting the server span on a scratch duplicate of the request's Vert.x
+context and copying the span's OTel context onto the request's context itself, so the scope the
+Vert.x tracer closes when the response ends resets only the scratch copy. Restoring the context
+after the response has ended was rejected because a worker thread of the same request can read the
+root context in between. The scratch copy's empty locals lose nothing: every server-span start in
+Vert.x 4.5.30 already hands in a freshly duplicated context, so the incoming `traceparent` is the
+only parent source either way.
