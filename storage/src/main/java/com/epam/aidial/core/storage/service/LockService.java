@@ -40,7 +40,7 @@ public class LockService {
     private final Timer redisWaitTimer = buildWaitTimer("redis");
     private final Timer holdTimer = Timer.builder("dial_lock_hold")
             .description("Time a lock taken with lock() is held")
-            .serviceLevelObjectives(LatencyBuckets.WAIT)
+            .serviceLevelObjectives(LatencyBuckets.waitBuckets())
             .register(Metrics.globalRegistry);
 
     private static class LocalLock {
@@ -110,7 +110,7 @@ public class LockService {
         return Timer.builder("dial_lock_wait")
                 .description("Time lock() waits before the lock is acquired")
                 .tag("phase", phase)
-                .serviceLevelObjectives(LatencyBuckets.WAIT)
+                .serviceLevelObjectives(LatencyBuckets.waitBuckets())
                 .register(Metrics.globalRegistry);
     }
 

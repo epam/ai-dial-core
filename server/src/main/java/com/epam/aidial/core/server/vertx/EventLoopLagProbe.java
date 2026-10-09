@@ -15,13 +15,15 @@ import java.util.concurrent.atomic.AtomicLongArray;
 
 /**
  * Schedules a probe on every event loop every 100 ms and records how late it runs: a busy or blocked loop runs it late.
+ * One vertx per JVM: the lag timer and stall gauge are static, start() replaces the probes of an earlier start() and
+ * stop() cancels them whichever vertx started them.
  */
 public final class EventLoopLagProbe {
 
     private static final long PERIOD_NANOS = TimeUnit.MILLISECONDS.toNanos(100);
     private static final Timer LAG_TIMER = Timer.builder("dial_event_loop_lag")
             .description("How late a task scheduled on an event loop runs")
-            .serviceLevelObjectives(LatencyBuckets.WAIT)
+            .serviceLevelObjectives(LatencyBuckets.waitBuckets())
             .register(Metrics.globalRegistry);
     /**
      * Last probe run per event loop of the vertx started last; null when stopped.

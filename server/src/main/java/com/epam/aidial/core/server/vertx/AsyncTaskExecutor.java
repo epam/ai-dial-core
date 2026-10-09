@@ -14,7 +14,6 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.util.concurrent.Executors.newThreadPerTaskExecutor;
@@ -29,7 +28,7 @@ public class AsyncTaskExecutor {
     private static final AtomicInteger ACTIVE_TASKS = new AtomicInteger();
     private static final Timer START_DELAY_TIMER = Timer.builder("dial_async_task_start_delay")
             .description("Time from submit() until the task starts running")
-            .serviceLevelObjectives(LatencyBuckets.WAIT)
+            .serviceLevelObjectives(LatencyBuckets.waitBuckets())
             .register(Metrics.globalRegistry);
 
     static {
@@ -60,36 +59,20 @@ public class AsyncTaskExecutor {
      */
     public <T> Future<T> submit(Callable<T> blockingCall) {
         long submitted = System.nanoTime();
-        // whoever uncounts first wins: the task when it finishes, or submit() when the task is never going to run
-        AtomicBoolean counted = new AtomicBoolean(true);
         ACTIVE_TASKS.incrementAndGet();
         Callable<T> measuredCall = () -> {
-            try {
-                START_DELAY_TIMER.record(System.nanoTime() - submitted, TimeUnit.NANOSECONDS);
-                return blockingCall.call();
-            } finally {
-                uncount(counted);
-            }
+            START_DELAY_TIMER.record(System.nanoTime() - submitted, TimeUnit.NANOSECONDS);
+            return blockingCall.call();
         };
-        Future<T> result;
-        try {
-            result = execute(measuredCall);
-        } catch (Throwable error) {
-            uncount(counted);
-            throw error;
-        }
-        // a closed vertx fails the future without ever running the task. A task still queued in the worker pool
-        // when vertx closes is dropped and stays counted: by then AiDial has removed every registry.
+        Future<T> result = execute(measuredCall);
+        // the future completes exactly once. A closed vertx fails it at once and its context can no longer run
+        // listeners, so that case is counted here. A task still queued in the worker pool when vertx closes is
+        // dropped and stays counted; the pod is going down, at most the last OTLP push sees it.
         if (result.failed()) {
-            uncount(counted);
-        }
-        return result;
-    }
-
-    private static void uncount(AtomicBoolean counted) {
-        if (counted.compareAndSet(true, false)) {
             ACTIVE_TASKS.decrementAndGet();
+            return result;
         }
+        return result.onComplete(ignored -> ACTIVE_TASKS.decrementAndGet());
     }
 
     private <T> Future<T> execute(Callable<T> measuredCall) {

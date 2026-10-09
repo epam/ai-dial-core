@@ -487,7 +487,7 @@ public class AiDial {
             close(complexResourceSweepService);
             close(mcpHttpClientBuilder);
             close(discoveryMcpHttpClientBuilder);
-            // before the registries are unhooked, or a last OTLP push reads a stall that grows during vertx.close()
+            // before the registries close: their last OTLP push would otherwise read a stall that grows during vertx.close()
             EventLoopLagProbe.stop();
             // Unhook from the global composite before vertx.close() so its shutdown metrics
             // stop flowing here; close the registries only after vertx has flushed its own.
