@@ -92,6 +92,7 @@ import com.epam.aidial.core.server.util.AuthSettingsResolver;
 import com.epam.aidial.core.server.util.ProxySettings;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.server.vertx.EventLoopLagProbe;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.cache.CacheClientFactory;
@@ -196,6 +197,9 @@ public class AiDial {
             BlockingCallTracer blockingCallTracer = new BlockingCallTracer(setupTracing(vertxOptions));
 
             vertx = Vertx.vertx(vertxOptions);
+            if (prometheusRegistry != null || otlpRegistry != null) {
+                EventLoopLagProbe.start(vertx);
+            }
             HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
             // upstream bodies (including SSE streams) are parsed/proxied, so they must be decoded
             clientOptions.setDecompressionSupported(true);
@@ -483,6 +487,8 @@ public class AiDial {
             close(complexResourceSweepService);
             close(mcpHttpClientBuilder);
             close(discoveryMcpHttpClientBuilder);
+            // before the registries close: their last OTLP push would otherwise read a stall that grows during vertx.close()
+            EventLoopLagProbe.stop();
             // Unhook from the global composite before vertx.close() so its shutdown metrics
             // stop flowing here; close the registries only after vertx has flushed its own.
             if (prometheusRegistry != null) {

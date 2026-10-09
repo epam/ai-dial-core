@@ -1,6 +1,9 @@
 package com.epam.aidial.core.storage.service;
 
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
+import com.epam.aidial.core.storage.util.LatencyBuckets;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.Timer;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RScript;
@@ -32,6 +35,13 @@ public class LockService {
     private final String prefix;
     private final RScript script;
     private final ConcurrentHashMap<String, LocalLock> locks;
+    // lock() only: tryLock() never waits, and its holds (e.g. an application deployment) are not measured either
+    private static final Timer LOCAL_WAIT_TIMER = buildWaitTimer("local");
+    private static final Timer REDIS_WAIT_TIMER = buildWaitTimer("redis");
+    private static final Timer HOLD_TIMER = Timer.builder("dial_lock_hold")
+            .description("Time a lock taken with lock() is held")
+            .serviceLevelObjectives(LatencyBuckets.WAIT_BUCKETS)
+            .register(Metrics.globalRegistry);
 
     private static class LocalLock {
         // number of threads requested this lock
@@ -60,11 +70,15 @@ public class LockService {
         log.debug("Thread {} acquires a lock to the resource {} with owner {}", Thread.currentThread().getName(), id, owner);
         // try to get a local lock the first
         LocalLock localLock = acquireLocalLock(id);
+        long waitStart = System.nanoTime();
         localLock.lock();
+        long acquired;
 
         // A Redis failure here must not leak the held local lock: it is a plain ReentrantLock,
         // so a leaked hold would block every subsequent lock() on this key until pod restart.
         try {
+            long localAcquired = System.nanoTime();
+            LOCAL_WAIT_TIMER.record(localAcquired - waitStart, TimeUnit.NANOSECONDS);
             long ttl = tryLock(id, owner);
             long interval = WAIT_MIN;
             // it seems the lock has been acquired by another instance of Core
@@ -73,13 +87,32 @@ public class LockService {
                 interval = nextParkInterval(interval, ttl);
                 ttl = tryLock(id, owner);
             }
+            acquired = System.nanoTime();
+            REDIS_WAIT_TIMER.record(acquired - localAcquired, TimeUnit.NANOSECONDS);
         } catch (Throwable e) {
             localLock.unlock();
             releaseLocalLock(id);
             throw e;
         }
 
-        return () -> unlock(id, owner, localLock);
+        return () -> {
+            try {
+                unlock(id, owner, localLock);
+            } finally {
+                // the lock was held whether or not the release succeeds
+                HOLD_TIMER.record(System.nanoTime() - acquired, TimeUnit.NANOSECONDS);
+            }
+        };
+    }
+
+    private static Timer buildWaitTimer(String phase) {
+        // local: other threads of this pod hold the key;
+        // redis: the Redis round-trip, plus the spin with backoff while another pod holds the key
+        return Timer.builder("dial_lock_wait")
+                .description("Time lock() waits before the lock is acquired")
+                .tag("phase", phase)
+                .serviceLevelObjectives(LatencyBuckets.WAIT_BUCKETS)
+                .register(Metrics.globalRegistry);
     }
 
     static long nextParkInterval(long intervalNanos, long ttlMicros) {

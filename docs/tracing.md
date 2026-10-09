@@ -122,6 +122,29 @@ The same blob storage calls are measured by the `dial_blob_operation` timer, tag
 and `outcome` (`success` or `error`), with buckets from 5 ms to 5 s. Unlike the spans, the timer
 also records calls made outside a request.
 
+## Wait and stall metrics
+
+These metrics show where Core waits rather than works. The timers have buckets from 100 µs to 30 s.
+The event-loop probe only runs when a Prometheus or OTLP registry is enabled.
+
+| Metric                                  | Type  | Measures                                                                                                                                  |
+|-----------------------------------------|-------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| `dial_lock_wait{phase="local"}`         | timer | Time `LockService.lock()` waits for other threads of this pod that hold the same key                                                      |
+| `dial_lock_wait{phase="redis"}`         | timer | Time `LockService.lock()` spends on the Redis lock: always one round-trip, plus the backoff spin while another pod holds the key          |
+| `dial_lock_hold`                        | timer | Time a lock taken with `lock()` is held                                                                                                   |
+| `dial_async_tasks_active`               | gauge | `AsyncTaskExecutor` tasks submitted and not finished yet                                                                                  |
+| `dial_async_task_start_delay`           | timer | Time from `AsyncTaskExecutor.submit()` until the task starts running                                                                      |
+| `dial_event_loop_lag`                   | timer | How late a probe scheduled every 100 ms on each event loop runs                                                                           |
+| `dial_event_loop_stall`                 | gauge | Seconds since the longest-idle event loop last ran its probe; up to about 0.1 (one probe period) when healthy, alert on whole seconds     |
+
+Locks taken with `tryLock()` (sweeps, application deployment, code interpreter session cleanup) never
+wait, and their holds are not measured. The waits are recorded when `lock()` returns, the hold when the lock is released.
+`dial_event_loop_lag` is recorded on every probe run, about 10 samples per second per loop,
+so a stall shows up in its high buckets and max, not in its count. A stall is only recorded once
+the loop runs the probe again, so a loop that stays blocked shows up in `dial_event_loop_stall` instead. In
+worker-pool mode (`asyncTaskExecutor.useVirtualThreads=false`) the Vert.x `vertx_pool_*` metrics
+report the same pool as the two `dial_async_*` metrics.
+
 ## Trace context after the response
 
 The request's trace context stays on the request after the response is sent, so work the request
