@@ -7,11 +7,13 @@ import com.epam.aidial.core.metaschemas.CopyAppBucketOptions;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.ConfigStore;
+import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.CatalogPropertiesLinkRewriter;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
@@ -31,6 +33,8 @@ import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.epam.aidial.core.storage.util.UrlUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
@@ -64,6 +68,7 @@ public class ApplicationService {
     private final AsyncTaskExecutor taskExecutor;
     private final ApiKeyStore apiKeyStore;
     private final EncryptionService encryptionService;
+    private final SecretFieldProcessor secretFieldProcessor;
     private final ExternalServiceService externalServiceService;
     private final ResourceService resourceService;
     private final LockService lockService;
@@ -83,6 +88,7 @@ public class ApplicationService {
                               RedissonClient redis,
                               ApiKeyStore apiKeyStore,
                               EncryptionService encryptionService,
+                              SecretFieldProcessor secretFieldProcessor,
                               ExternalServiceService externalServiceService,
                               ResourceService resourceService,
                               LockService lockService,
@@ -97,6 +103,7 @@ public class ApplicationService {
         this.taskExecutor = taskExecutor;
         this.apiKeyStore = apiKeyStore;
         this.encryptionService = encryptionService;
+        this.secretFieldProcessor = secretFieldProcessor;
         this.externalServiceService = externalServiceService;
         this.resourceService = resourceService;
         this.applicationSchemaService = applicationSchemaService;
@@ -154,6 +161,13 @@ public class ApplicationService {
         application.setAuthor(meta.getAuthor());
         application.setCreatedAt(meta.getCreatedAt());
         application.setUpdatedAt(meta.getUpdatedAt());
+        // Route-upstream secrets (routes[].upstreams[].key/secretExtraData) are @EncryptedField,
+        // unlike externalServices — decrypted unconditionally here (not opt-in) because this is
+        // also the live request-routing load path for non-platform-bucket applications
+        // (DeploymentService#findDeployment falls back to this when the merged Config has no
+        // entry), and every response surface already suppresses the field independently via
+        // @JsonProperty(WRITE_ONLY).
+        decryptRouteSecretsTolerant(application, resource);
 
         return Pair.of(meta, application);
     }
@@ -166,7 +180,17 @@ public class ApplicationService {
         application.setAuthor(meta.getAuthor());
         application.setCreatedAt(meta.getCreatedAt());
         application.setUpdatedAt(meta.getUpdatedAt());
+        decryptRouteSecretsTolerant(application, meta.getDescriptor());
         return application;
+    }
+
+    // A read must not 500 just because one route's secret can't be decrypted (corrupted ciphertext,
+    // rotated key) — every response surface already suppresses the field via @JsonProperty(WRITE_ONLY)
+    // regardless of its decrypted state, so a read degrades gracefully; only a routing attempt against
+    // that specific upstream fails downstream. Lenient so a bad secret doesn't also leave every route
+    // visited after it in the walk order stuck undecrypted (ciphertext sent upstream as a literal key).
+    private void decryptRouteSecretsTolerant(Application application, ResourceDescriptor resource) {
+        secretFieldProcessor.decryptFieldsLenient(application, resource);
     }
 
     public void putApplication(ResourceDescriptor resource, EtagHeader etag, String author,
@@ -184,6 +208,7 @@ public class ApplicationService {
         prepareApplication(resource, application, preserveForwardAuthToken);
 
         MutableObject<List<String>> purgeableExternalServices = new MutableObject<>(List.of());
+        MutableObject<Application> toStore = new MutableObject<>(application);
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
             verifySchemaRichApp(application, existing);
@@ -191,13 +216,15 @@ public class ApplicationService {
             prepareAdminManagedFields(application, existing, adminManagedFieldsWriteMode);
             List<String> externalServices = externalServiceService.processOnWrite(resource, application, existing, externalServicesWriteMode);
             purgeableExternalServices.setValue(externalServices);
-            return ProxyUtil.convertToString(application);
+            Application merged = mergePreservingOmittedRouteSecrets(json, application);
+            toStore.setValue(merged);
+            return serializeEncrypted(resource, merged);
         });
 
         // Purge credentials of services this write dropped or changed the auth type of (after commit).
         externalServiceService.purgeApplicationCredentials(resource, purgeableExternalServices.get());
 
-        return Pair.of(meta, application);
+        return Pair.of(meta, toStore.getValue());
     }
 
     // app_identity and allow_user_external_services are admin-managed: a field the mode does not honor is
@@ -247,6 +274,43 @@ public class ApplicationService {
      */
     public void decryptExternalServiceSecretsForResponse(ResourceDescriptor resource, Application application) {
         externalServiceService.decryptSecretsForResponse(resource, application);
+    }
+
+    /**
+     * Encrypts {@code application}'s route-upstream secrets, serializes via {@link ConfigEntityCodec
+     * #serializeForBlob} (not {@link ProxyUtil#convertToString}, which drops them), then decrypts back
+     * to plaintext in place. Every write in this class must go through this, or an encrypted route
+     * secret is silently dropped on the next write. The blob is already written correctly by this
+     * point, so the decrypt-back step is lenient: a field that can't be decrypted (e.g. corrupted by
+     * an earlier bug) must not fail the write just to restore an in-memory value every caller here
+     * only uses for a WRITE_ONLY-suppressing response.
+     */
+    private String serializeEncrypted(ResourceDescriptor resource, Application application) {
+        secretFieldProcessor.encryptFields(application, resource);
+        String blobBody = ConfigEntityCodec.serializeForBlob(application);
+        secretFieldProcessor.decryptFieldsLenient(application, resource);
+        return blobBody;
+    }
+
+    /**
+     * Fills in route-upstream secrets ({@code routes[].upstreams[].key}/{@code secretExtraData}) that
+     * {@code application} omits, from {@code existingJson}'s stored values. Without this, reading an
+     * application back (secrets always come back {@code WRITE_ONLY}-suppressed) and PUTting the same
+     * body would wipe them on save.
+     */
+    private Application mergePreservingOmittedRouteSecrets(String existingJson, Application application) {
+        if (existingJson == null) {
+            return application;
+        }
+        JsonNode existingTree;
+        try {
+            existingTree = ConfigEntityCodec.BLOB_MAPPER.readTree(existingJson);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Stored application is malformed: " + e.getMessage(), e);
+        }
+        JsonNode requestTree = ConfigEntityCodec.BLOB_MAPPER.valueToTree(application);
+        JsonNode merged = secretFieldProcessor.mergePreservingOmittedSecrets(existingTree, requestTree, Application.class);
+        return ConfigEntityCodec.treeToEntity(merged, Application.class);
     }
 
     private static void verifySchemaRichApp(Application application, Application existing) {
@@ -407,7 +471,13 @@ public class ApplicationService {
 
             externalServiceService.encryptSecrets(destination, application);
 
-            return ProxyUtil.convertToString(application);
+            // application's route-upstream secrets were decrypted at load time (getApplication),
+            // never re-decrypted since — this is the SOURCE object still holding the SOURCE's own
+            // plaintext, now encrypted below under the DESTINATION descriptor's AAD. Never skip
+            // straight to an encrypt call on an object still carrying a stale-AAD ciphertext:
+            // encryptValue's "already a valid envelope" check can't detect an AAD mismatch and
+            // would leave it un-re-encrypted, permanently corrupting it at the new path.
+            return serializeEncrypted(destination, application);
         });
 
         if (isPublicOrReview) {
@@ -515,7 +585,7 @@ public class ApplicationService {
             result.setValue(application);
             pendingApplications.add(System.currentTimeMillis() + checkDelay, resource.getUrl());
 
-            return ProxyUtil.convertToString(application);
+            return serializeEncrypted(resource, application);
         });
 
         taskExecutor.submit(() -> launchApplication(context, resource))
@@ -557,7 +627,7 @@ public class ApplicationService {
             result.setValue(application);
             pendingApplications.add(System.currentTimeMillis() + checkDelay, resource.getUrl());
 
-            return ProxyUtil.convertToString(application);
+            return serializeEncrypted(resource, application);
         });
 
         Future<Void> future = taskExecutor.submit(() -> terminateApplication(resource, null));
@@ -765,7 +835,7 @@ public class ApplicationService {
                 existing.getFeatures().setTruncatePromptEndpoint(buildMapping(endpoint, function.getMapping().getTruncatePrompt()));
                 existing.getFeatures().setConfigurationEndpoint(buildMapping(endpoint, function.getMapping().getConfiguration()));
 
-                return ProxyUtil.convertToString(existing);
+                return serializeEncrypted(resource, existing);
             });
 
             pendingApplications.remove(resource.getUrl());
@@ -816,7 +886,7 @@ public class ApplicationService {
                     function.setError(status == Application.Function.Status.FAILED ? error : null);
 
                     existing.setFunction(function);
-                    return ProxyUtil.convertToString(existing);
+                    return serializeEncrypted(resource, existing);
                 });
             }
 
