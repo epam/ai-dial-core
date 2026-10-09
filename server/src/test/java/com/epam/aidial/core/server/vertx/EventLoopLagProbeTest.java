@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.vertx;
 
-import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Metrics;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -13,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EventLoopLagProbeTest {
@@ -25,20 +25,16 @@ class EventLoopLagProbeTest {
         Metrics.addRegistry(meterRegistry);
     }
 
-    private Gauge stallGauge;
-
     @AfterEach
     void tearDown() throws Exception {
-        if (stallGauge != null) {
-            EventLoopLagProbe.stop(stallGauge);
-        }
+        EventLoopLagProbe.stop();
         Metrics.removeRegistry(meterRegistry);
         vertx.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
     }
 
     @Test
     void recordsStallOfBlockedEventLoop() throws Exception {
-        stallGauge = EventLoopLagProbe.start(vertx);
+        EventLoopLagProbe.start(vertx);
         vertx.runOnContext(ignored -> sleep(500));
         Thread.sleep(1_000);
 
@@ -49,17 +45,22 @@ class EventLoopLagProbeTest {
 
     @Test
     void reportsStallWhileEventLoopIsStillBlocked() throws Exception {
-        stallGauge = EventLoopLagProbe.start(vertx);
+        EventLoopLagProbe.start(vertx);
         CompletableFuture<Void> release = new CompletableFuture<>();
         vertx.runOnContext(ignored -> release.join());
         try {
             Thread.sleep(600);
 
-            double stallSeconds = meterRegistry.get("dial_event_loop_stall").gauge().value();
-            assertTrue(stallSeconds >= 0.4, "the ongoing stall should show up, stall=" + stallSeconds);
+            assertTrue(stallSeconds() >= 0.4, "the ongoing stall should show up, stall=" + stallSeconds());
+            EventLoopLagProbe.stop();
+            assertEquals(0, stallSeconds(), "a stopped probe reports no stall");
         } finally {
             release.complete(null);
         }
+    }
+
+    private double stallSeconds() {
+        return meterRegistry.get("dial_event_loop_stall").gauge().value();
     }
 
     private static void sleep(long millis) {

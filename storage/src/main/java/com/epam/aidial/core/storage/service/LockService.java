@@ -90,7 +90,8 @@ public class LockService {
             // it seems the lock has been acquired by another instance of Core
             while (ttl > 0) {
                 LockSupport.parkNanos(interval);
-                interval = Math.min(2 * interval, Math.min(WAIT_MAX, ttl + 1));
+                // ttl is in microseconds, the intervals in nanoseconds
+                interval = Math.min(2 * interval, Math.min(WAIT_MAX, TimeUnit.MICROSECONDS.toNanos(ttl) + 1));
                 ttl = tryLock(id, owner);
             }
             acquired = System.nanoTime();

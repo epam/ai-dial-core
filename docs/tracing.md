@@ -125,7 +125,7 @@ also records calls made outside a request.
 ## Wait and stall metrics
 
 These metrics show where Core waits rather than works. The timers have buckets from 100 µs to 5 s.
-The event-loop metrics are only registered when a Prometheus or OTLP registry is enabled.
+The event-loop probe only runs when a Prometheus or OTLP registry is enabled.
 
 | Metric                                  | Type  | Measures                                                                                                                                  |
 |-----------------------------------------|-------|-------------------------------------------------------------------------------------------------------------------------------------------|
@@ -135,7 +135,7 @@ The event-loop metrics are only registered when a Prometheus or OTLP registry is
 | `dial_async_tasks_active`               | gauge | `AsyncTaskExecutor` tasks submitted and not finished yet                                                                                  |
 | `dial_async_task_start_delay`           | timer | Time from `AsyncTaskExecutor.submit()` until the task starts running                                                                      |
 | `dial_event_loop_lag`                   | timer | How late a probe scheduled every 100 ms on each event loop runs                                                                           |
-| `dial_event_loop_stall`                 | gauge | Seconds since the event loop that has gone longest without running its probe last ran it; about 0.1 when healthy                          |
+| `dial_event_loop_stall`                 | gauge | Seconds since the event loop that has gone longest without running its probe last ran it; at most 0.1 when healthy                        |
 
 Locks taken with `tryLock()` (sweeps, application deployment, code interpreter session cleanup) never
 wait, and their holds are not measured. `dial_event_loop_lag` is recorded on every probe run, about 10 samples per second per loop,

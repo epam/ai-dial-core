@@ -105,7 +105,6 @@ import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.core.instrument.Clock;
-import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Metrics;
 import io.micrometer.prometheus.PrometheusConfig;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
@@ -173,7 +172,6 @@ public class AiDial {
 
     private PrometheusMeterRegistry prometheusRegistry;
     private OtlpMeterRegistry otlpRegistry;
-    private Gauge eventLoopStallGauge;
 
     private AccessTokenValidator accessTokenValidator;
 
@@ -200,7 +198,7 @@ public class AiDial {
 
             vertx = Vertx.vertx(vertxOptions);
             if (prometheusRegistry != null || otlpRegistry != null) {
-                eventLoopStallGauge = EventLoopLagProbe.start(vertx);
+                EventLoopLagProbe.start(vertx);
             }
             HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
             // upstream bodies (including SSE streams) are parsed/proxied, so they must be decoded
@@ -489,10 +487,8 @@ public class AiDial {
             close(complexResourceSweepService);
             close(mcpHttpClientBuilder);
             close(discoveryMcpHttpClientBuilder);
-            if (eventLoopStallGauge != null) {
-                // before the registries are unhooked, or they never see the removal and keep reading a stall that grows during vertx.close()
-                EventLoopLagProbe.stop(eventLoopStallGauge);
-            }
+            // before the registries are unhooked, or a last OTLP push reads a stall that grows during vertx.close()
+            EventLoopLagProbe.stop();
             // Unhook from the global composite before vertx.close() so its shutdown metrics
             // stop flowing here; close the registries only after vertx has flushed its own.
             if (prometheusRegistry != null) {

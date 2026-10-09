@@ -54,12 +54,19 @@ public class AsyncTaskExecutor {
      */
     private final Set<Object> notStarted = ConcurrentHashMap.newKeySet();
 
+    /**
+     * Set once the close hook has run: vertx shuts the worker pool down only after its close hooks,
+     * so a task submitted in between is still queued, then dropped.
+     */
+    private volatile boolean closing;
+
     public AsyncTaskExecutor(Vertx vertx, JsonObject settings) {
         this.vertx = vertx;
         useVirtualThreads = settings.getBoolean("useVirtualThreads", Boolean.TRUE);
         if (!useVirtualThreads) {
             // closing vertx drops the tasks queued in the worker pool without running or failing them
             ((VertxInternal) vertx).addCloseHook(completion -> {
+                closing = true;
                 notStarted.forEach(this::uncountIfNotStarted);
                 completion.complete();
             });
@@ -89,15 +96,9 @@ public class AsyncTaskExecutor {
         };
         ACTIVE_TASKS.incrementAndGet();
         notStarted.add(task);
-        Future<T> result;
-        try {
-            result = execute(measuredCall);
-        } catch (Throwable e) {
-            uncountIfNotStarted(task);
-            throw e;
-        }
-        // a closed vertx fails the future without ever running the task
-        if (result.failed()) {
+        Future<T> result = execute(measuredCall);
+        // a closed vertx fails the future without ever running the task; a closing one may queue the task, then drop it
+        if (result.failed() || closing) {
             uncountIfNotStarted(task);
         }
         return result;
