@@ -259,6 +259,59 @@ class DtoSchemaGeneratorTest {
     }
 
     @Test
+    void fieldLevelNullableMarksInlinePrimitivesAndCollections() {
+        DtoSchemaGenerator generator = new DtoSchemaGenerator();
+        generator.processType(com.epam.aidial.core.storage.data.MetadataBase.class);
+
+        JsonNode folder = generator.getSchemas().get("ResourceFolderMetadata").get("properties");
+        assertTrue(folder.get("name").get("nullable").asBoolean(), "name is null for the bucket root");
+        assertTrue(folder.get("parentPath").get("nullable").asBoolean(), "parentPath is null at the bucket root");
+        assertEquals("array", folder.get("items").get("type").asText());
+        assertTrue(folder.get("items").get("nullable").asBoolean(), "items is null for nested folders");
+        assertFalse(folder.get("bucket").has("nullable"));
+    }
+
+    @Test
+    void fieldLevelNullableIsIgnoredOnReferences() {
+        DtoSchemaGenerator generator = new DtoSchemaGenerator();
+        generator.processType(SampleNullableReference.class);
+
+        JsonNode link = generator.getSchemas().get(generator.resolveTypeName(SampleNullableReference.class))
+                .get("properties").get("link");
+        assertTrue(link.has("$ref"));
+        assertFalse(link.has("nullable"), "OpenAPI 3.0 ignores siblings of $ref");
+    }
+
+    @Test
+    void subtypeDiscriminatorIsPinnedToItsMappingValue() {
+        DtoSchemaGenerator generator = new DtoSchemaGenerator();
+        generator.processType(com.epam.aidial.core.storage.data.MetadataBase.class);
+        generator.processType(com.epam.aidial.core.storage.data.ComplexResourceItemMetadata.class);
+        Map<String, ObjectNode> schemas = generator.getSchemas();
+
+        assertPinned(schemas.get("ResourceFolderMetadata"), "FOLDER");
+        assertPinned(schemas.get("ResourceItemMetadata"), "ITEM");
+        // A subclass of a listed subtype inherits the subtype's value.
+        assertPinned(schemas.get("ComplexResourceItemMetadata"), "ITEM");
+    }
+
+    private static void assertPinned(ObjectNode schema, String value) {
+        JsonNode nodeType = schema.get("properties").get("nodeType");
+        assertFalse(nodeType.has("$ref"));
+        assertEquals("string", nodeType.get("type").asText());
+        assertEquals(1, nodeType.get("enum").size());
+        assertEquals(value, nodeType.get("enum").get(0).asText());
+        List<String> required = new ArrayList<>();
+        schema.get("required").forEach(entry -> required.add(entry.asText()));
+        assertTrue(required.contains("nodeType"));
+    }
+
+    static class SampleNullableReference {
+        @ApiSchema(nullable = true)
+        public com.epam.aidial.core.server.data.ResourceLink link;
+    }
+
+    @Test
     void fieldLevelApiSchemaAnnotationDrivesPropertyOneOf() {
         DtoSchemaGenerator generator = new DtoSchemaGenerator();
         generator.processType(SampleManifest.class);

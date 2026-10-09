@@ -21,12 +21,10 @@ import io.swagger.v3.oas.models.tags.Tag;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Stream;
 
@@ -172,43 +170,7 @@ public class SpecAssembler {
     }
 
     private void addExtensions(Operation operation, ApiExtension[] extensions) {
-        Set<String> seenNames = new HashSet<>();
-        for (ApiExtension ext : extensions) {
-            String name = ext.name();
-
-            // Validate extension name starts with "x-"
-            if (!name.startsWith("x-")) {
-                throw new IllegalArgumentException(
-                    "OpenAPI extension name must start with 'x-': " + name
-                );
-            }
-
-            // Validate no duplicates
-            if (!seenNames.add(name)) {
-                throw new IllegalArgumentException(
-                    "Duplicate OpenAPI extension name: " + name
-                );
-            }
-
-            // Parse value - try boolean, then number, else keep as string
-            String value = ext.value();
-            Object parsedValue;
-            if ("true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value)) {
-                parsedValue = Boolean.parseBoolean(value);
-            } else {
-                try {
-                    parsedValue = Integer.parseInt(value);
-                } catch (NumberFormatException e1) {
-                    try {
-                        parsedValue = Double.parseDouble(value);
-                    } catch (NumberFormatException e2) {
-                        parsedValue = value;
-                    }
-                }
-            }
-
-            operation.addExtension(name, parsedValue);
-        }
+        ExtensionSupport.parse(extensions).forEach(operation::addExtension);
     }
 
     @SuppressWarnings("unchecked")
