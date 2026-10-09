@@ -1,6 +1,7 @@
 package com.epam.aidial.core.storage.service;
 
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
+import com.epam.aidial.core.storage.util.LatencyBuckets;
 import io.micrometer.core.instrument.Metrics;
 import io.micrometer.core.instrument.Timer;
 import lombok.Getter;
@@ -9,7 +10,6 @@ import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -30,23 +30,17 @@ public class LockService {
     private static final long PERIOD = TimeUnit.SECONDS.toMicros(300);
     private static final long WAIT_MIN = TimeUnit.MILLISECONDS.toNanos(1);
     private static final long WAIT_MAX = TimeUnit.MILLISECONDS.toNanos(128);
-    // an uncontended lock wait (a Redis round-trip), event-loop lag and task start delay are well under the 1 ms the default histogram starts at
-    public static final Duration[] LATENCY_BUCKETS = {
-        Duration.ofNanos(100_000), Duration.ofNanos(250_000), Duration.ofNanos(500_000), Duration.ofMillis(1),
-        Duration.ofMillis(2), Duration.ofMillis(5), Duration.ofMillis(10), Duration.ofMillis(25), Duration.ofMillis(50),
-        Duration.ofMillis(100), Duration.ofMillis(250), Duration.ofMillis(500), Duration.ofSeconds(1), Duration.ofSeconds(5)
-    };
 
     @Getter
     private final String prefix;
     private final RScript script;
     private final ConcurrentHashMap<String, LocalLock> locks;
     // lock() only: tryLock() never waits, and its holds (e.g. an application deployment) are not measured either
-    private final Timer localWaitTimer = waitTimer("local");
-    private final Timer redisWaitTimer = waitTimer("redis");
+    private final Timer localWaitTimer = buildWaitTimer("local");
+    private final Timer redisWaitTimer = buildWaitTimer("redis");
     private final Timer holdTimer = Timer.builder("dial_lock_hold")
             .description("Time a lock taken with lock() is held")
-            .serviceLevelObjectives(LATENCY_BUCKETS)
+            .serviceLevelObjectives(LatencyBuckets.WAIT)
             .register(Metrics.globalRegistry);
 
     private static class LocalLock {
@@ -90,8 +84,8 @@ public class LockService {
             // it seems the lock has been acquired by another instance of Core
             while (ttl > 0) {
                 LockSupport.parkNanos(interval);
-                // ttl is in microseconds, the intervals in nanoseconds
-                interval = Math.min(2 * interval, Math.min(WAIT_MAX, TimeUnit.MICROSECONDS.toNanos(ttl) + 1));
+                // ttl is in microseconds, the intervals in nanoseconds; toNanos() saturates, so the + 1 goes inside
+                interval = Math.min(2 * interval, Math.min(WAIT_MAX, TimeUnit.MICROSECONDS.toNanos(ttl + 1)));
                 ttl = tryLock(id, owner);
             }
             acquired = System.nanoTime();
@@ -110,13 +104,13 @@ public class LockService {
         };
     }
 
-    private static Timer waitTimer(String phase) {
+    private static Timer buildWaitTimer(String phase) {
         // local: other threads of this pod hold the key;
         // redis: the Redis round-trip, plus the spin with backoff while another pod holds the key
         return Timer.builder("dial_lock_wait")
                 .description("Time lock() waits before the lock is acquired")
                 .tag("phase", phase)
-                .serviceLevelObjectives(LATENCY_BUCKETS)
+                .serviceLevelObjectives(LatencyBuckets.WAIT)
                 .register(Metrics.globalRegistry);
     }
 

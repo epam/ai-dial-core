@@ -103,7 +103,7 @@ class LockServiceTest {
         lock.close();
         waiter.get(5, TimeUnit.SECONDS);
 
-        Assertions.assertTrue(waitTimer("local").max(TimeUnit.MILLISECONDS) >= 250);
+        Assertions.assertTrue(waitTimer("local").max(TimeUnit.MILLISECONDS) >= 100);
         Assertions.assertTrue(holdTimer().max(TimeUnit.MILLISECONDS) >= 250);
     }
 
@@ -117,11 +117,12 @@ class LockServiceTest {
         lock.close();
         waiter.get(5, TimeUnit.SECONDS);
 
-        Assertions.assertTrue(waitTimer("redis").max(TimeUnit.MILLISECONDS) >= 250);
+        Assertions.assertTrue(waitTimer("redis").max(TimeUnit.MILLISECONDS) >= 100);
     }
 
     /**
      * Returns once the waiter thread is about to call lock(), so a slow thread start does not shorten the measured wait.
+     * The thread can still be descheduled before lock() runs, so the wait assertions allow 200 ms under the 300 ms hold.
      */
     private static CompletableFuture<Void> startWaiter(String key) throws InterruptedException {
         CountDownLatch started = new CountDownLatch(1);

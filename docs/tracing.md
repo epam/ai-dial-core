@@ -124,7 +124,7 @@ also records calls made outside a request.
 
 ## Wait and stall metrics
 
-These metrics show where Core waits rather than works. The timers have buckets from 100 µs to 5 s.
+These metrics show where Core waits rather than works. The timers have buckets from 100 µs to 30 s.
 The event-loop probe only runs when a Prometheus or OTLP registry is enabled.
 
 | Metric                                  | Type  | Measures                                                                                                                                  |

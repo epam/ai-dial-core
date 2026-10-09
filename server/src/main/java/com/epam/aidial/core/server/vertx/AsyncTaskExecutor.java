@@ -1,6 +1,6 @@
 package com.epam.aidial.core.server.vertx;
 
-import com.epam.aidial.core.storage.service.LockService;
+import com.epam.aidial.core.storage.util.LatencyBuckets;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Metrics;
 import io.micrometer.core.instrument.Timer;
@@ -8,15 +8,13 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.impl.ContextInternal;
-import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.json.JsonObject;
 
-import java.util.Set;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.util.concurrent.Executors.newThreadPerTaskExecutor;
@@ -31,7 +29,7 @@ public class AsyncTaskExecutor {
     private static final AtomicInteger ACTIVE_TASKS = new AtomicInteger();
     private static final Timer START_DELAY_TIMER = Timer.builder("dial_async_task_start_delay")
             .description("Time from submit() until the task starts running")
-            .serviceLevelObjectives(LockService.LATENCY_BUCKETS)
+            .serviceLevelObjectives(LatencyBuckets.WAIT)
             .register(Metrics.globalRegistry);
 
     static {
@@ -49,28 +47,9 @@ public class AsyncTaskExecutor {
      */
     private final boolean useVirtualThreads;
 
-    /**
-     * Submitted tasks counted in ACTIVE_TASKS that have not started: whoever removes a task first uncounts it.
-     */
-    private final Set<Object> notStarted = ConcurrentHashMap.newKeySet();
-
-    /**
-     * Set once the close hook has run: vertx shuts the worker pool down only after its close hooks,
-     * so a task submitted in between is still queued, then dropped.
-     */
-    private volatile boolean closing;
-
     public AsyncTaskExecutor(Vertx vertx, JsonObject settings) {
         this.vertx = vertx;
         useVirtualThreads = settings.getBoolean("useVirtualThreads", Boolean.TRUE);
-        if (!useVirtualThreads) {
-            // closing vertx drops the tasks queued in the worker pool without running or failing them
-            ((VertxInternal) vertx).addCloseHook(completion -> {
-                closing = true;
-                notStarted.forEach(this::uncountIfNotStarted);
-                completion.complete();
-            });
-        }
     }
 
     /**
@@ -81,31 +60,34 @@ public class AsyncTaskExecutor {
      */
     public <T> Future<T> submit(Callable<T> blockingCall) {
         long submitted = System.nanoTime();
-        Object task = new Object();
+        // whoever uncounts first wins: the task when it finishes, or submit() when the task is never going to run
+        AtomicBoolean counted = new AtomicBoolean(true);
+        ACTIVE_TASKS.incrementAndGet();
         Callable<T> measuredCall = () -> {
-            // false when the close hook has already uncounted the task
-            boolean counted = notStarted.remove(task);
             try {
                 START_DELAY_TIMER.record(System.nanoTime() - submitted, TimeUnit.NANOSECONDS);
                 return blockingCall.call();
             } finally {
-                if (counted) {
-                    ACTIVE_TASKS.decrementAndGet();
-                }
+                uncount(counted);
             }
         };
-        ACTIVE_TASKS.incrementAndGet();
-        notStarted.add(task);
-        Future<T> result = execute(measuredCall);
-        // a closed vertx fails the future without ever running the task; a closing one may queue the task, then drop it
-        if (result.failed() || closing) {
-            uncountIfNotStarted(task);
+        Future<T> result;
+        try {
+            result = execute(measuredCall);
+        } catch (Throwable error) {
+            uncount(counted);
+            throw error;
+        }
+        // a closed vertx fails the future without ever running the task. A task still queued in the worker pool
+        // when vertx closes is dropped and stays counted: by then AiDial has removed every registry.
+        if (result.failed()) {
+            uncount(counted);
         }
         return result;
     }
 
-    private void uncountIfNotStarted(Object task) {
-        if (notStarted.remove(task)) {
+    private static void uncount(AtomicBoolean counted) {
+        if (counted.compareAndSet(true, false)) {
             ACTIVE_TASKS.decrementAndGet();
         }
     }

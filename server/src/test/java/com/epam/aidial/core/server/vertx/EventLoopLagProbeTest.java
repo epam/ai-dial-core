@@ -11,6 +11,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -36,11 +38,10 @@ class EventLoopLagProbeTest {
     void recordsStallOfBlockedEventLoop() throws Exception {
         EventLoopLagProbe.start(vertx);
         vertx.runOnContext(ignored -> sleep(500));
-        Thread.sleep(1_000);
 
-        Timer lag = meterRegistry.get("dial_event_loop_lag").timer();
-        assertTrue(lag.count() > 0, "the probe should have run");
-        assertTrue(lag.max(TimeUnit.MILLISECONDS) >= 300, "the 500 ms stall should show up as lag, max=" + lag.max(TimeUnit.MILLISECONDS));
+        // recorded once the loop runs the probe again, after the block; a healthy loop lags a few ms at most
+        Timer lag = lagTimer();
+        await(() -> lag.max(TimeUnit.MILLISECONDS) >= 300, () -> "the 500 ms stall should show up as lag, max=" + lag.max(TimeUnit.MILLISECONDS));
     }
 
     @Test
@@ -49,9 +50,7 @@ class EventLoopLagProbeTest {
         CompletableFuture<Void> release = new CompletableFuture<>();
         vertx.runOnContext(ignored -> release.join());
         try {
-            Thread.sleep(600);
-
-            assertTrue(stallSeconds() >= 0.4, "the ongoing stall should show up, stall=" + stallSeconds());
+            await(() -> stallSeconds() >= 0.4, () -> "the ongoing stall should show up, stall=" + stallSeconds());
             EventLoopLagProbe.stop();
             assertEquals(0, stallSeconds(), "a stopped probe reports no stall");
         } finally {
@@ -59,8 +58,37 @@ class EventLoopLagProbeTest {
         }
     }
 
+    @Test
+    void stopCancelsProbes() throws Exception {
+        EventLoopLagProbe.start(vertx);
+        Timer lag = lagTimer();
+        await(() -> lag.count() > 0, () -> "the probe should have run");
+
+        EventLoopLagProbe.stop();
+        // the only loop ran this after stop(), so no probe is in flight
+        CompletableFuture<Void> drained = new CompletableFuture<>();
+        vertx.runOnContext(ignored -> drained.complete(null));
+        drained.get(5, TimeUnit.SECONDS);
+        long recorded = lag.count();
+        Thread.sleep(300);
+
+        assertEquals(recorded, lag.count(), "a cancelled probe records nothing");
+    }
+
+    private Timer lagTimer() {
+        return meterRegistry.get("dial_event_loop_lag").timer();
+    }
+
     private double stallSeconds() {
         return meterRegistry.get("dial_event_loop_stall").gauge().value();
+    }
+
+    private static void await(BooleanSupplier condition, Supplier<String> message) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!condition.getAsBoolean()) {
+            assertTrue(System.nanoTime() < deadline, message);
+            Thread.sleep(10);
+        }
     }
 
     private static void sleep(long millis) {
