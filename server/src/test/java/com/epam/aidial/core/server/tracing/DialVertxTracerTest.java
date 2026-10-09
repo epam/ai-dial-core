@@ -36,9 +36,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -66,9 +68,9 @@ class DialVertxTracerTest {
     private Vertx tracedVertx;
 
     @AfterEach
-    void closeTracedVertx() {
+    void closeTracedVertx() throws Exception {
         if (tracedVertx != null) {
-            tracedVertx.close().toCompletionStage().toCompletableFuture().join();
+            tracedVertx.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
         }
     }
 
@@ -100,8 +102,9 @@ class DialVertxTracerTest {
         verify(delegate, only()).sendRequest(context, SpanKind.RPC, null, request, expectedName, null, null);
     }
 
-    @Test
-    void sendResponseKeepsSpanContextOnRequestContext(Vertx vertx) {
+    @ParameterizedTest
+    @MethodSource("sendResponseOutcomes")
+    void sendResponseKeepsSpanContextOnRequestContext(Object response, Throwable failure, Vertx vertx) {
         DialVertxTracer<Object, Object> dialTracer = otelTracer();
         Context context = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
 
@@ -109,7 +112,7 @@ class DialVertxTracerTest {
         Span span = Span.fromContext(context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
         assertTrue(span.getSpanContext().isValid());
 
-        dialTracer.sendResponse(context, "response", operation, null, TagExtractor.empty());
+        dialTracer.sendResponse(context, response, operation, failure, TagExtractor.empty());
 
         assertTrue(((ReadableSpan) span).hasEnded());
         io.opentelemetry.context.Context after = context.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
@@ -196,6 +199,14 @@ class DialVertxTracerTest {
                 Arguments.of(HttpMethod.POST, "/route/path", "POST /{path}"),
                 Arguments.of(HttpMethod.POST, "/fake", "POST /{path}"),
                 Arguments.of(HttpMethod.OPTIONS, "/openai/deployments/llm/chat/completions", "OPTIONS")
+        );
+    }
+
+    // a completed response, and the client-disconnect path, where Vert.x reports a failure and no response
+    public static List<Arguments> sendResponseOutcomes() {
+        return List.of(
+                Arguments.of("response", null),
+                Arguments.of(null, new IOException("connection closed"))
         );
     }
 

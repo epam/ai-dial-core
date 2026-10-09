@@ -33,16 +33,10 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
     }
 
     /**
-     * The delegate makes the server span current on the context it is given and returns a scope that the delegate's
-     * {@code sendResponse} closes, which resets that context to the parent OTel context. Run on the request's context,
-     * that reset would drop the trace id from logs written after the response (late upstream callbacks, client
-     * disconnect) before the OTLP appender reads it. Putting the OTel context back after the delegate's
-     * {@code sendResponse} is not enough either: a worker thread of the same request can read the root context in
-     * between. The delegate therefore gets a scratch duplicate, and the span's OTel context is copied onto the
-     * request's context, where nothing removes it: the request's duplicated context is not shared with other requests
-     * and is collected with the request. Vert.x hands in a fresh duplicate with empty locals, so the scratch copy loses
-     * no parent: the incoming traceparent is the only parent source. For what this means for spans started after the
-     * response, see "Trace context after the response" in docs/tracing.md.
+     * Starts the server span on a scratch duplicate of the request's context and copies the span's OTel context onto
+     * the request's context itself. The scope the delegate closes in {@code sendResponse} resets only the scratch copy,
+     * so the request's context keeps the span after the response and logs written afterwards still carry the trace id.
+     * See "Trace context after the response" in docs/tracing.md for the consequences and the design notes.
      */
     @Override
     public <R> I receiveRequest(

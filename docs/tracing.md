@@ -133,3 +133,11 @@ deployment for minutes; with tail sampling in the collector, spans that arrive a
 decision has left its cache can be exported as a separate trace fragment. The request also keeps
 the ended server span, with its attributes and events, referenced for as long as the request's
 context lives, so an open WebSocket holds its server span in memory until the socket closes.
+
+Core keeps the context by starting the server span on a scratch duplicate of the request's Vert.x
+context and copying the span's OTel context onto the request's context itself, so the scope the
+Vert.x tracer closes when the response ends resets only the scratch copy. Restoring the context
+after the response has ended was rejected because a worker thread of the same request can read the
+root context in between. The scratch copy's empty locals lose nothing: every server-span start in
+Vert.x 4.5.30 already hands in a freshly duplicated context, so the incoming `traceparent` is the
+only parent source either way.
