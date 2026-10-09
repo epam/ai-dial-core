@@ -69,7 +69,7 @@ public final class EventLoopLagProbe {
         long[] expectedAt = {System.nanoTime() + PERIOD_NANOS};
         return () -> {
             long now = System.nanoTime();
-            LAG_TIMER.record(Math.max(0, now - expectedAt[0]), TimeUnit.NANOSECONDS);
+            LAG_TIMER.record(now - expectedAt[0], TimeUnit.NANOSECONDS);
             expectedAt[0] = now + PERIOD_NANOS;
             runs.set(loop, now);
         };

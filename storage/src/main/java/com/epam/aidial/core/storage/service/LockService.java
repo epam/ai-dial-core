@@ -72,12 +72,13 @@ public class LockService {
         LocalLock localLock = acquireLocalLock(id);
         long waitStart = System.nanoTime();
         localLock.lock();
-        long localAcquired = System.nanoTime();
         long acquired;
 
         // A Redis failure here must not leak the held local lock: it is a plain ReentrantLock,
         // so a leaked hold would block every subsequent lock() on this key until pod restart.
         try {
+            long localAcquired = System.nanoTime();
+            LOCAL_WAIT_TIMER.record(localAcquired - waitStart, TimeUnit.NANOSECONDS);
             long ttl = tryLock(id, owner);
             long interval = WAIT_MIN;
             // it seems the lock has been acquired by another instance of Core
@@ -87,6 +88,7 @@ public class LockService {
                 ttl = tryLock(id, owner);
             }
             acquired = System.nanoTime();
+            REDIS_WAIT_TIMER.record(acquired - localAcquired, TimeUnit.NANOSECONDS);
         } catch (Throwable e) {
             localLock.unlock();
             releaseLocalLock(id);
@@ -95,11 +97,7 @@ public class LockService {
 
         return () -> {
             long heldNanos = System.nanoTime() - acquired;
-            // unlock first, then record: a failed record must not leak the lock. The waits are recorded here too,
-            // a record failing in lock() once the Redis lock is taken would leak it: nobody has a Lock to close yet.
             unlock(id, owner, localLock);
-            LOCAL_WAIT_TIMER.record(localAcquired - waitStart, TimeUnit.NANOSECONDS);
-            REDIS_WAIT_TIMER.record(acquired - localAcquired, TimeUnit.NANOSECONDS);
             HOLD_TIMER.record(heldNanos, TimeUnit.NANOSECONDS);
         };
     }

@@ -15,8 +15,6 @@ import org.redisson.config.Config;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 class LockServiceTest {
@@ -98,12 +96,12 @@ class LockServiceTest {
     @Test
     void testLocalContentionIsRecordedAsLocalWait() throws Exception {
         LockService.Lock lock = service.lock("local-contended");
-        CompletableFuture<Void> waiter = startWaiter("local-contended");
+        Thread waiter = startWaiter("local-contended");
         Thread.sleep(300);
         lock.close();
-        waiter.get(5, TimeUnit.SECONDS);
+        join(waiter);
 
-        Assertions.assertTrue(waitTimer("local").max(TimeUnit.MILLISECONDS) >= 100);
+        Assertions.assertTrue(waitTimer("local").max(TimeUnit.MILLISECONDS) >= 250);
         Assertions.assertTrue(holdTimer().max(TimeUnit.MILLISECONDS) >= 250);
     }
 
@@ -112,26 +110,37 @@ class LockServiceTest {
         // a second LockService has its own local locks, like another Core pod sharing the Redis
         LockService otherPod = new LockService(client, null);
         LockService.Lock lock = otherPod.lock("redis-contended");
-        CompletableFuture<Void> waiter = startWaiter("redis-contended");
+        Thread waiter = startWaiter("redis-contended");
         Thread.sleep(300);
         lock.close();
-        waiter.get(5, TimeUnit.SECONDS);
+        join(waiter);
 
-        Assertions.assertTrue(waitTimer("redis").max(TimeUnit.MILLISECONDS) >= 100);
+        Assertions.assertTrue(waitTimer("redis").max(TimeUnit.MILLISECONDS) >= 250);
     }
 
     /**
-     * Returns once the waiter thread is about to call lock(), so a slow thread start does not shorten the measured wait.
-     * The thread can still be descheduled before lock() runs, so the wait assertions allow 200 ms under the 300 ms hold.
+     * Returns once the waiter thread is parked inside lock(): the whole hold that follows counts as its wait,
+     * however late the thread is scheduled. Before lock() the thread has nothing to park on.
      */
-    private static CompletableFuture<Void> startWaiter(String key) throws InterruptedException {
-        CountDownLatch started = new CountDownLatch(1);
-        CompletableFuture<Void> waiter = CompletableFuture.runAsync(() -> {
-            started.countDown();
-            service.lock(key).close();
-        });
-        Assertions.assertTrue(started.await(5, TimeUnit.SECONDS));
+    private static Thread startWaiter(String key) throws InterruptedException {
+        Thread waiter = new Thread(() -> service.lock(key).close());
+        waiter.start();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!isParked(waiter)) {
+            Assertions.assertTrue(System.nanoTime() < deadline, () -> "the waiter should block in lock(), state=" + waiter.getState());
+            Thread.sleep(1);
+        }
         return waiter;
+    }
+
+    private static boolean isParked(Thread thread) {
+        Thread.State state = thread.getState();
+        return state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING;
+    }
+
+    private static void join(Thread waiter) throws InterruptedException {
+        waiter.join(TimeUnit.SECONDS.toMillis(5));
+        Assertions.assertFalse(waiter.isAlive(), "the waiter should have taken and released the lock");
     }
 
     private Timer waitTimer(String phase) {

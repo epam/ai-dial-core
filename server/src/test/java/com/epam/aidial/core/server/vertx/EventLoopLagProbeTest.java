@@ -11,11 +11,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
-import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EventLoopLagProbeTest {
 
@@ -41,7 +38,7 @@ class EventLoopLagProbeTest {
 
         // recorded once the loop runs the probe again, after the block; a healthy loop lags a few ms at most
         Timer lag = lagTimer();
-        await(() -> lag.max(TimeUnit.MILLISECONDS) >= 300, () -> "the 500 ms stall should show up as lag, max=" + lag.max(TimeUnit.MILLISECONDS));
+        Await.until(() -> lag.max(TimeUnit.MILLISECONDS) >= 300, () -> "the 500 ms stall should show up as lag, max=" + lag.max(TimeUnit.MILLISECONDS));
     }
 
     @Test
@@ -50,7 +47,7 @@ class EventLoopLagProbeTest {
         CompletableFuture<Void> release = new CompletableFuture<>();
         vertx.runOnContext(ignored -> release.join());
         try {
-            await(() -> stallSeconds() >= 0.4, () -> "the ongoing stall should show up, stall=" + stallSeconds());
+            Await.until(() -> stallSeconds() >= 0.4, () -> "the ongoing stall should show up, stall=" + stallSeconds());
             EventLoopLagProbe.stop();
             assertEquals(0, stallSeconds(), "a stopped probe reports no stall");
         } finally {
@@ -62,7 +59,7 @@ class EventLoopLagProbeTest {
     void stopCancelsProbes() throws Exception {
         EventLoopLagProbe.start(vertx);
         Timer lag = lagTimer();
-        await(() -> lag.count() > 0, () -> "the probe should have run");
+        Await.until(() -> lag.count() > 0, () -> "the probe should have run");
 
         EventLoopLagProbe.stop();
         // the only loop ran this after stop(), so no probe is in flight
@@ -81,14 +78,6 @@ class EventLoopLagProbeTest {
 
     private double stallSeconds() {
         return meterRegistry.get("dial_event_loop_stall").gauge().value();
-    }
-
-    private static void await(BooleanSupplier condition, Supplier<String> message) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (!condition.getAsBoolean()) {
-            assertTrue(System.nanoTime() < deadline, message);
-            Thread.sleep(10);
-        }
     }
 
     private static void sleep(long millis) {
