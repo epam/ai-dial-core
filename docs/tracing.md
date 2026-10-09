@@ -135,10 +135,11 @@ The event-loop probe only runs when a Prometheus or OTLP registry is enabled.
 | `dial_async_tasks_active`               | gauge | `AsyncTaskExecutor` tasks submitted and not finished yet                                                                                  |
 | `dial_async_task_start_delay`           | timer | Time from `AsyncTaskExecutor.submit()` until the task starts running                                                                      |
 | `dial_event_loop_lag`                   | timer | How late a probe scheduled every 100 ms on each event loop runs                                                                           |
-| `dial_event_loop_stall`                 | gauge | Seconds since the event loop that has gone longest without running its probe last ran it; about 0.1 when healthy, alert on whole seconds  |
+| `dial_event_loop_stall`                 | gauge | Seconds since the event loop that has gone longest without running its probe last ran it; below 0.1 when healthy, alert on whole seconds  |
 
 Locks taken with `tryLock()` (sweeps, application deployment, code interpreter session cleanup) never
-wait, and their holds are not measured. `dial_event_loop_lag` is recorded on every probe run, about 10 samples per second per loop,
+wait, and their holds are not measured. All three lock timers are recorded when the lock is released.
+`dial_event_loop_lag` is recorded on every probe run, about 10 samples per second per loop,
 so a stall shows up in its high buckets and max, not in its count. A stall is only recorded once
 the loop runs the probe again, so a loop that stays blocked shows up in `dial_event_loop_stall` instead. In
 worker-pool mode (`asyncTaskExecutor.useVirtualThreads=false`) the Vert.x `vertx_pool_*` metrics

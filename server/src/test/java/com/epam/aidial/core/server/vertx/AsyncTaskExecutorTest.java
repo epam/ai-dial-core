@@ -14,6 +14,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -89,11 +91,41 @@ class AsyncTaskExecutorTest {
         assertEquals(activeBefore, activeTasks());
     }
 
+    @Test
+    void taskFinishingAfterCloseIsNoLongerActive() throws Exception {
+        // vertx does not wait for a virtual thread, so the task outlives it and its result cannot reach the closed context
+        Vertx closing = Vertx.vertx();
+        AsyncTaskExecutor executor = new AsyncTaskExecutor(closing, new JsonObject().put("useVirtualThreads", true));
+        CompletableFuture<Void> started = new CompletableFuture<>();
+        CompletableFuture<Void> release = new CompletableFuture<>();
+        double activeBefore = activeTasks();
+
+        executor.submit(() -> {
+            started.complete(null);
+            release.get(5, TimeUnit.SECONDS);
+            return "finished after close";
+        });
+        started.get(5, TimeUnit.SECONDS);
+        closing.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
+        assertEquals(activeBefore + 1, activeTasks());
+
+        release.complete(null);
+        await(() -> activeTasks() == activeBefore, () -> "the task should count itself down, active=" + activeTasks());
+    }
+
     private double activeTasks() {
         return meterRegistry.get("dial_async_tasks_active").gauge().value();
     }
 
     private long startDelays() {
         return meterRegistry.get("dial_async_task_start_delay").timer().count();
+    }
+
+    private static void await(BooleanSupplier condition, Supplier<String> message) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!condition.getAsBoolean()) {
+            assertTrue(System.nanoTime() < deadline, message);
+            Thread.sleep(10);
+        }
     }
 }

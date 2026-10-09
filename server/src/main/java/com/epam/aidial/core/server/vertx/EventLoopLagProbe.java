@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLongArray;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Schedules a probe on every event loop every 100 ms and records how late it runs: a busy or blocked loop runs it late.
@@ -23,14 +24,13 @@ public final class EventLoopLagProbe {
     private static final long PERIOD_NANOS = TimeUnit.MILLISECONDS.toNanos(100);
     private static final Timer LAG_TIMER = Timer.builder("dial_event_loop_lag")
             .description("How late a task scheduled on an event loop runs")
-            .serviceLevelObjectives(LatencyBuckets.waitBuckets())
+            .serviceLevelObjectives(LatencyBuckets.WAIT_BUCKETS)
             .register(Metrics.globalRegistry);
     /**
-     * Last probe run per event loop of the vertx started last; null when stopped.
+     * The probes of the vertx started last, swapped as one so the gauge never reads the runs of cancelled probes.
      * Static like the gauge reading it: every start() in this JVM feeds the same gauge.
      */
-    private static volatile AtomicLongArray lastRunAt;
-    private static volatile List<ScheduledFuture<?>> probes = List.of();
+    private static final AtomicReference<Probes> PROBES = new AtomicReference<>(Probes.NONE);
 
     static {
         // the lag timer only records once a stalled loop runs the probe again, this gauge shows a stall still going on
@@ -47,7 +47,6 @@ public final class EventLoopLagProbe {
      * Probes the loops of this vertx; the probes of a vertx started earlier are cancelled.
      */
     public static void start(Vertx vertx) {
-        stop();
         List<EventExecutor> loops = new ArrayList<>();
         vertx.nettyEventLoopGroup().forEach(loops::add);
         long now = System.nanoTime();
@@ -58,14 +57,11 @@ public final class EventLoopLagProbe {
             // fixed delay, not fixed rate: a fixed rate would run the missed probes back to back and hide the stall
             scheduled.add(loops.get(i).scheduleWithFixedDelay(createProbe(runs, i), PERIOD_NANOS, PERIOD_NANOS, TimeUnit.NANOSECONDS));
         }
-        probes = scheduled;
-        lastRunAt = runs;
+        PROBES.getAndSet(new Probes(runs, scheduled)).cancel();
     }
 
     public static void stop() {
-        lastRunAt = null;
-        probes.forEach(probe -> probe.cancel(false));
-        probes = List.of();
+        PROBES.getAndSet(Probes.NONE).cancel();
     }
 
     private static Runnable createProbe(AtomicLongArray runs, int loop) {
@@ -80,15 +76,24 @@ public final class EventLoopLagProbe {
     }
 
     private static double measureLongestStallSeconds() {
-        AtomicLongArray runs = lastRunAt;
-        if (runs == null) {
-            return 0;
-        }
+        AtomicLongArray runs = PROBES.get().lastRunAt();
         long now = System.nanoTime();
         long longest = 0;
         for (int i = 0; i < runs.length(); i++) {
             longest = Math.max(longest, now - runs.get(i));
         }
         return longest / 1e9;
+    }
+
+    /**
+     * Last probe run per event loop, and the scheduled probes to cancel.
+     */
+    private record Probes(AtomicLongArray lastRunAt, List<ScheduledFuture<?>> scheduled) {
+
+        static final Probes NONE = new Probes(new AtomicLongArray(0), List.of());
+
+        void cancel() {
+            scheduled.forEach(probe -> probe.cancel(false));
+        }
     }
 }
