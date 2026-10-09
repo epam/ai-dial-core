@@ -128,8 +128,13 @@ public class ChatCompletionsController extends BaseChatCompletionController {
     }
 
     private Future<Void> handleInterceptor(int interceptorIndex) {
-        return new ChatCompletionInterceptorController(proxy, context, interceptorIndex, requestedInterface())
-                .handle().mapEmpty();
+        context.getRequest().body()
+                .onSuccess(body -> proxy.getTaskExecutor().submit(() -> {
+                    context.setRequestBody(body);
+                    return new ChatCompletionInterceptorController(proxy, context, interceptorIndex, requestedInterface()).handle();
+                }))
+                .onFailure(this::handleRequestBodyError);
+        return Future.succeededFuture();
     }
 
     private Void setupDeployment(String model) {
