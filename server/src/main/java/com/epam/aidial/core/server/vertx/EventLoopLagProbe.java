@@ -52,12 +52,19 @@ public final class EventLoopLagProbe {
         long now = System.nanoTime();
         AtomicLongArray runs = new AtomicLongArray(loops.size());
         List<ScheduledFuture<?>> scheduled = new ArrayList<>(loops.size());
-        for (int i = 0; i < loops.size(); i++) {
-            runs.set(i, now);
-            // fixed delay, not fixed rate: a fixed rate would run the missed probes back to back and hide the stall
-            scheduled.add(loops.get(i).scheduleWithFixedDelay(createProbe(runs, i), PERIOD_NANOS, PERIOD_NANOS, TimeUnit.NANOSECONDS));
+        Probes probes = new Probes(runs, scheduled);
+        try {
+            for (int i = 0; i < loops.size(); i++) {
+                runs.set(i, now);
+                // fixed delay, not fixed rate: a fixed rate would run the missed probes back to back and hide the stall
+                scheduled.add(loops.get(i).scheduleWithFixedDelay(createProbe(runs, i), PERIOD_NANOS, PERIOD_NANOS, TimeUnit.NANOSECONDS));
+            }
+        } catch (RuntimeException e) {
+            // a loop that is shutting down rejects the probe; the ones scheduled before it would run on with no way to cancel them
+            probes.cancel();
+            throw e;
         }
-        PROBES.getAndSet(new Probes(runs, scheduled)).cancel();
+        PROBES.getAndSet(probes).cancel();
     }
 
     public static void stop() {
@@ -65,12 +72,10 @@ public final class EventLoopLagProbe {
     }
 
     private static Runnable createProbe(AtomicLongArray runs, int loop) {
-        // touched only by the thread of its loop
-        long[] expectedAt = {System.nanoTime() + PERIOD_NANOS};
         return () -> {
             long now = System.nanoTime();
-            LAG_TIMER.record(now - expectedAt[0], TimeUnit.NANOSECONDS);
-            expectedAt[0] = now + PERIOD_NANOS;
+            // due one period after the previous run, or after start() for the first run
+            LAG_TIMER.record(now - runs.get(loop) - PERIOD_NANOS, TimeUnit.NANOSECONDS);
             runs.set(loop, now);
         };
     }

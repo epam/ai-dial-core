@@ -3,7 +3,8 @@ package com.epam.aidial.core.storage.util;
 import java.time.Duration;
 
 /**
- * Histogram buckets shared by the Core timers; the default Micrometer histogram starts at 1 ms.
+ * Histogram buckets of the wait and stall timers (the blob operation timer keeps its own in BlobStorage); the default
+ * Micrometer histogram starts at 1 ms.
  */
 public final class LatencyBuckets {
 

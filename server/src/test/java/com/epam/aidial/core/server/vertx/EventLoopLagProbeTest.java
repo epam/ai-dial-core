@@ -28,7 +28,7 @@ class EventLoopLagProbeTest {
     void tearDown() throws Exception {
         EventLoopLagProbe.stop();
         Metrics.removeRegistry(meterRegistry);
-        vertx.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
+        close(vertx);
     }
 
     @Test
@@ -62,14 +62,31 @@ class EventLoopLagProbeTest {
         Await.until(() -> lag.count() > 0, () -> "the probe should have run");
 
         EventLoopLagProbe.stop();
-        // the only loop ran this after stop(), so no probe is in flight
-        CompletableFuture<Void> drained = new CompletableFuture<>();
-        vertx.runOnContext(ignored -> drained.complete(null));
-        drained.get(5, TimeUnit.SECONDS);
+        drain(vertx);
         long recorded = lag.count();
         Thread.sleep(300);
 
         assertEquals(recorded, lag.count(), "a cancelled probe records nothing");
+    }
+
+    @Test
+    void startCancelsProbesOfEarlierStart() throws Exception {
+        Vertx earlier = Vertx.vertx(new VertxOptions().setEventLoopPoolSize(1));
+        try {
+            EventLoopLagProbe.start(earlier);
+            EventLoopLagProbe.start(vertx);
+            // stop() cancels the probes of vertx only: a probe of earlier left behind by the second start() keeps recording
+            EventLoopLagProbe.stop();
+            drain(earlier);
+            drain(vertx);
+            Timer lag = lagTimer();
+            long recorded = lag.count();
+            Thread.sleep(300);
+
+            assertEquals(recorded, lag.count(), "the second start() should have cancelled the probes of the first");
+        } finally {
+            close(earlier);
+        }
     }
 
     private Timer lagTimer() {
@@ -78,6 +95,19 @@ class EventLoopLagProbeTest {
 
     private double stallSeconds() {
         return meterRegistry.get("dial_event_loop_stall").gauge().value();
+    }
+
+    /**
+     * Returns once the only loop of the vertx ran a task submitted after the cancel: no probe is in flight any more.
+     */
+    private static void drain(Vertx vertx) throws Exception {
+        CompletableFuture<Void> drained = new CompletableFuture<>();
+        vertx.runOnContext(ignored -> drained.complete(null));
+        drained.get(5, TimeUnit.SECONDS);
+    }
+
+    private static void close(Vertx vertx) throws Exception {
+        vertx.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
     }
 
     private static void sleep(long millis) {

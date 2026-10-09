@@ -25,7 +25,7 @@ import static java.util.concurrent.Executors.newThreadPerTaskExecutor;
 public class AsyncTaskExecutor {
 
     private static final Executor VIRTUAL_THREAD_PER_TASK_EXECUTOR;
-    // static: every executor instance shares one gauge, and a gauge only holds a weak reference to its value
+    // static: Micrometer keeps the first gauge registered under a name, a per-instance counter would show the first executor only
     private static final AtomicInteger ACTIVE_TASKS = new AtomicInteger();
     private static final Timer START_DELAY_TIMER = Timer.builder("dial_async_task_start_delay")
             .description("Time from submit() until the task starts running")

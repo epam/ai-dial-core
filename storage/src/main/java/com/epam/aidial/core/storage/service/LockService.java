@@ -96,9 +96,12 @@ public class LockService {
         }
 
         return () -> {
-            long heldNanos = System.nanoTime() - acquired;
-            unlock(id, owner, localLock);
-            HOLD_TIMER.record(heldNanos, TimeUnit.NANOSECONDS);
+            try {
+                unlock(id, owner, localLock);
+            } finally {
+                // the lock was held whether or not the release succeeds
+                HOLD_TIMER.record(System.nanoTime() - acquired, TimeUnit.NANOSECONDS);
+            }
         };
     }
 
