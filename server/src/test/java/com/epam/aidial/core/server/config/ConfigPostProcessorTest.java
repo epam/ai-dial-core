@@ -21,6 +21,7 @@ import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -766,5 +767,100 @@ public class ConfigPostProcessorTest {
         ConfigPostProcessor.process(config, null);
 
         assertEquals(List.of("good"), List.copyOf(config.getModels().keySet()));
+    }
+
+    // --- validateModelInvariants: the shared set every pre-write surface must call ---------------
+    // These guard the anti-drift contract. processModels/validateSingleModel and the three pre-write
+    // sites all route through validateModelInvariants, so a write can never be admitted that the
+    // next rebuild would reject.
+
+    /**
+     * Differential guard: the abort-mode rebuild and {@code validateModelInvariants} must report
+     * byte-identical warnings for the same model. A validator added inline to
+     * {@link ConfigPostProcessor#processModels} instead of to the shared method makes the rebuild's
+     * list longer than the pre-write one and fails here — which is the drift that let a model with
+     * an unserved interface reach the blob store.
+     *
+     * <p>Scope, so the guarantee isn't overstated: this catches a new rebuild-only validator only
+     * if {@code maximallyInvalidModel} trips it. Extend that fixture when adding a rule. The two
+     * config-level checks the rebuild also runs — deployment-id uniqueness and (skip-mode only)
+     * cross-references — are deliberately outside the set and so outside this comparison.
+     */
+    @Test
+    void testValidateModelInvariantsReportsExactlyWhatTheRebuildReports() {
+        Config config = newMutableConfig();
+        config.getModels().put("model", maximallyInvalidModel());
+
+        InvalidEntityException rebuild = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+
+        Model standalone = maximallyInvalidModel();
+        standalone.setName("model");
+        List<ValidationWarning> preWrite = new ArrayList<>();
+        ConfigPostProcessor.validateModelInvariants(standalone, config.getTranslators(), preWrite);
+
+        assertEquals(rebuild.getWarnings(), preWrite,
+                () -> "rebuild and pre-write validation diverged — a validator was added to "
+                        + "processModels but not to validateModelInvariants (or vice versa).\n"
+                        + "rebuild:  " + rebuild.getWarnings() + "\npre-write: " + preWrite);
+
+        // Non-empty, so an accidentally-valid fixture can't make the comparison vacuous.
+        List<String> fields = preWrite.stream().map(ValidationWarning::getField).toList();
+        assertTrue(fields.contains("pricing"), () -> "expected a pricing warning: " + fields);
+        assertTrue(fields.contains("upstreams[0].id"), () -> "expected an upstream id warning: " + fields);
+        assertTrue(fields.contains("interfaces.openaiChatCompletions"),
+                () -> "expected a deployment-interface warning: " + fields);
+    }
+
+    /**
+     * A model violating every rule in the shared set at once. One rule per family, so the
+     * differential comparison above has something to compare on each.
+     */
+    private static Model maximallyInvalidModel() {
+        Model model = new Model();
+
+        Pricing pricing = new Pricing();
+        pricing.setUnit("char_without_whitespace");
+        pricing.setCacheRead(flatRate("0.01"));
+        model.setPricing(pricing);
+
+        Upstream upstream = new Upstream();
+        upstream.setInterfaces(Map.of("openaiChatCompletions", new UpstreamInterface()));
+        model.setUpstreams(List.of(upstream));
+
+        model.setInterfaces(Map.of("openaiChatCompletions", new DeploymentInterface()));
+        return model;
+    }
+
+    @Test
+    void testValidateModelInvariantsWithEmptyTranslatorMapToleratesUnresolvedName() {
+        // A name with no entry leaves the interface unserved, not the model invalid — so a partial
+        // translator map can only yield fewer warnings, never spurious ones. This is what makes it
+        // safe to validate against the live snapshot / batch scratch rather than the merged config.
+        Model model = new Model();
+        model.setName("model");
+        model.setInterfaces(Map.of("anthropicMessages", translated(TranslatorRef.named("not-registered-yet"))));
+
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateModelInvariants(model, Map.of(), warnings);
+
+        assertTrue(warnings.isEmpty(), () -> "unresolved translator name must not warn: " + warnings);
+    }
+
+    @Test
+    void testValidateModelInvariantsDoesNotDuplicateOverridePathWarnings() {
+        // validateDeploymentInterfaces already runs the per-entry override-path check, so callers
+        // must not also call validateOverridePaths(Deployment, ...) — this pins that contract.
+        Model model = new Model();
+        model.setName("model");
+        model.setBaseUrl("http://model");
+        DeploymentInterface declared = new DeploymentInterface();
+        declared.setOverridePaths(Map.of("postAnthropicMessages", "/v1/messages"));
+        model.setInterfaces(Map.of("openaiChatCompletions", declared));
+
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateModelInvariants(model, Map.of(), warnings);
+
+        assertEquals(1, warnings.size(), () -> "override-path warning reported more than once: " + warnings);
     }
 }
