@@ -282,6 +282,25 @@ class MessagesApiRequestTest {
     }
 
     @Test
+    void testSerialize_forwardsReceivedBytesWhenDefaultsAlreadyPresent() throws IOException {
+        String body = "{\"model\": \"m\", \"max_tokens\": 5, \"metadata\": {\"a\": 1}}";
+        MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer(body));
+
+        request.applyDefaults(Map.of("max_tokens", 10, "metadata", Map.of("a", 2)));
+
+        assertEquals(body, new String(request.serialize(), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void testSerialize_serializesTreeWhenNestedDefaultApplied() throws IOException {
+        MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer("{\"model\": \"m\", \"metadata\": {\"a\": 1}}"));
+
+        request.applyDefaults(Map.of("metadata", Map.of("b", 2)));
+
+        assertEquals("{\"model\":\"m\",\"metadata\":{\"a\":1,\"b\":2}}", new String(request.serialize(), StandardCharsets.UTF_8));
+    }
+
+    @Test
     void testSerialize_serializesTreeWhenInterceptorSettingsRemoved() throws IOException {
         MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer(
                 "{\"model\": \"m\", \"custom_fields\": {\"interceptor_configuration\": {}}}"));

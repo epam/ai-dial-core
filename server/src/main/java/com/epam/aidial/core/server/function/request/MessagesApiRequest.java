@@ -16,8 +16,10 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import javax.annotation.Nullable;
@@ -237,8 +239,11 @@ public class MessagesApiRequest implements RequestObject {
 
     @Override
     public void applyDefaults(Map<String, Object> defaults) {
-        treeChanged |= !defaults.isEmpty();
+        // a default the request already holds changes nothing; objects are merged in place, hence the copies
+        Map<String, JsonNode> before = new HashMap<>();
+        defaults.keySet().forEach(key -> before.put(key, tree.has(key) ? tree.get(key).deepCopy() : null));
         ChatUtil.applyDefaults(tree, defaults);
+        treeChanged |= before.entrySet().stream().anyMatch(entry -> !Objects.equals(entry.getValue(), tree.get(entry.getKey())));
     }
 
     @Override
