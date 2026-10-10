@@ -3,13 +3,18 @@ package com.epam.aidial.core.server.function.request;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MessagesApiRequestTest {
@@ -197,6 +202,139 @@ class MessagesApiRequestTest {
 
         assertEquals(1, keys.size());
         assertEquals("prefix.body.messages[0].content[0]", keys.get(0).path());
+    }
+
+    @Test
+    void testBuildCacheKeys_leavesTreeUnchanged() throws JsonProcessingException {
+        String body = """
+                {"messages": [{"role": "user", "content": [{"type": "text", "text": "hi", "a": [{"z": 1, "b": 2}]}]}]}
+                """;
+        MessagesApiRequest request = request(body);
+
+        request.buildCacheKeys(NODE_ORDER);
+
+        assertEquals(ProxyUtil.MAPPER.readTree(body).toString(), request.getTree().toString());
+    }
+
+    @Test
+    void testSerialize_forwardsReceivedBytesWhenUnchanged() throws IOException {
+        String body = "{ \"model\" : \"m\",\n  \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}] }";
+        MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer(body));
+        request.clearInterceptorSettings();
+        request.applyDefaults(Map.of());
+
+        assertEquals(body, new String(request.serialize(), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void testSerialize_replacesOnlyTheModelInReceivedBytes() throws IOException {
+        String body = "{\"messages\": [{\"model\": \"inner\"}],\n \"model\" : \"m\\u002d1\"}";
+        MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer(body));
+        assertEquals("m-1", request.getModel());
+
+        request.setModel("over\"ride");
+
+        assertEquals("{\"messages\": [{\"model\": \"inner\"}],\n \"model\" : \"over\\\"ride\"}",
+                new String(request.serialize(), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void testSerialize_serializesTreeWhenBodyIsNotExactlyTheTree() throws IOException {
+        // duplicate keys, trailing content, a second object: the upstream could read another document than the tree
+        for (String body : List.of(
+                "{\"model\": \"a\", \"model\": \"b\"}",
+                "{\"model\": \"b\"} garbage",
+                "{\"model\": \"b\"}{\"model\": \"c\"}",
+                "\uFEFF{\"model\": \"b\"}")) {
+            MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer(body));
+            request.setModel("o");
+
+            assertEquals("{\"model\":\"o\"}", new String(request.serialize(), StandardCharsets.UTF_8), body);
+        }
+    }
+
+    @Test
+    void testSerialize_serializesTreeForNonUtf8OrModellessBody() throws IOException {
+        for (Buffer body : List.of(
+                Buffer.buffer("{\"model\": \"b\"}".getBytes(StandardCharsets.UTF_16BE)),
+                Buffer.buffer("{\"stream\": true}"))) {
+            MessagesApiRequest request = MessagesApiRequest.parse(body);
+            request.setModel("o");
+
+            assertEquals("o", ProxyUtil.MAPPER.readTree(request.serialize()).get("model").asText());
+        }
+    }
+
+    @Test
+    void testSerialize_forwardsReceivedBytesWithSurroundingWhitespace() throws IOException {
+        String body = " \r\n\t{\"model\": \"m\"}\n";
+        MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer(body));
+        request.setModel("o");
+
+        assertEquals(" \r\n\t{\"model\": \"o\"}\n", new String(request.serialize(), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void testSerialize_serializesTreeWhenEmptyCustomFieldsRemoved() throws IOException {
+        MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer("{\"model\": \"m\", \"custom_fields\": {}}"));
+
+        request.clearInterceptorSettings();
+
+        assertEquals("{\"model\":\"m\"}", new String(request.serialize(), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void testSerialize_serializesTreeForNonStringModel() throws IOException {
+        MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer("{\"model\": 1, \"stream\": true}"));
+
+        request.setModel("m");
+
+        assertEquals("{\"model\":\"m\",\"stream\":true}", new String(request.serialize(), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void testSerialize_serializesTreeWhenDefaultsApplied() throws IOException {
+        MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer("{\"model\": \"m\"}"));
+
+        request.applyDefaults(Map.of("max_tokens", 10));
+        request.setModel("o");
+
+        assertEquals("{\"model\":\"o\",\"max_tokens\":10}", new String(request.serialize(), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void testSerialize_forwardsReceivedBytesWhenDefaultsAlreadyPresent() throws IOException {
+        String body = "{\"model\": \"m\", \"max_tokens\": 5, \"metadata\": {\"a\": 1}}";
+        MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer(body));
+
+        request.applyDefaults(Map.of("max_tokens", 10, "metadata", Map.of("a", 2)));
+
+        assertEquals(body, new String(request.serialize(), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void testSerialize_serializesTreeWhenNestedDefaultApplied() throws IOException {
+        MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer("{\"model\": \"m\", \"metadata\": {\"a\": 1}}"));
+
+        request.applyDefaults(Map.of("metadata", Map.of("b", 2)));
+
+        assertEquals("{\"model\":\"m\",\"metadata\":{\"a\":1,\"b\":2}}", new String(request.serialize(), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void testSerialize_serializesTreeWhenInterceptorSettingsRemoved() throws IOException {
+        MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer(
+                "{\"model\": \"m\", \"custom_fields\": {\"interceptor_configuration\": {}}}"));
+
+        request.clearInterceptorSettings();
+
+        assertEquals("{\"model\":\"m\"}", new String(request.serialize(), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void testParse_rejectsNonObject() {
+        assertThrows(IllegalArgumentException.class, () -> MessagesApiRequest.parse(Buffer.buffer("[1]")));
+        assertThrows(IllegalArgumentException.class, () -> MessagesApiRequest.parse(Buffer.buffer("")));
     }
 
     private static String lastHash(List<CacheKey> keys) {

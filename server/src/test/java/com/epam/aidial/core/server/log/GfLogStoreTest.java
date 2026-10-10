@@ -15,7 +15,9 @@ import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -23,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyChar;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -626,6 +629,30 @@ public class GfLogStoreTest {
         String cut = written.substring(0, written.length() - ">>".length());
         assertFalse(Character.isHighSurrogate(cut.charAt(cut.length() - 1)),
                 "Truncation left a lone high surrogate at the cut");
+    }
+
+    @Test
+    public void testEscapeUtf8MatchesCharEscaping() {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        for (int i = 0; i < 0x80; i++) {
+            bytes.write(i);
+        }
+        bytes.writeBytes("{\"text\":\"Привет, 世界 😀\"}\n".getBytes(StandardCharsets.UTF_8));
+        // a lead byte cut off by a quote, and a stray continuation byte
+        bytes.writeBytes(new byte[] {(byte) 0xD0, '"', (byte) 0x80, '\n'});
+        byte[] body = bytes.toByteArray();
+
+        StringBuilder expected = new StringBuilder();
+        GfLogStore.append(capturingEntry(expected), new String(body, StandardCharsets.UTF_8), true);
+
+        assertEquals(expected.toString(), new String(GfLogStore.escapeUtf8(body), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    public void testEscapeUtf8ReturnsInputWhenNothingToEscape() {
+        byte[] body = "plain text, Привет".getBytes(StandardCharsets.UTF_8);
+
+        assertSame(body, GfLogStore.escapeUtf8(body));
     }
 
     private static LogEntry capturingEntry(StringBuilder buffer) {
