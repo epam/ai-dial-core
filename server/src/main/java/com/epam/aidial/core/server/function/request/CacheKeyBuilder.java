@@ -1,10 +1,13 @@
 package com.epam.aidial.core.server.function.request;
 
-import com.epam.aidial.core.server.util.JsonUtil;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectWriter;
+import com.fasterxml.jackson.databind.cfg.JsonNodeFeature;
 import lombok.SneakyThrows;
 
-import java.nio.charset.StandardCharsets;
+import java.io.OutputStream;
+import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,6 +21,8 @@ import java.util.List;
  */
 public class CacheKeyBuilder {
 
+    private static final ObjectWriter SORTED_WRITER = ProxyUtil.MAPPER.writer().with(JsonNodeFeature.WRITE_PROPERTIES_SORTED);
+
     private final MessageDigest digest;
 
     @SneakyThrows
@@ -26,11 +31,13 @@ public class CacheKeyBuilder {
     }
 
     /**
-     * Canonicalizes (sorts object keys, recursively) and feeds the node into the rolling digest.
+     * Canonicalizes (sorts object keys, recursively) and feeds the node into the rolling digest. The node is left
+     * unchanged.
      */
+    @SneakyThrows
     public void update(JsonNode node) {
-        JsonNode sorted = JsonUtil.sort(node);
-        digest.update(sorted.toString().getBytes(StandardCharsets.UTF_8));
+        // the same bytes as the sorted node's toString(), written straight into the digest without copying the node
+        SORTED_WRITER.writeValue(new DigestOutputStream(OutputStream.nullOutputStream(), digest), node);
     }
 
     /**

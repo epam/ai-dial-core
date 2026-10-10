@@ -2,41 +2,99 @@ package com.epam.aidial.core.server.function.request;
 
 import com.epam.aidial.core.server.data.cache.CachePrefixPath;
 import com.epam.aidial.core.server.util.ChatUtil;
-import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.netty.buffer.ByteBufInputStream;
+import io.vertx.core.buffer.Buffer;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import javax.annotation.Nullable;
 
 /**
  * Anthropic Messages API request. Pure pass-through: the body is forwarded verbatim except for the
  * model-name override applied by {@code EnhanceDeploymentRequestFn}.
+ *
+ * <p>A request {@link #parse parsed} from a body forwards the received bytes, with only the model value
+ * replaced, until a default or the removal of interceptor settings changes the tree; only then is the tree
+ * serialized. So the tree must be changed through this class, never through {@link #getTree()}.
  */
 @Slf4j
-@RequiredArgsConstructor
 public class MessagesApiRequest implements RequestObject {
+    private static final String MODEL_NODE = "model";
     private static final String CONTENT_NODE = "content";
     private static final String CACHE_CONTROL_NODE = "cache_control";
 
     @Getter
     private final ObjectNode tree;
+    @Nullable
+    private final Buffer body;
+    // byte range of the top-level model string in the body, quotes included; -1 when the body has none
+    private final int modelStart;
+    private final int modelEnd;
+    @Nullable
+    private String modelOverride;
+    private boolean treeChanged;
+
+    public MessagesApiRequest(ObjectNode tree) {
+        this(tree, null, -1, -1);
+    }
+
+    private MessagesApiRequest(ObjectNode tree, @Nullable Buffer body, int modelStart, int modelEnd) {
+        this.tree = tree;
+        this.body = body;
+        this.modelStart = modelStart;
+        this.modelEnd = modelEnd;
+    }
+
+    /**
+     * Parses the body once, field by field, recording where the top-level model string lies.
+     *
+     * @throws IllegalArgumentException if the body is not a JSON object
+     */
+    public static MessagesApiRequest parse(Buffer body) throws IOException {
+        ObjectNode tree = ProxyUtil.MAPPER.createObjectNode();
+        int modelStart = -1;
+        int modelEnd = -1;
+        try (JsonParser parser = ProxyUtil.MAPPER.createParser((InputStream) new ByteBufInputStream(body.getByteBuf()))) {
+            if (parser.nextToken() != JsonToken.START_OBJECT) {
+                throw new IllegalArgumentException("Invalid json object");
+            }
+            while (parser.nextToken() == JsonToken.FIELD_NAME) {
+                String name = parser.currentName();
+                boolean stringModel = parser.nextToken() == JsonToken.VALUE_STRING && name.equals(MODEL_NODE);
+                long start = parser.currentTokenLocation().getByteOffset();
+                tree.set(name, ProxyUtil.MAPPER.readTree(parser));
+                if (name.equals(MODEL_NODE)) {
+                    // the last one wins, as in the tree; a byte offset is -1 for a body that is not UTF-8
+                    modelStart = stringModel ? (int) start : -1;
+                    modelEnd = stringModel ? (int) parser.currentLocation().getByteOffset() : -1;
+                }
+            }
+        }
+        return new MessagesApiRequest(tree, body, modelStart, modelEnd);
+    }
 
     @Override
     public String getModel() {
-        return tree.path("model").asText();
+        return tree.path(MODEL_NODE).asText();
     }
 
     @Override
     public void setModel(String model) {
-        tree.put("model", model);
+        tree.put(MODEL_NODE, model);
+        modelOverride = model;
     }
 
     @Override
@@ -104,13 +162,12 @@ public class MessagesApiRequest implements RequestObject {
             if (!message.isObject()) {
                 continue;
             }
-            ObjectNode sorted = (ObjectNode) JsonUtil.sort(message);
-            for (Map.Entry<String, JsonNode> entry : sorted.properties()) {
-                if (!entry.getKey().equals(CONTENT_NODE)) {
-                    builder.update(entry.getValue());
+            sortProperties(message).forEach((name, value) -> {
+                if (!name.equals(CONTENT_NODE)) {
+                    builder.update(value);
                 }
-            }
-            List<JsonNode> blocks = CacheKeyBuilder.elements(sorted.get(CONTENT_NODE));
+            });
+            List<JsonNode> blocks = CacheKeyBuilder.elements(message.get(CONTENT_NODE));
             for (int contentIndex = 0; contentIndex < blocks.size(); contentIndex++) {
                 JsonNode block = blocks.get(contentIndex);
                 updateExcludingCacheControl(builder, block);
@@ -131,12 +188,20 @@ public class MessagesApiRequest implements RequestObject {
             builder.update(block);
             return;
         }
-        ObjectNode sorted = (ObjectNode) JsonUtil.sort(block);
-        for (Map.Entry<String, JsonNode> entry : sorted.properties()) {
-            if (!entry.getKey().equals(CACHE_CONTROL_NODE)) {
-                builder.update(entry.getValue());
+        sortProperties(block).forEach((name, value) -> {
+            if (!name.equals(CACHE_CONTROL_NODE)) {
+                builder.update(value);
             }
-        }
+        });
+    }
+
+    /**
+     * The object's own properties by name; the values are not copied, {@link CacheKeyBuilder#update} sorts them.
+     */
+    private static Map<String, JsonNode> sortProperties(JsonNode object) {
+        Map<String, JsonNode> sorted = new TreeMap<>();
+        object.properties().forEach(property -> sorted.put(property.getKey(), property.getValue()));
+        return sorted;
     }
 
     private static boolean hasCacheControl(JsonNode block) {
@@ -145,16 +210,29 @@ public class MessagesApiRequest implements RequestObject {
 
     @Override
     public void clearInterceptorSettings() {
+        treeChanged |= tree.path("custom_fields").has("interceptor_configuration");
         ChatUtil.removeInterceptorConfiguration(tree);
     }
 
     @Override
     public void applyDefaults(Map<String, Object> defaults) {
+        treeChanged |= !defaults.isEmpty();
         ChatUtil.applyDefaults(tree, defaults);
     }
 
     @Override
     public byte[] serialize() throws JsonProcessingException {
-        return ProxyUtil.MAPPER.writeValueAsBytes(tree);
+        if (body == null || treeChanged || modelOverride != null && modelStart < 0) {
+            return ProxyUtil.MAPPER.writeValueAsBytes(tree);
+        }
+        if (modelOverride == null) {
+            return body.getBytes();
+        }
+        byte[] model = ProxyUtil.MAPPER.writeValueAsBytes(modelOverride);
+        return Buffer.buffer(body.length() - (modelEnd - modelStart) + model.length)
+                .appendBuffer(body, 0, modelStart)
+                .appendBytes(model)
+                .appendBuffer(body, modelEnd, body.length() - modelEnd)
+                .getBytes();
     }
 }

@@ -45,11 +45,16 @@ public class GfLogStore implements LogStore {
     private static final int MAX_CLAIM_VALUE_LENGTH = 4 * 1024;
 
     private static final String[] CONTROL_SYMBOLS = new String[0x1F + 1];
+    // escape(c) for every ASCII char, 0 where none is needed
+    private static final char[] ASCII_ESCAPES = new char[0x80];
 
     static {
         for (int i = 0; i < CONTROL_SYMBOLS.length; i++) {
             String s = String.format("%04x", i);
             CONTROL_SYMBOLS[i] = s.toUpperCase();
+        }
+        for (char c = 0; c < ASCII_ESCAPES.length; c++) {
+            ASCII_ESCAPES[c] = escape(c);
         }
     }
 
@@ -443,13 +448,49 @@ public class GfLogStore implements LogStore {
         if (largeBuffer) {
             buffer = buffer.slice(0, MAX_BODY_SIZE_BYTES);
         }
-        byte[] bytes = buffer.getBytes();
-        String chars = new String(bytes, StandardCharsets.UTF_8); // not efficient, but ok for now
-        append(entry, chars, true);
+        // one append of the whole escaped body: escaping char by char made thousands of short appends per body
+        entry.append(new String(escapeUtf8(buffer.getBytes()), StandardCharsets.UTF_8));
         if (largeBuffer) {
             // append a special marker that entry is cut off due to its large size
             append(entry, ">>", false);
         }
+    }
+
+    /**
+     * Escapes UTF-8 bytes as {@link #append(LogEntry, String, boolean)} escapes chars. Only ASCII chars need escaping,
+     * and no byte of a multi-byte UTF-8 sequence is ASCII, so the bytes can be escaped before they are decoded.
+     */
+    @VisibleForTesting
+    static byte[] escapeUtf8(byte[] bytes) {
+        int escapedLength = bytes.length;
+        for (byte b : bytes) {
+            char e = b < 0 ? 0 : ASCII_ESCAPES[b];
+            if (e != 0) {
+                escapedLength += e == 'u' ? 5 : 1;
+            }
+        }
+        if (escapedLength == bytes.length) {
+            return bytes;
+        }
+
+        byte[] escaped = new byte[escapedLength];
+        int j = 0;
+        for (byte b : bytes) {
+            char e = b < 0 ? 0 : ASCII_ESCAPES[b];
+            if (e == 0) {
+                escaped[j++] = b;
+                continue;
+            }
+            escaped[j++] = '\\';
+            escaped[j++] = (byte) e;
+            if (e == 'u') {
+                String hex = CONTROL_SYMBOLS[b];
+                for (int k = 0; k < hex.length(); k++) {
+                    escaped[j++] = (byte) hex.charAt(k);
+                }
+            }
+        }
+        return escaped;
     }
 
     private static char escape(char c) {
