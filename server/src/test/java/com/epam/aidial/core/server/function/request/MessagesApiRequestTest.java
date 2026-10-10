@@ -254,6 +254,27 @@ class MessagesApiRequestTest {
     }
 
     @Test
+    void testSerialize_serializesTreeForNonUtf8OrModellessBody() throws IOException {
+        for (Buffer body : List.of(
+                Buffer.buffer("{\"model\": \"b\"}".getBytes(StandardCharsets.UTF_16BE)),
+                Buffer.buffer("{\"stream\": true}"))) {
+            MessagesApiRequest request = MessagesApiRequest.parse(body);
+            request.setModel("o");
+
+            assertEquals("o", ProxyUtil.MAPPER.readTree(request.serialize()).get("model").asText());
+        }
+    }
+
+    @Test
+    void testSerialize_forwardsReceivedBytesWithSurroundingWhitespace() throws IOException {
+        String body = " \r\n\t{\"model\": \"m\"}\n";
+        MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer(body));
+        request.setModel("o");
+
+        assertEquals(" \r\n\t{\"model\": \"o\"}\n", new String(request.serialize(), StandardCharsets.UTF_8));
+    }
+
+    @Test
     void testSerialize_serializesTreeWhenEmptyCustomFieldsRemoved() throws IOException {
         MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer("{\"model\": \"m\", \"custom_fields\": {}}"));
 

@@ -62,8 +62,9 @@ public class MessagesApiRequest implements RequestObject {
 
     /**
      * Parses the body once, field by field, recording where the top-level model string lies. The received bytes
-     * are kept for forwarding only when they are exactly the tree: one UTF-8 object, no duplicate top-level keys,
-     * nothing but whitespace around it. Otherwise the tree is serialized, as before.
+     * are kept for forwarding only when they are one UTF-8 object with no duplicate top-level keys and nothing but
+     * whitespace around it; otherwise the tree is serialized, as before. Nested duplicate keys and malformed UTF-8
+     * that the parser decodes leniently are still forwarded as received, so the upstream may read them differently.
      *
      * @throws IllegalArgumentException if the body is not a JSON object
      */
@@ -220,9 +221,9 @@ public class MessagesApiRequest implements RequestObject {
      * The object's own properties by name; the values are not copied, {@link CacheKeyBuilder#update} sorts them.
      */
     private static Map<String, JsonNode> sortProperties(JsonNode object) {
-        Map<String, JsonNode> sorted = new TreeMap<>();
-        object.properties().forEach(property -> sorted.put(property.getKey(), property.getValue()));
-        return sorted;
+        Map<String, JsonNode> propertiesByName = new TreeMap<>();
+        object.properties().forEach(property -> propertiesByName.put(property.getKey(), property.getValue()));
+        return propertiesByName;
     }
 
     private static boolean hasCacheControl(JsonNode block) {
@@ -239,11 +240,14 @@ public class MessagesApiRequest implements RequestObject {
 
     @Override
     public void applyDefaults(Map<String, Object> defaults) {
-        // a default the request already holds changes nothing; objects are merged in place, hence the copies
-        Map<String, JsonNode> before = new HashMap<>();
-        defaults.keySet().forEach(key -> before.put(key, tree.has(key) ? tree.get(key).deepCopy() : null));
+        // a default the request already holds changes nothing; only objects are merged in place, so only they are copied
+        Map<String, JsonNode> valuesBeforeDefaults = new HashMap<>();
+        defaults.keySet().forEach(key -> {
+            JsonNode value = tree.get(key);
+            valuesBeforeDefaults.put(key, value != null && value.isObject() ? value.deepCopy() : value);
+        });
         ChatUtil.applyDefaults(tree, defaults);
-        treeChanged |= before.entrySet().stream().anyMatch(entry -> !Objects.equals(entry.getValue(), tree.get(entry.getKey())));
+        treeChanged |= valuesBeforeDefaults.entrySet().stream().anyMatch(entry -> !Objects.equals(entry.getValue(), tree.get(entry.getKey())));
     }
 
     @Override
