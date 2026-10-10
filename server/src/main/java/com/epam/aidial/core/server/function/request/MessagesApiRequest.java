@@ -59,7 +59,9 @@ public class MessagesApiRequest implements RequestObject {
     }
 
     /**
-     * Parses the body once, field by field, recording where the top-level model string lies.
+     * Parses the body once, field by field, recording where the top-level model string lies. The received bytes
+     * are kept for forwarding only when they are exactly the tree: one UTF-8 object, no duplicate top-level keys,
+     * nothing but whitespace around it. Otherwise the tree is serialized, as before.
      *
      * @throws IllegalArgumentException if the body is not a JSON object
      */
@@ -67,23 +69,40 @@ public class MessagesApiRequest implements RequestObject {
         ObjectNode tree = ProxyUtil.MAPPER.createObjectNode();
         int modelStart = -1;
         int modelEnd = -1;
+        boolean duplicate = false;
+        long rootStart;
+        long rootEnd;
         try (JsonParser parser = ProxyUtil.MAPPER.createParser((InputStream) new ByteBufInputStream(body.getByteBuf()))) {
             if (parser.nextToken() != JsonToken.START_OBJECT) {
                 throw new IllegalArgumentException("Invalid json object");
             }
+            // a byte offset is -1 for a body that is not UTF-8
+            rootStart = parser.currentTokenLocation().getByteOffset();
             while (parser.nextToken() == JsonToken.FIELD_NAME) {
                 String name = parser.currentName();
+                duplicate |= tree.has(name);
                 boolean stringModel = parser.nextToken() == JsonToken.VALUE_STRING && name.equals(MODEL_NODE);
                 long start = parser.currentTokenLocation().getByteOffset();
                 tree.set(name, ProxyUtil.MAPPER.readTree(parser));
-                if (name.equals(MODEL_NODE)) {
-                    // the last one wins, as in the tree; a byte offset is -1 for a body that is not UTF-8
-                    modelStart = stringModel ? (int) start : -1;
-                    modelEnd = stringModel ? (int) parser.currentLocation().getByteOffset() : -1;
+                if (stringModel) {
+                    modelStart = (int) start;
+                    modelEnd = (int) parser.currentLocation().getByteOffset();
                 }
             }
+            rootEnd = parser.currentLocation().getByteOffset();
         }
-        return new MessagesApiRequest(tree, body, modelStart, modelEnd);
+        boolean verbatim = !duplicate && rootStart >= 0 && isWhitespace(body, 0, rootStart) && isWhitespace(body, rootEnd, body.length());
+        return new MessagesApiRequest(tree, verbatim ? body : null, modelStart, modelEnd);
+    }
+
+    private static boolean isWhitespace(Buffer body, long from, long to) {
+        for (int i = (int) from; i < to; i++) {
+            byte b = body.getByte(i);
+            if (b != ' ' && b != '\t' && b != '\n' && b != '\r') {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override
@@ -210,7 +229,9 @@ public class MessagesApiRequest implements RequestObject {
 
     @Override
     public void clearInterceptorSettings() {
-        treeChanged |= tree.path("custom_fields").has("interceptor_configuration");
+        // ChatUtil also drops custom_fields left empty
+        JsonNode customFields = tree.path("custom_fields");
+        treeChanged |= customFields.has("interceptor_configuration") || customFields.isObject() && customFields.isEmpty();
         ChatUtil.removeInterceptorConfiguration(tree);
     }
 

@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.function.request;
 
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.core.json.JsonWriteFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.cfg.JsonNodeFeature;
@@ -21,7 +22,10 @@ import java.util.List;
  */
 public class CacheKeyBuilder {
 
-    private static final ObjectWriter SORTED_WRITER = ProxyUtil.MAPPER.writer().with(JsonNodeFeature.WRITE_PROPERTIES_SORTED);
+    // the UTF-8 generator escapes a surrogate pair (e.g. an emoji) unless told to combine it into 4 bytes, as String.getBytes does
+    private static final ObjectWriter SORTED_WRITER = ProxyUtil.MAPPER.writer()
+            .with(JsonNodeFeature.WRITE_PROPERTIES_SORTED)
+            .with(JsonWriteFeature.COMBINE_UNICODE_SURROGATES_IN_UTF8);
 
     private final MessageDigest digest;
 

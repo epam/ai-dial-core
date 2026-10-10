@@ -228,14 +228,38 @@ class MessagesApiRequestTest {
 
     @Test
     void testSerialize_replacesOnlyTheModelInReceivedBytes() throws IOException {
-        String body = "{\"model\": \"m\\u002d1\", \"messages\": [{\"model\": \"inner\"}],\n \"model\" : \"last\"}";
+        String body = "{\"messages\": [{\"model\": \"inner\"}],\n \"model\" : \"m\\u002d1\"}";
         MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer(body));
-        assertEquals("last", request.getModel());
+        assertEquals("m-1", request.getModel());
 
         request.setModel("over\"ride");
 
-        assertEquals("{\"model\": \"m\\u002d1\", \"messages\": [{\"model\": \"inner\"}],\n \"model\" : \"over\\\"ride\"}",
+        assertEquals("{\"messages\": [{\"model\": \"inner\"}],\n \"model\" : \"over\\\"ride\"}",
                 new String(request.serialize(), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void testSerialize_serializesTreeWhenBodyIsNotExactlyTheTree() throws IOException {
+        // duplicate keys, trailing content, a second object: the upstream could read another document than the tree
+        for (String body : List.of(
+                "{\"model\": \"a\", \"model\": \"b\"}",
+                "{\"model\": \"b\"} garbage",
+                "{\"model\": \"b\"}{\"model\": \"c\"}",
+                "\uFEFF{\"model\": \"b\"}")) {
+            MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer(body));
+            request.setModel("o");
+
+            assertEquals("{\"model\":\"o\"}", new String(request.serialize(), StandardCharsets.UTF_8), body);
+        }
+    }
+
+    @Test
+    void testSerialize_serializesTreeWhenEmptyCustomFieldsRemoved() throws IOException {
+        MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer("{\"model\": \"m\", \"custom_fields\": {}}"));
+
+        request.clearInterceptorSettings();
+
+        assertEquals("{\"model\":\"m\"}", new String(request.serialize(), StandardCharsets.UTF_8));
     }
 
     @Test

@@ -15,7 +15,7 @@ class CacheKeyBuilderTest {
 
     @Test
     void testUpdate_hashesSortedNodeWithoutChangingIt() throws Exception {
-        String json = "{\"z\": [{\"y\": 1, \"b\": \"Привет \\\"q\\\"\"}, 2.5, null], \"a\": {\"d\": true, \"c\": \"x\"}}";
+        String json = "{\"z\": [{\"y\": 1, \"b\": \"Привет 😀 \\\"q\\\"\"}, 2.5, null], \"a\": {\"d\": true, \"c\": \"x\"}}";
         JsonNode node = ProxyUtil.MAPPER.readTree(json);
         // the keys before update streamed the sorted node: they must not change
         String sorted = JsonUtil.sort(ProxyUtil.MAPPER.readTree(json)).toString();
