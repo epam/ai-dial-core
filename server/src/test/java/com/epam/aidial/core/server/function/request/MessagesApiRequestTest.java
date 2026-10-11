@@ -330,11 +330,11 @@ class MessagesApiRequestTest {
     @Test
     void testSerialize_serializesTreeWhenInterceptorSettingsRemoved() throws IOException {
         MessagesApiRequest request = MessagesApiRequest.parse(Buffer.buffer(
-                "{\"model\": \"m\", \"custom_fields\": {\"interceptor_configuration\": {}}}"));
+                "{\"model\": \"m\", \"custom_fields\": {\"interceptor_configuration\": {}, \"configuration\": {}}}"));
 
         request.clearInterceptorSettings();
 
-        assertEquals("{\"model\":\"m\"}", new String(request.serialize(), StandardCharsets.UTF_8));
+        assertEquals("{\"model\":\"m\",\"custom_fields\":{\"configuration\":{}}}", new String(request.serialize(), StandardCharsets.UTF_8));
     }
 
     @Test
