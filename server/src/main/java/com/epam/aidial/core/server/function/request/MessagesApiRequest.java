@@ -235,10 +235,7 @@ public class MessagesApiRequest implements RequestObject {
 
     @Override
     public void clearInterceptorSettings() {
-        // ChatUtil also drops custom_fields left empty
-        JsonNode customFields = tree.path("custom_fields");
-        treeChanged |= customFields.has("interceptor_configuration") || customFields.isObject() && customFields.isEmpty();
-        ChatUtil.removeInterceptorConfiguration(tree);
+        treeChanged |= ChatUtil.removeInterceptorConfiguration(tree);
     }
 
     @Override
