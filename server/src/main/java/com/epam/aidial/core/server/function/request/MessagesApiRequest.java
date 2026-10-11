@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.function.request;
 import com.epam.aidial.core.server.data.cache.CachePrefixPath;
 import com.epam.aidial.core.server.util.ChatUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.JsonToken;
@@ -62,17 +63,17 @@ public class MessagesApiRequest implements RequestObject {
 
     /**
      * Parses the body once, field by field, recording where the top-level model string lies. The received bytes
-     * are kept for forwarding only when they are one UTF-8 object with no duplicate top-level keys and nothing but
-     * whitespace around it; otherwise the tree is serialized, as before. Nested duplicate keys and malformed UTF-8
-     * that the parser decodes leniently are still forwarded as received, so the upstream may read them differently.
+     * are kept for forwarding only when they are one UTF-8 object with nothing but whitespace around it; otherwise the
+     * tree is serialized, as before. Nested duplicate keys and malformed UTF-8 that the parser decodes leniently are
+     * still forwarded as received, so the upstream may read them differently.
      *
      * @throws IllegalArgumentException if the body is not a JSON object
+     * @throws JsonParseException if a top-level key repeats: the upstream could read another value than DIAL does
      */
     public static MessagesApiRequest parse(Buffer body) throws IOException {
         ObjectNode tree = ProxyUtil.MAPPER.createObjectNode();
         int modelStart = -1;
         int modelEnd = -1;
-        boolean duplicate = false;
         long rootStart;
         long rootEnd;
         try (JsonParser parser = ProxyUtil.MAPPER.createParser((InputStream) new ByteBufInputStream(body.getByteBuf()))) {
@@ -83,7 +84,9 @@ public class MessagesApiRequest implements RequestObject {
             rootStart = parser.currentTokenLocation().getByteOffset();
             while (parser.nextToken() == JsonToken.FIELD_NAME) {
                 String name = parser.currentName();
-                duplicate |= tree.has(name);
+                if (tree.has(name)) {
+                    throw new JsonParseException(parser, "Duplicate field '" + name + "'");
+                }
                 boolean stringModel = parser.nextToken() == JsonToken.VALUE_STRING && name.equals(MODEL_NODE);
                 long start = parser.currentTokenLocation().getByteOffset();
                 tree.set(name, ProxyUtil.MAPPER.readTree(parser));
@@ -94,7 +97,7 @@ public class MessagesApiRequest implements RequestObject {
             }
             rootEnd = parser.currentLocation().getByteOffset();
         }
-        boolean verbatim = !duplicate && rootStart >= 0 && isWhitespace(body, 0, rootStart) && isWhitespace(body, rootEnd, body.length());
+        boolean verbatim = rootStart >= 0 && isWhitespace(body, 0, rootStart) && isWhitespace(body, rootEnd, body.length());
         return new MessagesApiRequest(tree, verbatim ? body : null, modelStart, modelEnd);
     }
 

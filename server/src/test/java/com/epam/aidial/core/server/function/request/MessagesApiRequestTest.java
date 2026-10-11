@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.function.request;
 
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.buffer.Buffer;
@@ -240,9 +241,8 @@ class MessagesApiRequestTest {
 
     @Test
     void testSerialize_serializesTreeWhenBodyIsNotExactlyTheTree() throws IOException {
-        // duplicate keys, trailing content, a second object: the upstream could read another document than the tree
+        // trailing content, a second object: the upstream could read another document than the tree
         for (String body : List.of(
-                "{\"model\": \"a\", \"model\": \"b\"}",
                 "{\"model\": \"b\"} garbage",
                 "{\"model\": \"b\"}{\"model\": \"c\"}",
                 "\uFEFF{\"model\": \"b\"}")) {
@@ -251,6 +251,12 @@ class MessagesApiRequestTest {
 
             assertEquals("{\"model\":\"o\"}", new String(request.serialize(), StandardCharsets.UTF_8), body);
         }
+    }
+
+    @Test
+    void testParse_rejectsDuplicateTopLevelKey() {
+        assertThrows(JsonParseException.class,
+                () -> MessagesApiRequest.parse(Buffer.buffer("{\"model\": \"a\", \"stream\": false, \"model\": \"b\"}")));
     }
 
     @Test
