@@ -40,7 +40,8 @@ public class CacheKeyBuilder {
      */
     @SneakyThrows
     public void update(JsonNode node) {
-        // the same bytes as the sorted node's toString(), written straight into the digest without copying the node
+        // the same bytes as the sorted node's toString(), written straight into the digest without copying the node;
+        // only a lone surrogate differs: it is escaped, where String.getBytes wrote '?'
         SORTED_WRITER.writeValue(new DigestOutputStream(OutputStream.nullOutputStream(), digest), node);
     }
 
