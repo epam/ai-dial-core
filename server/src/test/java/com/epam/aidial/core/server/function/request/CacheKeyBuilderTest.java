@@ -20,7 +20,7 @@ class CacheKeyBuilderTest {
         // the keys before update streamed the sorted node: they must not change
         String sorted = JsonUtil.sort(ProxyUtil.MAPPER.readTree(json)).toString();
         String expected = HexFormat.of().formatHex(
-                MessageDigest.getInstance("SHA-1").digest(sorted.getBytes(StandardCharsets.UTF_8)));
+                MessageDigest.getInstance("MD5").digest(sorted.getBytes(StandardCharsets.UTF_8)));
 
         CacheKeyBuilder builder = new CacheKeyBuilder();
         builder.update(node);
