@@ -1,5 +1,8 @@
 package com.epam.aidial.core.server.log;
 
+import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.server.log.LoggedBody.LoggedFile;
+import com.epam.aidial.core.server.log.LoggedBody.Status;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -9,6 +12,8 @@ import com.epam.deltix.gflog.api.Log;
 import com.epam.deltix.gflog.api.LogEntry;
 import com.epam.deltix.gflog.api.LogFactory;
 import com.epam.deltix.gflog.api.LogLevel;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -23,9 +28,11 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -37,8 +44,6 @@ import javax.annotation.Nullable;
 public class GfLogStore implements LogStore {
 
     private static final Log LOGGER = LogFactory.getLog("aidial.log");
-    // Max allowed size is 4 mb for request/response body
-    private static final int MAX_BODY_SIZE_BYTES = 4 * 1024 * 1024;
     // Max allowed size for a single collected request header value
     private static final int MAX_HEADER_VALUE_LENGTH = 4 * 1024;
     // Max allowed size for a single collected claim value, matching the header limit
@@ -93,6 +98,19 @@ public class GfLogStore implements LogStore {
 
     @VisibleForTesting
     void append(AnalyticsLogContext logContext, LogEntry entry) throws JsonProcessingException {
+        // every body is prepared before anything is written, as inline_files precedes the bodies it describes
+        LoggedBody requestBody = null;
+        LoggedBody responseBody = null;
+        LoggedBody assembledResponse = null;
+        String assembled = logContext.getAssembledStreamingResponse();
+        if (!logContext.isSecuredApiKey()) {
+            InterfaceType interfaceType = logContext.getInterfaceType();
+            requestBody = LoggedBody.prepare(logContext.getRequestBody(), interfaceType, settings);
+            responseBody = LoggedBody.prepare(logContext.getResponseBody(), interfaceType, settings);
+            // without an assembled streaming response, assembled_response is a copy of the response body
+            assembledResponse = assembled == null ? responseBody : LoggedBody.prepare(Buffer.buffer(assembled), interfaceType, settings);
+        }
+
         append(entry, "{\"apiType\":\"DialOpenAI\",\"chat\":{\"id\":\"", false);
         append(entry, logContext.getConversationId(), true);
 
@@ -176,13 +194,14 @@ public class GfLogStore implements LogStore {
         append(entry, Long.toString(logContext.getOperationDurationMs()), true);
 
         if (!logContext.isSecuredApiKey()) {
-            append(entry, ",\"assembled_response\":\"", false);
-            if (logContext.getAssembledStreamingResponse() != null) {
-                appendBody(entry, Buffer.buffer(logContext.getAssembledStreamingResponse()));
-            } else {
-                appendBody(entry, logContext.getResponseBody());
+            if (assembled != null || settings.collectDuplicateAssembledResponse()) {
+                append(entry, ",\"assembled_response\":\"", false);
+                appendBody(entry, assembledResponse);
+                append(entry, "\"", false);
             }
-            append(entry, "\"", false);
+            boolean assembledFiles = isAssembly(assembled);
+            appendInlineFiles(entry, requestBody, assembledFiles ? "assembled_response" : "response.body",
+                    assembledFiles ? assembledResponse : responseBody);
         }
 
         append(entry, ",\"trace\":{\"trace_id\":\"", false);
@@ -211,7 +230,7 @@ public class GfLogStore implements LogStore {
 
         if (!logContext.isSecuredApiKey()) {
             append(entry, "\",\"body\":\"", false);
-            appendBody(entry, logContext.getRequestBody());
+            appendBody(entry, requestBody);
         }
 
         append(entry, "\"},\"response\":{\"status\":\"", false);
@@ -224,7 +243,7 @@ public class GfLogStore implements LogStore {
 
         if (!logContext.isSecuredApiKey()) {
             append(entry, "\",\"body\":\"", false);
-            appendBody(entry, logContext.getResponseBody());
+            appendBody(entry, responseBody);
         }
 
         append(entry, "\"}}", false);
@@ -435,20 +454,58 @@ public class GfLogStore implements LogStore {
         return value.substring(0, end);
     }
 
-    private static void appendBody(LogEntry entry, Buffer buffer) {
-        if (buffer == null) {
+    private static void appendBody(LogEntry entry, @Nullable LoggedBody body) {
+        if (body == null) {
             return;
         }
-        boolean largeBuffer = exceedLimit(buffer);
-        if (largeBuffer) {
-            buffer = buffer.slice(0, MAX_BODY_SIZE_BYTES);
-        }
-        byte[] bytes = buffer.getBytes();
-        String chars = new String(bytes, StandardCharsets.UTF_8); // not efficient, but ok for now
+        String chars = new String(body.bytes().getBytes(), StandardCharsets.UTF_8); // not efficient, but ok for now
         append(entry, chars, true);
-        if (largeBuffer) {
+        if (body.truncated()) {
             // append a special marker that entry is cut off due to its large size
             append(entry, ">>", false);
+        }
+    }
+
+    /**
+     * Whether the value is a real assembly of a streamed response, not the {@code "{}"} that
+     * {@link AnalyticsLogContext#assembleStreamingChatCompletionsResponse} returns when assembly fails.
+     */
+    private static boolean isAssembly(@Nullable String assembled) {
+        return assembled != null && !"{}".equals(assembled);
+    }
+
+    private void appendInlineFiles(LogEntry entry, @Nullable LoggedBody request, String responseField, @Nullable LoggedBody response)
+            throws JsonProcessingException {
+        List<InlineFileEntry> files = new ArrayList<>();
+        collectInlineFiles(files, "request.body", request);
+        collectInlineFiles(files, responseField, response);
+        if (!files.isEmpty()) {
+            append(entry, ",\"inline_files\":", false);
+            append(entry, ProxyUtil.MAPPER.writeValueAsString(files), false);
+        }
+    }
+
+    private void collectInlineFiles(List<InlineFileEntry> files, String field, @Nullable LoggedBody body) {
+        if (body == null) {
+            return;
+        }
+        for (LoggedFile file : body.files()) {
+            // without the index only what a setting removed is listed, which keeps every removal traceable
+            if (settings.collectInlineFileIndex() || file.status() == Status.EXCLUDED) {
+                files.add(InlineFileEntry.of(field, file));
+            }
+        }
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonPropertyOrder({"field", "chunk", "path", "encoding", "mime", "status", "offset", "length", "size"})
+    record InlineFileEntry(String field, Integer chunk, String path, String encoding, String mime, String status,
+                           Integer offset, Integer length, Integer size) {
+
+        static InlineFileEntry of(String field, LoggedFile logged) {
+            InlineFile file = logged.file();
+            return new InlineFileEntry(field, file.chunk(), file.path(), file.dataUrl() ? "data_url" : "base64", file.mime(),
+                    logged.status().name().toLowerCase(Locale.ROOT), logged.offset(), logged.length(), logged.size());
         }
     }
 
@@ -467,9 +524,5 @@ public class GfLogStore implements LogStore {
     private static String formatTimestamp(long timestamp) {
         return LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneId.of("UTC"))
                 .format(DateTimeFormatter.ISO_DATE_TIME);
-    }
-
-    private static boolean exceedLimit(Buffer body) {
-        return body.length() > MAX_BODY_SIZE_BYTES;
     }
 }

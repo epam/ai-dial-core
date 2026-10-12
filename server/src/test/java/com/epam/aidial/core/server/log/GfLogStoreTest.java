@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.deltix.gflog.api.LogEntry;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonArray;
@@ -17,6 +18,7 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -637,6 +639,201 @@ public class GfLogStoreTest {
         String cut = written.substring(0, written.length() - ">>".length());
         assertFalse(Character.isHighSurrogate(cut.charAt(cut.length() - 1)),
                 "Truncation left a lone high surrogate at the cut");
+    }
+
+    private static final String FILE_REQUEST = """
+            {"messages":[{"role":"user","content":[{"type":"text","text":"hi"},\
+            {"type":"image_url","image_url":{"url":"data:image/png;base64,AAAA"}}]}]}""";
+    private static final String FILE_RESPONSE = """
+            {"choices":[{"index":0,"message":{"role":"assistant","audio":{"data":"BBBB"}}}]}""";
+    private static final String STREAMED_RESPONSE = """
+            data: {"choices":[{"index":0,"delta":{"audio":{"data":"BB"}}}]}
+
+            data: {"choices":[{"index":0,"delta":{"audio":{"data":"BB"}}}]}
+
+            data: [DONE]
+
+            """;
+
+    @Test
+    public void testDefaultsWriteTheSameLineWithoutScanning() {
+        String withInterface = logLine(new JsonObject(), chatContext().build());
+        String withoutInterface = logLine(new JsonObject(), chatContext().interfaceType(null).build());
+
+        assertEquals(withoutInterface, withInterface);
+        assertFalse(parse(withInterface).has("inline_files"));
+        assertEquals(FILE_RESPONSE, parse(withInterface).get("assembled_response").asText());
+    }
+
+    @Test
+    public void testRemovedFilesAreListed() {
+        JsonNode line = parse(logLine(new JsonObject().put("collectInlineFiles", false), chatContext().build()));
+
+        assertEquals(FILE_REQUEST.replace("base64,AAAA", "base64,"), line.get("request").get("body").asText());
+        assertEquals(FILE_RESPONSE.replace("\"BBBB\"", "\"\""), line.get("response").get("body").asText());
+        assertEquals(FILE_RESPONSE.replace("\"BBBB\"", "\"\""), line.get("assembled_response").asText());
+        ArrayNode files = (ArrayNode) line.get("inline_files");
+        assertEquals(2, files.size());
+        assertEquals("""
+                {"field":"request.body","path":"/messages/0/content/1/image_url/url","encoding":"data_url",\
+                "mime":"image/png","status":"excluded","size":4}""", files.get(0).toString());
+        assertEquals("""
+                {"field":"response.body","path":"/choices/0/message/audio/data","encoding":"base64",\
+                "status":"excluded","size":4}""", files.get(1).toString());
+    }
+
+    @Test
+    public void testIndexOffsetsExtractPayloadsFromTheParsedLine() {
+        JsonNode line = parse(logLine(new JsonObject().put("collectInlineFileIndex", true), chatContext().build()));
+
+        ArrayNode files = (ArrayNode) line.get("inline_files");
+        assertEquals("AAAA", extract(line.get("request").get("body").asText(), files.get(0)));
+        assertEquals("BBBB", extract(line.get("response").get("body").asText(), files.get(1)));
+        assertEquals("included", files.get(1).get("status").asText());
+    }
+
+    @Test
+    public void testAssembledStreamsListTheirFilesAgainstAssembledResponse() {
+        AnalyticsLogContext context = chatContext()
+                .responseBody(Buffer.buffer(STREAMED_RESPONSE))
+                .assembledStreamingResponse(FILE_RESPONSE)
+                .build();
+
+        JsonNode line = parse(logLine(new JsonObject().put("collectInlineFileIndex", true), context));
+
+        ArrayNode files = (ArrayNode) line.get("inline_files");
+        assertEquals(List.of("request.body", "assembled_response"), fields(files));
+        assertEquals("BBBB", extract(line.get("assembled_response").asText(), files.get(1)));
+    }
+
+    @Test
+    public void testFailedAssemblyListsResponseBodyFilesWithChunks() {
+        AnalyticsLogContext context = chatContext()
+                .responseBody(Buffer.buffer(STREAMED_RESPONSE))
+                .assembledStreamingResponse("{}")
+                .build();
+
+        JsonNode line = parse(logLine(new JsonObject().put("collectInlineFiles", false), context));
+
+        ArrayNode files = (ArrayNode) line.get("inline_files");
+        assertEquals(List.of("request.body", "response.body", "response.body"), fields(files));
+        assertEquals(1, files.get(2).get("chunk").asInt());
+        assertEquals(STREAMED_RESPONSE.replace("\"BB\"", "\"\""), line.get("response").get("body").asText());
+        assertEquals("{}", line.get("assembled_response").asText());
+    }
+
+    @Test
+    public void testResponsesStreamWithoutTerminalEventListsResponseBody() {
+        String stream = """
+                event: response.image_generation_call.partial_image
+                data: {"type":"response.image_generation_call.partial_image","partial_image_b64":"QUJD"}
+
+                """;
+        AnalyticsLogContext context = AnalyticsLogContext.builder()
+                .interfaceType(InterfaceType.OPENAI_RESPONSES)
+                .requestBody(Buffer.buffer("{\"input\":\"hi\"}"))
+                .responseBody(Buffer.buffer(stream))
+                .build();
+
+        JsonNode line = parse(logLine(new JsonObject().put("collectInlineFileIndex", true), context));
+
+        JsonNode file = line.get("inline_files").get(0);
+        assertEquals("response.body", file.get("field").asText());
+        assertEquals(0, file.get("chunk").asInt());
+        assertEquals("QUJD", extract(line.get("response").get("body").asText(), file));
+    }
+
+    @Test
+    public void testBackgroundJobResponsesAreIndexed() {
+        BackgroundJobRecord record = BackgroundJobRecord.builder()
+                .requestTimestamp(System.currentTimeMillis())
+                .requestBody("{\"input\":\"draw\"}")
+                .build();
+        ResponsesApiClient.TerminalResult result = new ResponsesApiClient.TerminalResult(
+                Buffer.buffer("{\"output\":[{\"type\":\"image_generation_call\",\"result\":\"iVBORw0K\"}]}"), null);
+
+        JsonNode line = parse(logLine(new JsonObject().put("collectInlineFileIndex", true), AnalyticsLogContext.from(record, result, null)));
+
+        JsonNode file = line.get("inline_files").get(0);
+        assertEquals("response.body", file.get("field").asText());
+        assertEquals("/output/0/result", file.get("path").asText());
+    }
+
+    @Test
+    public void testDuplicateAssembledResponseIsOmitted() {
+        JsonObject settings = new JsonObject().put("collectDuplicateAssembledResponse", false);
+
+        assertFalse(parse(logLine(settings, chatContext().build())).has("assembled_response"));
+        assertFalse(parse(logLine(settings, chatContext().responseBody(null).build())).has("assembled_response"));
+        assertEquals(FILE_RESPONSE, parse(logLine(settings, chatContext().assembledStreamingResponse(FILE_RESPONSE).build()))
+                .get("assembled_response").asText());
+        assertEquals("{}", parse(logLine(settings, chatContext().assembledStreamingResponse("{}").build()))
+                .get("assembled_response").asText());
+    }
+
+    @Test
+    public void testSecuredKeyEntriesAreNotScanned() {
+        JsonObject all = new JsonObject().put("collectInlineFiles", false).put("collectInlineFileIndex", true);
+
+        JsonNode line = parse(logLine(all, chatContext().securedApiKey(true).build()));
+
+        assertFalse(line.has("inline_files"));
+        assertFalse(line.get("request").has("body"));
+    }
+
+    @Test
+    public void testNullBodiesWithEverySettingOn() {
+        JsonObject all = new JsonObject().put("collectInlineFiles", false).put("collectTruncatedInlineFiles", false)
+                .put("collectInlineFileIndex", true).put("collectDuplicateAssembledResponse", false);
+
+        JsonNode line = parse(logLine(all, chatContext().requestBody(null).responseBody(null).build()));
+
+        assertFalse(line.has("inline_files"));
+        assertEquals("", line.get("request").get("body").asText());
+    }
+
+    @Test
+    public void testCutBeforeFileCrossingTheLimit() {
+        String request = "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,"
+                + "A".repeat(LoggedBody.MAX_BYTES) + "\"}}]}]}";
+
+        JsonNode line = parse(logLine(new JsonObject().put("collectTruncatedInlineFiles", false),
+                chatContext().requestBody(Buffer.buffer(request)).build()));
+
+        assertEquals(request.substring(0, request.indexOf("\"data:")) + ">>", line.get("request").get("body").asText());
+        assertEquals("""
+                {"field":"request.body","path":"/messages/0/content/0/image_url/url","encoding":"data_url",\
+                "mime":"image/png","status":"excluded"}""", line.get("inline_files").get(0).toString());
+    }
+
+    private static AnalyticsLogContext.AnalyticsLogContextBuilder chatContext() {
+        return AnalyticsLogContext.builder()
+                .interfaceType(InterfaceType.OPENAI_CHAT_COMPLETIONS)
+                .requestBody(Buffer.buffer(FILE_REQUEST))
+                .responseBody(Buffer.buffer(FILE_RESPONSE));
+    }
+
+    @SneakyThrows
+    private static String logLine(JsonObject analytics, AnalyticsLogContext context) {
+        StringBuilder buffer = new StringBuilder();
+        new GfLogStore(AnalyticsSettings.from(analytics)).append(context, capturingEntry(buffer));
+        return buffer.toString();
+    }
+
+    @SneakyThrows
+    private static JsonNode parse(String line) {
+        return ProxyUtil.MAPPER.readTree(line);
+    }
+
+    private static String extract(String body, JsonNode file) {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        return new String(bytes, file.get("offset").asInt(), file.get("length").asInt(), StandardCharsets.UTF_8);
+    }
+
+    private static List<String> fields(ArrayNode files) {
+        List<String> fields = new java.util.ArrayList<>();
+        files.forEach(file -> fields.add(file.get("field").asText()));
+        return fields;
     }
 
     private static LogEntry capturingEntry(StringBuilder buffer) {

@@ -155,6 +155,10 @@ Priority order:
 | analytics.collectHeaders                 |       false        |    No    | If `true`, adds a `headers` object with the request headers to each analytics log entry, filtered by `analytics.headersAllowlist` / `analytics.headersBlacklist`. **Note**: enabling this may write sensitive data to logs; curate the lists for your setup.                                                                  |
 | analytics.headersBlacklist               | ["authorization", "api-key", "cookie", "proxy-authorization"] | No | JSON array of case-insensitive regex patterns (full-match); request headers whose name matches any pattern are excluded when `analytics.collectHeaders` is enabled. Literal names (e.g. `authorization`) match themselves; use patterns like `x-stainless-.*` to drop a whole family of headers.                                                                                                                                                                           |
 | analytics.headersAllowlist               |     _(disabled)_     | No | Optional JSON array of case-insensitive regex patterns (full-match). When present, only request headers whose name matches at least one pattern are collected (`analytics.headersBlacklist` still wins over the allowlist). Omit the key to disable the allowlist and collect all non-blocked headers. Example — keep just OTel and useful client headers: `["traceparent", "tracestate", "user-agent", "x-forwarded-.*"]`.                                                                                                                                                                           |
+| analytics.collectInlineFiles             |        true        |    No    | If `false`, removes the base64 payload of every inline file (images, audio, documents sent inline) from `request.body`, `response.body` and `assembled_response` of each analytics log entry, and lists each removed file in `inline_files`. See [Inline files](#inline-files). |
+| analytics.collectTruncatedInlineFiles    |        true        |    No    | If `false`, a body that exceeds the 4 MB limit with the cut inside an inline file is cut just before that file instead of logging its undecodable first part. See [Inline files](#inline-files). |
+| analytics.collectInlineFileIndex         |       false        |    No    | If `true`, adds an `inline_files` array to each analytics log entry that lists every inline file in the request and the response, with byte offsets, so that consumers can extract or replace files without knowing the API formats. See [Inline files](#inline-files). |
+| analytics.collectDuplicateAssembledResponse |     true        |    No    | If `false`, omits `assembled_response` from analytics log entries where it is a copy of `response.body` (non-streamed calls, background jobs, streams that are not assembled). Consumers read `assembled_response` when present, otherwise `response.body`. |
 | tracing.genAiSpanAttributes              |       true        |    No    | If `true`, adds [OTel GenAI semantic-convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) `gen_ai.*` and `dial.*` attributes to the request span and to OTel log records. Prompts, completions and tool payloads are never published. Refer to [Tracing](/docs/tracing.md) to learn more. |
 | tracing.responseTraceHeaders             |       true        |    No    | If `true`, every response carries the W3C `traceparent` of Core's own root span, plus `X-DIAL-TRACE-ID` and `X-DIAL-SPAN-ID`, all exposed via CORS. Omitted when no OpenTelemetry SDK is attached and the span context is invalid.                                                                   |
 | tracing.conversationIdHeaders            | ["x-claude-code-session-id", "thread-id", "x-session-id", "x-dial-client-channel-id", "X-CONVERSATION-ID"] | No | JSON array of request headers, in priority order, that may carry a conversation or session id; the first usable one present is published as `gen_ai.conversation.id` when `tracing.genAiSpanAttributes` is enabled. Matching is case-insensitive, and a value over 256 characters is skipped in favour of the next header. The known credential header names are rejected with a warning. The defaults cover Claude Code, OpenAI Codex CLI, OpenCode and DIAL Chat; an operator-supplied array replaces them outright. |
@@ -175,6 +179,25 @@ Prefer the hashed user id where you can: when `identityProviders.*.loggingKey` p
 `identityProviders.*.obfuscateUserEmail` is left enabled, `user.id` already identifies the same user as a salted hash,
 without putting the raw address in the log.
 
+
+#### Inline files
+
+A value counts as an inline file only at known locations of the API the entry is for: OpenAI Chat Completions (incl. DIAL `custom_content` attachments of a binary type), OpenAI Responses and Anthropic Messages. Text anywhere else is always logged as it is, however it is formatted. Embeddings, routes, MCP and deployment features are never scanned. Only the first 4 MB of a body are ever read or logged.
+
+Each `inline_files` entry:
+
+```json
+{"field": "request.body", "path": "/messages/0/content/1/image_url/url", "encoding": "data_url",
+ "mime": "image/png", "status": "included", "offset": 1064, "length": 1843200, "size": 1843200}
+```
+
+- `field`: `request.body`, `response.body`, or `assembled_response` for a streamed response that was assembled.
+- `chunk`: the 0-based SSE event, for an SSE body; `path` is then relative to that event.
+- `status`: `included` (whole payload logged), `partial` (cut by the 4 MB limit) or `excluded` (removed).
+- `offset` and `length`: the payload's position in the UTF-8 bytes of the logged body, excluding quotes and the data URL prefix: `body.encode("utf-8")[offset:offset + length]`. They are omitted for `excluded` files and for bodies that are not valid UTF-8. A consumer that rewrites several files must process them from the highest `offset` down.
+- `size`: the payload's original size, omitted when the file crosses the 4 MB cut.
+
+Without `collectInlineFileIndex`, only `excluded` files are listed. The array is omitted when it would be empty.
 
 <details> 
 <summary><b>Identity Providers Configurations</b></summary>
