@@ -182,7 +182,7 @@ without putting the raw address in the log.
 
 #### Inline files
 
-A value counts as an inline file only at known locations of the API the entry is for: OpenAI Chat Completions (incl. DIAL `custom_content` attachments of a binary type, or without a type and sent as a data URL), OpenAI Responses and Anthropic Messages. Text anywhere else is always logged as it is, however it is formatted. Embeddings, routes, MCP and deployment features are never scanned. Only the first 4 MB of a body are ever read or logged.
+A value counts as an inline file only at known locations of the API the entry is for: OpenAI Chat Completions (incl. DIAL `custom_content` attachments of a binary type, or without a type and sent as a data URL), OpenAI Responses and Anthropic Messages. Text anywhere else is always logged as it is, however it is formatted. Embeddings, routes, MCP and deployment features are never scanned. Only the first 4 MB of a body are ever read or logged. The full list of locations and rules is in [docs/analytics-inline-files.md](docs/analytics-inline-files.md).
 
 Each `inline_files` entry:
 

@@ -1,7 +1,7 @@
 # Analytics log: inline files and duplicate responses
 
 Date: 2026-10-12
-Status: draft, awaiting review
+Status: implemented in #2105
 
 ## Problem
 
