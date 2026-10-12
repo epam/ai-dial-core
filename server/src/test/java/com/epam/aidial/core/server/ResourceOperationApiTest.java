@@ -1,10 +1,15 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.data.InvitationLink;
+import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class ResourceOperationApiTest extends ResourceBaseTest {
@@ -388,5 +393,43 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
         // verify the resource has the same author
         response = metadata("/folder2/conversation2");
         verifyNotExact(response, 200, "\"author\":\"EPM-RTC-GPT\"");
+    }
+
+    @Test
+    void testCopyApplicationRouteSecretDecryptableAtNewPath() {
+        // SecretFieldProcessor binds ciphertext to the descriptor's own absolute path (AAD) —
+        // copying an application to a new path must re-encrypt under the new path, not carry the
+        // source's ciphertext over verbatim, or the secret becomes permanently undecryptable there.
+        Response put = send(HttpMethod.PUT,
+                "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/copy-source-app", null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "Copy Source App",
+                "routes": {
+                        "my-route": {
+                          "paths": ["/v1/my-route"],
+                          "methods": ["GET"],
+                          "upstreams": [{"endpoint": "http://localhost:9876", "key": "copy-route-secret-1"}]
+                      }
+                  }
+                }
+                """);
+        verify(put, 200);
+
+        Response copy = send(HttpMethod.POST, "/v1/ops/resource/copy", null, """
+                {
+                   "sourceUrl": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/copy-source-app",
+                   "destinationUrl": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/copy-dest-app"
+                }
+                """);
+        verify(copy, 200);
+
+        ResourceDescriptor destination = ResourceDescriptorFactory.fromAnyUrl(
+                "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/copy-dest-app", encryptionService);
+        ApplicationService applicationService = dial.getProxy().getApplicationService();
+        Application copied = applicationService.getApplication(destination).getValue();
+        assertNotNull(copied, "Copied application must exist at the new path");
+        assertEquals("copy-route-secret-1", copied.getRoutes().get("my-route").getUpstreams().get(0).getKey(),
+                "Copied application's route secret must decrypt correctly at its new path");
     }
 }
