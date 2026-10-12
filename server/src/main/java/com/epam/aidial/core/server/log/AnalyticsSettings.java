@@ -20,11 +20,17 @@ import javax.annotation.Nullable;
  *                         so log entries list claims once, in the order the operator declared them.
  * @param headersBlacklist never null; empty means block nothing.
  * @param headersAllowlist null means the allowlist is disabled, i.e. collect all non-blocked headers.
+ * @param collectInlineFiles          false removes the payload of every inline file from the logged bodies.
+ * @param collectTruncatedInlineFiles false cuts a body before an inline file the 4 MB limit would cut through.
+ * @param collectInlineFileIndex      true lists every inline file in {@code inline_files}; otherwise only removed ones.
+ * @param collectDuplicateAssembledResponse false omits {@code assembled_response} where it copies the response body.
  */
 @Slf4j
 public record AnalyticsSettings(boolean collectClaims, boolean collectAllClaims, List<ClaimPath> claimsAllowlist,
                                 boolean collectHeaders, List<Pattern> headersBlacklist,
-                                @Nullable List<Pattern> headersAllowlist) {
+                                @Nullable List<Pattern> headersAllowlist,
+                                boolean collectInlineFiles, boolean collectTruncatedInlineFiles,
+                                boolean collectInlineFileIndex, boolean collectDuplicateAssembledResponse) {
 
     private static final String ALL_CLAIMS = "*";
 
@@ -58,7 +64,11 @@ public record AnalyticsSettings(boolean collectClaims, boolean collectAllClaims,
                 settings.getBoolean("collectHeaders", false),
                 // default is defined in the bundled aidial.settings.json and always merged in
                 parseHeaderPatterns(settings.getJsonArray("headersBlacklist")),
-                parseHeaderPatterns(settings.getJsonArray("headersAllowlist")));
+                parseHeaderPatterns(settings.getJsonArray("headersAllowlist")),
+                settings.getBoolean("collectInlineFiles", true),
+                settings.getBoolean("collectTruncatedInlineFiles", true),
+                settings.getBoolean("collectInlineFileIndex", false),
+                settings.getBoolean("collectDuplicateAssembledResponse", true));
     }
 
     private static List<String> parseClaimPaths(JsonArray value) {
