@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.log;
 
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -51,6 +52,8 @@ public class AnalyticsLogContext {
     private final String deploymentName;
     private final String parentDeployment;
     private final List<String> executionPath;
+    // the API whose formats inline files are located by; null for traffic without a known format
+    private final InterfaceType interfaceType;
 
     private final String requestProtocol;
     private final String requestMethod;
@@ -70,6 +73,10 @@ public class AnalyticsLogContext {
     private final long operationDurationMs;
 
     public static AnalyticsLogContext from(ProxyContext context, String assembledStreamingResponse) {
+        return from(context, assembledStreamingResponse, null);
+    }
+
+    public static AnalyticsLogContext from(ProxyContext context, String assembledStreamingResponse, @Nullable InterfaceType interfaceType) {
         Buffer responseBody = context.getResponseBody();
         return AnalyticsLogContext.builder()
                 .traceId(context.getTraceId())
@@ -89,6 +96,7 @@ public class AnalyticsLogContext {
                 .parentDeployment(getParentDeployment(
                         context.getSourceDeployment(), context.getInterceptors(), context.getExecutionPath()))
                 .executionPath(context.getExecutionPath())
+                .interfaceType(interfaceType)
                 .requestProtocol(context.getRequest().version().alpnName().toUpperCase())
                 .requestMethod(context.getRequest().method().name())
                 .requestUri(context.getRequest().uri())
@@ -124,6 +132,7 @@ public class AnalyticsLogContext {
                 .requestHeaders(record.requestHeaders())
                 .deploymentName(record.deploymentName())
                 .parentDeployment(record.parentDeployment())
+                .interfaceType(InterfaceType.OPENAI_RESPONSES)
                 .requestProtocol(record.requestProtocol())
                 .requestMethod(record.requestMethod())
                 .requestUri(record.requestUri())

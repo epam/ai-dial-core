@@ -175,7 +175,7 @@ public class BaseDeploymentPostController {
                         context.setResponseBodyTimestamp(System.currentTimeMillis());
                         return collectTokenUsage(responseBody);
                     })
-                    .onSuccess(ignored -> proxy.getLogStore().save(AnalyticsLogContext.from(context, null)))
+                    .onSuccess(ignored -> proxy.getLogStore().save(AnalyticsLogContext.from(context, null, analyticsInterfaceType())))
                     .onComplete(ignored -> finalizeRequest());
         } else {
             // drop connection to stop application responding
@@ -349,6 +349,19 @@ public class BaseDeploymentPostController {
      */
     protected InterfaceType interfaceType() {
         return InterfaceType.OPENAI_CHAT_COMPLETIONS;
+    }
+
+    /**
+     * The interface the analytics log locates inline files by; null when {@link #interfaceType()} cannot tell, as it
+     * reads the request path, which not every deployment kind has.
+     */
+    protected InterfaceType analyticsInterfaceType() {
+        try {
+            return interfaceType();
+        } catch (Throwable e) {
+            log.debug("Can't resolve the interface type for the analytics log", e);
+            return null;
+        }
     }
 
     /**

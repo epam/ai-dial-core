@@ -485,7 +485,7 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private void completeProxyResponse(String assembledStreamingResponse) {
-        proxy.getLogStore().save(AnalyticsLogContext.from(context, assembledStreamingResponse));
+        proxy.getLogStore().save(AnalyticsLogContext.from(context, assembledStreamingResponse, analyticsInterfaceType()));
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",

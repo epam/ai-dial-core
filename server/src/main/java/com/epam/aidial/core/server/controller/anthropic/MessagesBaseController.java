@@ -75,6 +75,12 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                 new CollectDeploymentsFn(proxy, context));
     }
 
+    @Override
+    protected InterfaceType analyticsInterfaceType() {
+        // count tokens keeps the default interfaceType() for pricing, but its body is in the Messages format
+        return InterfaceType.ANTHROPIC_MESSAGES;
+    }
+
     public Future<?> handle() {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
         if (!Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {

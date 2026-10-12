@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.log;
 
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
@@ -558,6 +559,16 @@ public class GfLogStoreTest {
                 .build();
 
         assertTrue(AnalyticsLogContext.from(record, null, null).getOperationDurationMs() >= 60_000);
+    }
+
+    @Test
+    public void testBackgroundJobEntriesAreInResponsesFormat() {
+        BackgroundJobRecord record = BackgroundJobRecord.builder()
+                .requestTimestamp(System.currentTimeMillis())
+                .requestBody("{}")
+                .build();
+
+        assertEquals(InterfaceType.OPENAI_RESPONSES, AnalyticsLogContext.from(record, null, null).getInterfaceType());
     }
 
     @Test

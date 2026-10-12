@@ -170,7 +170,7 @@ public class MessagesController extends MessagesBaseController {
 
     private void completeProxyResponse(Runnable endResponse) {
         endResponse.run();
-        proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
+        proxy.getLogStore().save(AnalyticsLogContext.from(context, null, analyticsInterfaceType()));
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Interface: {}. Endpoint: {}. Upstream: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",
