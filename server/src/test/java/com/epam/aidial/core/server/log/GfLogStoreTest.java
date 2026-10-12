@@ -550,6 +550,31 @@ public class GfLogStoreTest {
         assertEquals(1234L, duration.asLong());
     }
 
+    @SneakyThrows
+    @Test
+    public void testAppendRouteMetadata() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getRouteName()).thenReturn("my \"route\"");
+
+        StringBuilder buffer = new StringBuilder();
+        new GfLogStore(settings(false)).append(context, capturingEntry(buffer));
+
+        JsonNode line = ProxyUtil.MAPPER.readTree(buffer.toString());
+        assertEquals("my \"route\"", line.get("route_name").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendOmitsRouteMetadataForNonRouteRequests() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+
+        StringBuilder buffer = new StringBuilder();
+        new GfLogStore(settings(false)).append(context, capturingEntry(buffer));
+
+        JsonNode line = ProxyUtil.MAPPER.readTree(buffer.toString());
+        assertFalse(line.has("route_name"));
+    }
+
     @Test
     public void testOperationDurationFromBackgroundJobRecord() {
         BackgroundJobRecord record = BackgroundJobRecord.builder()

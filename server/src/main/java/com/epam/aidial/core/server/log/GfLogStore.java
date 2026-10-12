@@ -160,6 +160,12 @@ public class GfLogStore implements LogStore {
             append(entry, "\"", false);
         }
 
+        if (logContext.getRouteName() != null) {
+            append(entry, ",\"route_name\":\"", false);
+            append(entry, logContext.getRouteName(), true);
+            append(entry, "\"", false);
+        }
+
         if (logContext.getParentDeployment() != null) {
             append(entry, ",\"parent_deployment\":\"", false);
             append(entry, logContext.getParentDeployment(), true);
