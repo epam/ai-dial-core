@@ -18,6 +18,7 @@ import java.util.concurrent.Callable;
  * core's context storage is the request's Vert.x context, which the event loop shares, so making a span
  * current there from a worker thread could re-parent spans the event loop creates meanwhile.
  * Work outside a traced request is not traced, so background jobs such as resource sync start no root traces.
+ * Work a request does after its response is still traced, see "Trace context after the response" in docs/tracing.md.
  */
 public class BlockingCallTracer {
 
