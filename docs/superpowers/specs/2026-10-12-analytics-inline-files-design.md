@@ -122,7 +122,7 @@ Conditions:
   `application/vnd.ms-*`, `application/vnd.openxmlformats-officedocument.*`. Parameters after `;` and case are ignored.
   Anything else, a missing `type` included, is not a file. DIAL
   attachments often carry plain text in `data` (e.g. `text/markdown`, see `DeploymentPostControllerTest.java:252`), and
-  the allowlist keeps it in the log. Alternatively the value is a data URL.
+  the allowlist keeps it in the log. Alternatively the value is a data URL and the sibling `type` is missing or binary.
 
 Siblings may come after the file field in the object. The decision for a candidate value is therefore deferred until
 the parser reaches the end of the object that holds the condition's sibling.
