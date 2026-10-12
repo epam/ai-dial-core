@@ -35,6 +35,7 @@ import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
+import io.vertx.core.http.HttpClosedException;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.SneakyThrows;
@@ -125,10 +126,14 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
     @SneakyThrows
     protected void sendRequest() {
         if (nextUpstream()) {
-            createProxyRequest(requestedInterface())
-                    .onSuccess(this::handleProxyRequest)
-                    .onFailure(this::handleProxyConnectionError);
+            sendRequestToCurrentUpstream();
         }
+    }
+
+    private void sendRequestToCurrentUpstream() {
+        createProxyRequest(requestedInterface())
+                .onSuccess(this::handleProxyRequest)
+                .onFailure(this::handleProxyConnectionError);
     }
 
     /**
@@ -316,6 +321,13 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
      */
     private void handleProxyResponseError(Throwable error) {
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
+        if (error instanceof HttpClosedException && upstreamRoute.canRetryDeadConnection()) {
+            log.warn("Pooled connection to origin was already closed before the request could be sent. "
+                            + "Deployment: {}. Retrying once on a fresh connection. Error:",
+                    context.getDeployment().getName(), error);
+            sendRequestToCurrentUpstream();
+            return;
+        }
         // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
         upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
         log.warn("Proxy failed to receive response header from origin. Deployment: {}. Address: {}. Error:",
