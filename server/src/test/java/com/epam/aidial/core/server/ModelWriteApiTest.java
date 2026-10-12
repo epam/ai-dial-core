@@ -488,7 +488,7 @@ public class ModelWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testPutCreate400OnCatalogPropertiesTypeMismatch() {
+    void testPutCreate422OnCatalogPropertiesTypeMismatch() {
         String schemaId = "https://dial.epam.com/catalog-schemas/model-write-test-create";
         verify(send(HttpMethod.PUT, "/v1/catalog_schemas/platform/model-write-test-create", null,
                 catalogSchemaBody(schemaId), "authorization", "admin", "If-None-Match", "*"), 200);
@@ -496,7 +496,9 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         Response put = send(HttpMethod.PUT, "/v1/models/platform/test-model-catalog-create-invalid", null,
                 modelBodyWithCatalogProperties(schemaId, "\"not-a-boolean\""),
                 "authorization", "admin", "If-None-Match", "*");
-        verify(put, 400);
+        verify(put, 422);
+        assertTrue(put.body().contains("\"field\":\"catalogProperties\""),
+                () -> "Expected a catalogProperties validation warning: " + put.body());
 
         Response get = send(HttpMethod.GET, "/v1/models/platform/test-model-catalog-create-invalid", null, "",
                 "authorization", "admin");
@@ -504,7 +506,7 @@ public class ModelWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testPutUpdate400OnCatalogPropertiesTypeMismatch() {
+    void testPutUpdate422OnCatalogPropertiesTypeMismatch() {
         String schemaId = "https://dial.epam.com/catalog-schemas/model-write-test-update";
         verify(send(HttpMethod.PUT, "/v1/catalog_schemas/platform/model-write-test-update", null,
                 catalogSchemaBody(schemaId), "authorization", "admin", "If-None-Match", "*"), 200);
@@ -516,7 +518,7 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         Response put = send(HttpMethod.PUT, "/v1/models/platform/test-model-catalog-update-invalid", null,
                 modelBodyWithCatalogProperties(schemaId, "\"not-a-boolean\""),
                 "authorization", "admin");
-        verify(put, 400);
+        verify(put, 422);
 
         Response get = send(HttpMethod.GET, "/v1/models/platform/test-model-catalog-update-invalid", null, "",
                 "authorization", "admin");
@@ -541,6 +543,30 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         verify(get, 200);
         assertTrue(get.body().contains("\"featured\":true"),
                 () -> "Expected catalogProperties.featured=true to round-trip: " + get.body());
+    }
+
+    @Test
+    void testPutReportsCatalogAndInvariantFailuresTogether() {
+        String schemaId = "https://dial.epam.com/catalog-schemas/model-write-test-combined";
+        verify(send(HttpMethod.PUT, "/v1/catalog_schemas/platform/model-write-test-combined", null,
+                catalogSchemaBody(schemaId), "authorization", "admin", "If-None-Match", "*"), 200);
+
+        String body = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "pricing": {"unit": "char_without_whitespace", "prompt": "0.1", "cacheRead": "0.01"},
+                  "catalogSchemaId": "%s",
+                  "catalogProperties": {"featured": "not-a-boolean"}
+                }
+                """.formatted(schemaId);
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/test-model-catalog-combined", null, body,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 422);
+        assertTrue(put.body().contains("\"field\":\"pricing\""),
+                () -> "Expected the invariant warning: " + put.body());
+        assertTrue(put.body().contains("\"field\":\"catalogProperties\""),
+                () -> "Expected the catalog warning in the same response: " + put.body());
     }
 
     // --- pre-write rebuild-invariant validation ---------------------------------------------------

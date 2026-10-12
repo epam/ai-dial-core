@@ -45,7 +45,6 @@ import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
-import com.epam.aidial.core.server.validation.CatalogSchemaValidationException;
 import com.epam.aidial.core.server.validation.ValidationUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
@@ -1917,42 +1916,26 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * Collects validation warnings for Model writes. Rebuild invariants abort with HTTP 422 even in
-     * soft mode; cross-reference warnings alone may proceed, recorded in
-     * {@link MergedConfigStore#getInvalidEntities()} until a later write repairs them.
+     * Collects validation warnings for Model writes. Rebuild invariants and catalog-properties
+     * failures abort with HTTP 422 even in soft mode; cross-reference warnings alone may proceed,
+     * recorded in {@link MergedConfigStore#getInvalidEntities()} until a later write repairs them.
      *
      * @see ConfigPostProcessor#validateModelInvariants
      */
     private void checkModel(Model entity) {
-        validateCatalogProperties(entity);
         Config snapshot = mergedConfigStore.get();
         Map<String, Translator> translators = snapshot != null ? snapshot.getTranslators() : Map.of();
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validateModelInvariants(entity, translators, warnings);
+        catalogSchemaService.validate(entity, warnings);
         boolean hardFailure = !warnings.isEmpty();
+        boolean softFailure = snapshot != null && !ConfigPostProcessor.validateCrossReferences(entity, snapshot, warnings);
         UpstreamExtraDataMerger.validateNoOverlap(entity);
-        if (snapshot != null) {
-            ConfigPostProcessor.validateCrossReferences(entity, snapshot, warnings);
+        if (hardFailure || (softFailure && !softValidation)) {
+            rejectWithValidationWarnings(warnings);
         }
-        if (warnings.isEmpty()) {
-            return;
-        }
-        if (softValidation && !hardFailure) {
+        if (softFailure) {
             log.warn("Soft-mode cross-ref warnings for model '{}': {}", path, warnings);
-            return;
-        }
-        rejectWithValidationWarnings(warnings);
-    }
-
-    /**
-     * Structural check for {@code catalog_schema_id}/{@code catalog_properties} on a Model write.
-     * Always enforced, unlike {@link #checkModel}'s cross-reference soft-mode allowance.
-     */
-    private void validateCatalogProperties(Model entity) {
-        try {
-            catalogSchemaService.validate(entity);
-        } catch (CatalogSchemaValidationException e) {
-            throw new HttpException(HttpStatus.BAD_REQUEST, "Catalog properties validation failed: " + e.getMessage(), e);
         }
     }
 

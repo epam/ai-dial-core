@@ -863,4 +863,25 @@ public class ConfigPostProcessorTest {
 
         assertEquals(1, warnings.size(), () -> "override-path warning reported more than once: " + warnings);
     }
+
+    @Test
+    void testValidateCrossReferencesReportsOnlyItsOwnWarnings() {
+        Config config = newMutableConfig();
+        config.getInterceptors().put("known", new Interceptor());
+        Model model = new Model();
+        model.setName("model");
+        model.setInterceptors(List.of("known"));
+
+        List<ValidationWarning> warnings = new ArrayList<>();
+        warnings.add(new ValidationWarning("pricing", "pre-existing hard failure"));
+
+        assertTrue(ConfigPostProcessor.validateCrossReferences(model, config, warnings),
+                () -> "resolved refs must report true regardless of earlier warnings: " + warnings);
+        assertEquals(1, warnings.size());
+
+        model.setInterceptors(List.of("known", "missing"));
+        assertFalse(ConfigPostProcessor.validateCrossReferences(model, config, warnings));
+        assertEquals(2, warnings.size());
+        assertEquals("interceptors[1]", warnings.get(1).getField());
+    }
 }

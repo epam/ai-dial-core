@@ -423,14 +423,16 @@ public final class ConfigPostProcessor {
             return true;
         }
         Map<String, Interceptor> interceptors = config.getInterceptors();
+        boolean resolved = true;
         for (int i = 0; i < refs.size(); i++) {
             String ref = refs.get(i);
             if (ref == null || !interceptors.containsKey(ref)) {
                 warnings.add(new ValidationWarning("interceptors[" + i + "]",
                         messageWithEntityPrefix("Model", model.getName(), "Interceptor '" + ref + "' not found in config")));
+                resolved = false;
             }
         }
-        return warnings.isEmpty();
+        return resolved;
     }
 
     /**
