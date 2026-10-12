@@ -77,7 +77,11 @@ public class ChatCompletionsController extends BaseChatCompletionController {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
         context.getRequest().body()
-                .map(ChatCompletionsController::parseBody)
+                .map(body -> {
+                    context.setRequestBody(body);
+                    context.setRequestBodyTimestamp(System.currentTimeMillis());
+                    return parseBody(body);
+                })
                 .compose(this::dispatch)
                 .onFailure(this::handleRequestBodyError);
         return Future.succeededFuture();
@@ -128,13 +132,8 @@ public class ChatCompletionsController extends BaseChatCompletionController {
     }
 
     private Future<Void> handleInterceptor(int interceptorIndex) {
-        context.getRequest().body()
-                .onSuccess(body -> proxy.getTaskExecutor().submit(() -> {
-                    context.setRequestBody(body);
-                    return new ChatCompletionInterceptorController(proxy, context, interceptorIndex, requestedInterface()).handle();
-                }))
-                .onFailure(this::handleRequestBodyError);
-        return Future.succeededFuture();
+        return new ChatCompletionInterceptorController(proxy, context, interceptorIndex, requestedInterface())
+                .handle().mapEmpty();
     }
 
     private Void setupDeployment(String model) {

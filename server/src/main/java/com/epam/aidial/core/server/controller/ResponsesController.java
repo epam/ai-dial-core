@@ -146,6 +146,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         context.getRequest().body()
                 .map(body -> {
                     context.setRequestBody(body);
+                    context.setRequestBodyTimestamp(System.currentTimeMillis());
                     return parseBody(body);
                 })
                 .compose(this::dispatch)

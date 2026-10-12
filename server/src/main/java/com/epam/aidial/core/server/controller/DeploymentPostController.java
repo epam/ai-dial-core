@@ -207,6 +207,7 @@ public class DeploymentPostController extends BaseChatCompletionController {
             context.getRequest().body()
                     .onSuccess(body -> proxy.getTaskExecutor().submit(() -> {
                         context.setRequestBody(body);
+                        context.setRequestBodyTimestamp(System.currentTimeMillis());
                         return new ChatCompletionInterceptorController(proxy, context, interceptorIndex, requestedInterface()).handle();
                     }))
                     .onFailure(this::handleRequestBodyError);

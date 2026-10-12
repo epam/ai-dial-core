@@ -123,7 +123,6 @@ public class ResponseItemController implements Controller {
         return proxy.getTaskExecutor().submit(this::loadMapping)
                 .compose(this::checkNotDeletingActive)
                 .compose(this::dispatch)
-                .eventually(this::finalizeRequest)
                 .onFailure(this::handleError);
     }
 
@@ -204,9 +203,9 @@ public class ResponseItemController implements Controller {
         context.getRequest().body()
                 .compose(body -> {
                     context.setRequestBody(body);
+                    context.setRequestBodyTimestamp(System.currentTimeMillis());
                     return continuation.get();
                 })
-                .eventually(this::finalizeRequest)
                 .onFailure(this::handleError);
         return Future.succeededFuture();
     }
@@ -216,28 +215,21 @@ public class ResponseItemController implements Controller {
     }
 
     private Future<Void> forwardToUpstream(ResponseMapping mapping, Deployment deployment) {
-        Upstream upstream;
-        String targetUrl;
-        ApiKeyData proxyApiKeyData;
-        try {
-            UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
-                    .get(deployment,
-                            null,
-                            dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES,
-                                    context.getConfig().getTranslators()),
-                            mapping.getUpstreamKey());
-            upstream = upstreamRoute.next();
+        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
+                .get(deployment,
+                        null,
+                        dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES,
+                                context.getConfig().getTranslators()),
+                        mapping.getUpstreamKey());
+        Upstream upstream = upstreamRoute.next();
 
-            targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment,
-                    context.getConfig().getTranslators(), operation.pathMapping, mapping.getUpstreamResponseId(),
-                    context.getRequest().query());
+        String targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment,
+                context.getConfig().getTranslators(), operation.pathMapping, mapping.getUpstreamResponseId(),
+                context.getRequest().query());
 
-            proxyApiKeyData = new ApiKeyData();
-            ApiKeyData.initFromContext(proxyApiKeyData, context);
-            context.setProxyApiKeyData(proxyApiKeyData);
-        } catch (Throwable e) {
-            return Future.failedFuture(e);
-        }
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        ApiKeyData.initFromContext(proxyApiKeyData, context);
+        context.setProxyApiKeyData(proxyApiKeyData);
 
         return proxy.getTaskExecutor().submit(() -> {
             proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
@@ -252,7 +244,8 @@ public class ResponseItemController implements Controller {
                                 return collectAndForwardStreaming(response, mapping);
                             }
                             return collectAndForward(response, mapping);
-                        }));
+                        }))
+                .eventually(this::finalizeRequest);
     }
 
     private Future<Void> collectAndForward(HttpClientResponse proxyResponse, ResponseMapping mapping) {

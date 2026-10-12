@@ -81,8 +81,6 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
 
     @VisibleForTesting
     void handleRequestBody(Buffer requestBody) {
-        context.setRequestBody(requestBody);
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
         try {
             RequestObject request = parseRequest(requestBody);
             if (request != null) {
