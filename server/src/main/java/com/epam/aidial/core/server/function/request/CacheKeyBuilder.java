@@ -32,9 +32,7 @@ public class CacheKeyBuilder {
 
     @SneakyThrows
     public CacheKeyBuilder() {
-        // MD5 has a HotSpot intrinsic on every x86_64 CPU, SHA-1 only on CPUs with SHA extensions (pure Java elsewhere, ~2.5x slower);
-        // the key only routes cache affinity and lives in Redis with a TTL, so changing the algorithm just drops existing entries
-        this.digest = MessageDigest.getInstance("MD5");
+        this.digest = MessageDigest.getInstance("SHA-1");
     }
 
     /**
