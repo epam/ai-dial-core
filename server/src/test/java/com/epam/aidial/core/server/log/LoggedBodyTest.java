@@ -140,6 +140,56 @@ public class LoggedBodyTest {
     }
 
     @Test
+    public void testStringOpenAtTheEndOfAnEarlierEventKeepsTheRestOfTheStream() {
+        String stream = """
+                data: {"choices":[{"index":0,"delta":{"audio":{"data":"UklGRgAA
+
+                data: {"choices":[{"index":0,"delta":{"content":"visible text"}}]}
+
+                data: [DONE]
+
+                """;
+
+        LoggedBody removed = LoggedBody.prepare(Buffer.buffer(stream), CHAT, settings(new JsonObject().put("collectInlineFiles", false)));
+        LoggedBody indexed = LoggedBody.prepare(Buffer.buffer(stream), CHAT, settings(new JsonObject().put("collectInlineFileIndex", true)));
+
+        assertEquals(stream, removed.bytes().toString(StandardCharsets.UTF_8));
+        assertFalse(removed.truncated());
+        assertTrue(removed.files().isEmpty());
+        assertTrue(indexed.files().isEmpty());
+    }
+
+    @Test
+    public void testUtf16BodyIsLoggedAsItIs() {
+        String json = """
+                {"messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"QUJD","format":"wav"}},\
+                {"type":"input_audio","input_audio":{"data":"REVG","format":"wav"}}]}]}""";
+        Buffer body = Buffer.buffer(json.getBytes(StandardCharsets.UTF_16LE));
+
+        LoggedBody removed = LoggedBody.prepare(body, CHAT, settings(new JsonObject().put("collectInlineFiles", false)));
+        LoggedBody indexed = LoggedBody.prepare(body, CHAT, settings(new JsonObject().put("collectInlineFileIndex", true)));
+
+        assertEquals(body, removed.bytes());
+        assertTrue(removed.files().isEmpty());
+        assertTrue(indexed.files().isEmpty());
+    }
+
+    @Test
+    public void testPartialLengthEndsBeforeTheCharCutInHalf() {
+        // the payload is not base64, but it is at a file location: € is E2 82 AC and the cut falls after E2 82
+        String body = """
+                {"messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"BBB€BBB","format":"wav"}}]}]}""";
+        int cut = body.getBytes(StandardCharsets.UTF_8).length - body.substring(body.indexOf('€')).getBytes(StandardCharsets.UTF_8).length + 2;
+
+        LoggedBody logged = LoggedBody.prepare(Buffer.buffer(body), CHAT, settings(new JsonObject().put("collectInlineFileIndex", true)), cut);
+
+        LoggedFile audio = logged.files().get(0);
+        assertEquals(Status.PARTIAL, audio.status());
+        assertEquals(3, audio.length());
+        assertEquals("BBB", slice(logged, audio));
+    }
+
+    @Test
     public void testNullBodyAndUnknownInterface() {
         AnalyticsSettings all = settings(new JsonObject().put("collectInlineFiles", false).put("collectInlineFileIndex", true));
 

@@ -666,6 +666,49 @@ public class GfLogStoreTest {
     }
 
     @Test
+    public void testDefaultsWriteTodaysLine() {
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setPromptTokens(10);
+        tokenUsage.setCompletionTokens(20);
+        tokenUsage.setTotalTokens(30);
+        AnalyticsLogContext context = chatContext()
+                .traceId("trace-1")
+                .spanId("span-1")
+                .parentSpanId("parent-span-1")
+                .project("project-1")
+                .userHash("user-hash")
+                .conversationId("conv-1")
+                .jobTitle("job \"title\"")
+                .deploymentName("gpt-4o")
+                .parentDeployment("app")
+                .executionPath(List.of("app", "gpt-4o"))
+                .requestProtocol("HTTP/1.1")
+                .requestMethod("POST")
+                .requestUri("/openai/deployments/gpt-4o/chat/completions")
+                .requestTimestamp(1_700_000_000_000L)
+                .upstreamEndpoint("https://upstream/v1/chat/completions")
+                .responseStatusCode(200)
+                .tokenUsage(tokenUsage)
+                .operationDurationMs(42)
+                .build();
+
+        // pinned against the line the code before inline files wrote for the same context
+        assertEquals("""
+                {"apiType":"DialOpenAI","chat":{"id":"conv-1"},"project":{"id":"project-1"},\
+                "user":{"id":"user-hash","title":"job \\"title\\""},\
+                "token_usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30},\
+                "deployment":"gpt-4o","parent_deployment":"app","execution_path":["app","gpt-4o"],"operation_duration_ms":42,\
+                "assembled_response":"{\\"choices\\":[{\\"index\\":0,\\"message\\":{\\"role\\":\\"assistant\\",\\"audio\\":{\\"data\\":\\"BBBB\\"}}}]}",\
+                "trace":{"trace_id":"trace-1","core_span_id":"span-1","core_parent_span_id":"parent-span-1"},\
+                "request":{"protocol":"HTTP\\/1.1","method":"POST","uri":"\\/openai\\/deployments\\/gpt-4o\\/chat\\/completions",\
+                "time":"2023-11-14T22:13:20","body":"{\\"messages\\":[{\\"role\\":\\"user\\",\\"content\\":[{\\"type\\":\\"text\\",\\"text\\":\\"hi\\"},\
+                {\\"type\\":\\"image_url\\",\\"image_url\\":{\\"url\\":\\"data:image\\/png;base64,AAAA\\"}}]}]}"},\
+                "response":{"status":"200","upstream_uri":"https:\\/\\/upstream\\/v1\\/chat\\/completions",\
+                "body":"{\\"choices\\":[{\\"index\\":0,\\"message\\":{\\"role\\":\\"assistant\\",\\"audio\\":{\\"data\\":\\"BBBB\\"}}}]}"}}""",
+                logLine(new JsonObject(), context));
+    }
+
+    @Test
     public void testRemovedFilesAreListed() {
         JsonNode line = parse(logLine(new JsonObject().put("collectInlineFiles", false), chatContext().build()));
 

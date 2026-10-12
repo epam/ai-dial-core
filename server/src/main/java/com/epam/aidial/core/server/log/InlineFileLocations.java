@@ -26,7 +26,7 @@ final class InlineFileLocations {
         DATA_URL,
         // the sibling "type" is "base64"
         BASE64_SOURCE,
-        // a data URL, or the sibling "type" is a binary mime type
+        // the sibling "type" is a binary mime type, or it is missing and the value is a data URL
         BINARY_TYPE_OR_DATA_URL
     }
 
@@ -181,7 +181,8 @@ final class InlineFileLocations {
                 if (prefix.indexOf('\\') >= 0) {
                     prefix = unescape(prefix);
                 }
-                if (prefix == null || !prefix.toLowerCase(Locale.ROOT).endsWith(";base64")) {
+                // an escaped comma would end the decoded prefix earlier, so the raw comma must be its first
+                if (prefix == null || prefix.indexOf(',') >= 0 || !prefix.toLowerCase(Locale.ROOT).endsWith(";base64")) {
                     return null;
                 }
                 String mime = prefix.substring(DATA_SCHEME.length, prefix.indexOf(';'));

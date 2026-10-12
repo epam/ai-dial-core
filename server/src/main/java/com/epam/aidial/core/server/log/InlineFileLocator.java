@@ -52,10 +52,12 @@ final class InlineFileLocator {
                 return List.of();
             }
             if (body[first] == '{' || body[first] == '[') {
-                locateJson(body, first, limit, null, locations, files);
+                locateJson(body, first, limit, limit, null, locations, files);
             } else {
                 locateSse(body, limit, locations, files);
             }
+        } catch (NoByteOffsetsException e) {
+            return List.of();
         } catch (Throwable e) {
             // a failure here must not drop the log entry, which GfLogStore.doSave would do
             log.warn("Can't locate inline files", e);
@@ -98,7 +100,7 @@ final class InlineFileLocator {
             }
             if (lineEnd == position) {
                 if (dataLines > 0) {
-                    locateEvent(body, dataLines, dataStart, dataEnd, chunk++, locations, files);
+                    locateEvent(body, dataLines, dataStart, dataEnd, limit, chunk++, locations, files);
                     dataLines = 0;
                 }
             } else if (startsWith(body, position, lineEnd, DATA_FIELD)) {
@@ -112,11 +114,12 @@ final class InlineFileLocator {
             position = next;
         }
         if (dataLines > 0) {
-            locateEvent(body, dataLines, dataStart, dataEnd, chunk, locations, files);
+            locateEvent(body, dataLines, dataStart, dataEnd, limit, chunk, locations, files);
         }
     }
 
-    private static void locateEvent(byte[] body, int dataLines, int start, int end, int chunk, LocationSet locations, List<InlineFile> files) {
+    private static void locateEvent(byte[] body, int dataLines, int start, int end, int limit, int chunk, LocationSet locations,
+                                    List<InlineFile> files) {
         if (dataLines != 1) {
             return;
         }
@@ -124,7 +127,7 @@ final class InlineFileLocator {
             start++;
         }
         if (start < end && (body[start] == '{' || body[start] == '[')) {
-            locateJson(body, start, end, chunk, locations, files);
+            locateJson(body, start, end, limit, chunk, locations, files);
         }
     }
 
@@ -149,15 +152,26 @@ final class InlineFileLocator {
         return true;
     }
 
-    private static void locateJson(byte[] body, int start, int end, @Nullable Integer chunk, LocationSet locations, List<InlineFile> files) {
+    /**
+     * Parses the first root value in {@code [start, end)}; anything after it is not part of the body's JSON.
+     *
+     * @param limit the end of the whole scan: only a string still open there crosses the cut.
+     */
+    private static void locateJson(byte[] body, int start, int end, int limit, @Nullable Integer chunk, LocationSet locations,
+                                   List<InlineFile> files) {
         Deque<Frame> frames = new ArrayDeque<>();
         try (JsonParser parser = FACTORY.createParser(body, start, end - start)) {
             JsonToken token;
             while ((token = parser.nextToken()) != null) {
                 if (token == JsonToken.START_OBJECT) {
                     frames.push(new Frame());
-                } else if (token == JsonToken.END_OBJECT) {
-                    frames.pop().resolve(chunk, files);
+                } else if (token == JsonToken.END_OBJECT || token == JsonToken.END_ARRAY) {
+                    if (token == JsonToken.END_OBJECT) {
+                        frames.pop().resolve(chunk, files);
+                    }
+                    if (parser.getParsingContext().inRoot()) {
+                        break;
+                    }
                 } else if (token == JsonToken.VALUE_STRING && !frames.isEmpty()) {
                     // null for array elements and root values
                     String name = parser.currentName();
@@ -167,7 +181,7 @@ final class InlineFileLocator {
                     if (SIBLINGS.contains(name)) {
                         frames.peek().sibling(name, parser.getText());
                     } else if (locations.names().contains(name)) {
-                        Candidate candidate = candidate(parser, body, start, end, locations);
+                        Candidate candidate = candidate(parser, body, start, end, limit, locations);
                         if (candidate != null) {
                             frames.peek().add(candidate);
                             if (candidate.payloadEnd() < 0) {
@@ -187,16 +201,28 @@ final class InlineFileLocator {
         }
     }
 
+    /**
+     * @return null when the value is not at a location, or its string is still open at an {@code end} before the cut.
+     */
     @Nullable
-    private static Candidate candidate(JsonParser parser, byte[] body, int start, int end, LocationSet locations) {
+    private static Candidate candidate(JsonParser parser, byte[] body, int start, int end, int limit, LocationSet locations) {
         JsonPointer pointer = parser.getParsingContext().pathAsPointer();
         Location location = locations.find(segments(pointer));
         if (location == null) {
             return null;
         }
+        long offset = parser.currentTokenLocation().getByteOffset();
+        if (offset < 0) {
+            // Jackson detected UTF-16 or UTF-32 and reads chars, which have no byte offsets
+            throw new NoByteOffsetsException();
+        }
         // relative to the parsed range, see InlineFileLocatorTest.testJacksonTokenOffsetsAreRelativeToTheParsedRange
-        int valueStart = start + (int) parser.currentTokenLocation().getByteOffset();
+        int valueStart = start + (int) offset;
         int payloadEnd = closingQuote(body, valueStart + 1, end);
+        if (payloadEnd < 0 && end < limit) {
+            // an SSE event ends inside the string: malformed, not cut
+            return null;
+        }
         DataUrl dataUrl = InlineFileLocations.parseDataUrl(body, valueStart + 1, payloadEnd < 0 ? end : payloadEnd);
         return new Candidate(location, valueStart, payloadEnd, pointer.toString(), dataUrl);
     }
@@ -225,6 +251,16 @@ final class InlineFileLocator {
         return -1;
     }
 
+    /**
+     * Abandons the whole body: its files cannot be given as byte positions, so it is logged as it is.
+     */
+    private static final class NoByteOffsetsException extends RuntimeException {
+
+        NoByteOffsetsException() {
+            super(null, null, false, false);
+        }
+    }
+
     private record Candidate(Location location, int valueStart, int payloadEnd, String path, @Nullable DataUrl dataUrl) {
     }
 
@@ -238,12 +274,11 @@ final class InlineFileLocator {
         private List<Candidate> candidates;
 
         void sibling(String name, String value) {
-            if (value.length() <= MAX_SIBLING_LENGTH) {
-                if (siblings == null) {
-                    siblings = new HashMap<>(4);
-                }
-                siblings.put(name, value);
+            if (siblings == null) {
+                siblings = new HashMap<>(4);
             }
+            // a longer value still counts as present, so a data URL beside it is not taken for a typeless attachment
+            siblings.put(name, value.length() <= MAX_SIBLING_LENGTH ? value : "");
         }
 
         void add(Candidate candidate) {
@@ -264,7 +299,7 @@ final class InlineFileLocator {
                     case ALWAYS -> true;
                     case DATA_URL -> dataUrl != null;
                     case BASE64_SOURCE -> "base64".equals(type);
-                    case BINARY_TYPE_OR_DATA_URL -> dataUrl != null || InlineFileLocations.isBinaryType(type);
+                    case BINARY_TYPE_OR_DATA_URL -> type == null ? dataUrl != null : InlineFileLocations.isBinaryType(type);
                 };
                 if (file) {
                     int payloadStart = dataUrl == null ? candidate.valueStart() + 1 : dataUrl.payloadStart();
@@ -281,7 +316,7 @@ final class InlineFileLocator {
             }
             Location location = candidate.location();
             String value = location.mimeSibling() == null ? null : siblingValue(location.mimeSibling());
-            if (value == null) {
+            if (value == null || value.isEmpty()) {
                 return null;
             }
             return location.mimePrefix() == null ? value : location.mimePrefix() + value;

@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.server.log.InlineFileLocations.LocationSet;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.buffer.Buffer;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,6 +18,7 @@ import javax.annotation.Nullable;
  * @param truncated whether the original body was longer than the limit, i.e. whether {@code >>} follows.
  * @param files     the inline files that start before the cut, in document order; empty when the body was not scanned.
  */
+@Slf4j
 record LoggedBody(Buffer bytes, boolean truncated, List<LoggedFile> files) {
 
     // Max allowed size is 4 mb for request/response body
@@ -53,12 +55,18 @@ record LoggedBody(Buffer bytes, boolean truncated, List<LoggedFile> files) {
         if (locations.isEmpty() || !needsScan(settings, truncated)) {
             return asIs(body, truncated, cut);
         }
-        byte[] bytes = body.getBytes(0, cut);
-        List<InlineFile> found = InlineFileLocator.locate(bytes, cut, locations);
-        if (found.isEmpty()) {
+        try {
+            byte[] bytes = body.getBytes(0, cut);
+            List<InlineFile> found = InlineFileLocator.locate(bytes, cut, locations);
+            if (found.isEmpty()) {
+                return asIs(body, truncated, cut);
+            }
+            return removeAndCut(bytes, cut, truncated, found, settings);
+        } catch (RuntimeException e) {
+            // a failure here must not drop the log entry, which GfLogStore.doSave would do
+            log.warn("Can't remove or cut inline files", e);
             return asIs(body, truncated, cut);
         }
-        return removeAndCut(bytes, cut, truncated, found, settings);
     }
 
     private static boolean needsScan(AnalyticsSettings settings, boolean truncated) {
@@ -85,7 +93,7 @@ record LoggedBody(Buffer bytes, boolean truncated, List<LoggedFile> files) {
                     end = file.valueStart();
                     files.add(new LoggedFile(file, Status.EXCLUDED, null, null, null));
                 } else {
-                    int length = cut - file.payloadStart();
+                    int length = completeCharsEnd(bytes, file.payloadStart(), cut) - file.payloadStart();
                     files.add(new LoggedFile(file, Status.PARTIAL, offsets ? file.payloadStart() : null, offsets ? length : null, null));
                 }
                 break;
@@ -101,6 +109,22 @@ record LoggedBody(Buffer bytes, boolean truncated, List<LoggedFile> files) {
         }
         kept.appendBytes(bytes, position, end - position);
         return new LoggedBody(kept, truncated, List.copyOf(files));
+    }
+
+    /**
+     * @return {@code cut}, or the lead byte of a UTF-8 sequence the cut falls inside, but never before {@code from}.
+     */
+    private static int completeCharsEnd(byte[] bytes, int from, int cut) {
+        int lead = cut - 1;
+        while (lead > from && lead > cut - 4 && (bytes[lead] & 0xC0) == 0x80) {
+            lead--;
+        }
+        if (lead < from) {
+            return cut;
+        }
+        int b = bytes[lead] & 0xFF;
+        int sequence = b >= 0xF0 ? 4 : b >= 0xE0 ? 3 : b >= 0xC0 ? 2 : 1;
+        return cut - lead < sequence ? lead : cut;
     }
 
     /**

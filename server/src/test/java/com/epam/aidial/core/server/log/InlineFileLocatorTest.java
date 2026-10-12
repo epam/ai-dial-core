@@ -261,6 +261,76 @@ public class InlineFileLocatorTest {
         assertTrue(files.get(0).crossesCut());
     }
 
+    @Test
+    public void testStringOpenAtTheEndOfAnEarlierEventDoesNotCrossTheCut() {
+        String body = """
+                data: {"choices":[{"index":0,"delta":{"audio":{"data":"UklGRgAA
+
+                data: {"choices":[{"index":0,"delta":{"audio":{"data":"QUJD"}}}]}
+
+                data: [DONE]
+
+                """;
+
+        InlineFile file = single(CHAT, body);
+
+        assertEquals(1, file.chunk());
+        assertEquals("QUJD", payload(body, file));
+    }
+
+    @Test
+    public void testFinalEventWithoutTrailingBlankLine() {
+        String complete = "data: {\"choices\":[{\"index\":0,\"delta\":{\"audio\":{\"data\":\"QUJD\"}}}]}";
+
+        assertEquals("QUJD", payload(complete, single(CHAT, complete)));
+        assertEquals("QUJD", payload(complete + "\n", single(CHAT, complete + "\n")));
+    }
+
+    @Test
+    public void testBodyWithoutByteOffsetsHasNoFiles() {
+        // Jackson reads UTF-16 and UTF-32 through a char reader, which has no byte offsets
+        String body = """
+                {"messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"QUJD","format":"wav"}},\
+                {"type":"input_audio","input_audio":{"data":"REVG","format":"wav"}}]}]}""";
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_16LE);
+
+        assertTrue(InlineFileLocator.locate(bytes, bytes.length, InlineFileLocations.forInterface(CHAT)).isEmpty());
+    }
+
+    @Test
+    public void testDataUrlWithEscapedCommaIsNotFile() {
+        assertTrue(locate(CHAT, """
+                {"messages":[{"role":"user","content":[\
+                {"type":"image_url","image_url":{"url":"data:text/plain\\u002cvisible;base64,SECRET PROMPT TEXT"}}]}]}""").isEmpty());
+    }
+
+    @Test
+    public void testDialAttachmentDataUrlNeedsMissingOrBinaryType() {
+        String body = """
+                {"messages":[{"role":"user","content":"x","custom_content":{"attachments":[\
+                {"type":"text/markdown","data":"data:text/plain;base64,IyBwbGFpbiB0ZXh0"},\
+                {"data":"data:image/png;base64,iVBORw0K"},\
+                {"type":"image/png","data":"data:image/png;base64,iVBORw0K"}]}}]}""";
+
+        List<InlineFile> files = locate(CHAT, body);
+
+        assertEquals(List.of("/messages/0/custom_content/attachments/1/data", "/messages/0/custom_content/attachments/2/data"),
+                files.stream().map(InlineFile::path).toList());
+        assertTrue(files.stream().allMatch(InlineFile::dataUrl));
+        // a type too long to be a mime type is still present, and not binary
+        assertTrue(locate(CHAT, """
+                {"messages":[{"role":"user","content":"x","custom_content":{"attachments":[\
+                {"type":"text/%s","data":"data:text/plain;base64,IyBwbGFpbiB0ZXh0"}]}}]}""".formatted("x".repeat(300))).isEmpty());
+    }
+
+    @Test
+    public void testValuesAfterTheRootValueAreNotRead() {
+        assertTrue(locate(CHAT, """
+                {"model":"x"} {"messages":[{"content":[{"type":"input_audio","input_audio":{"data":"QUJD","format":"wav"}}]}]}""").isEmpty());
+        assertTrue(locate(CHAT, """
+                [] {"messages":[{"content":[{"type":"input_audio","input_audio":{"data":"QUJD","format":"wav"}}]}]}""").isEmpty());
+    }
+
     static List<InlineFile> locate(InterfaceType type, String body) {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         return InlineFileLocator.locate(bytes, bytes.length, InlineFileLocations.forInterface(type));

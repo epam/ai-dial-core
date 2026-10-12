@@ -85,6 +85,12 @@ public class InlineFileLocationsTest {
     }
 
     @Test
+    public void testEscapedCommaBeforeTheRawCommaIsNotDataUrl() {
+        // decoded: data:text/plain,visible;base64,SECRET PROMPT TEXT - a text data URL
+        assertNull(dataUrl("data:text/plain\\u002cvisible;base64,SECRET PROMPT TEXT"));
+    }
+
+    @Test
     public void testDataUrlPrefixMustEndBeforeTheGivenEnd() {
         byte[] bytes = "\"data:image/png;base64,AAAA\"".getBytes(StandardCharsets.UTF_8);
 
