@@ -775,16 +775,9 @@ public class ConfigPostProcessorTest {
     // next rebuild would reject.
 
     /**
-     * Differential guard: the abort-mode rebuild and {@code validateModelInvariants} must report
-     * byte-identical warnings for the same model. A validator added inline to
-     * {@link ConfigPostProcessor#processModels} instead of to the shared method makes the rebuild's
-     * list longer than the pre-write one and fails here — which is the drift that let a model with
-     * an unserved interface reach the blob store.
-     *
-     * <p>Scope, so the guarantee isn't overstated: this catches a new rebuild-only validator only
-     * if {@code maximallyInvalidModel} trips it. Extend that fixture when adding a rule. The two
-     * config-level checks the rebuild also runs — deployment-id uniqueness and (skip-mode only)
-     * cross-references — are deliberately outside the set and so outside this comparison.
+     * The abort-mode rebuild and {@code validateModelInvariants} must report identical warnings,
+     * so a validator added only to {@link ConfigPostProcessor#processModels} fails here — provided
+     * {@code maximallyInvalidModel} trips it; extend that fixture when adding a rule.
      */
     @Test
     void testValidateModelInvariantsReportsExactlyWhatTheRebuildReports() {
