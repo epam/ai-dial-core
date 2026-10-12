@@ -10,6 +10,7 @@ import com.fasterxml.jackson.core.JsonToken;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -31,6 +32,7 @@ final class InlineFileLocator {
     private static final Set<String> SIBLINGS = Set.of("type", "media_type", "format");
     // longer values are never a mime type or a source type
     private static final int MAX_SIBLING_LENGTH = 256;
+    private static final byte[] DATA_FIELD = "data:".getBytes(StandardCharsets.US_ASCII);
 
     private InlineFileLocator() {
     }
@@ -51,6 +53,8 @@ final class InlineFileLocator {
             }
             if (body[first] == '{' || body[first] == '[') {
                 locateJson(body, first, limit, null, locations, files);
+            } else {
+                locateSse(body, limit, locations, files);
             }
         } catch (Throwable e) {
             // a failure here must not drop the log entry, which GfLogStore.doSave would do
@@ -73,6 +77,76 @@ final class InlineFileLocator {
             }
         }
         return -1;
+    }
+
+    /**
+     * Parses each event on its own. An event whose data spans several {@code data:} lines is skipped: its data is not
+     * contiguous in the body, so no offset could point into it.
+     */
+    private static void locateSse(byte[] body, int limit, LocationSet locations, List<InlineFile> files) {
+        int chunk = 0;
+        int dataLines = 0;
+        int dataStart = 0;
+        int dataEnd = 0;
+        int position = 0;
+        while (position < limit) {
+            int newline = indexOf(body, (byte) '\n', position, limit);
+            int lineEnd = newline < 0 ? limit : newline;
+            int next = newline < 0 ? limit : newline + 1;
+            if (lineEnd > position && body[lineEnd - 1] == '\r') {
+                lineEnd--;
+            }
+            if (lineEnd == position) {
+                if (dataLines > 0) {
+                    locateEvent(body, dataLines, dataStart, dataEnd, chunk++, locations, files);
+                    dataLines = 0;
+                }
+            } else if (startsWith(body, position, lineEnd, DATA_FIELD)) {
+                dataLines++;
+                dataStart = position + DATA_FIELD.length;
+                if (dataStart < lineEnd && body[dataStart] == ' ') {
+                    dataStart++;
+                }
+                dataEnd = lineEnd;
+            }
+            position = next;
+        }
+        if (dataLines > 0) {
+            locateEvent(body, dataLines, dataStart, dataEnd, chunk, locations, files);
+        }
+    }
+
+    private static void locateEvent(byte[] body, int dataLines, int start, int end, int chunk, LocationSet locations, List<InlineFile> files) {
+        if (dataLines != 1) {
+            return;
+        }
+        while (start < end && body[start] == ' ') {
+            start++;
+        }
+        if (start < end && (body[start] == '{' || body[start] == '[')) {
+            locateJson(body, start, end, chunk, locations, files);
+        }
+    }
+
+    private static int indexOf(byte[] body, byte b, int from, int to) {
+        for (int i = from; i < to; i++) {
+            if (body[i] == b) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean startsWith(byte[] body, int from, int to, byte[] prefix) {
+        if (to - from < prefix.length) {
+            return false;
+        }
+        for (int i = 0; i < prefix.length; i++) {
+            if (body[from + i] != prefix[i]) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static void locateJson(byte[] body, int start, int end, @Nullable Integer chunk, LocationSet locations, List<InlineFile> files) {

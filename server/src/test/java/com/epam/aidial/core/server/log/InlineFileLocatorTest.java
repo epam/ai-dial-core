@@ -181,6 +181,86 @@ public class InlineFileLocatorTest {
         assertEquals("QUJD", payload(body, single(CHAT, body)));
     }
 
+    @Test
+    public void testChatCompletionsChunks() {
+        String body = """
+                data: {"choices":[{"index":0,"delta":{"content":"Hi"}}]}
+
+                data: {"choices":[{"index":0,"delta":{"audio":{"data":"UklGRg=="}}}]}
+
+                data: [DONE]
+
+                """;
+
+        InlineFile file = single(CHAT, body);
+
+        assertEquals(1, file.chunk());
+        assertEquals("/choices/0/delta/audio/data", file.path());
+        assertEquals("UklGRg==", payload(body, file));
+        assertEquals('"', body.getBytes(StandardCharsets.UTF_8)[file.valueStart()]);
+    }
+
+    @Test
+    public void testEventLinesCommentsCrlfAndDataWithoutSpace() {
+        String body = "event: response.created\r\nid: 1\r\ndata: {\"type\":\"response.created\"}\r\n\r\n"
+                + ": keep-alive\r\n\r\n"
+                + "event: response.output_item.done\r\ndata:{\"type\":\"response.output_item.done\","
+                + "\"item\":{\"type\":\"image_generation_call\",\"result\":\"iVBORw0K\"}}\r\n\r\n";
+
+        InlineFile file = single(InterfaceType.OPENAI_RESPONSES, body);
+
+        assertEquals(1, file.chunk());
+        assertEquals("/item/result", file.path());
+        assertEquals("iVBORw0K", payload(body, file));
+    }
+
+    @Test
+    public void testNonJsonDataCountsAsChunk() {
+        String body = """
+                data: hello
+
+                data: [DONE]
+
+                data: {"type":"response.image_generation_call.partial_image","partial_image_b64":"QUJD"}
+
+                """;
+
+        assertEquals(2, single(InterfaceType.OPENAI_RESPONSES, body).chunk());
+    }
+
+    @Test
+    public void testMultiLineDataEventsAreSkipped() {
+        String body = """
+                data: {"partial_image_b64":
+                data: "QUJD"}
+
+                data: {"partial_image_b64":"REVG"}
+
+                """;
+
+        InlineFile file = single(InterfaceType.OPENAI_RESPONSES, body);
+
+        assertEquals(1, file.chunk());
+        assertEquals("REVG", payload(body, file));
+    }
+
+    @Test
+    public void testCutInsideDataLine() {
+        String body = """
+                data: {"choices":[{"index":0,"delta":{"content":"Hi"}}]}
+
+                data: {"choices":[{"index":0,"delta":{"audio":{"data":"UklGRgAAAAAAAAAA"}}}]}
+
+                """;
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+
+        List<InlineFile> files = InlineFileLocator.locate(bytes, body.indexOf("UklGRg") + 4, InlineFileLocations.forInterface(CHAT));
+
+        assertEquals(1, files.size());
+        assertEquals(1, files.get(0).chunk());
+        assertTrue(files.get(0).crossesCut());
+    }
+
     static List<InlineFile> locate(InterfaceType type, String body) {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         return InlineFileLocator.locate(bytes, bytes.length, InlineFileLocations.forInterface(type));
