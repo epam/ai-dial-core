@@ -15,9 +15,9 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
+import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
-import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -85,7 +85,7 @@ public class ChatCompletionsController extends BaseChatCompletionController {
 
     private static ChatCompletionRequest parseBody(Buffer body) {
         try {
-            return new ChatCompletionRequest(ProxyUtil.parseObject(body));
+            return new ChatCompletionRequest(ReceivedBody.parse(body));
         } catch (IOException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
         }

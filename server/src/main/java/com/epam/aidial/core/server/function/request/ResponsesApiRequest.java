@@ -3,43 +3,29 @@ package com.epam.aidial.core.server.function.request;
 import com.epam.aidial.core.server.data.cache.CachePrefixPath;
 import com.epam.aidial.core.server.util.ChatUtil;
 import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
-import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import javax.annotation.Nullable;
 
 @Slf4j
-@RequiredArgsConstructor
-public class ResponsesApiRequest implements RequestObject {
-    private final ObjectNode tree;
-
+public class ResponsesApiRequest extends JsonBodyRequest {
     @Nullable
     @JsonIgnore
     private String encryptedUpstreamId;
 
-    @Override
-    public String getModel() {
-        return tree.path("model").asText();
+    public ResponsesApiRequest(ReceivedBody body) {
+        super(body);
     }
 
-    @Override
-    public void setModel(String model) {
-        tree.put("model", model);
-    }
-
-    @Override
-    public boolean isStreaming() {
-        return tree.path("stream").asBoolean(false);
+    public ResponsesApiRequest(ObjectNode tree) {
+        this(ReceivedBody.of(tree));
     }
 
     @Override
@@ -51,11 +37,6 @@ public class ResponsesApiRequest implements RequestObject {
                 "$.input[?(@.type == 'custom_tool_call_output' || @.type == 'function_call_output')].output[?(@.type == 'input_file')].file_url",
                 "$.input[?(@.type == 'computer_call_output')].output.image_url",
                 "$.tools[?(@.type == 'image_generation')].input_image_mask.image_url"));
-    }
-
-    @Override
-    public Set<String> collectAppAttachments(List<String> paths) {
-        return ChatUtil.collectAttachments(tree, paths);
     }
 
     /**
@@ -88,21 +69,6 @@ public class ResponsesApiRequest implements RequestObject {
     }
 
     @Override
-    public void clearInterceptorSettings() {
-        ChatUtil.removeInterceptorConfiguration(tree);
-    }
-
-    @Override
-    public void applyDefaults(Map<String, Object> defaults) {
-        ChatUtil.applyDefaults(tree, defaults);
-    }
-
-    @Override
-    public byte[] serialize() throws JsonProcessingException {
-        return ProxyUtil.MAPPER.writeValueAsBytes(tree);
-    }
-
-    @Override
     public boolean isStore() {
         return tree.path("store").asBoolean(true);
     }
@@ -130,8 +96,14 @@ public class ResponsesApiRequest implements RequestObject {
      * @return unique resolved affinities; empty if {@code input} is missing or carries no wrapped item
      */
     public List<EncryptedContentAffinityUtil.ResolvedAffinity> resolveAndUnwrapEncryptedContentAffinity() {
-        return tree.get("input") instanceof ArrayNode input
-                ? EncryptedContentAffinityUtil.resolveAndUnwrap(input)
-                : List.of();
+        if (!(tree.get("input") instanceof ArrayNode input)) {
+            return List.of();
+        }
+        List<EncryptedContentAffinityUtil.ResolvedAffinity> resolved = EncryptedContentAffinityUtil.resolveAndUnwrap(input);
+        // an item is unwrapped exactly when it resolves to an affinity
+        if (resolved.stream().anyMatch(affinity -> !affinity.equals(EncryptedContentAffinityUtil.ResolvedAffinity.EMPTY))) {
+            treeChanged();
+        }
+        return resolved;
     }
 }

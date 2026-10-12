@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.function.request;
 
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.json.JsonWriteFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectWriter;
@@ -13,6 +14,8 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Shared rolling-hash builder for upstream cache keys, used by all {@link RequestObject} implementations.
@@ -23,16 +26,20 @@ import java.util.List;
  */
 public class CacheKeyBuilder {
 
-    // the UTF-8 generator escapes a surrogate pair (e.g. an emoji) unless told to combine it into 4 bytes, as String.getBytes does
+    // sorts the properties of every object, nested ones included; the UTF-8 generator escapes a surrogate pair
+    // (e.g. an emoji) unless told to combine it into 4 bytes, as String.getBytes does; the stream is reused, so not closed
     private static final ObjectWriter SORTED_WRITER = ProxyUtil.MAPPER.writer()
             .with(JsonNodeFeature.WRITE_PROPERTIES_SORTED)
-            .with(JsonWriteFeature.COMBINE_UNICODE_SURROGATES_IN_UTF8);
+            .with(JsonWriteFeature.COMBINE_UNICODE_SURROGATES_IN_UTF8)
+            .without(JsonGenerator.Feature.AUTO_CLOSE_TARGET);
 
     private final MessageDigest digest;
+    private final OutputStream digestStream;
 
     @SneakyThrows
     public CacheKeyBuilder() {
         this.digest = MessageDigest.getInstance("SHA-1");
+        this.digestStream = new DigestOutputStream(OutputStream.nullOutputStream(), digest);
     }
 
     /**
@@ -43,7 +50,7 @@ public class CacheKeyBuilder {
     public void update(JsonNode node) {
         // the same bytes as the sorted node's toString(), written straight into the digest without copying the node;
         // only a lone surrogate differs: it is escaped, where String.getBytes wrote '?'
-        SORTED_WRITER.writeValue(new DigestOutputStream(OutputStream.nullOutputStream(), digest), node);
+        SORTED_WRITER.writeValue(digestStream, node);
     }
 
     /**
@@ -71,5 +78,15 @@ public class CacheKeyBuilder {
             return result;
         }
         return List.of(node);
+    }
+
+    /**
+     * The object's own properties sorted by name, for a caller that skips some of them. The values are not copied:
+     * {@link #update} sorts their nested properties as it writes them.
+     */
+    public static Map<String, JsonNode> sortedProperties(JsonNode object) {
+        Map<String, JsonNode> propertiesByName = new TreeMap<>();
+        object.properties().forEach(property -> propertiesByName.put(property.getKey(), property.getValue()));
+        return propertiesByName;
     }
 }

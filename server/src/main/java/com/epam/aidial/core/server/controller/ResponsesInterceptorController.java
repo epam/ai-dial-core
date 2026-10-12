@@ -11,10 +11,10 @@ import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
+import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
-import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpServerRequest;
@@ -49,7 +49,7 @@ public class ResponsesInterceptorController extends BaseInterceptorController {
 
     @Override
     protected RequestObject parseRequest(Buffer body) throws IOException {
-        return pathMapping == null ? new ResponsesApiRequest(ProxyUtil.parseObject(body)) : null;
+        return pathMapping == null ? new ResponsesApiRequest(ReceivedBody.parse(body)) : null;
     }
 
     // an interceptor speaks the DIAL Responses API, so an item hop renders {id} with the dial response id

@@ -29,6 +29,7 @@ import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.enhancement.ResolveEncryptedContentAffinityFn;
+import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
@@ -227,7 +228,8 @@ public class ResponsesController extends BaseDeploymentPostController {
     private ResponsesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
-            ObjectNode tree = ProxyUtil.parseObject(body);
+            ReceivedBody received = ReceivedBody.parse(body);
+            ObjectNode tree = received.tree();
             if (tree.has("previous_response_id")) {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "previous_response_id is not supported");
             }
@@ -235,7 +237,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "conversation is not supported");
             }
             GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.OPENAI_RESPONSES, tree);
-            return new ResponsesApiRequest(tree);
+            return new ResponsesApiRequest(received);
         } catch (IOException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
         }

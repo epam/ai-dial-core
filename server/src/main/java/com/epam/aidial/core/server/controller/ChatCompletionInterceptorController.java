@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachm
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
+import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -44,7 +45,7 @@ public class ChatCompletionInterceptorController extends BaseInterceptorControll
 
     @Override
     protected RequestObject parseRequest(Buffer body) throws IOException {
-        return new ChatCompletionRequest(ProxyUtil.parseObject(body));
+        return new ChatCompletionRequest(ReceivedBody.parse(body));
     }
 
     @Override

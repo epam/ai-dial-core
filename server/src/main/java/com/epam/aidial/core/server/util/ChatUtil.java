@@ -80,11 +80,16 @@ public class ChatUtil {
         return removed;
     }
 
-    public void applyDefaults(ObjectNode node, Map<String, Object> defaults) {
+    /**
+     * @return whether the node changed
+     */
+    public boolean applyDefaults(ObjectNode node, Map<String, Object> defaults) {
+        boolean changed = false;
         for (Map.Entry<String, Object> e : defaults.entrySet()) {
             String key = e.getKey();
             JsonNode defaultValue = ProxyUtil.MAPPER.convertValue(e.getValue(), JsonNode.class);
-            JsonUtil.applyDefault(node, key, defaultValue);
+            changed |= JsonUtil.applyDefault(node, key, defaultValue);
         }
+        return changed;
     }
 }
