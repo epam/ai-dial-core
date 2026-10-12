@@ -12,7 +12,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Log thread throughput per settings combination: {@code AIDIAL_BENCHMARK=true ./gradlew :server:test --tests "*GfLogStoreBenchmarkTest" -i}.
+ * Log thread throughput per settings combination. Run with
+ * {@code AIDIAL_BENCHMARK=true ./gradlew :server:cleanTest :server:test --tests "*GfLogStoreBenchmarkTest" -i}.
+ * {@code cleanTest} is needed because Gradle caches the task (the variable is not an input); {@code -i} shows the printed table.
  */
 @EnabledIfEnvironmentVariable(named = "AIDIAL_BENCHMARK", matches = "true")
 public class GfLogStoreBenchmarkTest {

@@ -199,7 +199,7 @@ Each `inline_files` entry:
 
 Without `collectInlineFileIndex`, only `excluded` files are listed. The array is omitted when it would be empty.
 
-Scanning runs on the analytics log thread, not on the request path. Measured per entry on a developer laptop against the default settings: a 2 MB image request takes 41% longer with `collectInlineFileIndex=true` (23.8 ms against 17.0 ms) and 58% less with `collectInlineFiles=false` (7.2 ms), and a 40 MB multi-file request takes at most 35.1 ms with the index on (6% over the 33.1 ms default), since only its first 4 MB is read.
+Scanning runs on the analytics log thread, not on the request path. Measured per entry on a developer laptop against the default settings, with figures that vary from run to run: a 2 MB image request takes roughly 20-40% more with `collectInlineFileIndex=true` and about 55% less with `collectInlineFiles=false`, and a 40 MB multi-file request takes roughly 5-30% more with the index on. Cost follows the bytes actually logged, which are capped at the first 4 MB of each body, so a 40 MB request costs about what a 4 MB one does.
 
 <details> 
 <summary><b>Identity Providers Configurations</b></summary>
