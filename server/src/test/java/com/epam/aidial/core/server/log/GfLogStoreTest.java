@@ -104,6 +104,37 @@ public class GfLogStoreTest {
         assertDoesNotThrow(() -> ProxyUtil.MAPPER.readValue("\"" + actual + "\"", String.class));
     }
 
+    @Test
+    public void testAppendBodyEscapesLikeAppend() {
+        StringBuilder body = new StringBuilder("{\"text\":\"");
+        for (int i = 0; i < 128; i++) {
+            body.append((char) i);
+        }
+        body.append("é → 😀 \\/\"}");
+        assertAppendBodyMatchesAppend(body.toString());
+    }
+
+    @Test
+    public void testAppendBodyGrowsForDenseEscapes() {
+        // every byte grows two- or sixfold, past the initial capacity of the reused buffer
+        assertAppendBodyMatchesAppend("\"".repeat(10_000) + "\u0001".repeat(1_000));
+    }
+
+    private static void assertAppendBodyMatchesAppend(String body) {
+        StringBuilder expected = new StringBuilder();
+        GfLogStore.append(capturingEntry(expected), body, true);
+
+        StringBuilder actual = new StringBuilder();
+        GfLogStore store = new GfLogStore(settings(false));
+        store.appendBody(capturingEntry(actual), Buffer.buffer(body));
+        assertEquals(expected.toString(), actual.toString());
+
+        StringBuilder again = new StringBuilder();
+        store.appendBody(capturingEntry(again), Buffer.buffer(body));
+        assertEquals(expected.toString(), again.toString());
+        assertDoesNotThrow(() -> ProxyUtil.MAPPER.readValue("\"" + actual + "\"", String.class));
+    }
+
     @SneakyThrows
     @Test
     public void testAppendClaims() {

@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -45,16 +46,23 @@ public class GfLogStore implements LogStore {
     private static final int MAX_CLAIM_VALUE_LENGTH = 4 * 1024;
 
     private static final String[] CONTROL_SYMBOLS = new String[0x1F + 1];
+    // the char that follows the backslash for each ASCII byte, 0 when the byte needs no escaping
+    private static final byte[] ASCII_ESCAPES = new byte[0x80];
 
     static {
         for (int i = 0; i < CONTROL_SYMBOLS.length; i++) {
             String s = String.format("%04x", i);
             CONTROL_SYMBOLS[i] = s.toUpperCase();
         }
+        for (int i = 0; i < ASCII_ESCAPES.length; i++) {
+            ASCII_ESCAPES[i] = (byte) escape((char) i);
+        }
     }
 
     private final ExecutorService executor;
     private final AnalyticsSettings settings;
+    // the escaped body, reused across entries; only the executor thread writes bodies
+    private byte[] escapedBody = new byte[0];
 
     public GfLogStore(AnalyticsSettings settings) {
         this.settings = settings;
@@ -435,7 +443,8 @@ public class GfLogStore implements LogStore {
         return value.substring(0, end);
     }
 
-    private static void appendBody(LogEntry entry, Buffer buffer) {
+    @VisibleForTesting
+    void appendBody(LogEntry entry, Buffer buffer) {
         if (buffer == null) {
             return;
         }
@@ -443,13 +452,50 @@ public class GfLogStore implements LogStore {
         if (largeBuffer) {
             buffer = buffer.slice(0, MAX_BODY_SIZE_BYTES);
         }
-        byte[] bytes = buffer.getBytes();
-        String chars = new String(bytes, StandardCharsets.UTF_8); // not efficient, but ok for now
-        append(entry, chars, true);
+        int length = escapeUtf8(buffer.getBytes());
+        // one append of the whole body: gflog then walks its chars once, where escaping char by char made an append per run.
+        // A byte append in gflog would also save the decode here and the re-encode there; gflog 3.0.6 has none.
+        entry.append(new String(escapedBody, 0, length, StandardCharsets.UTF_8));
         if (largeBuffer) {
             // append a special marker that entry is cut off due to its large size
             append(entry, ">>", false);
         }
+    }
+
+    /**
+     * Escapes the body into {@link #escapedBody} as {@link #append(LogEntry, String, boolean)} escapes chars, before it is
+     * decoded: only ASCII needs escaping, and no byte of a multi-byte UTF-8 sequence is ASCII.
+     *
+     * @return the escaped length
+     */
+    private int escapeUtf8(byte[] bytes) {
+        byte[] escaped = escapedBody;
+        if (escaped.length < bytes.length) {
+            escaped = escapedBody = new byte[bytes.length + bytes.length / 4 + 64];
+        }
+        int j = 0;
+        for (int i = 0; i < bytes.length; i++) {
+            byte b = bytes[i];
+            byte e = b < 0 ? 0 : ASCII_ESCAPES[b];
+            if (e == 0) {
+                escaped[j++] = b;
+                continue;
+            }
+            int remaining = bytes.length - i;
+            if (escaped.length - j < 6 + remaining) {
+                // room for this escape and for every remaining byte, so plain bytes need no check
+                escaped = escapedBody = Arrays.copyOf(escaped, Math.max(escaped.length * 2, j + 6 + remaining));
+            }
+            escaped[j++] = '\\';
+            escaped[j++] = e;
+            if (e == 'u') {
+                String hex = CONTROL_SYMBOLS[b];
+                for (int k = 0; k < hex.length(); k++) {
+                    escaped[j++] = (byte) hex.charAt(k);
+                }
+            }
+        }
+        return j;
     }
 
     private static char escape(char c) {
