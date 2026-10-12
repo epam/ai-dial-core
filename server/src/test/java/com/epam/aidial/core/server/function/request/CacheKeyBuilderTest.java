@@ -28,4 +28,10 @@ class CacheKeyBuilderTest {
         assertEquals(expected, builder.buildKey("p", false).hash());
         assertEquals(ProxyUtil.MAPPER.readTree(json).toString(), node.toString());
     }
+
+    @Test
+    void testBuildKey_isLowercaseSha1Hex() {
+        // pins the persisted key format: changing it orphans every upstream cache entry in Redis
+        assertEquals("da39a3ee5e6b4b0d3255bfef95601890afd80709", new CacheKeyBuilder().buildKey("p", false).hash());
+    }
 }

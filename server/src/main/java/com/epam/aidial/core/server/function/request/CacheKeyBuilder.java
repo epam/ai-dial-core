@@ -11,6 +11,7 @@ import java.io.OutputStream;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 
 /**
@@ -52,7 +53,7 @@ public class CacheKeyBuilder {
     @SneakyThrows
     public CacheKey buildKey(String path, boolean hasBreakpoint) {
         MessageDigest snapshot = (MessageDigest) digest.clone();
-        return new CacheKey(path, toHex(snapshot.digest()), hasBreakpoint);
+        return new CacheKey(path, HexFormat.of().formatHex(snapshot.digest()), hasBreakpoint);
     }
 
     /**
@@ -70,13 +71,5 @@ public class CacheKeyBuilder {
             return result;
         }
         return List.of(node);
-    }
-
-    private static String toHex(byte[] bytes) {
-        StringBuilder hex = new StringBuilder();
-        for (byte b : bytes) {
-            hex.append(String.format("%02x", b));
-        }
-        return hex.toString();
     }
 }
