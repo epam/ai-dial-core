@@ -36,7 +36,6 @@ import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.config.ConfigManifestSupport.ParsedName;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
-import com.epam.aidial.core.server.validation.CatalogSchemaValidationException;
 import com.epam.aidial.core.server.validation.ValidationUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -271,20 +270,13 @@ public class ConfigApplyService {
 
     private EntityResult applyModel(Model model, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {
         List<ValidationWarning> warnings = new ArrayList<>();
-        ConfigPostProcessor.validateOverridePaths(model, warnings);
-        boolean invalidOverridePaths = !warnings.isEmpty();
-        ConfigPostProcessor.validatePricing(model, warnings);
-        ConfigPostProcessor.validateUpstreamInterfaces(model, warnings);
-        ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
+        ConfigPostProcessor.validateModelInvariants(model, scratch.getTranslators(), warnings);
+        catalogSchemaService.validate(model, warnings);
+        boolean hardFailure = !warnings.isEmpty();
+        boolean softFailure = !ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
         UpstreamExtraDataMerger.validateNoOverlap(model);
-        boolean invalid = !warnings.isEmpty();
-        if (invalidOverridePaths || (invalid && !softValidation)) {
+        if (hardFailure || (softFailure && !softValidation)) {
             return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
-        }
-        try {
-            catalogSchemaService.validate(model);
-        } catch (CatalogSchemaValidationException e) {
-            return new EntityResult(id, AdminApplyStatus.FAILED, "Catalog properties validation failed: " + e.getMessage());
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.MODEL, parsed.bucket(), parsed.location(), parsed.name());
@@ -298,7 +290,7 @@ public class ConfigApplyService {
         // decrypt-in-place so partial-update receives plaintext upstream secrets.
         secretFieldProcessor.decryptFields(model, descriptor);
         pending.add(new EntityChange(ResourceTypes.MODEL, MergedConfigStore.resolveMapKeyFor(descriptor), model));
-        return new EntityResult(id, invalid ? AdminApplyStatus.APPLIED_INVALID : AdminApplyStatus.APPLIED, null);
+        return new EntityResult(id, softFailure ? AdminApplyStatus.APPLIED_INVALID : AdminApplyStatus.APPLIED, null);
     }
 
     private EntityResult applyApplication(Application application, String id, ParsedName parsed,
