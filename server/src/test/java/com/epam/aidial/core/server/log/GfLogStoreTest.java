@@ -610,6 +610,34 @@ public class GfLogStoreTest {
         assertEquals(1234L, duration.asLong());
     }
 
+    @SneakyThrows
+    @Test
+    public void testAssembledResponseIsOmittedWithoutAssembly() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getResponseBody()).thenReturn(Buffer.buffer("{\"id\":\"chatcmpl-1\"}"));
+
+        StringBuilder buffer = new StringBuilder();
+        new GfLogStore(settings(false)).append(context, capturingEntry(buffer));
+
+        JsonNode log = ProxyUtil.MAPPER.readTree(buffer.toString());
+        assertFalse(log.has("assembled_response"));
+        assertEquals("{\"id\":\"chatcmpl-1\"}", log.get("response").get("body").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAssembledResponseIsWrittenForAssembledStream() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getResponseBody()).thenReturn(Buffer.buffer("data: {\"id\":\"chatcmpl-1\"}\n\ndata: [DONE]\n\n"));
+        when(context.getAssembledStreamingResponse()).thenReturn("{\"id\":\"chatcmpl-1\"}");
+
+        StringBuilder buffer = new StringBuilder();
+        new GfLogStore(settings(false)).append(context, capturingEntry(buffer));
+
+        JsonNode log = ProxyUtil.MAPPER.readTree(buffer.toString());
+        assertEquals("{\"id\":\"chatcmpl-1\"}", log.get("assembled_response").asText());
+    }
+
     @Test
     public void testOperationDurationFromBackgroundJobRecord() {
         BackgroundJobRecord record = BackgroundJobRecord.builder()
