@@ -478,16 +478,21 @@ public final class MergedConfigStore implements ConfigStore {
 
     /**
      * Decrypts a managed entity read from blob storage before it enters the merged {@link Config}.
-     * {@code APPLICATION}/{@code TOOL_SET} secrets are not {@code @EncryptedField}-annotated — they
-     * are encrypted per-resource by their own write paths ({@link ExternalServiceService}/
-     * {@link ResourceAuthSettingsEncryptionService}), keyed by the entity's own bucket — so they
-     * must be decrypted the same way here rather than via {@link SecretFieldProcessor}, which is a
-     * no-op for these two types (no {@code @EncryptedField} fields). Every other managed type keeps
-     * going through {@link SecretFieldProcessor}.
+     * {@code TOOL_SET} auth secrets are not {@code @EncryptedField}-annotated — they are encrypted
+     * per-resource by {@link ResourceAuthSettingsEncryptionService}, keyed by the entity's own
+     * bucket — so they must be decrypted that way rather than via {@link SecretFieldProcessor}.
+     * {@code APPLICATION} carries both kinds: inline external-service credentials (decrypted via
+     * {@link ExternalServiceService}) and {@code routes[].upstreams[].key}/{@code secretExtraData},
+     * which ARE {@code @EncryptedField}-annotated (transitively, via {@code Route.upstreams}) and
+     * must also go through {@link SecretFieldProcessor}. Every other managed type goes through
+     * {@link SecretFieldProcessor} only.
      */
     private void decryptManagedEntity(ResourceTypes type, Object entity, ResourceDescriptor descriptor) {
         switch (type) {
-            case APPLICATION -> externalServiceService.decryptSecrets(descriptor, (Application) entity);
+            case APPLICATION -> {
+                externalServiceService.decryptSecrets(descriptor, (Application) entity);
+                secretFieldProcessor.decryptFields(entity, descriptor);
+            }
             case TOOL_SET -> resourceAuthSettingsEncryptionService.decrypt(descriptor.getUrl(),
                     new BucketInfo(descriptor.getBucketName(), descriptor.getBucketLocation()),
                     ((ToolSet) entity).getAuthSettings());
