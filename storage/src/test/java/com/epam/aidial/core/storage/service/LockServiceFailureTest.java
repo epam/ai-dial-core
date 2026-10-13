@@ -14,6 +14,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -63,5 +64,25 @@ class LockServiceFailureTest {
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    /**
+     * The lock script returns the remaining ttl in microseconds while the waiter parks in nanoseconds.
+     * Reading the ttl as nanoseconds capped every park at a few microseconds, so a waiter on a lock
+     * with under 128 ms left spun on Redis until it expired.
+     */
+    @Test
+    void testParkIntervalConvertsTtlFromMicroseconds() {
+        long min = TimeUnit.MILLISECONDS.toNanos(1);
+        long max = TimeUnit.MILLISECONDS.toNanos(128);
+
+        // doubles while the lock has plenty of ttl left
+        assertEquals(2 * min, LockService.nextParkInterval(min, TimeUnit.SECONDS.toMicros(300)));
+        // never exceeds the max
+        assertEquals(max, LockService.nextParkInterval(max, TimeUnit.SECONDS.toMicros(300)));
+        // capped by the remaining ttl: 50 ms left -> park ~50 ms, not ~50 us
+        assertEquals(TimeUnit.MICROSECONDS.toNanos(50_001), LockService.nextParkInterval(max, TimeUnit.MILLISECONDS.toMicros(50)));
+        // toNanos() saturates instead of overflowing
+        assertEquals(max, LockService.nextParkInterval(max, Long.MAX_VALUE / 2));
     }
 }

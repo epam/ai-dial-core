@@ -84,7 +84,7 @@ public class LockService {
             // it seems the lock has been acquired by another instance of Core
             while (ttl > 0) {
                 LockSupport.parkNanos(interval);
-                interval = Math.min(2 * interval, Math.min(WAIT_MAX, ttl + 1));
+                interval = nextParkInterval(interval, ttl);
                 ttl = tryLock(id, owner);
             }
             acquired = System.nanoTime();
@@ -113,6 +113,11 @@ public class LockService {
                 .tag("phase", phase)
                 .serviceLevelObjectives(LatencyBuckets.WAIT_BUCKETS)
                 .register(Metrics.globalRegistry);
+    }
+
+    static long nextParkInterval(long intervalNanos, long ttlMicros) {
+        // toNanos() saturates, so the + 1 goes inside
+        return Math.min(2 * intervalNanos, Math.min(WAIT_MAX, TimeUnit.MICROSECONDS.toNanos(ttlMicros + 1)));
     }
 
     private LocalLock acquireLocalLock(String id) {

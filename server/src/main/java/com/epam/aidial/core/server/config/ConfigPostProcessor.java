@@ -163,9 +163,7 @@ public final class ConfigPostProcessor {
         }
         model.setName(mapKey);
         List<ValidationWarning> warnings = new ArrayList<>();
-        validatePricing(model, warnings);
-        validateUpstreamInterfaces(model, warnings);
-        validateDeploymentInterfaces(model, config.getTranslators(), warnings);
+        validateModelInvariants(model, config.getTranslators(), warnings);
         if (onSkip != null) {
             validateCrossReferences(model, config, warnings);
         }
@@ -394,9 +392,7 @@ public final class ConfigPostProcessor {
             model.setName(name);
             log.debug("Loading {}", model);
             List<ValidationWarning> warnings = new ArrayList<>();
-            validatePricing(model, warnings);
-            validateUpstreamInterfaces(model, warnings);
-            validateDeploymentInterfaces(model, config.getTranslators(), warnings);
+            validateModelInvariants(model, config.getTranslators(), warnings);
             // Cross-ref check is skip-mode-only — file-loaded abort-mode path (onSkip == null)
             // preserves design 02 §4.2's allowance for pre-existing file-side inconsistency.
             // Strict-mode 422 is enforced at the write controller, not here. Pricing validation
@@ -427,14 +423,28 @@ public final class ConfigPostProcessor {
             return true;
         }
         Map<String, Interceptor> interceptors = config.getInterceptors();
+        boolean resolved = true;
         for (int i = 0; i < refs.size(); i++) {
             String ref = refs.get(i);
             if (ref == null || !interceptors.containsKey(ref)) {
                 warnings.add(new ValidationWarning("interceptors[" + i + "]",
                         messageWithEntityPrefix("Model", model.getName(), "Interceptor '" + ref + "' not found in config")));
+                resolved = false;
             }
         }
-        return warnings.isEmpty();
+        return resolved;
+    }
+
+    /**
+     * Model checks the rebuild enforces unconditionally; pre-write paths call this so nothing is
+     * stored that the next rebuild would reject. Excludes cross-references and already covers
+     * override paths. Translator names missing from {@code translators} are not reported.
+     */
+    public static void validateModelInvariants(Model model, Map<String, Translator> translators,
+                                               List<ValidationWarning> warnings) {
+        validatePricing(model, warnings);
+        validateUpstreamInterfaces(model, warnings);
+        validateDeploymentInterfaces(model, translators, warnings);
     }
 
     /**
