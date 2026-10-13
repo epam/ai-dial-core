@@ -71,7 +71,10 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
                 proxy.getTaskExecutor().submit(() -> {
                     handleRequestBody(context.getRequestBody());
                     return null;
-                }).onFailure(this::handleError));
+                }).otherwise(e -> {
+                    handleError(e);
+                    return null;
+                }));
     }
 
     private void handleError(Throwable error) {

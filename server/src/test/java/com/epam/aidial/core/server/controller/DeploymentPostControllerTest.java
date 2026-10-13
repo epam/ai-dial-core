@@ -78,6 +78,7 @@ import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_GATEWAY;
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.storage.http.HttpStatus.FORBIDDEN;
+import static com.epam.aidial.core.storage.http.HttpStatus.INTERNAL_SERVER_ERROR;
 import static com.epam.aidial.core.storage.http.HttpStatus.NOT_FOUND;
 import static com.epam.aidial.core.storage.http.HttpStatus.UNPROCESSABLE_ENTITY;
 import static com.epam.aidial.core.storage.http.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
@@ -93,6 +94,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -1356,9 +1358,7 @@ public class DeploymentPostControllerTest {
         when(request.body()).thenReturn(Future.succeededFuture(body));
         when(context.getApiKeyData()).thenReturn(apiKeyData);
         when(context.getInterceptors()).thenReturn(apiKeyData.getInterceptors());
-        when(proxy.getTaskExecutor()).thenReturn(taskExecutor);
-        when(taskExecutor.submit(any(Callable.class)))
-                .thenAnswer(invocation -> Future.succeededFuture(((Callable<?>) invocation.getArgument(0)).call()));
+        when(context.respond(NOT_FOUND, "Interceptor is not found")).thenReturn(Future.succeededFuture());
 
         controller.handle("interceptor");
 
@@ -1367,6 +1367,24 @@ public class DeploymentPostControllerTest {
         verify(context).setRequestBodyTimestamp(anyLong());
         // interceptor2 is not declared in the config, so reaching this response proves it was dispatched to
         verify(context).respond(NOT_FOUND, "Interceptor is not found");
+    }
+
+    @Test
+    public void testInterceptorReentryFailureRespondsInsteadOfHanging() {
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setInterceptors(List.of("interceptor1", "interceptor2"));
+        apiKeyData.setInterceptorIndex(0);
+
+        when(context.getRequest()).thenReturn(request);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer("{}")));
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(context.getInterceptors()).thenReturn(apiKeyData.getInterceptors());
+        doThrow(new IllegalStateException("boom")).when(context).setRequestBody(any());
+
+        controller.handle("interceptor");
+
+        verify(context).respond(UNPROCESSABLE_ENTITY, "Failed to receive body");
     }
 
     @Test
