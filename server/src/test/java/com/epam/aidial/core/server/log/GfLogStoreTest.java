@@ -120,17 +120,28 @@ public class GfLogStoreTest {
         assertAppendBodyMatchesAppend("\"".repeat(10_000) + "\u0001".repeat(1_000));
     }
 
+    @Test
+    public void testAppendBodyEscapesMalformedUtf8LikeAppend() {
+        // a lead byte without its continuation, followed by bytes that need escaping, and a cut-off emoji at the end
+        byte[] body = {'a', (byte) 0xC3, '"', (byte) 0xF0, (byte) 0x9F, '\\', (byte) 0xE2, '\n', (byte) 0xF0, (byte) 0x9F, (byte) 0x98};
+        assertAppendBodyMatchesAppend(Buffer.buffer(body));
+    }
+
     private static void assertAppendBodyMatchesAppend(String body) {
+        assertAppendBodyMatchesAppend(Buffer.buffer(body));
+    }
+
+    private static void assertAppendBodyMatchesAppend(Buffer body) {
         StringBuilder expected = new StringBuilder();
-        GfLogStore.append(capturingEntry(expected), body, true);
+        GfLogStore.append(capturingEntry(expected), body.toString(), true);
 
         StringBuilder actual = new StringBuilder();
         GfLogStore store = new GfLogStore(settings(false));
-        store.appendBody(capturingEntry(actual), Buffer.buffer(body));
+        store.appendBody(capturingEntry(actual), body);
         assertEquals(expected.toString(), actual.toString());
 
         StringBuilder again = new StringBuilder();
-        store.appendBody(capturingEntry(again), Buffer.buffer(body));
+        store.appendBody(capturingEntry(again), body);
         assertEquals(expected.toString(), again.toString());
         assertDoesNotThrow(() -> ProxyUtil.MAPPER.readValue("\"" + actual + "\"", String.class));
     }

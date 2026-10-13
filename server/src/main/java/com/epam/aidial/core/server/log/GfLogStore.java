@@ -453,9 +453,13 @@ public class GfLogStore implements LogStore {
             buffer = buffer.slice(0, MAX_BODY_SIZE_BYTES);
         }
         int length = escapeUtf8(buffer.getBytes());
-        // one append of the whole body: gflog then walks its chars once, where escaping char by char made an append per run.
-        // A byte append in gflog would also save the decode here and the re-encode there; gflog 3.0.6 has none.
-        entry.append(new String(escapedBody, 0, length, StandardCharsets.UTF_8));
+        // gflog has no byte append, so the escaped body is decoded here and gflog encodes it again
+        String escaped = new String(escapedBody, 0, length, StandardCharsets.UTF_8);
+        if (escapedBody.length > MAX_BODY_SIZE_BYTES) {
+            // escapes can grow a body sixfold; keep no more than an ordinary body needs between entries
+            escapedBody = new byte[0];
+        }
+        entry.append(escaped);
         if (largeBuffer) {
             // append a special marker that entry is cut off due to its large size
             append(entry, ">>", false);
