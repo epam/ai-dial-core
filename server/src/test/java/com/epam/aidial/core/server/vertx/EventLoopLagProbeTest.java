@@ -18,6 +18,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EventLoopLagProbeTest {
 
@@ -35,6 +36,16 @@ class EventLoopLagProbeTest {
         EventLoopLagProbe.stop();
         Metrics.removeRegistry(meterRegistry);
         close(vertx);
+    }
+
+    @Test
+    void recordsNearZeroLagOnIdleLoops() throws Exception {
+        EventLoopLagProbe.start(vertx);
+        Timer lag = lagTimer();
+        Await.until(() -> lag.count() >= 4, () -> "the probes should have run");
+
+        // the lag is how late the probe runs past its period, not the period itself
+        assertTrue(lag.mean(TimeUnit.MILLISECONDS) < 50, () -> "idle loops should not lag, mean=" + lag.mean(TimeUnit.MILLISECONDS));
     }
 
     @Test
