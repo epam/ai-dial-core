@@ -127,6 +127,20 @@ public class GfLogStoreTest {
         assertAppendBodyMatchesAppend(Buffer.buffer(body));
     }
 
+    @Test
+    public void testAppendBodyTruncatesEscapeHeavyBody() {
+        // the escaped body outgrows what the buffer may keep, so the second call starts from a fresh buffer
+        int limit = 4 * 1024 * 1024;
+        String expected = "\\\"".repeat(limit) + ">>";
+        GfLogStore store = new GfLogStore(settings(false));
+        Buffer body = Buffer.buffer("\"".repeat(limit + 1));
+        for (int i = 0; i < 2; i++) {
+            StringBuilder actual = new StringBuilder();
+            store.appendBody(capturingEntry(actual), body);
+            assertEquals(expected, actual.toString());
+        }
+    }
+
     private static void assertAppendBodyMatchesAppend(String body) {
         assertAppendBodyMatchesAppend(Buffer.buffer(body));
     }

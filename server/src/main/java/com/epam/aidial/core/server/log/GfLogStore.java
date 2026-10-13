@@ -455,8 +455,8 @@ public class GfLogStore implements LogStore {
         int length = escapeUtf8(buffer.getBytes());
         // gflog has no byte append, so the escaped body is decoded here and gflog encodes it again
         String escaped = new String(escapedBody, 0, length, StandardCharsets.UTF_8);
-        if (escapedBody.length > MAX_BODY_SIZE_BYTES) {
-            // escapes can grow a body sixfold; keep no more than an ordinary body needs between entries
+        if (escapedBody.length > escapedCapacity(MAX_BODY_SIZE_BYTES)) {
+            // escapes can grow a body sixfold; keep no more than the largest body starts with between entries
             escapedBody = new byte[0];
         }
         entry.append(escaped);
@@ -475,7 +475,7 @@ public class GfLogStore implements LogStore {
     private int escapeUtf8(byte[] bytes) {
         byte[] escaped = escapedBody;
         if (escaped.length < bytes.length) {
-            escaped = escapedBody = new byte[bytes.length + bytes.length / 4 + 64];
+            escaped = escapedBody = new byte[escapedCapacity(bytes.length)];
         }
         int j = 0;
         for (int i = 0; i < bytes.length; i++) {
@@ -500,6 +500,10 @@ public class GfLogStore implements LogStore {
             }
         }
         return j;
+    }
+
+    private static int escapedCapacity(int length) {
+        return length + length / 4 + 64;
     }
 
     private static char escape(char c) {
