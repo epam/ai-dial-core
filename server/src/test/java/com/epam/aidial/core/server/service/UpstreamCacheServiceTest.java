@@ -11,11 +11,9 @@ import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
-import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.service.LockService;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -618,29 +616,5 @@ public class UpstreamCacheServiceTest {
 
         List<String> expectedBreakpoints = List.of("prefix.body.instructions[0]", "prefix.body.input[0]", "prefix.body.input[1]");
         assertEquals(expectedBreakpoints, context.breakpoints());
-    }
-
-    @Test
-    public void testSortObjectProperties_simple() throws JsonProcessingException {
-        String simpleJson = """
-                 {
-                   "d" : {
-                     "b" : 1,
-                     "a": 2
-                   },
-                   "c": [
-                     {"d": true,"a": "text"},
-                     {"z": 3, "a": false}
-                   ],
-                   "a" : {
-                     "z" : 1,
-                     "f": 2
-                   }
-                 }
-                 """;
-        JsonNode node = ProxyUtil.MAPPER.readTree(simpleJson);
-        JsonNode result = JsonUtil.sort(node);
-        assertEquals("""
-                 {"a":{"f":2,"z":1},"c":[{"a":"text","d":true},{"a":false,"z":3}],"d":{"a":2,"b":1}}""", result.toString());
     }
 }
