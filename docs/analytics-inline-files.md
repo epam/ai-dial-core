@@ -408,5 +408,4 @@ These are estimates; the benchmark in *Testing* measures them.
 
 Benchmark (JMH or a plain timed test, not part of the regular build): throughput of `GfLogStore.append` for a 2 MB
 image request, a 40 MB multi-file request, a streamed audio response and a plain-text request, under each settings
-combination, against the current code. The results go into the PR description, and the README states the measured
-overhead.
+combination, against the current code. The results go into the PR description.

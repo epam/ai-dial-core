@@ -198,8 +198,6 @@ Each `inline_files` entry:
 
 Without `collectInlineFileIndex`, only `excluded` files are listed. The array is omitted when it would be empty. Streamed (SSE) bodies are never indexed, because a file arrives there in pieces a consumer cannot reliably put back together: an assembled stream's files are listed once, merged, against `assembled_response`, and a stream that was not assembled has no entries. The settings still remove files from streamed bodies.
 
-Scanning runs on the analytics log thread, not on the request path. Measured per entry on a developer laptop against the default settings, with figures that vary from run to run: a 2 MB image request takes roughly 20-45% more with `collectInlineFileIndex=true` and about 55% less with `collectInlineFiles=false`, and a 40 MB multi-file request takes roughly 5-30% more with the index on. Cost follows the bytes actually logged, which are capped at the first 4 MB of each body, so cost per body is bounded by its first 4 MB.
-
 <details> 
 <summary><b>Identity Providers Configurations</b></summary>
 
