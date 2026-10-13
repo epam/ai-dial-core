@@ -10,9 +10,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class EventLoopLagProbeTest {
 
@@ -87,6 +89,24 @@ class EventLoopLagProbeTest {
         } finally {
             close(earlier);
         }
+    }
+
+    @Test
+    void failedStartKeepsProbesOfEarlierStart() throws Exception {
+        Vertx closed = Vertx.vertx(new VertxOptions().setEventLoopPoolSize(1));
+        close(closed);
+        EventLoopLagProbe.start(vertx);
+        Timer lag = lagTimer();
+        Await.until(() -> lag.count() > 0, () -> "the probe should have run");
+
+        // the terminated loop of a closed vertx rejects the probe; the probes of vertx must stay in place
+        assertThrows(RejectedExecutionException.class, () -> EventLoopLagProbe.start(closed));
+        EventLoopLagProbe.stop();
+        drain(vertx);
+        long recorded = lag.count();
+        Thread.sleep(300);
+
+        assertEquals(recorded, lag.count(), "stop() should still cancel the probes of the start() that succeeded");
     }
 
     private Timer lagTimer() {
