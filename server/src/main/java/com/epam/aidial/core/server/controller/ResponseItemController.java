@@ -231,11 +231,15 @@ public class ResponseItemController implements Controller {
         ApiKeyData.initFromContext(proxyApiKeyData, context);
         context.setProxyApiKeyData(proxyApiKeyData);
 
+        String requestContentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
+        Buffer requestBody = context.getRequestBody();
+        String perRequestKey = proxyApiKeyData.getPerRequestKey();
+
         return proxy.getTaskExecutor().submit(() -> {
             proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
             return null;
         }).compose(ignore ->
-                proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, proxyApiKeyData.getPerRequestKey())
+                proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, perRequestKey, requestBody, requestContentType)
                         .compose(response -> {
                             context.setProxyResponse(response);
                             String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
