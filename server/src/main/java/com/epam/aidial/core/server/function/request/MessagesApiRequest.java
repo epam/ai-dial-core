@@ -1,12 +1,14 @@
 package com.epam.aidial.core.server.function.request;
 
 import com.epam.aidial.core.server.data.cache.CachePrefixPath;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -81,12 +83,13 @@ public class MessagesApiRequest extends JsonBodyRequest {
             if (!message.isObject()) {
                 continue;
             }
-            CacheKeyBuilder.sortedProperties(message).forEach((name, value) -> {
-                if (!name.equals(CONTENT_NODE)) {
-                    builder.update(value);
+            ObjectNode sorted = (ObjectNode) JsonUtil.sort(message);
+            for (Map.Entry<String, JsonNode> entry : sorted.properties()) {
+                if (!entry.getKey().equals(CONTENT_NODE)) {
+                    builder.update(entry.getValue());
                 }
-            });
-            List<JsonNode> blocks = CacheKeyBuilder.elements(message.get(CONTENT_NODE));
+            }
+            List<JsonNode> blocks = CacheKeyBuilder.elements(sorted.get(CONTENT_NODE));
             for (int contentIndex = 0; contentIndex < blocks.size(); contentIndex++) {
                 JsonNode block = blocks.get(contentIndex);
                 updateExcludingCacheControl(builder, block);
@@ -107,11 +110,12 @@ public class MessagesApiRequest extends JsonBodyRequest {
             builder.update(block);
             return;
         }
-        CacheKeyBuilder.sortedProperties(block).forEach((name, value) -> {
-            if (!name.equals(CACHE_CONTROL_NODE)) {
-                builder.update(value);
+        ObjectNode sorted = (ObjectNode) JsonUtil.sort(block);
+        for (Map.Entry<String, JsonNode> entry : sorted.properties()) {
+            if (!entry.getKey().equals(CACHE_CONTROL_NODE)) {
+                builder.update(entry.getValue());
             }
-        });
+        }
     }
 
     private static boolean hasCacheControl(JsonNode block) {

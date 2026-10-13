@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.function.request;
 
 import com.epam.aidial.core.server.data.cache.CachePrefixPath;
 import com.epam.aidial.core.server.util.ChatUtil;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -67,26 +69,24 @@ public class ChatCompletionRequest extends JsonBodyRequest {
             return;
         }
         for (int index = 0; index < array.size(); index++) {
-            JsonNode element = array.get(index);
+            // sort so key iteration order below (and the digest fed from it) is deterministic
+            // regardless of how the client ordered the JSON object's fields
+            ObjectNode element = (ObjectNode) JsonUtil.sort(array.get(index));
             boolean hasBreakpoint = element.path(CUSTOM_FIELDS_NODE).has(CACHE_BREAKPOINT_NODE);
-            if (!element.isObject()) {
-                builder.update(element);
-            }
-            // sorted, so the digest does not depend on how the client ordered the object's fields
-            CacheKeyBuilder.sortedProperties(element).forEach((name, value) -> {
-                if (name.equals(CUSTOM_FIELDS_NODE)) {
-                    return;
+            for (Map.Entry<String, JsonNode> entry : element.properties()) {
+                if (entry.getKey().equals(CUSTOM_FIELDS_NODE)) {
+                    continue;
                 }
-                if (name.equals("custom_content")) {
+                if (entry.getKey().equals("custom_content")) {
                     // include attachments only
-                    JsonNode attachments = value.get("attachments");
+                    JsonNode attachments = entry.getValue().get("attachments");
                     if (attachments != null && !attachments.isEmpty()) {
                         builder.update(attachments);
                     }
                 } else {
-                    builder.update(value);
+                    builder.update(entry.getValue());
                 }
-            });
+            }
             result.add(builder.buildKey(CachePrefixPath.node(node, index), hasBreakpoint));
         }
     }

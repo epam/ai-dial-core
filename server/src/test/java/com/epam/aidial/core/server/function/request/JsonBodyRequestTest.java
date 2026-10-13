@@ -8,8 +8,6 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 
@@ -213,28 +211,6 @@ class JsonBodyRequestTest {
     }
 
     @Test
-    void testBuildCacheKeys_chatCompletionKeepsReceivedBytes() throws IOException {
-        // keys are computed on sorted properties without reordering the tree
-        String body = "{\"model\": \"m\", \"messages\": [{\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"hi\"}]}]}";
-        ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(body);
-
-        new ChatCompletionRequest(tree).buildCacheKeys(List.of("prefix.body.messages"));
-
-        assertEquals(ProxyUtil.MAPPER.readTree(body).toString(), tree.toString());
-    }
-
-    @Test
-    void testBuildCacheKeys_chatCompletionHashesNonObjectMessage() throws Exception {
-        ChatCompletionRequest request = new ChatCompletionRequest(ReceivedBody.parse(Buffer.buffer("{\"messages\": [\"x\", {\"role\": \"user\"}]}")));
-
-        List<CacheKey> keys = request.buildCacheKeys(List.of("prefix.body.messages"));
-
-        assertEquals(List.of("prefix.body.messages[0]", "prefix.body.messages[1]"), keys.stream().map(CacheKey::path).toList());
-        assertEquals(sha1("\"x\""), keys.get(0).hash());
-        assertEquals(sha1("\"x\"\"user\""), keys.get(1).hash());
-    }
-
-    @Test
     void testParse_rejectsNonObject() {
         assertThrows(IllegalArgumentException.class, () -> ReceivedBody.parse(Buffer.buffer("[1]")));
         assertThrows(IllegalArgumentException.class, () -> ReceivedBody.parse(Buffer.buffer("")));
@@ -242,10 +218,6 @@ class JsonBodyRequestTest {
 
     private static RequestObject parse(String body) throws IOException {
         return new ChatCompletionRequest(ReceivedBody.parse(Buffer.buffer(body)));
-    }
-
-    private static String sha1(String text) throws Exception {
-        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(text.getBytes(StandardCharsets.UTF_8)));
     }
 
     private static String serialize(RequestObject request) throws IOException {

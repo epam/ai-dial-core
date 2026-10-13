@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.Function;
 import javax.annotation.Nullable;
 
@@ -97,6 +98,22 @@ public class JsonUtil {
                 && (defaultValue == null || defaultValue.isNull() || target.getNodeType() == defaultValue.getNodeType());
         object.set(key, keepTarget ? target : defaultValue);
         return !Objects.equals(target, object.get(key));
+    }
+
+    public JsonNode sort(JsonNode node) {
+        if (node.isArray()) {
+            ArrayNode arrayNode = (ArrayNode) node;
+            for (int i = 0; i < node.size(); i++) {
+                arrayNode.set(i, sort(arrayNode.get(i)));
+            }
+        } else if (node.isObject()) {
+            ObjectNode result = new ObjectNode(ProxyUtil.MAPPER.getNodeFactory(), new TreeMap<>());
+            for (Map.Entry<String, JsonNode> entry : node.properties()) {
+                result.set(entry.getKey(), sort(entry.getValue()));
+            }
+            node = result;
+        }
+        return node;
     }
 
     public JsonNode tryParse(String data) {
