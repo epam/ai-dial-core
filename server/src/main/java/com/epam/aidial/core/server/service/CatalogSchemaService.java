@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.metaschemas.CatalogMetaSchemaHolder;
 import com.epam.aidial.core.server.config.ConfigStore;
+import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.CatalogSchemaProcessingException;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -100,6 +101,18 @@ public class CatalogSchemaService {
                 throw new CatalogSchemaValidationException(
                         "catalog_properties." + localizedField + " should contain the default locale \"" + defaultLocale + "\"");
             }
+        }
+    }
+
+    /**
+     * Same check as {@link #validate(Deployment)}, but appends the failure to {@code warnings}
+     * instead of throwing, so callers can report it together with the other validation warnings.
+     */
+    public void validate(Deployment deployment, List<ValidationWarning> warnings) {
+        try {
+            validate(deployment);
+        } catch (CatalogSchemaValidationException e) {
+            warnings.add(new ValidationWarning("catalogProperties", e.getMessage()));
         }
     }
 
