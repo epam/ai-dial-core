@@ -436,20 +436,9 @@ public final class ConfigPostProcessor {
     }
 
     /**
-     * The checks every model must pass to survive a merged-config rebuild — the set
-     * {@link #processModels} runs unconditionally. Every pre-write surface calls this exact
-     * method, so a write can never be accepted that the next rebuild would reject; hand-copying
-     * a subset at each call site is what let a model with an unserved interface reach the blob
-     * store and abort every later rebuild. Cross-references are deliberately not in the set —
-     * the rebuild tolerates them, so a write surface may admit them under soft validation.
-     *
-     * <p>{@code translators} may be a partial view (the live snapshot, a batch scratch): a name
-     * with no entry is deliberately not a warning, so a smaller map yields fewer warnings, never
-     * spurious ones.
-     *
-     * <p>Covers {@code overridePaths} already — {@link #validateDeploymentInterfaces} runs the
-     * per-entry check — so callers must not also call
-     * {@link #validateOverridePaths(Deployment, List)} or every such warning is reported twice.
+     * Model checks the rebuild enforces unconditionally; pre-write paths call this so nothing is
+     * stored that the next rebuild would reject. Excludes cross-references and already covers
+     * override paths. Translator names missing from {@code translators} are not reported.
      */
     public static void validateModelInvariants(Model model, Map<String, Translator> translators,
                                                List<ValidationWarning> warnings) {
