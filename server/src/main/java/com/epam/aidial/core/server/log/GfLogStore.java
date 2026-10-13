@@ -62,7 +62,8 @@ public class GfLogStore implements LogStore {
     private final ExecutorService executor;
     private final AnalyticsSettings settings;
     // the escaped body, reused across entries; only the executor thread writes bodies
-    private byte[] escapedBody = new byte[0];
+    @VisibleForTesting
+    byte[] escapedBody = new byte[0];
 
     public GfLogStore(AnalyticsSettings settings) {
         this.settings = settings;

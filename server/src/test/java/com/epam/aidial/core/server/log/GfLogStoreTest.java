@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyChar;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -138,6 +139,7 @@ public class GfLogStoreTest {
             StringBuilder actual = new StringBuilder();
             store.appendBody(capturingEntry(actual), body);
             assertEquals(expected, actual.toString());
+            assertEquals(0, store.escapedBody.length);
         }
     }
 
@@ -153,10 +155,12 @@ public class GfLogStoreTest {
         GfLogStore store = new GfLogStore(settings(false));
         store.appendBody(capturingEntry(actual), body);
         assertEquals(expected.toString(), actual.toString());
+        byte[] kept = store.escapedBody;
 
         StringBuilder again = new StringBuilder();
         store.appendBody(capturingEntry(again), body);
         assertEquals(expected.toString(), again.toString());
+        assertSame(kept, store.escapedBody);
         assertDoesNotThrow(() -> ProxyUtil.MAPPER.readValue("\"" + actual + "\"", String.class));
     }
 
