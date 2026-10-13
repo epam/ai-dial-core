@@ -15,6 +15,10 @@ import java.util.List;
  * single cumulative digest (so a change to an earlier node changes every later hash, matching how
  * providers cache the whole rendered prefix), and {@link #buildKey(String, boolean)} snapshots the
  * digest at that point without terminating it.
+ *
+ * <p>The digest is SHA-256: the key only has to be stable and collision-resistant for routing, and HotSpot
+ * intrinsifies SHA-256 on x86-64 with AVX2 and on aarch64, while SHA-1 needs the SHA extensions and otherwise
+ * runs as Java code over every prompt byte.
  */
 public class CacheKeyBuilder {
 
@@ -22,7 +26,7 @@ public class CacheKeyBuilder {
 
     @SneakyThrows
     public CacheKeyBuilder() {
-        this.digest = MessageDigest.getInstance("SHA-1");
+        this.digest = MessageDigest.getInstance("SHA-256");
     }
 
     /**
