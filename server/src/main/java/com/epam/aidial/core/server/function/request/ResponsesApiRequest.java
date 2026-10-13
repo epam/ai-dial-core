@@ -30,7 +30,7 @@ public class ResponsesApiRequest extends JsonBodyRequest {
 
     @Override
     public Set<String> collectAttachments() {
-        return ChatUtil.collectAttachments(tree, List.of(
+        return ChatUtil.collectAttachments(tree(), List.of(
                 "$.input[?(!@.type || @.type == 'message')].content[?(@.type == 'input_image')].image_url",
                 "$.input[?(!@.type || @.type == 'message')].content[?(@.type == 'input_file')].file_url",
                 "$.input[?(@.type == 'custom_tool_call_output' || @.type == 'function_call_output')].output[?(@.type == 'input_image')].image_url",
@@ -61,7 +61,7 @@ public class ResponsesApiRequest extends JsonBodyRequest {
     }
 
     private void appendCacheKeys(CacheKeyBuilder builder, String node, List<CacheKey> result) {
-        List<JsonNode> elements = CacheKeyBuilder.elements(tree.get(node));
+        List<JsonNode> elements = CacheKeyBuilder.elements(tree().get(node));
         for (int index = 0; index < elements.size(); index++) {
             builder.update(elements.get(index));
             result.add(builder.buildKey(CachePrefixPath.node(node, index), false));
@@ -70,12 +70,12 @@ public class ResponsesApiRequest extends JsonBodyRequest {
 
     @Override
     public boolean isStore() {
-        return tree.path("store").asBoolean(true);
+        return tree().path("store").asBoolean(true);
     }
 
     @Override
     public boolean isBackground() {
-        return tree.path("background").asBoolean(false);
+        return tree().path("background").asBoolean(false);
     }
 
     @Nullable
@@ -93,15 +93,14 @@ public class ResponsesApiRequest extends JsonBodyRequest {
      * Resolves and unwraps the upstream config id encoded into any echoed encrypted content items in
      * {@code input}, mutating them in place back to their provider-native shape.
      *
-     * @return unique resolved affinities; empty if {@code input} is missing or carries no wrapped item
+     * @return unique resolved affinities; empty exactly when nothing was unwrapped
      */
     public List<EncryptedContentAffinityUtil.ResolvedAffinity> resolveAndUnwrapEncryptedContentAffinity() {
-        if (!(tree.get("input") instanceof ArrayNode input)) {
+        if (!(tree().get("input") instanceof ArrayNode input)) {
             return List.of();
         }
         List<EncryptedContentAffinityUtil.ResolvedAffinity> resolved = EncryptedContentAffinityUtil.resolveAndUnwrap(input);
-        // an item is unwrapped exactly when it resolves to an affinity
-        if (resolved.stream().anyMatch(affinity -> !affinity.equals(EncryptedContentAffinityUtil.ResolvedAffinity.EMPTY))) {
+        if (!resolved.isEmpty()) {
             treeChanged();
         }
         return resolved;

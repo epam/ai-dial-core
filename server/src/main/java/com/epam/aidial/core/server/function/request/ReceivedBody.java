@@ -4,31 +4,45 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectReader;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
+import io.netty.buffer.ByteBufUtil;
 import io.vertx.core.buffer.Buffer;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CoderResult;
 import java.nio.charset.StandardCharsets;
 import javax.annotation.Nullable;
 
 /**
  * A JSON object body as received from the client: the parsed tree and, when the upstream reads exactly what the tree
- * holds, the bytes it was parsed from, so they can be forwarded without serializing the tree.
- *
- * @param tree the parsed body
- * @param bytes the received bytes, or {@code null} when they must not be forwarded as they are
- * @param modelStart start of the top-level model string in {@code bytes}, quote included; -1 when there is none
- * @param modelEnd end of that string, quote included
+ * holds, the bytes it was parsed from, so they can be forwarded without serializing the tree. It is built only by
+ * {@link #parse} and {@link #of}, which keep the bytes and the model range consistent with the tree.
  */
-public record ReceivedBody(ObjectNode tree, @Nullable Buffer bytes, int modelStart, int modelEnd) {
+public final class ReceivedBody {
 
     private static final String MODEL_NODE = "model";
+    // a repeated key below the top level fails the read as a MismatchedInputException
+    private static final ObjectReader STRICT_READER = ProxyUtil.MAPPER.reader().with(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY);
+
+    private final ObjectNode tree;
+    // null when the bytes must not be forwarded as they are
+    @Nullable
+    private final Buffer bytes;
+    // the top-level model string in bytes, quotes included; -1 when there is none
+    private final int modelStart;
+    private final int modelEnd;
+
+    private ReceivedBody(ObjectNode tree, @Nullable Buffer bytes, int modelStart, int modelEnd) {
+        this.tree = tree;
+        this.bytes = bytes;
+        this.modelStart = modelStart;
+        this.modelEnd = modelEnd;
+    }
 
     public static ReceivedBody of(ObjectNode tree) {
         return new ReceivedBody(tree, null, -1, -1);
@@ -44,20 +58,20 @@ public record ReceivedBody(ObjectNode tree, @Nullable Buffer bytes, int modelSta
     public static ReceivedBody parse(Buffer body) throws IOException {
         try {
             return parseStrict(body);
-        } catch (JsonProcessingException e) {
-            // a repeated key, or malformed JSON that fails again here
+        } catch (MismatchedInputException e) {
+            // a repeated key below the top level
             return of(ProxyUtil.parseObject(body));
         }
     }
 
     private static ReceivedBody parseStrict(Buffer body) throws IOException {
         ObjectNode tree = ProxyUtil.MAPPER.createObjectNode();
+        boolean repeatedKey = false;
         int modelStart = -1;
         int modelEnd = -1;
         long rootStart;
         long rootEnd;
         try (JsonParser parser = ProxyUtil.MAPPER.createParser((InputStream) new ByteBufInputStream(body.getByteBuf()))) {
-            parser.enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
             if (parser.nextToken() != JsonToken.START_OBJECT) {
                 throw new IllegalArgumentException("Invalid json object");
             }
@@ -67,7 +81,8 @@ public record ReceivedBody(ObjectNode tree, @Nullable Buffer bytes, int modelSta
                 String name = parser.currentName();
                 boolean stringModel = parser.nextToken() == JsonToken.VALUE_STRING && name.equals(MODEL_NODE);
                 long start = parser.currentTokenLocation().getByteOffset();
-                tree.set(name, ProxyUtil.MAPPER.readTree(parser));
+                JsonNode value = STRICT_READER.readTree(parser);
+                repeatedKey |= tree.replace(name, value) != null;
                 if (stringModel) {
                     modelStart = (int) start;
                     modelEnd = (int) parser.currentLocation().getByteOffset();
@@ -75,8 +90,9 @@ public record ReceivedBody(ObjectNode tree, @Nullable Buffer bytes, int modelSta
             }
             rootEnd = parser.currentLocation().getByteOffset();
         }
-        boolean forwardable = rootStart >= 0 && isWhitespace(body, 0, rootStart) && isWhitespace(body, rootEnd, body.length())
-                && isUtf8(body);
+        boolean forwardable = !repeatedKey && rootStart >= 0 && isWhitespace(body, 0, rootStart) && isWhitespace(body, rootEnd, body.length())
+                // the parser decodes some invalid UTF-8 leniently (e.g. an overlong or surrogate sequence), which the upstream may decode otherwise
+                && ByteBufUtil.isText(body.getByteBuf(), StandardCharsets.UTF_8);
         return forwardable ? new ReceivedBody(tree, body, modelStart, modelEnd) : of(tree);
     }
 
@@ -90,38 +106,30 @@ public record ReceivedBody(ObjectNode tree, @Nullable Buffer bytes, int modelSta
         return true;
     }
 
-    /**
-     * The parser decodes some invalid UTF-8 leniently (e.g. an overlong or surrogate sequence), which the upstream may
-     * decode otherwise.
-     */
-    private static boolean isUtf8(Buffer body) {
-        CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder();
-        ByteBuffer in = body.getByteBuf().nioBuffer();
-        CharBuffer out = CharBuffer.allocate(8192);
-        while (true) {
-            CoderResult result = decoder.decode(in, out, true);
-            if (result.isError()) {
-                return false;
-            }
-            if (result.isUnderflow()) {
-                return true;
-            }
-            out.clear();
-        }
+    public ObjectNode tree() {
+        return tree;
+    }
+
+    @Nullable
+    Buffer bytes() {
+        return bytes;
+    }
+
+    boolean hasModel() {
+        return modelStart >= 0;
     }
 
     /**
      * The received bytes with the model string replaced by {@code model}, if given.
      */
-    byte[] withModel(@Nullable String model) throws JsonProcessingException {
+    Buffer withModel(@Nullable String model) throws JsonProcessingException {
         if (model == null) {
-            return bytes.getBytes();
+            return bytes;
         }
         byte[] value = ProxyUtil.MAPPER.writeValueAsBytes(model);
         return Buffer.buffer(bytes.length() - (modelEnd - modelStart) + value.length)
                 .appendBuffer(bytes, 0, modelStart)
                 .appendBytes(value)
-                .appendBuffer(bytes, modelEnd, bytes.length() - modelEnd)
-                .getBytes();
+                .appendBuffer(bytes, modelEnd, bytes.length() - modelEnd);
     }
 }

@@ -118,6 +118,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         log.info("Received body from client. Length: {}", body.length());
         try {
             ReceivedBody received = ReceivedBody.parse(body);
+            context.setRequestBody(body);
             traceRequest(received.tree());
             return new MessagesApiRequest(received);
         } catch (IOException e) {
@@ -160,8 +161,8 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     }
 
     /**
-     * Runs the enhancement chain, assigns a per-request key, serializes the (possibly model-overridden)
-     * body and resolves the upstream route via the {@code anthropicMessages} base_url.
+     * Runs the enhancement chain, assigns a per-request key, serializes the body if the chain changed it
+     * and resolves the upstream route via the {@code anthropicMessages} base_url.
      */
     @SneakyThrows
     protected void prepareUpstreamRoute(RequestObject request) {
@@ -169,11 +170,13 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
 
-        ProxyUtil.processChain(request, enhancementFunctions);
+        boolean bodyChanged = ProxyUtil.processChain(request, enhancementFunctions);
         // Enhancement functions update the api key, and it should be saved after that
         proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
 
-        context.setRequestBody(Buffer.buffer(request.serialize()));
+        if (bodyChanged) {
+            context.setRequestBody(request.serialize());
+        }
 
         Deployment deployment = context.getDeployment();
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);

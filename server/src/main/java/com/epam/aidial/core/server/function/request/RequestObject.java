@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.function.request;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import io.vertx.core.buffer.Buffer;
 
 import java.util.List;
 import java.util.Map;
@@ -69,8 +70,10 @@ public interface RequestObject {
 
     /**
      * Clears interceptor-related settings from this request.
+     *
+     * @return whether the request changed
      */
-    void clearInterceptorSettings();
+    boolean clearInterceptorSettings();
 
     /**
      * Applies default body parameters to this request, under every key it does not already carry. Which
@@ -78,16 +81,17 @@ public interface RequestObject {
      * it depends on the interface the request arrived on, not on the shape of the request.
      *
      * @param defaults the default values to apply
+     * @return whether the request changed
      */
-    void applyDefaults(Map<String, Object> defaults);
+    boolean applyDefaults(Map<String, Object> defaults);
 
     /**
-     * Serializes this request to a byte array.
+     * Serializes this request.
      *
      * @return the serialized request
      * @throws JsonProcessingException if the request cannot be serialized
      */
-    byte[] serialize() throws JsonProcessingException;
+    Buffer serialize() throws JsonProcessingException;
 
     /**
      * Indicates whether the response should be stored server-side.

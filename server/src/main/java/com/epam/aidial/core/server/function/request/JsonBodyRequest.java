@@ -4,6 +4,7 @@ import com.epam.aidial.core.server.util.ChatUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.buffer.Buffer;
 
 import java.util.List;
 import java.util.Map;
@@ -13,12 +14,12 @@ import javax.annotation.Nullable;
 /**
  * A request backed by a JSON object body. It forwards the {@link ReceivedBody received} bytes, with only the model
  * value replaced, until the tree changes in another way; only then is the tree serialized. So the tree is changed only
- * through this class and its subclasses, which call {@link #treeChanged()}.
+ * through the methods of this class, and a subclass that changes the {@link #tree()} calls {@link #treeChanged()}.
  */
 abstract class JsonBodyRequest implements RequestObject {
     private static final String MODEL_NODE = "model";
 
-    protected final ObjectNode tree;
+    private final ObjectNode tree;
     // null once the tree holds a change the received bytes lack
     @Nullable
     private ReceivedBody received;
@@ -28,6 +29,13 @@ abstract class JsonBodyRequest implements RequestObject {
     protected JsonBodyRequest(ReceivedBody body) {
         this.tree = body.tree();
         this.received = body.bytes() == null ? null : body;
+    }
+
+    /**
+     * The body; it is changed only through this class, see above.
+     */
+    protected ObjectNode tree() {
+        return tree;
     }
 
     protected void treeChanged() {
@@ -40,10 +48,10 @@ abstract class JsonBodyRequest implements RequestObject {
     }
 
     @Override
-    public void setModel(String model) {
+    public final void setModel(String model) {
         tree.put(MODEL_NODE, model);
         modelOverride = model;
-        if (received != null && received.modelStart() < 0) {
+        if (received != null && !received.hasModel()) {
             treeChanged();
         }
     }
@@ -59,21 +67,25 @@ abstract class JsonBodyRequest implements RequestObject {
     }
 
     @Override
-    public void clearInterceptorSettings() {
-        if (ChatUtil.removeInterceptorConfiguration(tree)) {
+    public final boolean clearInterceptorSettings() {
+        boolean changed = ChatUtil.removeInterceptorConfiguration(tree);
+        if (changed) {
             treeChanged();
         }
+        return changed;
     }
 
     @Override
-    public void applyDefaults(Map<String, Object> defaults) {
-        if (ChatUtil.applyDefaults(tree, defaults)) {
+    public final boolean applyDefaults(Map<String, Object> defaults) {
+        boolean changed = ChatUtil.applyDefaults(tree, defaults);
+        if (changed) {
             treeChanged();
         }
+        return changed;
     }
 
     @Override
-    public byte[] serialize() throws JsonProcessingException {
-        return received == null ? ProxyUtil.MAPPER.writeValueAsBytes(tree) : received.withModel(modelOverride);
+    public final Buffer serialize() throws JsonProcessingException {
+        return received == null ? Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)) : received.withModel(modelOverride);
     }
 }

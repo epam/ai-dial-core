@@ -58,7 +58,7 @@ public class MessagesApiRequest extends JsonBodyRequest {
      * one-element array (e.g. {@code system:"x"} -> {@code system[0]}).
      */
     private void appendItemCacheKeys(CacheKeyBuilder builder, String node, List<CacheKey> result) {
-        List<JsonNode> elements = CacheKeyBuilder.elements(tree.get(node));
+        List<JsonNode> elements = CacheKeyBuilder.elements(tree().get(node));
         for (int index = 0; index < elements.size(); index++) {
             JsonNode element = elements.get(index);
             updateExcludingCacheControl(builder, element);
@@ -72,7 +72,7 @@ public class MessagesApiRequest extends JsonBodyRequest {
      * every later hash. String content is scalar-normalized to {@code content[0]}.
      */
     private void appendMessageCacheKeys(CacheKeyBuilder builder, List<CacheKey> result) {
-        JsonNode messages = tree.get("messages");
+        JsonNode messages = tree().get("messages");
         if (messages == null || !messages.isArray()) {
             return;
         }

@@ -1,29 +1,38 @@
 package com.epam.aidial.core.server.function.request;
 
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JsonBodyRequestTest {
 
     @Test
     void testSerialize_forwardsReceivedBytesWhenUnchanged() throws IOException {
         String body = "{ \"model\" : \"m\",\n  \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}] }";
-        RequestObject request = parse(body);
-        request.clearInterceptorSettings();
-        request.applyDefaults(Map.of());
+        Buffer received = Buffer.buffer(body);
+        RequestObject request = new ChatCompletionRequest(ReceivedBody.parse(received));
 
-        assertEquals(body, serialize(request));
+        assertFalse(request.clearInterceptorSettings());
+        assertFalse(request.applyDefaults(Map.of()));
+        // the received buffer itself, not a copy
+        assertSame(received, request.serialize());
     }
 
     @Test
@@ -99,8 +108,23 @@ class JsonBodyRequestTest {
         Buffer body = Buffer.buffer().appendBytes(prefix).appendBytes(new byte[] {(byte) 0xC0, (byte) 0xAF}).appendBytes(suffix);
         RequestObject request = new ChatCompletionRequest(ReceivedBody.parse(body));
 
-        assertEquals("m", ProxyUtil.MAPPER.readTree(request.serialize()).get("model").asText());
+        assertEquals("m", ProxyUtil.MAPPER.readTree(request.serialize().getBytes()).get("model").asText());
         assertNull(ReceivedBody.parse(body).bytes());
+    }
+
+    @Test
+    void testParse_invalidUtf8PastTheFirstChunkSerializesTree() throws IOException {
+        // an overlong '/' far into the body, after a multi-byte text
+        String prefix = "{\"model\": \"m\", \"text\": \"" + "Привет 😀 ".repeat(1000);
+
+        assertNotNull(ReceivedBody.parse(Buffer.buffer(prefix + "\"}")).bytes());
+        assertNull(ReceivedBody.parse(Buffer.buffer(prefix).appendBytes(new byte[] {(byte) 0xC0, (byte) 0xAF}).appendString("\"}")).bytes());
+    }
+
+    @Test
+    void testParse_malformedJsonFails() {
+        assertThrows(JsonParseException.class, () -> ReceivedBody.parse(Buffer.buffer("{\"model\": ")));
+        assertThrows(JsonParseException.class, () -> ReceivedBody.parse(Buffer.buffer("{\"a\": {\"b\": }}")));
     }
 
     @Test
@@ -111,7 +135,7 @@ class JsonBodyRequestTest {
             RequestObject request = new ChatCompletionRequest(ReceivedBody.parse(body));
             request.setModel("o");
 
-            assertEquals("o", ProxyUtil.MAPPER.readTree(request.serialize()).get("model").asText());
+            assertEquals("o", ProxyUtil.MAPPER.readTree(request.serialize().getBytes()).get("model").asText());
         }
     }
 
@@ -145,7 +169,7 @@ class JsonBodyRequestTest {
     void testSerialize_serializesTreeWhenDefaultsApplied() throws IOException {
         RequestObject request = parse("{\"model\": \"m\"}");
 
-        request.applyDefaults(Map.of("max_tokens", 10));
+        assertTrue(request.applyDefaults(Map.of("max_tokens", 10)));
         request.setModel("o");
 
         assertEquals("{\"model\":\"o\",\"max_tokens\":10}", serialize(request));
@@ -156,7 +180,7 @@ class JsonBodyRequestTest {
         String body = "{\"model\": \"m\", \"max_tokens\": 5, \"metadata\": {\"a\": 1}}";
         RequestObject request = parse(body);
 
-        request.applyDefaults(Map.of("max_tokens", 10, "metadata", Map.of("a", 2)));
+        assertFalse(request.applyDefaults(Map.of("max_tokens", 10, "metadata", Map.of("a", 2))));
 
         assertEquals(body, serialize(request));
     }
@@ -183,7 +207,7 @@ class JsonBodyRequestTest {
     void testSerialize_serializesTreeWhenInterceptorSettingsRemoved() throws IOException {
         RequestObject request = parse("{\"model\": \"m\", \"custom_fields\": {\"interceptor_configuration\": {}, \"configuration\": {}}}");
 
-        request.clearInterceptorSettings();
+        assertTrue(request.clearInterceptorSettings());
 
         assertEquals("{\"model\":\"m\",\"custom_fields\":{\"configuration\":{}}}", serialize(request));
     }
@@ -200,6 +224,17 @@ class JsonBodyRequestTest {
     }
 
     @Test
+    void testBuildCacheKeys_chatCompletionHashesNonObjectMessage() throws Exception {
+        ChatCompletionRequest request = new ChatCompletionRequest(ReceivedBody.parse(Buffer.buffer("{\"messages\": [\"x\", {\"role\": \"user\"}]}")));
+
+        List<CacheKey> keys = request.buildCacheKeys(List.of("prefix.body.messages"));
+
+        assertEquals(List.of("prefix.body.messages[0]", "prefix.body.messages[1]"), keys.stream().map(CacheKey::path).toList());
+        assertEquals(sha1("\"x\""), keys.get(0).hash());
+        assertEquals(sha1("\"x\"\"user\""), keys.get(1).hash());
+    }
+
+    @Test
     void testParse_rejectsNonObject() {
         assertThrows(IllegalArgumentException.class, () -> ReceivedBody.parse(Buffer.buffer("[1]")));
         assertThrows(IllegalArgumentException.class, () -> ReceivedBody.parse(Buffer.buffer("")));
@@ -209,7 +244,11 @@ class JsonBodyRequestTest {
         return new ChatCompletionRequest(ReceivedBody.parse(Buffer.buffer(body)));
     }
 
+    private static String sha1(String text) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(text.getBytes(StandardCharsets.UTF_8)));
+    }
+
     private static String serialize(RequestObject request) throws IOException {
-        return new String(request.serialize(), StandardCharsets.UTF_8);
+        return request.serialize().toString(StandardCharsets.UTF_8);
     }
 }

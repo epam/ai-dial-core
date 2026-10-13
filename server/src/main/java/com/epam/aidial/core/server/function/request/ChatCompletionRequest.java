@@ -30,9 +30,9 @@ public class ChatCompletionRequest extends JsonBodyRequest {
     @Override
     public Set<String> collectAttachments() {
         Set<String> result = new HashSet<>();
-        result.addAll(ChatUtil.collectAttachments(tree, List.of(
+        result.addAll(ChatUtil.collectAttachments(tree(), List.of(
                 "$.messages[*].content[?(@.type == 'image_url')].image_url.url")));
-        result.addAll(ChatUtil.collectCustomAttachments(tree, List.of(
+        result.addAll(ChatUtil.collectCustomAttachments(tree(), List.of(
                 "$.messages[*].custom_content.attachments[*]",
                 "$.messages[*].custom_content.stages[*].attachments[*]",
                 "$.messages[*].custom_content.annotations[*].body.source.attachment",
@@ -42,7 +42,7 @@ public class ChatCompletionRequest extends JsonBodyRequest {
 
     @Override
     public Set<String> collectSkills() {
-        return ChatUtil.collectCustomSkills(tree, List.of("$.messages[*].custom_content.skills[*]"));
+        return ChatUtil.collectCustomSkills(tree(), List.of("$.messages[*].custom_content.skills[*]"));
     }
 
     @Override
@@ -61,7 +61,7 @@ public class ChatCompletionRequest extends JsonBodyRequest {
     }
 
     private void appendCacheKeys(CacheKeyBuilder builder, String node, List<CacheKey> result) {
-        JsonNode array = tree.get(node);
+        JsonNode array = tree().get(node);
         if (array == null || !array.isArray()) {
             // embedding request is not supported yet
             return;

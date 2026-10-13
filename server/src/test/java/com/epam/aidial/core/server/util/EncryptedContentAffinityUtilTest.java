@@ -82,8 +82,7 @@ public class EncryptedContentAffinityUtilTest {
         ArrayNode input = ProxyUtil.MAPPER.createArrayNode();
         input.add(item);
         List<EncryptedContentAffinityUtil.ResolvedAffinity> expected = List.of(
-                new EncryptedContentAffinityUtil.ResolvedAffinity("upstream-a", "deploy-x"),
-                EncryptedContentAffinityUtil.ResolvedAffinity.EMPTY);
+                new EncryptedContentAffinityUtil.ResolvedAffinity("upstream-a", "deploy-x"));
 
         List<EncryptedContentAffinityUtil.ResolvedAffinity> resolved = EncryptedContentAffinityUtil.resolveAndUnwrap(input);
         assertEquals(expected, resolved);
@@ -98,8 +97,7 @@ public class EncryptedContentAffinityUtilTest {
 
         ArrayNode input = ProxyUtil.MAPPER.createArrayNode();
         input.add(item);
-        List<EncryptedContentAffinityUtil.ResolvedAffinity> expected = List.of(
-                EncryptedContentAffinityUtil.ResolvedAffinity.EMPTY);
+        List<EncryptedContentAffinityUtil.ResolvedAffinity> expected = List.of();
 
         assertEquals(expected, EncryptedContentAffinityUtil.resolveAndUnwrap(input));
         assertEquals("rs_original", item.path("id").asText());
@@ -115,8 +113,7 @@ public class EncryptedContentAffinityUtilTest {
 
         ArrayNode input = ProxyUtil.MAPPER.createArrayNode();
         input.add(item);
-        List<EncryptedContentAffinityUtil.ResolvedAffinity> expected = List.of(
-                EncryptedContentAffinityUtil.ResolvedAffinity.EMPTY);
+        List<EncryptedContentAffinityUtil.ResolvedAffinity> expected = List.of();
 
         assertEquals(expected, EncryptedContentAffinityUtil.resolveAndUnwrap(input));
         assertEquals("dialenc_not-valid-base64!!", item.path("id").asText());
@@ -185,8 +182,7 @@ public class EncryptedContentAffinityUtilTest {
         ArrayNode input = ProxyUtil.MAPPER.createArrayNode();
         input.add(syntheticItem);
         List<EncryptedContentAffinityUtil.ResolvedAffinity> expected = List.of(
-                new EncryptedContentAffinityUtil.ResolvedAffinity("upstream-a", "deploy-x"),
-                EncryptedContentAffinityUtil.ResolvedAffinity.EMPTY);
+                new EncryptedContentAffinityUtil.ResolvedAffinity("upstream-a", "deploy-x"));
 
         List<EncryptedContentAffinityUtil.ResolvedAffinity> resolved = EncryptedContentAffinityUtil.resolveAndUnwrap(input);
         assertEquals(expected, resolved);
