@@ -750,7 +750,7 @@ public class GfLogStoreTest {
     }
 
     @Test
-    public void testFailedAssemblyListsResponseBodyFilesWithChunks() {
+    public void testFailedAssemblyRemovesStreamedFilesWithoutListingThem() {
         AnalyticsLogContext context = chatContext()
                 .responseBody(Buffer.buffer(STREAMED_RESPONSE))
                 .assembledStreamingResponse("{}")
@@ -758,15 +758,13 @@ public class GfLogStoreTest {
 
         JsonNode line = parse(logLine(new JsonObject().put("collectInlineFiles", false), context));
 
-        ArrayNode files = (ArrayNode) line.get("inline_files");
-        assertEquals(List.of("request.body", "response.body", "response.body"), fields(files));
-        assertEquals(1, files.get(2).get("chunk").asInt());
+        assertEquals(List.of("request.body"), fields((ArrayNode) line.get("inline_files")));
         assertEquals(STREAMED_RESPONSE.replace("\"BB\"", "\"\""), line.get("response").get("body").asText());
         assertEquals("{}", line.get("assembled_response").asText());
     }
 
     @Test
-    public void testResponsesStreamWithoutTerminalEventListsResponseBody() {
+    public void testStreamWithoutAssemblyIsNotIndexed() {
         String stream = """
                 event: response.image_generation_call.partial_image
                 data: {"type":"response.image_generation_call.partial_image","partial_image_b64":"QUJD"}
@@ -780,10 +778,8 @@ public class GfLogStoreTest {
 
         JsonNode line = parse(logLine(new JsonObject().put("collectInlineFileIndex", true), context));
 
-        JsonNode file = line.get("inline_files").get(0);
-        assertEquals("response.body", file.get("field").asText());
-        assertEquals(0, file.get("chunk").asInt());
-        assertEquals("QUJD", extract(line.get("response").get("body").asText(), file));
+        assertFalse(line.has("inline_files"));
+        assertEquals(stream, line.get("response").get("body").asText());
     }
 
     @Test

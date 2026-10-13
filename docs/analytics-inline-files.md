@@ -34,8 +34,7 @@ Each such entry carries the response twice. A Chat Completions stream that fails
 - An operator can stop file contents from being written to the log.
 - An operator can stop the log from containing the undecodable prefix of a file cut by the 4 MB limit.
 - Every file the core removes from `request.body` or from the indexed response field is listed in the entry itself.
-  The one exception is the per-delta copies in a streamed `response.body` whose assembled response is indexed, see
-  *The `inline_files` index*.
+  The one exception is files in streamed (SSE) bodies, which are removed but never indexed, see *Which field*.
 - Optionally, every log entry carries an index of the files in its bodies, with byte offsets, so a consumer can find,
   extract or replace them without knowing any request/response format.
 - An operator can stop `assembled_response` from being written when it would only duplicate `response.body`.
@@ -224,8 +223,8 @@ SSE is split into lines on `\n`, with a trailing `\r` removed. Events are separa
 `data:` lines carry the data (one optional space after the colon is not part of it). `event:`, `id:`, `retry:` and
 comment (`:`) lines are ignored.
 
-- `chunk` is the 0-based ordinal of the event among all events with at least one `data:` line, including `[DONE]` and
-  any non-JSON data.
+- Files in SSE bodies are located so the settings can remove them or cut before them, but they are never indexed,
+  see *Which field*.
 - An event whose data is not JSON has no files.
 - An event with more than one `data:` line is not scanned: its data is not contiguous in the body, so it has no
   usable offsets. It has no files and is logged as it is. LLM APIs send each event on a single line.
@@ -253,7 +252,6 @@ With `collectTruncatedInlineFiles=false` the second entry would instead be `{...
 | Member     | Presence                           | Meaning                                                                                       |
 |------------|------------------------------------|-----------------------------------------------------------------------------------------------|
 | `field`    | always                             | `request.body`, `response.body` or `assembled_response`, see *Which field*.                   |
-| `chunk`    | SSE bodies only                    | Ordinal of the SSE event, see *SSE bodies*; `path` is then relative to that event's JSON.     |
 | `path`     | always                             | JSON Pointer of the value.                                                                    |
 | `encoding` | always                             | `data_url` or `base64`.                                                                       |
 | `mime`     | when known                         | From the data URL or the sibling listed for the location.                                     |
@@ -286,13 +284,18 @@ files that are complete before it, and payloads are ASCII.
 
 ### Which field
 
-Request files are listed against `request.body`. Response files are listed against exactly one field:
+Only complete JSON bodies are indexed. A streamed (SSE) body carries a file in pieces spread over events, which a
+consumer cannot reliably put back together, so its files are never listed; the settings still remove them or cut
+before them.
+
+Request files are listed against `request.body`. Response files are listed against at most one field:
 
 - `assembled_response` when it holds a real assembly: an assembled streaming response exists and is not `"{}"`. Its
-  files are the merged form of the files in the streamed `response.body`, whose per-delta copies are processed (removed
-  or cut) but not listed. Listing them would mean one entry per delta, hundreds for streamed audio.
-- `response.body` otherwise: non-streamed responses, background jobs, unassembled streams (with `chunk`), failed
-  assemblies. Where `assembled_response` is also written as a copy, it holds the same bytes, so the same entries apply.
+  files are the merged form of the pieces in the streamed `response.body`.
+- `response.body` when the response is a JSON body: non-streamed responses and background jobs. Where
+  `assembled_response` is also written as a copy, it holds the same bytes, so the same entries apply.
+- None for a stream that was not assembled: a failed (`"{}"`) assembly, a Responses stream without a terminal event,
+  an Anthropic Messages stream.
 
 ### Which files
 
@@ -374,7 +377,8 @@ These are estimates; the benchmark in *Testing* measures them.
   - escapes before and inside the value give correct raw byte offsets and sizes;
   - multi-byte UTF-8 before the value gives correct byte offsets;
 - SSE:
-  - Chat Completions chunks, Anthropic `event:`/`data:` pairs and Responses events give correct `chunk` and offsets;
+  - Chat Completions chunks, Anthropic `event:`/`data:` pairs and Responses events give correct event ordinals and
+    offsets;
   - `[DONE]` and non-JSON data count as chunks;
   - CRLF and `data:` without a space are handled;
   - multi-line `data:` events are skipped;
@@ -390,8 +394,8 @@ These are estimates; the benchmark in *Testing* measures them.
 - `inline_files` has the specified entries, fields and statuses. For `included` and `partial`,
   `body.encode("utf-8")[offset:offset+length]` equals the original payload (or its logged prefix);
 - response files are listed against `assembled_response` for an assembled Chat Completions stream, and against
-  `response.body` for a non-streamed response, a background job, a Responses stream without a terminal event and a
-  failed (`"{}"`) assembly;
+  `response.body` for a non-streamed response and a background job; a Responses stream without a terminal event and a
+  failed (`"{}"`) assembly list no response files, while their streamed files are still removed;
 - `assembled_response` is omitted for a copy and a missing response body, and still written for a real assembly and
   for `"{}"`;
 - a body with invalid UTF-8 gets entries without `offset` and `length`;

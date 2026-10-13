@@ -490,6 +490,11 @@ public class GfLogStore implements LogStore {
             return;
         }
         for (LoggedFile file : body.files()) {
+            // a streamed body holds files in pieces a consumer cannot reliably put back together, so only complete
+            // JSON bodies are indexed; their pieces are still removed as the settings say
+            if (file.file().chunk() != null) {
+                continue;
+            }
             // without the index only what a setting removed is listed, which keeps every removal traceable
             if (settings.collectInlineFileIndex() || file.status() == Status.EXCLUDED) {
                 files.add(InlineFileEntry.of(field, file));
@@ -498,13 +503,13 @@ public class GfLogStore implements LogStore {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    @JsonPropertyOrder({"field", "chunk", "path", "encoding", "mime", "status", "offset", "length", "size"})
-    record InlineFileEntry(String field, Integer chunk, String path, String encoding, String mime, String status,
+    @JsonPropertyOrder({"field", "path", "encoding", "mime", "status", "offset", "length", "size"})
+    record InlineFileEntry(String field, String path, String encoding, String mime, String status,
                            Integer offset, Integer length, Integer size) {
 
         static InlineFileEntry of(String field, LoggedFile logged) {
             InlineFile file = logged.file();
-            return new InlineFileEntry(field, file.chunk(), file.path(), file.dataUrl() ? "data_url" : "base64", file.mime(),
+            return new InlineFileEntry(field, file.path(), file.dataUrl() ? "data_url" : "base64", file.mime(),
                     logged.status().name().toLowerCase(Locale.ROOT), logged.offset(), logged.length(), logged.size());
         }
     }
