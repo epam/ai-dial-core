@@ -103,15 +103,15 @@ public class LockService {
                 ttl = tryLock(id, owner);
             }
             acquired = System.nanoTime();
+            // both waits once the lock is acquired: a Redis failure records no wait, and no hold.
+            // Inside the try: should a record throw, the local lock is still released and only the Redis key stays until its ttl
+            LOCAL_WAIT_TIMER.record(localAcquired - waitStart, TimeUnit.NANOSECONDS);
+            REDIS_WAIT_TIMER.record(acquired - localAcquired, TimeUnit.NANOSECONDS);
         } catch (Throwable e) {
             localLock.unlock();
             releaseLocalLock(id);
             throw e;
         }
-        // both waits once the lock is acquired: a Redis failure records no wait, and no hold.
-        // Outside the try: the catch assumes the Redis lock was not taken.
-        LOCAL_WAIT_TIMER.record(localAcquired - waitStart, TimeUnit.NANOSECONDS);
-        REDIS_WAIT_TIMER.record(acquired - localAcquired, TimeUnit.NANOSECONDS);
 
         return () -> {
             try {
@@ -125,7 +125,7 @@ public class LockService {
 
     private static Timer buildWaitTimer(String phase) {
         // local: other threads of this pod hold the key;
-        // redis: the Redis round-trip, plus the spin with backoff while another pod holds the key
+        // redis: the Redis round-trip, plus the spin with backoff while another pod, or a tryLock() on this pod, holds the key
         return Timer.builder("dial_lock_wait")
                 .description("Time lock() waits before the lock is acquired")
                 .tag("phase", phase)

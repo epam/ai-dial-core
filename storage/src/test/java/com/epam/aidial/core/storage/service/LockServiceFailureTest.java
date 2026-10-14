@@ -1,5 +1,7 @@
 package com.epam.aidial.core.storage.service;
 
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -49,8 +51,17 @@ class LockServiceFailureTest {
                 });
 
         LockService service = new LockService(redis, null);
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        Metrics.addRegistry(meterRegistry);
+        try {
+            assertThrows(RedisException.class, () -> service.lock("key"));
 
-        assertThrows(RedisException.class, () -> service.lock("key"));
+            // a failed lock() records no wait and leaves no thread queued
+            assertEquals(0, meterRegistry.get("dial_lock_wait").timers().stream().mapToLong(timer -> timer.count()).sum());
+            assertEquals(0, meterRegistry.get("dial_lock_queue_size").gauge().value());
+        } finally {
+            Metrics.removeRegistry(meterRegistry);
+        }
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {

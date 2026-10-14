@@ -131,7 +131,7 @@ queue-size gauge only. The event-loop gauge is only registered when a Prometheus
 | Metric                                  | Type  | Measures                                                                                                                                  |
 |-----------------------------------------|-------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | `dial_lock_wait{phase="local"}`         | timer | Time `LockService.lock()` waits for other threads of this pod that hold the same key                                                      |
-| `dial_lock_wait{phase="redis"}`         | timer | Time `LockService.lock()` spends on the Redis lock: always one round-trip, plus the backoff spin while another pod holds the key          |
+| `dial_lock_wait{phase="redis"}`         | timer | Time `LockService.lock()` spends on the Redis lock: always one round-trip, plus the backoff spin while another pod, or a `tryLock()` on this pod, holds the key |
 | `dial_lock_queue_size{phase="local"}`   | gauge | Threads of this pod waiting in `lock()` for another thread of this pod to release the same key                                            |
 | `dial_lock_hold`                        | timer | Time a lock taken with `lock()` is held                                                                                                   |
 | `dial_async_tasks_queued`               | gauge | `AsyncTaskExecutor` tasks submitted and not started yet                                                                                   |
@@ -140,8 +140,9 @@ queue-size gauge only. The event-loop gauge is only registered when a Prometheus
 | `netty_eventexecutor_tasks_pending`     | gauge | Tasks queued on each event loop, tagged with the loop thread `name` (Micrometer `NettyEventExecutorMetrics`)                              |
 | `netty_eventexecutor_workers`           | gauge | Number of event loops (Micrometer `NettyEventExecutorMetrics`)                                                                            |
 
-Locks taken with `tryLock()` (sweeps, application deployment, code interpreter session cleanup) never
-wait, and their holds are not measured. The waits are recorded when `lock()` returns, the hold when the lock is released.
+Locks taken with `tryLock()` (resource sync to blob storage, sweeps, application deployment, code interpreter
+session cleanup) never wait, and their holds are not measured. They skip the local lock, so a `lock()` on a key
+held by a `tryLock()` of the same pod waits in the `redis` phase. The waits are recorded when `lock()` returns, the hold when the lock is released.
 `netty_eventexecutor_tasks_pending` counts the loop's task queue (callbacks such as `AsyncTaskExecutor` results and `runOnContext`; Redisson replies arrive on its own threads),
 not incoming I/O, and is read once per scrape, so it misses short bursts. A loop blocked by a single long task
 is reported by the Vert.x blocked thread checker in the log. Netty has no public per-task timing, so there is no event-loop
