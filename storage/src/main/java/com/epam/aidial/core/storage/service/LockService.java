@@ -2,6 +2,7 @@ package com.epam.aidial.core.storage.service;
 
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.util.LatencyBuckets;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Metrics;
 import io.micrometer.core.instrument.Timer;
 import lombok.Getter;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
@@ -42,6 +44,15 @@ public class LockService {
             .description("Time a lock taken with lock() is held")
             .serviceLevelObjectives(LatencyBuckets.WAIT_BUCKETS)
             .register(Metrics.globalRegistry);
+    // static like the timers: Micrometer keeps the first gauge registered under a name, so every LockService feeds this one
+    private static final AtomicInteger LOCAL_QUEUE = new AtomicInteger();
+
+    static {
+        Gauge.builder("dial_lock_queue_size", LOCAL_QUEUE, AtomicInteger::get)
+                .description("Threads of this pod waiting in lock() for another thread of this pod to release the same key")
+                .tag("phase", "local")
+                .register(Metrics.globalRegistry);
+    }
 
     private static class LocalLock {
         // number of threads requested this lock
@@ -71,7 +82,12 @@ public class LockService {
         // try to get a local lock the first
         LocalLock localLock = acquireLocalLock(id);
         long waitStart = System.nanoTime();
-        localLock.lock();
+        LOCAL_QUEUE.incrementAndGet();
+        try {
+            localLock.lock();
+        } finally {
+            LOCAL_QUEUE.decrementAndGet();
+        }
         long localAcquired = System.nanoTime();
         long acquired;
 

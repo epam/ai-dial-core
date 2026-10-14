@@ -97,9 +97,11 @@ class LockServiceTest {
     void testLocalContentionIsRecordedAsLocalWait() throws Exception {
         LockService.Lock lock = service.lock("local-contended");
         Thread waiter = startWaiter("local-contended");
+        Assertions.assertEquals(1, localQueueSize());
         Thread.sleep(300);
         lock.close();
         join(waiter);
+        Assertions.assertEquals(0, localQueueSize());
 
         Assertions.assertTrue(waitTimer("local").max(TimeUnit.MILLISECONDS) >= 250);
         Assertions.assertTrue(holdTimer().max(TimeUnit.MILLISECONDS) >= 250);
@@ -145,6 +147,10 @@ class LockServiceTest {
 
     private Timer waitTimer(String phase) {
         return meterRegistry.get("dial_lock_wait").tag("phase", phase).timer();
+    }
+
+    private double localQueueSize() {
+        return meterRegistry.get("dial_lock_queue_size").tag("phase", "local").gauge().value();
     }
 
     private Timer holdTimer() {

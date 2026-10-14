@@ -125,24 +125,29 @@ also records calls made outside a request.
 ## Wait metrics
 
 These metrics show where Core waits rather than works. The timers have buckets from 100 µs to 30 s.
-The event-loop queue gauge is only registered when a Prometheus or OTLP registry is enabled.
+Locks and async tasks each have a queue-size gauge and timers for the wait and the work; the event loops have a
+queue-size gauge only. The event-loop gauge is only registered when a Prometheus or OTLP registry is enabled.
 
 | Metric                                  | Type  | Measures                                                                                                                                  |
 |-----------------------------------------|-------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | `dial_lock_wait{phase="local"}`         | timer | Time `LockService.lock()` waits for other threads of this pod that hold the same key                                                      |
 | `dial_lock_wait{phase="redis"}`         | timer | Time `LockService.lock()` spends on the Redis lock: always one round-trip, plus the backoff spin while another pod holds the key          |
+| `dial_lock_queue_size{phase="local"}`   | gauge | Threads of this pod waiting in `lock()` for another thread of this pod to release the same key                                            |
 | `dial_lock_hold`                        | timer | Time a lock taken with `lock()` is held                                                                                                   |
-| `dial_async_tasks_active`               | gauge | `AsyncTaskExecutor` tasks submitted and not finished yet                                                                                  |
+| `dial_async_tasks_queued`               | gauge | `AsyncTaskExecutor` tasks submitted and not started yet                                                                                   |
 | `dial_async_task_start_delay`           | timer | Time from `AsyncTaskExecutor.submit()` until the task starts running                                                                      |
+| `dial_async_task_duration`              | timer | Time an `AsyncTaskExecutor` task runs, from its start until it returns or throws                                                          |
 | `netty_eventexecutor_tasks_pending`     | gauge | Tasks queued on each event loop, tagged with the loop thread `name` (Micrometer `NettyEventExecutorMetrics`)                              |
 
 Locks taken with `tryLock()` (sweeps, application deployment, code interpreter session cleanup) never
 wait, and their holds are not measured. The waits are recorded when `lock()` returns, the hold when the lock is released.
 `netty_eventexecutor_tasks_pending` counts the loop's task queue (callbacks such as Redis replies and `runOnContext`),
 not incoming I/O, and is read once per scrape, so it misses short bursts. A loop blocked by a single long task
-is reported by the Vert.x blocked thread checker in the log. In
+is reported by the Vert.x blocked thread checker in the log. Netty has no public per-task timing, so there is no event-loop
+counterpart to `dial_async_task_duration`. A task's duration is wall time: blocking calls inside it (Redis, blob storage)
+count. With virtual threads, `dial_async_tasks_queued` stays near zero unless every carrier thread is busy or pinned. In
 worker-pool mode (`asyncTaskExecutor.useVirtualThreads=false`) the Vert.x `vertx_pool_*` metrics
-report the same pool as the two `dial_async_*` metrics. Prometheus adds the unit to the names: a timer is
+report the same pool as the `dial_async_*` metrics. Prometheus adds the unit to the names: a timer is
 exported as `<name>_seconds_count`, `_sum`, `_max` and `_bucket`.
 
 ## Trace context after the response

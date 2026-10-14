@@ -1,9 +1,11 @@
 package com.epam.aidial.core.server.vertx;
 
 import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.core.VertxOptions;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The gauge is JVM-wide and other test classes leave tasks behind, so every assertion is a delta from a value read first.
+ * The meters are JVM-wide and other test classes leave tasks behind, so every assertion is a delta from a value read first.
  */
 class AsyncTaskExecutorTest {
 
@@ -41,81 +43,94 @@ class AsyncTaskExecutorTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
-    void tracksActiveTasksAndStartDelay(boolean useVirtualThreads) throws Exception {
+    void recordsStartDelayAndDuration(boolean useVirtualThreads) throws Exception {
         AsyncTaskExecutor executor = new AsyncTaskExecutor(vertx, new JsonObject().put("useVirtualThreads", useVirtualThreads));
-        CompletableFuture<Void> release = new CompletableFuture<>();
-        CompletableFuture<Double> activeDuringTask = new CompletableFuture<>();
-        double activeBefore = activeTasks();
+        CompletableFuture<Double> queuedDuringTask = new CompletableFuture<>();
+        double queuedBefore = queuedTasks();
         long startDelaysBefore = startDelays();
+        long durationsBefore = durations().count();
 
         CompletableFuture<String> result = executor.submit(() -> {
-            activeDuringTask.complete(activeTasks());
-            release.get(5, TimeUnit.SECONDS);
+            queuedDuringTask.complete(queuedTasks());
+            Thread.sleep(300);
             return "done";
         }).toCompletionStage().toCompletableFuture();
 
-        assertEquals(activeBefore + 1, activeDuringTask.get(5, TimeUnit.SECONDS));
-        release.complete(null);
         assertEquals("done", result.get(5, TimeUnit.SECONDS));
-        assertEquals(activeBefore, activeTasks());
+        assertEquals(queuedBefore, queuedDuringTask.get(5, TimeUnit.SECONDS), "a running task is no longer queued");
+        assertEquals(queuedBefore, queuedTasks());
         assertEquals(startDelaysBefore + 1, startDelays());
+        assertEquals(durationsBefore + 1, durations().count());
+        assertTrue(durations().max(TimeUnit.MILLISECONDS) >= 250);
+    }
+
+    @Test
+    void taskWaitingForWorkerIsQueued() throws Exception {
+        Vertx oneWorker = Vertx.vertx(new VertxOptions().setWorkerPoolSize(1));
+        try {
+            AsyncTaskExecutor executor = new AsyncTaskExecutor(oneWorker, new JsonObject().put("useVirtualThreads", false));
+            CompletableFuture<Void> started = new CompletableFuture<>();
+            CompletableFuture<Void> release = new CompletableFuture<>();
+            double queuedBefore = queuedTasks();
+
+            Future<Object> first = executor.submit(() -> {
+                started.complete(null);
+                return release.get(5, TimeUnit.SECONDS);
+            });
+            started.get(5, TimeUnit.SECONDS);
+            Future<String> second = executor.submit(() -> "second");
+            assertEquals(queuedBefore + 1, queuedTasks());
+
+            release.complete(null);
+            assertEquals("second", second.toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS));
+            first.toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            assertEquals(queuedBefore, queuedTasks());
+        } finally {
+            oneWorker.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
+        }
     }
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
-    void failedTaskIsNoLongerActive(boolean useVirtualThreads) {
+    void failedTaskRecordsDuration(boolean useVirtualThreads) {
         AsyncTaskExecutor executor = new AsyncTaskExecutor(vertx, new JsonObject().put("useVirtualThreads", useVirtualThreads));
-        double activeBefore = activeTasks();
+        double queuedBefore = queuedTasks();
+        long durationsBefore = durations().count();
 
         CompletableFuture<Object> result = executor.submit(() -> {
             throw new IllegalStateException("boom");
         }).toCompletionStage().toCompletableFuture();
 
         assertThrows(Exception.class, () -> result.get(5, TimeUnit.SECONDS));
-        assertEquals(activeBefore, activeTasks());
+        assertEquals(queuedBefore, queuedTasks());
+        assertEquals(durationsBefore + 1, durations().count());
     }
 
     @Test
-    void rejectedTaskIsNoLongerActive() throws Exception {
+    void rejectedTaskIsNoLongerQueued() throws Exception {
         Vertx closed = Vertx.vertx();
         AsyncTaskExecutor executor = new AsyncTaskExecutor(closed, new JsonObject().put("useVirtualThreads", false));
         closed.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
-        double activeBefore = activeTasks();
+        double queuedBefore = queuedTasks();
+        long startDelaysBefore = startDelays();
 
         Future<String> result = executor.submit(() -> "never runs");
 
         assertTrue(result.failed());
         assertInstanceOf(RejectedExecutionException.class, result.cause());
-        assertEquals(activeBefore, activeTasks());
+        assertEquals(queuedBefore, queuedTasks());
+        assertEquals(startDelaysBefore, startDelays());
     }
 
-    @Test
-    void taskFinishingAfterCloseIsNoLongerActive() throws Exception {
-        // vertx does not wait for a virtual thread, so the task outlives it and its result cannot reach the closed context
-        Vertx closing = Vertx.vertx();
-        AsyncTaskExecutor executor = new AsyncTaskExecutor(closing, new JsonObject().put("useVirtualThreads", true));
-        CompletableFuture<Void> started = new CompletableFuture<>();
-        CompletableFuture<Void> release = new CompletableFuture<>();
-        double activeBefore = activeTasks();
-
-        executor.submit(() -> {
-            started.complete(null);
-            release.get(5, TimeUnit.SECONDS);
-            return "finished after close";
-        });
-        started.get(5, TimeUnit.SECONDS);
-        closing.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
-        assertEquals(activeBefore + 1, activeTasks());
-
-        release.complete(null);
-        Await.until(() -> activeTasks() == activeBefore, () -> "the task should count itself down, active=" + activeTasks());
-    }
-
-    private double activeTasks() {
-        return meterRegistry.get("dial_async_tasks_active").gauge().value();
+    private double queuedTasks() {
+        return meterRegistry.get("dial_async_tasks_queued").gauge().value();
     }
 
     private long startDelays() {
         return meterRegistry.get("dial_async_task_start_delay").timer().count();
+    }
+
+    private Timer durations() {
+        return meterRegistry.get("dial_async_task_duration").timer();
     }
 }

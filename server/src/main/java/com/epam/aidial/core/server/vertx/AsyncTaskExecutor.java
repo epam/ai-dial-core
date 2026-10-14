@@ -26,17 +26,21 @@ public class AsyncTaskExecutor {
 
     private static final Executor VIRTUAL_THREAD_PER_TASK_EXECUTOR;
     // static: Micrometer keeps the first gauge registered under a name, a per-instance counter would show the first executor only
-    private static final AtomicInteger ACTIVE_TASKS = new AtomicInteger();
+    private static final AtomicInteger QUEUED_TASKS = new AtomicInteger();
     private static final Timer START_DELAY_TIMER = Timer.builder("dial_async_task_start_delay")
             .description("Time from submit() until the task starts running")
+            .serviceLevelObjectives(LatencyBuckets.WAIT_BUCKETS)
+            .register(Metrics.globalRegistry);
+    private static final Timer DURATION_TIMER = Timer.builder("dial_async_task_duration")
+            .description("Time a task runs, from its start until it returns or throws")
             .serviceLevelObjectives(LatencyBuckets.WAIT_BUCKETS)
             .register(Metrics.globalRegistry);
 
     static {
         ThreadFactory threadFactory = Thread.ofVirtual().name("dial.x-virtual-thread-", 0).factory();
         VIRTUAL_THREAD_PER_TASK_EXECUTOR = newThreadPerTaskExecutor(threadFactory);
-        Gauge.builder("dial_async_tasks_active", ACTIVE_TASKS, AtomicInteger::get)
-                .description("Tasks submitted and not finished yet")
+        Gauge.builder("dial_async_tasks_queued", QUEUED_TASKS, AtomicInteger::get)
+                .description("Tasks submitted and not started yet")
                 .register(Metrics.globalRegistry);
     }
 
@@ -60,25 +64,27 @@ public class AsyncTaskExecutor {
      */
     public <T> Future<T> submit(Callable<T> blockingCall) {
         long submitted = System.nanoTime();
-        ACTIVE_TASKS.incrementAndGet();
+        QUEUED_TASKS.incrementAndGet();
         AtomicBoolean started = new AtomicBoolean();
-        // counted down on the task's own thread, not in a future listener: a listener runs on the event loop, so a
-        // stalled loop would keep its finished tasks counted as active, the very condition the gauge is there to show
+        // measured on the task's own thread, not in a future listener: a listener runs on the event loop, so a busy
+        // loop would add its own delay to the duration
         Callable<T> measuredCall = () -> {
             started.set(true);
+            QUEUED_TASKS.decrementAndGet();
+            long start = System.nanoTime();
+            START_DELAY_TIMER.record(start - submitted, TimeUnit.NANOSECONDS);
             try {
-                START_DELAY_TIMER.record(System.nanoTime() - submitted, TimeUnit.NANOSECONDS);
                 return blockingCall.call();
             } finally {
-                ACTIVE_TASKS.decrementAndGet();
+                DURATION_TIMER.record(System.nanoTime() - start, TimeUnit.NANOSECONDS);
             }
         };
         Future<T> result = execute(measuredCall);
         // the worker pool of a closed vertx rejects the task before it runs, so it is counted down here; a task that
-        // already ran and failed counted itself down. A task still queued in the worker pool when vertx closes is
+        // already started counted itself down. A task still queued in the worker pool when vertx closes is
         // dropped and stays counted: the pod is going down, at most the last OTLP push sees it.
         if (result.failed() && !started.get()) {
-            ACTIVE_TASKS.decrementAndGet();
+            QUEUED_TASKS.decrementAndGet();
         }
         return result;
     }

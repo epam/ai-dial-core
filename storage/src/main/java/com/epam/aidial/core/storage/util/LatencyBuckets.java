@@ -3,14 +3,14 @@ package com.epam.aidial.core.storage.util;
 import java.time.Duration;
 
 /**
- * Histogram buckets of the wait and stall timers (the blob operation timer keeps its own in BlobStorage); the default
+ * Histogram buckets of the wait timers (the blob operation timer keeps its own in BlobStorage); the default
  * Micrometer histogram starts at 1 ms.
  */
 public final class LatencyBuckets {
 
     /**
-     * Waits, holds and stalls: an uncontended lock wait (a Redis round-trip), event-loop lag and task start delay
-     * are well under 1 ms, a lock held across a publication or a stalled loop can run for tens of seconds.
+     * Waits, holds and task durations: an uncontended lock wait (a Redis round-trip) and task start delay are well
+     * under 1 ms, a lock held across a publication or a long task can run for tens of seconds.
      * Micrometer copies the buckets at registration, so no timer shares this array.
      */
     public static final Duration[] WAIT_BUCKETS = {
