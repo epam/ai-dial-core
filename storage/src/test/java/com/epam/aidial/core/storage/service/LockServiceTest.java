@@ -10,6 +10,8 @@ import org.redisson.config.Config;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 class LockServiceTest {
 
@@ -63,5 +65,21 @@ class LockServiceTest {
             Assertions.assertNotNull(lock);
             lock.close();
         }
+    }
+
+    @Test
+    void testIsHeldByCurrentThread() throws Exception {
+        Assertions.assertFalse(service.isHeldByCurrentThread("held-key"));
+
+        LockService.Lock lock = service.lock("held-key");
+        try {
+            Assertions.assertTrue(service.isHeldByCurrentThread("held-key"));
+            Assertions.assertFalse(service.isHeldByCurrentThread("other-key"));
+            Assertions.assertFalse(CompletableFuture.supplyAsync(() -> service.isHeldByCurrentThread("held-key")).get(10, TimeUnit.SECONDS));
+        } finally {
+            lock.close();
+        }
+
+        Assertions.assertFalse(service.isHeldByCurrentThread("held-key"));
     }
 }

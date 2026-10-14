@@ -18,6 +18,7 @@ import org.jclouds.io.MutableContentMetadata;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.mockito.Mockito;
 import org.redisson.Redisson;
 import org.redisson.api.RScoredSortedSet;
@@ -38,10 +39,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -372,6 +374,7 @@ public class ResourceServiceTest {
         service.putResource(application, "app body", EtagHeader.NEW_ONLY);
         assertEquals("", blobBody(model));
         assertEquals("", blobBody(application));
+        assertEquals(Set.of(RedisUtil.redisKey(model, null), RedisUtil.redisKey(application, null)), queuedKeys(null));
 
         service.flushPending(ADMIN_LOCATIONS);
 
@@ -423,21 +426,67 @@ public class ResourceServiceTest {
 
     @Test
     public void testFlushPendingWaitsForLockedKey() throws Exception {
+        LockService locks = Mockito.spy(new LockService(client, null));
+        ResourceService locked = new ResourceService(Mockito.mock(TimerService.class), client, storage, locks, settings, null);
+        ResourceDescriptor model = resource(ResourceTypes.MODEL, "platform", "gpt");
+        locked.putResource(model, "model body", EtagHeader.NEW_ONLY);
+        Mockito.clearInvocations(locks);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+
+        try {
+            Future<?> flush;
+            LockService.Lock held = locked.lockResource(model);
+            try {
+                flush = executor.submit(() -> locked.flushPending(ADMIN_LOCATIONS));
+                // the second lock() call is the flush reaching the key we hold, where it has to wait
+                Mockito.verify(locks, Mockito.timeout(10_000).times(2)).lock(RedisUtil.redisKey(model, null));
+                assertFalse(flush.isDone());
+                assertEquals("", blobBody(model));
+            } finally {
+                held.close();
+            }
+
+            flush.get(10, TimeUnit.SECONDS);
+            assertEquals("model body", blobBody(model));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    @Timeout(30)
+    public void testFlushPendingRejectsKeyLockedByCurrentThread() throws IOException {
         ResourceDescriptor model = resource(ResourceTypes.MODEL, "platform", "gpt");
         service.putResource(model, "model body", EtagHeader.NEW_ONLY);
 
-        CompletableFuture<Void> flush;
-        LockService.Lock held = service.lockResource(model);
-        try {
-            flush = CompletableFuture.runAsync(() -> service.flushPending(ADMIN_LOCATIONS));
-            assertThrows(TimeoutException.class, () -> flush.get(500, TimeUnit.MILLISECONDS));
-            assertEquals("", blobBody(model));
-        } finally {
-            held.close();
+        try (LockService.Lock ignored = service.lockResource(model)) {
+            assertThrows(IllegalStateException.class, () -> service.flushPending(ADMIN_LOCATIONS));
         }
 
-        flush.get(10, TimeUnit.SECONDS);
-        assertEquals("model body", blobBody(model));
+        assertEquals("", blobBody(model));
+        assertEquals(Set.of(RedisUtil.redisKey(model, null)), queuedKeys(null));
+    }
+
+    @Test
+    public void testFlushPendingRejectsLocationWithoutTrailingSlash() throws IOException {
+        ResourceDescriptor model = resource(ResourceTypes.MODEL, "platform", "gpt");
+        service.putResource(model, "model body", EtagHeader.NEW_ONLY);
+
+        assertThrows(IllegalArgumentException.class, () -> service.flushPending(List.of("platform/", "public")));
+
+        assertEquals("", blobBody(model));
+        assertEquals(Set.of(RedisUtil.redisKey(model, null)), queuedKeys(null));
+    }
+
+    @Test
+    public void testFlushPendingIgnoresSiblingBucketWithSamePrefix() throws IOException {
+        ResourceDescriptor sibling = resource(ResourceTypes.MODEL, "public-data", "gpt");
+        service.putResource(sibling, "model body", EtagHeader.NEW_ONLY);
+
+        service.flushPending(ADMIN_LOCATIONS);
+
+        assertEquals("", blobBody(sibling));
+        assertEquals(Set.of(RedisUtil.redisKey(sibling, null)), queuedKeys(null));
     }
 
     @Test
