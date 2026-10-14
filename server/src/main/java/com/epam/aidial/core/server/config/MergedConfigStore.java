@@ -16,6 +16,7 @@ import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionSe
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceService;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceEvent;
@@ -139,6 +140,7 @@ public final class MergedConfigStore implements ConfigStore {
     private final ExternalServiceService externalServiceService;
     private final ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
     private final LockService lockService;
+    private final BackgroundOperationTracer backgroundTracer;
     private final String onInvalidEntity;
     private final boolean softValidation;
     private final String thisPodId;
@@ -164,9 +166,10 @@ public final class MergedConfigStore implements ConfigStore {
                              LockService lockService,
                              String onInvalidEntity,
                              ExternalServiceService externalServiceService,
-                             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService) {
+                             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService,
+                             BackgroundOperationTracer backgroundTracer) {
         this(vertx, taskExecutor, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor,
-                lockService, onInvalidEntity, false, "", externalServiceService, resourceAuthSettingsEncryptionService);
+                lockService, onInvalidEntity, false, "", externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
     }
 
     public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
@@ -176,9 +179,10 @@ public final class MergedConfigStore implements ConfigStore {
                              String onInvalidEntity,
                              boolean softValidation,
                              ExternalServiceService externalServiceService,
-                             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService) {
+                             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService,
+                             BackgroundOperationTracer backgroundTracer) {
         this(vertx, taskExecutor, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor,
-                lockService, onInvalidEntity, softValidation, "", externalServiceService, resourceAuthSettingsEncryptionService);
+                lockService, onInvalidEntity, softValidation, "", externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
     }
 
     public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
@@ -189,11 +193,13 @@ public final class MergedConfigStore implements ConfigStore {
                              boolean softValidation,
                              String thisPodId,
                              ExternalServiceService externalServiceService,
-                             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService) {
+                             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService,
+                             BackgroundOperationTracer backgroundTracer) {
         this.vertx = vertx;
         this.taskExecutor = taskExecutor;
         this.resourceService = resourceService;
         this.apiKeyStore = Objects.requireNonNull(apiKeyStore, "apiKeyStore must not be null");
+        this.backgroundTracer = backgroundTracer;
         // Adopt ApiKeyStore's mutation lock so rebuild and key point-writes serialize on the same monitor.
         this.rebuildLock = Objects.requireNonNull(apiKeyStore.getMutationLock(),
                 "apiKeyStore.getMutationLock() must not be null (mock fixtures must stub it with a real ReentrantLock)");
@@ -599,14 +605,16 @@ public final class MergedConfigStore implements ConfigStore {
         // Distributed bucket lock so the debounced scan cannot read partial-batch blob state while a
         // peer pod's apply* is mid-batch (design 02 §4.4). underBucketLocks blocks on Redis, but we
         // are on a virtual thread (taskExecutor) so that is fine.
-        taskExecutor.submit(() -> lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
-            rebuildLock.lock();
-            try {
-                return rebuild();
-            } finally {
-                rebuildLock.unlock();
-            }
-        })).onFailure(error -> log.warn("Failed to rebuild merged config", error));
+        backgroundTracer.traceFuture("background.config.rebuild", () ->
+                taskExecutor.submit(() -> lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
+                    rebuildLock.lock();
+                    try {
+                        return rebuild();
+                    } finally {
+                        rebuildLock.unlock();
+                    }
+                })).onFailure(error -> log.warn("Failed to rebuild merged config", error))
+        );
     }
 
     /**

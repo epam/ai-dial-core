@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -402,8 +403,13 @@ class BackgroundJobSchedulerTest {
                                                   Function<String, BackgroundJobService.Poller> pollerProvider) {
         AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx,
                 new JsonObject().put("useVirtualThreads", false));
+        BackgroundOperationTracer backgroundTracer = org.mockito.Mockito.mock(BackgroundOperationTracer.class);
+        org.mockito.Mockito.lenient().when(backgroundTracer.traceFuture(org.mockito.Mockito.anyString(), org.mockito.Mockito.any())).thenAnswer(inv -> {
+            java.util.function.Supplier<io.vertx.core.Future<?>> supplier = inv.getArgument(1);
+            return supplier.get();
+        });
         return new BackgroundJobScheduler(vertx, redissonClient, PREFIX,
-                resourceService, taskExecutor, settings, pollerProvider, jobExpirer);
+                resourceService, taskExecutor, settings, pollerProvider, jobExpirer, backgroundTracer);
     }
 
     private static BackgroundJobService.Settings defaultSettings() {

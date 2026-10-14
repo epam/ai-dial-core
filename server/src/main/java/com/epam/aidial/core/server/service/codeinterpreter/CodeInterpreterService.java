@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -55,6 +56,7 @@ public class CodeInterpreterService {
     private final AccessService accessService;
     private final EncryptionService encryptionService;
     private final ApplicationOperatorService operatorService;
+    private final BackgroundOperationTracer backgroundTracer;
     private final RScoredSortedSet<String> activeSessions;
     private final CodeInterpreterClient client;
     private final Supplier<String> idGenerator;
@@ -66,6 +68,7 @@ public class CodeInterpreterService {
     public CodeInterpreterService(Vertx vertx, AsyncTaskExecutor taskExecutor, RedissonClient redisson,
                                   ResourceService resourceService, AccessService accessService,
                                   EncryptionService encryptionService, ApplicationOperatorService operatorService,
+                                  BackgroundOperationTracer backgroundTracer,
                                   Supplier<String> idGenerator, JsonObject settings) {
         String activeSessionsKey = BlobStorageUtil.toStoragePath(resourceService.getPrefix(), "active-code-interpreter-sessions");
 
@@ -75,6 +78,7 @@ public class CodeInterpreterService {
         this.accessService = accessService;
         this.encryptionService = encryptionService;
         this.operatorService = operatorService;
+        this.backgroundTracer = backgroundTracer;
         this.idGenerator = idGenerator;
         this.activeSessions = redisson.getScoredSortedSet(activeSessionsKey);
         this.sessionProxyUrl = settings.getString("sessionProxyUrl");
@@ -85,7 +89,11 @@ public class CodeInterpreterService {
 
         if (isActive()) {
             long checkPeriod = settings.getLong("checkPeriod", 10000L);
-            vertx.setPeriodic(checkPeriod, checkPeriod, ignore -> taskExecutor.submit(this::checkSessions));
+            vertx.setPeriodic(checkPeriod, checkPeriod, ignore ->
+                    backgroundTracer.traceFuture("background.session.check", () ->
+                            taskExecutor.submit(this::checkSessions)
+                    )
+            );
         }
     }
 

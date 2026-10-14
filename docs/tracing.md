@@ -141,3 +141,22 @@ after the response has ended was rejected because a worker thread of the same re
 root context in between. The scratch copy's empty locals lose nothing: every server-span start in
 Vert.x 4.5.30 already hands in a freshly duplicated context, so the incoming `traceparent` is the
 only parent source either way.
+
+## Background operations
+
+Periodic work that no request started is traced with one root span per run: the background job
+poll and scan (`background.job.poll`, `background.job.scan`), the complex resource sweep
+(`background.resource.sweep`), the code interpreter session check (`background.session.check`) and
+the merged config rebuild (`background.config.rebuild`). The spans carry `operation.type=background`
+and are not children of any request. Because a run has a valid span, the `BlockingCallTracer` spans for
+storage calls made inside it (`blob.list`, `resource.get`) become its children, so a sweep run that lists
+blobs is a small trace of its own rather than a lone span.
+
+`BackgroundOperationTracer` keeps each run's span on a duplicate of the timer's Vert.x context that
+only that run uses, the same way a request keeps its own. The context a timer fires on is shared by
+every run and by anything else created from it, so writing the span there and restoring it later would
+let overlapping runs, or callbacks on other threads, read each other's trace. Work the run submits
+(`AsyncTaskExecutor`, future callbacks) captures the duplicate, so it and its log lines carry the run's
+trace id. A handler that should be covered, such as a logging `onFailure`, has to be part of the future
+passed to `traceFuture`, because the span ends when that future completes.
+`pollJobs` is fire-and-forget: its span covers claiming jobs, not the execution of each claimed job.

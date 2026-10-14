@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service.resource;
 import com.epam.aidial.core.server.FileUtil;
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -15,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Metrics;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonObject;
 import org.jclouds.blobstore.domain.PageSet;
@@ -37,6 +39,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -164,8 +167,13 @@ class ComplexResourceSweepServiceTest {
         TimerService timerService = Mockito.mock(TimerService.class);
         Mockito.when(timerService.scheduleWithFixedDelay(Mockito.anyLong(), Mockito.anyLong(), Mockito.any()))
                 .thenReturn(() -> { });
+        BackgroundOperationTracer backgroundTracer = Mockito.mock(BackgroundOperationTracer.class);
+        Mockito.lenient().when(backgroundTracer.traceFuture(Mockito.anyString(), Mockito.any())).thenAnswer(inv -> {
+            Supplier<Future<?>> supplier = inv.getArgument(1);
+            return supplier.get();
+        });
         return new ComplexResourceSweepService(
-                timerService, blobStorage, redis, lockService, complexResourceService, encryptionService, settings);
+                timerService, blobStorage, redis, lockService, complexResourceService, encryptionService, settings, backgroundTracer);
     }
 
     private ResourceDescriptor skill(String name) {
