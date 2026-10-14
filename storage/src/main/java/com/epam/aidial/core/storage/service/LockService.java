@@ -103,14 +103,15 @@ public class LockService {
                 ttl = tryLock(id, owner);
             }
             acquired = System.nanoTime();
-            // both waits once the lock is acquired: a Redis failure records no wait, and no hold
-            LOCAL_WAIT_TIMER.record(localAcquired - waitStart, TimeUnit.NANOSECONDS);
-            REDIS_WAIT_TIMER.record(acquired - localAcquired, TimeUnit.NANOSECONDS);
         } catch (Throwable e) {
             localLock.unlock();
             releaseLocalLock(id);
             throw e;
         }
+        // both waits once the lock is acquired: a Redis failure records no wait, and no hold.
+        // Outside the try: the catch assumes the Redis lock was not taken.
+        LOCAL_WAIT_TIMER.record(localAcquired - waitStart, TimeUnit.NANOSECONDS);
+        REDIS_WAIT_TIMER.record(acquired - localAcquired, TimeUnit.NANOSECONDS);
 
         return () -> {
             try {

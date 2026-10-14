@@ -14,6 +14,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
@@ -101,7 +102,8 @@ class AsyncTaskExecutorTest {
             throw new IllegalStateException("boom");
         }).toCompletionStage().toCompletableFuture();
 
-        assertThrows(Exception.class, () -> result.get(5, TimeUnit.SECONDS));
+        ExecutionException error = assertThrows(ExecutionException.class, () -> result.get(5, TimeUnit.SECONDS));
+        assertInstanceOf(IllegalStateException.class, error.getCause());
         assertEquals(queuedBefore, queuedTasks());
         assertEquals(durationsBefore + 1, durations().count());
     }

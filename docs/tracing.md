@@ -138,10 +138,11 @@ queue-size gauge only. The event-loop gauge is only registered when a Prometheus
 | `dial_async_task_start_delay`           | timer | Time from `AsyncTaskExecutor.submit()` until the task starts running                                                                      |
 | `dial_async_task_duration`              | timer | Time an `AsyncTaskExecutor` task runs, from its start until it returns or throws                                                          |
 | `netty_eventexecutor_tasks_pending`     | gauge | Tasks queued on each event loop, tagged with the loop thread `name` (Micrometer `NettyEventExecutorMetrics`)                              |
+| `netty_eventexecutor_workers`           | gauge | Number of event loops (Micrometer `NettyEventExecutorMetrics`)                                                                            |
 
 Locks taken with `tryLock()` (sweeps, application deployment, code interpreter session cleanup) never
 wait, and their holds are not measured. The waits are recorded when `lock()` returns, the hold when the lock is released.
-`netty_eventexecutor_tasks_pending` counts the loop's task queue (callbacks such as Redis replies and `runOnContext`),
+`netty_eventexecutor_tasks_pending` counts the loop's task queue (callbacks such as `AsyncTaskExecutor` results and `runOnContext`; Redisson replies arrive on its own threads),
 not incoming I/O, and is read once per scrape, so it misses short bursts. A loop blocked by a single long task
 is reported by the Vert.x blocked thread checker in the log. Netty has no public per-task timing, so there is no event-loop
 counterpart to `dial_async_task_duration`. A task's duration is wall time: blocking calls inside it (Redis, blob storage)
