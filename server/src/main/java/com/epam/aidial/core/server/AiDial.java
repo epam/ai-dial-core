@@ -92,7 +92,6 @@ import com.epam.aidial.core.server.util.AuthSettingsResolver;
 import com.epam.aidial.core.server.util.ProxySettings;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
-import com.epam.aidial.core.server.vertx.EventLoopLagProbe;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.cache.CacheClientFactory;
@@ -106,6 +105,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.core.instrument.Clock;
 import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.binder.netty4.NettyEventExecutorMetrics;
 import io.micrometer.prometheus.PrometheusConfig;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
@@ -198,7 +198,7 @@ public class AiDial {
 
             vertx = Vertx.vertx(vertxOptions);
             if (prometheusRegistry != null || otlpRegistry != null) {
-                EventLoopLagProbe.start(vertx);
+                new NettyEventExecutorMetrics(vertx.nettyEventLoopGroup()).bindTo(Metrics.globalRegistry);
             }
             HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
             // upstream bodies (including SSE streams) are parsed/proxied, so they must be decoded
@@ -486,8 +486,6 @@ public class AiDial {
             close(complexResourceSweepService);
             close(mcpHttpClientBuilder);
             close(discoveryMcpHttpClientBuilder);
-            // before the registries close: their last OTLP push would otherwise read a stall that grows during vertx.close()
-            EventLoopLagProbe.stop();
             // Unhook from the global composite before vertx.close() so its shutdown metrics
             // stop flowing here; close the registries only after vertx has flushed its own.
             if (prometheusRegistry != null) {

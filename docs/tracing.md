@@ -122,10 +122,10 @@ The same blob storage calls are measured by the `dial_blob_operation` timer, tag
 and `outcome` (`success` or `error`), with buckets from 5 ms to 5 s. Unlike the spans, the timer
 also records calls made outside a request.
 
-## Wait and stall metrics
+## Wait metrics
 
 These metrics show where Core waits rather than works. The timers have buckets from 100 µs to 30 s.
-The event-loop probe only runs when a Prometheus or OTLP registry is enabled.
+The event-loop queue gauge is only registered when a Prometheus or OTLP registry is enabled.
 
 | Metric                                  | Type  | Measures                                                                                                                                  |
 |-----------------------------------------|-------|-------------------------------------------------------------------------------------------------------------------------------------------|
@@ -134,19 +134,16 @@ The event-loop probe only runs when a Prometheus or OTLP registry is enabled.
 | `dial_lock_hold`                        | timer | Time a lock taken with `lock()` is held                                                                                                   |
 | `dial_async_tasks_active`               | gauge | `AsyncTaskExecutor` tasks submitted and not finished yet                                                                                  |
 | `dial_async_task_start_delay`           | timer | Time from `AsyncTaskExecutor.submit()` until the task starts running                                                                      |
-| `dial_event_loop_lag`                   | timer | How late a probe scheduled every 100 ms on each event loop runs                                                                           |
-| `dial_event_loop_stall`                 | gauge | Seconds since the longest-idle event loop last ran its probe; up to about 0.1 (one probe period) when healthy, alert on whole seconds     |
+| `netty_eventexecutor_tasks_pending`     | gauge | Tasks queued on each event loop, tagged with the loop thread `name` (Micrometer `NettyEventExecutorMetrics`)                              |
 
 Locks taken with `tryLock()` (sweeps, application deployment, code interpreter session cleanup) never
 wait, and their holds are not measured. The waits are recorded when `lock()` returns, the hold when the lock is released.
-`dial_event_loop_lag` is recorded on every probe run, about 10 samples per second per loop,
-so a stall shows up in its high buckets and max, not in its count. Core serves requests on one event loop
-and the idle loops add near-zero samples to the same histogram, so read the max and the rate of the high
-buckets rather than quantiles. A stall is only recorded once
-the loop runs the probe again, so a loop that stays blocked shows up in `dial_event_loop_stall` instead. In
+`netty_eventexecutor_tasks_pending` counts the loop's task queue (callbacks such as Redis replies and `runOnContext`),
+not incoming I/O, and is read once per scrape, so it misses short bursts. A loop blocked by a single long task
+is reported by the Vert.x blocked thread checker in the log. In
 worker-pool mode (`asyncTaskExecutor.useVirtualThreads=false`) the Vert.x `vertx_pool_*` metrics
 report the same pool as the two `dial_async_*` metrics. Prometheus adds the unit to the names: a timer is
-exported as `<name>_seconds_count`, `_sum`, `_max` and `_bucket`, the stall gauge as `dial_event_loop_stall_seconds`.
+exported as `<name>_seconds_count`, `_sum`, `_max` and `_bucket`.
 
 ## Trace context after the response
 
