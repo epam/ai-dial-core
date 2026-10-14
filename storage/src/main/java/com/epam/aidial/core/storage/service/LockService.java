@@ -11,6 +11,7 @@ import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -29,7 +30,9 @@ import javax.annotation.Nullable;
 @Slf4j
 public class LockService {
 
-    private static final long PERIOD = TimeUnit.SECONDS.toMicros(300);
+    public static final Duration LOCK_PERIOD = Duration.ofSeconds(300);
+
+    private static final long PERIOD = TimeUnit.SECONDS.toMicros(LOCK_PERIOD.toSeconds());
     private static final long WAIT_MIN = TimeUnit.MILLISECONDS.toNanos(1);
     private static final long WAIT_MAX = TimeUnit.MILLISECONDS.toNanos(128);
 
