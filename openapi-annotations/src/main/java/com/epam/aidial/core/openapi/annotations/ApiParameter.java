@@ -24,4 +24,10 @@ public @interface ApiParameter {
     String[] allowableValues() default {};
 
     Class<?> schema() default String.class;
+
+    /**
+     * Vendor extensions ({@code x-*}) added to the parameter, e.g.
+     * {@code @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")}.
+     */
+    ApiExtension[] extensions() default {};
 }

@@ -1,9 +1,11 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -43,7 +45,8 @@ public class ToolSetRepairController implements Controller {
                     @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true,
                             description = "The bucket identifier where the toolset is stored"),
                     @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
-                            description = "The path to the toolset within the bucket")
+                            description = "The path to the toolset within the bucket",
+                            extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true"))
             },
             responses = {
                     @ApiResponse(code = 200, description = "ToolSet successfully repaired: new client_id issued, all credentials cleared",

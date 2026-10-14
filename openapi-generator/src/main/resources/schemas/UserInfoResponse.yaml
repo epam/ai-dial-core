@@ -8,11 +8,16 @@ properties:
     project:
       type: string
       description: Present only if authenticated via an API Key. Represents the target project scope.
+    userId:
+      type: string
+      description: The user id as DIAL resolves it from the identity provider configuration (not necessarily the token's sub claim). Present only for user-based session authentication. Use this value as owner_user_id when retrieving credentials on behalf of the user.
     userClaims:
       type: object
-      description: Normalized token claims. Present only for user-based session authentication.
-      additionalProperties:
-        type: array
-        description: Array representation of a specific claim value (normalized for backward compatibility)
-        items:
-          type: string
+      description: >-
+        Token claims. Present only for user-based session authentication. String claims are normalized
+        to a single-element string array for backward compatibility; all other claim values (numbers such as
+        exp/iat, booleans, arrays, objects) are returned as-is.
+      additionalProperties: {}
+    userDisplayName:
+      type: string
+      description: Human-readable caller name. For user-based session authentication it is resolved from the identity provider's configured userDisplayName claim path; for API key authentication it is the key's project name. Absent when not configured.

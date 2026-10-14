@@ -1,6 +1,8 @@
 package com.epam.aidial.core.openapi;
 
+import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import io.swagger.v3.core.util.Yaml;
 import io.swagger.v3.oas.models.Operation;
@@ -179,6 +181,20 @@ class OpenApiParameterBuilderTest {
         assertTrue(yaml.contains("2024-10-21"));
     }
 
+    @Test
+    void parameterExtensionsAreAddedWithTypedValues() throws Exception {
+        EndpointMetadata.Endpoint endpoint = endpointWithParameters(
+                "/v2/skills/{bucket}/{path}", parametersFromMethod("withAllowReservedPath"));
+
+        Parameter path = OpenApiParameterBuilder.buildParameters(endpoint).stream()
+                .filter(p -> "path".equals(p.getName()))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals(Boolean.TRUE, path.getExtensions().get(OpenApiDescriptions.ALLOW_RESERVED_EXTENSION));
+        assertTrue(Yaml.pretty(path).contains("x-mcp-allow-reserved: true"));
+    }
+
     private static ApiParameter[] parametersFromMethod(String methodName) throws Exception {
         Method method = AnnotatedMethods.class.getDeclaredMethod(methodName);
         return method.getAnnotationsByType(ApiParameter.class);
@@ -242,6 +258,15 @@ class OpenApiParameterBuilderTest {
                 allowableValues = {"chat", "embeddings", "mcp", "custom_ui", "all"}
         )
         void listWithInterfaceType() {
+        }
+
+        @ApiParameter(
+                name = "path",
+                in = ParameterIn.PATH,
+                required = true,
+                extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")
+        )
+        void withAllowReservedPath() {
         }
     }
 }

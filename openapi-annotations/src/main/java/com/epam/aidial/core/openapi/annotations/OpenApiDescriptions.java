@@ -168,6 +168,23 @@ public final class OpenApiDescriptions {
             "The entity tag (ETag) of the toolset. This is used for conditional requests to ensure that the toolset is only "
                     + "deleted if it matches the specified ETag.";
 
+    public static final String IF_MATCH_UPLOAD_SKILL =
+            "The entity tag (ETag) of the skill version to replace. This is used for conditional requests to ensure "
+                    + "that the skill is only uploaded if its current version matches the specified ETag. If the skill "
+                    + "does not exist, and this header is provided, the request returns 412 Precondition Failed response. "
+                    + "If this header is not provided or the value is \"*\", any existing skill at the specified path "
+                    + "will be overwritten; use If-None-Match to create a skill only if it does not exist.";
+
+    public static final String IF_NONE_MATCH_UPLOAD_SKILL =
+            "The entity tag (ETag) used to ensure that the skill is only uploaded if it does not already exist. "
+                    + "The only supported value is \"*\".";
+
+    /**
+     * Path parameter extension: the value is a hierarchical path whose '/' separators must not be
+     * percent-encoded (e.g. {@code folder/sub/file.txt}).
+     */
+    public static final String ALLOW_RESERVED_EXTENSION = "x-mcp-allow-reserved";
+
     public static final String INVITATION_ID = "The unique identifier of the invitation.";
     public static final String INVITATION_ACCEPT = "Requests with `accept=true` accept an invitation.";
     public static final String SCHEMA_ID = "schema ID of custom application";
