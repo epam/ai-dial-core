@@ -1040,6 +1040,23 @@ public class ResourceService implements AutoCloseable {
         return a.compareTo(b) > 0 ? Pair.of(a, b) : Pair.of(b, a);
     }
 
+    /**
+     * Writes every queued resource under the given bucket locations to blob storage, including entries
+     * that are not due yet, and keeps their cache entries. Blocks on a key that is being written
+     * and propagates any failure, because a partial flush leaves the blob store stale.
+     */
+    public void flushPending(Collection<String> bucketLocations) {
+        RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
+        for (String redisKey : set.readAll()) {
+            String blobKey = blobKeyFromRedisKey(redisKey);
+            if (bucketLocations.stream().anyMatch(blobKey::startsWith)) {
+                try (var ignore = lockService.lock(redisKey)) {
+                    sync(redisKey);
+                }
+            }
+        }
+    }
+
     private Void sync() {
         log.debug("Syncing");
         try {

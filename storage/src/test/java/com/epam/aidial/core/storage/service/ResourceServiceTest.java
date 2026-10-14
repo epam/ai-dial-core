@@ -2,12 +2,14 @@ package com.epam.aidial.core.storage.service;
 
 import com.epam.aidial.core.storage.FileUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
+import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.data.FileMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.epam.aidial.core.storage.util.RedisUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jclouds.blobstore.domain.Blob;
@@ -18,11 +20,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.redisson.Redisson;
+import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.StringCodec;
 import org.redisson.config.Config;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -30,8 +36,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -41,6 +51,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ResourceServiceTest {
+
+    private static final List<String> ADMIN_LOCATIONS = List.of("public/", "platform/");
 
     private RedisServer server;
     private RedissonClient client;
@@ -352,6 +364,109 @@ public class ResourceServiceTest {
         }
     }
 
+    @Test
+    public void testFlushPendingWritesQueuedResourcesAndKeepsCache() throws IOException {
+        ResourceDescriptor model = resource(ResourceTypes.MODEL, "platform", "gpt");
+        ResourceDescriptor application = resource(ResourceTypes.APPLICATION, "public", "app");
+        service.putResource(model, "model body", EtagHeader.NEW_ONLY);
+        service.putResource(application, "app body", EtagHeader.NEW_ONLY);
+        assertEquals("", blobBody(model));
+        assertEquals("", blobBody(application));
+
+        service.flushPending(ADMIN_LOCATIONS);
+
+        assertEquals("model body", blobBody(model));
+        assertEquals("app body", blobBody(application));
+        assertTrue(queuedKeys(null).isEmpty());
+        assertEquals(1, client.getKeys().countExists(RedisUtil.redisKey(model, null)));
+        assertEquals(1, client.getKeys().countExists(RedisUtil.redisKey(application, null)));
+    }
+
+    /**
+     * A delete removes the blob inside the call, so a delete is only left in the queue when the blob call fails.
+     */
+    @Test
+    public void testFlushPendingFlushesQueuedDelete() throws IOException {
+        String prefix = "flaky-delete";
+        BlobStorage flaky = Mockito.spy(storage);
+        ResourceService flakyService = serviceWithBlobStorage(flaky, prefix);
+        ResourceDescriptor model = resource(ResourceTypes.MODEL, "platform", "gpt");
+        flakyService.putResource(model, "model body", EtagHeader.NEW_ONLY);
+        flakyService.flushPending(ADMIN_LOCATIONS);
+        assertEquals("model body", blobBody(model));
+
+        Mockito.doThrow(new IllegalStateException("blob is down")).doCallRealMethod()
+                .when(flaky).delete(model.getAbsoluteFilePath());
+        assertThrows(IllegalStateException.class, () -> flakyService.deleteResource(model, EtagHeader.ANY));
+        assertEquals(Set.of(RedisUtil.redisKey(model, prefix)), queuedKeys(prefix));
+        assertTrue(storage.exists(model.getAbsoluteFilePath()));
+
+        flakyService.flushPending(ADMIN_LOCATIONS);
+
+        assertFalse(storage.exists(model.getAbsoluteFilePath()));
+        assertTrue(queuedKeys(prefix).isEmpty());
+    }
+
+    @Test
+    public void testFlushPendingLeavesOtherBucketsQueued() throws IOException {
+        ResourceDescriptor model = resource(ResourceTypes.MODEL, "platform", "gpt");
+        ResourceDescriptor conversation = new ResourceDescriptor(ResourceTypes.CONVERSATION, "chat", List.of(), "abc", "Users/abc/", false);
+        service.putResource(model, "model body", EtagHeader.NEW_ONLY);
+        service.putResource(conversation, "chat body", EtagHeader.NEW_ONLY);
+
+        service.flushPending(ADMIN_LOCATIONS);
+
+        assertEquals("model body", blobBody(model));
+        assertEquals("", blobBody(conversation));
+        assertEquals(Set.of(RedisUtil.redisKey(conversation, null)), queuedKeys(null));
+    }
+
+    @Test
+    public void testFlushPendingWaitsForLockedKey() throws Exception {
+        ResourceDescriptor model = resource(ResourceTypes.MODEL, "platform", "gpt");
+        service.putResource(model, "model body", EtagHeader.NEW_ONLY);
+
+        CompletableFuture<Void> flush;
+        LockService.Lock held = service.lockResource(model);
+        try {
+            flush = CompletableFuture.runAsync(() -> service.flushPending(ADMIN_LOCATIONS));
+            assertThrows(TimeoutException.class, () -> flush.get(500, TimeUnit.MILLISECONDS));
+            assertEquals("", blobBody(model));
+        } finally {
+            held.close();
+        }
+
+        flush.get(10, TimeUnit.SECONDS);
+        assertEquals("model body", blobBody(model));
+    }
+
+    @Test
+    public void testFlushPendingPropagatesBlobFailure() {
+        String prefix = "failing-flush";
+        BlobStorage failing = Mockito.spy(storage);
+        ResourceService broken = serviceWithBlobStorage(failing, prefix);
+        ResourceDescriptor model = resource(ResourceTypes.MODEL, "platform", "gpt");
+        broken.putResource(model, "model body", EtagHeader.NEW_ONLY);
+        Mockito.doThrow(new IllegalStateException("blob is down"))
+                .when(failing).store(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any());
+
+        IllegalStateException error = assertThrows(IllegalStateException.class, () -> broken.flushPending(ADMIN_LOCATIONS));
+
+        assertEquals("blob is down", error.getMessage());
+        assertEquals(Set.of(RedisUtil.redisKey(model, prefix)), queuedKeys(prefix));
+    }
+
+    private String blobBody(ResourceDescriptor descriptor) throws IOException {
+        try (InputStream stream = storage.load(descriptor.getAbsoluteFilePath()).getPayload().openStream()) {
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private Set<String> queuedKeys(String prefix) {
+        RScoredSortedSet<String> queue = client.getScoredSortedSet("resource:" + BlobStorageUtil.toStoragePath(prefix, "queue"), StringCodec.INSTANCE);
+        return Set.copyOf(queue.readAll());
+    }
+
     private BlobStorage blobStorageWithNullContentLength(String blobKey) {
         Blob realBlob = storage.load(blobKey);
         MutableBlobMetadata spiedMeta = Mockito.spy(realBlob.getMetadata());
@@ -391,5 +506,9 @@ public class ResourceServiceTest {
 
     private static ResourceDescriptor resource(String name) {
         return new ResourceDescriptor(ResourceTypes.CONVERSATION, name, List.of(), "bucket", "bucket/", false);
+    }
+
+    private static ResourceDescriptor resource(ResourceTypes type, String bucket, String name) {
+        return new ResourceDescriptor(type, name, List.of(), bucket, bucket + "/", false);
     }
 }
