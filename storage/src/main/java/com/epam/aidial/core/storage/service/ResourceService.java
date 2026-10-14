@@ -61,6 +61,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -1038,6 +1039,40 @@ public class ResourceService implements AutoCloseable {
 
     private Pair<String, String> toOrderedPair(String a, String b) {
         return a.compareTo(b) > 0 ? Pair.of(a, b) : Pair.of(b, a);
+    }
+
+    /**
+     * Writes every resource under the given bucket locations that is queued when the call starts to blob storage,
+     * including entries that are not due yet, and keeps their cache entries. Each resource is flushed under its
+     * own lock, so the result is consistent per resource only, and resources queued later are left to the regular sync.
+     * Blocks on a key locked by another thread or pod, propagates any failure, because a partial flush leaves
+     * the blob store stale, and, like the rest of this class, must not run on an event-loop thread.
+     *
+     * @param bucketLocations locations ending with '/', for example {@code public/}
+     * @throws IllegalArgumentException if a location does not end with '/'
+     * @throws IllegalStateException    if the current thread already holds the lock of a resource to flush
+     */
+    public void flushPending(Collection<String> bucketLocations) {
+        for (String bucketLocation : bucketLocations) {
+            if (!bucketLocation.endsWith(ResourceDescriptor.PATH_SEPARATOR)) {
+                throw new IllegalArgumentException("Bucket location must end with '/': " + bucketLocation);
+            }
+        }
+
+        RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
+        Iterator<String> queued = set.iterator(syncBatch);
+        while (queued.hasNext()) {
+            String redisKey = queued.next();
+            String blobKey = blobKeyFromRedisKey(redisKey);
+            if (bucketLocations.stream().anyMatch(blobKey::startsWith)) {
+                if (lockService.isHeldByCurrentThread(redisKey)) {
+                    throw new IllegalStateException("Resource lock is already held by the current thread: " + redisKey);
+                }
+                try (var ignore = lockService.lock(redisKey)) {
+                    sync(redisKey);
+                }
+            }
+        }
     }
 
     private Void sync() {

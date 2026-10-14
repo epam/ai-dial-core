@@ -128,6 +128,11 @@ public class LockService {
         }
     }
 
+    public boolean isHeldByCurrentThread(String key) {
+        LocalLock localLock = locks.get(id(key));
+        return localLock != null && localLock.lock.isHeldByCurrentThread();
+    }
+
     @Nullable
     public Lock tryLock(String key) {
         String id = id(key);
