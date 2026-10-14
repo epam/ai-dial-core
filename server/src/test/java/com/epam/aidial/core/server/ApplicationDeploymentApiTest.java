@@ -1,5 +1,12 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.EtagHeader;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.http.HttpMethod;
 import lombok.SneakyThrows;
 import okhttp3.mockwebserver.MockResponse;
@@ -7,6 +14,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import java.util.Base64;
 
 class ApplicationDeploymentApiTest extends ResourceBaseTest {
 
@@ -238,6 +247,94 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "routes" : { }
                 }
                 """);
+    }
+
+    @Test
+    void testApplicationUndeploySucceedsWithCorruptedRouteSecret() throws Exception {
+        Response created = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app-route-secret", null, """
+                {
+                  "display_name": "My App Route Secret",
+                  "display_version": "1.0",
+                  "icon_url": "http://application1/icon.svg",
+                  "description": "My App Description",
+                  "function": {
+                    "runtime": "python3.11",
+                    "source_folder": "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app-route-secret/",
+                    "mapping" : {
+                      "chat_completion" : "/application"
+                    },
+                    "env": {
+                      "VAR": "VAL"
+                    }
+                  },
+                  "routes": {
+                      "index-search": {
+                        "paths": ["/v1/index(/[^/]+)*$"],
+                        "rewritePath": true,
+                        "methods": ["POST"],
+                        "upstreams": [{"endpoint": "http://localhost:4848", "key": "route-secret-1"}]
+                    }
+                  }
+                }
+                """);
+        verify(created, 200);
+
+        Response uploaded = upload(HttpMethod.PUT,
+                "/v1/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app-route-secret/app.py", null, """
+                        some python code
+                        """);
+        verify(uploaded, 200);
+
+        webServer.map(HttpMethod.POST, "/v1/image/0123", 200, """
+                event: result
+                data: {}
+                """);
+        webServer.map(HttpMethod.POST, "/v1/deployment/0123", 200, """
+                event: result
+                data: {"url":"http://localhost:17321"}
+                """);
+
+        Response deployed = send(HttpMethod.POST, "/v1/ops/application/deploy", null, """
+                {
+                  "url": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app-route-secret"
+                }
+                """);
+        verify(deployed, 200);
+        awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app-route-secret", "DEPLOYED");
+
+        // Plant a corrupted envelope, bypassing the API's encrypt path, to simulate ciphertext that
+        // can no longer be decrypted (rotated key, bit rot). It must be structurally valid (correct
+        // Base64, long enough) so encryptFields' "already enveloped" check leaves it untouched instead
+        // of healing it by re-encrypting it as plaintext on the next write.
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(
+                "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app-route-secret", encryptionService);
+        String corruptedEnvelope = "ENC[" + Base64.getEncoder().encodeToString(new byte[64]) + "]";
+        JsonNode rawBlob = ProxyUtil.MAPPER.readTree(resourceService.getResource(descriptor));
+        ((ObjectNode) rawBlob.get("routes").get("index-search").get("upstreams").get(0))
+                .put("key", corruptedEnvelope);
+        resourceService.putResource(descriptor, rawBlob.toString(), EtagHeader.ANY, null, false);
+
+        webServer.map(HttpMethod.DELETE, "/v1/image/0123", 200, """
+                event: result
+                data: {}
+                """);
+        webServer.map(HttpMethod.DELETE, "/v1/deployment/0123", 200, """
+                event: result
+                data: {"deleted":true}
+                """);
+
+        Response undeployed = send(HttpMethod.POST, "/v1/ops/application/undeploy", null, """
+                {
+                  "url": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app-route-secret"
+                }
+                """);
+        verify(undeployed, 200);
+
+        // Must still reach UNDEPLOYED: the async terminate step (ApplicationService#terminateApplication)
+        // reads the application back through the decrypt path, and the corrupted route secret must not
+        // block it or leave the application stuck in UNDEPLOYING.
+        awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app-route-secret", "UNDEPLOYED");
     }
 
     @Test
