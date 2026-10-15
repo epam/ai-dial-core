@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.function;
 
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.Proxy;
@@ -57,6 +58,27 @@ public class BuildUpstreamCacheFnTest {
 
         verify(proxy.getUpstreamCacheService(), enabled ? times(1) : never())
                 .buildCacheBreakpointContext(eq(request), any(), eq(model), eq(InterfaceType.ANTHROPIC_MESSAGES));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"translator", "passthrough"})
+    void translatedInterfaceBuildsNoCacheKeys(String mode) {
+        Model model = new Model();
+        Features features = new Features();
+        features.setCacheSupported(true);
+        model.setFeatures(features);
+        DeploymentInterface declared = new DeploymentInterface("http://translator:5000/to-responses");
+        declared.setMode(InterfaceMode.valueOf(mode.toUpperCase()));
+        model.setInterfaces(Map.of(InterfaceType.ANTHROPIC_MESSAGES.getValue(), declared));
+        when(context.getDeployment()).thenReturn(model);
+        RequestObject request = new ChatCompletionRequest(ProxyUtil.MAPPER.createObjectNode());
+
+        new BuildUpstreamCacheFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES).apply(request);
+
+        boolean translated = "translator".equals(mode);
+        verify(proxy.getUpstreamCacheService(), translated ? never() : times(1))
+                .buildCacheBreakpointContext(eq(request), any(), eq(model), eq(InterfaceType.ANTHROPIC_MESSAGES));
+        verify(context, translated ? never() : times(1)).setCacheBreakpointContext(any());
     }
 
     @Test
