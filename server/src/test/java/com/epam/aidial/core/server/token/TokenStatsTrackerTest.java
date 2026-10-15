@@ -466,7 +466,7 @@ public class TokenStatsTrackerTest {
         when(model.getParentSpanId()).thenReturn("root");
         tracker.startSpan(model);
 
-        assertFalse(redissonClient.getBucket("deployment_cost_stats_tmp:" + traceId).isExists());
+        assertFalse(redissonClient.getKeys().getKeysByPattern("deployment_cost_stats_tmp:*").iterator().hasNext());
 
         TokenUsage usage = new TokenUsage();
         usage.setTotalTokens(100);

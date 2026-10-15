@@ -111,7 +111,10 @@ public class TokenStatsTracker {
      * Ends current span.
      */
     public Future<Void> endSpan(ProxyContext context) {
-        if (context.isOriginalRequest()) {
+        if (context.isOriginalRequest() && !context.isBackgroundJob()) {
+            // a non-background root never has a resource, so skip the blob storage fallback
+            return taskExecutor.submit(() -> computeRedisOnly(context.getTraceId(), false, json -> null)).mapEmpty();
+        } else if (context.isOriginalRequest()) {
             return endSpan(context.getTraceId());
         } else {
             // we don't need to remove the span from trace context right now.
@@ -295,7 +298,7 @@ public class TokenStatsTracker {
             String newJson = fn.apply(json);
             if (newJson == null) {
                 bucket.delete();
-            } else {
+            } else if (!newJson.equals(json)) {
                 bucket.set(newJson, REDIS_ONLY_TTL);
             }
             return true;
