@@ -52,7 +52,11 @@ public class TokenStatsTracker {
      * <p>The root request picks where the record lives. A background Responses job outlives its HTTP request,
      * so its record is a {@code DEPLOYMENT_COST_STATS} resource that {@link ResourceService} syncs to blob storage.
      * Any other record is kept in Redis only, with a TTL, and costs no blob storage writes: the root deletes it
-     * when it ends, and the TTL bounds records nobody deletes. Every later call looks for the Redis-only record first.
+     * when it ends, and the TTL bounds records nobody deletes. A child span start, usage update or usage read uses the
+     * Redis-only record if it holds the parent span or the span itself, and the resource otherwise: two roots can share
+     * a trace id, since it comes from the client's {@code traceparent}.
+     * The TTL also makes the record evictable under a {@code volatile-*} policy: losing the costs of an in-flight
+     * request to eviction or a Redis restart is accepted.
      * The update runs on the task executor.
      */
     public Future<Void> startSpan(ProxyContext context) {
@@ -66,13 +70,21 @@ public class TokenStatsTracker {
                 traceContext.addSpan(context);
                 return ProxyUtil.convertToString(traceContext);
             };
+            Function<String, String> addChildSpan = json -> {
+                TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
+                if (traceContext == null || !traceContext.spans.containsKey(context.getParentSpanId())) {
+                    return null;
+                }
+                traceContext.addSpan(context);
+                return ProxyUtil.convertToString(traceContext);
+            };
             if (context.isOriginalRequest() && context.isBackgroundJob()) {
                 resourceService.computeResource(toResource(traceId), addSpan);
             } else if (context.isOriginalRequest()) {
                 if (!redisOnlyBucket(traceId).setIfAbsent(addSpan.apply(null), REDIS_ONLY_TTL)) {
                     computeRedisOnly(traceId, true, addSpan);
                 }
-            } else if (!computeRedisOnly(traceId, false, addSpan)) {
+            } else if (!computeRedisOnly(traceId, false, addChildSpan)) {
                 // only a background root creates the resource: a child of an ended or untracked root gets a Redis-only record
                 if (resourceService.computeResource(toResource(traceId), json -> json == null ? null : addSpan.apply(json)) == null) {
                     computeRedisOnly(traceId, true, addSpan);
@@ -89,23 +101,25 @@ public class TokenStatsTracker {
     public Future<UsageStats> getUsageStats(ProxyContext context) {
         return taskExecutor.submit(() -> {
             String traceId = context.getTraceId();
-            String json = redisOnlyBucket(traceId).get();
-            if (json == null) {
-                json = resourceService.getResource(toResource(traceId));
+            String spanId = context.getSpanId();
+            TraceContext traceContext = ProxyUtil.convertToObject(redisOnlyBucket(traceId).get(), TraceContext.class);
+            if (traceContext == null || !traceContext.spans.containsKey(spanId)) {
+                traceContext = ProxyUtil.convertToObject(resourceService.getResource(toResource(traceId)), TraceContext.class);
             }
-            TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
             if (traceContext == null) {
                 return UsageStats.EMPTY;
             }
-            return traceContext.getUsageStats(context.getSpanId());
+            return traceContext.getUsageStats(spanId);
         });
     }
 
+    /**
+     * Ends the root span of a background Responses job, whose record is a resource.
+     * A Redis-only record of the same trace belongs to another root and is left to it.
+     */
     public Future<Void> endSpan(String traceId) {
         return taskExecutor.submit(() -> {
-            if (!computeRedisOnly(traceId, false, json -> null)) {
-                resourceService.deleteResource(toResource(traceId), EtagHeader.ANY);
-            }
+            resourceService.deleteResource(toResource(traceId), EtagHeader.ANY);
             return null;
         });
     }
@@ -116,7 +130,7 @@ public class TokenStatsTracker {
     public Future<Void> endSpan(ProxyContext context) {
         if (context.isOriginalRequest() && !context.isBackgroundJob()) {
             // a non-background root never has a resource, so skip the blob storage fallback
-            return taskExecutor.submit(() -> computeRedisOnly(context.getTraceId(), false, json -> null)).mapEmpty();
+            return taskExecutor.submit(() -> deleteRedisOnly(context.getTraceId()));
         } else if (context.isOriginalRequest()) {
             return endSpan(context.getTraceId());
         } else {
@@ -138,7 +152,7 @@ public class TokenStatsTracker {
             UsageStats[] result = {UsageStats.EMPTY};
             Function<String, String> update = json -> {
                 TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
-                if (traceContext == null) {
+                if (traceContext == null || !traceContext.spans.containsKey(spanId)) {
                     return null;
                 }
                 List<AggregatedCost> aggregatedCosts = traceContext.updateStats(spanId, deploymentName, tokenUsage);
@@ -280,10 +294,11 @@ public class TokenStatsTracker {
     }
 
     /**
-     * Applies {@code fn} to the Redis-only record of the trace under its lock: a {@code null} result deletes
-     * the record, anything else is stored with a fresh TTL.
+     * Applies {@code fn} to the Redis-only record of the trace under its lock and stores the result with a fresh TTL.
+     * The root creates the record without the lock, so a create does not overwrite one the root created meanwhile.
      *
-     * @return {@code false}, without calling {@code fn}, if there is no record and {@code create} is false.
+     * @return {@code false}, without writing, if there is no record and {@code create} is false,
+     *     or if {@code fn} returns {@code null}: the record belongs to another root.
      */
     private boolean computeRedisOnly(String traceId, boolean create, Function<String, String> fn) {
         RBucket<String> bucket = redisOnlyBucket(traceId);
@@ -294,13 +309,29 @@ public class TokenStatsTracker {
             }
             String newJson = fn.apply(json);
             if (newJson == null) {
-                bucket.delete();
-            } else {
-                // set even when unchanged: it refreshes the TTL
+                return false;
+            }
+            // set even when unchanged: it refreshes the TTL
+            if (json != null) {
                 bucket.set(newJson, REDIS_ONLY_TTL);
+            } else if (!bucket.setIfAbsent(newJson, REDIS_ONLY_TTL)) {
+                // only called with create for addSpan, which never returns null
+                bucket.set(fn.apply(bucket.get()), REDIS_ONLY_TTL);
             }
             return true;
         }
+    }
+
+    /**
+     * Deletes the Redis-only record under its lock, so a racing read-modify-write cannot write back a stale record
+     * over one that another root of the same trace id creates right after.
+     */
+    private Void deleteRedisOnly(String traceId) {
+        RBucket<String> bucket = redisOnlyBucket(traceId);
+        try (var ignore = lockService.lock(bucket.getName())) {
+            bucket.delete();
+        }
+        return null;
     }
 
     private RBucket<String> redisOnlyBucket(String traceId) {

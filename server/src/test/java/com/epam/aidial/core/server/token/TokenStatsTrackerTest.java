@@ -447,6 +447,114 @@ public class TokenStatsTrackerTest {
         tracker.endSpan(root);
         assertFalse(record.isExists());
         verifyNoInteractions(blobStorage);
+
+        // a late update does not bring the record back
+        tracker.updateDeploymentStats(traceId, "model", "gpt-4", usage);
+        assertFalse(record.isExists());
+    }
+
+    @Test
+    public void testRootMergesIntoExistingRedisOnlyRecord() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        // e.g. another root with the same trace id created the record first
+        final String traceId = "trace-id-shared";
+        ProxyContext model = mock(ProxyContext.class);
+        when(model.getSpanId()).thenReturn("model");
+        when(model.getTraceId()).thenReturn(traceId);
+        when(model.getParentSpanId()).thenReturn("root");
+        tracker.startSpan(model);
+
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        when(root.isOriginalRequest()).thenReturn(true);
+        tracker.startSpan(root);
+
+        TokenUsage usage = new TokenUsage();
+        usage.setTotalTokens(100);
+        usage.setAggCost(new BigDecimal("1.0"));
+        tracker.updateDeploymentStats(traceId, "model", "gpt-4", usage);
+        assertEquals(new BigDecimal("1.0"), tracker.getTokenStats(root).result().getAggCost());
+    }
+
+    @Test
+    public void testBackgroundRootSharingTraceIdWithSyncRoot() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        // the client sends one traceparent for a sync request and a background job
+        final String traceId = "trace-id-shared-background";
+        ProxyContext sync = mock(ProxyContext.class);
+        when(sync.getSpanId()).thenReturn("sync");
+        when(sync.getTraceId()).thenReturn(traceId);
+        when(sync.isOriginalRequest()).thenReturn(true);
+        tracker.startSpan(sync);
+
+        ProxyContext background = mock(ProxyContext.class);
+        when(background.getSpanId()).thenReturn("background");
+        when(background.getTraceId()).thenReturn(traceId);
+        when(background.isOriginalRequest()).thenReturn(true);
+        when(background.isBackgroundJob()).thenReturn(true);
+        tracker.startSpan(background);
+
+        ProxyContext model = mock(ProxyContext.class);
+        when(model.getSpanId()).thenReturn("model");
+        when(model.getTraceId()).thenReturn(traceId);
+        when(model.getParentSpanId()).thenReturn("background");
+        tracker.startSpan(model);
+
+        TokenUsage usage = new TokenUsage();
+        usage.setTotalTokens(100);
+        usage.setAggCost(new BigDecimal("1.0"));
+        TokenStatsTracker.UsageStats stats = tracker.updateDeploymentStats(traceId, "model", "gpt-4", usage).result();
+        assertEquals(new BigDecimal("1.0"), stats.total().getAggCost());
+        assertEquals(new BigDecimal("1.0"), tracker.getTokenStats(background).result().getAggCost());
+        assertNull(tracker.getTokenStats(sync).result().getAggCost());
+    }
+
+    @Test
+    public void testEndSpanByTraceIdKeepsRedisOnlyRecord() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        final String traceId = "trace-id-sync-and-background";
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        when(root.isOriginalRequest()).thenReturn(true);
+        tracker.startSpan(root);
+
+        // a background job's poller with the same trace id ends only its resource
+        tracker.endSpan(traceId);
+        assertTrue(redissonClient.getBucket("deployment_cost_stats_tmp:" + traceId, StringCodec.INSTANCE).isExists());
+    }
+
+    @Test
+    public void testBackgroundRootEndSpanDeletesResource() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        final String traceId = "trace-id-background-failed";
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        when(root.isOriginalRequest()).thenReturn(true);
+        when(root.isBackgroundJob()).thenReturn(true);
+        tracker.startSpan(root);
+
+        // e.g. the upstream call failed, so no job was saved and the request ends its own span
+        tracker.endSpan(root);
+        verify(blobStorage).delete(anyString());
     }
 
     @Test
