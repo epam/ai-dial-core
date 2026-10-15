@@ -150,7 +150,8 @@ counterpart to `dial_async_task_duration`. A task's duration is wall time: block
 count. With virtual threads, `dial_async_tasks_queued` stays near zero unless every carrier thread is busy or pinned. In
 worker-pool mode (`asyncTaskExecutor.useVirtualThreads=false`) the Vert.x `vertx_pool_*` metrics
 report the same pool as the `dial_async_*` metrics. Prometheus adds the unit to the names: a timer is
-exported as `<name>_seconds_count`, `_sum`, `_max` and `_bucket`.
+exported as `<name>_seconds_count`, `_sum`, `_max` and `_bucket`. The values are fractional seconds, so `_sum` and `_max` keep
+nanosecond precision, and the `dial_lock_*` and `dial_async_task_*` buckets start at 100 µs (`le="0.0001"`).
 
 ## Trace context after the response
 
