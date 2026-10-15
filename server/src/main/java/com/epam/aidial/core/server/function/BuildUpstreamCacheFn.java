@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.function;
 
 import com.epam.aidial.core.config.Features;
-import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.Proxy;
@@ -25,12 +24,14 @@ public class BuildUpstreamCacheFn extends BaseRequestFunction<RequestObject> {
 
     @Override
     public Boolean apply(RequestObject request) {
-        // A translated interface is served by its translator, which calls Core back on the out interface: this
-        // pass chooses no upstream, and the inner pass hashes its own request. Hashing the body here would be
-        // work no lookup ever reads.
-        if (context.getDeployment() instanceof Model model && isCacheSupported(model)
-                && DeploymentEndpointUtil.resolveMode(model, interfaceType) != InterfaceMode.TRANSLATOR) {
+        if (context.getDeployment() instanceof Model model && isCacheSupported(model)) {
             CachePolicy policy = CachePolicy.fromString(context.getRequestHeader(Proxy.HEADER_CACHE_POLICY));
+            // A hop served by a translator still picks an upstream and hands its headers to the translator, but
+            // the completion comes from the translator's callback, which builds and pins its own key. Nothing
+            // reads a key built here, so the header is validated above and the hashing is skipped.
+            if (!DeploymentEndpointUtil.resolveMode(model, interfaceType).servesCompletion()) {
+                return false;
+            }
             CacheBreakpointContext cacheBreakpointContext =
                     upstreamCacheService.buildCacheBreakpointContext(request, policy, model, interfaceType);
             context.setCacheBreakpointContext(cacheBreakpointContext);

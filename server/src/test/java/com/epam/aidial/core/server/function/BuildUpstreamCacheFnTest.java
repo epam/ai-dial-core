@@ -12,9 +12,12 @@ import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Answers;
 import org.mockito.Mock;
@@ -22,7 +25,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -61,24 +66,55 @@ public class BuildUpstreamCacheFnTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"translator", "passthrough"})
-    void translatedInterfaceBuildsNoCacheKeys(String mode) {
-        Model model = new Model();
-        Features features = new Features();
-        features.setCacheSupported(true);
-        model.setFeatures(features);
-        DeploymentInterface declared = new DeploymentInterface("http://translator:5000/to-responses");
-        declared.setMode(InterfaceMode.valueOf(mode.toUpperCase()));
-        model.setInterfaces(Map.of(InterfaceType.ANTHROPIC_MESSAGES.getValue(), declared));
+    @EnumSource(InterfaceMode.class)
+    void buildsCacheKeysOnlyWhenTheInterfaceServesTheCompletion(InterfaceMode mode) {
+        Model model = cacheSupportedModelWith(InterfaceType.ANTHROPIC_MESSAGES, mode);
         when(context.getDeployment()).thenReturn(model);
         RequestObject request = new ChatCompletionRequest(ProxyUtil.MAPPER.createObjectNode());
 
         new BuildUpstreamCacheFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES).apply(request);
 
-        boolean translated = "translator".equals(mode);
-        verify(proxy.getUpstreamCacheService(), translated ? never() : times(1))
+        verify(proxy.getUpstreamCacheService(), mode.servesCompletion() ? times(1) : never())
                 .buildCacheBreakpointContext(eq(request), any(), eq(model), eq(InterfaceType.ANTHROPIC_MESSAGES));
-        verify(context, translated ? never() : times(1)).setCacheBreakpointContext(any());
+        verify(context, mode.servesCompletion() ? times(1) : never()).setCacheBreakpointContext(any());
+    }
+
+    @Test
+    void translatedModelStillBuildsCacheKeysOnItsOutInterface() {
+        Model model = cacheSupportedModelWith(InterfaceType.ANTHROPIC_MESSAGES, InterfaceMode.TRANSLATOR);
+        when(context.getDeployment()).thenReturn(model);
+        RequestObject request = new ChatCompletionRequest(ProxyUtil.MAPPER.createObjectNode());
+
+        new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_CHAT_COMPLETIONS).apply(request);
+
+        verify(proxy.getUpstreamCacheService())
+                .buildCacheBreakpointContext(eq(request), any(), eq(model), eq(InterfaceType.OPENAI_CHAT_COMPLETIONS));
+        verify(context).setCacheBreakpointContext(any());
+    }
+
+    @Test
+    void translatedInterfaceStillRejectsAnInvalidCachePolicy() {
+        Model model = cacheSupportedModelWith(InterfaceType.ANTHROPIC_MESSAGES, InterfaceMode.TRANSLATOR);
+        when(context.getDeployment()).thenReturn(model);
+        when(context.getRequestHeader(eq(Proxy.HEADER_CACHE_POLICY))).thenReturn("foo");
+        RequestObject request = new ChatCompletionRequest(ProxyUtil.MAPPER.createObjectNode());
+        BuildUpstreamCacheFn fn = new BuildUpstreamCacheFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES);
+
+        HttpException error = assertThrows(HttpException.class, () -> fn.apply(request));
+
+        assertEquals(HttpStatus.BAD_REQUEST, error.getStatus());
+        verify(proxy.getUpstreamCacheService(), never()).buildCacheBreakpointContext(any(), any(), any(), any());
+    }
+
+    private static Model cacheSupportedModelWith(InterfaceType type, InterfaceMode mode) {
+        Model model = new Model();
+        Features features = new Features();
+        features.setCacheSupported(true);
+        model.setFeatures(features);
+        DeploymentInterface declared = new DeploymentInterface();
+        declared.setMode(mode);
+        model.setInterfaces(Map.of(type.getValue(), declared));
+        return model;
     }
 
     @Test
