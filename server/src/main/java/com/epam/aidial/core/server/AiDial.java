@@ -386,7 +386,8 @@ public class AiDial {
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
-            backgroundJobService.setLocalBaseUrl("http://localhost:" + server.actualPort());
+            String localBaseUrl = backgroundJobSettings.getLocalBaseUrl();
+            backgroundJobService.setLocalBaseUrl(localBaseUrl != null ? localBaseUrl : "http://localhost:" + server.actualPort());
             backgroundJobService.init();
             log.info("Proxy started on {}", server.actualPort());
         } catch (Throwable e) {

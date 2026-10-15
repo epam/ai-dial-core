@@ -19,6 +19,7 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -191,7 +192,7 @@ public class BackgroundJobService {
 
     @VisibleForTesting
     Future<ResponsesApiClient.TerminalResult> poll(String dialResponseId, String apiKey) {
-        String url = localBaseUrl + "/openai/v1/responses/" + dialResponseId;
+        String url = DeploymentEndpointUtil.resolveLocalResponseItemUri(localBaseUrl, dialResponseId);
         return httpClient.request(new RequestOptions().setAbsoluteURI(url).setMethod(HttpMethod.GET))
                 .compose(request -> request.putHeader(Proxy.HEADER_API_KEY, apiKey).send())
                 .compose(response -> {
@@ -340,6 +341,7 @@ public class BackgroundJobService {
         int maxParallelJobs = 100;
         long scanIntervalMs = TimeUnit.MINUTES.toMillis(10);
         long schedulerTickIntervalMs = TimeUnit.SECONDS.toMillis(5);
+        String localBaseUrl;
     }
 
     @RequiredArgsConstructor
