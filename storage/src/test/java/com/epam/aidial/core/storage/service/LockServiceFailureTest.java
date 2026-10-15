@@ -56,9 +56,10 @@ class LockServiceFailureTest {
         try {
             assertThrows(RedisException.class, () -> service.lock("key"));
 
-            // a failed lock() records no wait and leaves no thread queued
-            assertEquals(0, meterRegistry.get("dial_lock_wait").timers().stream().mapToLong(timer -> timer.count()).sum());
-            assertEquals(0, meterRegistry.get("dial_lock_queue_size").gauge().value());
+            // a failed lock() records its waits as errors and leaves no thread queued
+            assertEquals(0, waits(meterRegistry, "success"));
+            assertEquals(2, waits(meterRegistry, "error"));
+            assertEquals(0, meterRegistry.get("dial_lock_queue_size").gauges().stream().mapToDouble(gauge -> gauge.value()).sum());
         } finally {
             Metrics.removeRegistry(meterRegistry);
         }
@@ -75,6 +76,10 @@ class LockServiceFailureTest {
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    private static long waits(SimpleMeterRegistry meterRegistry, String outcome) {
+        return meterRegistry.get("dial_lock_wait").tag("outcome", outcome).timers().stream().mapToLong(timer -> timer.count()).sum();
     }
 
     /**

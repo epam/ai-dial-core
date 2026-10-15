@@ -197,8 +197,13 @@ public class AiDial {
             BlockingCallTracer blockingCallTracer = new BlockingCallTracer(setupTracing(vertxOptions));
 
             vertx = Vertx.vertx(vertxOptions);
-            if (prometheusRegistry != null || otlpRegistry != null) {
-                new NettyEventExecutorMetrics(vertx.nettyEventLoopGroup()).bindTo(Metrics.globalRegistry);
+            // bound to the registries, not the global composite: it would keep the gauges of the first vertx after a restart
+            NettyEventExecutorMetrics eventLoopMetrics = new NettyEventExecutorMetrics(vertx.nettyEventLoopGroup());
+            if (prometheusRegistry != null) {
+                eventLoopMetrics.bindTo(prometheusRegistry);
+            }
+            if (otlpRegistry != null) {
+                eventLoopMetrics.bindTo(otlpRegistry);
             }
             HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
             // upstream bodies (including SSE streams) are parsed/proxied, so they must be decoded
