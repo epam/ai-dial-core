@@ -193,7 +193,11 @@ public class BackgroundJobService {
     @VisibleForTesting
     Future<ResponsesApiClient.TerminalResult> poll(String dialResponseId, String apiKey) {
         String url = DeploymentEndpointUtil.resolveLocalResponseItemUri(localBaseUrl, dialResponseId);
-        return httpClient.request(new RequestOptions().setAbsoluteURI(url).setMethod(HttpMethod.GET))
+        RequestOptions options = new RequestOptions()
+                .setAbsoluteURI(url)
+                .setMethod(HttpMethod.GET)
+                .setTimeout(settings.getPollTimeoutMs());
+        return httpClient.request(options)
                 .compose(request -> request.putHeader(Proxy.HEADER_API_KEY, apiKey).send())
                 .compose(response -> {
                     int statusCode = response.statusCode();
@@ -341,6 +345,7 @@ public class BackgroundJobService {
         int maxParallelJobs = 100;
         long scanIntervalMs = TimeUnit.MINUTES.toMillis(10);
         long schedulerTickIntervalMs = TimeUnit.SECONDS.toMillis(5);
+        long pollTimeoutMs = TimeUnit.MINUTES.toMillis(5);
         String localBaseUrl;
     }
 

@@ -401,6 +401,20 @@ class BackgroundJobServiceTest {
     }
 
     @Test
+    void pollAppliesConfiguredTimeoutToRequest(VertxTestContext ctx) throws Throwable {
+        setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
+
+        poller.poll(JOB_ID, "test-per-request-key")
+                .onSuccess(result -> ctx.verify(() -> {
+                    verify(httpClient).request(org.mockito.ArgumentMatchers.<RequestOptions>argThat(
+                            options -> options.getTimeout() == TimeUnit.MINUTES.toMillis(5)));
+                    ctx.completeNow();
+                }))
+                .onFailure(ctx::failNow);
+        await(ctx);
+    }
+
+    @Test
     void pollReturnsNullForNonTerminalStatus(VertxTestContext ctx) throws Throwable {
         setupHttpMocks("{\"status\":\"in_progress\"}");
 

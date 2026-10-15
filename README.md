@@ -303,7 +303,19 @@ reclaiming resources tombstoned by DELETE and GCs stale versions left behind by 
 | complexResourceSweep.batch               |   1000   |    No    | Number of references listed (and potentially processed) per batch.                                                                                   |
 | complexResourceSweep.activeBatches       |    5     |    No    | Max number of batches this instance may have mid-processing in parallel at any moment. Enforced locally per instance; not a cluster-wide total.      |
 | complexResourceSweep.gracePeriod         | 3600000  |    No    | Minimum age in milliseconds a tombstoned resource or a superseded version must reach before the sweep physically deletes it, to protect any reader that started before the delete/supersession. |
-| backgroundJob.localBaseUrl               | http://localhost:{actual server port} |    No    | Base URL that background job polling uses to reach this Core instance's own HTTP endpoint. |
+
+</details>
+
+<details> 
+<summary><b>Background Job Configurations</b></summary>
+
+Background responses are polled through this Core instance's own HTTP endpoint, so polling requests pass
+through the interceptor chain.
+
+| Setting                    | Default                               | Required | Description                                                                                                  |
+|-----------------------------|:-------------------------------------:|:--------:|--------------------------------------------------------------------------------------------------------------|
+| backgroundJob.localBaseUrl | http://localhost:{actual server port} |    No    | Base URL that background job polling uses to reach this Core instance's own HTTP endpoint.                   |
+| backgroundJob.pollTimeoutMs | 300000                               |    No    | Timeout in milliseconds of a single polling request. A request exceeding it fails and counts as a poll failure. |
 
 </details>
 
