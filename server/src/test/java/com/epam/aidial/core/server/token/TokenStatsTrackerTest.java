@@ -17,8 +17,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.Redisson;
+import org.redisson.api.RBucket;
 import org.redisson.api.RKeys;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.StringCodec;
 import org.redisson.config.ConfigSupport;
 import redis.embedded.RedisServer;
 
@@ -28,10 +30,15 @@ import java.util.List;
 import java.util.concurrent.Callable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -91,7 +98,7 @@ public class TokenStatsTrackerTest {
         ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
         ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
                 lockService, settings, null);
-        tracker = new TokenStatsTracker(taskExecutor, resourceService);
+        tracker = new TokenStatsTracker(taskExecutor, resourceService, redissonClient, lockService, null);
     }
 
     /**
@@ -402,6 +409,74 @@ public class TokenStatsTrackerTest {
         // Application that could in principle have aggregated cost
         TokenStatsTracker.UsageStats stats = tracker.getUsageStats(routerCtx).result();
         assertEquals(List.of(), stats.aggregatedCosts());
+    }
+
+    @Test
+    public void testSyncTraceStaysInRedisOnly() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        final String traceId = "trace-id-sync";
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        when(root.isOriginalRequest()).thenReturn(true);
+        tracker.startSpan(root);
+
+        ProxyContext model = mock(ProxyContext.class);
+        when(model.getSpanId()).thenReturn("model");
+        when(model.getTraceId()).thenReturn(traceId);
+        when(model.getParentSpanId()).thenReturn("root");
+        tracker.startSpan(model);
+
+        RBucket<String> record = redissonClient.getBucket("deployment_cost_stats_tmp:" + traceId, StringCodec.INSTANCE);
+        assertTrue(record.remainTimeToLive() > 0);
+
+        TokenUsage usage = new TokenUsage();
+        usage.setTotalTokens(100);
+        usage.setAggCost(new BigDecimal("1.0"));
+        tracker.updateDeploymentStats(traceId, "model", "gpt-4", usage);
+        assertEquals(new BigDecimal("1.0"), tracker.getTokenStats(root).result().getAggCost());
+
+        tracker.endSpan(root);
+        assertFalse(record.isExists());
+        verifyNoInteractions(blobStorage);
+    }
+
+    @Test
+    public void testBackgroundTraceKeepsResource() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        final String traceId = "trace-id-background";
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        when(root.isOriginalRequest()).thenReturn(true);
+        when(root.isBackgroundJob()).thenReturn(true);
+        tracker.startSpan(root);
+
+        ProxyContext model = mock(ProxyContext.class);
+        when(model.getSpanId()).thenReturn("model");
+        when(model.getTraceId()).thenReturn(traceId);
+        when(model.getParentSpanId()).thenReturn("root");
+        tracker.startSpan(model);
+
+        assertFalse(redissonClient.getBucket("deployment_cost_stats_tmp:" + traceId).isExists());
+
+        TokenUsage usage = new TokenUsage();
+        usage.setTotalTokens(100);
+        usage.setAggCost(new BigDecimal("1.0"));
+        tracker.updateDeploymentStats(traceId, "model", "gpt-4", usage);
+        assertEquals(new BigDecimal("1.0"), tracker.getTokenStats(root).result().getAggCost());
+
+        // the poller ends the root span of a background job by trace id
+        tracker.endSpan(traceId);
+        verify(blobStorage).delete(anyString());
     }
 
 }
