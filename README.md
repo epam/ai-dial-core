@@ -316,6 +316,7 @@ through the interceptor chain.
 |-----------------------------|:-------------------------------------:|:--------:|--------------------------------------------------------------------------------------------------------------|
 | backgroundJob.localBaseUrl | http://localhost:{actual server port} |    No    | Base URL that background job polling uses to reach this Core instance's own HTTP endpoint.                   |
 | backgroundJob.pollTimeoutMs | 300000                               |    No    | Timeout in milliseconds of a single polling request. A request exceeding it fails and counts as a poll failure. |
+| backgroundJob.pollGiveUpStatusCodes | [401, 403, 404]               |    No    | HTTP status codes of a polling response that make the job give up immediately instead of retrying.         |
 
 </details>
 

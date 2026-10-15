@@ -45,6 +45,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -202,7 +203,7 @@ public class BackgroundJobService {
                 .compose(response -> {
                     int statusCode = response.statusCode();
                     if (statusCode != 200) {
-                        return Future.failedFuture("Unexpected status " + statusCode + " from upstream for background job " + dialResponseId);
+                        return Future.failedFuture(new PollStatusException(statusCode, dialResponseId));
                     }
                     return response.body().map(ResponsesApiClient::parseTerminalBody);
                 });
@@ -347,6 +348,7 @@ public class BackgroundJobService {
         long schedulerTickIntervalMs = TimeUnit.SECONDS.toMillis(5);
         long pollTimeoutMs = TimeUnit.MINUTES.toMillis(5);
         String localBaseUrl;
+        Set<Integer> pollGiveUpStatusCodes = Set.of(401, 403, 404);
     }
 
     @RequiredArgsConstructor
