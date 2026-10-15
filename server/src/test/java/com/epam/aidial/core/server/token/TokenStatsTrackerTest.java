@@ -519,6 +519,38 @@ public class TokenStatsTrackerTest {
     }
 
     @Test
+    public void testForeignSpanLeavesBackgroundResourceIntact() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        final String traceId = "trace-id-foreign-span";
+        ProxyContext background = mock(ProxyContext.class);
+        when(background.getSpanId()).thenReturn("background");
+        when(background.getTraceId()).thenReturn(traceId);
+        when(background.isOriginalRequest()).thenReturn(true);
+        when(background.isBackgroundJob()).thenReturn(true);
+        tracker.startSpan(background);
+
+        // a child and a late report of an ended sync root with the same trace id
+        ProxyContext child = mock(ProxyContext.class);
+        when(child.getSpanId()).thenReturn("child");
+        when(child.getTraceId()).thenReturn(traceId);
+        when(child.getParentSpanId()).thenReturn("ended-sync-root");
+        tracker.startSpan(child);
+        TokenUsage usage = new TokenUsage();
+        usage.setAggCost(new BigDecimal("1.0"));
+        tracker.updateDeploymentStats(traceId, "late-span", "gpt-4", usage);
+
+        String json = resourceService.getResource(ResourceDescriptorFactory.fromDecoded(ResourceTypes.DEPLOYMENT_COST_STATS,
+                TokenStatsTracker.DEPLOYMENT_COST_STATS_BUCKET, TokenStatsTracker.DEPLOYMENT_COST_STATS_LOCATION, traceId));
+        assertNotNull(json);
+        assertFalse(json.contains("child"));
+        assertTrue(redissonClient.getBucket("deployment_cost_stats_tmp:" + traceId, StringCodec.INSTANCE).isExists());
+    }
+
+    @Test
     public void testEndSpanByTraceIdKeepsRedisOnlyRecord() {
         when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);

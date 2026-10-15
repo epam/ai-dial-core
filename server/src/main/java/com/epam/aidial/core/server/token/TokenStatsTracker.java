@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 
 import static com.epam.aidial.core.storage.resource.ResourceDescriptor.PATH_SEPARATOR;
@@ -70,23 +71,27 @@ public class TokenStatsTracker {
                 traceContext.addSpan(context);
                 return ProxyUtil.convertToString(traceContext);
             };
+            boolean[] added = {false};
+            // returns the record unchanged if it does not hold the parent span: it belongs to another root
             Function<String, String> addChildSpan = json -> {
                 TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
                 if (traceContext == null || !traceContext.spans.containsKey(context.getParentSpanId())) {
-                    return null;
+                    return json;
                 }
                 traceContext.addSpan(context);
+                added[0] = true;
                 return ProxyUtil.convertToString(traceContext);
             };
             if (context.isOriginalRequest() && context.isBackgroundJob()) {
                 resourceService.computeResource(toResource(traceId), addSpan);
             } else if (context.isOriginalRequest()) {
-                if (!redisOnlyBucket(traceId).setIfAbsent(addSpan.apply(null), REDIS_ONLY_TTL)) {
+                if (!getRedisOnlyBucket(traceId).setIfAbsent(addSpan.apply(null), REDIS_ONLY_TTL)) {
                     computeRedisOnly(traceId, true, addSpan);
                 }
             } else if (!computeRedisOnly(traceId, false, addChildSpan)) {
-                // only a background root creates the resource: a child of an ended or untracked root gets a Redis-only record
-                if (resourceService.computeResource(toResource(traceId), json -> json == null ? null : addSpan.apply(json)) == null) {
+                resourceService.computeResource(toResource(traceId), addChildSpan);
+                if (!added[0]) {
+                    // only a background root creates the resource: a child of an ended or untracked root gets a Redis-only record
                     computeRedisOnly(traceId, true, addSpan);
                 }
             }
@@ -102,7 +107,7 @@ public class TokenStatsTracker {
         return taskExecutor.submit(() -> {
             String traceId = context.getTraceId();
             String spanId = context.getSpanId();
-            TraceContext traceContext = ProxyUtil.convertToObject(redisOnlyBucket(traceId).get(), TraceContext.class);
+            TraceContext traceContext = ProxyUtil.convertToObject(getRedisOnlyBucket(traceId).get(), TraceContext.class);
             if (traceContext == null || !traceContext.spans.containsKey(spanId)) {
                 traceContext = ProxyUtil.convertToObject(resourceService.getResource(toResource(traceId)), TraceContext.class);
             }
@@ -150,10 +155,11 @@ public class TokenStatsTracker {
     public Future<UsageStats> updateDeploymentStats(String traceId, String spanId, String deploymentName, TokenUsage tokenUsage) {
         return taskExecutor.submit(() -> {
             UsageStats[] result = {UsageStats.EMPTY};
+            // returns the record unchanged if it does not hold the span: a null result would delete a resource
             Function<String, String> update = json -> {
                 TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
                 if (traceContext == null || !traceContext.spans.containsKey(spanId)) {
-                    return null;
+                    return json;
                 }
                 List<AggregatedCost> aggregatedCosts = traceContext.updateStats(spanId, deploymentName, tokenUsage);
                 UsageStats usageStats = traceContext.getUsageStats(spanId);
@@ -298,20 +304,20 @@ public class TokenStatsTracker {
      * The root creates the record without the lock, so a create does not overwrite one the root created meanwhile.
      *
      * @return {@code false}, without writing, if there is no record and {@code create} is false,
-     *     or if {@code fn} returns {@code null}: the record belongs to another root.
+     *     or if {@code fn} returns the record unchanged: it belongs to another root.
      */
     private boolean computeRedisOnly(String traceId, boolean create, Function<String, String> fn) {
-        RBucket<String> bucket = redisOnlyBucket(traceId);
+        RBucket<String> bucket = getRedisOnlyBucket(traceId);
         try (var ignore = lockService.lock(bucket.getName())) {
             String json = bucket.get();
             if (json == null && !create) {
                 return false;
             }
             String newJson = fn.apply(json);
-            if (newJson == null) {
+            if (Objects.equals(newJson, json)) {
                 return false;
             }
-            // set even when unchanged: it refreshes the TTL
+            // every write refreshes the TTL
             if (json != null) {
                 bucket.set(newJson, REDIS_ONLY_TTL);
             } else if (!bucket.setIfAbsent(newJson, REDIS_ONLY_TTL)) {
@@ -327,14 +333,14 @@ public class TokenStatsTracker {
      * over one that another root of the same trace id creates right after.
      */
     private Void deleteRedisOnly(String traceId) {
-        RBucket<String> bucket = redisOnlyBucket(traceId);
+        RBucket<String> bucket = getRedisOnlyBucket(traceId);
         try (var ignore = lockService.lock(bucket.getName())) {
             bucket.delete();
         }
         return null;
     }
 
-    private RBucket<String> redisOnlyBucket(String traceId) {
+    private RBucket<String> getRedisOnlyBucket(String traceId) {
         return redis.getBucket(REDIS_ONLY_KEY_PREFIX + BlobStorageUtil.toStoragePath(prefix, traceId), StringCodec.INSTANCE);
     }
 
