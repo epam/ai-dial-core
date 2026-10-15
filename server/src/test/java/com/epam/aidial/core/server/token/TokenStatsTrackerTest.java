@@ -9,6 +9,7 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import io.vertx.core.Future;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -102,7 +103,7 @@ public class TokenStatsTrackerTest {
         ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
         resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
                 lockService, settings, null);
-        tracker = new TokenStatsTracker(taskExecutor, resourceService, redissonClient, lockService, null);
+        tracker = new TokenStatsTracker(taskExecutor, resourceService, redissonClient, lockService, null, BlockingCallTracer.NOOP);
     }
 
     /**

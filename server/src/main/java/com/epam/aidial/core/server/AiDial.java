@@ -320,7 +320,8 @@ public class AiDial {
             ConfigValidationService configValidationService = new ConfigValidationService(
                     resourceService, mergedConfigStore.isSoftValidation(), catalogSchemaService);
 
-            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, resourceService, redis, lockService, storage.getPrefix());
+            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(
+                    taskExecutor, resourceService, redis, lockService, storage.getPrefix(), blockingCallTracer);
 
             HeartbeatService heartbeatService = new HeartbeatService(
                     vertx, taskExecutor, settings("resources").getLong("heartbeatPeriod"));

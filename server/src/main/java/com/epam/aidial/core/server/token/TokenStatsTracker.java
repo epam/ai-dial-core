@@ -9,6 +9,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.vertx.core.Future;
@@ -47,6 +48,7 @@ public class TokenStatsTracker {
     private final RedissonClient redis;
     private final LockService lockService;
     private final String prefix;
+    private final BlockingCallTracer blockingCallTracer;
 
     /**
      * Adds the request to the usage record of its trace.
@@ -87,7 +89,8 @@ public class TokenStatsTracker {
             if (context.isOriginalRequest() && context.isBackgroundJob()) {
                 resourceService.computeResource(toResource(traceId), addSpan);
             } else if (context.isOriginalRequest()) {
-                if (!getRedisOnlyBucket(traceId).setIfAbsent(addSpan.apply(null), REDIS_ONLY_TTL)) {
+                String json = addSpan.apply(null);
+                if (!blockingCallTracer.trace("cost_stats.create", () -> getRedisOnlyBucket(traceId).setIfAbsent(json, REDIS_ONLY_TTL))) {
                     computeRedisOnly(traceId, true, addSpan);
                 }
             } else if (!computeRedisOnly(traceId, false, addChildSpan)) {
@@ -109,7 +112,8 @@ public class TokenStatsTracker {
         return taskExecutor.submit(() -> {
             String traceId = context.getTraceId();
             String spanId = context.getSpanId();
-            TraceContext traceContext = ProxyUtil.convertToObject(getRedisOnlyBucket(traceId).get(), TraceContext.class);
+            String json = blockingCallTracer.trace("cost_stats.get", () -> getRedisOnlyBucket(traceId).get());
+            TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
             if (traceContext == null || !traceContext.spans.containsKey(spanId)) {
                 traceContext = ProxyUtil.convertToObject(resourceService.getResource(toResource(traceId)), TraceContext.class);
             }
@@ -312,25 +316,27 @@ public class TokenStatsTracker {
      *     or if {@code fn} returns the record unchanged: it belongs to another root.
      */
     private boolean computeRedisOnly(String traceId, boolean create, Function<String, String> fn) {
-        RBucket<String> bucket = getRedisOnlyBucket(traceId);
-        try (var ignore = lockService.lock(bucket.getName())) {
-            String json = bucket.get();
-            if (json == null && !create) {
-                return false;
+        return blockingCallTracer.trace("cost_stats.compute", () -> {
+            RBucket<String> bucket = getRedisOnlyBucket(traceId);
+            try (var ignore = lockService.lock(bucket.getName())) {
+                String json = bucket.get();
+                if (json == null && !create) {
+                    return false;
+                }
+                String newJson = fn.apply(json);
+                if (Objects.equals(newJson, json)) {
+                    return false;
+                }
+                // every write refreshes the TTL
+                if (json != null) {
+                    bucket.set(newJson, REDIS_ONLY_TTL);
+                } else if (!bucket.setIfAbsent(newJson, REDIS_ONLY_TTL)) {
+                    // only called with create for addSpan, which never returns null
+                    bucket.set(fn.apply(bucket.get()), REDIS_ONLY_TTL);
+                }
+                return true;
             }
-            String newJson = fn.apply(json);
-            if (Objects.equals(newJson, json)) {
-                return false;
-            }
-            // every write refreshes the TTL
-            if (json != null) {
-                bucket.set(newJson, REDIS_ONLY_TTL);
-            } else if (!bucket.setIfAbsent(newJson, REDIS_ONLY_TTL)) {
-                // only called with create for addSpan, which never returns null
-                bucket.set(fn.apply(bucket.get()), REDIS_ONLY_TTL);
-            }
-            return true;
-        }
+        });
     }
 
     /**
@@ -338,11 +344,13 @@ public class TokenStatsTracker {
      * over one that another root of the same trace id creates right after.
      */
     private Void deleteRedisOnly(String traceId) {
-        RBucket<String> bucket = getRedisOnlyBucket(traceId);
-        try (var ignore = lockService.lock(bucket.getName())) {
-            bucket.delete();
-        }
-        return null;
+        return blockingCallTracer.trace("cost_stats.delete", () -> {
+            RBucket<String> bucket = getRedisOnlyBucket(traceId);
+            try (var ignore = lockService.lock(bucket.getName())) {
+                bucket.delete();
+            }
+            return null;
+        });
     }
 
     private RBucket<String> getRedisOnlyBucket(String traceId) {
