@@ -38,14 +38,15 @@ public class TokenStatsTracker {
     public static final String DEPLOYMENT_COST_STATS_BUCKET = "deployment_cost_stats";
     public static final String DEPLOYMENT_COST_STATS_LOCATION = DEPLOYMENT_COST_STATS_BUCKET + PATH_SEPARATOR;
     static final String REDIS_ONLY_KEY_PREFIX = "deployment_cost_stats_tmp:";
+    // bounds records nobody deletes (an app root whose client disconnected, an orphan child's record) and the gap
+    // between two writes of a live trace: a request that reports its usage later than this after the last write loses it
+    static final Duration REDIS_ONLY_TTL = Duration.ofHours(1);
 
     private final AsyncTaskExecutor taskExecutor;
     private final ResourceService resourceService;
     private final RedissonClient redis;
     private final LockService lockService;
     private final String prefix;
-    // the per-request key TTL: no child can write to the record once its key has expired
-    private final Duration redisOnlyTtl;
 
     /**
      * Adds the request to the usage record of its trace.
@@ -55,7 +56,8 @@ public class TokenStatsTracker {
      * Any other record is kept in Redis only, with a TTL, and costs no blob storage writes: the root deletes it
      * when it ends, and the TTL bounds records nobody deletes. A child span start, usage update or usage read uses the
      * Redis-only record if it holds the parent span or the span itself, and the resource otherwise: two roots can share
-     * a trace id, since it comes from the client's {@code traceparent}.
+     * a trace id, since it comes from the client's {@code traceparent}. A child whose parent is in neither gets
+     * a Redis-only record of its own.
      * The TTL also makes the record evictable under a {@code volatile-*} policy: losing the costs of an in-flight
      * request to eviction or a Redis restart is accepted.
      * The update runs on the task executor.
@@ -85,7 +87,7 @@ public class TokenStatsTracker {
             if (context.isOriginalRequest() && context.isBackgroundJob()) {
                 resourceService.computeResource(toResource(traceId), addSpan);
             } else if (context.isOriginalRequest()) {
-                if (!getRedisOnlyBucket(traceId).setIfAbsent(addSpan.apply(null), redisOnlyTtl)) {
+                if (!getRedisOnlyBucket(traceId).setIfAbsent(addSpan.apply(null), REDIS_ONLY_TTL)) {
                     computeRedisOnly(traceId, true, addSpan);
                 }
             } else if (!computeRedisOnly(traceId, false, addChildSpan)) {
@@ -168,6 +170,9 @@ public class TokenStatsTracker {
             };
             if (!computeRedisOnly(traceId, false, update)) {
                 resourceService.computeResource(toResource(traceId), update);
+            }
+            if (result[0] == UsageStats.EMPTY) {
+                log.warn("Usage of span {} is lost: trace {} has no record holding it", spanId, traceId);
             }
             return result[0];
         });
@@ -319,10 +324,10 @@ public class TokenStatsTracker {
             }
             // every write refreshes the TTL
             if (json != null) {
-                bucket.set(newJson, redisOnlyTtl);
-            } else if (!bucket.setIfAbsent(newJson, redisOnlyTtl)) {
+                bucket.set(newJson, REDIS_ONLY_TTL);
+            } else if (!bucket.setIfAbsent(newJson, REDIS_ONLY_TTL)) {
                 // only called with create for addSpan, which never returns null
-                bucket.set(fn.apply(bucket.get()), redisOnlyTtl);
+                bucket.set(fn.apply(bucket.get()), REDIS_ONLY_TTL);
             }
             return true;
         }

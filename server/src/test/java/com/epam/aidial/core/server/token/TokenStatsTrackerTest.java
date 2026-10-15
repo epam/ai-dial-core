@@ -28,7 +28,6 @@ import redis.embedded.RedisServer;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.Callable;
 
@@ -103,7 +102,7 @@ public class TokenStatsTrackerTest {
         ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
         resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
                 lockService, settings, null);
-        tracker = new TokenStatsTracker(taskExecutor, resourceService, redissonClient, lockService, null, Duration.ofMinutes(30));
+        tracker = new TokenStatsTracker(taskExecutor, resourceService, redissonClient, lockService, null);
     }
 
     /**
@@ -430,14 +429,15 @@ public class TokenStatsTrackerTest {
         when(root.isOriginalRequest()).thenReturn(true);
         tracker.startSpan(root);
 
+        RBucket<String> record = redissonClient.getBucket(TokenStatsTracker.REDIS_ONLY_KEY_PREFIX + traceId, StringCodec.INSTANCE);
+        assertTrue(record.remainTimeToLive() > 0 && record.remainTimeToLive() <= TokenStatsTracker.REDIS_ONLY_TTL.toMillis());
+
         ProxyContext model = mock(ProxyContext.class);
         when(model.getSpanId()).thenReturn("model");
         when(model.getTraceId()).thenReturn(traceId);
         when(model.getParentSpanId()).thenReturn("root");
         tracker.startSpan(model);
-
-        RBucket<String> record = redissonClient.getBucket(TokenStatsTracker.REDIS_ONLY_KEY_PREFIX + traceId, StringCodec.INSTANCE);
-        assertTrue(record.remainTimeToLive() > 0 && record.remainTimeToLive() <= Duration.ofMinutes(30).toMillis());
+        assertTrue(record.remainTimeToLive() > 0 && record.remainTimeToLive() <= TokenStatsTracker.REDIS_ONLY_TTL.toMillis());
 
         TokenUsage usage = new TokenUsage();
         usage.setTotalTokens(100);
@@ -461,7 +461,7 @@ public class TokenStatsTrackerTest {
             return Future.succeededFuture(callable.call());
         });
 
-        // e.g. another root with the same trace id created the record first
+        // e.g. a child reached core before its root's startSpan, so its orphan record exists
         final String traceId = "trace-id-shared";
         ProxyContext model = mock(ProxyContext.class);
         when(model.getSpanId()).thenReturn("model");
@@ -640,7 +640,7 @@ public class TokenStatsTrackerTest {
         tracker.startSpan(model);
 
         RBucket<String> record = redissonClient.getBucket(TokenStatsTracker.REDIS_ONLY_KEY_PREFIX + traceId, StringCodec.INSTANCE);
-        assertTrue(record.remainTimeToLive() > 0 && record.remainTimeToLive() <= Duration.ofMinutes(30).toMillis());
+        assertTrue(record.remainTimeToLive() > 0 && record.remainTimeToLive() <= TokenStatsTracker.REDIS_ONLY_TTL.toMillis());
         assertNull(resourceService.getResource(ResourceDescriptorFactory.fromDecoded(ResourceTypes.DEPLOYMENT_COST_STATS,
                 TokenStatsTracker.DEPLOYMENT_COST_STATS_BUCKET, TokenStatsTracker.DEPLOYMENT_COST_STATS_LOCATION, traceId)));
     }
