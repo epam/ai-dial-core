@@ -25,7 +25,7 @@ import static java.util.concurrent.Executors.newThreadPerTaskExecutor;
 public class AsyncTaskExecutor {
 
     private static final Executor VIRTUAL_THREAD_PER_TASK_EXECUTOR;
-    // static: Micrometer keeps the first gauge registered under a name, a per-instance counter would show the first executor only
+    // static: Micrometer keeps the first gauge registered under a name
     private static final AtomicInteger QUEUED_TASKS = new AtomicInteger();
     private static final Timer START_DELAY_TIMER = Timer.builder("dial_async_task_start_delay")
             .description("Time from submit() until the task starts running")
@@ -64,10 +64,14 @@ public class AsyncTaskExecutor {
      */
     public <T> Future<T> submit(Callable<T> blockingCall) {
         MeasuredTask<T> task = new MeasuredTask<>(blockingCall);
-        Future<T> result = execute(task);
-        // the worker pool of a closed vertx rejects the task before it runs, and fails the future right away. A task still
-        // queued in the worker pool when vertx closes is dropped without failing it and stays counted: the pod is going
-        // down, at most the last OTLP push sees it.
+        Future<T> result;
+        try {
+            result = execute(task);
+        } catch (Throwable e) {
+            task.dequeue();
+            throw e;
+        }
+        // rejected by a closed vertx; a task it drops while still queued stays counted
         if (result.failed()) {
             task.dequeue();
         }
@@ -94,10 +98,7 @@ public class AsyncTaskExecutor {
         return promise.future();
     }
 
-    /**
-     * Counts the task as queued from submit() until it starts or is rejected. Measured on the task's own thread, not in
-     * a future listener: a listener runs on the event loop, so a busy loop would add its own delay to the duration.
-     */
+    // measured on the task's thread: a future listener runs on the event loop, which would add its own delay
     private static final class MeasuredTask<T> implements Callable<T> {
 
         private final Callable<T> call;
@@ -121,9 +122,6 @@ public class AsyncTaskExecutor {
             }
         }
 
-        /**
-         * Idempotent: whichever of the start and the rejection comes first counts the task down.
-         */
         void dequeue() {
             if (dequeued.compareAndSet(false, true)) {
                 QUEUED_TASKS.decrementAndGet();

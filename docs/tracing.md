@@ -143,7 +143,8 @@ queue-size gauge only. The event-loop gauges are only registered when a Promethe
 
 Locks:
 
-- `dial_lock_wait` is tagged with `outcome`: `success`, or `error` when `lock()` throws, e.g. while Redis is down.
+- `dial_lock_wait` is tagged with `outcome`: `success`, or `error` when the `redis` phase throws, e.g. while Redis is
+  down. The `local` phase always succeeds.
   The waits are recorded when `lock()` returns or throws, the hold when the lock is released.
 - A thread that takes a free lock is not queued. A thread waiting for the Redis key counts in
   `dial_lock_queue_size{phase="redis"}` while it spins, not during the first round-trip.

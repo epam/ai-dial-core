@@ -40,13 +40,12 @@ public class LockService {
     // lock() only: tryLock() never waits, and its holds (e.g. an application deployment) are not measured either
     private static final Timer LOCAL_WAIT_TIMER = buildWaitTimer("local", "success");
     private static final Timer REDIS_WAIT_TIMER = buildWaitTimer("redis", "success");
-    private static final Timer FAILED_LOCAL_WAIT_TIMER = buildWaitTimer("local", "error");
     private static final Timer FAILED_REDIS_WAIT_TIMER = buildWaitTimer("redis", "error");
     private static final Timer HOLD_TIMER = Timer.builder("dial_lock_hold")
             .description("Time a lock taken with lock() is held")
             .serviceLevelObjectives(LatencyBuckets.waitBuckets())
             .register(Metrics.globalRegistry);
-    // static like the timers: Micrometer keeps the first gauge registered under a name, so every LockService feeds these
+    // static: Micrometer keeps the first gauge registered under a name
     private static final AtomicInteger LOCAL_QUEUE = registerQueueGauge("local");
     private static final AtomicInteger REDIS_QUEUE = registerQueueGauge("redis");
 
@@ -57,7 +56,7 @@ public class LockService {
         ReentrantLock lock = new ReentrantLock();
 
         void lock() {
-            // only a thread that blocks is queued, not one that takes a free lock or re-enters it
+            // a free or re-entered lock is not a wait
             if (lock.tryLock()) {
                 return;
             }
@@ -89,25 +88,20 @@ public class LockService {
         long waitStart = System.nanoTime();
         localLock.lock();
         long localAcquired = System.nanoTime();
-        long acquired;
+        LOCAL_WAIT_TIMER.record(localAcquired - waitStart, TimeUnit.NANOSECONDS);
 
         // A Redis failure here must not leak the held local lock: it is a plain ReentrantLock,
         // so a leaked hold would block every subsequent lock() on this key until pod restart.
         try {
             lockInRedis(id, owner);
-            acquired = System.nanoTime();
-            // Inside the try: should a record throw, the local lock is still released and only the Redis key stays until its ttl.
-            // Outside it, nothing would release the local lock
-            LOCAL_WAIT_TIMER.record(localAcquired - waitStart, TimeUnit.NANOSECONDS);
-            REDIS_WAIT_TIMER.record(acquired - localAcquired, TimeUnit.NANOSECONDS);
         } catch (Throwable e) {
             localLock.unlock();
             releaseLocalLock(id);
-            // a failed lock() waited too: with Redis down or slow, the time shows up as error waits
-            FAILED_LOCAL_WAIT_TIMER.record(localAcquired - waitStart, TimeUnit.NANOSECONDS);
             FAILED_REDIS_WAIT_TIMER.record(System.nanoTime() - localAcquired, TimeUnit.NANOSECONDS);
             throw e;
         }
+        long acquired = System.nanoTime();
+        REDIS_WAIT_TIMER.record(acquired - localAcquired, TimeUnit.NANOSECONDS);
 
         return () -> {
             try {
@@ -139,8 +133,6 @@ public class LockService {
     }
 
     private static Timer buildWaitTimer(String phase, String outcome) {
-        // local: other threads of this pod hold the key;
-        // redis: the Redis round-trip, plus the spin with backoff while another pod, or a tryLock() on this pod, holds the key
         return Timer.builder("dial_lock_wait")
                 .description("Time lock() waits before the lock is acquired, or before it fails")
                 .tag("phase", phase)
@@ -151,7 +143,6 @@ public class LockService {
 
     private static AtomicInteger registerQueueGauge(String phase) {
         AtomicInteger queue = new AtomicInteger();
-        // local: blocked on another thread of this pod holding the key; redis: spinning while another pod, or a tryLock(), holds it
         Gauge.builder("dial_lock_queue_size", queue, AtomicInteger::get)
                 .description("Threads of this pod blocked in lock() until the key is released")
                 .tag("phase", phase)
