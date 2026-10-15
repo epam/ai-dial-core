@@ -74,12 +74,7 @@ public class TokenStatsTracker {
                 }
             } else if (!computeRedisOnly(traceId, false, addSpan)) {
                 // only a background root creates the resource: a child of an ended or untracked root gets a Redis-only record
-                boolean[] found = {false};
-                resourceService.computeResource(toResource(traceId), json -> {
-                    found[0] = json != null;
-                    return found[0] ? addSpan.apply(json) : null;
-                });
-                if (!found[0]) {
+                if (resourceService.computeResource(toResource(traceId), json -> json == null ? null : addSpan.apply(json)) == null) {
                     computeRedisOnly(traceId, true, addSpan);
                 }
             }
