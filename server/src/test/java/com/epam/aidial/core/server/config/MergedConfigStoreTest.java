@@ -79,8 +79,8 @@ public class MergedConfigStoreTest {
 
     private static BackgroundOperationTracer mockBackgroundTracer() {
         BackgroundOperationTracer tracer = org.mockito.Mockito.mock(BackgroundOperationTracer.class);
-        lenient().when(tracer.traceFuture(any(), any())).thenAnswer(inv -> {
-            Supplier<Future<?>> supplier = inv.getArgument(1);
+        lenient().when(tracer.traceFuture(any())).thenAnswer(inv -> {
+            Supplier<Future<?>> supplier = inv.getArgument(0);
             return supplier.get();
         });
         return tracer;

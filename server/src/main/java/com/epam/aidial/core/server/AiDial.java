@@ -194,11 +194,10 @@ public class AiDial {
             ProxyUtil.init(ProxySettings.from(settings("proxy")));
             VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
             setupMetrics(vertxOptions);
-            OpenTelemetry openTelemetry = setupTracing(vertxOptions);
-            BlockingCallTracer blockingCallTracer = new BlockingCallTracer(openTelemetry);
+            BlockingCallTracer blockingCallTracer = new BlockingCallTracer(setupTracing(vertxOptions));
 
             vertx = Vertx.vertx(vertxOptions);
-            BackgroundOperationTracer backgroundTracer = new BackgroundOperationTracer(openTelemetry, vertx);
+            BackgroundOperationTracer backgroundTracer = new BackgroundOperationTracer(vertx);
             HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
             // upstream bodies (including SSE streams) are parsed/proxied, so they must be decoded
             clientOptions.setDecompressionSupported(true);

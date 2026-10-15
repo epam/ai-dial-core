@@ -95,8 +95,8 @@ class BackgroundJobScheduler {
         vertx.setPeriodic(0, settings.getSchedulerTickIntervalMs(), id -> {
             if (nextJobTime.get() <= System.currentTimeMillis()
                     && polling.compareAndSet(false, true)) {
-                // Span covers job claiming phase, not individual job execution
-                backgroundTracer.traceFuture("background.job.poll", () ->
+                // The trace id covers job claiming, not the execution of each claimed job
+                backgroundTracer.traceFuture(() ->
                         taskExecutor.submit(this::pollJobs)
                                 .onComplete(ignore -> polling.set(false))
                                 .onFailure(e -> log.warn("Failed to poll background jobs", e))
@@ -105,7 +105,7 @@ class BackgroundJobScheduler {
         });
         // Set up periodic scans in case of a Redis restart
         vertx.setPeriodic(0, settings.getScanIntervalMs(), id -> {
-            backgroundTracer.traceFuture("background.job.scan", () ->
+            backgroundTracer.traceFuture(() ->
                     taskExecutor.submit(this::scan)
             );
         });

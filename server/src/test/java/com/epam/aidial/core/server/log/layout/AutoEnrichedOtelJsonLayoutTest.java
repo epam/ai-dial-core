@@ -11,6 +11,9 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.TraceFlags;
+import io.opentelemetry.api.trace.TraceState;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -61,6 +64,7 @@ class AutoEnrichedOtelJsonLayoutTest {
         spanMock = mockStatic(Span.class);
         currentSpan = mock(Span.class);
         when(currentSpan.isRecording()).thenReturn(false);
+        when(currentSpan.getSpanContext()).thenReturn(SpanContext.getInvalid());
         spanMock.when(Span::current).thenReturn(currentSpan);
     }
     
@@ -287,6 +291,65 @@ class AutoEnrichedOtelJsonLayoutTest {
         assertEquals("22510e56eb9b21f6b03dbc038cd8fb71", jsonNode.get("TraceId").asText());
         assertEquals("8a46c76f1554b00a", jsonNode.get("SpanId").asText());
         assertEquals("01", jsonNode.get("TraceFlags").asText());
+    }
+
+    /**
+     * Authentication logs before the ProxyContext exists, e.g. a failed userinfo call in IdentityProvider.
+     */
+    @Test
+    void shouldIncludeTraceContextFromCurrentSpan_WhenNoProxyContext() throws Exception {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        when(currentSpan.getSpanContext()).thenReturn(SpanContext.create(
+                "22510e56eb9b21f6b03dbc038cd8fb71", "8a46c76f1554b00a", TraceFlags.getSampled(), TraceState.getDefault()));
+
+        JsonNode jsonNode = objectMapper.readTree(layout.doLayout(createEvent("Can't extract claims from user info endpoint")));
+
+        assertEquals("22510e56eb9b21f6b03dbc038cd8fb71", jsonNode.get("TraceId").asText());
+        assertEquals("8a46c76f1554b00a", jsonNode.get("SpanId").asText());
+        assertEquals("01", jsonNode.get("TraceFlags").asText());
+    }
+
+    @Test
+    void shouldLeaveTraceContextEmpty_WhenNoProxyContextAndNoSpan() throws Exception {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+
+        JsonNode jsonNode = objectMapper.readTree(layout.doLayout(createEvent("Outside of any request")));
+
+        assertEquals("", jsonNode.get("TraceId").asText());
+        assertEquals("", jsonNode.get("SpanId").asText());
+        assertEquals("", jsonNode.get("TraceFlags").asText());
+    }
+
+    @Test
+    void shouldPreferProxyContextOverCurrentSpan() throws Exception {
+        ProxyContext proxyContext = mock(ProxyContext.class);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(response.ended()).thenReturn(false);
+        when(proxyContext.getTraceId()).thenReturn("22510e56eb9b21f6b03dbc038cd8fb71");
+        when(proxyContext.getSpanId()).thenReturn("8a46c76f1554b00a");
+        when(proxyContext.getTraceFlags()).thenReturn("01");
+        when(proxyContext.getResponse()).thenReturn(response);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        // a per-request API key carries the caller's trace id, which differs from the current span's
+        when(currentSpan.getSpanContext()).thenReturn(SpanContext.create(
+                "ffffffffffffffffffffffffffffffff", "ffffffffffffffff", TraceFlags.getDefault(), TraceState.getDefault()));
+
+        JsonNode jsonNode = objectMapper.readTree(layout.doLayout(createEvent("With both")));
+
+        assertEquals("22510e56eb9b21f6b03dbc038cd8fb71", jsonNode.get("TraceId").asText());
+        assertEquals("8a46c76f1554b00a", jsonNode.get("SpanId").asText());
+        assertEquals("01", jsonNode.get("TraceFlags").asText());
+    }
+
+    private static LoggingEvent createEvent(String message) {
+        LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        LoggingEvent event = new LoggingEvent();
+        event.setLoggerName(context.getLogger("test.logger").getName());
+        event.setLevel(Level.WARN);
+        event.setMessage(message);
+        event.setTimeStamp(System.currentTimeMillis());
+        event.setLoggerContext(context);
+        return event;
     }
 
     @Test

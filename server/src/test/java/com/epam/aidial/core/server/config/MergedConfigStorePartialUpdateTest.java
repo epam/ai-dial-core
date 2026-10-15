@@ -84,8 +84,8 @@ public class MergedConfigStorePartialUpdateTest {
 
     private static BackgroundOperationTracer mockBackgroundTracer() {
         BackgroundOperationTracer tracer = org.mockito.Mockito.mock(BackgroundOperationTracer.class);
-        org.mockito.Mockito.lenient().when(tracer.traceFuture(org.mockito.Mockito.any(), org.mockito.Mockito.any())).thenAnswer(inv -> {
-            java.util.function.Supplier<io.vertx.core.Future<?>> supplier = inv.getArgument(1);
+        org.mockito.Mockito.lenient().when(tracer.traceFuture(org.mockito.Mockito.any())).thenAnswer(inv -> {
+            java.util.function.Supplier<io.vertx.core.Future<?>> supplier = inv.getArgument(0);
             return supplier.get();
         });
         return tracer;

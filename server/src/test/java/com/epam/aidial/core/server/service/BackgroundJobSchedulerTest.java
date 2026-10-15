@@ -404,8 +404,8 @@ class BackgroundJobSchedulerTest {
         AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx,
                 new JsonObject().put("useVirtualThreads", false));
         BackgroundOperationTracer backgroundTracer = org.mockito.Mockito.mock(BackgroundOperationTracer.class);
-        org.mockito.Mockito.lenient().when(backgroundTracer.traceFuture(org.mockito.Mockito.anyString(), org.mockito.Mockito.any())).thenAnswer(inv -> {
-            java.util.function.Supplier<io.vertx.core.Future<?>> supplier = inv.getArgument(1);
+        org.mockito.Mockito.lenient().when(backgroundTracer.traceFuture(org.mockito.Mockito.any())).thenAnswer(inv -> {
+            java.util.function.Supplier<io.vertx.core.Future<?>> supplier = inv.getArgument(0);
             return supplier.get();
         });
         return new BackgroundJobScheduler(vertx, redissonClient, PREFIX,

@@ -605,7 +605,7 @@ public final class MergedConfigStore implements ConfigStore {
         // Distributed bucket lock so the debounced scan cannot read partial-batch blob state while a
         // peer pod's apply* is mid-batch (design 02 §4.4). underBucketLocks blocks on Redis, but we
         // are on a virtual thread (taskExecutor) so that is fine.
-        backgroundTracer.traceFuture("background.config.rebuild", () ->
+        backgroundTracer.traceFuture(() ->
                 taskExecutor.submit(() -> lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
                     rebuildLock.lock();
                     try {

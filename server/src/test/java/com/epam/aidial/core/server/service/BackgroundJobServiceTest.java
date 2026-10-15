@@ -178,8 +178,8 @@ class BackgroundJobServiceTest {
         AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx,
                 new JsonObject().put("useVirtualThreads", false));
         BackgroundOperationTracer backgroundTracer = mock(BackgroundOperationTracer.class);
-        lenient().when(backgroundTracer.traceFuture(anyString(), any())).thenAnswer(inv -> {
-            Supplier<Future<?>> supplier = inv.getArgument(1);
+        lenient().when(backgroundTracer.traceFuture(any())).thenAnswer(inv -> {
+            Supplier<Future<?>> supplier = inv.getArgument(0);
             return supplier.get();
         });
         service = spy(new BackgroundJobService(vertx, redissonClient, PREFIX,
@@ -697,8 +697,8 @@ class BackgroundJobServiceTest {
         AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx,
                 new JsonObject().put("useVirtualThreads", false));
         BackgroundOperationTracer backgroundTracer = mock(BackgroundOperationTracer.class);
-        lenient().when(backgroundTracer.traceFuture(anyString(), any())).thenAnswer(inv -> {
-            Supplier<Future<?>> supplier = inv.getArgument(1);
+        lenient().when(backgroundTracer.traceFuture(any())).thenAnswer(inv -> {
+            Supplier<Future<?>> supplier = inv.getArgument(0);
             return supplier.get();
         });
         BackgroundJobService svc = spy(new BackgroundJobService(vertx, redissonClient, PREFIX,

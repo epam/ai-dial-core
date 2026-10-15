@@ -168,8 +168,8 @@ class ComplexResourceSweepServiceTest {
         Mockito.when(timerService.scheduleWithFixedDelay(Mockito.anyLong(), Mockito.anyLong(), Mockito.any()))
                 .thenReturn(() -> { });
         BackgroundOperationTracer backgroundTracer = Mockito.mock(BackgroundOperationTracer.class);
-        Mockito.lenient().when(backgroundTracer.traceFuture(Mockito.anyString(), Mockito.any())).thenAnswer(inv -> {
-            Supplier<Future<?>> supplier = inv.getArgument(1);
+        Mockito.lenient().when(backgroundTracer.traceFuture(Mockito.any())).thenAnswer(inv -> {
+            Supplier<Future<?>> supplier = inv.getArgument(0);
             return supplier.get();
         });
         return new ComplexResourceSweepService(

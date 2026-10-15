@@ -144,19 +144,19 @@ only parent source either way.
 
 ## Background operations
 
-Periodic work that no request started is traced with one root span per run: the background job
-poll and scan (`background.job.poll`, `background.job.scan`), the complex resource sweep
-(`background.resource.sweep`), the code interpreter session check (`background.session.check`) and
-the merged config rebuild (`background.config.rebuild`). The spans carry `operation.type=background`
-and are not children of any request. Because a run has a valid span, the `BlockingCallTracer` spans for
-storage calls made inside it (`blob.list`, `resource.get`) become its children, so a sweep run that lists
-blobs is a small trace of its own rather than a lone span.
+Periodic work that no request started has no trace of its own, so its log lines would carry no trace id. Core
+gives every run of the background job poll and scan, the complex resource sweep, the code interpreter session
+check and the merged config rebuild a trace id of its own, so the log lines of one run, in the console JSON and
+in the OTel log records, can be found and grouped by it.
 
-`BackgroundOperationTracer` keeps each run's span on a duplicate of the timer's Vert.x context that
-only that run uses, the same way a request keeps its own. The context a timer fires on is shared by
-every run and by anything else created from it, so writing the span there and restoring it later would
-let overlapping runs, or callbacks on other threads, read each other's trace. Work the run submits
-(`AsyncTaskExecutor`, future callbacks) captures the duplicate, so it and its log lines carry the run's
-trace id. A handler that should be covered, such as a logging `onFailure`, has to be part of the future
-passed to `traceFuture`, because the span ends when that future completes.
-`pollJobs` is fire-and-forget: its span covers claiming jobs, not the execution of each claimed job.
+These runs record no spans. The trace context of a run is not sampled, so nothing is exported as a trace, and
+the storage calls a run makes create no `blob.*` or `resource.*` spans (`BlockingCallTracer` creates spans only
+under a sampled parent, so this also holds with a sampler that ignores the parent decision, such as `always_on`).
+Tracing a run as a span would be a separate change.
+
+`BackgroundOperationTracer` keeps each run's trace context on a duplicate of the timer's Vert.x context that only
+that run uses, the same way a request keeps its own. The context a timer fires on is shared by every run and by
+anything else created from it, so writing the trace context there and restoring it later would let overlapping
+runs, or callbacks on other threads, read each other's trace id. Work the run submits (`AsyncTaskExecutor`) and the
+callbacks of the future `traceFuture` returns capture the duplicate, so they log with the run's trace id.
+`pollJobs` is fire-and-forget: its trace id covers claiming jobs, not the execution of each claimed job.

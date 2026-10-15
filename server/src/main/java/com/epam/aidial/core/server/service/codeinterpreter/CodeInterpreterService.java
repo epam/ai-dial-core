@@ -90,7 +90,7 @@ public class CodeInterpreterService {
         if (isActive()) {
             long checkPeriod = settings.getLong("checkPeriod", 10000L);
             vertx.setPeriodic(checkPeriod, checkPeriod, ignore ->
-                    backgroundTracer.traceFuture("background.session.check", () ->
+                    backgroundTracer.traceFuture(() ->
                             taskExecutor.submit(this::checkSessions)
                     )
             );

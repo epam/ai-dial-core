@@ -88,7 +88,7 @@ public class ComplexResourceSweepService implements AutoCloseable {
         this.danglingRefsCounter = Counter.builder("dial_complex_resource_sweep_dangling_refs_total").register(Metrics.globalRegistry);
 
         this.timer = timerService.scheduleWithFixedDelay(settings.getPeriod(), settings.getPeriod(),
-                () -> backgroundTracer.traceFuture("background.resource.sweep", () -> {
+                () -> backgroundTracer.traceFuture(() -> {
                     tick();
                     return io.vertx.core.Future.succeededFuture();
                 }));
