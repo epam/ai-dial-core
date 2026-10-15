@@ -176,11 +176,13 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private Future<Void> proceedToDeployment(ResponsesApiRequest request, String deploymentName) {
-        // set before startSpan: a background root keeps its usage record in blob storage
-        context.setBackgroundJob(request.isBackground());
         return verifyLimit()
-                .compose(ignore -> proxy.getTokenStatsTracker().startSpan(context)
-                        .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request))))
+                .compose(ignore -> {
+                    // set before startSpan: a background root keeps its usage record in blob storage
+                    context.setBackgroundJob(request.isBackground());
+                    return proxy.getTokenStatsTracker().startSpan(context);
+                })
+                .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request)))
                 .otherwise(error -> handleRequestError(deploymentName, error));
     }
 

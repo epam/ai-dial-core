@@ -51,8 +51,8 @@ public class TokenStatsTracker {
      *
      * <p>The root request picks where the record lives. A background Responses job outlives its HTTP request,
      * so its record is a {@code DEPLOYMENT_COST_STATS} resource that {@link ResourceService} syncs to blob storage.
-     * Any other trace ends with its root request, so its record is kept in Redis only, with a TTL, and costs
-     * no blob storage calls. Every later call looks for the Redis-only record first.
+     * Any other record is kept in Redis only, with a TTL, and costs no blob storage writes: the root deletes it
+     * when it ends, and the TTL bounds records nobody deletes. Every later call looks for the Redis-only record first.
      * The update runs on the task executor.
      */
     public Future<Void> startSpan(ProxyContext context) {
@@ -66,14 +66,22 @@ public class TokenStatsTracker {
                 traceContext.addSpan(context);
                 return ProxyUtil.convertToString(traceContext);
             };
-            if (context.isOriginalRequest()) {
-                if (context.isBackgroundJob()) {
-                    resourceService.computeResource(toResource(traceId), addSpan);
-                } else {
+            if (context.isOriginalRequest() && context.isBackgroundJob()) {
+                resourceService.computeResource(toResource(traceId), addSpan);
+            } else if (context.isOriginalRequest()) {
+                if (!redisOnlyBucket(traceId).setIfAbsent(addSpan.apply(null), REDIS_ONLY_TTL)) {
                     computeRedisOnly(traceId, true, addSpan);
                 }
-            } else {
-                compute(traceId, addSpan);
+            } else if (!computeRedisOnly(traceId, false, addSpan)) {
+                // only a background root creates the resource: a child of an ended or untracked root gets a Redis-only record
+                boolean[] found = {false};
+                resourceService.computeResource(toResource(traceId), json -> {
+                    found[0] = json != null;
+                    return found[0] ? addSpan.apply(json) : null;
+                });
+                if (!found[0]) {
+                    computeRedisOnly(traceId, true, addSpan);
+                }
             }
             return null;
         });

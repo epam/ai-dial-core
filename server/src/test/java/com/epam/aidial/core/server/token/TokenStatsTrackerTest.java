@@ -37,6 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -477,6 +478,26 @@ public class TokenStatsTrackerTest {
         // the poller ends the root span of a background job by trace id
         tracker.endSpan(traceId);
         verify(blobStorage).delete(anyString());
+    }
+
+    @Test
+    public void testChildWithoutRootGetsRedisOnlyRecord() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        // e.g. the root already ended, or it is a feature endpoint that never starts a span
+        final String traceId = "trace-id-orphan";
+        ProxyContext model = mock(ProxyContext.class);
+        when(model.getSpanId()).thenReturn("model");
+        when(model.getTraceId()).thenReturn(traceId);
+        when(model.getParentSpanId()).thenReturn("root");
+        tracker.startSpan(model);
+
+        RBucket<String> record = redissonClient.getBucket("deployment_cost_stats_tmp:" + traceId, StringCodec.INSTANCE);
+        assertTrue(record.remainTimeToLive() > 0);
+        verify(blobStorage, never()).store(any(), any(), any(), any(), any());
     }
 
 }
