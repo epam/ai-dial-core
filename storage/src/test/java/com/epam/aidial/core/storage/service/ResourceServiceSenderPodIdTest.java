@@ -21,6 +21,7 @@ import redis.embedded.RedisServer;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -111,6 +112,29 @@ class ResourceServiceSenderPodIdTest {
 
             Assertions.assertTrue(latch.await(5, TimeUnit.SECONDS));
             Assertions.assertEquals("pod-alpha", received.get().getSenderPodId());
+        }
+    }
+
+    @Test
+    void publishSkipsTypesWithoutSubscribers() throws InterruptedException {
+        ResourceService service = newService(() -> "pod-alpha");
+
+        CountDownLatch latch = new CountDownLatch(1);
+        List<String> urls = new CopyOnWriteArrayList<>();
+        try (ResourceTopic.Subscription ignored = service.getTopic().subscribeAll(event -> {
+            urls.add(event.getUrl());
+            latch.countDown();
+        })) {
+            ResourceDescriptor limit = new ResourceDescriptor(
+                    ResourceTypes.LIMIT, "requests", List.of("key", "model"), "bucket", "bucket/", false);
+            ResourceDescriptor application = new ResourceDescriptor(
+                    ResourceTypes.APPLICATION, "after-limit-app", List.of(), "public", "public/", false);
+            service.putResource(limit, "{}", EtagHeader.ANY);
+            service.putResource(application, "{}", EtagHeader.ANY);
+
+            // events arrive in publish order, so a LIMIT event would precede the APPLICATION one
+            Assertions.assertTrue(latch.await(5, TimeUnit.SECONDS));
+            Assertions.assertEquals(List.of(application.getUrl()), urls);
         }
     }
 

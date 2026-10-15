@@ -41,7 +41,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ResourceOperationController {
 
-    private static final Set<ResourceType> SUBSCRIPTION_ALLOWED_TYPES = Set.of(
+    static final Set<ResourceType> SUBSCRIPTION_ALLOWED_TYPES = Set.of(
             ResourceTypes.FILE, ResourceTypes.CONVERSATION, ResourceTypes.PROMPT, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET);
 
     private final ProxyContext context;

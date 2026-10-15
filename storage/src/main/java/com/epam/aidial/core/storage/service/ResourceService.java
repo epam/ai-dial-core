@@ -11,6 +11,7 @@ import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.data.ResourceUpload;
 import com.epam.aidial.core.storage.data.UserMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.epam.aidial.core.storage.util.Base58;
 import com.epam.aidial.core.storage.util.Compression;
@@ -1025,6 +1026,10 @@ public class ResourceService implements AutoCloseable {
 
     private void publishEvent(ResourceDescriptor descriptor, ResourceEvent.Action action, long timestamp, String etag,
             @Nullable Map<String, String> metadata) {
+        if (!ResourceTypes.EVENT_TYPES.contains(descriptor.getType())) {
+            return;
+        }
+
         ResourceEvent event = new ResourceEvent()
                 .setUrl(descriptor.getUrl())
                 .setAction(action)

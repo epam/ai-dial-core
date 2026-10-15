@@ -87,6 +87,12 @@ public class MergedConfigStoreTest {
     }
 
     @Test
+    public void testReplicaTypesArePublishedOnResourceTopic() {
+        assertTrue(ResourceTypes.EVENT_TYPES.containsAll(MergedConfigStore.MANAGED_TYPES));
+        assertTrue(ResourceTypes.EVENT_TYPES.contains(ResourceTypes.GLOBAL_SETTINGS));
+    }
+
+    @Test
     public void testRebuildKeepsTranslatorsSoNamedReferencesResolve() {
         // translators are a managed, blob-scanned type like models/interceptors — dropped here, every
         // deployment referencing one by name would serve nothing on that interface
