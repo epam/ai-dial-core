@@ -28,6 +28,7 @@ import redis.embedded.RedisServer;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.Callable;
 
@@ -102,7 +103,7 @@ public class TokenStatsTrackerTest {
         ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
         resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
                 lockService, settings, null);
-        tracker = new TokenStatsTracker(taskExecutor, resourceService, redissonClient, lockService, null);
+        tracker = new TokenStatsTracker(taskExecutor, resourceService, redissonClient, lockService, null, Duration.ofMinutes(30));
     }
 
     /**
@@ -435,8 +436,8 @@ public class TokenStatsTrackerTest {
         when(model.getParentSpanId()).thenReturn("root");
         tracker.startSpan(model);
 
-        RBucket<String> record = redissonClient.getBucket("deployment_cost_stats_tmp:" + traceId, StringCodec.INSTANCE);
-        assertTrue(record.remainTimeToLive() > 0);
+        RBucket<String> record = redissonClient.getBucket(TokenStatsTracker.REDIS_ONLY_KEY_PREFIX + traceId, StringCodec.INSTANCE);
+        assertTrue(record.remainTimeToLive() > 0 && record.remainTimeToLive() <= Duration.ofMinutes(30).toMillis());
 
         TokenUsage usage = new TokenUsage();
         usage.setTotalTokens(100);
@@ -547,7 +548,7 @@ public class TokenStatsTrackerTest {
                 TokenStatsTracker.DEPLOYMENT_COST_STATS_BUCKET, TokenStatsTracker.DEPLOYMENT_COST_STATS_LOCATION, traceId));
         assertNotNull(json);
         assertFalse(json.contains("child"));
-        assertTrue(redissonClient.getBucket("deployment_cost_stats_tmp:" + traceId, StringCodec.INSTANCE).isExists());
+        assertTrue(redissonClient.getBucket(TokenStatsTracker.REDIS_ONLY_KEY_PREFIX + traceId, StringCodec.INSTANCE).isExists());
     }
 
     @Test
@@ -566,7 +567,7 @@ public class TokenStatsTrackerTest {
 
         // a background job's poller with the same trace id ends only its resource
         tracker.endSpan(traceId);
-        assertTrue(redissonClient.getBucket("deployment_cost_stats_tmp:" + traceId, StringCodec.INSTANCE).isExists());
+        assertTrue(redissonClient.getBucket(TokenStatsTracker.REDIS_ONLY_KEY_PREFIX + traceId, StringCodec.INSTANCE).isExists());
     }
 
     @Test
@@ -610,7 +611,7 @@ public class TokenStatsTrackerTest {
         when(model.getParentSpanId()).thenReturn("root");
         tracker.startSpan(model);
 
-        assertFalse(redissonClient.getKeys().getKeysByPattern("deployment_cost_stats_tmp:*").iterator().hasNext());
+        assertFalse(redissonClient.getKeys().getKeysByPattern(TokenStatsTracker.REDIS_ONLY_KEY_PREFIX + "*").iterator().hasNext());
 
         TokenUsage usage = new TokenUsage();
         usage.setTotalTokens(100);
@@ -638,8 +639,8 @@ public class TokenStatsTrackerTest {
         when(model.getParentSpanId()).thenReturn("root");
         tracker.startSpan(model);
 
-        RBucket<String> record = redissonClient.getBucket("deployment_cost_stats_tmp:" + traceId, StringCodec.INSTANCE);
-        assertTrue(record.remainTimeToLive() > 0);
+        RBucket<String> record = redissonClient.getBucket(TokenStatsTracker.REDIS_ONLY_KEY_PREFIX + traceId, StringCodec.INSTANCE);
+        assertTrue(record.remainTimeToLive() > 0 && record.remainTimeToLive() <= Duration.ofMinutes(30).toMillis());
         assertNull(resourceService.getResource(ResourceDescriptorFactory.fromDecoded(ResourceTypes.DEPLOYMENT_COST_STATS,
                 TokenStatsTracker.DEPLOYMENT_COST_STATS_BUCKET, TokenStatsTracker.DEPLOYMENT_COST_STATS_LOCATION, traceId)));
     }

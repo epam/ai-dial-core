@@ -80,6 +80,10 @@ public class ApiKeyStore {
      *     Note. The method is blocking and shouldn't be run in the event loop thread.
      * </p>
      */
+    public Duration getPerRequestKeyTtl() {
+        return ttl;
+    }
+
     public void assignPerRequestApiKey(ApiKeyData data) {
         assignPerRequestApiKey(data, ttl);
     }

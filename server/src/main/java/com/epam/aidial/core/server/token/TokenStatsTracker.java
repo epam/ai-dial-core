@@ -37,15 +37,15 @@ import static com.epam.aidial.core.storage.resource.ResourceDescriptor.PATH_SEPA
 public class TokenStatsTracker {
     public static final String DEPLOYMENT_COST_STATS_BUCKET = "deployment_cost_stats";
     public static final String DEPLOYMENT_COST_STATS_LOCATION = DEPLOYMENT_COST_STATS_BUCKET + PATH_SEPARATOR;
-    private static final String REDIS_ONLY_KEY_PREFIX = "deployment_cost_stats_tmp:";
-    // ponytail: fixed TTL that bounds an orphaned record, make it configurable if a request can run longer
-    private static final Duration REDIS_ONLY_TTL = Duration.ofDays(1);
+    static final String REDIS_ONLY_KEY_PREFIX = "deployment_cost_stats_tmp:";
 
     private final AsyncTaskExecutor taskExecutor;
     private final ResourceService resourceService;
     private final RedissonClient redis;
     private final LockService lockService;
     private final String prefix;
+    // the per-request key TTL: no child can write to the record once its key has expired
+    private final Duration redisOnlyTtl;
 
     /**
      * Adds the request to the usage record of its trace.
@@ -85,7 +85,7 @@ public class TokenStatsTracker {
             if (context.isOriginalRequest() && context.isBackgroundJob()) {
                 resourceService.computeResource(toResource(traceId), addSpan);
             } else if (context.isOriginalRequest()) {
-                if (!getRedisOnlyBucket(traceId).setIfAbsent(addSpan.apply(null), REDIS_ONLY_TTL)) {
+                if (!getRedisOnlyBucket(traceId).setIfAbsent(addSpan.apply(null), redisOnlyTtl)) {
                     computeRedisOnly(traceId, true, addSpan);
                 }
             } else if (!computeRedisOnly(traceId, false, addChildSpan)) {
@@ -319,10 +319,10 @@ public class TokenStatsTracker {
             }
             // every write refreshes the TTL
             if (json != null) {
-                bucket.set(newJson, REDIS_ONLY_TTL);
-            } else if (!bucket.setIfAbsent(newJson, REDIS_ONLY_TTL)) {
+                bucket.set(newJson, redisOnlyTtl);
+            } else if (!bucket.setIfAbsent(newJson, redisOnlyTtl)) {
                 // only called with create for addSpan, which never returns null
-                bucket.set(fn.apply(bucket.get()), REDIS_ONLY_TTL);
+                bucket.set(fn.apply(bucket.get()), redisOnlyTtl);
             }
             return true;
         }

@@ -114,15 +114,15 @@ executor) start no traces of their own. They do not depend on `genAiSpanAttribut
 
 `blob.load` ends when the blob storage returns the blob, so it does not include reading the payload
 stream. The per-trace usage record (cost and token counts, created before every upstream call, updated
-with each deployment's usage and deleted when the trace's root ends, or a day after its last write if no root deletes it) is kept
+with each deployment's usage and deleted when the trace's root ends, or, if no root deletes it, `perRequestApiKey.ttl` after its last write) is kept
 in Redis only and gets no spans. A child span start, usage update or usage read that finds no Redis-only record
 holding its parent span or its own span still checks for a resource,
 so it shows up as a `resource.get` or `resource.compute` span with a `blob.load` (the miss is then cached) and no blob write.
 The exception is a trace whose root is a background Responses request: its record outlives the request,
 so it is a resource and shows up as `resource.*` spans with `dial.resource.type=DEPLOYMENT_COST_STATS`.
 A background request sent through an interceptor is not covered: the interceptor is the root, and its record is deleted
-when the interceptor responds. Redis calls, including lock waits on the Redis-only record, get no spans of their own: the time a `resource.*` span spends outside its
-`blob.*` children is Redis access and lock waits.
+when the interceptor responds. Redis calls get no spans of their own: the time a `resource.*` span spends outside its
+`blob.*` children is Redis access and lock waits. Redis-only record access and its lock waits fall outside any span.
 
 The same blob storage calls are measured by the `dial_blob_operation` timer, tagged by `operation`
 and `outcome` (`success` or `error`), with buckets from 5 ms to 5 s. Unlike the spans, the timer
