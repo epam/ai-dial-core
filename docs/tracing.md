@@ -115,8 +115,8 @@ executor) start no traces of their own. They do not depend on `genAiSpanAttribut
 `blob.load` ends when the blob storage returns the blob, so it does not include reading the payload
 stream. The per-trace usage record (cost and token counts, created before every upstream call, updated
 with each deployment's usage and deleted when the trace ends) is kept in Redis only and gets no spans.
-A call that finds no Redis-only record still checks for a resource, so it shows up as a `resource.get` or
-`resource.compute` span without a blob write.
+A child span start, usage update or usage read that finds no Redis-only record still checks for a resource,
+so it shows up as a `resource.get` or `resource.compute` span without a blob write.
 The exception is a trace whose root is a background Responses request: its record outlives the request,
 so it is a resource and shows up as `resource.*` spans with `dial.resource.type=DEPLOYMENT_COST_STATS`. Redis calls get no spans of their own: the time a `resource.*` span spends outside its
 `blob.*` children is Redis access and lock waits.

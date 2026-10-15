@@ -141,7 +141,7 @@ public class TokenStatsTracker {
     public Future<UsageStats> updateDeploymentStats(String traceId, String spanId, String deploymentName, TokenUsage tokenUsage) {
         return taskExecutor.submit(() -> {
             UsageStats[] result = {UsageStats.EMPTY};
-            compute(traceId, json -> {
+            Function<String, String> update = json -> {
                 TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
                 if (traceContext == null) {
                     return null;
@@ -150,7 +150,10 @@ public class TokenStatsTracker {
                 UsageStats usageStats = traceContext.getUsageStats(spanId);
                 result[0] = new UsageStats(usageStats.total(), usageStats.usagePerModel(), aggregatedCosts);
                 return ProxyUtil.convertToString(traceContext);
-            });
+            };
+            if (!computeRedisOnly(traceId, false, update)) {
+                resourceService.computeResource(toResource(traceId), update);
+            }
             return result[0];
         });
     }
@@ -279,15 +282,6 @@ public class TokenStatsTracker {
      */
     public record UsageStats(TokenUsage total, List<UsagePerModel> usagePerModel, List<AggregatedCost> aggregatedCosts) {
         public static final UsageStats EMPTY = new UsageStats(null, List.of(), List.of());
-    }
-
-    /**
-     * Applies {@code fn} to the Redis-only record of the trace if there is one, otherwise to its resource.
-     */
-    private void compute(String traceId, Function<String, String> fn) {
-        if (!computeRedisOnly(traceId, false, fn)) {
-            resourceService.computeResource(toResource(traceId), fn);
-        }
     }
 
     /**
