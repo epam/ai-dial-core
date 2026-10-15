@@ -300,7 +300,8 @@ public class TokenStatsTracker {
             String newJson = fn.apply(json);
             if (newJson == null) {
                 bucket.delete();
-            } else if (!newJson.equals(json)) {
+            } else {
+                // set even when unchanged: it refreshes the TTL
                 bucket.set(newJson, REDIS_ONLY_TTL);
             }
             return true;

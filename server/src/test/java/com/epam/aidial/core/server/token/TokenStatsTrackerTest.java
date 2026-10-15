@@ -2,8 +2,10 @@ package com.epam.aidial.core.server.token;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
@@ -37,7 +39,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -54,6 +55,8 @@ public class TokenStatsTrackerTest {
 
     @Mock
     private BlobStorage blobStorage;
+
+    private ResourceService resourceService;
 
     @InjectMocks
     private TokenStatsTracker tracker;
@@ -97,7 +100,7 @@ public class TokenStatsTrackerTest {
         }
         LockService lockService = new LockService(redissonClient, null);
         ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
-        ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
+        resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
                 lockService, settings, null);
         tracker = new TokenStatsTracker(taskExecutor, resourceService, redissonClient, lockService, null);
     }
@@ -497,7 +500,8 @@ public class TokenStatsTrackerTest {
 
         RBucket<String> record = redissonClient.getBucket("deployment_cost_stats_tmp:" + traceId, StringCodec.INSTANCE);
         assertTrue(record.remainTimeToLive() > 0);
-        verify(blobStorage, never()).store(any(), any(), any(), any(), any());
+        assertNull(resourceService.getResource(ResourceDescriptorFactory.fromDecoded(ResourceTypes.DEPLOYMENT_COST_STATS,
+                TokenStatsTracker.DEPLOYMENT_COST_STATS_BUCKET, TokenStatsTracker.DEPLOYMENT_COST_STATS_LOCATION, traceId)));
     }
 
 }
