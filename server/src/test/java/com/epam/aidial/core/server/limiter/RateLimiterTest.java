@@ -57,9 +57,12 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -538,6 +541,51 @@ public class RateLimiterTest {
         assertNotNull(checkLimitFuture.result());
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, checkLimitFuture.result().status());
 
+    }
+
+    /**
+     * The request counter is written without a lock: concurrent checks must still let exactly the limit through.
+     */
+    @Test
+    public void testLimit_ConcurrentRequestsPassExactlyTheLimit() throws Exception {
+        Config config = new Config();
+        Role role = new Role();
+        Limit limit = new Limit();
+        limit.setRequestHour(20);
+        role.setLimits(Map.of("model", limit));
+        config.getRoles().put("role", role);
+
+        Model model = new Model();
+        model.setName("model");
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        int requests = 40;
+        ExecutorService executor = Executors.newFixedThreadPool(8);
+        try {
+            List<java.util.concurrent.Future<HttpStatus>> statuses = new ArrayList<>();
+            for (int i = 0; i < requests; i++) {
+                statuses.add(executor.submit(() -> {
+                    ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, new ApiKeyData(),
+                            new ExtractedClaims("sub", List.of("role"), "user-hash",
+                                    ProxyUtil.MAPPER.createObjectNode(), null, null),
+                            "trace-id", "span-id", "01");
+                    proxyContext.setDeployment(model);
+                    return rateLimiter.limit(proxyContext, model).result().status();
+                }));
+            }
+            int passed = 0;
+            for (java.util.concurrent.Future<HttpStatus> status : statuses) {
+                if (status.get() == HttpStatus.OK) {
+                    passed++;
+                }
+            }
+            assertEquals(20, passed);
+        } finally {
+            executor.shutdown();
+        }
     }
 
     @Test

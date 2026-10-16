@@ -41,6 +41,7 @@ import org.redisson.api.RBatch;
 import org.redisson.api.RMap;
 import org.redisson.api.RMapAsync;
 import org.redisson.api.RScoredSortedSet;
+import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.ByteArrayCodec;
 import org.redisson.client.codec.Codec;
@@ -132,6 +133,54 @@ public class ResourceService implements AutoCloseable {
 
     private static final int BATCH_SIZE = 50;
     private static final int PAGE_SIZE = 1000;
+
+    // a writer that loses this many compare-and-set rounds in a row gives up; a round is a read and a write, no wait
+    private static final int MAX_COMPUTE_WITHOUT_LOCK_ATTEMPTS = 32;
+    // ARGV[1]: the etag the value was read with ('' for a deleted record); ARGV[2..]: field, value pairs
+    private static final String COMPARE_AND_SET_SCRIPT = """
+            if redis.call('exists', KEYS[1]) == 0 then
+              return 0
+            end
+            if (redis.call('hget', KEYS[1], '%s') or '') ~= ARGV[1] then
+              return 0
+            end
+            redis.call('hset', KEYS[1], unpack(ARGV, 2))
+            redis.call('persist', KEYS[1])
+            return 1
+            """.formatted(ETAG_ATTRIBUTE);
+    // ARGV[1]: expiration in milliseconds; ARGV[2..]: field, value pairs
+    private static final String PUT_IF_ABSENT_SCRIPT = """
+            if redis.call('exists', KEYS[1]) == 1 then
+              return 0
+            end
+            redis.call('hset', KEYS[1], unpack(ARGV, 2))
+            redis.call('pexpire', KEYS[1], ARGV[1])
+            return 1
+            """;
+    // ARGV[1]: the etag that was uploaded; ARGV[2]: the synced flag; ARGV[3]: expiration in milliseconds
+    private static final String MARK_SYNCED_SCRIPT = """
+            if (redis.call('hget', KEYS[1], '%s') or '') ~= ARGV[1] then
+              return 0
+            end
+            redis.call('hset', KEYS[1], '%s', ARGV[2])
+            redis.call('pexpire', KEYS[1], ARGV[3])
+            return 1
+            """.formatted(ETAG_ATTRIBUTE, SYNCED_ATTRIBUTE);
+    // ARGV[1]: the synced flag; ARGV[2]: expiration in milliseconds
+    private static final String EXPIRE_IF_SYNCED_SCRIPT = """
+            if redis.call('hget', KEYS[1], '%s') == ARGV[1] and redis.call('pttl', KEYS[1]) == -1 then
+              redis.call('pexpire', KEYS[1], ARGV[2])
+            end
+            return 1
+            """.formatted(SYNCED_ATTRIBUTE);
+    // ARGV[1]: the record's redis key; ARGV[2]: the latest score the sync treats as due
+    private static final String DEQUEUE_IF_DUE_SCRIPT = """
+            local score = redis.call('zscore', KEYS[1], ARGV[1])
+            if score and tonumber(score) <= tonumber(ARGV[2]) then
+              redis.call('zrem', KEYS[1], ARGV[1])
+            end
+            return 1
+            """;
 
     private static final ExecutorService VIRTUAL_THREAD_PER_TASK_EXECUTOR;
 
@@ -582,7 +631,10 @@ public class ResourceService implements AutoCloseable {
                         cacheHit = false;
                         String blobKey = blobKey(descriptor);
                         result = blobGet(blobKey, true);
-                        redisPut(redisKey, result);
+                        // a write without the lock may have landed since the miss, and it is newer than the blob
+                        if (!putIfAbsent(redisKey, result)) {
+                            result = Objects.requireNonNullElse(redisGet(redisKey, true), result);
+                        }
                     }
                 }
             }
@@ -939,6 +991,110 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
+    /**
+     * Like {@link #computeResource}, without the resource lock: the value is read, {@code fn} runs, and the result
+     * is written only if the record still has the etag it was read with. Otherwise {@code fn} runs again on the
+     * newer value. Only for records that no other method writes, such as rate-limit counters: a locked write does not
+     * check the etag and could overwrite a concurrent write made here.
+     *
+     * <p>{@code fn} may run several times, so it must not depend on running once, and it must not delete the
+     * record. A value larger than {@code maxSizeToCache} is rejected, since it would go straight to blob storage.
+     */
+    public void computeResourceWithoutLock(ResourceDescriptor descriptor, Function<String, String> fn) {
+        trace("resource.compute", descriptor, () -> computeResourceWithoutLockTraced(descriptor, fn));
+    }
+
+    private Void computeResourceWithoutLockTraced(ResourceDescriptor descriptor, Function<String, String> fn) {
+        String redisKey = redisKey(descriptor);
+        for (int attempt = 1; attempt <= MAX_COMPUTE_WITHOUT_LOCK_ATTEMPTS; attempt++) {
+            BlockingCallTracer.currentSpan().setAttribute("dial.resource.attempts", attempt);
+            Map<String, byte[]> fields = loadForCompute(descriptor, redisKey);
+            Result current = toResult(fields, redisKey);
+            if (current == null) {
+                // expired between the cache fill and the read
+                continue;
+            }
+
+            String oldValue = current.exists() ? new String(current.body, StandardCharsets.UTF_8) : null;
+            String newValue = fn.apply(oldValue);
+            if (Objects.equals(oldValue, newValue)) {
+                return null;
+            }
+
+            byte[] body = Objects.requireNonNull(newValue, "computeResourceWithoutLock cannot delete").getBytes(StandardCharsets.UTF_8);
+            if (body.length > maxSizeToCache) {
+                throw new IllegalArgumentException("Resource is too large to compute without a lock: " + body.length);
+            }
+
+            long updatedAt = time();
+            Result next = new Result(body, EtagBuilder.generateEtag(body), current.exists() ? current.createdAt : updatedAt,
+                    updatedAt, "application/json", descriptor.getType().requireCompression(), (long) body.length,
+                    descriptor.getType().name(), current.author, false);
+            if (!current.exists()) {
+                // before the write, so the stub can never land on top of what a sync has uploaded
+                blobPut(blobKey(descriptor), next.toStub()); // create an empty object for listing
+            }
+            // before the write: a crash in between leaves a queue entry for a record already synced, which sync drops
+            redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE).add(time() + syncDelay, redisKey);
+
+            byte[] expectedEtag = fields.getOrDefault(ETAG_ATTRIBUTE, RedisUtil.EMPTY_ARRAY);
+            if (compareAndSet(redisKey, expectedEtag, next)) {
+                publishEvent(descriptor, current.exists() ? ResourceEvent.Action.UPDATE : ResourceEvent.Action.CREATE,
+                        updatedAt, next.etag);
+                return null;
+            }
+        }
+        throw new IllegalStateException("Resource changed concurrently on every attempt: " + redisKey);
+    }
+
+    /**
+     * The record's fields in Redis, loaded from blob storage first if Redis does not have it.
+     */
+    private Map<String, byte[]> loadForCompute(ResourceDescriptor descriptor, String redisKey) {
+        RMap<String, byte[]> map = redis.getMap(redisKey, REDIS_MAP_CODEC);
+        Map<String, byte[]> fields = map.getAll(REDIS_FIELDS);
+        if (fields.isEmpty()) {
+            putIfAbsent(redisKey, blobGet(blobKey(descriptor), true));
+            fields = map.getAll(REDIS_FIELDS);
+        }
+        return fields;
+    }
+
+    private boolean compareAndSet(String redisKey, byte[] expectedEtag, Result result) {
+        List<Object> args = new ArrayList<>();
+        args.add(expectedEtag);
+        addFieldArgs(args, result);
+        return evalBoolean(COMPARE_AND_SET_SCRIPT, redisKey, args);
+    }
+
+    /**
+     * Caches a value loaded from blob storage unless Redis already holds the record: a write made since the load,
+     * with or without the lock, is newer than the blob.
+     */
+    @VisibleForTesting
+    boolean putIfAbsent(String redisKey, Result result) {
+        List<Object> args = new ArrayList<>();
+        args.add(longToArg(getExpiration(redisKey).toMillis()));
+        addFieldArgs(args, result);
+        return evalBoolean(PUT_IF_ABSENT_SCRIPT, redisKey, args);
+    }
+
+    private static void addFieldArgs(List<Object> args, Result result) {
+        toRedisFields(result).forEach((field, value) -> {
+            args.add(field.getBytes(StandardCharsets.UTF_8));
+            args.add(value);
+        });
+    }
+
+    private boolean evalBoolean(String script, String key, List<Object> args) {
+        return redis.getScript(ByteArrayCodec.INSTANCE)
+                .eval(RScript.Mode.READ_WRITE, script, RScript.ReturnType.BOOLEAN, List.of(key), args.toArray());
+    }
+
+    private static byte[] longToArg(long value) {
+        return Long.toString(value).getBytes(StandardCharsets.UTF_8);
+    }
+
     public boolean deleteResource(ResourceDescriptor descriptor, EtagHeader etag) {
         return deleteResource(descriptor, etag, true);
     }
@@ -1052,7 +1208,7 @@ public class ResourceService implements AutoCloseable {
                         continue;
                     }
 
-                    sync(redisKey);
+                    sync(redisKey, now);
                 } catch (Throwable e) {
                     log.warn("Failed to sync resource: {}", redisKey, e);
                 }
@@ -1064,32 +1220,55 @@ public class ResourceService implements AutoCloseable {
         return null;
     }
 
-    private RMap<String, byte[]> sync(String redisKey) {
+    /**
+     * Uploads the record if it is not synced yet. A write without the lock ({@link #computeResourceWithoutLock}) can
+     * land at any point of this: the record is marked synced only if it still has the etag that was uploaded, and its
+     * queue entry is dropped only if the score is still one the sync treats as due, since such a write moves it
+     * {@code syncDelay} into the future.
+     *
+     * @param dueBy the latest queue score this sync treats as due
+     */
+    private RMap<String, byte[]> sync(String redisKey, long dueBy) {
         log.debug("Syncing resource: {}", redisKey);
+        RMap<String, byte[]> map = redis.getMap(redisKey, REDIS_MAP_CODEC);
         Result result = redisGet(redisKey, false);
         if (result == null || result.synced) {
-            RMap<String, byte[]> map = redis.getMap(redisKey, REDIS_MAP_CODEC);
-            long ttl = map.remainTimeToLive();
-            // according to the documentation, -1 means expiration is not set
-            if (ttl == -1) {
-                Duration expiration = getExpiration(redisKey);
-                map.expire(expiration);
-            }
-            redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE).remove(redisKey);
+            evalBoolean(EXPIRE_IF_SYNCED_SCRIPT, redisKey,
+                    List.of(RedisUtil.BOOLEAN_TRUE_ARRAY, longToArg(getExpiration(redisKey).toMillis())));
+            dequeueIfDue(redisKey, dueBy);
             return map;
         }
 
         String blobKey = blobKeyFromRedisKey(redisKey);
+        Map<String, byte[]> fields = map.getAll(REDIS_FIELDS);
+        result = toResult(fields, redisKey);
+        if (result == null) {
+            return map;
+        }
         if (result.exists()) {
             log.debug("Syncing resource: {}. Blob updating", redisKey);
-            result = redisGet(redisKey, true);
             blobPut(blobKey, result);
         } else {
             log.debug("Syncing resource: {}. Blob deleting", redisKey);
             blobDelete(blobKey);
         }
 
-        return redisSync(redisKey);
+        if (markSynced(redisKey, fields.getOrDefault(ETAG_ATTRIBUTE, RedisUtil.EMPTY_ARRAY))) {
+            dequeueIfDue(redisKey, dueBy);
+        }
+        return map;
+    }
+
+    @VisibleForTesting
+    boolean markSynced(String redisKey, byte[] uploadedEtag) {
+        return evalBoolean(MARK_SYNCED_SCRIPT, redisKey,
+                List.of(uploadedEtag, RedisUtil.BOOLEAN_TRUE_ARRAY, longToArg(getExpiration(redisKey).toMillis())));
+    }
+
+    @VisibleForTesting
+    void dequeueIfDue(String redisKey, long dueBy) {
+        redis.getScript(StringCodec.INSTANCE).eval(RScript.Mode.READ_WRITE, DEQUEUE_IF_DUE_SCRIPT,
+                RScript.ReturnType.INTEGER, List.of(resourceQueue), redisKey, Long.toString(dueBy));
     }
 
     private <T> T trace(String name, ResourceDescriptor descriptor, Callable<T> work) {
@@ -1230,6 +1409,16 @@ public class ResourceService implements AutoCloseable {
             map.clearExpire();
         }
 
+        map.putAll(toRedisFields(result));
+
+        if (result.synced) { // cleanup because it is already synced
+            Duration expiration = getExpiration(key);
+            map.expire(expiration);
+            set.remove(key);
+        }
+    }
+
+    private static Map<String, byte[]> toRedisFields(Result result) {
         Map<String, byte[]> fields = new HashMap<>();
         if (result.exists()) {
             fields.put(BODY_ATTRIBUTE, result.body);
@@ -1246,13 +1435,7 @@ public class ResourceService implements AutoCloseable {
             fields.put(EXISTS_ATTRIBUTE, RedisUtil.BOOLEAN_FALSE_ARRAY);
         }
         fields.put(SYNCED_ATTRIBUTE, RedisUtil.booleanToRedis(result.synced));
-        map.putAll(fields);
-
-        if (result.synced) { // cleanup because it is already synced
-            Duration expiration = getExpiration(key);
-            map.expire(expiration);
-            set.remove(key);
-        }
+        return fields;
     }
 
     private RMap<String, byte[]> redisSync(String key) {
@@ -1276,7 +1459,8 @@ public class ResourceService implements AutoCloseable {
     }
 
     private void flushToBlobStore(String redisKey) {
-        RMap<String, byte[]> map = sync(redisKey);
+        // under the lock, so the entry is dropped whatever its score
+        RMap<String, byte[]> map = sync(redisKey, Long.MAX_VALUE);
         map.delete();
     }
 
@@ -1343,7 +1527,8 @@ public class ResourceService implements AutoCloseable {
     }
 
     @Builder
-    private record Result(
+    @VisibleForTesting
+    record Result(
             byte[] body,
             String etag,
             Long createdAt,
