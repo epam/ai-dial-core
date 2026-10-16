@@ -8,29 +8,25 @@ import com.epam.aidial.core.server.FileUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
-import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
-import com.epam.aidial.core.storage.service.ResourceService;
-import com.epam.aidial.core.storage.service.TimerService;
-import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.domain.StorageType;
 import org.jclouds.blobstore.domain.internal.BlobBuilderImpl;
+import org.jclouds.blobstore.domain.internal.MutableStorageMetadataImpl;
 import org.jclouds.blobstore.domain.internal.PageSetImpl;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
 import org.redisson.config.Config;
 import org.slf4j.LoggerFactory;
 import redis.embedded.RedisServer;
 
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -44,6 +40,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +50,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.IntFunction;
 import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
@@ -71,6 +69,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 class AdminExportServiceTest {
 
@@ -82,7 +81,6 @@ class AdminExportServiceTest {
     private BlobStorage blobStorage;
     private Path testDir;
     private LockService lockService;
-    private ResourceService resourceService;
     private AdminExportService service;
 
     @BeforeEach
@@ -118,21 +116,7 @@ class AdminExportServiceTest {
             blobStorage = new BlobStorage(mapper.readValue(blobStorageConfig, Storage.class));
 
             lockService = new LockService(redis, null);
-            String serviceConfig = """
-                    {
-                     "maxSize" : 67108864,
-                     "maxSizeToCache": 1048576,
-                     "syncPeriod": 60000,
-                     "syncDelay": 120000,
-                     "syncBatch": 4096,
-                     "cacheExpiration": 300000,
-                     "compressionMinSize": 256,
-                     "heartbeatPeriod": 60000
-                    }
-                    """;
-            ResourceService.Settings settings = mapper.readValue(serviceConfig, ResourceService.Settings.class);
-            resourceService = new ResourceService(mock(TimerService.class), redis, blobStorage, lockService, settings, null);
-            service = new AdminExportService(blobStorage, resourceService, lockService, Clock.fixed(NOW, ZoneOffset.UTC), CORE_VERSION);
+            service = new AdminExportService(blobStorage, lockService, Clock.fixed(NOW, ZoneOffset.UTC), CORE_VERSION);
         } catch (Throwable e) {
             destroy();
             throw e;
@@ -194,20 +178,65 @@ class AdminExportServiceTest {
     }
 
     @Test
-    void testUnsyncedWriteIsFlushedAndGzipIsExportedAsStored() throws IOException {
-        ResourceDescriptor model = new ResourceDescriptor(ResourceTypes.MODEL, "big", List.of(), "platform", "platform/", false);
+    void testGzipIsExportedAsStored() throws IOException {
+        String path = "platform/models/big";
         String body = "{\"endpoint\":\"" + "x".repeat(1000) + "\"}";
-        resourceService.putResource(model, body, EtagHeader.ANY);
+        byte[] gzipped = gzip(body);
+        blobStorage.store(path, "application/json", "gzip", Map.of("etag", "abc"), gzipped);
 
         Map<String, byte[]> entries = readEntries(export(service));
 
-        String path = model.getAbsoluteFilePath();
         JsonNode metadata = json(entries.get(AdminExportService.METADATA_ENTRY_PREFIX + path));
         assertEquals("gzip", metadata.get("contentEncoding").asText());
         assertEquals("application/json", metadata.get("contentType").asText());
-        assertTrue(metadata.get("userMetadata").size() > 0);
+        assertEquals("abc", metadata.get("userMetadata").get("etag").asText());
+        assertArrayEquals(gzipped, entries.get(path));
         assertEquals(body, new String(gunzip(entries.get(path)), StandardCharsets.UTF_8));
-        assertEquals(body, resourceService.getResource(model));
+    }
+
+    @Test
+    void testBlobTimestampsAndContentHeadersAreExported() throws IOException {
+        String path = "public/files/user1/a.txt";
+        Blob blob = blob(path, "a");
+        blob.getMetadata().setCreationDate(Date.from(Instant.parse("2025-03-04T05:06:07.123Z")));
+        blob.getMetadata().setLastModified(Date.from(Instant.parse("2025-04-05T06:07:08.456Z")));
+        blob.getMetadata().getContentMetadata().setContentType("text/plain");
+        blob.getMetadata().getContentMetadata().setContentDisposition("attachment; filename=a.txt");
+        blob.getMetadata().getContentMetadata().setContentLanguage("en");
+        blob.getMetadata().getContentMetadata().setCacheControl("no-cache");
+        BlobStorage storage = singleBlobStorage(path, blob);
+
+        Map<String, byte[]> entries = readEntries(export(newService(storage)));
+
+        JsonNode metadata = json(entries.get(AdminExportService.METADATA_ENTRY_PREFIX + path));
+        assertEquals("2025-03-04T05:06:07.123Z", metadata.get("creationDate").asText());
+        assertEquals("2025-04-05T06:07:08.456Z", metadata.get("lastModified").asText());
+        assertEquals("attachment; filename=a.txt", metadata.get("contentDisposition").asText());
+        assertEquals("en", metadata.get("contentLanguage").asText());
+        assertEquals("no-cache", metadata.get("cacheControl").asText());
+    }
+
+    @Test
+    void testEncodedContentIsNotDeflatedAgain() throws IOException {
+        byte[] gzipped = gzip("x".repeat(10_000));
+        blobStorage.store("public/files/user1/encoded", "application/json", "gzip", Map.of(), gzipped);
+        blobStorage.store("public/files/user1/plain.txt", "text/plain", null, Map.of(), "x".repeat(10_000).getBytes(StandardCharsets.UTF_8));
+        blobStorage.store("public/files/user1/identity.txt", "text/plain", "identity", Map.of(), "x".repeat(10_000).getBytes(StandardCharsets.UTF_8));
+        Path file = testDir.resolve("compression.zip");
+
+        try (OutputStream out = Files.newOutputStream(file)) {
+            service.export(out);
+        }
+
+        try (ZipFile zip = new ZipFile(file.toFile())) {
+            ZipEntry encoded = zip.getEntry("public/files/user1/encoded");
+            ZipEntry plain = zip.getEntry("public/files/user1/plain.txt");
+            ZipEntry identity = zip.getEntry("public/files/user1/identity.txt");
+            assertEquals(gzipped.length, encoded.getSize());
+            assertTrue(encoded.getCompressedSize() >= encoded.getSize(), "encoded content must not be compressed");
+            assertTrue(plain.getCompressedSize() < plain.getSize() / 10, "plain content must be compressed");
+            assertTrue(identity.getCompressedSize() < identity.getSize() / 10, "identity content must be compressed");
+        }
     }
 
     @Test
@@ -271,14 +300,14 @@ class AdminExportServiceTest {
     @Test
     void testArchiveWithMoreThan65535EntriesIsReadable() throws IOException {
         int count = 33_000;
-        BlobStorage storage = mock(BlobStorage.class);
+        BlobStorage storage = mock(BlobStorage.class, withSettings().stubOnly());
         stubList(storage, "public/", count, i -> "public/files/user1/f" + i);
         stubList(storage, "platform/", 0, i -> null);
         when(storage.load(anyString())).thenAnswer(invocation -> blob(invocation.getArgument(0), "c"));
-        AdminExportService exportService = newService(storage, Clock.fixed(NOW, ZoneOffset.UTC));
+        AdminExportService exportService = newService(storage);
 
         Path file = testDir.resolve("export.zip");
-        try (OutputStream out = Files.newOutputStream(file)) {
+        try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(file))) {
             exportService.export(out);
         }
 
@@ -303,7 +332,7 @@ class AdminExportServiceTest {
         when(storage.load("public/files/user1/kept.txt")).thenReturn(blob("public/files/user1/kept.txt", "kept"));
         when(storage.load("public/files/user1/gone.txt")).thenReturn(null);
 
-        Map<String, byte[]> entries = readEntries(export(newService(storage, Clock.fixed(NOW, ZoneOffset.UTC))));
+        Map<String, byte[]> entries = readEntries(export(newService(storage)));
 
         assertEquals(
                 List.of(
@@ -317,31 +346,9 @@ class AdminExportServiceTest {
     @Test
     void testConcurrentBucketLockWaitsForExport() throws Exception {
         store("public/files/user1/a.txt", "text/plain", null, Map.of(), "a");
-        CountDownLatch writing = new CountDownLatch(1);
-        CountDownLatch proceed = new CountDownLatch(1);
-        try (OutputStream gatedOut = new OutputStream() {
-            @Override
-            public void write(int b) throws IOException {
-                gate();
-            }
-
-            @Override
-            public void write(byte[] b, int off, int len) throws IOException {
-                gate();
-            }
-
-            private void gate() throws IOException {
-                writing.countDown();
-                try {
-                    proceed.await();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new IOException(e);
-                }
-            }
-        }) {
+        try (GatedOutputStream gatedOut = new GatedOutputStream()) {
             CompletableFuture<Void> exporting = CompletableFuture.runAsync(() -> service.export(gatedOut));
-            assertTrue(writing.await(10, TimeUnit.SECONDS));
+            assertTrue(gatedOut.writing.await(10, TimeUnit.SECONDS));
 
             AtomicBoolean acquired = new AtomicBoolean();
             CompletableFuture<Void> competing = CompletableFuture.runAsync(() ->
@@ -352,10 +359,46 @@ class AdminExportServiceTest {
             Thread.sleep(500);
             assertFalse(acquired.get());
 
-            proceed.countDown();
+            gatedOut.proceed.countDown();
             exporting.get(10, TimeUnit.SECONDS);
             competing.get(10, TimeUnit.SECONDS);
             assertTrue(acquired.get());
+        }
+    }
+
+    @Test
+    void testConcurrentExportIsRejected() throws Exception {
+        store("public/files/user1/a.txt", "text/plain", null, Map.of(), "a");
+        try (GatedOutputStream gatedOut = new GatedOutputStream()) {
+            CompletableFuture<Void> exporting = CompletableFuture.runAsync(() -> service.export(gatedOut));
+            assertTrue(gatedOut.writing.await(10, TimeUnit.SECONDS));
+
+            ByteArrayOutputStream rejectedOut = new ByteArrayOutputStream();
+            assertThrows(AdminExportBusyException.class, () -> service.export(rejectedOut));
+            assertEquals(0, rejectedOut.size());
+
+            gatedOut.proceed.countDown();
+            exporting.get(10, TimeUnit.SECONDS);
+        }
+
+        assertFalse(readEntries(export(service)).isEmpty(), "the lock must be free after the export");
+    }
+
+    @Test
+    void testBusyBucketLockRejectsExportAndReleasesTheOtherLock() {
+        LockService.Lock held = lockService.tryLock("platform/");
+        assertNotNull(held);
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+            assertThrows(AdminExportBusyException.class, () -> service.export(out));
+
+            assertEquals(0, out.size());
+            LockService.Lock publicLock = lockService.tryLock("public/");
+            assertNotNull(publicLock, "public/ lock must be released after the rejected export");
+            publicLock.close();
+        } finally {
+            held.close();
         }
     }
 
@@ -420,7 +463,7 @@ class AdminExportServiceTest {
                 }
             };
 
-            export(new AdminExportService(blobStorage, resourceService, lockService, steppingClock, CORE_VERSION));
+            export(new AdminExportService(blobStorage, lockService, steppingClock, CORE_VERSION));
 
             assertEquals(1, appender.list.stream().filter(event -> event.getLevel() == Level.WARN).count());
             assertTrue(appender.list.stream().anyMatch(event -> event.getLevel() == Level.INFO
@@ -469,8 +512,33 @@ class AdminExportServiceTest {
         }
     }
 
-    private AdminExportService newService(BlobStorage storage, Clock clock) {
-        return new AdminExportService(storage, resourceService, lockService, clock, CORE_VERSION);
+    @Test
+    void testDiscardReleasesDeflaterWithoutFinishingArchive() throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        AdminExportService.DiscardableZipOutputStream zip = new AdminExportService.DiscardableZipOutputStream(out);
+        zip.putNextEntry(new ZipEntry("a"));
+        zip.write(new byte[100]);
+
+        zip.discard();
+        zip.discard();
+
+        assertThrows(NullPointerException.class, () -> zip.write(new byte[1024]), "the deflater must be ended");
+        assertEquals(-1, indexOf(out.toByteArray(), new byte[] {'P', 'K', 5, 6}), "end of central directory must not be written");
+    }
+
+    private AdminExportService newService(BlobStorage storage) {
+        return new AdminExportService(storage, lockService, Clock.fixed(NOW, ZoneOffset.UTC), CORE_VERSION);
+    }
+
+    private static BlobStorage singleBlobStorage(String path, Blob blob) {
+        BlobStorage storage = mock(BlobStorage.class);
+        String bucketLocation = path.substring(0, path.indexOf('/') + 1);
+        for (String location : List.of("public/", "platform/")) {
+            List<StorageMetadata> items = location.equals(bucketLocation) ? List.of(storageMetadata(StorageType.BLOB, path)) : List.of();
+            when(storage.list(eq(location), any(), anyInt(), eq(true))).thenAnswer(invocation -> new PageSetImpl<>(items, null));
+        }
+        when(storage.load(path)).thenReturn(blob);
+        return storage;
     }
 
     private void store(String path, String contentType, String contentEncoding, Map<String, String> userMetadata, String body) {
@@ -480,6 +548,14 @@ class AdminExportServiceTest {
     private static byte[] export(AdminExportService exportService) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         exportService.export(out);
+        return out.toByteArray();
+    }
+
+    private static byte[] gzip(String body) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (GZIPOutputStream gzip = new GZIPOutputStream(out)) {
+            gzip.write(body.getBytes(StandardCharsets.UTF_8));
+        }
         return out.toByteArray();
     }
 
@@ -517,9 +593,9 @@ class AdminExportServiceTest {
     }
 
     private static StorageMetadata storageMetadata(StorageType type, String name) {
-        StorageMetadata metadata = mock(StorageMetadata.class);
-        when(metadata.getType()).thenReturn(type);
-        when(metadata.getName()).thenReturn(name);
+        MutableStorageMetadataImpl metadata = new MutableStorageMetadataImpl();
+        metadata.setType(type);
+        metadata.setName(name);
         return metadata;
     }
 
@@ -539,5 +615,30 @@ class AdminExportServiceTest {
             int to = Math.min(from + pageSize, count);
             return new PageSetImpl<>(all.subList(from, to), to < count ? String.valueOf(to) : null);
         });
+    }
+
+    private static final class GatedOutputStream extends OutputStream {
+        private final CountDownLatch writing = new CountDownLatch(1);
+        private final CountDownLatch proceed = new CountDownLatch(1);
+
+        @Override
+        public void write(int b) throws IOException {
+            gate();
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            gate();
+        }
+
+        private void gate() throws IOException {
+            writing.countDown();
+            try {
+                proceed.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException(e);
+            }
+        }
     }
 }

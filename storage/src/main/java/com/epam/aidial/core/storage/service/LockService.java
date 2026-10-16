@@ -177,12 +177,7 @@ public class LockService {
     }
 
     public <T> T underBucketLocks(Collection<String> bucketLocations, Supplier<T> function) {
-        List<String> keys = bucketLocations.stream()
-                .map(bucketLocation -> BlobStorageUtil.toStoragePath(prefix, bucketLocation))
-                .distinct()
-                .sorted()
-                .toList();
-
+        List<String> keys = bucketKeys(bucketLocations);
         List<Lock> locks = new ArrayList<>(keys.size());
 
         try {
@@ -193,10 +188,34 @@ public class LockService {
 
             return function.get();
         } finally {
-            for (Lock lock : locks) {
-                lock.close();
-            }
+            closeAll(locks);
         }
+    }
+
+    /**
+     * Takes the locks of all the buckets without waiting, in the same order as {@link #underBucketLocks}.
+     *
+     * @return a lock that releases all of them, or null if any is held by someone else, in which case none is kept
+     */
+    @Nullable
+    public Lock tryLockBuckets(Collection<String> bucketLocations) {
+        List<Lock> locks = new ArrayList<>();
+
+        try {
+            for (String key : bucketKeys(bucketLocations)) {
+                Lock lock = tryLock(key);
+                if (lock == null) {
+                    closeAll(locks);
+                    return null;
+                }
+                locks.add(lock);
+            }
+        } catch (Throwable e) {
+            closeAll(locks);
+            throw e;
+        }
+
+        return () -> closeAll(locks);
     }
 
     @Nullable
@@ -266,6 +285,20 @@ public class LockService {
         } catch (Throwable e) {
             log.error("Lock service failed to unlock: {}", id, e);
             return false;
+        }
+    }
+
+    private List<String> bucketKeys(Collection<String> bucketLocations) {
+        return bucketLocations.stream()
+                .map(bucketLocation -> BlobStorageUtil.toStoragePath(prefix, bucketLocation))
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
+    private static void closeAll(List<Lock> locks) {
+        for (Lock lock : locks) {
+            lock.close();
         }
     }
 

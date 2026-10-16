@@ -5,10 +5,11 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
-import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.jclouds.blobstore.domain.Blob;
+import org.jclouds.blobstore.domain.MutableBlobMetadata;
 import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.domain.StorageType;
@@ -22,8 +23,10 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -31,8 +34,11 @@ import java.util.zip.ZipOutputStream;
  * Streams the {@code public} and {@code platform} buckets as a ZIP archive.
  *
  * <p>Layout: {@code .dial-export/manifest.json} first; then, for every blob, {@code .dial-export/metadata/<path>}
- * (content type, content encoding, user metadata) immediately followed by the entry {@code <path>} holding the
+ * (content headers, blob timestamps and user metadata) immediately followed by the entry {@code <path>} holding the
  * bytes exactly as stored. Encryption keys and credentials are not exported.
+ *
+ * <p>The archive is read from blob storage, so a resource written within the sync delay of the resource service
+ * may not be in it yet.
  */
 @Slf4j
 public class AdminExportService {
@@ -41,22 +47,19 @@ public class AdminExportService {
     static final String METADATA_ENTRY_PREFIX = ".dial-export/metadata/";
     static final int FORMAT_VERSION = 1;
 
+    private static final String IDENTITY_ENCODING = "identity";
     private static final int PAGE_SIZE = 1000;
-    private static final int COPY_BUFFER_SIZE = 8192;
     private static final List<String> EXCLUDED_GROUPS = List.of(
             ResourceTypes.ENCRYPTION_KEYS.group() + "/",
             ResourceTypes.CREDENTIALS.group() + "/");
 
     private final BlobStorage blobStorage;
-    private final ResourceService resourceService;
     private final LockService lockService;
     private final Clock clock;
     private final String coreVersion;
 
-    public AdminExportService(BlobStorage blobStorage, ResourceService resourceService, LockService lockService,
-                              Clock clock, String coreVersion) {
+    public AdminExportService(BlobStorage blobStorage, LockService lockService, Clock clock, String coreVersion) {
         this.blobStorage = blobStorage;
-        this.resourceService = resourceService;
         this.lockService = lockService;
         this.clock = clock;
         this.coreVersion = coreVersion;
@@ -65,16 +68,20 @@ public class AdminExportService {
     /**
      * Blocks while holding both bucket locks. Does not close {@code out}. If this throws, the archive is
      * left unfinished, so the consumer must treat what it has received as truncated.
+     *
+     * @throws AdminExportBusyException if a bucket lock is held by another export or a writer, nothing is written then
      */
     public void export(OutputStream out) {
+        LockService.Lock locks = lockService.tryLockBuckets(MergedConfigStore.ADMIN_BUCKET_LOCATIONS);
+        if (locks == null) {
+            log.info("Admin export rejected: a bucket lock is held by another export or a write");
+            throw new AdminExportBusyException("A bucket lock is held by another export or a write");
+        }
+
         Instant start = clock.instant();
         ExportStats stats = new ExportStats();
-        try {
-            lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
-                resourceService.flushPending(MergedConfigStore.ADMIN_BUCKET_LOCATIONS);
-                writeArchive(out, start, stats);
-                return null;
-            });
+        try (locks) {
+            writeArchive(out, start, stats);
         } catch (Throwable e) {
             Duration duration = Duration.between(start, clock.instant());
             log.error("Admin export failed: duration={}ms, entries={}, bytes={}", duration.toMillis(), stats.entries, stats.bytes, e);
@@ -88,8 +95,8 @@ public class AdminExportService {
     }
 
     private void writeArchive(OutputStream out, Instant start, ExportStats stats) {
+        DiscardableZipOutputStream zip = new DiscardableZipOutputStream(new CountingOutputStream(out, stats));
         try {
-            ZipOutputStream zip = new ZipOutputStream(new CountingOutputStream(out, stats));
             writeJsonEntry(zip, MANIFEST_ENTRY, new Manifest(FORMAT_VERSION, coreVersion, start.truncatedTo(ChronoUnit.SECONDS).toString()), stats);
 
             for (String bucketLocation : MergedConfigStore.ADMIN_BUCKET_LOCATIONS) {
@@ -100,6 +107,8 @@ public class AdminExportService {
             out.flush();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
+        } finally {
+            zip.discard();
         }
     }
 
@@ -128,26 +137,52 @@ public class AdminExportService {
             return;
         }
 
-        ContentMetadata content = blob.getMetadata().getContentMetadata();
+        MutableBlobMetadata meta = blob.getMetadata();
         try (InputStream payload = blob.getPayload().openStream()) {
-            writeJsonEntry(zip, METADATA_ENTRY_PREFIX + path,
-                    new BlobMetadata(content.getContentType(), content.getContentEncoding(), blob.getMetadata().getUserMetadata()), stats);
-
-            zip.putNextEntry(new ZipEntry(path));
-            byte[] buffer = new byte[COPY_BUFFER_SIZE];
-            for (int read = payload.read(buffer); read >= 0; read = payload.read(buffer)) {
-                zip.write(buffer, 0, read);
-            }
+            writeJsonEntry(zip, METADATA_ENTRY_PREFIX + path, toBlobMetadata(meta), stats);
+            writeBlobContent(zip, path, meta.getContentMetadata().getContentEncoding(), payload);
         }
+        stats.entries++;
+    }
+
+    private static void writeBlobContent(ZipOutputStream zip, String path, String contentEncoding, InputStream payload) throws IOException {
+        putEntry(zip, path, compressionLevel(contentEncoding));
+        payload.transferTo(zip);
+        zip.closeEntry();
+    }
+
+    private static void writeJsonEntry(ZipOutputStream zip, String name, Object value, ExportStats stats) throws IOException {
+        putEntry(zip, name, Deflater.DEFAULT_COMPRESSION);
+        zip.write(ProxyUtil.MAPPER.writeValueAsBytes(value));
         zip.closeEntry();
         stats.entries++;
     }
 
-    private static void writeJsonEntry(ZipOutputStream zip, String name, Object value, ExportStats stats) throws IOException {
+    private static void putEntry(ZipOutputStream zip, String name, int compressionLevel) throws IOException {
+        zip.setLevel(compressionLevel);
         zip.putNextEntry(new ZipEntry(name));
-        zip.write(ProxyUtil.MAPPER.writeValueAsBytes(value));
-        zip.closeEntry();
-        stats.entries++;
+    }
+
+    private static int compressionLevel(String contentEncoding) {
+        boolean encoded = !StringUtils.isBlank(contentEncoding) && !IDENTITY_ENCODING.equalsIgnoreCase(contentEncoding.trim());
+        return encoded ? Deflater.NO_COMPRESSION : Deflater.DEFAULT_COMPRESSION;
+    }
+
+    private static BlobMetadata toBlobMetadata(MutableBlobMetadata meta) {
+        ContentMetadata content = meta.getContentMetadata();
+        return new BlobMetadata(
+                content.getContentType(),
+                content.getContentEncoding(),
+                content.getContentDisposition(),
+                content.getContentLanguage(),
+                content.getCacheControl(),
+                toIsoString(meta.getCreationDate()),
+                toIsoString(meta.getLastModified()),
+                meta.getUserMetadata());
+    }
+
+    private static String toIsoString(Date date) {
+        return date == null ? null : date.toInstant().toString();
     }
 
     private static void warnIfLockPeriodExceeded(Duration duration) {
@@ -160,6 +195,24 @@ public class AdminExportService {
     private static final class ExportStats {
         private long entries;
         private long bytes;
+    }
+
+    /**
+     * A failed export must not write the central directory, so the stream is never closed on failure,
+     * and its native deflater is released by {@link #discard()} instead.
+     */
+    static final class DiscardableZipOutputStream extends ZipOutputStream {
+
+        DiscardableZipOutputStream(OutputStream out) {
+            super(out);
+        }
+
+        /**
+         * Releases the deflater without finishing the archive. Safe to call after {@link #close()}.
+         */
+        void discard() {
+            def.end();
+        }
     }
 
     private static final class CountingOutputStream extends OutputStream {
@@ -193,6 +246,7 @@ public class AdminExportService {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    private record BlobMetadata(String contentType, String contentEncoding, Map<String, String> userMetadata) {
+    private record BlobMetadata(String contentType, String contentEncoding, String contentDisposition, String contentLanguage,
+                                String cacheControl, String creationDate, String lastModified, Map<String, String> userMetadata) {
     }
 }

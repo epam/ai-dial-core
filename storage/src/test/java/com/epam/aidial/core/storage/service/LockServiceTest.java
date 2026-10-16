@@ -15,6 +15,7 @@ import org.redisson.config.Config;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 class LockServiceTest {
@@ -81,6 +82,40 @@ class LockServiceTest {
             lock = service.tryLock("key");
             Assertions.assertNotNull(lock);
             lock.close();
+        }
+    }
+
+    @Test
+    void testTryLockBuckets() {
+        List<String> buckets = List.of("public/", "platform/");
+
+        LockService.Lock locks = service.tryLockBuckets(buckets);
+
+        Assertions.assertNotNull(locks);
+        Assertions.assertNull(service.tryLock("public/"));
+        Assertions.assertNull(service.tryLock("platform/"));
+        Assertions.assertNull(service.tryLockBuckets(buckets));
+
+        locks.close();
+
+        LockService.Lock again = service.tryLockBuckets(buckets);
+        Assertions.assertNotNull(again);
+        again.close();
+    }
+
+    @Test
+    void testTryLockBucketsReleasesAcquiredLocksWhenOneIsBusy() {
+        LockService.Lock busy = service.tryLock("public/");
+        Assertions.assertNotNull(busy);
+
+        try {
+            Assertions.assertNull(service.tryLockBuckets(List.of("platform/", "public/")));
+
+            LockService.Lock platform = service.tryLock("platform/");
+            Assertions.assertNotNull(platform, "platform/ must be released after the failed attempt");
+            platform.close();
+        } finally {
+            busy.close();
         }
     }
 
