@@ -105,6 +105,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.core.instrument.Clock;
 import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.binder.netty4.NettyEventExecutorMetrics;
 import io.micrometer.prometheus.PrometheusConfig;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
@@ -196,6 +197,14 @@ public class AiDial {
             BlockingCallTracer blockingCallTracer = new BlockingCallTracer(setupTracing(vertxOptions));
 
             vertx = Vertx.vertx(vertxOptions);
+            // bound to the registries, not the global composite: it would keep the gauges of the first vertx after a restart
+            NettyEventExecutorMetrics eventLoopMetrics = new NettyEventExecutorMetrics(vertx.nettyEventLoopGroup());
+            if (prometheusRegistry != null) {
+                eventLoopMetrics.bindTo(prometheusRegistry);
+            }
+            if (otlpRegistry != null) {
+                eventLoopMetrics.bindTo(otlpRegistry);
+            }
             HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
             // upstream bodies (including SSE streams) are parsed/proxied, so they must be decoded
             clientOptions.setDecompressionSupported(true);
