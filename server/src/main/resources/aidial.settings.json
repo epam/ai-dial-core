@@ -143,6 +143,8 @@
     "leaseTimeoutMs": 300000,
     "maxParallelJobs": 100,
     "scanIntervalMs": 600000,
-    "schedulerTickIntervalMs": 5000
+    "schedulerTickIntervalMs": 5000,
+    "pollTimeoutMs": 300000,
+    "pollGiveUpStatusCodes": [401, 403, 404]
   }
 }
