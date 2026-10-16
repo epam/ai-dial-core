@@ -70,6 +70,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -1266,32 +1267,33 @@ public class ResourceService implements AutoCloseable {
         }
         fields.put(SYNCED_ATTRIBUTE, RedisUtil.booleanToRedis(result.synced));
 
+        // one round trip, all commands on this key. The expiry goes through RKeys (plain PEXPIRE): RMap.expire is a Lua script,
+        // which a batch sends as EVALSHA without the NOSCRIPT retry
+        RBatch batch = redis.createBatch();
+        if (!result.synced) {
+            batch.getKeys().clearExpireAsync(key);
+        }
+        batch.getMap(key, REDIS_MAP_CODEC).putAllAsync(fields);
+        if (result.synced) { // cleanup because it is already synced
+            batch.getKeys().expireAsync(key, getExpiration(key).toMillis(), TimeUnit.MILLISECONDS);
+        }
+        batch.execute();
+
         if (result.synced) {
-            RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
-            map.putAll(fields);
-            map.expire(getExpiration(key)); // cleanup because it is already synced
-            set.remove(key);
-        } else {
-            // one round trip for the hot write path: both commands target this key, so the batch stays on one node.
-            // Only plain commands go in a batch: Redisson sends scripted ones (expire) as EVALSHA there, without the NOSCRIPT retry
-            RBatch batch = redis.createBatch();
-            RMapAsync<String, byte[]> batchMap = batch.getMap(key, REDIS_MAP_CODEC);
-            batchMap.clearExpireAsync();
-            batchMap.putAllAsync(fields);
-            batch.execute();
+            set.remove(key); // only after the TTL is set, so a failed batch leaves the key for the sync job
         }
     }
 
     private RMap<String, byte[]> redisSync(String key) {
-        RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
-        map.fastPut(SYNCED_ATTRIBUTE, RedisUtil.BOOLEAN_TRUE_ARRAY);
-        Duration expiration = getExpiration(key);
-        map.expire(expiration);
+        RBatch batch = redis.createBatch();
+        batch.getMap(key, REDIS_MAP_CODEC).fastPutAsync(SYNCED_ATTRIBUTE, RedisUtil.BOOLEAN_TRUE_ARRAY);
+        batch.getKeys().expireAsync(key, getExpiration(key).toMillis(), TimeUnit.MILLISECONDS);
+        batch.execute();
 
         RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
         set.remove(key);
 
-        return map;
+        return redis.getMap(key, REDIS_MAP_CODEC);
     }
 
     private String redisKey(ResourceDescriptor descriptor) {
