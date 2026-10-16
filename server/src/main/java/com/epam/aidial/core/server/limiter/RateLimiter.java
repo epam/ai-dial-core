@@ -741,7 +741,7 @@ public class RateLimiter {
         ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
         // pass array to hold rate limit result returned by the function to compute the resource
         RateLimitResult[] result = new RateLimitResult[1];
-        resourceService.computeResource(resourceDescription, json -> updateRequestLimit(json, timestamp, schedule, limit, result));
+        resourceService.computeResourceWithoutLock(resourceDescription, json -> updateRequestLimit(json, timestamp, schedule, limit, result));
         return result[0];
     }
 
@@ -755,7 +755,7 @@ public class RateLimiter {
     }
 
     private Void updateTokenLimit(ResourceDescriptor resourceDescription, long totalUsedTokens, RateLimitSchedule schedule) {
-        resourceService.computeResource(resourceDescription, json -> updateTokenLimit(json, totalUsedTokens, schedule));
+        resourceService.computeResourceWithoutLock(resourceDescription, json -> updateTokenLimit(json, totalUsedTokens, schedule));
         return null;
     }
 
@@ -784,7 +784,7 @@ public class RateLimiter {
     }
 
     private Void updateCostLimit(ResourceDescriptor resourceDescription, BigDecimal cost, RateLimitSchedule schedule) {
-        resourceService.computeResource(resourceDescription, json -> updateCostLimit(json, cost, schedule));
+        resourceService.computeResourceWithoutLock(resourceDescription, json -> updateCostLimit(json, cost, schedule));
         return null;
     }
 
