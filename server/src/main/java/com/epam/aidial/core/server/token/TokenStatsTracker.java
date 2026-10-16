@@ -53,7 +53,8 @@ public class TokenStatsTracker {
         return taskExecutor.submit(() -> {
             update(context.getTraceId(), true, traceContext -> {
                 traceContext.addSpan(context);
-                // a child may start a background job too: the poller reports its usage when the job ends
+                // a child may start a background job too. The poller reports its usage when the job ends,
+                // which is lost if the root's endSpan has deleted the record by then
                 if (context.isBackgroundJob()) {
                     traceContext.background = true;
                 }
