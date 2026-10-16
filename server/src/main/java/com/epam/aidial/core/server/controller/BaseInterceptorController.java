@@ -67,15 +67,14 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
                 context.getDeployment().getName(),
                 context.getRequest().headers().size());
 
-        return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
-            context.getRequest().body()
-                    .onSuccess(body -> proxy.getTaskExecutor().submit(() -> {
-                        handleRequestBody(body);
-                        return null;
-                    }).onFailure(this::handleError))
-                    .onFailure(this::handleRequestBodyError);
-            return null;
-        });
+        return proxy.getTokenStatsTracker().startSpan(context).compose(ignore ->
+                proxy.getTaskExecutor().submit(() -> {
+                    handleRequestBody(context.getRequestBody());
+                    return null;
+                }).otherwise(e -> {
+                    handleError(e);
+                    return null;
+                }));
     }
 
     private void handleError(Throwable error) {
@@ -85,8 +84,6 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
 
     @VisibleForTesting
     void handleRequestBody(Buffer requestBody) {
-        context.setRequestBody(requestBody);
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
         try {
             RequestObject request = parseRequest(requestBody);
             if (request != null) {

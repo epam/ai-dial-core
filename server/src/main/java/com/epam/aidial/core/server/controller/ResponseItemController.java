@@ -44,6 +44,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -121,13 +122,14 @@ public class ResponseItemController implements Controller {
     public Future<?> handle() {
         return proxy.getTaskExecutor().submit(this::loadMapping)
                 .compose(this::checkNotDeletingActive)
-                .compose(mapping -> proxy.getTaskExecutor().submit(() -> dispatch(mapping)).compose(dispatched -> dispatched))
-                .eventually(this::finalizeRequest)
-                .onFailure(error -> {
-                    if (!context.getResponse().ended()) {
-                        context.respond(error, "Failed to process response operation");
-                    }
-                });
+                .compose(this::dispatch)
+                .onFailure(this::handleError);
+    }
+
+    private void handleError(Throwable error) {
+        if (!context.getResponse().ended()) {
+            context.respond(error, "Failed to process response operation");
+        }
     }
 
     private Future<Void> finalizeRequest() {
@@ -168,31 +170,44 @@ public class ResponseItemController implements Controller {
     }
 
     private Future<Void> dispatch(ResponseMapping mapping) {
-        Deployment deployment = proxy.getDeploymentService().findDeployment(context, mapping.getDeploymentName());
-        if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES,
-                context.getConfig().getTranslators()) == null) {
-            return context.respond(HttpStatus.SERVICE_UNAVAILABLE, "Deployment for response_id does not support Responses API")
-                    .mapEmpty();
-        }
-        context.setDeployment(deployment);
+        return proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findDeployment(context, mapping.getDeploymentName()))
+                .compose(deployment -> {
+                    if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES,
+                            context.getConfig().getTranslators()) == null) {
+                        return context.respond(HttpStatus.SERVICE_UNAVAILABLE, "Deployment for response_id does not support Responses API")
+                                .mapEmpty();
+                    }
+                    context.setDeployment(deployment);
 
-        ApiKeyData apiKeyData = context.getApiKeyData();
-        if (apiKeyData.isInterceptor()) {
-            context.setInitialDeployment(apiKeyData.getInitialDeployment());
-            context.setInterceptors(apiKeyData.getInterceptors());
-            int nextIndex = apiKeyData.getInterceptorIndex() + 1;
-            if (nextIndex < apiKeyData.getInterceptors().size()) {
-                return handleInterceptor(nextIndex);
-            }
-        } else {
-            context.setInterceptors(proxy.getDeploymentService().getInterceptors(context, deployment));
-            if (context.hasNextInterceptor()) {
-                context.setInitialDeployment(deployment.getName());
-                return handleInterceptor(0);
-            }
-        }
+                    ApiKeyData apiKeyData = context.getApiKeyData();
+                    if (apiKeyData.isInterceptor()) {
+                        context.setInitialDeployment(apiKeyData.getInitialDeployment());
+                        context.setInterceptors(apiKeyData.getInterceptors());
+                        int nextIndex = apiKeyData.getInterceptorIndex() + 1;
+                        if (nextIndex < apiKeyData.getInterceptors().size()) {
+                            return withRequestBody(() -> handleInterceptor(nextIndex));
+                        }
+                    } else {
+                        context.setInterceptors(proxy.getDeploymentService().getInterceptors(context, deployment));
+                        if (context.hasNextInterceptor()) {
+                            context.setInitialDeployment(deployment.getName());
+                            return withRequestBody(() -> handleInterceptor(0));
+                        }
+                    }
 
-        return forwardToUpstream(mapping, deployment);
+                    return withRequestBody(() -> forwardToUpstream(mapping, deployment));
+                });
+    }
+
+    private Future<Void> withRequestBody(Supplier<Future<Void>> continuation) {
+        context.getRequest().body()
+                .compose(body -> {
+                    context.setRequestBody(body);
+                    context.setRequestBodyTimestamp(System.currentTimeMillis());
+                    return continuation.get();
+                })
+                .onFailure(this::handleError);
+        return Future.succeededFuture();
     }
 
     private Future<Void> handleInterceptor(int interceptorIndex) {
@@ -215,18 +230,26 @@ public class ResponseItemController implements Controller {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         ApiKeyData.initFromContext(proxyApiKeyData, context);
         context.setProxyApiKeyData(proxyApiKeyData);
-        proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
 
-        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, proxyApiKeyData.getPerRequestKey())
-                .compose(response -> {
-                    context.setProxyResponse(response);
-                    String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
-                    if (operation == Operation.GET
-                            && Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM)) {
-                        return collectAndForwardStreaming(response, mapping);
-                    }
-                    return collectAndForward(response, mapping);
-                });
+        String requestContentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
+        Buffer requestBody = context.getRequestBody();
+        String perRequestKey = proxyApiKeyData.getPerRequestKey();
+
+        return proxy.getTaskExecutor().submit(() -> {
+            proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+            return null;
+        }).compose(ignore ->
+                proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, perRequestKey, requestBody, requestContentType)
+                        .compose(response -> {
+                            context.setProxyResponse(response);
+                            String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
+                            if (operation == Operation.GET
+                                    && Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM)) {
+                                return collectAndForwardStreaming(response, mapping);
+                            }
+                            return collectAndForward(response, mapping);
+                        }))
+                .eventually(this::finalizeRequest);
     }
 
     private Future<Void> collectAndForward(HttpClientResponse proxyResponse, ResponseMapping mapping) {

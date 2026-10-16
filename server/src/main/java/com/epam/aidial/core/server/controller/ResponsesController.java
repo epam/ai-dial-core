@@ -144,7 +144,11 @@ public class ResponsesController extends BaseDeploymentPostController {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
         context.getRequest().body()
-                .map(this::parseBody)
+                .map(body -> {
+                    context.setRequestBody(body);
+                    context.setRequestBodyTimestamp(System.currentTimeMillis());
+                    return parseBody(body);
+                })
                 .compose(this::dispatch)
                 .onFailure(this::handleRequestBodyError);
         return Future.succeededFuture();
