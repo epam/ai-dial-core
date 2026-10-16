@@ -3,7 +3,11 @@ package com.epam.aidial.core.storage.tracing;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.TraceFlags;
+import io.opentelemetry.api.trace.TraceState;
+import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter;
@@ -50,6 +54,21 @@ class BlockingCallTracerTest {
         });
 
         assertEquals("value", result);
+        assertTrue(exporter.getFinishedSpanItems().isEmpty());
+    }
+
+    @Test
+    void testNoSpanUnderUnsampledParent() {
+        SpanContext unsampled = SpanContext.create(
+                "0af7651916cd43dd8448eb211c80319c", "b7ad6b7169203331", TraceFlags.getDefault(), TraceState.getDefault());
+        try (Scope ignore = Context.root().with(Span.wrap(unsampled)).makeCurrent()) {
+            String result = blockingCallTracer.trace("blob.load", () -> {
+                assertFalse(BlockingCallTracer.currentSpan().getSpanContext().isValid());
+                return "value";
+            });
+
+            assertEquals("value", result);
+        }
         assertTrue(exporter.getFinishedSpanItems().isEmpty());
     }
 

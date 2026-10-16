@@ -85,6 +85,7 @@ import com.epam.aidial.core.server.service.config.ConfigValidationService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceSweepService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -196,6 +197,7 @@ public class AiDial {
             BlockingCallTracer blockingCallTracer = new BlockingCallTracer(setupTracing(vertxOptions));
 
             vertx = Vertx.vertx(vertxOptions);
+            BackgroundOperationTracer backgroundTracer = new BackgroundOperationTracer(vertx);
             HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
             // upstream bodies (including SSE streams) are parsed/proxied, so they must be decoded
             clientOptions.setDecompressionSupported(true);
@@ -265,7 +267,7 @@ public class AiDial {
             MergedConfigStore mergedConfigStore = new MergedConfigStore(
                     vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
                     secretFieldProcessor, lockService, onInvalidEntity, softValidation, podId,
-                    externalServiceService, resourceAuthSettingsEncryptionService);
+                    externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
             FileConfigStore fileConfigStore = new FileConfigStore(
                     vertx, settings("config"), null,
                     List.of(cfg -> mergedConfigStore.requestRebuild()));
@@ -310,7 +312,7 @@ public class AiDial {
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
             RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService, mergedConfigStore, blockingCallTracer);
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,
-                    accessService, encryptionService, operatorService, generator, settings("codeInterpreter"));
+                    accessService, encryptionService, operatorService, backgroundTracer, generator, settings("codeInterpreter"));
 
             ConfigAuthorizationService configAuthService = new AdminRoleAuthorizationService(accessService);
 
@@ -360,7 +362,7 @@ public class AiDial {
             ComplexResourceSweepService.Settings complexResourceSweepSettings = Json.decodeValue(
                     settings("complexResourceSweep").toBuffer(), ComplexResourceSweepService.Settings.class);
             complexResourceSweepService = new ComplexResourceSweepService(timerService, storage, redis, lockService,
-                    complexResourceService, encryptionService, complexResourceSweepSettings);
+                    complexResourceService, encryptionService, complexResourceSweepSettings, backgroundTracer);
 
             ResponsesApiClient responsesApiClient = new ResponsesApiClient(client, clientOptions);
             Settings backgroundJobSettings =
@@ -368,7 +370,7 @@ public class AiDial {
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(),
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
-                    upstreamRouteProvider, responsesApiClient, logStore, credentialEncryptionService, backgroundJobSettings);
+                    upstreamRouteProvider, responsesApiClient, logStore, credentialEncryptionService, backgroundJobSettings, backgroundTracer);
             backgroundJobService.init();
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, mergedConfigStore, logStore,
