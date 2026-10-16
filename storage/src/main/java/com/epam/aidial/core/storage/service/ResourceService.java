@@ -941,7 +941,10 @@ public class ResourceService implements AutoCloseable {
             }
 
             if (oldBody != null && newBody == null) {
-                deleteResource(descriptor, etag, false);
+                trace("resource.delete", descriptor, () -> {
+                    deleteResourceUnderLock(descriptor, null);
+                    return null;
+                });
                 return oldResult.getKey();
             }
 
@@ -982,13 +985,18 @@ public class ResourceService implements AutoCloseable {
                 return false;
             }
 
-            redisPut(redisKey, Result.DELETED_NOT_SYNCED);
-            blobDelete(blobKey(descriptor));
-            redisSync(redisKey);
-
-            publishEvent(descriptor, ResourceEvent.Action.DELETE, time(), null, eventMetadata);
+            deleteResourceUnderLock(descriptor, eventMetadata);
             return true;
         }
+    }
+
+    private void deleteResourceUnderLock(ResourceDescriptor descriptor, @Nullable Map<String, String> eventMetadata) {
+        String redisKey = redisKey(descriptor);
+        redisPut(redisKey, Result.DELETED_NOT_SYNCED);
+        blobDelete(blobKey(descriptor));
+        redisSync(redisKey);
+
+        publishEvent(descriptor, ResourceEvent.Action.DELETE, time(), null, eventMetadata);
     }
 
     public boolean copyResource(ResourceDescriptor from, ResourceDescriptor to) {
@@ -1258,8 +1266,8 @@ public class ResourceService implements AutoCloseable {
         }
         fields.put(SYNCED_ATTRIBUTE, RedisUtil.booleanToRedis(result.synced));
 
-        RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
         if (result.synced) {
+            RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
             map.putAll(fields);
             map.expire(getExpiration(key)); // cleanup because it is already synced
             set.remove(key);

@@ -379,12 +379,27 @@ public class ResourceServiceTest {
         storage.store(descriptor.getAbsoluteFilePath(), "application/json", null,
                 Map.of("author", "user", ResourceService.CREATED_AT_ATTRIBUTE, "1000"), "old".getBytes());
 
-        ResourceItemMetadata metadata = service.computeResource(descriptor, EtagHeader.ANY, "other", old -> old + "-new");
+        ResourceService spied = Mockito.spy(service);
+        ResourceItemMetadata metadata = spied.computeResource(descriptor, EtagHeader.ANY, "other", old -> old + "-new");
 
+        Mockito.verify(spied, Mockito.never()).getResourceMetadata(descriptor);
         assertEquals(1000L, metadata.getCreatedAt());
         assertEquals("user", metadata.getAuthor());
         assertEquals("old-new", service.getResource(descriptor));
         assertEquals(-1, client.getMap(RedisUtil.redisKey(descriptor, null)).remainTimeToLive());
+    }
+
+    @Test
+    public void testComputeResourceDeletesWithoutRereadingMetadata() {
+        ResourceDescriptor descriptor = resource("computed-delete");
+        service.putResource(descriptor, "old", EtagHeader.ANY);
+
+        ResourceService spied = Mockito.spy(service);
+        assertNotNull(spied.computeResource(descriptor, old -> null));
+
+        Mockito.verify(spied, Mockito.never()).getResourceMetadata(descriptor);
+        assertNull(service.getResource(descriptor));
+        assertFalse(storage.exists(descriptor.getAbsoluteFilePath()));
     }
 
     @Test
