@@ -563,7 +563,14 @@ public class RateLimiter {
         ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
         // pass array to hold rate limit result returned by the function to compute the resource
         RateLimitResult[] result = new RateLimitResult[1];
-        resourceService.computeResource(resourceDescription, json -> updateRequestLimit(json, timestamp, schedule, limit, result));
+        resourceService.computeResource(resourceDescription, json -> {
+            // the wait for the lock may outlast the client: it is not charged, and the unchanged value skips the write
+            if (context.getResponse().closed()) {
+                result[0] = RateLimitResult.SUCCESS;
+                return json;
+            }
+            return updateRequestLimit(json, timestamp, schedule, limit, result);
+        });
         return result[0];
     }
 

@@ -109,6 +109,9 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
     }
 
     private void sendRequest() {
+        if (abandonIfClientGone()) {
+            return;
+        }
         createProxyRequest(buildUri(context))
                 .onSuccess(this::handleProxyRequest)
                 .onFailure(this::handleProxyConnectionError);

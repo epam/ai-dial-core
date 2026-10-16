@@ -131,7 +131,8 @@
     "headersBlacklist": ["authorization", "api-key", "cookie", "proxy-authorization"]
   },
   "proxy": {
-    "additionalHopByHopHeaders": []
+    "additionalHopByHopHeaders": [],
+    "maxInFlightRequests": 0
   },
   "backgroundJob": {
     "initialPollIntervalMs": 10000,

@@ -134,6 +134,8 @@ public class DeploymentPostControllerTest {
         // the controller resolves translator references against the request's config on every routing step
         lenient().when(context.getConfig()).thenReturn(new Config());
         lenient().when(proxy.getBlockingCallTracer()).thenReturn(BlockingCallTracer.NOOP);
+        // every upstream call first checks that the client is still connected
+        lenient().when(context.getResponse()).thenReturn(mock(HttpServerResponse.class));
     }
 
     @SuppressWarnings("checkstyle:LineLength")

@@ -38,6 +38,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -421,6 +422,44 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
     }
 
     /**
+     * A retry the client is no longer there to receive is not sent. The first upstream of a three-upstream model
+     * answers a retriable 503 only after the client has gone, so the next attempt must be abandoned.
+     */
+    @Test
+    public void testRetryIsNotSent_WhenClientClosedConnection() throws IOException {
+        AtomicInteger upstreamCalls = new AtomicInteger();
+        try (TestWebServer server = new TestWebServer(7001);
+                CloseableHttpClient client = createHttpClient();
+                JsonLogCapture logs = JsonLogCapture.attach("chat-gpt-35-turbo")) {
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-35-turbo/chat/completions", request -> {
+                upstreamCalls.incrementAndGet();
+                try {
+                    client.close();
+                    HttpServerResponse response = logs.awaitProxyContext().getResponse();
+                    long deadline = System.currentTimeMillis() + 10_000;
+                    while (!response.closed()) {
+                        if (System.currentTimeMillis() > deadline) {
+                            throw new IllegalStateException("The core did not observe the client disconnect");
+                        }
+                        Thread.sleep(10);
+                    }
+                } catch (IOException | InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                return new MockResponse().setResponseCode(503);
+            });
+            try {
+                client.execute(createHttpUriRequest("chat-gpt-35-turbo"), response -> null);
+            } catch (IOException e) {
+                // the client closed its own connection
+            }
+
+            logs.await("Client closed the connection before the upstream call");
+            assertEquals(1, upstreamCalls.get());
+        }
+    }
+
+    /**
      * Two requests on one keep-alive connection run on the same event loop. Nothing is cleared between them, and
      * each still sees only its own ProxyContext: the entry lives in the per-request duplicated context.
      */
@@ -498,7 +537,11 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
     }
 
     private HttpUriRequest createHttpUriRequest() {
-        String uri = "http://127.0.0.1:" + serverPort + "/openai/deployments/gpt-3-turbo/chat/completions";
+        return createHttpUriRequest("gpt-3-turbo");
+    }
+
+    private HttpUriRequest createHttpUriRequest(String deployment) {
+        String uri = "http://127.0.0.1:" + serverPort + "/openai/deployments/" + deployment + "/chat/completions";
         String requestBody = """
                 {
                    "model": "gpt-3-turbo",

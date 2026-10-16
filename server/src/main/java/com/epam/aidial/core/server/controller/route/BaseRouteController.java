@@ -25,7 +25,6 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.Strings;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -112,7 +111,7 @@ abstract class BaseRouteController implements Controller {
         if (context.getResponseBody() == null) {
             return proxy.getTokenStatsTracker().startSpan(context)
                     .compose(ignore -> {
-                        if (isWebSocketUpgrade(context.getRequest())) {
+                        if (ProxyUtil.isWebSocketUpgrade(context.getRequest())) {
                             RouteWebSocketHandler handler = new RouteWebSocketHandler(context, proxy, this);
                             return handler.handle();
                         } else {
@@ -126,11 +125,6 @@ abstract class BaseRouteController implements Controller {
             proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
             return Future.succeededFuture();
         }
-    }
-
-    private static boolean isWebSocketUpgrade(HttpServerRequest request) {
-        String upgradeHeader = request.getHeader(HttpHeaders.UPGRADE);
-        return Strings.CI.contains(upgradeHeader, "websocket");
     }
 
     protected abstract Future<Boolean> hasRequiredPermissions(Set<ResourceAccessType> permissions);

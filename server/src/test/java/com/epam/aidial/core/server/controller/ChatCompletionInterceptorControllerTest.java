@@ -19,6 +19,7 @@ import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpServerResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -57,6 +58,8 @@ public class ChatCompletionInterceptorControllerTest {
     void stubConfig() {
         // buildUri resolves translator references against the request's config on every call
         lenient().when(context.getConfig()).thenReturn(new Config());
+        // every upstream call first checks that the client is still connected
+        lenient().when(context.getResponse()).thenReturn(mock(HttpServerResponse.class));
     }
 
     @Test
@@ -246,6 +249,28 @@ public class ChatCompletionInterceptorControllerTest {
         assertNotNull(updatedBody);
         ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(updatedBody.getBytes());
         assertEquals("overrideName", tree.get("model").asText());
+    }
+
+    @Test
+    void handleRequestBody_clientGone_callsNoInterceptor() {
+        Interceptor interceptor = new Interceptor();
+        interceptor.setName("interceptor1");
+        interceptor.setEndpoint("http://localhost:4088/api/v1/interceptor/handle");
+        when(context.getDeployment()).thenReturn(interceptor);
+        when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class, Answers.RETURNS_DEEP_STUBS));
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setInterceptorIndex(0);
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+        when(context.getRequest()).thenReturn(request);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(response.closed()).thenReturn(true);
+        when(context.getResponse()).thenReturn(response);
+
+        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0, InterfaceType.OPENAI_CHAT_COMPLETIONS);
+        controller.handleRequestBody(Buffer.buffer("{\"model\": \"name\", \"messages\": []}"));
+
+        verify(proxy, never()).getClient();
+        verify(context).respond(499, null);
     }
 
     @Test

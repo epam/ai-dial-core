@@ -60,6 +60,8 @@ import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
 @Slf4j
 @AllArgsConstructor
 public class BaseDeploymentPostController {
+    // nginx's "client closed request"
+    private static final int CLIENT_CLOSED_REQUEST = 499;
     private static final Set<Integer> DEFAULT_RETRIABLE_HTTP_CODES = Set.of(HttpStatus.TOO_MANY_REQUESTS.getCode(),
             HttpStatus.BAD_GATEWAY.getCode(), HttpStatus.GATEWAY_TIMEOUT.getCode(),
             HttpStatus.SERVICE_UNAVAILABLE.getCode());
@@ -462,12 +464,29 @@ public class BaseDeploymentPostController {
         // no additional headers by default
     }
 
+    /**
+     * Finalizes the request and returns true when the client has closed the connection: an upstream call
+     * made now is paid for and its answer thrown away. Nobody receives the status; the trace and the log do.
+     */
+    protected boolean abandonIfClientGone() {
+        if (!context.getResponse().closed()) {
+            return false;
+        }
+        log.info("Client closed the connection before the upstream call. Deployment: {}", context.getDeployment().getName());
+        finalizeRequest();
+        context.respond(CLIENT_CLOSED_REQUEST, null);
+        return true;
+    }
+
     protected boolean isRetriableError(int statusCode) {
         return DEFAULT_RETRIABLE_HTTP_CODES.contains(statusCode)
                 || context.getConfig().getRetriableErrorCodes().contains(statusCode);
     }
 
     protected boolean nextUpstream() {
+        if (abandonIfClientGone()) {
+            return false;
+        }
         UpstreamRoute route = context.getUpstreamRoute();
         try {
             route.next();

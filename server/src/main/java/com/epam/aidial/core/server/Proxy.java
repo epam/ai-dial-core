@@ -87,6 +87,7 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import javax.annotation.Nullable;
@@ -207,6 +208,9 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ConfigValidationService configValidationService;
     private final TracingSettings tracingSettings;
     private final BlockingCallTracer blockingCallTracer;
+    // null, 0 or less: no limit
+    private final Integer maxInFlightRequests;
+    private final AtomicInteger inFlightRequests = new AtomicInteger();
 
     @Override
     public void handle(HttpServerRequest request) {
@@ -302,6 +306,12 @@ public class Proxy implements Handler<HttpServerRequest> {
             return;
         }
 
+        if (!admit(request)) {
+            respond(request, HttpStatus.SERVICE_UNAVAILABLE, "Too many requests in progress, retry later",
+                    Map.of(HttpHeaders.RETRY_AFTER.toString(), "1"));
+            return;
+        }
+
         String traceId = spanContext.getTraceId();
         String spanId = spanContext.getSpanId();
         String traceFlags = spanContext.getTraceFlags().asHex();
@@ -311,6 +321,23 @@ public class Proxy implements Handler<HttpServerRequest> {
         authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, request, result.apiKeyData, traceId, spanId, traceFlags))
                 .onFailure(error -> handleError(error, request))
                 .onComplete(ignore -> request.resume());
+    }
+
+    /**
+     * Counts the request against {@code maxInFlightRequests} until its response ends or its connection closes,
+     * so a pod past its limit rejects new work at once instead of queueing it with its body in heap.
+     * A WebSocket upgrade is not counted: once upgraded it is a socket, not a request.
+     */
+    private boolean admit(HttpServerRequest request) {
+        if (maxInFlightRequests == null || maxInFlightRequests <= 0 || ProxyUtil.isWebSocketUpgrade(request)) {
+            return true;
+        }
+        if (inFlightRequests.incrementAndGet() > maxInFlightRequests) {
+            inFlightRequests.decrementAndGet();
+            return false;
+        }
+        request.response().endHandler(ignore -> inFlightRequests.decrementAndGet());
+        return true;
     }
 
     /**

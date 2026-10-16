@@ -108,6 +108,11 @@ public class ProxyUtil {
         setOverrideNameHeader(request.headers(), deployment);
     }
 
+    public static boolean isWebSocketUpgrade(HttpServerRequest request) {
+        String upgradeHeader = request.getHeader(HttpHeaders.UPGRADE);
+        return Strings.CI.contains(upgradeHeader, "websocket");
+    }
+
     public static int contentLength(HttpServerRequest request, int defaultValue) {
         return contentLength(request.headers(), defaultValue);
     }
