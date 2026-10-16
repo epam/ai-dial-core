@@ -70,6 +70,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -692,43 +693,53 @@ public class ResourceService implements AutoCloseable {
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lock ? lockService.lock(redisKey) : null) {
-            ResourceItemMetadata metadata = getResourceMetadata(descriptor);
-
-            String etag;
-            if (metadata != null) {
-                etag = metadata.getEtag();
-                author = metadata.getAuthor();
-            } else {
-                etag = null;
-            }
-
-            etagHeader.validate(etag);
-
-            Long updatedAt = time();
-            Long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
-            String newEtag = EtagBuilder.generateEtag(body);
-            Result result = new Result(body, newEtag, createdAt, updatedAt, contentType,
-                    descriptor.getType().requireCompression(), (long) body.length, descriptor.getType().name(), author, false);
-            if (body.length <= maxSizeToCache) {
-                redisPut(redisKey, result);
-                if (metadata == null) {
-                    String blobKey = blobKey(descriptor);
-                    blobPut(blobKey, result.toStub()); // create an empty object for listing
-                }
-            } else {
-                flushToBlobStore(redisKey);
-                String blobKey = blobKey(descriptor);
-                blobPut(blobKey, result);
-            }
-
-            ResourceEvent.Action action = metadata == null
-                    ? ResourceEvent.Action.CREATE
-                    : ResourceEvent.Action.UPDATE;
-            publishEvent(descriptor, action, updatedAt, newEtag, eventMetadata);
-            return descriptor.getType().requireCompression()
-                    ? toResourceItemMetadata(descriptor, result)
-                    : toFileMetadata(descriptor, result);
+            return putResourceUnderLock(descriptor, getResourceMetadata(descriptor), body, etagHeader, contentType, author, eventMetadata);
         }
+    }
+
+    private ResourceItemMetadata putResourceUnderLock(
+            ResourceDescriptor descriptor,
+            @Nullable ResourceItemMetadata metadata,
+            byte[] body,
+            EtagHeader etagHeader,
+            String contentType,
+            String author,
+            @Nullable Map<String, String> eventMetadata) {
+        String redisKey = redisKey(descriptor);
+        String etag;
+        if (metadata != null) {
+            etag = metadata.getEtag();
+            author = metadata.getAuthor();
+        } else {
+            etag = null;
+        }
+
+        etagHeader.validate(etag);
+
+        Long updatedAt = time();
+        Long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
+        String newEtag = EtagBuilder.generateEtag(body);
+        Result result = new Result(body, newEtag, createdAt, updatedAt, contentType,
+                descriptor.getType().requireCompression(), (long) body.length, descriptor.getType().name(), author, false);
+        if (body.length <= maxSizeToCache) {
+            redisPut(redisKey, result);
+            if (metadata == null) {
+                String blobKey = blobKey(descriptor);
+                blobPut(blobKey, result.toStub()); // create an empty object for listing
+            }
+        } else {
+            flushToBlobStore(redisKey);
+            String blobKey = blobKey(descriptor);
+            blobPut(blobKey, result);
+        }
+
+        ResourceEvent.Action action = metadata == null
+                ? ResourceEvent.Action.CREATE
+                : ResourceEvent.Action.UPDATE;
+        publishEvent(descriptor, action, updatedAt, newEtag, eventMetadata);
+        return descriptor.getType().requireCompression()
+                ? toResourceItemMetadata(descriptor, result)
+                : toFileMetadata(descriptor, result);
     }
 
     public ResourceItemMetadata putResourceBytes(
@@ -914,6 +925,10 @@ public class ResourceService implements AutoCloseable {
     }
 
     private ResourceItemMetadata computeResourceBytesTraced(ResourceDescriptor descriptor, EtagHeader etag, String author, Function<byte[], byte[]> fn) {
+        if (descriptor.isFolder()) {
+            throw new IllegalArgumentException("Resource folder: " + descriptor.getUrl());
+        }
+
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lockService.lock(redisKey)) {
@@ -927,7 +942,10 @@ public class ResourceService implements AutoCloseable {
             }
 
             if (oldBody != null && newBody == null) {
-                deleteResource(descriptor, etag, false);
+                trace("resource.delete", descriptor, () -> {
+                    deleteResourceUnderLock(descriptor, null);
+                    return null;
+                });
                 return oldResult.getKey();
             }
 
@@ -935,7 +953,10 @@ public class ResourceService implements AutoCloseable {
                 return oldResult.getKey();
             }
 
-            return putResourceBytes(descriptor, newBody, etag, author, false);
+            // the metadata is already read under this lock: skip the second read a plain put would do
+            ResourceItemMetadata oldMetadata = oldResult == null ? null : oldResult.getKey();
+            return trace("resource.put", descriptor,
+                    () -> putResourceUnderLock(descriptor, oldMetadata, newBody, etag, "application/json", author, null));
         }
     }
 
@@ -965,13 +986,18 @@ public class ResourceService implements AutoCloseable {
                 return false;
             }
 
-            redisPut(redisKey, Result.DELETED_NOT_SYNCED);
-            blobDelete(blobKey(descriptor));
-            redisSync(redisKey);
-
-            publishEvent(descriptor, ResourceEvent.Action.DELETE, time(), null, eventMetadata);
+            deleteResourceUnderLock(descriptor, eventMetadata);
             return true;
         }
+    }
+
+    private void deleteResourceUnderLock(ResourceDescriptor descriptor, @Nullable Map<String, String> eventMetadata) {
+        String redisKey = redisKey(descriptor);
+        redisPut(redisKey, Result.DELETED_NOT_SYNCED);
+        blobDelete(blobKey(descriptor));
+        redisSync(redisKey);
+
+        publishEvent(descriptor, ResourceEvent.Action.DELETE, time(), null, eventMetadata);
     }
 
     public boolean copyResource(ResourceDescriptor from, ResourceDescriptor to) {
@@ -1224,12 +1250,6 @@ public class ResourceService implements AutoCloseable {
         RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
         set.add(time() + syncDelay, key); // add resource to sync set before changing because calls below can fail
 
-        RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
-
-        if (!result.synced) {
-            map.clearExpire();
-        }
-
         Map<String, byte[]> fields = new HashMap<>();
         if (result.exists()) {
             fields.put(BODY_ATTRIBUTE, result.body);
@@ -1246,25 +1266,34 @@ public class ResourceService implements AutoCloseable {
             fields.put(EXISTS_ATTRIBUTE, RedisUtil.BOOLEAN_FALSE_ARRAY);
         }
         fields.put(SYNCED_ATTRIBUTE, RedisUtil.booleanToRedis(result.synced));
-        map.putAll(fields);
 
+        // one round trip, all commands on this key. The expiry goes through RKeys (plain PEXPIRE): RMap.expire is a Lua script,
+        // which a batch sends as EVALSHA without the NOSCRIPT retry
+        RBatch batch = redis.createBatch();
+        if (!result.synced) {
+            batch.getKeys().clearExpireAsync(key);
+        }
+        batch.getMap(key, REDIS_MAP_CODEC).putAllAsync(fields);
         if (result.synced) { // cleanup because it is already synced
-            Duration expiration = getExpiration(key);
-            map.expire(expiration);
-            set.remove(key);
+            batch.getKeys().expireAsync(key, getExpiration(key).toMillis(), TimeUnit.MILLISECONDS);
+        }
+        batch.execute();
+
+        if (result.synced) {
+            set.remove(key); // only after the TTL is set, so a failed batch leaves the key for the sync job
         }
     }
 
     private RMap<String, byte[]> redisSync(String key) {
-        RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
-        map.put(SYNCED_ATTRIBUTE, RedisUtil.BOOLEAN_TRUE_ARRAY);
-        Duration expiration = getExpiration(key);
-        map.expire(expiration);
+        RBatch batch = redis.createBatch();
+        batch.getMap(key, REDIS_MAP_CODEC).fastPutAsync(SYNCED_ATTRIBUTE, RedisUtil.BOOLEAN_TRUE_ARRAY);
+        batch.getKeys().expireAsync(key, getExpiration(key).toMillis(), TimeUnit.MILLISECONDS);
+        batch.execute();
 
         RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
         set.remove(key);
 
-        return map;
+        return redis.getMap(key, REDIS_MAP_CODEC);
     }
 
     private String redisKey(ResourceDescriptor descriptor) {
