@@ -1,5 +1,7 @@
 package com.epam.aidial.core.storage.service;
 
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -49,8 +51,19 @@ class LockServiceFailureTest {
                 });
 
         LockService service = new LockService(redis, null);
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        Metrics.addRegistry(meterRegistry);
+        try {
+            assertThrows(RedisException.class, () -> service.lock("key"));
 
-        assertThrows(RedisException.class, () -> service.lock("key"));
+            // the local wait succeeded, only the redis wait is an error; no thread stays queued
+            assertEquals(1, meterRegistry.get("dial_lock_wait").tag("phase", "local").tag("outcome", "success").timer().count());
+            assertEquals(1, meterRegistry.get("dial_lock_wait").tag("phase", "redis").tag("outcome", "error").timer().count());
+            assertEquals(0, meterRegistry.get("dial_lock_wait").tag("phase", "redis").tag("outcome", "success").timer().count());
+            assertEquals(0, meterRegistry.get("dial_lock_queue_size").gauges().stream().mapToDouble(gauge -> gauge.value()).sum());
+        } finally {
+            Metrics.removeRegistry(meterRegistry);
+        }
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
