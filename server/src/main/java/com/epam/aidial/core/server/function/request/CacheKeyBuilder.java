@@ -1,13 +1,21 @@
 package com.epam.aidial.core.server.function.request;
 
-import com.epam.aidial.core.server.util.JsonUtil;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.json.JsonWriteFeature;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectWriter;
+import com.fasterxml.jackson.databind.cfg.JsonNodeFeature;
 import lombok.SneakyThrows;
 
-import java.nio.charset.StandardCharsets;
+import java.io.OutputStream;
+import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Shared rolling-hash builder for upstream cache keys, used by all {@link RequestObject} implementations.
@@ -15,22 +23,38 @@ import java.util.List;
  * single cumulative digest (so a change to an earlier node changes every later hash, matching how
  * providers cache the whole rendered prefix), and {@link #buildKey(String, boolean)} snapshots the
  * digest at that point without terminating it.
+ *
+ * <p>The digest is SHA-256: the key only has to be stable and collision-resistant for routing, and HotSpot
+ * intrinsifies SHA-256 on x86-64 with AVX2 and on aarch64, while SHA-1 needs the SHA extensions and otherwise
+ * runs as Java code over every prompt byte.
  */
 public class CacheKeyBuilder {
 
+    // sorts the properties of every object, nested ones included; the UTF-8 generator escapes a surrogate pair
+    // (e.g. an emoji) unless told to combine it into 4 bytes, as String.getBytes does; the stream is reused, so not closed
+    private static final ObjectWriter SORTED_WRITER = ProxyUtil.MAPPER.writer()
+            .with(JsonNodeFeature.WRITE_PROPERTIES_SORTED)
+            .with(JsonWriteFeature.COMBINE_UNICODE_SURROGATES_IN_UTF8)
+            .without(JsonGenerator.Feature.AUTO_CLOSE_TARGET);
+
     private final MessageDigest digest;
+    private final OutputStream digestStream;
 
     @SneakyThrows
     public CacheKeyBuilder() {
-        this.digest = MessageDigest.getInstance("SHA-1");
+        this.digest = MessageDigest.getInstance("SHA-256");
+        this.digestStream = new DigestOutputStream(OutputStream.nullOutputStream(), digest);
     }
 
     /**
-     * Canonicalizes (sorts object keys, recursively) and feeds the node into the rolling digest.
+     * Canonicalizes (sorts object keys, recursively) and feeds the node into the rolling digest. The node is left
+     * unchanged.
      */
+    @SneakyThrows
     public void update(JsonNode node) {
-        JsonNode sorted = JsonUtil.sort(node);
-        digest.update(sorted.toString().getBytes(StandardCharsets.UTF_8));
+        // the same bytes as the sorted node's toString(), written straight into the digest without copying the node;
+        // only a lone surrogate differs: it is escaped, where String.getBytes wrote '?'
+        SORTED_WRITER.writeValue(digestStream, node);
     }
 
     /**
@@ -40,7 +64,7 @@ public class CacheKeyBuilder {
     @SneakyThrows
     public CacheKey buildKey(String path, boolean hasBreakpoint) {
         MessageDigest snapshot = (MessageDigest) digest.clone();
-        return new CacheKey(path, toHex(snapshot.digest()), hasBreakpoint);
+        return new CacheKey(path, HexFormat.of().formatHex(snapshot.digest()), hasBreakpoint);
     }
 
     /**
@@ -60,11 +84,13 @@ public class CacheKeyBuilder {
         return List.of(node);
     }
 
-    private static String toHex(byte[] bytes) {
-        StringBuilder hex = new StringBuilder();
-        for (byte b : bytes) {
-            hex.append(String.format("%02x", b));
-        }
-        return hex.toString();
+    /**
+     * The object's own properties sorted by name, for a caller that skips some of them. The values are not copied:
+     * {@link #update} sorts their nested properties as it writes them.
+     */
+    public static Map<String, JsonNode> sortedProperties(JsonNode object) {
+        Map<String, JsonNode> propertiesByName = new TreeMap<>();
+        object.properties().forEach(property -> propertiesByName.put(property.getKey(), property.getValue()));
+        return propertiesByName;
     }
 }

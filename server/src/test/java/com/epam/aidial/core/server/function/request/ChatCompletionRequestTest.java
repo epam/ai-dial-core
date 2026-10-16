@@ -6,6 +6,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
+import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -365,6 +369,32 @@ class ChatCompletionRequestTest {
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class, request::collectSkills);
 
         assertEquals("Missing url in skill attachment.", error.getMessage());
+    }
+
+    @Test
+    void testBuildCacheKeys_leavesTreeUnchanged() throws IOException {
+        // keys are computed on sorted properties without reordering the tree
+        String body = "{\"model\": \"m\", \"messages\": [{\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"hi\"}]}]}";
+        ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(body);
+
+        new ChatCompletionRequest(tree).buildCacheKeys(List.of("prefix.body.messages"));
+
+        assertEquals(ProxyUtil.MAPPER.readTree(body).toString(), tree.toString());
+    }
+
+    @Test
+    void testBuildCacheKeys_hashesNonObjectMessage() throws Exception {
+        ChatCompletionRequest request = request("{\"messages\": [\"x\", {\"role\": \"user\"}]}");
+
+        List<CacheKey> keys = request.buildCacheKeys(List.of("prefix.body.messages"));
+
+        assertEquals(List.of("prefix.body.messages[0]", "prefix.body.messages[1]"), keys.stream().map(CacheKey::path).toList());
+        assertEquals(sha256("\"x\""), keys.get(0).hash());
+        assertEquals(sha256("\"x\"\"user\""), keys.get(1).hash());
+    }
+
+    private static String sha256(String text) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
     }
 
     private static ChatCompletionRequest request(String body) throws JsonProcessingException {
