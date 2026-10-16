@@ -1,5 +1,6 @@
 package com.epam.aidial.core.storage.resource;
 
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 public enum ResourceTypes implements ResourceType {
@@ -36,6 +37,16 @@ public enum ResourceTypes implements ResourceType {
     RESPONSE_MAPPING("response_mappings", true, TimeUnit.MINUTES.toMillis(5)),
     SKILL("skills", false, TimeUnit.MINUTES.toMillis(5)),
     BACKGROUND_JOB("background_jobs", true, TimeUnit.MINUTES.toMillis(5));
+
+    /**
+     * Types published on the resource topic: those the resource subscribe API ({@code ResourceOperationController.SUBSCRIPTION_ALLOWED_TYPES})
+     * or the config replicas ({@code MergedConfigStore.MANAGED_TYPES} and {@code GLOBAL_SETTINGS}) consume.
+     * Events of other types are not published, so pods no longer receive and decode events nobody consumes.
+     * A consumer of an unlisted type must add it here, otherwise its subscription silently receives nothing.
+     */
+    public static final Set<ResourceType> EVENT_TYPES = Set.of(
+            FILE, CONVERSATION, PROMPT, APPLICATION, TOOL_SET,
+            MODEL, APP_TYPE_SCHEMA, CATALOG_SCHEMA, INTERCEPTOR, TRANSLATOR, ROLE, PROJECT_KEY, ROUTE, GLOBAL_SETTINGS);
 
     private final String group;
     private final String urlSegment;

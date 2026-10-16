@@ -12,6 +12,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mockito;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
@@ -21,6 +23,7 @@ import redis.embedded.RedisServer;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -111,6 +114,31 @@ class ResourceServiceSenderPodIdTest {
 
             Assertions.assertTrue(latch.await(5, TimeUnit.SECONDS));
             Assertions.assertEquals("pod-alpha", received.get().getSenderPodId());
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(ResourceTypes.class)
+    void publishesOnlyEventTypes(ResourceTypes type) throws InterruptedException {
+        ResourceService service = newService(() -> "pod-alpha");
+        ResourceDescriptor resource = new ResourceDescriptor(type, "resource", List.of("folder"), "bucket", "bucket/", false);
+        ResourceDescriptor sentinel = new ResourceDescriptor(
+                ResourceTypes.APPLICATION, "sentinel-app", List.of(), "public", "public/", false);
+
+        CountDownLatch latch = new CountDownLatch(1);
+        List<String> urls = new CopyOnWriteArrayList<>();
+        try (ResourceTopic.Subscription ignored = service.getTopic().subscribeAll(event -> {
+            urls.add(event.getUrl());
+            if (event.getUrl().equals(sentinel.getUrl())) {
+                latch.countDown();
+            }
+        })) {
+            service.putResource(resource, "{}", EtagHeader.ANY);
+            service.putResource(sentinel, "{}", EtagHeader.ANY);
+
+            // events arrive in publish order, so by the time the sentinel arrives the resource event would already be in urls
+            Assertions.assertTrue(latch.await(5, TimeUnit.SECONDS));
+            Assertions.assertEquals(ResourceTypes.EVENT_TYPES.contains(type), urls.contains(resource.getUrl()));
         }
     }
 

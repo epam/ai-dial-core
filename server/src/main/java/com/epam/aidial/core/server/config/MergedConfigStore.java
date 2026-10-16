@@ -87,7 +87,7 @@ public final class MergedConfigStore implements ConfigStore {
     public static final String MODE_ABORT = "abort";
     public static final String MODE_SKIP = "skip";
 
-    private static final List<ResourceTypes> MANAGED_TYPES = List.of(
+    static final List<ResourceTypes> MANAGED_TYPES = List.of(
             ResourceTypes.MODEL,
             ResourceTypes.APP_TYPE_SCHEMA,
             ResourceTypes.CATALOG_SCHEMA,
