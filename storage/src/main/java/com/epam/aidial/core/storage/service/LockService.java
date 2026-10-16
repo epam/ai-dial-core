@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.locks.ReentrantLock;
@@ -194,8 +195,10 @@ public class LockService {
 
     /**
      * Takes the locks of all the buckets without waiting, in the same order as {@link #underBucketLocks}.
+     * Unlike {@link #lock}, it takes only the Redis locks and not the in-pod local ones. Writers under
+     * {@link #underBucketLocks} hold the Redis locks as well, so they are excluded all the same.
      *
-     * @return a lock that releases all of them, or null if any is held by someone else, in which case none is kept
+     * @return a lock that releases all of them once, or null if any is held by someone else, in which case none is kept
      */
     @Nullable
     public Lock tryLockBuckets(Collection<String> bucketLocations) {
@@ -215,7 +218,12 @@ public class LockService {
             throw e;
         }
 
-        return () -> closeAll(locks);
+        AtomicBoolean closed = new AtomicBoolean();
+        return () -> {
+            if (closed.compareAndSet(false, true)) {
+                closeAll(locks);
+            }
+        };
     }
 
     @Nullable

@@ -104,6 +104,26 @@ class LockServiceTest {
     }
 
     @Test
+    void testClosingTryLockBucketsTwiceDoesNotReleaseLocksOfOthers() {
+        List<String> buckets = List.of("public/", "platform/");
+        LockService.Lock locks = service.tryLockBuckets(buckets);
+        Assertions.assertNotNull(locks);
+        locks.close();
+
+        LockService.Lock other = service.tryLockBuckets(buckets);
+        Assertions.assertNotNull(other);
+
+        try {
+            locks.close();
+
+            Assertions.assertNull(service.tryLock("public/"));
+            Assertions.assertNull(service.tryLock("platform/"));
+        } finally {
+            other.close();
+        }
+    }
+
+    @Test
     void testTryLockBucketsReleasesAcquiredLocksWhenOneIsBusy() {
         LockService.Lock busy = service.tryLock("public/");
         Assertions.assertNotNull(busy);

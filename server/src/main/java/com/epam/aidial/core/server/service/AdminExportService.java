@@ -126,8 +126,7 @@ public class AdminExportService {
     }
 
     private static boolean shouldExport(String bucketLocation, String path) {
-        String relativePath = path.substring(bucketLocation.length());
-        return EXCLUDED_GROUPS.stream().noneMatch(relativePath::startsWith);
+        return EXCLUDED_GROUPS.stream().noneMatch(group -> path.startsWith(bucketLocation + group));
     }
 
     private void exportBlob(ZipOutputStream zip, String path, ExportStats stats) throws IOException {
@@ -140,27 +139,27 @@ public class AdminExportService {
         MutableBlobMetadata meta = blob.getMetadata();
         try (InputStream payload = blob.getPayload().openStream()) {
             writeJsonEntry(zip, METADATA_ENTRY_PREFIX + path, toBlobMetadata(meta), stats);
-            writeBlobContent(zip, path, meta.getContentMetadata().getContentEncoding(), payload);
+            writeBlobContent(zip, path, meta.getContentMetadata().getContentEncoding(), payload, stats);
         }
-        stats.entries++;
     }
 
-    private static void writeBlobContent(ZipOutputStream zip, String path, String contentEncoding, InputStream payload) throws IOException {
-        putEntry(zip, path, compressionLevel(contentEncoding));
+    private static void writeBlobContent(ZipOutputStream zip, String path, String contentEncoding, InputStream payload, ExportStats stats)
+            throws IOException {
+        putEntry(zip, path, compressionLevel(contentEncoding), stats);
         payload.transferTo(zip);
         zip.closeEntry();
     }
 
     private static void writeJsonEntry(ZipOutputStream zip, String name, Object value, ExportStats stats) throws IOException {
-        putEntry(zip, name, Deflater.DEFAULT_COMPRESSION);
+        putEntry(zip, name, Deflater.DEFAULT_COMPRESSION, stats);
         zip.write(ProxyUtil.MAPPER.writeValueAsBytes(value));
         zip.closeEntry();
-        stats.entries++;
     }
 
-    private static void putEntry(ZipOutputStream zip, String name, int compressionLevel) throws IOException {
+    private static void putEntry(ZipOutputStream zip, String name, int compressionLevel, ExportStats stats) throws IOException {
         zip.setLevel(compressionLevel);
         zip.putNextEntry(new ZipEntry(name));
+        stats.entries++;
     }
 
     private static int compressionLevel(String contentEncoding) {
