@@ -704,6 +704,10 @@ public class ResourceService implements AutoCloseable {
             String contentType,
             String author,
             @Nullable Map<String, String> eventMetadata) {
+        if (descriptor.isFolder()) { // the compute path skips getResourceMetadata, which used to reject folders
+            throw new IllegalArgumentException("Resource folder: " + descriptor.getUrl());
+        }
+
         String redisKey = redisKey(descriptor);
         String etag;
         if (metadata != null) {
