@@ -60,8 +60,6 @@ import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
 @Slf4j
 @AllArgsConstructor
 public class BaseDeploymentPostController {
-    // nginx's "client closed request"
-    private static final int CLIENT_CLOSED_REQUEST = 499;
     private static final Set<Integer> DEFAULT_RETRIABLE_HTTP_CODES = Set.of(HttpStatus.TOO_MANY_REQUESTS.getCode(),
             HttpStatus.BAD_GATEWAY.getCode(), HttpStatus.GATEWAY_TIMEOUT.getCode(),
             HttpStatus.SERVICE_UNAVAILABLE.getCode());
@@ -473,8 +471,7 @@ public class BaseDeploymentPostController {
             return false;
         }
         log.info("Client closed the connection before the upstream call. Deployment: {}", context.getDeployment().getName());
-        finalizeRequest();
-        context.respond(CLIENT_CLOSED_REQUEST, null);
+        respond(HttpStatus.CLIENT_CLOSED_REQUEST);
         return true;
     }
 

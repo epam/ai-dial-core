@@ -270,7 +270,7 @@ public class ChatCompletionInterceptorControllerTest {
         controller.handleRequestBody(Buffer.buffer("{\"model\": \"name\", \"messages\": []}"));
 
         verify(proxy, never()).getClient();
-        verify(context).respond(499, null);
+        verify(context).respond(HttpStatus.CLIENT_CLOSED_REQUEST);
     }
 
     @Test

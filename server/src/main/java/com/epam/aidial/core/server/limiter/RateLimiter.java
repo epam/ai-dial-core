@@ -564,9 +564,11 @@ public class RateLimiter {
         // pass array to hold rate limit result returned by the function to compute the resource
         RateLimitResult[] result = new RateLimitResult[1];
         resourceService.computeResource(resourceDescription, json -> {
-            // the wait for the lock may outlast the client: it is not charged, and the unchanged value skips the write
+            // the wait for the lock may outlast the client: it is not charged, the unchanged value skips the write,
+            // and the non-OK result stops every caller before the upstream call
             if (context.getResponse().closed()) {
-                result[0] = RateLimitResult.SUCCESS;
+                result[0] = new RateLimitResult(HttpStatus.CLIENT_CLOSED_REQUEST,
+                        "Client closed the connection", "Client closed the connection", -1);
                 return json;
             }
             return updateRequestLimit(json, timestamp, schedule, limit, result);

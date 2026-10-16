@@ -5,7 +5,14 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
+import okhttp3.mockwebserver.Dispatcher;
 import okhttp3.mockwebserver.MockResponse;
+import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.RecordedRequest;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
@@ -48,6 +55,8 @@ class InFlightRequestLimitApiTest extends ResourceBaseTest {
             Response rejected = sendChat();
             verify(rejected, 503);
             assertEquals("1", rejected.headers().get("retry-after"));
+            // a header alone does not exempt a request from the count
+            verify(send(HttpMethod.POST, CHAT_URI, null, CHAT_REQUEST, "content-type", "application/json", "upgrade", "websocket"), 503);
             verify(send(HttpMethod.GET, "/health"), 200);
 
             release.countDown();
@@ -77,6 +86,46 @@ class InFlightRequestLimitApiTest extends ResourceBaseTest {
 
             verify(sendChat(), 200);
             release.countDown();
+        }
+    }
+
+    /**
+     * An upgraded WebSocket never ends its HTTP response, so its handler gives the slot back once the upgrade
+     * succeeds. Without that, every WebSocket would hold a slot forever.
+     */
+    @Test
+    void testWebSocketGivesItsSlotBackOnceUpgraded() throws Exception {
+        CountDownLatch opened = new CountDownLatch(1);
+        try (MockWebServer upstream = new MockWebServer()) {
+            upstream.setDispatcher(new Dispatcher() {
+                @Override
+                public MockResponse dispatch(RecordedRequest request) {
+                    return new MockResponse().withWebSocketUpgrade(new WebSocketListener() {
+                    });
+                }
+            });
+            upstream.start(9876);
+
+            Request request = new Request.Builder()
+                    .url("ws://localhost:" + serverPort + "/v1/websocket")
+                    .addHeader("api-key", "vstore_user_key")
+                    .build();
+            WebSocket webSocket = new OkHttpClient().newWebSocket(request, new WebSocketListener() {
+                @Override
+                public void onOpen(WebSocket webSocket, okhttp3.Response response) {
+                    opened.countDown();
+                }
+            });
+            try {
+                assertTrue(opened.await(10, TimeUnit.SECONDS));
+                long deadline = System.currentTimeMillis() + 10_000;
+                while (send(HttpMethod.GET, "/openai/deployments").status() == 503) {
+                    assertTrue(System.currentTimeMillis() < deadline, "The open WebSocket kept its slot");
+                    Thread.sleep(50);
+                }
+            } finally {
+                webSocket.close(1000, "done");
+            }
         }
     }
 

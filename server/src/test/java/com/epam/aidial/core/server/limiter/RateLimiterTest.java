@@ -547,8 +547,8 @@ public class RateLimiterTest {
     }
 
     /**
-     * A request whose client left while it waited for the counter lock goes no further, so it must not use up
-     * the caller's quota either.
+     * A request whose client left while it waited for the counter lock goes no further: the result stops the
+     * caller, and the caller's quota is not used up.
      */
     @Test
     public void testLimit_RequestLimitNotChargedWhenClientIsGone() {
@@ -573,7 +573,7 @@ public class RateLimiterTest {
         });
 
         when(response.closed()).thenReturn(true);
-        assertEquals(HttpStatus.OK, rateLimiter.limit(proxyContext, model).result().status());
+        assertEquals(HttpStatus.CLIENT_CLOSED_REQUEST, rateLimiter.limit(proxyContext, model).result().status());
 
         when(response.closed()).thenReturn(false);
         assertEquals(HttpStatus.OK, rateLimiter.limit(proxyContext, model).result().status());
