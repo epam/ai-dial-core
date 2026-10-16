@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 
 public class BuildUpstreamCacheFn extends BaseRequestFunction<RequestObject> {
 
@@ -25,6 +26,12 @@ public class BuildUpstreamCacheFn extends BaseRequestFunction<RequestObject> {
     public Boolean apply(RequestObject request) {
         if (context.getDeployment() instanceof Model model && isCacheSupported(model)) {
             CachePolicy policy = CachePolicy.fromString(context.getRequestHeader(Proxy.HEADER_CACHE_POLICY));
+            // A hop served by a translator still picks an upstream and hands its headers to the translator, but
+            // the completion comes from the translator's callback, which builds and pins its own key. Nothing
+            // reads a key built here, so the header is validated above and the hashing is skipped.
+            if (!DeploymentEndpointUtil.resolveMode(model, interfaceType).servesCompletion()) {
+                return false;
+            }
             CacheBreakpointContext cacheBreakpointContext =
                     upstreamCacheService.buildCacheBreakpointContext(request, policy, model, interfaceType);
             context.setCacheBreakpointContext(cacheBreakpointContext);

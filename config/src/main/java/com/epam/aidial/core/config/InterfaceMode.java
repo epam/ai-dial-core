@@ -31,4 +31,14 @@ public enum InterfaceMode {
         this.value = value;
         this.subjectToLimits = subjectToLimits;
     }
+
+    /**
+     * Whether a request served this way is the one that reaches the deployment's upstreams: the request
+     * that builds the upstream cache key and is pinned by it. By definition the same request that is
+     * {@link #isSubjectToLimits() subject to limits} — a mode where a second request serves the completion
+     * is a hop for both.
+     */
+    public boolean servesCompletion() {
+        return subjectToLimits;
+    }
 }
