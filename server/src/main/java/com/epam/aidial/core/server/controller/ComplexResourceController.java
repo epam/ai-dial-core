@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceHandler;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
+import com.epam.aidial.core.server.service.resource.ProjectHandler;
 import com.epam.aidial.core.server.service.resource.SkillHandler;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.InputStreamReader;
@@ -47,7 +48,8 @@ import java.util.Map;
 public class ComplexResourceController extends AccessControlBaseController {
 
     private static final Map<ResourceType, ComplexResourceHandler> HANDLERS = Map.of(
-            ResourceTypes.SKILL, new SkillHandler());
+            ResourceTypes.SKILL, new SkillHandler(),
+            ResourceTypes.PROJECT, new ProjectHandler());
 
     private final ComplexResourceService complexResourceService;
     private final ResourceOperationService resourceOperationService;
@@ -81,6 +83,24 @@ public class ComplexResourceController extends AccessControlBaseController {
             path = "/v2/skills/{bucket}/{path}/",
             operationId = "downloadSkillGroupingFolder",
             tags = {"Skills"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The grouping folder path within the bucket.", required = true)
+            },
+            responses = {
+                    @ApiResponse(code = 400, description = "Path is a folder; use metadata listing"),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
+    @ApiOperation(
+            method = "GET",
+            path = "/v2/projects/{bucket}/{path}/",
+            operationId = "downloadProjectGroupingFolder",
+            tags = {"Projects"},
             parameters = {
                     @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
                     @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The grouping folder path within the bucket.", required = true)
@@ -167,6 +187,34 @@ public class ComplexResourceController extends AccessControlBaseController {
                     @ApiExtension(name = "x-preview", value = "true")
             }
     )
+    @ApiOperation(
+            method = "PUT",
+            path = "/v2/projects/{bucket}/{path}",
+            operationId = "uploadProjectFolder",
+            tags = {"Projects"},
+            contentType = "multipart/form-data",
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true),
+                    @ApiParameter(name = "If-Match", in = ParameterIn.HEADER,
+                        description = "ETag of the version to replace. Use * to overwrite any existing version, or omit to create only if not exists.")
+            },
+            requestBody = @ApiSchema(implementation = byte[].class),
+            responses = {
+                    @ApiResponse(code = 200, description = "Folder resource uploaded successfully",
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "The ETag of the uploaded resource version")
+                            }),
+                    @ApiResponse(code = 400, description = "Bad request - invalid content type or malformed request"),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch"),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
     private Future<?> put(ResourceDescriptor resource, ComplexResourceHandler handler) {
         HttpServerRequest request = context.getRequest();
         String contentType = request.getHeader(HttpHeaderNames.CONTENT_TYPE);
@@ -227,6 +275,29 @@ public class ComplexResourceController extends AccessControlBaseController {
                     @ApiExtension(name = "x-preview", value = "true")
             }
     )
+    @ApiOperation(
+            method = "PUT",
+            path = "/v2/projects/{bucket}/{path}/",
+            operationId = "createProjectGroupingFolder",
+            tags = {"Projects"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The grouping folder path within the bucket.", required = true)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Grouping folder created successfully",
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "The ETag of the created grouping folder")
+                            }),
+                    @ApiResponse(code = 400, description = "Bad request - the folder already exists or a resource/folder name collision was detected"),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
     private Future<?> putFolderCreate(ResourceDescriptor resource) {
         String author = context.getUserDisplayName();
         proxy.getTaskExecutor().submit(() -> complexResourceService.createFolder(resource, author))
@@ -265,6 +336,30 @@ public class ComplexResourceController extends AccessControlBaseController {
                     @ApiExtension(name = "x-preview", value = "true")
             }
     )
+    @ApiOperation(
+            method = "DELETE",
+            path = "/v2/projects/{bucket}/{path}/",
+            operationId = "deleteProjectGroupingFolder",
+            tags = {"Projects"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The grouping folder path within the bucket.", required = true),
+                    @ApiParameter(name = "If-Match", in = ParameterIn.HEADER,
+                            description = "ETag of the folder to delete. Use * to delete regardless of the current ETag.")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Grouping folder deleted successfully"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404, description = "Grouping folder not found"),
+                    @ApiResponse(code = 409, description = "Conflict - the folder is not empty"),
+                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch"),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
     private Future<?> deleteFolderTarget(ResourceDescriptor resource) {
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
         proxy.getTaskExecutor().submit(() -> {
@@ -284,6 +379,32 @@ public class ComplexResourceController extends AccessControlBaseController {
             path = "/v2/skills/{bucket}/{path}",
             operationId = "downloadSkillFolder",
             tags = {"Skills"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Folder resource downloaded as ZIP archive",
+                            body = @ApiSchema(implementation = byte[].class),
+                            contentTypes = {"application/zip"},
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "The ETag of the resource version"),
+                                    @ApiHeader(name = "Content-Length", description = "Size of the ZIP archive in bytes", schema = Integer.class)
+                            }),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404, description = "Folder resource not found"),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
+    @ApiOperation(
+            method = "GET",
+            path = "/v2/projects/{bucket}/{path}",
+            operationId = "downloadProjectFolder",
+            tags = {"Projects"},
             parameters = {
                     @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
                     @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true)
@@ -344,6 +465,29 @@ public class ComplexResourceController extends AccessControlBaseController {
                     @ApiExtension(name = "x-preview", value = "true")
             }
     )
+    @ApiOperation(
+            method = "DELETE",
+            path = "/v2/projects/{bucket}/{path}",
+            operationId = "deleteProjectFolder",
+            tags = {"Projects"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true),
+                    @ApiParameter(name = "If-Match", in = ParameterIn.HEADER,
+                            description = "ETag of the version to delete. Use * to delete any existing version.")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Folder resource deleted successfully"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404, description = "Folder resource not found"),
+                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch"),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
     private Future<?> delete(ResourceDescriptor resource) {
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
         proxy.getTaskExecutor().submit(() -> resourceOperationService.deleteResource(context, resource, etag))
@@ -378,6 +522,35 @@ public class ComplexResourceController extends AccessControlBaseController {
                     @ApiResponse(code = 200, description = "File uploaded successfully",
                             headers = {
                                     @ApiHeader(name = "ETag", description = "The new ETag of the skill after file upload")
+                            }),
+                    @ApiResponse(code = 400, description = "Bad request - invalid content type or malformed request"),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch"),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
+    @ApiOperation(
+            method = "PUT",
+            path = "/v2/projects/{bucket}/{path}/files/{filePath}",
+            operationId = "uploadProjectFile",
+            tags = {"Projects"},
+            contentType = "multipart/form-data",
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true),
+                    @ApiParameter(name = "filePath", in = ParameterIn.PATH, description = "The relative path of the file within the project.", required = true),
+                    @ApiParameter(name = "If-Match", in = ParameterIn.HEADER,
+                            description = "ETag of the project version. The file is added/replaced in the project atomically.")
+            },
+            requestBody = @ApiSchema(implementation = byte[].class),
+            responses = {
+                    @ApiResponse(code = 200, description = "File uploaded successfully",
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "The new ETag of the project after file upload")
                             }),
                     @ApiResponse(code = 400, description = "Bad request - invalid content type or malformed request"),
                     @ApiResponse(code = 403),
@@ -463,6 +636,32 @@ public class ComplexResourceController extends AccessControlBaseController {
                     @ApiExtension(name = "x-preview", value = "true")
             }
     )
+    @ApiOperation(
+            method = "GET",
+            path = "/v2/projects/{bucket}/{path}/files/{filePath}",
+            operationId = "downloadProjectFile",
+            tags = {"Projects"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true),
+                    @ApiParameter(name = "filePath", in = ParameterIn.PATH, description = "The relative path of the file within the project.", required = true)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "File downloaded successfully",
+                            body = @ApiSchema(implementation = byte[].class),
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "The ETag of the project version"),
+                                    @ApiHeader(name = "Content-Type", description = "MIME type of the file"),
+                                    @ApiHeader(name = "Content-Length", description = "Size of the file in bytes", schema = Long.class)
+                            }),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404, description = "File or project not found"),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
     private Future<?> getFile(ResourceDescriptor resource) {
         proxy.getTaskExecutor().submit(() -> complexResourceService.getFileStream(resource, filePath))
                 .compose(stream -> {
@@ -499,6 +698,33 @@ public class ComplexResourceController extends AccessControlBaseController {
                     @ApiResponse(code = 400),
                     @ApiResponse(code = 403),
                     @ApiResponse(code = 404, description = "File or skill not found"),
+                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch"),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
+    @ApiOperation(
+            method = "DELETE",
+            path = "/v2/projects/{bucket}/{path}/files/{filePath}",
+            operationId = "deleteProjectFile",
+            tags = {"Projects"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true),
+                    @ApiParameter(name = "filePath", in = ParameterIn.PATH, description = "The relative path of the file within the project.", required = true),
+                    @ApiParameter(name = "If-Match", in = ParameterIn.HEADER,
+                            description = "ETag of the project version. The file is removed from the project atomically.")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "File deleted successfully",
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "The new ETag of the project after file deletion")
+                            }),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404, description = "File or project not found"),
                     @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch"),
                     @ApiResponse(code = 500)
             },
