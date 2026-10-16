@@ -76,7 +76,8 @@ public class ShareService {
             ResourceTypes.PROMPT, Integer.MAX_VALUE,
             ResourceTypes.TOOL_SET, 10,
             ResourceTypes.CREDENTIALS, 10,
-            ResourceTypes.SKILL, 10);
+            ResourceTypes.SKILL, 10,
+            ResourceTypes.PROJECT, 10);
 
     private static final Set<ResourceType> CREDS_SHARABLE_RESOURCE_TYPES = Set.of(ResourceTypes.TOOL_SET);
 
