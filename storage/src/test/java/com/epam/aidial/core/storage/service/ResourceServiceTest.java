@@ -402,6 +402,24 @@ public class ResourceServiceTest {
         assertFalse(storage.exists(descriptor.getAbsoluteFilePath()));
     }
 
+    /**
+     * A synced hash (cache fill, delete) must get the cache TTL, or it stays in Redis forever.
+     */
+    @Test
+    public void testSyncedWritesSetTtl() {
+        ResourceDescriptor descriptor = resource("synced-ttl");
+        storage.store(descriptor.getAbsoluteFilePath(), "application/json", null, Map.of(), "v1".getBytes());
+        String redisKey = RedisUtil.redisKey(descriptor, null);
+
+        assertEquals("v1", service.getResource(descriptor)); // cache fill
+        long ttl = client.getMap(redisKey).remainTimeToLive();
+        assertTrue(ttl > 0 && ttl <= settings.getCacheExpiration(), "cache fill TTL: " + ttl);
+
+        assertTrue(service.deleteResource(descriptor, EtagHeader.ANY)); // redisSync
+        ttl = client.getMap(redisKey).remainTimeToLive();
+        assertTrue(ttl > 0 && ttl <= settings.getCacheExpiration(), "delete TTL: " + ttl);
+    }
+
     @Test
     public void testComputeResourceRejectsFolder() {
         ResourceDescriptor folder = new ResourceDescriptor(ResourceTypes.CONVERSATION, null, List.of(), "bucket", "bucket/", true);
