@@ -213,11 +213,17 @@ public class ResourceService implements AutoCloseable {
         tempCleanupTimer.close();
     }
 
+    /**
+     * Delivers events only for {@link ResourceTypes#EVENT_TYPES}.
+     */
     public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescriptor> resources,
                                                          Consumer<ResourceEvent> subscriber) {
         return topic.subscribe(resources, subscriber);
     }
 
+    /**
+     * Delivers events only for {@link ResourceTypes#EVENT_TYPES}.
+     */
     public ResourceTopic.Subscription subscribeAllResources(Consumer<ResourceEvent> subscriber) {
         return topic.subscribeAll(subscriber);
     }

@@ -12,6 +12,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mockito;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
@@ -115,26 +117,28 @@ class ResourceServiceSenderPodIdTest {
         }
     }
 
-    @Test
-    void publishSkipsTypesWithoutSubscribers() throws InterruptedException {
+    @ParameterizedTest
+    @EnumSource(ResourceTypes.class)
+    void publishesOnlyEventTypes(ResourceTypes type) throws InterruptedException {
         ResourceService service = newService(() -> "pod-alpha");
+        ResourceDescriptor resource = new ResourceDescriptor(type, "resource", List.of("folder"), "bucket", "bucket/", false);
+        ResourceDescriptor sentinel = new ResourceDescriptor(
+                ResourceTypes.APPLICATION, "sentinel-app", List.of(), "public", "public/", false);
 
         CountDownLatch latch = new CountDownLatch(1);
         List<String> urls = new CopyOnWriteArrayList<>();
         try (ResourceTopic.Subscription ignored = service.getTopic().subscribeAll(event -> {
             urls.add(event.getUrl());
-            latch.countDown();
+            if (event.getUrl().equals(sentinel.getUrl())) {
+                latch.countDown();
+            }
         })) {
-            ResourceDescriptor limit = new ResourceDescriptor(
-                    ResourceTypes.LIMIT, "requests", List.of("key", "model"), "bucket", "bucket/", false);
-            ResourceDescriptor application = new ResourceDescriptor(
-                    ResourceTypes.APPLICATION, "after-limit-app", List.of(), "public", "public/", false);
-            service.putResource(limit, "{}", EtagHeader.ANY);
-            service.putResource(application, "{}", EtagHeader.ANY);
+            service.putResource(resource, "{}", EtagHeader.ANY);
+            service.putResource(sentinel, "{}", EtagHeader.ANY);
 
-            // events arrive in publish order, so a LIMIT event would precede the APPLICATION one
+            // events arrive in publish order, so by the time the sentinel arrives the resource event would already be in urls
             Assertions.assertTrue(latch.await(5, TimeUnit.SECONDS));
-            Assertions.assertEquals(List.of(application.getUrl()), urls);
+            Assertions.assertEquals(ResourceTypes.EVENT_TYPES.contains(type), urls.contains(resource.getUrl()));
         }
     }
 
