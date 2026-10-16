@@ -390,7 +390,9 @@ public class ResourceServiceTest {
     @Test
     public void testComputeResourceRejectsFolder() {
         ResourceDescriptor folder = new ResourceDescriptor(ResourceTypes.CONVERSATION, null, List.of(), "bucket", "bucket/", true);
-        assertThrows(IllegalArgumentException.class, () -> service.computeResource(folder, EtagHeader.ANY, null, old -> "body"));
+        assertThrows(IllegalArgumentException.class, () -> service.computeResource(folder, EtagHeader.ANY, null, old -> {
+            throw new AssertionError("fn must not run for a folder");
+        }));
     }
 
     private static ResourceDescriptor fileResource(String name) {

@@ -704,10 +704,6 @@ public class ResourceService implements AutoCloseable {
             String contentType,
             String author,
             @Nullable Map<String, String> eventMetadata) {
-        if (descriptor.isFolder()) { // the compute path skips getResourceMetadata, which used to reject folders
-            throw new IllegalArgumentException("Resource folder: " + descriptor.getUrl());
-        }
-
         String redisKey = redisKey(descriptor);
         String etag;
         if (metadata != null) {
@@ -928,6 +924,10 @@ public class ResourceService implements AutoCloseable {
     }
 
     private ResourceItemMetadata computeResourceBytesTraced(ResourceDescriptor descriptor, EtagHeader etag, String author, Function<byte[], byte[]> fn) {
+        if (descriptor.isFolder()) {
+            throw new IllegalArgumentException("Resource folder: " + descriptor.getUrl());
+        }
+
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lockService.lock(redisKey)) {
