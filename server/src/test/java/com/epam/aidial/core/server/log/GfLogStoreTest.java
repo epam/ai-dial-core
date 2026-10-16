@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyChar;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -101,6 +102,65 @@ public class GfLogStoreTest {
                 + "u001D\\u001E\\u001F !\\\"#$%&'()*+,-.\\/0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\\\]^_`abcdefghijklmnopqrstuvw";
         String actual = buffer.toString();
         assertEquals(expected, actual);
+        assertDoesNotThrow(() -> ProxyUtil.MAPPER.readValue("\"" + actual + "\"", String.class));
+    }
+
+    @Test
+    public void testAppendBodyEscapesLikeAppend() {
+        StringBuilder body = new StringBuilder("{\"text\":\"");
+        for (int i = 0; i < 128; i++) {
+            body.append((char) i);
+        }
+        body.append("é → 😀 \\/\"}");
+        assertAppendBodyMatchesAppend(body.toString());
+    }
+
+    @Test
+    public void testAppendBodyGrowsForDenseEscapes() {
+        // every byte grows two- or sixfold, past the initial capacity of the reused buffer
+        assertAppendBodyMatchesAppend("\"".repeat(10_000) + "\u0001".repeat(1_000));
+    }
+
+    @Test
+    public void testAppendBodyEscapesMalformedUtf8LikeAppend() {
+        // a lead byte without its continuation, followed by bytes that need escaping, and a cut-off emoji at the end
+        byte[] body = {'a', (byte) 0xC3, '"', (byte) 0xF0, (byte) 0x9F, '\\', (byte) 0xE2, '\n', (byte) 0xF0, (byte) 0x9F, (byte) 0x98};
+        assertAppendBodyMatchesAppend(Buffer.buffer(body));
+    }
+
+    @Test
+    public void testAppendBodyTruncatesEscapeHeavyBody() {
+        // the escaped body outgrows what the buffer may keep, so the second call starts from a fresh buffer
+        int limit = 4 * 1024 * 1024;
+        String expected = "\\\"".repeat(limit) + ">>";
+        GfLogStore store = new GfLogStore(settings(false));
+        Buffer body = Buffer.buffer("\"".repeat(limit + 1));
+        for (int i = 0; i < 2; i++) {
+            StringBuilder actual = new StringBuilder();
+            store.appendBody(capturingEntry(actual), body);
+            assertEquals(expected, actual.toString());
+            assertEquals(0, store.escapedBody.length);
+        }
+    }
+
+    private static void assertAppendBodyMatchesAppend(String body) {
+        assertAppendBodyMatchesAppend(Buffer.buffer(body));
+    }
+
+    private static void assertAppendBodyMatchesAppend(Buffer body) {
+        StringBuilder expected = new StringBuilder();
+        GfLogStore.append(capturingEntry(expected), body.toString(), true);
+
+        StringBuilder actual = new StringBuilder();
+        GfLogStore store = new GfLogStore(settings(false));
+        store.appendBody(capturingEntry(actual), body);
+        assertEquals(expected.toString(), actual.toString());
+        byte[] kept = store.escapedBody;
+
+        StringBuilder again = new StringBuilder();
+        store.appendBody(capturingEntry(again), body);
+        assertEquals(expected.toString(), again.toString());
+        assertSame(kept, store.escapedBody);
         assertDoesNotThrow(() -> ProxyUtil.MAPPER.readValue("\"" + actual + "\"", String.class));
     }
 
