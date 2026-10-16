@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -11,6 +12,7 @@ import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
@@ -44,10 +46,13 @@ import redis.embedded.RedisServer;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.net.ConnectException;
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -56,6 +61,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
@@ -477,6 +483,92 @@ class BackgroundJobServiceTest {
                     ctx.completeNow();
                 }));
         await(ctx);
+    }
+
+    @Test
+    void pollSendsGetToLocalResponseItemEndpointWithApiKeyHeader(VertxTestContext ctx) throws Throwable {
+        setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
+        URI expected = URI.create(DeploymentEndpointUtil.resolveLocalResponseItemUri("http://localhost", JOB_ID));
+
+        poller.poll(JOB_ID, "test-per-request-key")
+                .onSuccess(result -> ctx.verify(() -> {
+                    verify(httpClient).request(org.mockito.ArgumentMatchers.argThat(options ->
+                            options.getMethod() == HttpMethod.GET
+                                    && expected.getHost().equals(options.getHost())
+                                    && expected.getRawPath().equals(options.getURI())));
+                    verify(httpRequest).putHeader(Proxy.HEADER_API_KEY, "test-per-request-key");
+                    ctx.completeNow();
+                }))
+                .onFailure(ctx::failNow);
+        await(ctx);
+    }
+
+    @Test
+    void pollFailsWithoutStatusExceptionOnConnectionError(VertxTestContext ctx) throws Throwable {
+        when(httpClient.request(any(RequestOptions.class)))
+                .thenReturn(Future.failedFuture(new ConnectException("Connection refused")));
+
+        poller.poll(JOB_ID, "test-per-request-key")
+                .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
+                .onFailure(error -> ctx.verify(() -> {
+                    assertFalse(error instanceof PollStatusException);
+                    ctx.completeNow();
+                }));
+        await(ctx);
+    }
+
+    @Test
+    void pollFailsWithoutStatusExceptionOnRequestTimeout(VertxTestContext ctx) throws Throwable {
+        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(httpRequest));
+        when(httpRequest.putHeader(anyString(), anyString())).thenReturn(httpRequest);
+        when(httpRequest.send()).thenReturn(Future.failedFuture(new TimeoutException("The timeout has been reached")));
+
+        poller.poll(JOB_ID, "test-per-request-key")
+                .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
+                .onFailure(error -> ctx.verify(() -> {
+                    assertFalse(error instanceof PollStatusException);
+                    ctx.completeNow();
+                }));
+        await(ctx);
+    }
+
+    @Test
+    void pollGivesUpAndFinalizesJobOnGiveUpStatusCode(VertxTestContext ctx) throws Throwable {
+        service.setLocalBaseUrl("http://localhost");
+        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(httpRequest));
+        when(httpRequest.putHeader(anyString(), anyString())).thenReturn(httpRequest);
+        when(httpRequest.send()).thenReturn(Future.succeededFuture(httpResponse));
+        when(httpResponse.statusCode()).thenReturn(404);
+        when(configStore.get()).thenReturn(mock(Config.class));
+        when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
+        when(apiKeyStore.invalidatePerRequestApiKey(any()))
+                .thenAnswer(inv -> {
+                    ctx.completeNow();
+                    return Future.succeededFuture(true);
+                });
+
+        service.saveJob(JOB_ID, proxyContext).onFailure(ctx::failNow);
+
+        await(ctx);
+        verify(service, times(1)).poll(any(), any());
+        verify(logStore, timeout(1000)).save(any());
+        assertTrue(resourceStore.isEmpty(), "job record should be deleted after giving up");
+    }
+
+    @Test
+    void pollSkipsProcessingWhenRecordDeletedConcurrently(VertxTestContext ctx) throws Throwable {
+        doAnswer(inv -> {
+            // another handler (e.g. tryComplete) wins the race and removes the record first
+            resourceStore.clear();
+            ctx.completeNow();
+            return Future.succeededFuture(new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), new TokenUsage()));
+        }).when(service).poll(any(), any());
+
+        service.saveJob(JOB_ID, proxyContext).onFailure(ctx::failNow);
+
+        await(ctx);
+        verify(apiKeyStore, after(300).never()).invalidatePerRequestApiKey(any());
+        verify(logStore, never()).save(any());
     }
 
     private void setupHttpMocks(String responseJson) {
