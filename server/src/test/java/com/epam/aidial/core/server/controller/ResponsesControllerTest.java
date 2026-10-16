@@ -847,7 +847,7 @@ public class ResponsesControllerTest {
         when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
-        // a background root keeps its usage record as a resource, so the flag must be set before startSpan
+        // a background job's usage record gets the longer TTL, so the flag must be set before startSpan
         AtomicBoolean backgroundAtStartSpan = new AtomicBoolean();
         when(proxy.getTokenStatsTracker().startSpan(context)).thenAnswer(invocation -> {
             backgroundAtStartSpan.set(context.isBackgroundJob());

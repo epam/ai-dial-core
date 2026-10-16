@@ -117,7 +117,7 @@ executor) start no traces of their own. They do not depend on `genAiSpanAttribut
 stream. The per-trace usage record (cost and token counts, created before every upstream call, updated
 with each deployment's usage and deleted when the trace's root ends, or, if no root deletes it, `costStats.ttlMs` after its last write;
 `backgroundJob.jobTtlMs` + `backgroundJob.scanIntervalMs` for a background Responses job) is kept in Redis only
-and shows up as `cost_stats.*` spans. Redis calls get no spans of their own: the time a `resource.*` span spends outside its
+and shows up as `cost_stats.*` spans. Other Redis calls get no spans of their own: the time a `resource.*` span spends outside its
 `blob.*` children is Redis access and lock waits.
 
 The same blob storage calls are measured by the `dial_blob_operation` timer, tagged by `operation`

@@ -178,7 +178,7 @@ public class ResponsesController extends BaseDeploymentPostController {
     private Future<Void> proceedToDeployment(ResponsesApiRequest request, String deploymentName) {
         return verifyLimit()
                 .compose(ignore -> {
-                    // set before startSpan: a background root keeps its usage record in blob storage
+                    // set before startSpan: a trace with a background job gets the longer usage record TTL
                     context.setBackgroundJob(request.isBackground());
                     return proxy.getTokenStatsTracker().startSpan(context);
                 })

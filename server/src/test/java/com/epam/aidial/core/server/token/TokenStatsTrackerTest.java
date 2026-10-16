@@ -454,7 +454,6 @@ public class TokenStatsTrackerTest {
         ProxyContext root = mock(ProxyContext.class);
         when(root.getSpanId()).thenReturn("root");
         when(root.getTraceId()).thenReturn(traceId);
-        when(root.isOriginalRequest()).thenReturn(true);
         when(root.isBackgroundJob()).thenReturn(true);
         tracker.startSpan(root);
 
@@ -475,6 +474,30 @@ public class TokenStatsTrackerTest {
         // the poller ends the root span of a background job by trace id
         tracker.endSpan(traceId);
         assertFalse(record.isExists());
+    }
+
+    @Test
+    public void testChildBackgroundJobGetsBackgroundTtl() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        final String traceId = "trace-id-child-background";
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        tracker.startSpan(root);
+        assertTtl(getRecord(traceId), TTL);
+
+        // an app starts a background job with its per-request key
+        ProxyContext job = mock(ProxyContext.class);
+        when(job.getSpanId()).thenReturn("job");
+        when(job.getTraceId()).thenReturn(traceId);
+        when(job.getParentSpanId()).thenReturn("root");
+        when(job.isBackgroundJob()).thenReturn(true);
+        tracker.startSpan(job);
+        assertTtl(getRecord(traceId), BACKGROUND_TTL);
     }
 
     @Test
@@ -513,7 +536,6 @@ public class TokenStatsTrackerTest {
         ProxyContext root = mock(ProxyContext.class);
         when(root.getSpanId()).thenReturn("root");
         when(root.getTraceId()).thenReturn(traceId);
-        when(root.isOriginalRequest()).thenReturn(true);
         tracker.startSpan(root);
 
         TokenUsage usage = new TokenUsage();
@@ -534,7 +556,6 @@ public class TokenStatsTrackerTest {
         ProxyContext root = mock(ProxyContext.class);
         when(root.getSpanId()).thenReturn("root");
         when(root.getTraceId()).thenReturn(traceId);
-        when(root.isOriginalRequest()).thenReturn(true);
         tracker.startSpan(root);
         String json = getRecord(traceId).get();
 

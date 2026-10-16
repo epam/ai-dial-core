@@ -39,7 +39,7 @@ public class TokenStatsTracker {
     // refreshed on every write: bounds records nobody deletes, and a request that reports its usage later than this
     // after the trace's last write loses it
     private final Duration ttl;
-    // for a trace whose root is a background Responses job, which outlives its HTTP request
+    // for a trace with a background Responses job, which outlives its HTTP request
     private final Duration backgroundTtl;
 
     /**
@@ -53,7 +53,8 @@ public class TokenStatsTracker {
         return taskExecutor.submit(() -> {
             update(context.getTraceId(), true, traceContext -> {
                 traceContext.addSpan(context);
-                if (context.isOriginalRequest() && context.isBackgroundJob()) {
+                // a child may start a background job too: the poller reports its usage when the job ends
+                if (context.isBackgroundJob()) {
                     traceContext.background = true;
                 }
                 return true;
@@ -133,7 +134,7 @@ public class TokenStatsTracker {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class TraceContext {
         Map<String, TokenStats> spans = new HashMap<>();
-        // the root is a background Responses job: the record gets the background TTL
+        // a span of the trace is a background Responses job: the record gets the background TTL
         boolean background;
 
         void addSpan(ProxyContext context) {
