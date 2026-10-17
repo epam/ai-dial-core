@@ -85,7 +85,7 @@ class RouteRequestBodyHandler {
             try {
                 ChatCompletionRequest request = new ChatCompletionRequest(tree);
                 if (ProxyUtil.processChain(request, controller.enhancementFunctions)) {
-                    context.setRequestBody(Buffer.buffer(request.serialize()));
+                    context.setRequestBody(request.serialize());
                 }
             } catch (Throwable e) {
                 if (e instanceof HttpException httpException) {

@@ -92,7 +92,7 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
             if (request != null) {
                 context.setStreamingRequest(request.isStreaming());
                 if (ProxyUtil.processChain(request, enhancementFunctions)) {
-                    context.setRequestBody(Buffer.buffer(request.serialize()));
+                    context.setRequestBody(request.serialize());
                 }
             }
             proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());

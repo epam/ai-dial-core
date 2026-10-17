@@ -102,7 +102,7 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
         Deployment deployment = context.getDeployment();
         context.setStreamingRequest(request.isStreaming());
         if (ProxyUtil.processChain(request, buildEnhancementFunctions())) {
-            context.setRequestBody(Buffer.buffer(request.serialize()));
+            context.setRequestBody(request.serialize());
         }
         proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
 

@@ -3,11 +3,8 @@ package com.epam.aidial.core.server.function.request;
 import com.epam.aidial.core.server.data.cache.CachePrefixPath;
 import com.epam.aidial.core.server.util.ChatUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
-import com.epam.aidial.core.server.util.ProxyUtil;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -20,34 +17,24 @@ import java.util.Set;
  * Represents a wrapper for completion and embedding requests, providing a strict interface.
  */
 @Slf4j
-@RequiredArgsConstructor
-public class ChatCompletionRequest implements RequestObject {
+public class ChatCompletionRequest extends JsonBodyRequest {
     private static final String CUSTOM_FIELDS_NODE = "custom_fields";
     private static final String CACHE_BREAKPOINT_NODE = "cache_breakpoint";
 
-    private final ObjectNode tree;
-
-    @Override
-    public String getModel() {
-        return tree.path("model").asText();
+    public ChatCompletionRequest(ReceivedBody body) {
+        super(body);
     }
 
-    @Override
-    public void setModel(String model) {
-        tree.put("model", model);
-    }
-
-    @Override
-    public boolean isStreaming() {
-        return tree.path("stream").asBoolean(false);
+    public ChatCompletionRequest(ObjectNode tree) {
+        this(ReceivedBody.of(tree));
     }
 
     @Override
     public Set<String> collectAttachments() {
         Set<String> result = new HashSet<>();
-        result.addAll(ChatUtil.collectAttachments(tree, List.of(
+        result.addAll(ChatUtil.collectAttachments(tree(), List.of(
                 "$.messages[*].content[?(@.type == 'image_url')].image_url.url")));
-        result.addAll(ChatUtil.collectCustomAttachments(tree, List.of(
+        result.addAll(ChatUtil.collectCustomAttachments(tree(), List.of(
                 "$.messages[*].custom_content.attachments[*]",
                 "$.messages[*].custom_content.stages[*].attachments[*]",
                 "$.messages[*].custom_content.annotations[*].body.source.attachment",
@@ -56,13 +43,8 @@ public class ChatCompletionRequest implements RequestObject {
     }
 
     @Override
-    public Set<String> collectAppAttachments(List<String> paths) {
-        return ChatUtil.collectAttachments(tree, paths);
-    }
-
-    @Override
     public Set<String> collectSkills() {
-        return ChatUtil.collectCustomSkills(tree, List.of("$.messages[*].custom_content.skills[*]"));
+        return ChatUtil.collectCustomSkills(tree(), List.of("$.messages[*].custom_content.skills[*]"));
     }
 
     @Override
@@ -81,7 +63,7 @@ public class ChatCompletionRequest implements RequestObject {
     }
 
     private void appendCacheKeys(CacheKeyBuilder builder, String node, List<CacheKey> result) {
-        JsonNode array = tree.get(node);
+        JsonNode array = tree().get(node);
         if (array == null || !array.isArray()) {
             // embedding request is not supported yet
             return;
@@ -107,20 +89,5 @@ public class ChatCompletionRequest implements RequestObject {
             }
             result.add(builder.buildKey(CachePrefixPath.node(node, index), hasBreakpoint));
         }
-    }
-
-    @Override
-    public void clearInterceptorSettings() {
-        ChatUtil.removeInterceptorConfiguration(tree);
-    }
-
-    @Override
-    public void applyDefaults(Map<String, Object> defaults) {
-        ChatUtil.applyDefaults(tree, defaults);
-    }
-
-    @Override
-    public byte[] serialize() throws JsonProcessingException {
-        return ProxyUtil.MAPPER.writeValueAsBytes(tree);
     }
 }

@@ -16,6 +16,7 @@ import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
+import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -116,11 +117,19 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     protected MessagesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
-            ObjectNode tree = ProxyUtil.parseObject(body);
-            return new MessagesApiRequest(tree);
+            ReceivedBody received = ReceivedBody.parse(body);
+            context.setRequestBody(body);
+            traceRequest(received.tree());
+            return new MessagesApiRequest(received);
         } catch (IOException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
+    }
+
+    /**
+     * Publishes request attributes of the body as received; nothing by default.
+     */
+    protected void traceRequest(ObjectNode tree) {
     }
 
     protected Void setupDeployment(String model) {
@@ -152,8 +161,8 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     }
 
     /**
-     * Runs the enhancement chain, assigns a per-request key, serializes the (possibly model-overridden)
-     * body and resolves the upstream route via the {@code anthropicMessages} base_url.
+     * Runs the enhancement chain, assigns a per-request key, serializes the body if the chain changed it
+     * and resolves the upstream route via the {@code anthropicMessages} base_url.
      */
     @SneakyThrows
     protected void prepareUpstreamRoute(RequestObject request) {
@@ -161,11 +170,13 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
 
-        ProxyUtil.processChain(request, enhancementFunctions);
+        boolean bodyChanged = ProxyUtil.processChain(request, enhancementFunctions);
         // Enhancement functions update the api key, and it should be saved after that
         proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
 
-        context.setRequestBody(Buffer.buffer(request.serialize()));
+        if (bodyChanged) {
+            context.setRequestBody(request.serialize());
+        }
 
         Deployment deployment = context.getDeployment();
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);

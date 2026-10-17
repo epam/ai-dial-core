@@ -2097,9 +2097,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
             response = client.execute(request, ResourceBaseTest::toResponse);
             verify(response, 200);
 
-            assertEquals("""
-                    {"model":"gpt-3-turbo","stream":true,"messages":[{"content":"how are you?","role":"user"}]}""",
-                    capturedInterceptorBody.get());
+            // the client's bytes are forwarded as received, so compare the JSON, not its layout
+            assertEquals(ProxyUtil.MAPPER.readTree("""
+                    {"model":"gpt-3-turbo","stream":true,"messages":[{"content":"how are you?","role":"user"}]}"""),
+                    ProxyUtil.MAPPER.readTree(capturedInterceptorBody.get()));
         }
     }
 

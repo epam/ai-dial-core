@@ -64,21 +64,32 @@ public class ChatUtil {
         return url;
     }
 
-    public void removeInterceptorConfiguration(ObjectNode node) {
+    /**
+     * @return whether the node changed
+     */
+    public boolean removeInterceptorConfiguration(ObjectNode node) {
         ObjectNode customFields = (ObjectNode) node.get(CUSTOM_FIELDS_NODE);
-        if (customFields != null) {
-            customFields.remove("interceptor_configuration");
-            if (customFields.isEmpty()) {
-                node.remove(CUSTOM_FIELDS_NODE);
-            }
+        if (customFields == null) {
+            return false;
         }
+        boolean removed = customFields.remove("interceptor_configuration") != null;
+        if (customFields.isEmpty()) {
+            node.remove(CUSTOM_FIELDS_NODE);
+            return true;
+        }
+        return removed;
     }
 
-    public void applyDefaults(ObjectNode node, Map<String, Object> defaults) {
+    /**
+     * @return whether the node changed
+     */
+    public boolean applyDefaults(ObjectNode node, Map<String, Object> defaults) {
+        boolean changed = false;
         for (Map.Entry<String, Object> e : defaults.entrySet()) {
             String key = e.getKey();
             JsonNode defaultValue = ProxyUtil.MAPPER.convertValue(e.getValue(), JsonNode.class);
-            JsonUtil.applyDefault(node, key, defaultValue);
+            changed |= JsonUtil.applyDefault(node, key, defaultValue);
         }
+        return changed;
     }
 }

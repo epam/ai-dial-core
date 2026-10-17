@@ -319,6 +319,26 @@ public class MessagesApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testOverrideNameSplicedIntoReceivedBytesAfterMultiByteText() throws IOException {
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> {
+                captured.set(request);
+                return TestWebServer.createResponse(200, NON_STREAM_RESPONSE, "Content-Type", "application/json");
+            });
+            // the model follows multi-byte chars and escapes: a char offset taken for a byte offset would corrupt the body
+            String body = "{\"messages\": [{\"role\": \"user\", \"content\": \"Привет 😀 \\\"q\\\" \\u00e9\"}],\n"
+                    + "  \"max_tokens\": 16, \"model\" : \"claude-override\" }";
+
+            Response response = post(client, MESSAGES_PATH, body, "api-key", "proxyKey1");
+
+            assertEquals(200, response.status());
+            assertEquals(body.replace("\"claude-override\"", "\"claude-sonnet-4-5-20250929\""),
+                    captured.get().getBody().readUtf8());
+        }
+    }
+
+    @Test
     public void testCountTokensSendsDeploymentIdHeader() throws IOException {
         AtomicReference<RecordedRequest> captured = new AtomicReference<>();
         try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {

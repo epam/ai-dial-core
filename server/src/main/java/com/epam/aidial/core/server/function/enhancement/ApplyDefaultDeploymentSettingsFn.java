@@ -30,38 +30,43 @@ public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<Reques
 
     @Override
     public Boolean apply(RequestObject request) {
-        applyInterceptorDefaults(request);
-        applyDeploymentDefaults(request);
-        return true;
+        boolean changed = applyInterceptorDefaults(request);
+        changed |= applyDeploymentDefaults(request);
+        return changed;
     }
 
-    private void applyInterceptorDefaults(RequestObject request) {
-        request.clearInterceptorSettings();
+    private boolean applyInterceptorDefaults(RequestObject request) {
+        boolean changed = request.clearInterceptorSettings();
         Deployment deployment = context.getDeployment();
         if (deployment instanceof Interceptor) {
-            applyDefaults(request, deployment);
+            changed |= applyDefaults(request, deployment);
         }
+        return changed;
     }
 
-    private void applyDeploymentDefaults(RequestObject request) {
-        if (shouldApply(context)) {
-            Deployment deployment = context.getDeployment();
-            if (deployment instanceof Interceptor) {
-                String deploymentId = context.getInitialDeployment();
-                deployment = proxy.getDeploymentService().findDeployment(context, deploymentId);
-            }
-            applyDefaults(request, deployment);
+    private boolean applyDeploymentDefaults(RequestObject request) {
+        if (!shouldApply(context)) {
+            return false;
         }
+        Deployment deployment = context.getDeployment();
+        if (deployment instanceof Interceptor) {
+            String deploymentId = context.getInitialDeployment();
+            deployment = proxy.getDeploymentService().findDeployment(context, deploymentId);
+        }
+        return applyDefaults(request, deployment);
     }
 
     /**
      * Default body params and default headers land together, and neither replaces a value the request
      * already carries. At the first interceptor that means the interceptor's own settings, applied first,
      * take precedence over the ones of the deployment it fronts.
+     *
+     * @return whether the body changed
      */
-    private void applyDefaults(RequestObject request, Deployment deployment) {
-        request.applyDefaults(deployment.resolveDefaults(interfaceType));
+    private boolean applyDefaults(RequestObject request, Deployment deployment) {
+        boolean changed = request.applyDefaults(deployment.resolveDefaults(interfaceType));
         applyDefaultHeaders(deployment);
+        return changed;
     }
 
     /**
