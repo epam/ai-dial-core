@@ -227,6 +227,27 @@ class ResourceServiceComputeWithoutLockTest {
     }
 
     @Test
+    void testReadReturnsTheNewerRecord_WhenWriteLandsDuringTheCacheFill() {
+        ResourceDescriptor descriptor = limit("requests");
+        service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+        sync.run();
+        client.getKeys().delete(RedisUtil.redisKey(descriptor, null));
+
+        // another pod's reader misses the cache, and a write lands while it loads "1" from blob storage
+        BlobStorage loadingStorage = Mockito.spy(storage);
+        Mockito.doAnswer(invocation -> {
+            Object blob = invocation.callRealMethod();
+            service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+            return blob;
+        }).when(loadingStorage).load(descriptor.getAbsoluteFilePath());
+        ResourceService reader = new ResourceService(Mockito.mock(TimerService.class), client, loadingStorage,
+                new LockService(client, null), settings, null);
+
+        assertEquals("2", reader.getResource(descriptor));
+        assertEquals("2", service.getResource(descriptor));
+    }
+
+    @Test
     void testCacheFillDoesNotOverwrite_WhenRedisHasTheRecord() {
         ResourceDescriptor descriptor = limit("requests");
         String redisKey = RedisUtil.redisKey(descriptor, null);
