@@ -71,7 +71,15 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     public ResponsesController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
-        this.enhancementFunctions = List.of(
+        this.enhancementFunctions = buildEnhancementFunctions(proxy, context);
+    }
+
+    /**
+     * The chain a Responses request runs before it is sent upstream. Shared with a request a builtin translator
+     * converts to the Responses API, so the two are prepared alike.
+     */
+    public static List<BaseRequestFunction<RequestObject>> buildEnhancementFunctions(Proxy proxy, ProxyContext context) {
+        return List.of(
                 new CollectRequestStandardAttachmentsFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.OPENAI_RESPONSES),
                 new EnhanceDeploymentRequestFn(proxy, context),

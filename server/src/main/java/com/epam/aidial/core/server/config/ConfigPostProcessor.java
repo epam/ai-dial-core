@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.BuiltinTranslator;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.DeploymentInterface;
@@ -542,7 +543,26 @@ public final class ConfigPostProcessor {
         }
         if (translator.getIn() == null) {
             warnings.add(new ValidationWarning("in", messageWithEntityPrefix("Translator", name, "Translator declares no in")));
+            return;
         }
+        String mismatch = builtinMismatch(translator, translator.getIn().getValue());
+        if (mismatch != null) {
+            warnings.add(new ValidationWarning("builtin", messageWithEntityPrefix("Translator", name, mismatch)));
+        }
+    }
+
+    /**
+     * Why a builtin translator cannot convert {@code in} to its {@code out}, or null when it can. A builtin
+     * performs exactly one translation, so the pair it is declared with has to be that one.
+     */
+    @Nullable
+    private static String builtinMismatch(Translator translator, String in) {
+        BuiltinTranslator builtin = translator.getBuiltin();
+        if (builtin == null || (builtin.getIn().getValue().equals(in) && builtin.getOut() == translator.getOut())) {
+            return null;
+        }
+        return "Builtin translator '" + builtin.getValue() + "' converts '" + builtin.getIn().getValue()
+                + "' to '" + builtin.getOut().getValue() + "', not '" + in + "' to '" + translator.getOut().getValue() + "'";
     }
 
     /**
@@ -670,6 +690,11 @@ public final class ConfigPostProcessor {
         }
         // a definition written inline names no in: the interface it sits under is what it converts from
         String in = definition.getIn() != null ? definition.getIn().getValue() : type;
+        String mismatch = builtinMismatch(definition, in);
+        if (mismatch != null) {
+            warnings.add(new ValidationWarning(field, messageWithEntityPrefix("Model", model.getName(), mismatch)));
+            return;
+        }
         if (in.equals(definition.getOut().getValue())) {
             warnings.add(new ValidationWarning(field,
                     messageWithEntityPrefix("Model", model.getName(), "A translator cannot convert '" + in
