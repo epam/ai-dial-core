@@ -25,6 +25,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -537,7 +538,7 @@ public class RateLimiter {
     private RateLimitResult checkCostLimit(ProxyContext context, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
         String costsPath = getPathToCosts();
         ResourceDescriptor resourceDescription = getResourceDescription(context, costsPath);
-        String prevValue = resourceService.getResource(resourceDescription);
+        String prevValue = getCounter(resourceDescription);
         CostRateLimit rateLimit = ProxyUtil.convertToObject(prevValue, CostRateLimit.class);
         if (rateLimit == null) {
             return RateLimitResult.SUCCESS;
@@ -545,11 +546,16 @@ public class RateLimiter {
         return rateLimit.check(timestamp, schedule, costLimit);
     }
 
+    // no lock: the counters are written without it, and a cache fill never overwrites a newer write
+    private String getCounter(ResourceDescriptor descriptor) {
+        return resourceService.getResource(descriptor, EtagHeader.ANY, false);
+    }
+
     private RateLimitResult checkTokenLimit(
             ProxyContext context, Limit limit, long timestamp, RateLimitSchedule schedule, RoleBasedEntity roleBasedEntity) {
         String tokensPath = getPathToTokens(roleBasedEntity.getName());
         ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
-        String prevValue = resourceService.getResource(resourceDescription);
+        String prevValue = getCounter(resourceDescription);
         TokenRateLimit rateLimit = ProxyUtil.convertToObject(prevValue, TokenRateLimit.class);
         if (rateLimit == null) {
             return RateLimitResult.SUCCESS;
@@ -563,7 +569,7 @@ public class RateLimiter {
         ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
         // pass array to hold rate limit result returned by the function to compute the resource
         RateLimitResult[] result = new RateLimitResult[1];
-        resourceService.computeResource(resourceDescription, json -> updateRequestLimit(json, timestamp, schedule, limit, result));
+        resourceService.computeResourceWithoutLock(resourceDescription, json -> updateRequestLimit(json, timestamp, schedule, limit, result));
         return result[0];
     }
 
@@ -577,7 +583,7 @@ public class RateLimiter {
     }
 
     private Void updateTokenLimit(ResourceDescriptor resourceDescription, long totalUsedTokens, RateLimitSchedule schedule) {
-        resourceService.computeResource(resourceDescription, json -> updateTokenLimit(json, totalUsedTokens, schedule));
+        resourceService.computeResourceWithoutLock(resourceDescription, json -> updateTokenLimit(json, totalUsedTokens, schedule));
         return null;
     }
 
@@ -606,7 +612,7 @@ public class RateLimiter {
     }
 
     private Void updateCostLimit(ResourceDescriptor resourceDescription, BigDecimal cost, RateLimitSchedule schedule) {
-        resourceService.computeResource(resourceDescription, json -> updateCostLimit(json, cost, schedule));
+        resourceService.computeResourceWithoutLock(resourceDescription, json -> updateCostLimit(json, cost, schedule));
         return null;
     }
 
