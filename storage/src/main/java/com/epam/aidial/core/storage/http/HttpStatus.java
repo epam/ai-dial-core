@@ -24,6 +24,8 @@ public enum HttpStatus {
     UNPROCESSABLE_ENTITY(422),
     FAILED_DEPENDENCY(424),
     TOO_MANY_REQUESTS(429),
+    // nginx's "client closed request": recorded when Core drops the work of a client that has gone
+    CLIENT_CLOSED_REQUEST(499),
     INTERNAL_SERVER_ERROR(500),
     BAD_GATEWAY(502),
     SERVICE_UNAVAILABLE(503),
@@ -62,6 +64,7 @@ public enum HttpStatus {
             case 415 -> UNSUPPORTED_MEDIA_TYPE;
             case 422 -> UNPROCESSABLE_ENTITY;
             case 429 -> TOO_MANY_REQUESTS;
+            case 499 -> CLIENT_CLOSED_REQUEST;
             case 500 -> INTERNAL_SERVER_ERROR;
             case 502 -> BAD_GATEWAY;
             case 503 -> SERVICE_UNAVAILABLE;

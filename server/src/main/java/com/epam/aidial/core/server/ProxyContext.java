@@ -108,6 +108,8 @@ public class ProxyContext {
     private String userDisplayName;
     private CacheBreakpointContext cacheBreakpointContext;
     private ServerWebSocket serverWebSocket;
+    // gives back the request's in-flight slot (see Proxy.admit); a no-op when the request is not counted
+    private Runnable releaseInFlightSlot = () -> { };
     private boolean isStoreResponse;
     private boolean isBackgroundJob;
     // read from the log layout, which AsyncTaskExecutor may run on a virtual thread sharing this Vert.x context

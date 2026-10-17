@@ -391,7 +391,8 @@ public class AiDial {
                     printAuthorizationHeader,
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,
-                    TracingSettings.from(settings("tracing")), blockingCallTracer);
+                    TracingSettings.from(settings("tracing")), blockingCallTracer,
+                    settings("proxy").getInteger("maxInFlightRequests", 0));
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

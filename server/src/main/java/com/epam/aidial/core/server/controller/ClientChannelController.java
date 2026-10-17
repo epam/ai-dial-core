@@ -97,7 +97,8 @@ public class ClientChannelController {
                     channelId, context.getUserId(), context.getProject());
             return clientChannelService.subscribe(channelId, subscriber, context);
         }).onSuccess(subscription -> {
-
+            // an open subscription is not work in progress, so it gives its in-flight slot back
+            context.getReleaseInFlightSlot().run();
             Runnable heartbeat = () -> sendHeartbeat(response);
             heartbeatService.subscribe(heartbeat);
             setupEventStreamResponse(response);

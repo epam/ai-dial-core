@@ -29,6 +29,7 @@ import com.epam.aidial.core.storage.service.TimerService;
 import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.json.Json;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -74,6 +75,9 @@ public class CostRateLimitTest {
     @Mock
     private HttpServerRequest request;
 
+    @Mock
+    private HttpServerResponse response;
+
     private RateLimiter rateLimiter;
 
     @BeforeAll
@@ -110,6 +114,8 @@ public class CostRateLimitTest {
 
     @BeforeEach
     public void beforeEach() {
+        // the request limit checks whether the client is still connected
+        lenient().when(request.response()).thenReturn(response);
         RKeys keys = redissonClient.getKeys();
         for (String key : keys.getKeys()) {
             keys.delete(key);
