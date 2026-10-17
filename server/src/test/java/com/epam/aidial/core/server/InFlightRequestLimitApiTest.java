@@ -1,6 +1,8 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.log.JsonLogCapture;
+import com.epam.aidial.core.server.security.ExtractedClaims;
+import io.vertx.core.Promise;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.json.JsonObject;
@@ -14,11 +16,13 @@ import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
 import okhttp3.mockwebserver.SocketPolicy;
+import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
@@ -90,6 +94,30 @@ class InFlightRequestLimitApiTest extends ResourceBaseTest {
             verify(sendChat(), 200);
             release.countDown();
         }
+    }
+
+    /**
+     * Authorization is asynchronous, so the client may leave before the request is counted.
+     * Neither handler fires after a close, so the request gives its slot back at once.
+     */
+    @Test
+    void testAdmitsAgainWhenTheClientLeavesDuringAuthorization() throws Exception {
+        Promise<ExtractedClaims> claims = Promise.promise();
+        CountDownLatch authorizing = new CountDownLatch(1);
+        Mockito.doAnswer(invocation -> {
+            authorizing.countDown();
+            return claims.future();
+        }).when(validator).extractClaims("held");
+
+        try (CloseableHttpClient leaving = HttpClientBuilder.create().disableAutomaticRetries().build()) {
+            CompletableFuture.runAsync(() -> sendHeldAuthorization(leaving));
+            assertTrue(authorizing.await(10, TimeUnit.SECONDS));
+        }
+        // over loopback the core sees the close well within this
+        Thread.sleep(500);
+        claims.complete(createClaims("user"));
+
+        awaitFreeSlot("The request whose client left during authorization kept its slot");
     }
 
     /**
@@ -206,6 +234,17 @@ class InFlightRequestLimitApiTest extends ResourceBaseTest {
         request.setHeader("api-key", "proxyKey1");
         request.setHeader("content-type", "application/json");
         request.setEntity(new StringEntity(CHAT_REQUEST));
+        try {
+            client.execute(request, response -> null);
+        } catch (IOException e) {
+            // the client closed its own connection
+        }
+    }
+
+    @SneakyThrows
+    private void sendHeldAuthorization(CloseableHttpClient client) {
+        HttpGet request = new HttpGet("http://127.0.0.1:" + serverPort + "/openai/deployments");
+        request.setHeader("authorization", "held");
         try {
             client.execute(request, response -> null);
         } catch (IOException e) {

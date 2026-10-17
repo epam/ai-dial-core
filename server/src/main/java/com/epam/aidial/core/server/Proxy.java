@@ -346,6 +346,10 @@ public class Proxy implements Handler<HttpServerRequest> {
         request.response().endHandler(ignore -> release.run());
         // reset() and close() skip the endHandler but close the connection, which on HTTP/1.1 serves one request at a time
         request.connection().closeHandler(ignore -> release.run());
+        // the client may have left during authorization, and neither handler fires after a close
+        if (request.response().closed()) {
+            release.run();
+        }
         return release;
     }
 
