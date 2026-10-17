@@ -177,8 +177,12 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     private Future<Void> proceedToDeployment(ResponsesApiRequest request, String deploymentName) {
         return verifyLimit()
-                .compose(ignore -> proxy.getTokenStatsTracker().startSpan(context)
-                        .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request))))
+                .compose(ignore -> {
+                    // set before startSpan: a trace with a background job gets the longer usage record TTL
+                    context.setBackgroundJob(request.isBackground());
+                    return proxy.getTokenStatsTracker().startSpan(context);
+                })
+                .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request)))
                 .otherwise(error -> handleRequestError(deploymentName, error));
     }
 
@@ -267,7 +271,6 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         context.setStreamingRequest(request.isStreaming());
         context.setStoreResponse(request.isStore());
-        context.setBackgroundJob(request.isBackground());
         ProxyUtil.processChain(request, enhancementFunctions);
         // Enhancement functions update the api key, and it should be saved after that
         if (request.isBackground()) {

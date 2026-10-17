@@ -328,7 +328,13 @@ public class AiDial {
             ConfigValidationService configValidationService = new ConfigValidationService(
                     resourceService, mergedConfigStore.isSoftValidation(), catalogSchemaService);
 
-            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, resourceService);
+            Settings backgroundJobSettings =
+                    Json.decodeValue(settings("backgroundJob").toBuffer(), Settings.class);
+            long costStatsTtlMs = settings("costStats").getLong("ttlMs", TimeUnit.HOURS.toMillis(1));
+            // a background job's record lives until the job ends or the scheduler expires it, and never shorter than any other record
+            long backgroundCostStatsTtlMs = Math.max(costStatsTtlMs, backgroundJobSettings.getJobTtlMs() + backgroundJobSettings.getScanIntervalMs());
+            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, redis, lockService, storage.getPrefix(), blockingCallTracer,
+                    Duration.ofMillis(costStatsTtlMs), Duration.ofMillis(backgroundCostStatsTtlMs));
 
             HeartbeatService heartbeatService = new HeartbeatService(
                     vertx, taskExecutor, settings("resources").getLong("heartbeatPeriod"));
@@ -371,8 +377,6 @@ public class AiDial {
                     complexResourceService, encryptionService, complexResourceSweepSettings);
 
             ResponsesApiClient responsesApiClient = new ResponsesApiClient(client, clientOptions);
-            Settings backgroundJobSettings =
-                    Json.decodeValue(settings("backgroundJob").toBuffer(), Settings.class);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(),
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,

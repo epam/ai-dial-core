@@ -110,12 +110,14 @@ executor) start no traces of their own. They do not depend on `genAiSpanAttribut
 | `oauth.request`                                          | A call to an authorization server: token exchange, metadata discovery, registration | `http.request.method`, `server.address`, `http.response.status_code` |
 | `kms.encrypt`, `kms.decrypt`                             | A call to the configured AWS, Azure or GCP key management service             |                                               |
 | `resource.get`, `resource.compute`, `resource.put`, `resource.delete` | A `ResourceService` operation, including Redis access and lock waits | `dial.resource.type`; `resource.get` also has `dial.cache.hit` (`false` when the value was read from blob storage) |
+| `cost_stats.get`, `cost_stats.update`, `cost_stats.delete` | Reading, creating or updating, or deleting the per-trace usage record kept in Redis only; `update` and `delete` include the lock wait |  |
 | `blob.<operation>`                                       | One blob storage call: `load`, `store`, `meta`, `exists`, `delete`, `copy`, `list`, and the multipart upload calls | `blob.load`: `dial.blob.found`; `blob.store`: `dial.blob.size` |
 
 `blob.load` ends when the blob storage returns the blob, so it does not include reading the payload
 stream. The per-trace usage record (cost and token counts, created before every upstream call, updated
-with each deployment's usage and deleted when the trace ends) shows up as `resource.*` spans with
-`dial.resource.type=DEPLOYMENT_COST_STATS`. Redis calls get no spans of their own: the time a `resource.*` span spends outside its
+with each deployment's usage and deleted when the trace's root ends, or, if no root deletes it, `costStats.ttlMs` after its last write;
+at least `backgroundJob.jobTtlMs` + `backgroundJob.scanIntervalMs` for a trace with a background Responses job) is kept in Redis only
+and shows up as `cost_stats.*` spans. The Redis access inside a `resource.*` span gets no spans of its own: the time it spends outside its
 `blob.*` children is Redis access and lock waits.
 
 The same blob storage calls are measured by the `dial_blob_operation` timer, tagged by `operation`

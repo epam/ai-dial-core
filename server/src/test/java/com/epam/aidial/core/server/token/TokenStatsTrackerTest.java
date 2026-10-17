@@ -3,10 +3,8 @@ package com.epam.aidial.core.server.token;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
-import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.service.LockService;
-import com.epam.aidial.core.storage.service.ResourceService;
-import com.epam.aidial.core.storage.service.TimerService;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import io.vertx.core.Future;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -17,19 +15,24 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.Redisson;
+import org.redisson.api.RBucket;
 import org.redisson.api.RKeys;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.StringCodec;
 import org.redisson.config.ConfigSupport;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.Callable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -41,11 +44,12 @@ public class TokenStatsTrackerTest {
 
     private static RedissonClient redissonClient;
 
-    @Mock
-    private AsyncTaskExecutor taskExecutor;
+    private static final Duration TTL = Duration.ofHours(1);
+
+    private static final Duration BACKGROUND_TTL = Duration.ofDays(2);
 
     @Mock
-    private BlobStorage blobStorage;
+    private AsyncTaskExecutor taskExecutor;
 
     @InjectMocks
     private TokenStatsTracker tracker;
@@ -88,10 +92,7 @@ public class TokenStatsTrackerTest {
             keys.delete(key);
         }
         LockService lockService = new LockService(redissonClient, null);
-        ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
-        ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
-                lockService, settings, null);
-        tracker = new TokenStatsTracker(taskExecutor, resourceService);
+        tracker = new TokenStatsTracker(taskExecutor, redissonClient, lockService, null, BlockingCallTracer.NOOP, TTL, BACKGROUND_TTL);
     }
 
     /**
@@ -404,4 +405,172 @@ public class TokenStatsTrackerTest {
         assertEquals(List.of(), stats.aggregatedCosts());
     }
 
+    @Test
+    public void testTraceRecordLifecycle() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        final String traceId = "trace-id-lifecycle";
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        when(root.isOriginalRequest()).thenReturn(true);
+        tracker.startSpan(root);
+
+        RBucket<String> record = getRecord(traceId);
+        assertTtl(record, TTL);
+
+        ProxyContext model = mock(ProxyContext.class);
+        when(model.getSpanId()).thenReturn("model");
+        when(model.getTraceId()).thenReturn(traceId);
+        when(model.getParentSpanId()).thenReturn("root");
+        tracker.startSpan(model);
+        assertTtl(record, TTL);
+
+        TokenUsage usage = new TokenUsage();
+        usage.setTotalTokens(100);
+        usage.setAggCost(new BigDecimal("1.0"));
+        tracker.updateDeploymentStats(traceId, "model", "gpt-4", usage);
+        assertEquals(new BigDecimal("1.0"), tracker.getTokenStats(root).result().getAggCost());
+
+        tracker.endSpan(root);
+        assertFalse(record.isExists());
+
+        // a late update does not bring the record back
+        assertEquals(TokenStatsTracker.UsageStats.EMPTY, tracker.updateDeploymentStats(traceId, "model", "gpt-4", usage).result());
+        assertFalse(record.isExists());
+    }
+
+    @Test
+    public void testBackgroundRootGetsBackgroundTtl() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        final String traceId = "trace-id-background";
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        when(root.isBackgroundJob()).thenReturn(true);
+        tracker.startSpan(root);
+
+        RBucket<String> record = getRecord(traceId);
+        assertTtl(record, BACKGROUND_TTL);
+
+        // a child's writes keep the background TTL
+        ProxyContext model = mock(ProxyContext.class);
+        when(model.getSpanId()).thenReturn("model");
+        when(model.getTraceId()).thenReturn(traceId);
+        when(model.getParentSpanId()).thenReturn("root");
+        tracker.startSpan(model);
+        TokenUsage usage = new TokenUsage();
+        usage.setAggCost(new BigDecimal("1.0"));
+        tracker.updateDeploymentStats(traceId, "model", "gpt-4", usage);
+        assertTtl(record, BACKGROUND_TTL);
+
+        // the poller ends the root span of a background job by trace id
+        tracker.endSpan(traceId);
+        assertFalse(record.isExists());
+    }
+
+    @Test
+    public void testChildBackgroundJobGetsBackgroundTtl() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        final String traceId = "trace-id-child-background";
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        tracker.startSpan(root);
+        assertTtl(getRecord(traceId), TTL);
+
+        // an app starts a background job with its per-request key
+        ProxyContext job = mock(ProxyContext.class);
+        when(job.getSpanId()).thenReturn("job");
+        when(job.getTraceId()).thenReturn(traceId);
+        when(job.getParentSpanId()).thenReturn("root");
+        when(job.isBackgroundJob()).thenReturn(true);
+        tracker.startSpan(job);
+        assertTtl(getRecord(traceId), BACKGROUND_TTL);
+    }
+
+    @Test
+    public void testChildWithoutRootCreatesRecord() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        // e.g. the root already ended, or it is a feature endpoint that never starts a span
+        final String traceId = "trace-id-orphan";
+        ProxyContext model = mock(ProxyContext.class);
+        when(model.getSpanId()).thenReturn("model");
+        when(model.getTraceId()).thenReturn(traceId);
+        when(model.getParentSpanId()).thenReturn("root");
+        tracker.startSpan(model);
+
+        assertTtl(getRecord(traceId), TTL);
+    }
+
+    @Test
+    public void testRootMergesIntoExistingRecord() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        // e.g. a child reached core before its root's startSpan
+        final String traceId = "trace-id-shared";
+        ProxyContext model = mock(ProxyContext.class);
+        when(model.getSpanId()).thenReturn("model");
+        when(model.getTraceId()).thenReturn(traceId);
+        when(model.getParentSpanId()).thenReturn("root");
+        tracker.startSpan(model);
+
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        tracker.startSpan(root);
+
+        TokenUsage usage = new TokenUsage();
+        usage.setTotalTokens(100);
+        usage.setAggCost(new BigDecimal("1.0"));
+        tracker.updateDeploymentStats(traceId, "model", "gpt-4", usage);
+        assertEquals(new BigDecimal("1.0"), tracker.getTokenStats(root).result().getAggCost());
+    }
+
+    @Test
+    public void testUpdateOfUnknownSpanLeavesRecordUnchanged() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        final String traceId = "trace-id-unknown-span";
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        tracker.startSpan(root);
+        String json = getRecord(traceId).get();
+
+        TokenUsage usage = new TokenUsage();
+        usage.setAggCost(new BigDecimal("1.0"));
+        assertEquals(TokenStatsTracker.UsageStats.EMPTY, tracker.updateDeploymentStats(traceId, "unknown", "gpt-4", usage).result());
+        assertEquals(json, getRecord(traceId).get());
+    }
+
+    private static RBucket<String> getRecord(String traceId) {
+        return redissonClient.getBucket(TokenStatsTracker.KEY_PREFIX + traceId, StringCodec.INSTANCE);
+    }
+
+    private static void assertTtl(RBucket<String> record, Duration ttl) {
+        long remaining = record.remainTimeToLive();
+        assertTrue(remaining > ttl.toMillis() - 60_000 && remaining <= ttl.toMillis(), "TTL " + remaining);
+    }
 }
