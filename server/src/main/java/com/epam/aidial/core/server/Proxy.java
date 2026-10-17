@@ -77,6 +77,7 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.HttpVersion;
 import io.vertx.core.http.WebSocketClient;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
@@ -211,6 +212,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final BlockingCallTracer blockingCallTracer;
     // null, 0 or less: no limit
     private final Integer maxInFlightRequests;
+    @Getter(AccessLevel.NONE)
     private final AtomicInteger inFlightRequests = new AtomicInteger();
     private static final Runnable NOT_COUNTED = () -> { };
 
@@ -333,8 +335,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         if (maxInFlightRequests == null || maxInFlightRequests <= 0 || apiKeyData.getPerRequestKey() != null) {
             return NOT_COUNTED;
         }
-        if (inFlightRequests.incrementAndGet() > maxInFlightRequests) {
-            inFlightRequests.decrementAndGet();
+        if (inFlightRequests.getAndUpdate(count -> count < maxInFlightRequests ? count + 1 : count) >= maxInFlightRequests) {
             return null;
         }
         AtomicBoolean released = new AtomicBoolean();
