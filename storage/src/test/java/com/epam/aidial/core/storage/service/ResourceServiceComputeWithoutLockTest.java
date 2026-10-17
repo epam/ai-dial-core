@@ -214,6 +214,20 @@ class ResourceServiceComputeWithoutLockTest {
     }
 
     @Test
+    void testSyncDoesNotExpire_WhenTheRecordIsNoLongerSynced() {
+        ResourceDescriptor descriptor = limit("requests");
+        String redisKey = RedisUtil.redisKey(descriptor, null);
+        service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+        sync.run();
+
+        // the sync read the record as synced, and then a write landed
+        service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+        service.expireIfSynced(redisKey);
+
+        assertEquals(-1, record(redisKey).remainTimeToLive(), "an unsynced record must not expire");
+    }
+
+    @Test
     void testDequeueKeepsAnEntry_WhenWriteMovedItIntoTheFuture() {
         RScoredSortedSet<String> queue = queue();
         queue.add(100, "due");
