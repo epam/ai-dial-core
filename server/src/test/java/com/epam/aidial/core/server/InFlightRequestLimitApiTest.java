@@ -13,6 +13,7 @@ import okhttp3.mockwebserver.Dispatcher;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
+import okhttp3.mockwebserver.SocketPolicy;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
@@ -58,6 +59,8 @@ class InFlightRequestLimitApiTest extends ResourceBaseTest {
             // a header alone does not exempt a request from the count
             verify(send(HttpMethod.POST, CHAT_URI, null, CHAT_REQUEST, "content-type", "application/json", "upgrade", "websocket"), 503);
             verify(send(HttpMethod.GET, "/health"), 200);
+            // the limit is checked after authentication
+            verify(send(HttpMethod.POST, CHAT_URI, null, CHAT_REQUEST, "content-type", "application/json", "api-key", "unknown-key"), 401);
 
             release.countDown();
             verify(first.get(10, TimeUnit.SECONDS), 200);
@@ -90,6 +93,57 @@ class InFlightRequestLimitApiTest extends ResourceBaseTest {
     }
 
     /**
+     * Core resets the response when the upstream drops mid-stream. A reset skips the response endHandler,
+     * so the closed connection gives the slot back.
+     */
+    @Test
+    void testAdmitsAgainOnceTheCoreResetsTheResponse() throws Exception {
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/chat/completions", new MockResponse()
+                    .setHeader("Content-Type", "text/event-stream")
+                    .setChunkedBody("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n".repeat(20), 64)
+                    .setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY));
+            try {
+                sendChat();
+            } catch (Exception e) {
+                // the core dropped the connection
+            }
+
+            awaitFreeSlot("The reset response kept its slot");
+        }
+    }
+
+    /**
+     * A per-request key belongs to a request admitted earlier, so the application's call back into Core
+     * is not counted: rejecting it would fail the request that holds the only slot.
+     */
+    @Test
+    void testCallWithPerRequestKeyIsNotCounted() {
+        try (TestWebServer server = new TestWebServer(7001)) {
+            AtomicInteger callStatus = new AtomicInteger();
+            server.map(HttpMethod.POST, "/openai/deployments/10k/chat/completions", request -> {
+                callStatus.set(send(HttpMethod.GET, "/v1/bucket", null, null, "api-key", request.getHeader("api-key")).status());
+                return new MockResponse().setResponseCode(200).setBody(CHAT_ANSWER).setHeader("Content-Type", "application/json");
+            });
+
+            verify(send(HttpMethod.POST, "/openai/deployments/app/chat/completions", null, CHAT_REQUEST, "content-type", "application/json"), 200);
+            assertEquals(200, callStatus.get());
+        }
+    }
+
+    /**
+     * An open subscription never ends its response, so it gives the slot back once it is set up.
+     */
+    @Test
+    void testSubscriptionGivesItsSlotBackOnceSetUp() throws Exception {
+        try (EventStream ignored = subscribe("""
+                {"resources": [{"url": "conversations/%s/folder/conversation"}]}
+                """.formatted(bucket))) {
+            awaitFreeSlot("The open subscription kept its slot");
+        }
+    }
+
+    /**
      * An upgraded WebSocket never ends its HTTP response, so its handler gives the slot back once the upgrade
      * succeeds. Without that, every WebSocket would hold a slot forever.
      */
@@ -118,14 +172,18 @@ class InFlightRequestLimitApiTest extends ResourceBaseTest {
             });
             try {
                 assertTrue(opened.await(10, TimeUnit.SECONDS));
-                long deadline = System.currentTimeMillis() + 10_000;
-                while (send(HttpMethod.GET, "/openai/deployments").status() == 503) {
-                    assertTrue(System.currentTimeMillis() < deadline, "The open WebSocket kept its slot");
-                    Thread.sleep(50);
-                }
+                awaitFreeSlot("The open WebSocket kept its slot");
             } finally {
                 webSocket.close(1000, "done");
             }
+        }
+    }
+
+    private void awaitFreeSlot(String message) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (send(HttpMethod.GET, "/openai/deployments").status() == 503) {
+            assertTrue(System.currentTimeMillis() < deadline, message);
+            Thread.sleep(50);
         }
     }
 

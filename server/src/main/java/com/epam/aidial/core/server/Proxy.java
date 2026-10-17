@@ -308,35 +308,29 @@ public class Proxy implements Handler<HttpServerRequest> {
             return;
         }
 
-        Runnable releaseInFlightSlot = admit(request);
-        if (releaseInFlightSlot == null) {
-            respond(request, HttpStatus.SERVICE_UNAVAILABLE, "Too many requests in progress, retry later",
-                    Map.of(HttpHeaders.RETRY_AFTER.toString(), "1"));
-            return;
-        }
-
         String traceId = spanContext.getTraceId();
         String spanId = spanContext.getSpanId();
         String traceFlags = spanContext.getTraceFlags().asHex();
 
         request.pause();
         Future<AuthorizationResult> authorizationResultFuture = authorizeRequest(request);
-        authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, request, result.apiKeyData,
-                        traceId, spanId, traceFlags, releaseInFlightSlot))
+        authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, request, result.apiKeyData, traceId, spanId, traceFlags))
                 .onFailure(error -> handleError(error, request))
                 .onComplete(ignore -> request.resume());
     }
 
     /**
      * Counts the request against {@code maxInFlightRequests} until its response ends or its connection closes,
-     * so a pod past its limit rejects new work at once instead of queueing it with its body in heap.
-     * An upgraded WebSocket never ends its response, so its handler gives the slot back once the upgrade succeeds.
+     * so a pod past its limit rejects new work before reading its body instead of queueing it in heap.
+     * A per-request key belongs to a request admitted earlier (an interceptor, application or background poll
+     * calling back), so its calls are not counted: rejecting them would fail work already in progress.
+     * An upgraded WebSocket and an open subscription never end their response, so their handlers give the slot back.
      *
      * @return what gives the slot back, which runs at most once; {@code null} when the request is over the limit
      */
     @Nullable
-    private Runnable admit(HttpServerRequest request) {
-        if (maxInFlightRequests == null || maxInFlightRequests <= 0) {
+    private Runnable admit(HttpServerRequest request, ApiKeyData apiKeyData) {
+        if (maxInFlightRequests == null || maxInFlightRequests <= 0 || apiKeyData.getPerRequestKey() != null) {
             return NOT_COUNTED;
         }
         if (inFlightRequests.incrementAndGet() > maxInFlightRequests) {
@@ -350,6 +344,8 @@ public class Proxy implements Handler<HttpServerRequest> {
             }
         };
         request.response().endHandler(ignore -> release.run());
+        // reset() and close() skip the endHandler but close the connection, which on HTTP/1.1 serves one request at a time
+        request.connection().closeHandler(ignore -> release.run());
         return release;
     }
 
@@ -505,8 +501,12 @@ public class Proxy implements Handler<HttpServerRequest> {
     @SneakyThrows
     private Future<?> processAuthorizationResult(ExtractedClaims extractedClaims,
                                                  HttpServerRequest request, ApiKeyData apiKeyData,
-                                                 String traceId, String spanId, String traceFlags,
-                                                 Runnable releaseInFlightSlot) {
+                                                 String traceId, String spanId, String traceFlags) {
+        Runnable releaseInFlightSlot = admit(request, apiKeyData);
+        if (releaseInFlightSlot == null) {
+            return Future.failedFuture(new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "Too many requests in progress, retry later",
+                    Map.of(HttpHeaders.RETRY_AFTER.toString(), "1")));
+        }
         Future<?> future;
         try {
             ProxyContext context = new ProxyContext(this, request, apiKeyData, extractedClaims, traceId, spanId, traceFlags);
