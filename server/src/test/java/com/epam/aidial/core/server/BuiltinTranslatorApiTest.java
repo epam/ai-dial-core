@@ -152,6 +152,19 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testConsentOfTheTranslatedInterfaceIsRequired() throws IOException {
+        // a translator service's pass back to Core is held to the openaiResponses consent, so this pass is too
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, RESPONSES_PATH, request -> TestWebServer.createResponse(500, "unexpected"));
+            String body = requestBody(true).replace("gpt-builtin", "gpt-builtin-consent");
+
+            Response response = post(client, MESSAGES_PATH, body, "Authorization", "user");
+
+            assertEquals(403, response.status(), response.body());
+        }
+    }
+
+    @Test
     public void testCountTokensIsNotServedYet() throws IOException {
         try (CloseableHttpClient client = newClient()) {
             Response response = post(client, COUNT_TOKENS_PATH, requestBody(false), "api-key", "proxyKey1");

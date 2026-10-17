@@ -146,13 +146,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
 
     protected Void setupDeployment(String model) {
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, model);
-        proxy.getConsentService().verifyUserConsent(context, deployment, InterfaceType.ANTHROPIC_MESSAGES);
-
-        Features features = deployment.resolveFeatures(InterfaceType.ANTHROPIC_MESSAGES);
-        boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
-        if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
-            throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", model, context.getApiKeyData().getSourceDeployment()));
-        }
+        verifyAccess(deployment, model, InterfaceType.ANTHROPIC_MESSAGES);
 
         if (deployment instanceof Application application) {
             deployment = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
@@ -171,6 +165,12 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
             );
         }
 
+        // the caller reaches the interface the request is translated to as well, which a translator service's
+        // pass back to Core is checked against
+        if (builtinTranslator != null) {
+            verifyAccess(deployment, model, builtinTranslator.getOut());
+        }
+
         // the interceptors of a translated request run on the pass a translator service makes back to Core,
         // which a builtin translator does not make: serving it without them would skip them silently
         if (builtinTranslator != null && !proxy.getDeploymentService().getInterceptors(context, deployment).isEmpty()) {
@@ -182,6 +182,15 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         context.setDeployment(deployment);
 
         return null;
+    }
+
+    private void verifyAccess(Deployment deployment, String model, InterfaceType type) {
+        proxy.getConsentService().verifyUserConsent(context, deployment, type);
+        Features features = deployment.resolveFeatures(type);
+        boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
+        if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
+            throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", model, context.getApiKeyData().getSourceDeployment()));
+        }
     }
 
     /**
