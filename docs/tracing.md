@@ -109,7 +109,7 @@ executor) start no traces of their own. They do not depend on `genAiSpanAttribut
 | `rate_limit.check`                                       | The token, request and cost limit checks before a request is forwarded        | `dial.deployment`, `dial.rate_limit.status`   |
 | `oauth.request`                                          | A call to an authorization server: token exchange, metadata discovery, registration | `http.request.method`, `server.address`, `http.response.status_code` |
 | `kms.encrypt`, `kms.decrypt`                             | A call to the configured AWS, Azure or GCP key management service             |                                               |
-| `resource.get`, `resource.compute`, `resource.put`, `resource.delete` | A `ResourceService` operation, including Redis access and lock waits | `dial.resource.type`; `resource.get` also has `dial.cache.hit` (`false` when the value was read from blob storage); a `resource.compute` of a rate-limit counter, which takes no lock, also has `dial.resource.attempts` (`1` unless another writer changed the record, or it expired, between its read and its write) |
+| `resource.get`, `resource.compute`, `resource.put`, `resource.delete` | A `ResourceService` operation, including Redis access and lock waits | `dial.resource.type`; `resource.get` also has `dial.cache.hit` (`false` when the value was read from blob storage); a `resource.compute` of a rate-limit counter, which takes only a pod-local lock, also has `dial.resource.attempts` (`1` unless another writer changed the record, or it expired, between its read and its write) |
 | `blob.<operation>`                                       | One blob storage call: `load`, `store`, `meta`, `exists`, `delete`, `copy`, `list`, and the multipart upload calls | `blob.load`: `dial.blob.found`; `blob.store`: `dial.blob.size` |
 
 `blob.load` ends when the blob storage returns the blob, so it does not include reading the payload
@@ -130,9 +130,9 @@ queue-size gauge only. The event-loop gauges are only registered when a Promethe
 
 | Metric                                | Type  | Measures                                                                                                       |
 |---------------------------------------|-------|----------------------------------------------------------------------------------------------------------------|
-| `dial_lock_wait{phase="local"}`       | timer | Time `LockService.lock()` waits for other threads of this pod that hold the same key                           |
+| `dial_lock_wait{phase="local"}`       | timer | Time `LockService.lock()` or `lockLocally()` waits for other threads of this pod that hold the same key        |
 | `dial_lock_wait{phase="redis"}`       | timer | Time `lock()` spends on the Redis lock: one round-trip, plus the backoff spin while another holder has the key |
-| `dial_lock_queue_size{phase="local"}` | gauge | Threads of this pod blocked in `lock()` until another thread of this pod releases the key                      |
+| `dial_lock_queue_size{phase="local"}` | gauge | Threads of this pod blocked in `lock()` or `lockLocally()` until another thread of this pod releases the key   |
 | `dial_lock_queue_size{phase="redis"}` | gauge | Threads of this pod spinning in `lock()` until another holder releases the Redis key                           |
 | `dial_lock_hold`                      | timer | Time a lock taken with `lock()` is held                                                                        |
 | `dial_async_tasks_queued`             | gauge | `AsyncTaskExecutor` tasks submitted and not started yet                                                        |

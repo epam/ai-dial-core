@@ -37,7 +37,7 @@ public class LockService {
     private final String prefix;
     private final RScript script;
     private final ConcurrentHashMap<String, LocalLock> locks;
-    // lock() only: tryLock() never waits, and its holds (e.g. an application deployment) are not measured either
+    // lock() and lockLocally() only: tryLock() never waits, and its holds (e.g. an application deployment) are not measured either
     private static final Timer LOCAL_WAIT_TIMER = buildWaitTimer("local", "success");
     private static final Timer REDIS_WAIT_TIMER = buildWaitTimer("redis", "success");
     private static final Timer FAILED_REDIS_WAIT_TIMER = buildWaitTimer("redis", "error");
@@ -110,6 +110,22 @@ public class LockService {
                 // the lock was held whether or not the release succeeds
                 HOLD_TIMER.record(System.nanoTime() - acquired, TimeUnit.NANOSECONDS);
             }
+        };
+    }
+
+    /**
+     * Only the local half of {@link #lock}: threads of this pod take turns, threads of other pods do not wait.
+     */
+    public Lock lockLocally(String key) {
+        // its own key, so it never queues behind a lock() that waits for the Redis key
+        String id = "local:" + key;
+        LocalLock localLock = acquireLocalLock(id);
+        long waitStart = System.nanoTime();
+        localLock.lock();
+        LOCAL_WAIT_TIMER.record(System.nanoTime() - waitStart, TimeUnit.NANOSECONDS);
+        return () -> {
+            localLock.unlock();
+            releaseLocalLock(id);
         };
     }
 

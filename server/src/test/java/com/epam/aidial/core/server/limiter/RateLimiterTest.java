@@ -544,7 +544,7 @@ public class RateLimiterTest {
     }
 
     /**
-     * The request counter is written without a lock: concurrent checks must still let exactly the limit through.
+     * The request counter is written without the resource lock: concurrent checks must still let exactly the limit through.
      */
     @Test
     public void testLimit_ConcurrentRequestsPassExactlyTheLimit() throws Exception {

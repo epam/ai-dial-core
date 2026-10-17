@@ -20,7 +20,6 @@ import com.epam.aidial.core.storage.util.RedisUtil;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
-import com.google.common.util.concurrent.Striped;
 import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
@@ -74,7 +73,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -199,8 +197,6 @@ public class ResourceService implements AutoCloseable {
     private final RedissonClient redis;
     private final BlobStorage blobStore;
     private final LockService lockService;
-    // writers of one record on this pod queue here, so only one writer per pod races in the compare-and-set
-    private final Striped<Lock> computeWithoutLockStripes = Striped.lock(1024);
     private final ResourceTopic topic;
     @Getter
     private final int maxSize;
@@ -1015,12 +1011,9 @@ public class ResourceService implements AutoCloseable {
 
     private Void computeResourceWithoutLockTraced(ResourceDescriptor descriptor, Function<String, String> fn) {
         String redisKey = redisKey(descriptor);
-        Lock localLock = computeWithoutLockStripes.get(redisKey);
-        localLock.lock();
-        try {
+        // writers of this pod take turns, so only one writer per pod races in the compare-and-set
+        try (var ignore = lockService.lockLocally(redisKey)) {
             return computeResourceWithoutLockAttempts(descriptor, redisKey, fn);
-        } finally {
-            localLock.unlock();
         }
     }
 
