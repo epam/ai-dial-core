@@ -138,7 +138,7 @@ public class ResourceService implements AutoCloseable {
     private static final int PAGE_SIZE = 1000;
 
     // a writer that loses this many compare-and-set rounds in a row to other pods gives up; before its n-th retry it
-    // waits a random 0..2^n ms, at most 64 ms, so the pods that collided spread out
+    // waits a random 0 to 2^n - 1 ms, at most 63 ms, so the pods that collided spread out
     private static final int MAX_COMPUTE_WITHOUT_LOCK_ATTEMPTS = 32;
     private static final int MAX_COMPUTE_WITHOUT_LOCK_BACKOFF_SHIFT = 6;
     // ARGV[1]: the etag the value was read with ('' for a deleted record); ARGV[2..]: field, value pairs
@@ -1055,7 +1055,7 @@ public class ResourceService implements AutoCloseable {
                 try {
                     blobPut(blobKey(descriptor), next.toStub()); // create an empty object for listing
                 } catch (Exception e) {
-                    // writers creating the record at once race for the stub; the sync uploads the record anyway
+                    // writers creating the record at once race for the stub; without it the record is listed after its first sync
                     log.warn("Failed to create the listing stub: {}", redisKey, e);
                 }
             }

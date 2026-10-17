@@ -148,6 +148,8 @@ Locks:
 - `dial_lock_wait` is tagged with `outcome`: `success`, or `error` when the `redis` phase throws, e.g. while Redis is
   down. The `local` phase always succeeds.
   The waits are recorded when `lock()` returns or throws, the hold when the lock is released.
+- `lockLocally()` (rate-limit counter updates) waits only for threads of this pod. Its `local_only` wait is recorded
+  when it returns and always succeeds, and its hold is not measured.
 - A thread that takes a free lock is not queued. A thread waiting for the Redis key counts in
   `dial_lock_queue_size{phase="redis"}` while it spins, not during the first round-trip.
 - Locks taken with `tryLock()` (resource sync to blob storage, sweeps, application deployment, code interpreter
