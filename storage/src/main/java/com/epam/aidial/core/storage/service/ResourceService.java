@@ -1253,8 +1253,7 @@ public class ResourceService implements AutoCloseable {
         RMap<String, byte[]> map = redis.getMap(redisKey, REDIS_MAP_CODEC);
         Result result = redisGet(redisKey, false);
         if (result == null || result.synced) {
-            evalBoolean(EXPIRE_IF_SYNCED_SCRIPT, redisKey,
-                    List.of(RedisUtil.BOOLEAN_TRUE_ARRAY, RedisUtil.longToRedis(getExpiration(redisKey).toMillis())));
+            expireIfSynced(redisKey);
             dequeueIfDue(redisKey, dueBy);
             return map;
         }
@@ -1277,6 +1276,12 @@ public class ResourceService implements AutoCloseable {
             dequeueIfDue(redisKey, dueBy);
         }
         return map;
+    }
+
+    @VisibleForTesting
+    void expireIfSynced(String redisKey) {
+        evalBoolean(EXPIRE_IF_SYNCED_SCRIPT, redisKey,
+                List.of(RedisUtil.BOOLEAN_TRUE_ARRAY, RedisUtil.longToRedis(getExpiration(redisKey).toMillis())));
     }
 
     @VisibleForTesting
