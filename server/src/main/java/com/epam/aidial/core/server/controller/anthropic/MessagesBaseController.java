@@ -1,9 +1,11 @@
 package com.epam.aidial.core.server.controller.anthropic;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.BuiltinTranslator;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -36,6 +38,7 @@ import org.apache.commons.lang3.Strings;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Shared plumbing for the Anthropic Messages API controllers ({@link MessagesController} and
@@ -47,6 +50,9 @@ import java.util.List;
 @Slf4j
 abstract class MessagesBaseController extends BaseDeploymentPostController {
 
+    private static final String HEADER_ANTHROPIC_VERSION = "anthropic-version";
+    private static final String HEADER_ANTHROPIC_BETA = "anthropic-beta";
+
     protected final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
 
     /**
@@ -55,6 +61,13 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
      * forwarded upstream as {@link Proxy#HEADER_DEPLOYMENT_ID}.
      */
     private String deploymentId;
+
+    /**
+     * The translation Core performs itself for this request, or null when the {@code anthropicMessages}
+     * interface is forwarded as it is. Resolved with the deployment, and only for a controller that can serve
+     * one ({@link #isBuiltinTranslationSupported()}).
+     */
+    protected BuiltinTranslator builtinTranslator;
 
     protected MessagesBaseController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
@@ -123,6 +136,14 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         }
     }
 
+    /**
+     * Whether this controller serves a request through a builtin translator. One that does not answers
+     * {@code 503} for such a deployment, as for any interface it has no endpoint for.
+     */
+    protected boolean isBuiltinTranslationSupported() {
+        return false;
+    }
+
     protected Void setupDeployment(String model) {
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, model);
         proxy.getConsentService().verifyUserConsent(context, deployment, InterfaceType.ANTHROPIC_MESSAGES);
@@ -137,12 +158,24 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
             deployment = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
         }
 
-        if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.ANTHROPIC_MESSAGES,
-                context.getConfig().getTranslators()) == null) {
+        Map<String, Translator> translators = context.getConfig().getTranslators();
+        builtinTranslator = isBuiltinTranslationSupported()
+                ? DeploymentEndpointUtil.resolveBuiltinTranslator(deployment, InterfaceType.ANTHROPIC_MESSAGES, translators)
+                : null;
+        // a builtin translator is served by the deployment's own interface for what it translates to
+        InterfaceType servedType = builtinTranslator == null ? InterfaceType.ANTHROPIC_MESSAGES : builtinTranslator.getOut();
+        if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, servedType, translators) == null) {
             throw new HttpException(
                     HttpStatus.SERVICE_UNAVAILABLE,
                     "Anthropic messages not supported for this deployment type"
             );
+        }
+
+        // the interceptors of a translated request run on the pass a translator service makes back to Core,
+        // which a builtin translator does not make: serving it without them would skip them silently
+        if (builtinTranslator != null && !proxy.getDeploymentService().getInterceptors(context, deployment).isEmpty()) {
+            throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "The builtin translator does not run interceptors yet: serve this deployment through a translator service");
         }
 
         context.setTraceOperation("Send request to %s deployment".formatted(deployment.getName()));
@@ -185,8 +218,11 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                 respond(HttpStatus.SERVICE_UNAVAILABLE, "Upstream is missing required id");
                 return;
             }
-            createProxyRequest(InterfaceType.ANTHROPIC_MESSAGES)
-                    .onSuccess(this::handleProxyRequest)
+            Future<HttpClientRequest> proxyRequest = builtinTranslator == null
+                    ? createProxyRequest(InterfaceType.ANTHROPIC_MESSAGES)
+                    : createProxyRequest(DeploymentEndpointUtil.resolveRequestUri(context.getDeployment(), builtinTranslator.getOut(),
+                            context.getConfig().getTranslators(), DeploymentEndpointUtil.OPENAI_RESPONSES_BASE_PATH, null));
+            proxyRequest.onSuccess(this::handleProxyRequest)
                     .onFailure(this::handleProxyConnectionError);
         }
     }
@@ -195,18 +231,25 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        sendProxyRequest(proxyRequest, InterfaceType.ANTHROPIC_MESSAGES)
+        sendProxyRequest(proxyRequest, builtinTranslator == null ? InterfaceType.ANTHROPIC_MESSAGES : builtinTranslator.getOut())
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyResponseError);
     }
 
     /**
      * The body's {@code model} may have been replaced by {@code overrideName}, so the deployment id is
-     * carried to the adapter out of band.
+     * carried to the adapter out of band. A translated request goes out as the Responses pass a translator
+     * service would make, without the Anthropic headers, which mean nothing to a Responses upstream.
      */
     @Override
     protected void enrichProxyRequestHeaders(HttpClientRequest proxyRequest) {
-        proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, deploymentId);
+        if (builtinTranslator == null) {
+            proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, deploymentId);
+            return;
+        }
+        proxyRequest.headers()
+                .remove(HEADER_ANTHROPIC_VERSION)
+                .remove(HEADER_ANTHROPIC_BETA);
     }
 
     private void handleProxyResponse(HttpClientResponse proxyResponse) {

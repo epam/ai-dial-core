@@ -13,23 +13,36 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.ResponsesController;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectMessagesTokenUsageFn;
+import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
+import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
+import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
+import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.translator.MessagesToResponses;
+import com.epam.aidial.core.translator.ResponsesToMessagesStream;
+import com.epam.aidial.core.translator.UntranslatableRequestException;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -43,8 +56,80 @@ import java.util.List;
 @Slf4j
 public class MessagesController extends MessagesBaseController {
 
+    /**
+     * The translated body sent upstream when a builtin translator serves the request; the context keeps the
+     * client's own body for pricing and the analytics log.
+     */
+    private Buffer translatedRequestBody;
+
+    /**
+     * The {@code model} the client asked for, reported back when the upstream names none.
+     */
+    private String requestedModel;
+
     public MessagesController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
+    }
+
+    @Override
+    protected boolean isBuiltinTranslationSupported() {
+        return true;
+    }
+
+    @Override
+    protected void prepareUpstreamRoute(RequestObject request) {
+        if (builtinTranslator == null) {
+            super.prepareUpstreamRoute(request);
+        } else {
+            prepareTranslatedUpstreamRoute((MessagesApiRequest) request);
+        }
+    }
+
+    /**
+     * The request as the Responses pass of a translator service would serve it: the Messages defaults apply
+     * to what the client sent, then the body is translated and runs the {@link ResponsesController} chain,
+     * which grants the per-request key the files the body refers to, unwraps replayed encrypted items onto
+     * their upstream and keys the upstream cache on the Responses body the upstream answers for.
+     */
+    @SneakyThrows
+    private void prepareTranslatedUpstreamRoute(MessagesApiRequest request) {
+        if (!request.isStreaming()) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "The builtin translator does not serve non-streaming requests yet");
+        }
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        context.setProxyApiKeyData(proxyApiKeyData);
+        ApiKeyData.initFromContext(proxyApiKeyData, context);
+
+        ProxyUtil.processChain(request, List.of(new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES)));
+        ResponsesApiRequest translated;
+        try {
+            translated = new ResponsesApiRequest(MessagesToResponses.translateRequest(request.getTree()));
+        } catch (UntranslatableRequestException e) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+        ProxyUtil.processChain(translated, ResponsesController.buildEnhancementFunctions(proxy, context));
+        // Enhancement functions update the api key, and it should be saved after that
+        proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+
+        requestedModel = request.getModel();
+        context.setRequestBody(Buffer.buffer(request.serialize()));
+        translatedRequestBody = Buffer.buffer(translated.serialize());
+
+        String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
+        if (upstreamId == null) {
+            upstreamId = translated.getEncryptedUpstreamId();
+        }
+        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
+                .get(context.getDeployment(), context.getCacheBreakpointContext(),
+                        dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, builtinTranslator.getOut(),
+                                context.getConfig().getTranslators()), upstreamId);
+        context.setRequestBodyTimestamp(System.currentTimeMillis());
+        context.setUpstreamRoute(upstreamRoute);
+    }
+
+    @Override
+    protected Buffer resolveProxyRequestBody() {
+        return builtinTranslator == null ? super.resolveProxyRequestBody() : translatedRequestBody;
     }
 
     /**
@@ -124,8 +209,19 @@ public class MessagesController extends MessagesBaseController {
             return;
         }
 
-        BufferingReadStream responseStream = createResponseStream(proxyResponse,
-                () -> new MessagesSseListener(List.of(new CollectMessagesTokenUsageFn(proxy, context))));
+        BufferingReadStream responseStream;
+        if (builtinTranslator != null && proxyResponse.statusCode() == HttpStatus.OK.getCode() && isEventStreamResponse(proxyResponse)) {
+            // translated before it is buffered, so the rest of the path sees the stream the client gets
+            ResponsesToMessagesReadStream translated = new ResponsesToMessagesReadStream(proxyResponse,
+                    new ResponsesToMessagesStream(requestedModel,
+                            ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get())),
+                    new EncryptedContentWrapFn(proxy, context));
+            responseStream = new BufferingReadStream(translated, ProxyUtil.contentLength(proxyResponse, 1024),
+                    new MessagesSseListener(List.of(new CollectMessagesTokenUsageFn(proxy, context))));
+        } else {
+            responseStream = createResponseStream(proxyResponse,
+                    () -> new MessagesSseListener(List.of(new CollectMessagesTokenUsageFn(proxy, context))));
+        }
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);

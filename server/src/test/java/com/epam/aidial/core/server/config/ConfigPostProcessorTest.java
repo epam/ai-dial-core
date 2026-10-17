@@ -1,11 +1,13 @@
 package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.BuiltinTranslator;
 import com.epam.aidial.core.config.Condition;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceMode;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Operator;
 import com.epam.aidial.core.config.Pricing;
@@ -18,6 +20,7 @@ import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.config.UpstreamAuthType;
 import com.epam.aidial.core.config.UpstreamInterface;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import org.junit.jupiter.api.Test;
 
@@ -876,5 +879,69 @@ public class ConfigPostProcessorTest {
         assertFalse(ConfigPostProcessor.validateCrossReferences(model, config, warnings));
         assertEquals(2, warnings.size());
         assertEquals("interceptors[1]", warnings.get(1).getField());
+    }
+
+    @Test
+    void testSemanticKeepsBuiltinTranslatorMatchingItsMapping() {
+        Config config = newMutableConfig();
+        config.setTranslators(new HashMap<>(Map.of("builtin", builtinTranslator(ANTHROPIC_MESSAGES, OPENAI_RESPONSES))));
+        Model model = new Model();
+        model.setBaseUrl("http://model");
+        model.setInterfaces(Map.of(
+                "openaiResponses", new DeploymentInterface(),
+                "anthropicMessages", translated(TranslatorRef.named("builtin"))));
+        config.getModels().put("model", model);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertEquals(BuiltinTranslator.ANTHROPIC_MESSAGES_TO_OPENAI_RESPONSES, config.getTranslators().get("builtin").getBuiltin());
+        assertNotNull(config.getModels().get("model"));
+    }
+
+    @Test
+    void testSemanticThrowsOnRegistryBuiltinTranslatorNotMatchingItsMapping() {
+        // the builtin converts to openaiResponses only, so an entry declaring another out cannot be served
+        Config config = newMutableConfig();
+        config.setTranslators(Map.of("builtin", builtinTranslator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS)));
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+
+        assertTrue(error.getMessage().contains("Builtin translator 'anthropicMessagesToOpenaiResponses'"), error.getMessage());
+    }
+
+    @Test
+    void testSemanticThrowsOnInlineBuiltinTranslatorUnderAnotherInterface() {
+        // inline, in is the interface the definition sits under, which the builtin does not convert from
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setBaseUrl("http://model");
+        model.setInterfaces(Map.of(
+                "openaiResponses", new DeploymentInterface(),
+                "openaiChatCompletions", translated(TranslatorRef.inline(builtinTranslator(null, OPENAI_RESPONSES)))));
+        config.getModels().put("model", model);
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+
+        assertTrue(error.getMessage().contains("not 'openaiChatCompletions' to 'openaiResponses'"), error.getMessage());
+    }
+
+    @Test
+    void testTranslatorNeedsExactlyOneOfBaseUrlOrBuiltin() {
+        assertThrows(IllegalArgumentException.class, () -> new Translator(ANTHROPIC_MESSAGES, OPENAI_RESPONSES,
+                "http://translator", BuiltinTranslator.ANTHROPIC_MESSAGES_TO_OPENAI_RESPONSES));
+        assertThrows(IllegalArgumentException.class, () -> new Translator(ANTHROPIC_MESSAGES, OPENAI_RESPONSES, null, null));
+    }
+
+    @Test
+    void testUnknownBuiltinTranslatorIsRejectedAsItIsRead() {
+        String json = "{\"in\":\"anthropicMessages\",\"out\":\"openaiResponses\",\"builtin\":\"noSuchTranslation\"}";
+
+        assertThrows(Exception.class, () -> ProxyUtil.MAPPER.readValue(json, Translator.class));
+    }
+
+    private static Translator builtinTranslator(InterfaceType in, InterfaceType out) {
+        return new Translator(in, out, null, BuiltinTranslator.ANTHROPIC_MESSAGES_TO_OPENAI_RESPONSES);
     }
 }

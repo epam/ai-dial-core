@@ -241,8 +241,13 @@ public class BaseDeploymentPostController {
         return trackDeploymentStats(context.getDeployment().getName(), ownUsage, true);
     }
 
+    /**
+     * A builtin translator serves the completion inside this request, so this request is the one the
+     * initiator is accountable for, whatever {@code mode} says of a translator served over HTTP.
+     */
     private boolean subjectToLimits(Deployment deployment) {
-        return DeploymentEndpointUtil.resolveMode(deployment, interfaceType()).isSubjectToLimits();
+        return DeploymentEndpointUtil.resolveMode(deployment, interfaceType()).isSubjectToLimits()
+                || DeploymentEndpointUtil.resolveBuiltinTranslator(deployment, interfaceType(), context.getConfig().getTranslators()) != null;
     }
 
     /**
@@ -449,9 +454,18 @@ public class BaseDeploymentPostController {
 
         enrichProxyRequestHeaders(proxyRequest);
 
-        proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(context.getRequestBody().length()));
+        Buffer body = resolveProxyRequestBody();
+        proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
 
-        return proxyRequest.send(context.getRequestBody());
+        return proxyRequest.send(body);
+    }
+
+    /**
+     * The body sent upstream: the request body, unless the controller translates it on the way, in which
+     * case {@link ProxyContext#getRequestBody()} keeps the client's body for pricing and the analytics log.
+     */
+    protected Buffer resolveProxyRequestBody() {
+        return context.getRequestBody();
     }
 
     /**

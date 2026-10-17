@@ -9,6 +9,11 @@
       "in": "anthropicMessages",
       "out": "openaiChatCompletions",
       "baseUrl": "http://localhost:4089/translator"
+    },
+    "builtinResponses": {
+      "in": "anthropicMessages",
+      "out": "openaiResponses",
+      "builtin": "anthropicMessagesToOpenaiResponses"
     }
   },
   "routes" : {
@@ -352,6 +357,23 @@
     "claude-to-responses": {
       "type": "chat",
       "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848/to-responses"} }
+    },
+    "gpt-builtin": {
+      "type": "chat",
+      "overrideName": "gpt-5-upstream",
+      "interfaces": {
+        "openaiResponses": {"base_url": "http://localhost:4848"},
+        "anthropicMessages": {"mode": "translator", "translator": "builtinResponses"}
+      },
+      "upstreams": [{"endpoint": "http://responses-upstream", "responsesEndpoint": "http://responses-upstream/v1/responses", "key": "upstreamKey", "id": "responses-upstream"}]
+    },
+    "gpt-builtin-intercepted": {
+      "type": "chat",
+      "interceptors": ["interceptor1"],
+      "interfaces": {
+        "openaiResponses": {"base_url": "http://localhost:4848"},
+        "anthropicMessages": {"mode": "translator", "translator": "builtinResponses"}
+      }
     }
   },
   "toolsets": {
@@ -434,6 +456,7 @@
         "app": {},
         "gpt-3-turbo": {"minute": "100", "day": "1000"},
         "default-headers-model": {"minute": "100000", "day": "10000000"},
+        "gpt-builtin": {"minute": "100000", "day": "10000000"},
         "claude-ns": {"minute": "100000", "day": "10000000"},
         "claude-stream": {"minute": "100000", "day": "10000000"},
         "claude-count": {"minute": "100000", "day": "10000000"},

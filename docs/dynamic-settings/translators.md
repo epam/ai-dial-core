@@ -14,7 +14,8 @@ A map of available translators.
 
 * `in`: **Required.** The interface type the translator accepts — the API a client calls DIAL Core on. It has to differ from `out`.
 * `out`: **Required.** The interface type it converts to. The deployment referencing the translator has to serve `out` itself, and serve it pass-through: that is the API the translator calls DIAL Core back on.
-* `baseUrl`: **Required.** The root URL of the translator service. Each request is forwarded to `baseUrl` + **the exact ingress path it was received on**, exactly as a deployment's own base URL is. A trailing slash is normalized.
+* `baseUrl`: The root URL of the translator service. Each request is forwarded to `baseUrl` + **the exact ingress path it was received on**, exactly as a deployment's own base URL is. A trailing slash is normalized. Exactly one of `baseUrl` and `builtin` is required.
+* `builtin`: A translation DIAL Core performs itself instead of forwarding to a translator service. See [Builtin translators](#builtin-translators). Exactly one of `baseUrl` and `builtin` is required.
 
 Both name an interface type this version of DIAL Core knows. Unlike an `interfaces` key, which is simply inert when it names a type Core does not know, these two are matched — `in` against the interface the translator is referenced from, `out` against the one the deployment serves back — so a name Core cannot resolve is rejected as the config is read, and the previous config stays live.
 
@@ -58,7 +59,7 @@ A request to `POST /anthropic/v1/messages` for this model is forwarded to `http:
 
 ## Translators declared inline
 
-An interface that needs a translator no other deployment uses can define one in place, without registering it. The inline form takes the same fields minus `in`, which is implied by the interface the definition sits under — `out` and `baseUrl` are required here too:
+An interface that needs a translator no other deployment uses can define one in place, without registering it. The inline form takes the same fields minus `in`, which is implied by the interface the definition sits under — `out` and one of `baseUrl` or `builtin` are required here too:
 
 ```json
 "interfaces": {
@@ -72,10 +73,34 @@ An interface that needs a translator no other deployment uses can define one in 
 }
 ```
 
+## Builtin translators
+
+A translator with `builtin` instead of `baseUrl` is performed by DIAL Core inside the request it serves: Core converts the request, sends it to the deployment's own interface for `out`, and converts the answer back. There is no second request to Core and no translator service. The request is charged to the caller's limits once, from the usage the client receives.
+
+| `builtin` | `in` | `out` |
+|---|---|---|
+| `anthropicMessagesToOpenaiResponses` | `anthropicMessages` | `openaiResponses` |
+
+```json
+"translators": {
+    "anthropicMessagesToOpenaiResponsesBuiltin": {
+        "in": "anthropicMessages",
+        "out": "openaiResponses",
+        "builtin": "anthropicMessagesToOpenaiResponses"
+    }
+}
+```
+
+* A `builtin` value DIAL Core does not know is rejected as the config is read. Unlike a translator *name*, the set is fixed in code, so it cannot be registered later.
+* `in` and `out` must be the pair the builtin converts. Written inline, `in` is implied by the interface the definition sits under, as for `baseUrl`.
+* Only a model can use a builtin translator: the translated request is served by the model's own `out` interface. An application referencing one answers `503` for that interface.
+* Moving a deployment between a builtin translator and a translator service is a config edit.
+* `anthropicMessagesToOpenaiResponses` currently translates text conversations, streaming only. A request with tools or with non-text content blocks, a non-streaming request, and `count_tokens` are answered with an error rather than translated partially. Fields with no Responses counterpart (`stop_sequences`, `top_k`, `thinking`, …) are dropped.
+
 ## Rules
 
 * An interface is served **either** by a base URL **or** by a translator, never by both. `mode` says which: `translator` requires a `translator` and rejects a `base_url` on the same entry, and `passthrough` (the default) is the other way round. A model breaking this is rejected on config load with a validation error, rather than having one of the two silently win.
-* A translator declaring no `out` or no `baseUrl` is rejected as the config is read: it converts nothing, or converts it nowhere. A registry entry declaring no `in` is rejected on config load for the same reason — it is declared under no interface, so nothing else says what it accepts.
+* A translator declaring no `out`, or neither or both of `baseUrl` and `builtin`, is rejected as the config is read: it converts nothing, or converts it nowhere. A registry entry declaring no `in` is rejected on config load for the same reason — it is declared under no interface, so nothing else says what it accepts.
 * A **name no `translators` entry defines** is different, and is **not** a config error: the entry may simply not be registered yet. It leaves that one interface unserved — the deployment answers `503` for it, and it never falls back to `endpoint`/`responsesEndpoint` — while everything else the deployment serves keeps working. The interface is still advertised in `/v1/deployments`: carrying a translator reference is what declares it, and whether the name resolves is a serving-time question, exactly as an application whose backend is missing still lists. Registering the translator serves it, with no edit to the deployment.
 * A translator converts between two **different** interfaces. One whose `out` equals its `in` — or, for an inline definition, equals the interface it is declared under — is rejected: its own output arrives back on the interface it came from, so DIAL Core hands it straight back to the translator. Nothing bounds that at runtime, which is why it is a config error rather than a request-time failure.
 * The deployment must serve `out` itself, pass-through. A translator converting to an API the deployment does not serve leaves the callback with nowhere to land, and one converting to another translated interface is refused because the callback would be handed to a translator again.

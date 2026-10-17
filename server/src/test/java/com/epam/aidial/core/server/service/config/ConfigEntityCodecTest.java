@@ -63,14 +63,14 @@ class ConfigEntityCodecTest {
     @Test
     void missingRequiredFieldNamesTheField() throws Exception {
         JsonNode node = MAPPER.readTree("""
-                {"in": "anthropicMessages", "out": "openaiResponses"}
+                {"in": "anthropicMessages", "baseUrl": "http://translator"}
                 """);
 
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                 () -> ConfigEntityCodec.treeToEntity(node, Translator.class));
 
         assertEquals(
-                "Failed to parse Translator at \"baseUrl\": Missing required creator property 'baseUrl' (index 2)",
+                "Failed to parse Translator at \"out\": Missing required creator property 'out' (index 1)",
                 e.getMessage());
         assertNotNull(e.getCause());
     }
