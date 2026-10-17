@@ -130,10 +130,12 @@ queue-size gauge only. The event-loop gauges are only registered when a Promethe
 
 | Metric                                | Type  | Measures                                                                                                       |
 |---------------------------------------|-------|----------------------------------------------------------------------------------------------------------------|
-| `dial_lock_wait{phase="local"}`       | timer | Time `LockService.lock()` or `lockLocally()` waits for other threads of this pod that hold the same key        |
+| `dial_lock_wait{phase="local"}`       | timer | Time `LockService.lock()` waits for other threads of this pod that hold the same key                           |
 | `dial_lock_wait{phase="redis"}`       | timer | Time `lock()` spends on the Redis lock: one round-trip, plus the backoff spin while another holder has the key |
-| `dial_lock_queue_size{phase="local"}` | gauge | Threads of this pod blocked in `lock()` or `lockLocally()` until another thread of this pod releases the key   |
+| `dial_lock_queue_size{phase="local"}` | gauge | Threads of this pod blocked in `lock()` until another thread of this pod releases the key                      |
 | `dial_lock_queue_size{phase="redis"}` | gauge | Threads of this pod spinning in `lock()` until another holder releases the Redis key                           |
+| `dial_lock_wait{phase="local_only"}`  | timer | Time `LockService.lockLocally()` (rate-limit counter updates) waits for other threads of this pod on the key   |
+| `dial_lock_queue_size{phase="local_only"}` | gauge | Threads of this pod blocked in `lockLocally()` until another thread of this pod releases the key       |
 | `dial_lock_hold`                      | timer | Time a lock taken with `lock()` is held                                                                        |
 | `dial_async_tasks_queued`             | gauge | `AsyncTaskExecutor` tasks submitted and not started yet                                                        |
 | `dial_async_task_start_delay`         | timer | Time from `AsyncTaskExecutor.submit()` until the task starts running                                           |

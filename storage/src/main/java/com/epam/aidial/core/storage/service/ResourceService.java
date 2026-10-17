@@ -137,8 +137,8 @@ public class ResourceService implements AutoCloseable {
     private static final int BATCH_SIZE = 50;
     private static final int PAGE_SIZE = 1000;
 
-    // a writer that loses this many compare-and-set rounds in a row to other pods gives up; after a lost round it
-    // waits a random 0..2^attempt ms, at most 64 ms, so the pods that collided spread out
+    // a writer that loses this many compare-and-set rounds in a row to other pods gives up; before its n-th retry it
+    // waits a random 0..2^n ms, at most 64 ms, so the pods that collided spread out
     private static final int MAX_COMPUTE_WITHOUT_LOCK_ATTEMPTS = 32;
     private static final int MAX_COMPUTE_WITHOUT_LOCK_BACKOFF_SHIFT = 6;
     // ARGV[1]: the etag the value was read with ('' for a deleted record); ARGV[2..]: field, value pairs
@@ -1011,14 +1011,22 @@ public class ResourceService implements AutoCloseable {
 
     private Void computeResourceWithoutLockTraced(ResourceDescriptor descriptor, Function<String, String> fn) {
         String redisKey = redisKey(descriptor);
+        Runnable publish;
         // writers of this pod take turns, so only one writer per pod races in the compare-and-set
         try (var ignore = lockService.lockLocally(redisKey)) {
-            return computeResourceWithoutLockAttempts(descriptor, redisKey, fn);
+            publish = computeResourceWithoutLockAttempts(descriptor, redisKey, fn);
         }
+        // after the turn, so the next writer of this pod does not wait for the event
+        publish.run();
+        return null;
     }
 
-    private Void computeResourceWithoutLockAttempts(ResourceDescriptor descriptor, String redisKey, Function<String, String> fn) {
+    private Runnable computeResourceWithoutLockAttempts(ResourceDescriptor descriptor, String redisKey, Function<String, String> fn) {
         for (int attempt = 1; attempt <= MAX_COMPUTE_WITHOUT_LOCK_ATTEMPTS; attempt++) {
+            if (attempt > 1) {
+                long backoffMillis = ThreadLocalRandom.current().nextLong(1L << Math.min(attempt - 1, MAX_COMPUTE_WITHOUT_LOCK_BACKOFF_SHIFT));
+                LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(backoffMillis));
+            }
             BlockingCallTracer.currentSpan().setAttribute("dial.resource.attempts", attempt);
             Map<String, byte[]> fields = loadForCompute(descriptor, redisKey);
             Result current = toResult(fields, redisKey);
@@ -1030,7 +1038,7 @@ public class ResourceService implements AutoCloseable {
             String oldValue = current.exists() ? new String(current.body, StandardCharsets.UTF_8) : null;
             String newValue = fn.apply(oldValue);
             if (Objects.equals(oldValue, newValue)) {
-                return null;
+                return () -> {};
             }
 
             byte[] body = Objects.requireNonNull(newValue, "computeResourceWithoutLock cannot delete").getBytes(StandardCharsets.UTF_8);
@@ -1056,12 +1064,9 @@ public class ResourceService implements AutoCloseable {
 
             byte[] expectedEtag = fields.getOrDefault(ETAG_ATTRIBUTE, RedisUtil.EMPTY_ARRAY);
             if (compareAndSet(redisKey, expectedEtag, next)) {
-                publishEvent(descriptor, current.exists() ? ResourceEvent.Action.UPDATE : ResourceEvent.Action.CREATE,
-                        updatedAt, next.etag);
-                return null;
+                ResourceEvent.Action action = current.exists() ? ResourceEvent.Action.UPDATE : ResourceEvent.Action.CREATE;
+                return () -> publishEvent(descriptor, action, updatedAt, next.etag);
             }
-            long backoffMillis = ThreadLocalRandom.current().nextLong(1L << Math.min(attempt, MAX_COMPUTE_WITHOUT_LOCK_BACKOFF_SHIFT));
-            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(backoffMillis));
         }
         throw new IllegalStateException("Resource changed concurrently on every attempt: " + redisKey);
     }
@@ -1093,7 +1098,7 @@ public class ResourceService implements AutoCloseable {
     @VisibleForTesting
     boolean putIfAbsent(String redisKey, Result result) {
         List<Object> args = new ArrayList<>();
-        args.add(longToArg(getExpiration(redisKey).toMillis()));
+        args.add(RedisUtil.longToRedis(getExpiration(redisKey).toMillis()));
         addFieldArgs(args, result);
         return evalBoolean(PUT_IF_ABSENT_SCRIPT, redisKey, args);
     }
@@ -1108,10 +1113,6 @@ public class ResourceService implements AutoCloseable {
     private boolean evalBoolean(String script, String key, List<Object> args) {
         return redis.getScript(ByteArrayCodec.INSTANCE)
                 .eval(RScript.Mode.READ_WRITE, script, RScript.ReturnType.BOOLEAN, List.of(key), args.toArray());
-    }
-
-    private static byte[] longToArg(long value) {
-        return Long.toString(value).getBytes(StandardCharsets.UTF_8);
     }
 
     public boolean deleteResource(ResourceDescriptor descriptor, EtagHeader etag) {
@@ -1253,7 +1254,7 @@ public class ResourceService implements AutoCloseable {
         Result result = redisGet(redisKey, false);
         if (result == null || result.synced) {
             evalBoolean(EXPIRE_IF_SYNCED_SCRIPT, redisKey,
-                    List.of(RedisUtil.BOOLEAN_TRUE_ARRAY, longToArg(getExpiration(redisKey).toMillis())));
+                    List.of(RedisUtil.BOOLEAN_TRUE_ARRAY, RedisUtil.longToRedis(getExpiration(redisKey).toMillis())));
             dequeueIfDue(redisKey, dueBy);
             return map;
         }
@@ -1281,7 +1282,7 @@ public class ResourceService implements AutoCloseable {
     @VisibleForTesting
     boolean markSynced(String redisKey, byte[] uploadedEtag) {
         return evalBoolean(MARK_SYNCED_SCRIPT, redisKey,
-                List.of(uploadedEtag, RedisUtil.BOOLEAN_TRUE_ARRAY, longToArg(getExpiration(redisKey).toMillis())));
+                List.of(uploadedEtag, RedisUtil.BOOLEAN_TRUE_ARRAY, RedisUtil.longToRedis(getExpiration(redisKey).toMillis())));
     }
 
     @VisibleForTesting
