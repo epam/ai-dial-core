@@ -70,6 +70,8 @@ class ResourceServiceComputeWithoutLockTest {
         client = Redisson.create(config);
 
         testDir = FileUtil.baseTestPath(ResourceServiceComputeWithoutLockTest.class);
+        // a run killed before destroy() leaves its blobs behind
+        FileUtil.deleteDir(testDir);
         FileUtil.createDir(testDir.resolve("test"));
         ObjectMapper mapper = new ObjectMapper();
         storage = new BlobStorage(mapper.readValue("""
