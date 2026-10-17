@@ -31,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -50,6 +51,7 @@ class ResourceServiceComputeWithoutLockTest {
     private RedissonClient client;
     private BlobStorage storage;
     private Path testDir;
+    private ResourceService.Settings settings;
     private ResourceService service;
     private Runnable sync;
 
@@ -83,7 +85,7 @@ class ResourceServiceComputeWithoutLockTest {
                 """.formatted(mapper.writeValueAsString(testDir.toString())), Storage.class));
 
         // syncDelay 0: a write is due for sync at once, so a test can run the sync itself
-        ResourceService.Settings settings = mapper.readValue("""
+        settings = mapper.readValue("""
                 {
                  "maxSize" : 67108864,
                  "maxSizeToCache": 1048576,
@@ -95,11 +97,15 @@ class ResourceServiceComputeWithoutLockTest {
                 }
                 """, ResourceService.Settings.class);
         TimerService timerService = Mockito.mock(TimerService.class);
-        service = new ResourceService(timerService, client, storage, new LockService(client, null), settings, null);
+        service = newPod(timerService);
 
         ArgumentCaptor<Runnable> tasks = ArgumentCaptor.forClass(Runnable.class);
         verify(timerService, Mockito.times(2)).scheduleWithFixedDelay(anyLong(), anyLong(), tasks.capture());
         sync = tasks.getAllValues().get(0);
+    }
+
+    private ResourceService newPod(TimerService timerService) {
+        return new ResourceService(timerService, client, storage, new LockService(client, null), settings, null);
     }
 
     @AfterEach
@@ -128,28 +134,30 @@ class ResourceServiceComputeWithoutLockTest {
     }
 
     @Test
-    void testConcurrentWritersLoseNoUpdate() throws Exception {
+    void testBurstOfWritersOnTwoPodsLosesNoUpdate() throws Exception {
         ResourceDescriptor descriptor = limit("requests");
-        int writers = 8;
-        int updatesPerWriter = 25;
-        ExecutorService executor = Executors.newFixedThreadPool(writers);
-        try {
+        // far more writers than compare-and-set attempts: they take turns on each pod, so only the two pods race
+        List<ResourceService> pods = List.of(service, newPod(Mockito.mock(TimerService.class)));
+        int writersPerPod = 256;
+        CountDownLatch start = new CountDownLatch(1);
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Future<?>> futures = new ArrayList<>();
-            for (int i = 0; i < writers; i++) {
-                futures.add(executor.submit(() -> {
-                    for (int j = 0; j < updatesPerWriter; j++) {
-                        service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
-                    }
-                }));
+            for (ResourceService pod : pods) {
+                for (int i = 0; i < writersPerPod; i++) {
+                    futures.add(executor.submit(() -> {
+                        start.await();
+                        pod.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+                        return null;
+                    }));
+                }
             }
+            start.countDown();
             for (Future<?> future : futures) {
                 future.get();
             }
-        } finally {
-            executor.shutdown();
         }
 
-        assertEquals(String.valueOf(writers * updatesPerWriter), service.getResource(descriptor));
+        assertEquals(String.valueOf(pods.size() * writersPerPod), service.getResource(descriptor));
     }
 
     @Test

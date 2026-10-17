@@ -20,6 +20,7 @@ import com.epam.aidial.core.storage.util.RedisUtil;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
+import com.google.common.util.concurrent.Striped;
 import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
@@ -71,6 +72,10 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -134,8 +139,10 @@ public class ResourceService implements AutoCloseable {
     private static final int BATCH_SIZE = 50;
     private static final int PAGE_SIZE = 1000;
 
-    // a writer that loses this many compare-and-set rounds in a row gives up; a round is a read and a write, no wait
+    // a writer that loses this many compare-and-set rounds in a row to other pods gives up; after a lost round it
+    // waits a random 0..2^attempt ms, at most 64 ms, so the pods that collided spread out
     private static final int MAX_COMPUTE_WITHOUT_LOCK_ATTEMPTS = 32;
+    private static final int MAX_COMPUTE_WITHOUT_LOCK_BACKOFF_SHIFT = 6;
     // ARGV[1]: the etag the value was read with ('' for a deleted record); ARGV[2..]: field, value pairs
     private static final String COMPARE_AND_SET_SCRIPT = """
             if redis.call('exists', KEYS[1]) == 0 then
@@ -192,6 +199,8 @@ public class ResourceService implements AutoCloseable {
     private final RedissonClient redis;
     private final BlobStorage blobStore;
     private final LockService lockService;
+    // writers of one record on this pod queue here, so only one writer per pod races in the compare-and-set
+    private final Striped<Lock> computeWithoutLockStripes = Striped.lock(1024);
     private final ResourceTopic topic;
     @Getter
     private final int maxSize;
@@ -992,10 +1001,10 @@ public class ResourceService implements AutoCloseable {
     }
 
     /**
-     * Like {@link #computeResource}, without the resource lock: the value is read, {@code fn} runs, and the result
-     * is written only if the record still has the etag it was read with. Otherwise {@code fn} runs again on the
-     * newer value. Only for records that no other method writes, such as rate-limit counters: a locked write does not
-     * check the etag and could overwrite a concurrent write made here.
+     * Like {@link #computeResource}, without the resource lock: writers on this pod take turns, the value is read,
+     * {@code fn} runs, and the result is written only if the record still has the etag it was read with. Otherwise
+     * {@code fn} runs again on the newer value. Only for records that no other method writes, such as rate-limit
+     * counters: a locked write does not check the etag and could overwrite a concurrent write made here.
      *
      * <p>{@code fn} may run several times, so it must not depend on running once, and it must not delete the
      * record. A value larger than {@code maxSizeToCache} is rejected, since it would go straight to blob storage.
@@ -1006,6 +1015,16 @@ public class ResourceService implements AutoCloseable {
 
     private Void computeResourceWithoutLockTraced(ResourceDescriptor descriptor, Function<String, String> fn) {
         String redisKey = redisKey(descriptor);
+        Lock localLock = computeWithoutLockStripes.get(redisKey);
+        localLock.lock();
+        try {
+            return computeResourceWithoutLockAttempts(descriptor, redisKey, fn);
+        } finally {
+            localLock.unlock();
+        }
+    }
+
+    private Void computeResourceWithoutLockAttempts(ResourceDescriptor descriptor, String redisKey, Function<String, String> fn) {
         for (int attempt = 1; attempt <= MAX_COMPUTE_WITHOUT_LOCK_ATTEMPTS; attempt++) {
             BlockingCallTracer.currentSpan().setAttribute("dial.resource.attempts", attempt);
             Map<String, byte[]> fields = loadForCompute(descriptor, redisKey);
@@ -1031,8 +1050,13 @@ public class ResourceService implements AutoCloseable {
                     updatedAt, "application/json", descriptor.getType().requireCompression(), (long) body.length,
                     descriptor.getType().name(), current.author, false);
             if (!current.exists()) {
-                // before the write, so the stub can never land on top of what a sync has uploaded
-                blobPut(blobKey(descriptor), next.toStub()); // create an empty object for listing
+                // before the write, so the stub cannot land on top of a sync of this write
+                try {
+                    blobPut(blobKey(descriptor), next.toStub()); // create an empty object for listing
+                } catch (Exception e) {
+                    // writers creating the record at once race for the stub; the sync uploads the record anyway
+                    log.warn("Failed to create the listing stub: {}", redisKey, e);
+                }
             }
             // before the write: a crash in between leaves a queue entry for a record already synced, which sync drops
             redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE).add(time() + syncDelay, redisKey);
@@ -1043,6 +1067,8 @@ public class ResourceService implements AutoCloseable {
                         updatedAt, next.etag);
                 return null;
             }
+            long backoffMillis = ThreadLocalRandom.current().nextLong(1L << Math.min(attempt, MAX_COMPUTE_WITHOUT_LOCK_BACKOFF_SHIFT));
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(backoffMillis));
         }
         throw new IllegalStateException("Resource changed concurrently on every attempt: " + redisKey);
     }
@@ -1051,11 +1077,11 @@ public class ResourceService implements AutoCloseable {
      * The record's fields in Redis, loaded from blob storage first if Redis does not have it.
      */
     private Map<String, byte[]> loadForCompute(ResourceDescriptor descriptor, String redisKey) {
-        RMap<String, byte[]> map = redis.getMap(redisKey, REDIS_MAP_CODEC);
-        Map<String, byte[]> fields = map.getAll(REDIS_FIELDS);
+        RMap<String, byte[]> redisRecord = redis.getMap(redisKey, REDIS_MAP_CODEC);
+        Map<String, byte[]> fields = redisRecord.getAll(REDIS_FIELDS);
         if (fields.isEmpty()) {
             putIfAbsent(redisKey, blobGet(blobKey(descriptor), true));
-            fields = map.getAll(REDIS_FIELDS);
+            fields = redisRecord.getAll(REDIS_FIELDS);
         }
         return fields;
     }
