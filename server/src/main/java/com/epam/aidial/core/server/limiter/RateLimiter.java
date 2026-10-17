@@ -30,6 +30,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -707,7 +708,7 @@ public class RateLimiter {
     @Nullable
     private CostRateLimit loadCostRateLimit(ProxyContext context) {
         ResourceDescriptor resourceDescription = getResourceDescription(context, getPathToCosts());
-        return ProxyUtil.convertToObject(resourceService.getResource(resourceDescription), CostRateLimit.class);
+        return ProxyUtil.convertToObject(getCounter(resourceDescription), CostRateLimit.class);
     }
 
     private static SpendCaps buildSpendCaps(@Nullable CostRateLimit rateLimit, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
@@ -723,11 +724,16 @@ public class RateLimiter {
         return new SpendCap(period, used, total, CalendarWindowCalculator.nextPeriodStart(period, timestamp, schedule));
     }
 
+    // no lock: the counters are written without it, and a cache fill never overwrites a newer write
+    private String getCounter(ResourceDescriptor descriptor) {
+        return resourceService.getResource(descriptor, EtagHeader.ANY, false);
+    }
+
     private RateLimitResult checkTokenLimit(
             ProxyContext context, Limit limit, long timestamp, RateLimitSchedule schedule, RoleBasedEntity roleBasedEntity) {
         String tokensPath = getPathToTokens(roleBasedEntity.getName());
         ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
-        String prevValue = resourceService.getResource(resourceDescription);
+        String prevValue = getCounter(resourceDescription);
         TokenRateLimit rateLimit = ProxyUtil.convertToObject(prevValue, TokenRateLimit.class);
         if (rateLimit == null) {
             return RateLimitResult.SUCCESS;
