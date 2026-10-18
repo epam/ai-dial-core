@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.AiDial;
 import com.epam.aidial.core.server.ContextManager;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.log.otl.OtelLogRecord;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opentelemetry.api.trace.Span;
@@ -53,12 +54,12 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
             spanId = proxyContext.getSpanId();
             traceFlags = proxyContext.getTraceFlags();
         } else {
-            // logs written before the ProxyContext exists (authentication) still belong to the request's span
-            SpanContext spanContext = Span.current().getSpanContext();
-            if (spanContext.isValid()) {
-                traceId = spanContext.getTraceId();
-                spanId = spanContext.getSpanId();
-                traceFlags = spanContext.getTraceFlags().asHex();
+            // logs of a background run have no request: the run keeps its own trace on its Vert.x context
+            SpanContext backgroundTrace = BackgroundOperationTracer.resolveBackgroundTrace().orElse(null);
+            if (backgroundTrace != null) {
+                traceId = backgroundTrace.getTraceId();
+                spanId = backgroundTrace.getSpanId();
+                traceFlags = backgroundTrace.getTraceFlags().asHex();
             }
         }
 

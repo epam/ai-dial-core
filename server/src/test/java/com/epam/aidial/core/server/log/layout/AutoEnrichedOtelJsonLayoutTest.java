@@ -8,6 +8,7 @@ import ch.qos.logback.classic.spi.ThrowableProxy;
 import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.server.ContextManager;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opentelemetry.api.trace.Span;
@@ -27,6 +28,7 @@ import org.slf4j.LoggerFactory;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -45,6 +47,7 @@ class AutoEnrichedOtelJsonLayoutTest {
     private MockedStatic<Vertx> vertxMock;
     private MockedStatic<ContextManager> contextManagerMock;
     private MockedStatic<Span> spanMock;
+    private MockedStatic<BackgroundOperationTracer> backgroundTracerMock;
     private Span currentSpan;
 
     @BeforeEach
@@ -60,6 +63,9 @@ class AutoEnrichedOtelJsonLayoutTest {
         // Mock ContextManager
         contextManagerMock = mockStatic(ContextManager.class);
         
+        backgroundTracerMock = mockStatic(BackgroundOperationTracer.class);
+        backgroundTracerMock.when(BackgroundOperationTracer::resolveBackgroundTrace).thenReturn(Optional.empty());
+
         // Mock Span
         spanMock = mockStatic(Span.class);
         currentSpan = mock(Span.class);
@@ -79,6 +85,9 @@ class AutoEnrichedOtelJsonLayoutTest {
         }
         if (spanMock != null) {
             spanMock.close();
+        }
+        if (backgroundTracerMock != null) {
+            backgroundTracerMock.close();
         }
     }
 
@@ -293,25 +302,25 @@ class AutoEnrichedOtelJsonLayoutTest {
         assertEquals("01", jsonNode.get("TraceFlags").asText());
     }
 
-    /**
-     * Authentication logs before the ProxyContext exists, e.g. a failed userinfo call in IdentityProvider.
-     */
     @Test
-    void shouldIncludeTraceContextFromCurrentSpan_WhenNoProxyContext() throws Exception {
+    void shouldIncludeTraceContextOfBackgroundRun_WhenNoProxyContext() throws Exception {
         contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
-        when(currentSpan.getSpanContext()).thenReturn(SpanContext.create(
-                "22510e56eb9b21f6b03dbc038cd8fb71", "8a46c76f1554b00a", TraceFlags.getSampled(), TraceState.getDefault()));
+        backgroundTracerMock.when(BackgroundOperationTracer::resolveBackgroundTrace).thenReturn(Optional.of(SpanContext.create(
+                "22510e56eb9b21f6b03dbc038cd8fb71", "8a46c76f1554b00a", TraceFlags.getDefault(), TraceState.getDefault())));
 
-        JsonNode jsonNode = objectMapper.readTree(layout.doLayout(createEvent("Can't extract claims from user info endpoint")));
+        JsonNode jsonNode = objectMapper.readTree(layout.doLayout(createEvent("Background run")));
 
         assertEquals("22510e56eb9b21f6b03dbc038cd8fb71", jsonNode.get("TraceId").asText());
         assertEquals("8a46c76f1554b00a", jsonNode.get("SpanId").asText());
-        assertEquals("01", jsonNode.get("TraceFlags").asText());
+        assertEquals("00", jsonNode.get("TraceFlags").asText());
     }
 
     @Test
-    void shouldLeaveTraceContextEmpty_WhenNoProxyContextAndNoSpan() throws Exception {
+    void shouldNotUseCurrentSpan_WhenNoProxyContextAndNoBackgroundRun() throws Exception {
         contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        // the span of some request: only a background run's trace may fill the identifiers
+        when(currentSpan.getSpanContext()).thenReturn(SpanContext.create(
+                "22510e56eb9b21f6b03dbc038cd8fb71", "8a46c76f1554b00a", TraceFlags.getSampled(), TraceState.getDefault()));
 
         JsonNode jsonNode = objectMapper.readTree(layout.doLayout(createEvent("Outside of any request")));
 
@@ -321,7 +330,7 @@ class AutoEnrichedOtelJsonLayoutTest {
     }
 
     @Test
-    void shouldPreferProxyContextOverCurrentSpan() throws Exception {
+    void shouldPreferProxyContextOverBackgroundRun() throws Exception {
         ProxyContext proxyContext = mock(ProxyContext.class);
         HttpServerResponse response = mock(HttpServerResponse.class);
         when(response.ended()).thenReturn(false);
@@ -330,9 +339,8 @@ class AutoEnrichedOtelJsonLayoutTest {
         when(proxyContext.getTraceFlags()).thenReturn("01");
         when(proxyContext.getResponse()).thenReturn(response);
         contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
-        // a per-request API key carries the caller's trace id, which differs from the current span's
-        when(currentSpan.getSpanContext()).thenReturn(SpanContext.create(
-                "ffffffffffffffffffffffffffffffff", "ffffffffffffffff", TraceFlags.getDefault(), TraceState.getDefault()));
+        backgroundTracerMock.when(BackgroundOperationTracer::resolveBackgroundTrace).thenReturn(Optional.of(SpanContext.create(
+                "ffffffffffffffffffffffffffffffff", "ffffffffffffffff", TraceFlags.getDefault(), TraceState.getDefault())));
 
         JsonNode jsonNode = objectMapper.readTree(layout.doLayout(createEvent("With both")));
 

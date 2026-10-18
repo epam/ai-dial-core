@@ -1,13 +1,23 @@
 package com.epam.aidial.core.server.tracing;
 
+import com.epam.aidial.core.server.ContextManager;
+import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.log.JsonLogCapture;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.TraceFlags;
 import io.opentelemetry.api.trace.TraceId;
+import io.opentelemetry.api.trace.TraceState;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
+import io.opentelemetry.sdk.common.CompletableResultCode;
+import io.opentelemetry.sdk.logs.SdkLoggerProvider;
+import io.opentelemetry.sdk.logs.data.LogRecordData;
+import io.opentelemetry.sdk.logs.export.LogRecordExporter;
+import io.opentelemetry.sdk.logs.export.SimpleLogRecordProcessor;
 import io.opentelemetry.sdk.trace.ReadWriteSpan;
 import io.opentelemetry.sdk.trace.ReadableSpan;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
@@ -15,6 +25,8 @@ import io.opentelemetry.sdk.trace.SpanProcessor;
 import io.opentelemetry.sdk.trace.samplers.Sampler;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.json.JsonObject;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
@@ -25,6 +37,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -37,6 +50,8 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(VertxExtension.class)
 public class BackgroundOperationTracerTest {
@@ -235,6 +250,221 @@ public class BackgroundOperationTracerTest {
             assertInstanceOf(IllegalStateException.class, error);
             testContext.completeNow();
         })));
+    }
+
+    @Test
+    void testConsoleJsonCarriesTraceIdSpanIdAndFlagsOfTheRun(VertxTestContext testContext) {
+        JsonLogCapture logs = JsonLogCapture.attach();
+        AtomicReference<SpanContext> run = new AtomicReference<>();
+
+        Future<Void> traced = tracer.traceFuture(() -> {
+            run.set(Span.current().getSpanContext());
+            LOGGER.info("tracer-test console");
+            return Future.succeededFuture();
+        });
+
+        traced.onComplete(ar -> {
+            try {
+                testContext.verify(() -> {
+                    assertTrue(ar.succeeded());
+                    JsonNode line = logs.await("tracer-test console");
+                    assertEquals(run.get().getTraceId(), line.path("TraceId").asText());
+                    assertEquals(run.get().getSpanId(), line.path("SpanId").asText());
+                    assertEquals("00", line.path("TraceFlags").asText());
+                });
+                testContext.completeNow();
+            } finally {
+                logs.close();
+            }
+        });
+    }
+
+    @Test
+    void testConsoleJsonAndOtelLogRecordsShareTheTrace(VertxTestContext testContext) {
+        JsonLogCapture logs = JsonLogCapture.attach();
+        List<LogRecordData> exported = new CopyOnWriteArrayList<>();
+        SdkLoggerProvider loggerProvider = SdkLoggerProvider.builder()
+                .addLogRecordProcessor(SimpleLogRecordProcessor.create(new LogRecordExporter() {
+                    @Override
+                    public CompletableResultCode export(Collection<LogRecordData> records) {
+                        exported.addAll(records);
+                        return CompletableResultCode.ofSuccess();
+                    }
+
+                    @Override
+                    public CompletableResultCode flush() {
+                        return CompletableResultCode.ofSuccess();
+                    }
+
+                    @Override
+                    public CompletableResultCode shutdown() {
+                        return CompletableResultCode.ofSuccess();
+                    }
+                }))
+                .build();
+
+        Future<Void> traced = tracer.traceFuture(() -> taskExecutor.<Void>submit(() -> {
+            // the OpenTelemetryAppender emits with Context.current(), as done here
+            loggerProvider.get("tracer-test").logRecordBuilder().setContext(Context.current()).setBody("tracer-test otel").emit();
+            LOGGER.info("tracer-test console and otel");
+            return null;
+        }));
+
+        traced.onComplete(ar -> {
+            try {
+                testContext.verify(() -> {
+                    assertTrue(ar.succeeded());
+                    assertEquals(1, exported.size());
+                    SpanContext otel = exported.get(0).getSpanContext();
+                    JsonNode line = logs.await("tracer-test console and otel");
+                    assertTrue(otel.isValid());
+                    assertEquals(otel.getTraceId(), line.path("TraceId").asText());
+                    assertEquals(otel.getSpanId(), line.path("SpanId").asText());
+                });
+                testContext.completeNow();
+            } finally {
+                logs.close();
+            }
+        });
+    }
+
+    @Test
+    void testConsoleJsonOfOverlappingRunsKeepsEachRunsIds(Vertx vertx, VertxTestContext testContext) {
+        JsonLogCapture logs = JsonLogCapture.attach();
+        io.vertx.core.Context parent = vertx.getOrCreateContext();
+        parent.runOnContext(v -> {
+            Future<SpanContext> a = logFromVirtualThread("tracer-test run-a");
+            Future<SpanContext> b = logFromVirtualThread("tracer-test run-b");
+
+            Future.all(a, b).onComplete(ar -> {
+                try {
+                    testContext.verify(() -> {
+                        assertTrue(ar.succeeded());
+                        assertNotEquals(a.result().getTraceId(), b.result().getTraceId());
+                        for (String name : List.of("run-a", "run-b")) {
+                            SpanContext expected = (name.equals("run-a") ? a : b).result();
+                            for (JsonNode line : logs.await("tracer-test " + name, 2)) {
+                                assertEquals(expected.getTraceId(), line.path("TraceId").asText(), line.path("Body").asText());
+                                assertEquals(expected.getSpanId(), line.path("SpanId").asText(), line.path("Body").asText());
+                            }
+                        }
+                    });
+                    testContext.completeNow();
+                } finally {
+                    logs.close();
+                }
+            });
+        });
+    }
+
+    private Future<SpanContext> logFromVirtualThread(String message) {
+        AtomicReference<SpanContext> run = new AtomicReference<>();
+        return tracer.traceFuture(() -> {
+            run.set(Span.current().getSpanContext());
+            LOGGER.info("{} before", message);
+            return taskExecutor.submit(() -> {
+                Thread.sleep(100);
+                LOGGER.info("{} after", message);
+                return null;
+            }).map(ignored -> run.get());
+        });
+    }
+
+    @Test
+    void testConsoleJsonIgnoresSpanOfRequestContext(Vertx vertx, VertxTestContext testContext) {
+        JsonLogCapture logs = JsonLogCapture.attach();
+        // what the Vert.x tracer leaves on a request's context before its ProxyContext exists
+        SpanContext request = SpanContext.create(
+                TraceId.fromLongs(1, 2), "0000000000000003", TraceFlags.getSampled(), TraceState.getDefault());
+        ContextInternal requestContext = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
+        requestContext.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, Context.root().with(Span.wrap(request)));
+
+        requestContext.runOnContext(v -> {
+            try {
+                assertTrue(BackgroundOperationTracer.resolveBackgroundTrace().isEmpty());
+                LOGGER.info("tracer-test request span");
+                JsonNode line = logs.await("tracer-test request span");
+                testContext.verify(() -> {
+                    assertEquals("", line.path("TraceId").asText());
+                    assertEquals("", line.path("SpanId").asText());
+                    assertEquals("", line.path("TraceFlags").asText());
+                });
+                testContext.completeNow();
+            } catch (Throwable e) {
+                testContext.failNow(e);
+            } finally {
+                logs.close();
+            }
+        });
+    }
+
+    @Test
+    void testNoTraceWithoutVertxContextOrActiveContext(Vertx vertx, VertxTestContext testContext) {
+        JsonLogCapture logs = JsonLogCapture.attach();
+        assertNull(Vertx.currentContext());
+        assertTrue(BackgroundOperationTracer.resolveBackgroundTrace().isEmpty());
+        LOGGER.info("tracer-test no vertx context");
+
+        ContextInternal bare = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
+        bare.runOnContext(v -> {
+            try {
+                assertNull(bare.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT));
+                assertTrue(BackgroundOperationTracer.resolveBackgroundTrace().isEmpty());
+                LOGGER.info("tracer-test no active context");
+                for (String body : List.of("tracer-test no vertx context", "tracer-test no active context")) {
+                    JsonNode line = logs.await(body);
+                    testContext.verify(() -> {
+                        assertEquals("", line.path("TraceId").asText(), body);
+                        assertEquals("", line.path("SpanId").asText(), body);
+                        assertEquals("", line.path("TraceFlags").asText(), body);
+                    });
+                }
+                testContext.completeNow();
+            } catch (Throwable e) {
+                testContext.failNow(e);
+            } finally {
+                logs.close();
+            }
+        });
+    }
+
+    @Test
+    void testRunStartedByTimerOfRequestUsesItsOwnTrace(Vertx vertx, VertxTestContext testContext) {
+        JsonLogCapture logs = JsonLogCapture.attach();
+        SpanContext request = SpanContext.create(
+                TraceId.fromLongs(1, 2), "0000000000000003", TraceFlags.getSampled(), TraceState.getDefault());
+        ProxyContext proxyContext = mock(ProxyContext.class);
+        when(proxyContext.getResponse()).thenReturn(mock(HttpServerResponse.class));
+        when(proxyContext.getTraceId()).thenReturn(request.getTraceId());
+        when(proxyContext.getSpanId()).thenReturn(request.getSpanId());
+        when(proxyContext.getTraceFlags()).thenReturn(request.getTraceFlags().asHex());
+
+        ContextInternal requestContext = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
+        requestContext.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, Context.root().with(Span.wrap(request)));
+        AtomicReference<SpanContext> run = new AtomicReference<>();
+
+        requestContext.runOnContext(v -> {
+            ContextManager.setProxyContext(proxyContext);
+            // the timer fires on the request's context, as one created in a request handler does
+            vertx.setTimer(10, id -> tracer.traceFuture(() -> {
+                run.set(BackgroundOperationTracer.resolveBackgroundTrace().orElseThrow());
+                LOGGER.info("tracer-test timer of a request");
+                return Future.<Void>succeededFuture();
+            }).onComplete(ar -> {
+                try {
+                    testContext.verify(() -> {
+                        assertTrue(ar.succeeded());
+                        assertNotEquals(request.getTraceId(), run.get().getTraceId());
+                        JsonNode line = logs.await("tracer-test timer of a request");
+                        assertEquals(run.get().getTraceId(), line.path("TraceId").asText());
+                        assertEquals(run.get().getSpanId(), line.path("SpanId").asText());
+                    });
+                    testContext.completeNow();
+                } finally {
+                    logs.close();
+                }
+            }));
+        });
     }
 
     private static String currentTraceId() {

@@ -159,4 +159,7 @@ that run uses, the same way a request keeps its own. The context a timer fires o
 anything else created from it, so writing the trace context there and restoring it later would let overlapping
 runs, or callbacks on other threads, read each other's trace id. Work the run submits (`AsyncTaskExecutor`) and the
 callbacks of the future `traceFuture` returns capture the duplicate, so they log with the run's trace id.
+The console JSON layout reads the run's trace id, span id and trace flags from that duplicate, but only when the span
+stored there is the run's own `BackgroundSpan`: it never takes them from the span of a request, and a log line without
+a request and outside a run keeps empty identifiers.
 `pollJobs` is fire-and-forget: its trace id covers claiming jobs, not the execution of each claimed job.
