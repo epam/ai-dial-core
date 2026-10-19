@@ -1,5 +1,6 @@
 package com.epam.aidial.core.storage.resource;
 
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 public enum ResourceTypes implements ResourceType {
@@ -36,6 +37,15 @@ public enum ResourceTypes implements ResourceType {
     SKILL("skills", false, TimeUnit.MINUTES.toMillis(5)),
     BACKGROUND_JOB("background_jobs", true, TimeUnit.MINUTES.toMillis(5)),
     PROJECT("projects", false, TimeUnit.MINUTES.toMillis(5));
+
+    /**
+     * Types published on the resource topic: those the resource subscribe API or the config replicas consume.
+     * A new consumer of another type must add it here one release before it starts consuming:
+     * pods of a release that does not list the type do not publish it.
+     */
+    public static final Set<ResourceType> EVENT_TYPES = Set.of(
+            FILE, CONVERSATION, PROMPT, APPLICATION, TOOL_SET,
+            MODEL, APP_TYPE_SCHEMA, CATALOG_SCHEMA, INTERCEPTOR, TRANSLATOR, ROLE, PROJECT_KEY, ROUTE, GLOBAL_SETTINGS);
 
     private final String group;
     private final String urlSegment;
