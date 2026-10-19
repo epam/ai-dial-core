@@ -32,8 +32,8 @@ public class BuildUpstreamCacheFn extends BaseRequestFunction<RequestObject> {
         return false;
     }
 
-    private static boolean isCacheSupported(Model model) {
-        Features features = model.getFeatures();
+    private boolean isCacheSupported(Model model) {
+        Features features = model.resolveFeatures(interfaceType);
         if (features == null) {
             return false;
         }

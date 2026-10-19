@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
@@ -10,6 +11,8 @@ import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.Translator;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -19,9 +22,11 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.InvalidEntityRecord;
+import com.epam.aidial.core.server.config.KeyValidator;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.config.ValidationWarning;
@@ -33,11 +38,14 @@ import com.epam.aidial.core.server.security.EntityBucketBinding;
 import com.epam.aidial.core.server.security.Operation;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.CatalogSchemaService;
+import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
+import com.epam.aidial.core.server.validation.ValidationUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
@@ -56,6 +64,7 @@ import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
@@ -65,7 +74,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
-import java.util.regex.Pattern;
 
 import static com.epam.aidial.core.server.service.config.ConfigEntityCodec.BLOB_MAPPER;
 
@@ -85,10 +93,6 @@ public class ConfigResourceController implements Controller {
     private static final String SETTINGS_SINGLETON_NAME = "global";
     private static final String ALLOW_HEADER = "GET, PUT, DELETE";
 
-    // Per design 02 §4 / 03 §3: conservative floor for admin-config entity names, extendable
-    // on client request when a concrete workflow is broken. Applied to the URL-decoded segment.
-    public static final Pattern ENTITY_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9._%:-]+$");
-
     private final ProxyContext context;
     private final ConfigAuthorizationService authorizationService;
     private final MergedConfigStore mergedConfigStore;
@@ -100,35 +104,30 @@ public class ConfigResourceController implements Controller {
     private final LockService lockService;
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
+    private final CatalogSchemaService catalogSchemaService;
+    private final ResourceAuthSettingsService resourceAuthSettingsService;
     private final String entityType;
     private final String bucket;
     private final String path;
 
-    public ConfigResourceController(ProxyContext context,
-                                    ConfigAuthorizationService authorizationService,
-                                    MergedConfigStore mergedConfigStore,
-                                    ResourceService resourceService,
-                                    AsyncTaskExecutor taskExecutor,
-                                    SecretFieldProcessor secretFieldProcessor,
-                                    boolean softValidation,
-                                    ApiKeyStore apiKeyStore,
-                                    LockService lockService,
-                                    ApplicationService applicationService,
-                                    ToolSetService toolSetService,
+    public ConfigResourceController(Proxy proxy,
+                                    ProxyContext context,
                                     String entityType,
                                     String bucket,
                                     String path) {
         this.context = context;
-        this.authorizationService = authorizationService;
-        this.mergedConfigStore = mergedConfigStore;
-        this.resourceService = resourceService;
-        this.taskExecutor = taskExecutor;
-        this.secretFieldProcessor = secretFieldProcessor;
-        this.softValidation = softValidation;
-        this.apiKeyStore = apiKeyStore;
-        this.lockService = lockService;
-        this.applicationService = applicationService;
-        this.toolSetService = toolSetService;
+        this.authorizationService = proxy.getConfigAuthService();
+        this.mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
+        this.resourceService = proxy.getResourceService();
+        this.taskExecutor = proxy.getTaskExecutor();
+        this.secretFieldProcessor = mergedConfigStore.getSecretFieldProcessor();
+        this.softValidation = mergedConfigStore.isSoftValidation();
+        this.apiKeyStore = proxy.getApiKeyStore();
+        this.lockService = proxy.getLockService();
+        this.applicationService = proxy.getApplicationService();
+        this.toolSetService = proxy.getToolSetService();
+        this.catalogSchemaService = proxy.getCatalogSchemaService();
+        this.resourceAuthSettingsService = proxy.getResourceAuthSettingsService();
         this.entityType = entityType;
         this.bucket = bucket;
         this.path = path;
@@ -294,6 +293,86 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
+                    }
+            ),
+            // Translators
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/translators/{bucket}/{path}",
+                    operationId = "getTranslator",
+                    tags = {"Translators"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Translator name"),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Translator.class, EntityMetadata.class}),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the translator", required = true)
+                                    }),
+                            @ApiResponse(code = 304),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/translators/{bucket}/{path}",
+                    operationId = "saveTranslator",
+                    requestBody = @ApiSchema(implementation = Translator.class),
+                    tags = {"Translators"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Translator name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved translator", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 422),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/translators/{bucket}/{path}",
+                    operationId = "deleteTranslator",
+                    tags = {"Translators"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Translator name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 204, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
                     }
             ),
             // Roles
@@ -548,7 +627,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOfSchemaRefs = {"ProxyResponse"}, allOf = {EntityMetadata.class}),
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOfSchemaRefs = {"ApplicationTypeSchema"}, allOf = {EntityMetadata.class}),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the schema", required = true)
                                     }
@@ -570,7 +649,7 @@ public class ConfigResourceController implements Controller {
                     path = "/v1/schemas/{bucket}/{path}",
                     operationId = "saveSchema",
                     tags = {"Schemas"},
-                    requestBody = @ApiSchema(schemaRef = "ProxyRequest"),
+                    requestBody = @ApiSchema(schemaRef = "ApplicationTypeSchema"),
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID),
@@ -629,7 +708,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOfSchemaRefs = {"ProxyResponse"}, allOf = {EntityMetadata.class}),
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOfSchemaRefs = {"CatalogSchema"}, allOf = {EntityMetadata.class}),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the catalog schema", required = true)
                                     }
@@ -651,7 +730,7 @@ public class ConfigResourceController implements Controller {
                     path = "/v1/catalog_schemas/{bucket}/{path}",
                     operationId = "saveCatalogSchemaResource",
                     tags = {"Catalog"},
-                    requestBody = @ApiSchema(schemaRef = "ProxyRequest"),
+                    requestBody = @ApiSchema(schemaRef = "CatalogSchema"),
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID),
@@ -956,9 +1035,9 @@ public class ConfigResourceController implements Controller {
             return handleGet();
         }
         if ((method == HttpMethod.PUT || method == HttpMethod.DELETE)
-                && !ENTITY_NAME_PATTERN.matcher(path == null ? "" : path).matches()) {
+                && !ConfigPostProcessor.ENTITY_NAME_PATTERN.matcher(path == null ? "" : path).matches()) {
             context.respond(HttpStatus.BAD_REQUEST,
-                    "Invalid entity name segment: must match " + ENTITY_NAME_PATTERN.pattern());
+                    "Invalid entity name segment: must match " + ConfigPostProcessor.ENTITY_NAME_PATTERN.pattern());
             return Future.succeededFuture();
         }
         // TOOL_SET names are further constrained than ENTITY_NAME_PATTERN: the merged-config rebuild
@@ -1019,6 +1098,8 @@ public class ConfigResourceController implements Controller {
                     (key, model) -> projectItem(model, key));
             case INTERCEPTOR -> handleSingleGetFromBlob(ResourceTypes.INTERCEPTOR,
                     (key, interceptor) -> projectItem(interceptor, key));
+            case TRANSLATOR -> handleSingleGetFromBlob(ResourceTypes.TRANSLATOR,
+                    (key, translator) -> projectItem(translator, key));
             case ROLE -> handleSingleGetFromBlob(ResourceTypes.ROLE,
                     (key, role) -> projectItem(role, key));
             case PROJECT_KEY -> handleSingleGet(
@@ -1036,19 +1117,24 @@ public class ConfigResourceController implements Controller {
             // actually be shown the hint.
             case APPLICATION -> handleSingleGetFromBlob(ResourceTypes.APPLICATION,
                     (key, application) -> {
+                        Application entity = (Application) application;
+                        new ResourceAuthStatusEnricher(context, resourceAuthSettingsService)
+                                .enrichApplication(path, entity.getExternalServices());
                         if (admin) {
                             applicationService.decryptExternalServiceSecretsForResponse(
-                                    descriptorFor(ResourceTypes.APPLICATION), (Application) application);
+                                    descriptorFor(ResourceTypes.APPLICATION), entity);
                         }
-                        return redactExternalServiceSecrets(projectItem(application, key), admin);
+                        return redactExternalServiceSecrets(projectItem(entity, key), admin);
                     });
             case TOOL_SET -> handleSingleGetFromBlob(ResourceTypes.TOOL_SET,
                     (key, toolSet) -> {
+                        ToolSet entity = (ToolSet) toolSet;
+                        new ResourceAuthStatusEnricher(context, resourceAuthSettingsService).enrichToolSet(path, entity);
                         if (admin) {
                             toolSetService.decryptAuthSettingsForResponse(
-                                    descriptorFor(ResourceTypes.TOOL_SET), (ToolSet) toolSet);
+                                    descriptorFor(ResourceTypes.TOOL_SET), entity);
                         }
-                        return redactAuthSettingsSecrets(projectItem(toolSet, key), admin);
+                        return redactAuthSettingsSecrets(projectItem(entity, key), admin);
                     });
             case GLOBAL_SETTINGS -> handleSettingsGet(config);
             default -> respondMethodNotAllowed();
@@ -1248,6 +1334,8 @@ public class ConfigResourceController implements Controller {
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case INTERCEPTOR -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.INTERCEPTOR,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
+            case TRANSLATOR -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.TRANSLATOR,
+                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case ROLE -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROLE,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case PROJECT_KEY -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.PROJECT_KEY,
@@ -1290,6 +1378,7 @@ public class ConfigResourceController implements Controller {
         ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
         body.set("globalInterceptors", ProxyUtil.MAPPER.valueToTree(config.getGlobalInterceptors()));
         body.set("retriableErrorCodes", ProxyUtil.MAPPER.valueToTree(config.getRetriableErrorCodes()));
+        body.set("rateLimitSchedule", ProxyUtil.MAPPER.valueToTree(config.getRateLimitSchedule()));
         body.put("name", SETTINGS_SINGLETON_NAME);
         body.put("status", "valid");
         context.respond(HttpStatus.OK, body);
@@ -1314,6 +1403,10 @@ public class ConfigResourceController implements Controller {
             // Deserialize through the typed GlobalSettings POJO so unknown fields are dropped and types
             // are validated; re-serialize so the blob is canonical (locked field set, no extras).
             GlobalSettings settings = ConfigEntityCodec.treeToEntity(requestNode, GlobalSettings.class);
+            // BLOB_MAPPER (unlike the file-config load path) does not run bean validation, so
+            // GlobalSettings' constraints (rateLimitSchedule's @ValidTimezone/@Pattern, no-null
+            // elements in globalInterceptors/retriableErrorCodes) need an explicit check here.
+            ValidationUtil.validate(settings);
             String blobBody = ConfigEntityCodec.serializeForBlob(settings);
             String author = context.getUserDisplayName();
             return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
@@ -1476,7 +1569,6 @@ public class ConfigResourceController implements Controller {
 
                 String blobBody;
                 Key keyEntity = null;
-                String keySecret = null;
                 String oldSecret = null;
                 Object entity = null;
                 Map<String, String> putEventMetadata = null;
@@ -1528,7 +1620,11 @@ public class ConfigResourceController implements Controller {
                     }
                     entity = ConfigEntityCodec.treeToEntity(source, spec.entityClass());
                     if (entity instanceof Model m) {
-                        checkCrossReferences(m);
+                        checkModel(m);
+                    } else if (entity instanceof Interceptor interceptor) {
+                        checkOverridePaths(interceptor);
+                    } else if (entity instanceof Translator t) {
+                        checkTranslator(t);
                     }
                     ResourceTypes writeType = resourceType();
                     if (writeType == ResourceTypes.MODEL || writeType == ResourceTypes.INTERCEPTOR) {
@@ -1536,10 +1632,8 @@ public class ConfigResourceController implements Controller {
                     }
                     if (spec.isKey()) {
                         keyEntity = (Key) entity;
-                        validateKeyForApiWrite(keyEntity, "PUT");
-                        // Capture before encryptFields mutates Key.key to ciphertext in place;
-                        // ApiKeyStore is indexed by plaintext secret (see ApiKeyStore.getApiKeyData).
-                        keySecret = keyEntity.getKey();
+                        validateKeyForApiWrite(keyEntity);
+                        rejectDuplicateKeySecret(keyEntity, oldSecret, requestNode, descriptor);
                     }
                     if (spec.hasEncryptedFields()) {
                         secretFieldProcessor.encryptFields(entity, descriptor);
@@ -1550,12 +1644,6 @@ public class ConfigResourceController implements Controller {
                 // blob layer doesn't re-validate against a stale snapshot.
                 ResourceItemMetadata meta = resourceService.putResource(
                         descriptor, blobBody, EtagHeader.ANY, author, false, putEventMetadata);
-                if (keySecret != null) {
-                    apiKeyStore.addOrUpdateKey(keySecret, apiKeyData(keyEntity));
-                    if (oldSecret != null && !oldSecret.isBlank() && !oldSecret.equals(keySecret)) {
-                        apiKeyStore.removeKey(oldSecret);
-                    }
-                }
                 // Decrypt-in-place after blob put. PUT-upsert can produce a mixed
                 // plaintext/ciphertext entity (preserve-on-omit on the update arm); decryptValue
                 // is idempotent on plaintext and restores ciphertext fields to plaintext,
@@ -1563,6 +1651,16 @@ public class ConfigResourceController implements Controller {
                 // Config (read-after-write parity).
                 if (entity != null && spec.hasEncryptedFields()) {
                     secretFieldProcessor.decryptFields(entity, descriptor);
+                }
+                if (keyEntity != null) {
+                    // Capture after the decrypt above: on preserve-on-omit the merged Key.key
+                    // holds the prior ciphertext until then, and ApiKeyStore is indexed by
+                    // plaintext (see ApiKeyStore.addOrUpdateKey).
+                    String keySecret = keyEntity.getKey();
+                    apiKeyStore.addOrUpdateKey(keySecret, apiKeyData(keyEntity));
+                    if (oldSecret != null && !oldSecret.isBlank() && !oldSecret.equals(keySecret)) {
+                        apiKeyStore.removeKey(oldSecret);
+                    }
                 }
                 ResourceTypes writeType = typeOf(descriptor);
                 String mapKey = putEventMetadata != null
@@ -1717,18 +1815,42 @@ public class ConfigResourceController implements Controller {
         }
     }
 
+    /**
+     * Rejects a key write whose secret is already used by a different key entity — ApiKeyStore
+     * indexes keys by plaintext secret, so a duplicate would collapse the two entities' auth.
+     *
+     * <p>The {@code requestNode.hasNonNull("key")} guard is load-bearing: on an omitted-key
+     * update, {@code keyEntity.getKey()} still holds ciphertext (merged from the raw blob before
+     * decryption) while {@code oldSecret} is plaintext, so without this guard every unrelated-field
+     * update would look like a secret change.
+     */
+    private void rejectDuplicateKeySecret(Key keyEntity, String oldSecret, JsonNode requestNode,
+                                          ResourceDescriptor descriptor) {
+        if (!requestNode.hasNonNull("key")) {
+            return;
+        }
+        Config snapshot = mergedConfigStore.get();
+        if (snapshot == null) {
+            return;
+        }
+        String error = KeyValidator.validateSecretNotTaken(snapshot,
+                MergedConfigStore.resolveMapKeyFor(descriptor), keyEntity, oldSecret);
+        if (error != null) {
+            throw new HttpException(HttpStatus.CONFLICT, error);
+        }
+    }
+
     private static ApiKeyData apiKeyData(Key key) {
         ApiKeyData data = new ApiKeyData();
         data.setOriginalKey(key);
         return data;
     }
 
-    private static void validateKeyForApiWrite(Key key, String method) {
-        if (StringUtils.isBlank(key.getKey())) {
-            throw new HttpException(HttpStatus.BAD_REQUEST,
-                    "Key.key must be provided explicitly on " + method);
+    private static void validateKeyForApiWrite(Key key) {
+        String error = KeyValidator.validateRequiredFields(key);
+        if (error != null) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, error);
         }
-        validateProjectKey(key);
     }
 
     /**
@@ -1749,6 +1871,7 @@ public class ConfigResourceController implements Controller {
         return switch (type) {
             case MODEL -> new WriteSpec(descriptor, Model.class, true, false);
             case INTERCEPTOR -> new WriteSpec(descriptor, Interceptor.class, false, false);
+            case TRANSLATOR -> new WriteSpec(descriptor, Translator.class, false, false);
             case ROLE -> new WriteSpec(descriptor, Role.class, false, false);
             case PROJECT_KEY -> new WriteSpec(descriptor, Key.class, true, true);
             case ROUTE -> new WriteSpec(descriptor, Route.class, true, false);
@@ -1761,17 +1884,6 @@ public class ConfigResourceController implements Controller {
         };
     }
 
-    private static void validateProjectKey(Key key) {
-        // Mirrors ApiKeyStore#validateProjectKey (private there); duplicated to translate
-        // IllegalArgumentException into HttpException without widening visibility upstream.
-        if (StringUtils.isBlank(key.getProject())) {
-            throw new HttpException(HttpStatus.BAD_REQUEST, "Project key is undefined");
-        }
-        if (StringUtils.isBlank(key.getRole()) && (key.getRoles() == null || key.getRoles().isEmpty())) {
-            throw new HttpException(HttpStatus.BAD_REQUEST,
-                    "Invalid key: at least one role must be assigned to the key " + key.getProject());
-        }
-    }
 
     private static JsonNode parseJsonBody(Buffer body) {
         String text = body == null ? "" : body.toString(StandardCharsets.UTF_8);
@@ -1794,6 +1906,8 @@ public class ConfigResourceController implements Controller {
             // ApplicationService/ToolSetService signal a missing entity via this unchecked exception
             // rather than HttpException (unlike the raw-blob path this controller otherwise uses).
             context.respond(HttpStatus.NOT_FOUND, notFound.getMessage());
+        } else if (error instanceof ConstraintViolationException constraintViolationException) {
+            context.respond(HttpStatus.BAD_REQUEST, constraintViolationException.getMessage());
         } else if (error instanceof IllegalArgumentException ex) {
             context.respond(HttpStatus.BAD_REQUEST, ex.getMessage());
         } else {
@@ -1802,26 +1916,61 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * Cross-reference check for Model writes. Strict mode aborts with HTTP 422 carrying a
-     * {@code {"validationWarnings":[...]}} JSON body. Soft mode logs and proceeds — the next
-     * merged-config rebuild's skip path records the entity in
-     * {@link MergedConfigStore#getInvalidEntities()}.
+     * Collects validation warnings for Model writes. Rebuild invariants and catalog-properties
+     * failures abort with HTTP 422 even in soft mode; cross-reference warnings alone may proceed,
+     * recorded in {@link MergedConfigStore#getInvalidEntities()} until a later write repairs them.
+     *
+     * @see ConfigPostProcessor#validateModelInvariants
      */
-    private void checkCrossReferences(Model entity) {
+    private void checkModel(Model entity) {
         Config snapshot = mergedConfigStore.get();
-        if (snapshot == null) {
-            return;
-        }
+        Map<String, Translator> translators = snapshot != null ? snapshot.getTranslators() : Map.of();
         List<ValidationWarning> warnings = new ArrayList<>();
-        ConfigPostProcessor.validateCrossReferences(entity, snapshot, warnings);
+        ConfigPostProcessor.validateModelInvariants(entity, translators, warnings);
+        catalogSchemaService.validate(entity, warnings);
+        boolean hardFailure = !warnings.isEmpty();
+        boolean softFailure = snapshot != null && !ConfigPostProcessor.validateCrossReferences(entity, snapshot, warnings);
         UpstreamExtraDataMerger.validateNoOverlap(entity);
+        if (hardFailure || (softFailure && !softValidation)) {
+            rejectWithValidationWarnings(warnings);
+        }
+        if (softFailure) {
+            log.warn("Soft-mode cross-ref warnings for model '{}': {}", path, warnings);
+        }
+    }
+
+    /**
+     * Structural check for Translator writes. Without this, a translator missing {@code in} would
+     * reach the blob store before {@link MergedConfigStore#applyEntityWrite} rejects it, leaving a
+     * written-but-invalid blob and a misleading response — see
+     * {@link ConfigPostProcessor#validateTranslator}. Always enforced, unlike {@link #checkModel}'s
+     * soft-mode allowance: this is a self-contained structural defect, not a reference that a later
+     * write could still resolve.
+     */
+    private void checkTranslator(Translator entity) {
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateTranslator(path, entity, warnings);
         if (warnings.isEmpty()) {
             return;
         }
-        if (softValidation) {
-            log.warn("Soft-mode cross-ref warnings for model '{}': {}", path, warnings);
+        rejectWithValidationWarnings(warnings);
+    }
+
+    /**
+     * Structural check for a deployment write: an {@code overridePaths} entry Core cannot render is
+     * rejected before the blob is written, exactly as {@link #checkTranslator} rejects a translator the
+     * rebuild would refuse. Always enforced, unlike {@link #checkModel}'s soft-mode allowance.
+     */
+    private void checkOverridePaths(Deployment entity) {
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateOverridePaths(entity, warnings);
+        if (warnings.isEmpty()) {
             return;
         }
+        rejectWithValidationWarnings(warnings);
+    }
+
+    private void rejectWithValidationWarnings(List<ValidationWarning> warnings) {
         ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
         ArrayNode arr = body.putArray("validationWarnings");
         for (ValidationWarning warning : warnings) {
@@ -1934,6 +2083,7 @@ public class ConfigResourceController implements Controller {
         return switch (ResourceTypes.of(entityType)) {
             case MODEL -> Model.class;
             case INTERCEPTOR -> Interceptor.class;
+            case TRANSLATOR -> Translator.class;
             case ROLE -> Role.class;
             case PROJECT_KEY -> Key.class;
             case ROUTE -> Route.class;

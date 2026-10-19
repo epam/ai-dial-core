@@ -13,6 +13,8 @@ dependencies {
     implementation("com.google.auth:google-auth-library-oauth2-http:${google_auth_version}")
     implementation("com.google.cloud:google-cloud-iamcredentials:${google_cloud_version}")
     implementation("com.google.protobuf:protobuf-java:${google_protobuf_version}")
+    implementation("io.micrometer:micrometer-core:${micrometer_version}")
+    implementation("io.opentelemetry:opentelemetry-api:${opentelemetry_version}")
     implementation("org.apache.commons:commons-lang3:${apache_commons_version}")
     implementation("org.apache.jclouds.api:filesystem:${apache_jclouds_version}")
     implementation("org.apache.jclouds:jclouds-allblobstore:${apache_jclouds_version}")
@@ -24,6 +26,7 @@ dependencies {
     testImplementation("com.github.codemonstur:embedded-redis:${github_codemonstur_embedded_redis}") {
         exclude group: 'org.slf4j', module: 'slf4j-simple'
     }
+    testImplementation("io.opentelemetry:opentelemetry-sdk-testing:${opentelemetry_version}")
     testImplementation("org.junit.jupiter:junit-jupiter:${junit_version}")
     testImplementation("org.mockito:mockito-core:${mockito_version}")
     testImplementation("org.mockito:mockito-junit-jupiter:${mockito_version}")

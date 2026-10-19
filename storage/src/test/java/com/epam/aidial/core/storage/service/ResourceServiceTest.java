@@ -3,12 +3,16 @@ package com.epam.aidial.core.storage.service;
 import com.epam.aidial.core.storage.FileUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
+import com.epam.aidial.core.storage.data.FileMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.lang3.tuple.Pair;
+import org.jclouds.blobstore.domain.Blob;
+import org.jclouds.blobstore.domain.MutableBlobMetadata;
+import org.jclouds.io.MutableContentMetadata;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -307,6 +311,65 @@ public class ResourceServiceTest {
             root = root.getCause();
         }
         assertEquals("blob is down", root.getMessage());
+    }
+
+    /**
+     * The blob store's own metadata may not report a content length (observed in production
+     * against GCS: https://github.com/epam/ai-dial-core/issues/1971). getResourceMetadata must
+     * not NPE when unboxing it into FileMetadata's primitive field.
+     */
+    @Test
+    public void testGetResourceMetadataToleratesNullContentLengthFromBlobMetadata() {
+        ResourceDescriptor descriptor = fileResource("null_content_length");
+        storage.store(descriptor.getAbsoluteFilePath(), "application/octet-stream", null,
+                Map.of("author", "user"), "body".getBytes());
+
+        BlobStorage spy = blobStorageWithNullContentLength(descriptor.getAbsoluteFilePath());
+        ResourceService spied = serviceWithBlobStorage(spy, "null-content-length-meta");
+
+        ResourceItemMetadata metadata = spied.getResourceMetadata(descriptor);
+
+        assertNotNull(metadata);
+        assertEquals(0L, ((FileMetadata) metadata).getContentLength());
+    }
+
+    /**
+     * Same null-content-length hazard, but on the getResourceStream path, which reads the blob's
+     * metadata directly rather than through getResourceMetadata.
+     */
+    @Test
+    public void testGetResourceStreamToleratesNullContentLengthFromBlobMetadata() throws IOException {
+        ResourceDescriptor descriptor = fileResource("null_content_length_stream");
+        storage.store(descriptor.getAbsoluteFilePath(), "application/octet-stream", null,
+                Map.of("author", "user"), "body".getBytes());
+
+        BlobStorage spy = blobStorageWithNullContentLength(descriptor.getAbsoluteFilePath());
+        ResourceService spied = serviceWithBlobStorage(spy, "null-content-length-stream");
+
+        try (ResourceService.ResourceStream stream = spied.getResourceStream(descriptor, EtagHeader.ANY)) {
+            assertNotNull(stream);
+            assertEquals(4L, stream.contentLength());
+        }
+    }
+
+    private BlobStorage blobStorageWithNullContentLength(String blobKey) {
+        Blob realBlob = storage.load(blobKey);
+        MutableBlobMetadata spiedMeta = Mockito.spy(realBlob.getMetadata());
+        MutableContentMetadata spiedContent = Mockito.spy(spiedMeta.getContentMetadata());
+        Mockito.when(spiedContent.getContentLength()).thenReturn(null);
+        Mockito.when(spiedMeta.getContentMetadata()).thenReturn(spiedContent);
+
+        Blob spiedBlob = Mockito.spy(realBlob);
+        Mockito.when(spiedBlob.getMetadata()).thenReturn(spiedMeta);
+
+        BlobStorage spy = Mockito.spy(storage);
+        Mockito.when(spy.meta(blobKey)).thenReturn(spiedMeta);
+        Mockito.when(spy.load(blobKey)).thenReturn(spiedBlob);
+        return spy;
+    }
+
+    private static ResourceDescriptor fileResource(String name) {
+        return new ResourceDescriptor(ResourceTypes.FILE, name, List.of(), "bucket", "bucket/", false);
     }
 
     private static Map<ResourceDescriptor, String> load(ResourceService target, List<ResourceDescriptor> descriptors) {

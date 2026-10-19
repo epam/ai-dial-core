@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller.route;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.config.UpstreamAuthType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.Controller;
@@ -161,18 +162,37 @@ abstract class BaseRouteController implements Controller {
 
     void copyHeaders(MultiMap from, MultiMap to) {
         Upstream upstream = context.getUpstreamRoute().get();
-        MultiMap excludeHeaders = excludeHeaders();
+        boolean bearer = supportsUpstreamAuthType() && upstream != null && upstream.getKey() != null
+                && upstream.getAuthType() == UpstreamAuthType.BEARER;
+        MultiMap excludeHeaders = excludeHeaders(bearer);
         ProxyUtil.copyHeaders(from, to, excludeHeaders);
         if (upstream != null && upstream.getKey() != null) {
-            to.add(Proxy.HEADER_API_KEY, upstream.getKey());
+            if (bearer) {
+                to.set(HttpHeaders.AUTHORIZATION, "Bearer " + upstream.getKey());
+            } else {
+                to.add(Proxy.HEADER_API_KEY, upstream.getKey());
+            }
         } else {
             ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
             to.add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
         }
     }
 
-    protected MultiMap excludeHeaders() {
-        return MultiMap.caseInsensitiveMultiMap();
+    protected MultiMap excludeHeaders(boolean bearer) {
+        MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
+        if (bearer) {
+            excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
+        }
+        return excludeHeaders;
+    }
+
+    /**
+     * Whether this controller honors {@link Upstream#getAuthType()}. Global routes do; application
+     * routes keep {@code Authorization} governed solely by {@code forwardAuthToken}, regardless of
+     * what an upstream's {@code authType} says, so the two settings can never contradict each other.
+     */
+    protected boolean supportsUpstreamAuthType() {
+        return true;
     }
 
     protected abstract void injectAdditionalHeaders(HttpClientRequest proxyRequest);

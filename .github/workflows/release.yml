@@ -16,9 +16,11 @@ concurrency:
 
 jobs:
   release:
-    uses: epam/ai-dial-ci/.github/workflows/java_release.yml@4.10.0
+    uses: epam/ai-dial-ci/.github/workflows/java_release.yml@4.12.0
     with:
       promote: ${{ github.event_name == 'workflow_dispatch' && inputs.promote }}
       platforms: "linux/amd64,linux/arm64"
       java-version: 21
+      trivy-severity: "CRITICAL,HIGH,MEDIUM,LOW"
+      trivy-severity-for-sarif: "CRITICAL,HIGH,MEDIUM,LOW"
     secrets: inherit

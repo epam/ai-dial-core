@@ -4,9 +4,9 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.LocalizedValue;
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.Route;
-import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -20,6 +20,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.extraction.ApplicationDeploymentExtractor;
 import com.epam.aidial.core.server.data.ApplicationData;
 import com.epam.aidial.core.server.data.FeaturesData;
+import com.epam.aidial.core.server.data.InterfaceConfigData;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ResourceLink;
 import com.epam.aidial.core.server.security.AccessService;
@@ -27,8 +28,8 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
-import com.epam.aidial.core.server.service.ExternalServiceStatusEnricher;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
 import com.epam.aidial.core.server.service.UserExternalServiceService;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -39,6 +40,7 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
 
@@ -47,6 +49,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 
 @Slf4j
@@ -62,7 +65,7 @@ public class ApplicationController {
     private final ApplicationSchemaService applicationSchemaService;
     private final UserExternalServiceService userExternalServiceService;
 
-    private final DeploymentService.DeploymentExtractor deploymentExtractor;
+    private final ApplicationDeploymentExtractor deploymentExtractor;
 
     private final AsyncTaskExecutor taskExecutor;
 
@@ -112,7 +115,8 @@ public class ApplicationController {
             // sign-in status (one credential lookup per service). The listing skips both to avoid
             // N×M lookups — it returns the inline definitions only.
             overlayUserAuthoredServices(data, application);
-            enrichExternalServiceStatuses(data);
+            new ResourceAuthStatusEnricher(context, resourceAuthSettingsService)
+                    .enrichApplication(UrlUtil.tryDecodePath(data.getId()), data.getExternalServices());
             return data;
         })
                 .onSuccess(data -> context.respond(HttpStatus.OK, data))
@@ -333,7 +337,14 @@ public class ApplicationController {
             try {
                 ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(appName, encryptionService);
                 if (resource.getType() == ResourceTypes.APPLICATION) {
-                    return accessService.hasWriteAccess(resource, context);
+                    // Reuses the permissions already batched per folder during the listing that produced
+                    // this Application, instead of re-deriving write access (and re-hitting Redis) per item.
+                    // Falls back to a real lookup for callers that didn't come through that listing (e.g.
+                    // the single-app GET), where the resource was never added to the batched map.
+                    Set<ResourceAccessType> batched = deploymentExtractor.getBatchedPermissions().get(resource);
+                    return batched != null
+                            ? batched.contains(ResourceAccessType.WRITE)
+                            : accessService.hasWriteAccess(resource, context);
                 }
             } catch (Exception e) {
                 // appName is not DIAL resource url, fall through to admin check
@@ -375,6 +386,7 @@ public class ApplicationController {
         data.setMaxInputAttachments(application.getMaxInputAttachments());
         data.setDefaults(application.getDefaults());
         data.setResponsesDefaults(application.getResponsesDefaults());
+        data.setInterfaceConfigs(InterfaceConfigData.createInterfaceConfigs(application));
         data.setDescriptionKeywords(application.getDescriptionKeywords());
 
         data.setApplicationTypeSchemaId(application.getApplicationTypeSchemaId());
@@ -454,29 +466,6 @@ public class ApplicationController {
         }
         return id.startsWith(CredentialsLocatorFactory.APPLICATIONS_PREFIX)
                 ? id.substring(CredentialsLocatorFactory.APPLICATIONS_PREFIX.length()) : id;
-    }
-
-    private void enrichExternalServiceStatuses(ApplicationData data) {
-        Map<String, ExternalService> services = data.getExternalServices();
-        if (services == null || services.isEmpty()) {
-            return;
-        }
-        String appId = appPart(data.getId());
-        ExternalServiceStatusEnricher enricher = new ExternalServiceStatusEnricher(context, resourceAuthSettingsService);
-        for (Map.Entry<String, ExternalService> entry : services.entrySet()) {
-            ResourceAuthSettings authSettings = entry.getValue().getAuthSettings();
-            if (authSettings == null) {
-                continue;
-            }
-            try {
-                String scopeId = CredentialsLocatorFactory.APPLICATIONS_PREFIX + appId
-                        + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + entry.getKey();
-                CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
-                enricher.enrich(locator, authSettings);
-            } catch (RuntimeException e) {
-                log.warn("Failed to compute external-service status for '{}' on '{}'", entry.getKey(), data.getId(), e);
-            }
-        }
     }
 
 }

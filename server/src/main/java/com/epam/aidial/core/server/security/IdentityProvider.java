@@ -12,6 +12,7 @@ import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.server.vertx.FutureUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -326,24 +327,17 @@ public class IdentityProvider {
     }
 
     private Future<JwkResult> getJwk(String kid) {
-        /* The result of vertx.executeBlocking is a future that contains Vert.x context which is valid during a request
-         * execution. So, if we put that future in a cache, it will contain a context from the initial request, that
-         * may be invalid for further requests. For this reason, when we retrieve the future from the cache, we must
-         * extract the value and put it into another future (Promise) which holds a valid context of a current request.
-         * */
-        Promise<JwkResult> promise = Promise.promise();
-        cache.computeIfAbsent(kid, key -> taskExecutor.submit(() -> {
+        return FutureUtil.shareLookup(cache, kid, () -> taskExecutor.submit(() -> {
             JwkResult jwkResult;
             long currentTime = System.currentTimeMillis();
             try {
-                Jwk jwk = jwkProvider.get(key);
+                Jwk jwk = jwkProvider.get(kid);
                 jwkResult = new JwkResult(jwk, null, currentTime + positiveCacheExpirationMs);
             } catch (Exception e) {
                 jwkResult = new JwkResult(null, e, currentTime + negativeCacheExpirationMs);
             }
             return jwkResult;
-        })).onSuccess(promise::complete).onFailure(promise::fail);
-        return promise.future();
+        }));
     }
 
     private Future<DecodedJWT> verifyJwt(DecodedJWT jwt) {

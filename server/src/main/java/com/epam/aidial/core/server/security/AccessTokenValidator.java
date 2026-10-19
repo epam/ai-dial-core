@@ -1,10 +1,14 @@
 package com.epam.aidial.core.server.security;
 
+import com.auth0.jwk.JwkProvider;
 import com.auth0.jwk.UrlJwkProvider;
 import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.epam.aidial.core.config.ResourceAuthSettings;
+import com.epam.aidial.core.server.http.HttpProxySelector;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.server.vertx.FutureUtil;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -12,9 +16,13 @@ import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.json.JsonObject;
+import io.vertx.core.net.ProxyOptions;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.MalformedURLException;
+import java.net.Proxy;
+import java.net.ProxySelector;
+import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,20 +45,27 @@ public class AccessTokenValidator {
 
     public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client,
                                 String claimsLogLevel) {
-        this(idpConfig, vertx, taskExecutor, client, new HttpClientOptions(), claimsLogLevel);
+        this(idpConfig, vertx, taskExecutor, client, new HttpClientOptions(), claimsLogLevel, BlockingCallTracer.NOOP);
     }
 
     public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client,
-                                HttpClientOptions clientOptions, String claimsLogLevel) {
+                                HttpClientOptions clientOptions, String claimsLogLevel, BlockingCallTracer blockingCallTracer) {
         int size = idpConfig.size();
         if (size < 1) {
             throw new IllegalArgumentException("At least one identity provider is required");
         }
         GetUserRoleFunctionFactory factory = new GetUserRoleFunctionFactory(client);
+        ProxyOptions proxyOptions = clientOptions.getProxyOptions();
+        ProxySelector jwksProxySelector = (proxyOptions == null) ? null
+                : new HttpProxySelector(proxyOptions, clientOptions.getNonProxyHosts());
         for (String idpKey : idpConfig.fieldNames()) {
             providers.add(new IdentityProvider(idpConfig.getJsonObject(idpKey), vertx, taskExecutor, client, clientOptions, jwksUrl -> {
                 try {
-                    return new UrlJwkProvider(new URL(jwksUrl));
+                    URI uri = URI.create(jwksUrl);
+                    URL url = uri.toURL();
+                    Proxy proxy = (jwksProxySelector == null) ? null : jwksProxySelector.select(uri).getFirst();
+                    JwkProvider jwkProvider = new UrlJwkProvider(url, null, null, proxy);
+                    return kid -> blockingCallTracer.trace("auth.jwks.fetch", () -> jwkProvider.get(kid));
                 } catch (MalformedURLException e) {
                     throw new IllegalArgumentException(e);
                 }
@@ -119,12 +134,7 @@ public class AccessTokenValidator {
     }
 
     private Future<ExtractedClaims> extractClaimsFromUserInfo(String accessToken, Supplier<Future<UserInfoResult>> fn) {
-
-        return userInfoCache.computeIfAbsent(accessToken, k -> fn.get())
-                .map(UserInfoResult::claims).onFailure(error -> {
-                    /* we don't need to keep the failed response any longer */
-                    userInfoCache.remove(accessToken);
-                });
+        return FutureUtil.shareLookup(userInfoCache, accessToken, fn).map(UserInfoResult::claims);
     }
 
     /**
@@ -226,7 +236,7 @@ public class AccessTokenValidator {
                     return null;
                 }
             }
-            promise.fail("IdP is not found in Core settings to support user info endpoint for extracting user claims from access token.");
+            promise.fail(new IdpNotFoundException("IdP is not found in Core settings to support user info endpoint for extracting user claims from access token."));
             return null;
         }).onFailure(promise::fail);
         return promise.future();

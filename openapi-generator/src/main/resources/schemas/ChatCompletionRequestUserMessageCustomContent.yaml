@@ -10,3 +10,8 @@ properties:
     type: object
     description: |-
       The JSON value corresponding to the JSON schema sent by the assistant in the previous message in the `custom_content.form_schema` field.
+  skills:
+    type: array
+    items:
+      $ref: "#/components/schemas/RequestSkill"
+    description: List of skills used to supply an additional input for the model.

@@ -1,7 +1,5 @@
 package com.epam.aidial.core.server.config;
 
-import com.epam.aidial.core.server.controller.ConfigResourceController;
-
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -136,7 +134,7 @@ public final class SchemaMigrationNameResolver {
                     + "': no path segment or host");
         }
 
-        Pattern entityNamePattern = ConfigResourceController.ENTITY_NAME_PATTERN;
+        Pattern entityNamePattern = ConfigPostProcessor.ENTITY_NAME_PATTERN;
         if (!entityNamePattern.matcher(candidate).matches()) {
             return Resolution.failure("Resolved blob name '" + candidate + "' for schema id '" + id
                     + "' has illegal characters: must match " + entityNamePattern.pattern());

@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.security;
 import com.epam.aidial.core.config.IpAddressRanges;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.config.FileConfigStore;
+import com.epam.aidial.core.server.config.KeyValidator;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -11,6 +12,7 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.epam.aidial.core.storage.util.RedisUtil;
 import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
@@ -44,6 +46,7 @@ public class ApiKeyStore {
     public static final String API_KEY_DATA_LOCATION = API_KEY_DATA_BUCKET + PATH_SEPARATOR;
 
     private final AsyncTaskExecutor taskExecutor;
+    private final BlockingCallTracer blockingCallTracer;
     private final RedissonClient redis;
     private final String prefix;
 
@@ -57,8 +60,9 @@ public class ApiKeyStore {
      */
     private final ReentrantLock mutationLock = new ReentrantLock();
 
-    public ApiKeyStore(AsyncTaskExecutor taskExecutor, RedissonClient redis, String prefix, JsonObject settings) {
+    public ApiKeyStore(AsyncTaskExecutor taskExecutor, RedissonClient redis, String prefix, JsonObject settings, BlockingCallTracer blockingCallTracer) {
         this.taskExecutor = taskExecutor;
+        this.blockingCallTracer = blockingCallTracer;
         this.redis = redis;
         this.prefix = prefix;
         this.ttl = Duration.ofSeconds(settings.getInteger("ttl", 1800));
@@ -81,15 +85,17 @@ public class ApiKeyStore {
     }
 
     public void assignPerRequestApiKey(ApiKeyData data, Duration customTtl) {
-        String perRequestKey = generateKey();
-        data.setPerRequestKey(perRequestKey);
-        String json = ProxyUtil.convertToString(data);
-        String redisKey = toRedisKey(perRequestKey);
-        RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
-        if (!bucket.setIfAbsent(json)) {
-            throw new IllegalStateException(String.format("API key %s already exists in Redis storage", perRequestKey));
-        }
-        bucket.expire(customTtl);
+        blockingCallTracer.trace("auth.api_key.assign", () -> {
+            String perRequestKey = generateKey();
+            data.setPerRequestKey(perRequestKey);
+            String json = ProxyUtil.convertToString(data);
+            String redisKey = toRedisKey(perRequestKey);
+            RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
+            if (!bucket.setIfAbsent(json, customTtl)) {
+                throw new IllegalStateException(String.format("API key %s already exists in Redis storage", perRequestKey));
+            }
+            return null;
+        });
     }
 
     public void updatePerRequestApiKey(String key, Function<String, String> fn) {
@@ -126,11 +132,11 @@ public class ApiKeyStore {
             return validateIpAddressRange(apiKeyData, clientIpAddress);
         }
         String redisKey = toRedisKey(key);
-        return taskExecutor.submit(() -> {
+        return taskExecutor.submit(() -> blockingCallTracer.trace("auth.api_key.lookup", () -> {
             RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
             String json = bucket.get();
             return ProxyUtil.convertToObject(json, ApiKeyData.class);
-        }).compose(result -> {
+        })).compose(result -> {
             if (result == null) {
                 return Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "Unknown api key"));
             }
@@ -203,7 +209,7 @@ public class ApiKeyStore {
             }
             ApiKeyData apiKeyData = new ApiKeyData();
             apiKeyData.setOriginalKey(value);
-            apiKeyDataMap.put(value.getKey(), apiKeyData);
+            putAndWarnOnDuplicateSecret(apiKeyDataMap, value, apiKeyData);
             log.debug("Loading {}", value);
         }
         for (Map.Entry<String, Key> entry : apiKeysByCanonicalId.entrySet()) {
@@ -216,10 +222,18 @@ public class ApiKeyStore {
             }
             ApiKeyData apiKeyData = new ApiKeyData();
             apiKeyData.setOriginalKey(value);
-            apiKeyDataMap.put(value.getKey(), apiKeyData);
+            putAndWarnOnDuplicateSecret(apiKeyDataMap, value, apiKeyData);
             log.debug("Loading {}", value);
         }
         keys = apiKeyDataMap;
+    }
+
+    private void putAndWarnOnDuplicateSecret(Map<String, ApiKeyData> apiKeyDataMap, Key value, ApiKeyData apiKeyData) {
+        ApiKeyData previous = apiKeyDataMap.put(value.getKey(), apiKeyData);
+        if (previous != null) {
+            log.warn("Duplicate key secret detected while rebuilding project keys; '{}' collides with '{}', "
+                    + "last one wins", value.getProject(), previous.getOriginalKey().getProject());
+        }
     }
 
     /**
@@ -261,11 +275,9 @@ public class ApiKeyStore {
     }
 
     private void validateProjectKey(Key key) {
-        if (StringUtils.isEmpty(key.getProject())) {
-            throw new IllegalArgumentException("Project key is undefined");
-        }
-        if (StringUtils.isEmpty(key.getRole()) && (key.getRoles() == null || key.getRoles().isEmpty())) {
-            throw new IllegalArgumentException("Invalid key: at least one role must be assigned to the key " + key.getProject());
+        String error = KeyValidator.validateProjectAndRoles(key);
+        if (error != null) {
+            throw new IllegalArgumentException(error);
         }
     }
 

@@ -3,6 +3,7 @@ package com.epam.aidial.core.server;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -25,6 +26,29 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     private static final String INTERCEPTOR_BODY_UPDATED = """
             {
               "endpoint": "http://localhost:7001/forward-v2"
+            }
+            """;
+
+    private static final String TRANSLATOR_BODY = """
+            {
+              "in": "anthropicMessages",
+              "out": "openaiChatCompletions",
+              "baseUrl": "http://localhost:7002/translate"
+            }
+            """;
+
+    private static final String TRANSLATOR_BODY_UPDATED = """
+            {
+              "in": "anthropicMessages",
+              "out": "openaiChatCompletions",
+              "baseUrl": "http://localhost:7002/translate-v2"
+            }
+            """;
+
+    private static final String TRANSLATOR_BODY_NO_IN = """
+            {
+              "out": "openaiChatCompletions",
+              "baseUrl": "http://localhost:7002/translate"
             }
             """;
 
@@ -191,6 +215,87 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     @Test
     void testInterceptorDelete404OnMissing() {
         Response del = send(HttpMethod.DELETE, "/v1/interceptors/platform/no-such-interceptor-del", null, "",
+                "authorization", "admin");
+        verify(del, 404);
+    }
+
+    // ---- translators ---------------------------------------------------------
+
+    @Test
+    void testTranslatorPutCreate200HappyPath() {
+        Response put = send(HttpMethod.PUT, "/v1/translators/platform/test-translator-create",
+                null, TRANSLATOR_BODY, "authorization", "admin", "If-None-Match", "*");
+        verify(put, 200);
+        assertNotNull(put.headers().get("etag"));
+        assertTrue(put.body().contains("\"name\":\"test-translator-create\""),
+                () -> "Expected name in body: " + put.body());
+    }
+
+    @Test
+    void testTranslatorPutIfNoneMatchStar412OnExisting() {
+        verify(send(HttpMethod.PUT, "/v1/translators/platform/test-translator-conflict", null,
+                TRANSLATOR_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        Response again = send(HttpMethod.PUT, "/v1/translators/platform/test-translator-conflict", null,
+                TRANSLATOR_BODY, "authorization", "admin", "If-None-Match", "*");
+        verify(again, 412);
+    }
+
+    @Test
+    void testTranslatorPut200HappyPathUpdate() {
+        verify(send(HttpMethod.PUT, "/v1/translators/platform/test-translator-update", null,
+                TRANSLATOR_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response put = send(HttpMethod.PUT, "/v1/translators/platform/test-translator-update", null,
+                TRANSLATOR_BODY_UPDATED, "authorization", "admin");
+        verify(put, 200);
+        assertNotNull(put.headers().get("etag"));
+
+        Response get = send(HttpMethod.GET, "/v1/translators/platform/test-translator-update", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertTrue(get.body().contains("translate-v2"), () -> "Expected updated baseUrl: " + get.body());
+    }
+
+    @Test
+    void testTranslatorPutBareUpsertCreatesOnMissing() {
+        // Bare PUT against missing — upsert creates.
+        Response put = send(HttpMethod.PUT, "/v1/translators/platform/no-such-translator", null,
+                TRANSLATOR_BODY, "authorization", "admin");
+        verify(put, 200);
+    }
+
+    @Test
+    void testTranslatorPutWithoutInReturns422() {
+        // Translator.getIn() is only optional when written inline under an interface — a registry
+        // entry (the only shape this write surface produces) always needs it (see
+        // ConfigPostProcessor.validateTranslator). Must be rejected before the blob write, not left
+        // to surface later as a 500/silent-drop from MergedConfigStore.applyEntityWrite.
+        Response put = send(HttpMethod.PUT, "/v1/translators/platform/test-translator-no-in", null,
+                TRANSLATOR_BODY_NO_IN, "authorization", "admin", "If-None-Match", "*");
+        verify(put, 422);
+
+        Response get = send(HttpMethod.GET, "/v1/translators/platform/test-translator-no-in", null, "",
+                "authorization", "admin");
+        verify(get, 404);
+    }
+
+    @Test
+    void testTranslatorDelete204HappyPath() {
+        verify(send(HttpMethod.PUT, "/v1/translators/platform/test-translator-delete", null,
+                TRANSLATOR_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response del = send(HttpMethod.DELETE, "/v1/translators/platform/test-translator-delete", null, "",
+                "authorization", "admin");
+        verify(del, 204);
+
+        Response get = send(HttpMethod.GET, "/v1/translators/platform/test-translator-delete", null, "",
+                "authorization", "admin");
+        verify(get, 404);
+    }
+
+    @Test
+    void testTranslatorDelete404OnMissing() {
+        Response del = send(HttpMethod.DELETE, "/v1/translators/platform/no-such-translator-del", null, "",
                 "authorization", "admin");
         verify(del, 404);
     }
@@ -381,20 +486,122 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
                 """;
         verify(send(HttpMethod.PUT, "/v1/keys/platform/test-key-preserve", null,
                 body, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "",
+                "Api-key", "secret-preserve"), 200);
 
         // PUT body omits "key": a 200 response proves preserve-on-omit pulled the encrypted secret
         // from the existing blob — otherwise the post-merge blank-key check would 400. The secret
-        // value itself is not asserted because U.4 retired the plaintext-reveal path.
+        // value itself is not asserted because U.4 retired the plaintext-reveal path; the bearer
+        // roundtrip below proves the preserved secret still authenticates under its plaintext
+        // form (ApiKeyStore is indexed by plaintext, not by the preserved ciphertext).
         Response put = send(HttpMethod.PUT, "/v1/keys/platform/test-key-preserve", null,
                 KEY_BODY_PROJECT_B_NO_KEY, "authorization", "admin");
         verify(put, 200);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "",
+                "Api-key", "secret-preserve"), 200);
+    }
+
+    @Test
+    void testKeyPutCreate409OnDuplicateSecret() {
+        String bodyA = """
+                {
+                  "key": "secret-dup-409",
+                  "project": "projA",
+                  "roles": ["admin"]
+                }
+                """;
+        String bodyB = """
+                {
+                  "key": "secret-dup-409",
+                  "project": "projB",
+                  "roles": ["admin"]
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/keys/platform/test-key-dup-a", null,
+                bodyA, "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response put = send(HttpMethod.PUT, "/v1/keys/platform/test-key-dup-b", null,
+                bodyB, "authorization", "admin", "If-None-Match", "*");
+        verify(put, 409);
+        assertFalse(put.body().contains("secret-dup-409"),
+                () -> "Response must not echo the secret: " + put.body());
+        verify(send(HttpMethod.GET, "/v1/keys/platform/test-key-dup-b", null, "",
+                "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "",
+                "Api-key", "secret-dup-409"), 200);
+    }
+
+    @Test
+    void testKeyPutRotateToExistingSecret409KeepsBoth() {
+        String bodyA = """
+                {
+                  "key": "secret-rotate-dup-a",
+                  "project": "projA",
+                  "roles": ["admin"]
+                }
+                """;
+        String bodyB = """
+                {
+                  "key": "secret-rotate-dup-b",
+                  "project": "projB",
+                  "roles": ["admin"]
+                }
+                """;
+        String bodyRotate = """
+                {
+                  "key": "secret-rotate-dup-b",
+                  "project": "projA",
+                  "roles": ["admin"]
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/keys/platform/test-key-rotate-dup-a", null,
+                bodyA, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.PUT, "/v1/keys/platform/test-key-rotate-dup-b", null,
+                bodyB, "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response put = send(HttpMethod.PUT, "/v1/keys/platform/test-key-rotate-dup-a", null,
+                bodyRotate, "authorization", "admin");
+        verify(put, 409);
+
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "",
+                "Api-key", "secret-rotate-dup-a"), 200);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "",
+                "Api-key", "secret-rotate-dup-b"), 200);
+    }
+
+    @Test
+    void testKeyPutCreate409OnFileKeySecret() {
+        // A file-sourced key occupies its raw secret in the folded config, so a blob key claiming
+        // the same secret would collapse with it in ApiKeyStore's secret-indexed map. The
+        // file→blob handoff goes through the migration endpoint, not a direct PUT.
+        String body = """
+                {
+                  "key": "proxyKey1",
+                  "project": "someone-else",
+                  "roles": ["admin"]
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/keys/platform/test-key-file-secret", null,
+                body, "authorization", "admin", "If-None-Match", "*");
+        verify(put, 409);
+        assertFalse(put.body().contains("proxyKey1"),
+                () -> "Response must not echo the secret: " + put.body());
+        verify(send(HttpMethod.GET, "/v1/keys/platform/test-key-file-secret", null, "",
+                "authorization", "admin"), 404);
     }
 
     @Test
     void testKeyPutBareUpsertCreatesOnMissing() {
         // Bare PUT against missing — upsert creates (was 404 pre-U.0).
+        String body = """
+                {
+                  "key": "secret-bare-upsert",
+                  "project": "projA",
+                  "roles": ["admin"]
+                }
+                """;
         Response put = send(HttpMethod.PUT, "/v1/keys/platform/no-such-key-create", null,
-                KEY_BODY_PROJECT_A, "authorization", "admin");
+                body, "authorization", "admin");
         verify(put, 200);
     }
 

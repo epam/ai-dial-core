@@ -65,7 +65,7 @@ public class UpstreamCacheService {
 
     public CacheBreakpointContext buildCacheBreakpointContext(RequestObject request, CachePolicy policy, Model model,
                                                                 InterfaceType interfaceType) {
-        boolean autoCaching = isAutoCaching(model);
+        boolean autoCaching = isAutoCaching(model, interfaceType);
         List<String> fieldsOrder = interfaceType.getFieldsHashingOrder();
         List<String> breakpoints = new ArrayList<>();
         Map<String, String> prefixToHash = new HashMap<>();
@@ -155,8 +155,8 @@ public class UpstreamCacheService {
         }
     }
 
-    private boolean isAutoCaching(Model model) {
-        Features features = model.getFeatures();
+    private boolean isAutoCaching(Model model, InterfaceType interfaceType) {
+        Features features = model.resolveFeatures(interfaceType);
         if (features == null) {
             return false;
         }

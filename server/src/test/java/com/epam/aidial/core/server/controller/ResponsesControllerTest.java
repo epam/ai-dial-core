@@ -31,6 +31,7 @@ import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -97,6 +98,12 @@ public class ResponsesControllerTest {
     @Mock
     private ProxyContext context;
 
+    @BeforeEach
+    void stubConfig() {
+        // the controller resolves translator references against the request's config on every routing step
+        lenient().when(context.getConfig()).thenReturn(new Config());
+    }
+
     @Mock(answer = Answers.RETURNS_DEEP_STUBS)
     private Proxy proxy;
 
@@ -116,6 +123,7 @@ public class ResponsesControllerTest {
     void stubRequestPath() {
         // resolveRequestUri always consults the ingress path (even though the legacy flow ignores it)
         lenient().when(request.path()).thenReturn("/openai/v1/responses");
+        lenient().when(proxy.getBlockingCallTracer()).thenReturn(BlockingCallTracer.NOOP);
     }
 
     @Test
@@ -176,7 +184,7 @@ public class ResponsesControllerTest {
                 .thenReturn(deployment);
         doThrow(new PermissionDeniedException("permission error"))
                 .when(consentService)
-                .verifyUserConsent(context, deployment);
+                .verifyUserConsent(context, deployment, InterfaceType.OPENAI_RESPONSES);
         when(proxy.getConsentService()).thenReturn(consentService);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
@@ -222,7 +230,7 @@ public class ResponsesControllerTest {
                 .thenAnswer(invocation -> complete(textContext));
         when(proxy.getDeploymentService().findDeployment(context, "test"))
                 .thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(context, deployment)).thenReturn(Future.succeededFuture(
+        when(proxy.getRateLimiter().limit(eq(context), eq(deployment))).thenReturn(Future.succeededFuture(
                 new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, "rate limit error", null, 0)));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         doCallRealMethod().when(context).setDeployment(any());
@@ -249,7 +257,7 @@ public class ResponsesControllerTest {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null, null);
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setSourceDeployment("test-deployment");
         apiKeyData.setPerRequestKey(PER_REQUEST_KEY);
@@ -336,7 +344,7 @@ public class ResponsesControllerTest {
         when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test"))
                 .thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(context, deployment))
+        when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getRateLimiter().increase(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(Future.succeededFuture());
@@ -406,7 +414,7 @@ public class ResponsesControllerTest {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null, null);
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         Buffer requestBody = Buffer.buffer("{\"model\":\"test\"}");
@@ -453,7 +461,7 @@ public class ResponsesControllerTest {
         when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test"))
                 .thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(context, deployment))
+        when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
@@ -470,7 +478,7 @@ public class ResponsesControllerTest {
         // the response body carries its own "usage" object, so it's captured as this app's
         // self-reported usage (see issue #1753) rather than read from the trace aggregate
         when(proxy.getTokenStatsTracker().updateDeploymentStats(any(), any(), any(), any()))
-                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(tokenUsage, List.of())));
+                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(tokenUsage, List.of(), List.of())));
         doAnswer(invocation -> {
             textContext.completeNow();
             return Future.succeededFuture(Boolean.TRUE);
@@ -551,7 +559,7 @@ public class ResponsesControllerTest {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null, null);
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         Buffer requestBody = Buffer.buffer("{\"model\":\"test\",\"background\":true}");
@@ -583,7 +591,7 @@ public class ResponsesControllerTest {
         when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
         when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(context, deployment))
+        when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
@@ -595,7 +603,7 @@ public class ResponsesControllerTest {
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getTokenStatsTracker().getUsageStats(context))
-                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of())));
+                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of(), List.of())));
         ResponseMappingService responseMappingService = proxy.getResponseMappingService();
         when(responseMappingService.saveMapping(any(), any())).thenReturn(expectedDialId);
 
@@ -640,7 +648,7 @@ public class ResponsesControllerTest {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null, null);
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         String upstreamId = "upstream-resp-stream";
@@ -696,7 +704,7 @@ public class ResponsesControllerTest {
         }).when(response).write(any(Buffer.class), any());
         when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(context, deployment))
+        when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
@@ -712,7 +720,7 @@ public class ResponsesControllerTest {
 
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getTokenStatsTracker().getUsageStats(context))
-                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of())));
+                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of(), List.of())));
         doAnswer(invocation -> {
             textContext.completeNow();
             return Future.succeededFuture(Boolean.TRUE);
@@ -758,7 +766,7 @@ public class ResponsesControllerTest {
         deployment.setResponsesEndpoint("http://adapter/responses");
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, null, null, null);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, null, null, null, null);
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
 
@@ -773,7 +781,7 @@ public class ResponsesControllerTest {
         when(context.respond(any(HttpStatus.class), anyString()))
                 .thenAnswer(invocation -> complete(textContext));
         when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(context, deployment))
+        when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
@@ -805,7 +813,7 @@ public class ResponsesControllerTest {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null, null);
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         Buffer requestBody = Buffer.buffer("{\"model\":\"test\",\"background\":true}");
@@ -828,7 +836,7 @@ public class ResponsesControllerTest {
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
         when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(context, deployment))
+        when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
@@ -930,7 +938,7 @@ public class ResponsesControllerTest {
 
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "http://actual-model/responses", null, null, null, 0, 0, "endpoint", null, null);
+        Upstream upstream = new Upstream(null, "http://actual-model/responses", null, null, null, 0, 0, "endpoint", null, null, null);
 
         when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer("{\"model\":\"ignored\"}")));
@@ -940,7 +948,7 @@ public class ResponsesControllerTest {
         when(context.getApiKeyData()).thenReturn(apiKeyData);
         DeploymentService deploymentService = proxy.getDeploymentService();
         when(deploymentService.findDeployment(context, "actual-model")).thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(context, deployment)).thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
+        when(proxy.getRateLimiter().limit(eq(context), eq(deployment))).thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
         when(proxy.getClient()).thenReturn(httpClient);

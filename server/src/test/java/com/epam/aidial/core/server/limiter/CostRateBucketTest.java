@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * - These tests verify:
  * - Constructor and initialization
  * - Adding costs and updating the window
- * - Window sliding behavior for different time windows (minute, day, week, month)
+ * - Window sliding behavior for the floating windows (minute, hour)
  * - Retry calculation
  * - Edge cases and precision handling with BigDecimal
  */
@@ -42,20 +42,10 @@ class CostRateBucketTest {
         assertEquals(BigDecimal.ZERO, bucket.getSum());
         assertEquals(60, bucket.getSums().length);
 
-        bucket = new CostRateBucket(RateWindow.DAY);
-        assertEquals(RateWindow.DAY, bucket.getWindow());
+        bucket = new CostRateBucket(RateWindow.HOUR);
+        assertEquals(RateWindow.HOUR, bucket.getWindow());
         assertEquals(BigDecimal.ZERO, bucket.getSum());
-        assertEquals(24, bucket.getSums().length);
-
-        bucket = new CostRateBucket(RateWindow.WEEK);
-        assertEquals(RateWindow.WEEK, bucket.getWindow());
-        assertEquals(BigDecimal.ZERO, bucket.getSum());
-        assertEquals(7, bucket.getSums().length);
-
-        bucket = new CostRateBucket(RateWindow.MONTH);
-        assertEquals(RateWindow.MONTH, bucket.getWindow());
-        assertEquals(BigDecimal.ZERO, bucket.getSum());
-        assertEquals(30, bucket.getSums().length);
+        assertEquals(60, bucket.getSums().length);
     }
 
     /**
@@ -83,72 +73,6 @@ class CostRateBucketTest {
         update(61, "0.55");
 
         update(121, "0.00");
-    }
-
-    @Test
-    void testDayBucket() {
-        bucket = new CostRateBucket(RateWindow.DAY);
-
-        update(0, "0.00");
-        add(0, "0.10", "0.10");
-        add(0, "0.20", "0.30");
-        update(0, "0.30");
-
-        add(1, "0.30", "0.60");
-        add(23, "0.40", "1.00");
-        update(23, "1.00");
-
-        add(24, "0.10", "0.80");
-        update(24, "0.80");
-
-        add(25, "0.05", "0.55");
-        update(25, "0.55");
-
-        update(49, "0.00");
-    }
-
-    @Test
-    void testWeekBucket() {
-        bucket = new CostRateBucket(RateWindow.WEEK);
-
-        update(0, "0.00");
-        add(0, "0.10", "0.10");
-        add(0, "0.20", "0.30");
-        update(0, "0.30");
-
-        add(1, "0.30", "0.60");
-        add(6, "0.40", "1.00");
-        update(6, "1.00");
-
-        add(7, "0.10", "0.80");
-        update(7, "0.80");
-
-        add(8, "0.05", "0.55");
-        update(8, "0.55");
-
-        update(15, "0.00");
-    }
-
-    @Test
-    void testMonthBucket() {
-        bucket = new CostRateBucket(RateWindow.MONTH);
-
-        update(0, "0.00");
-        add(0, "0.10", "0.10");
-        add(0, "0.20", "0.30");
-        update(0, "0.30");
-
-        add(1, "0.30", "0.60");
-        add(29, "0.40", "1.00");
-        update(29, "1.00");
-
-        add(30, "0.10", "0.80");
-        update(30, "0.80");
-
-        add(31, "0.05", "0.55");
-        update(31, "0.55");
-
-        update(61, "0.00");
     }
 
     /**
@@ -182,42 +106,6 @@ class CostRateBucketTest {
         add(25, "0.10", "0.70");
 
         update(60, "0.60");
-        long retryTime3 = bucket.retryAfter(new BigDecimal("0.30"));
-        assertTrue(retryTime3 > 0, "Retry time should be greater than 0 when sum exceeds limit");
-        assertTrue(retryTime3 < retryTime2, "Retry time should decrease after window slides");
-    }
-
-    /**
-     * Tests the retry calculation for the day window.
-     * Verifies that the retryAfter method correctly calculates how long to wait
-     * before making a retry request when the cost limit is exceeded with a day window.
-     * Also verifies that the retry time decreases as the window slides.
-     */
-    @Test
-    void testRetryAfterDay() {
-        bucket = new CostRateBucket(RateWindow.DAY);
-
-        update(0, "0.00");
-        assertEquals(0, bucket.retryAfter(new BigDecimal("0.30")));
-        add(0, "0.10", "0.10");
-
-        update(5, "0.10");
-        assertEquals(0, bucket.retryAfter(new BigDecimal("0.30")));
-        add(5, "0.20", "0.30");
-
-        update(10, "0.30");
-        // When sum equals limit, retryAfter will return a non-zero value
-        // because of the >= comparison in the method
-        long retryTime1 = bucket.retryAfter(new BigDecimal("0.30"));
-        assertTrue(retryTime1 > 0, "Retry time should be greater than 0 when sum equals limit");
-        add(10, "0.30", "0.60");
-
-        update(20, "0.60");
-        long retryTime2 = bucket.retryAfter(new BigDecimal("0.30"));
-        assertTrue(retryTime2 > 0, "Retry time should be greater than 0 when sum exceeds limit");
-        add(23, "0.10", "0.70");
-
-        update(24, "0.60");
         long retryTime3 = bucket.retryAfter(new BigDecimal("0.30"));
         assertTrue(retryTime3 > 0, "Retry time should be greater than 0 when sum exceeds limit");
         assertTrue(retryTime3 < retryTime2, "Retry time should decrease after window slides");

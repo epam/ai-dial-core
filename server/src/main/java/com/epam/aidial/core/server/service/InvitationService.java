@@ -42,12 +42,24 @@ public class InvitationService {
 
     private final ResourceService resourceService;
     private final EncryptionService encryptionService;
-    private final int expirationInSeconds;
+    private final int defaultTtlInSeconds;
 
     public InvitationService(ResourceService resourceService, EncryptionService encryptionService, JsonObject settings) {
         this.resourceService = resourceService;
         this.encryptionService = encryptionService;
-        this.expirationInSeconds = settings.getInteger("ttlInSeconds", DEFAULT_INVITATION_TTL_IN_SECONDS);
+        this.defaultTtlInSeconds = settings.getInteger("ttlInSeconds", DEFAULT_INVITATION_TTL_IN_SECONDS);
+        if (this.defaultTtlInSeconds <= 0) {
+            throw new IllegalArgumentException("invitations.ttlInSeconds must be a positive integer, but got: " + this.defaultTtlInSeconds);
+        }
+    }
+
+    /**
+     * Default invitation TTL in hours, derived from the {@code ttlInSeconds} setting.
+     * Used when no role defines an {@code invitation_ttl} share limit for a resource type.
+     */
+    public long getDefaultTtlInHours() {
+        long secondsPerHour = ChronoUnit.HOURS.getDuration().getSeconds();
+        return (defaultTtlInSeconds + secondsPerHour - 1) / secondsPerHour;
     }
 
     public Invitation createInvitation(String bucket, String location, List<SharedResource> resources, String userDisplayName, int maxAcceptedUsers, long ttlInHours) {

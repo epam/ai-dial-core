@@ -14,3 +14,6 @@ jobs:
       - uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
         with:
           delete-untagged: true
+          delete-ghost-images: true # Delete indexes with no manifests
+          delete-partial-images: true # Delete indexes which refer to at least one non-existent manifest
+          delete-orphaned-images: true # Delete dangling referrers, e.g. SBOMs, signatures, etc. that refer to non-existent digest

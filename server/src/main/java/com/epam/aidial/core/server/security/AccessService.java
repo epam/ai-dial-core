@@ -332,6 +332,12 @@ public class AccessService {
         if (ownResources.stream().anyMatch(resource -> DEPLOYMENT_TYPES.contains(resource.getType()))) {
             declaredResources.addAll(applicationSchemaService.getDeployments(application));
         }
+        if (ownResources.stream().anyMatch(resource -> resource.getType() == ResourceTypes.PROMPT)) {
+            declaredResources.addAll(applicationSchemaService.getPrompts(application));
+        }
+        if (ownResources.stream().anyMatch(resource -> resource.getType() == ResourceTypes.SKILL)) {
+            declaredResources.addAll(applicationSchemaService.getSkills(application));
+        }
 
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         for (ResourceDescriptor resource : ownResources) {

@@ -8,6 +8,7 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -45,6 +46,95 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         assertEquals("VALID", parsed.get("results").get(0).get("status").asText());
         verify(send(HttpMethod.GET, "/v1/models/platform/validate-happy-model", null, "",
                 "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateRejectsOutOfContractEntityName() {
+        // /v1/admin/validate must enforce the same entity-name contract as the single-entity PUT —
+        // it must not greenlight a batch whose real-apply phase (or the direct REST endpoint) would
+        // reject the name.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/has space",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"
+                      }
+                    }
+                  ]
+                }
+                """;
+        // precheck defaults to true, so a single failing entity atomically rejects the whole batch
+        // with 422 (see testV03PrecheckTrueDanglingRefReturns422) rather than a 200 carrying a
+        // per-entity FAILED result.
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateAcceptsExtendedCharsInEntityName() {
+        // Covers every character ENTITY_NAME_PATTERN allows beyond the base alphanumeric/./-/_ set,
+        // in one name, so widening the pattern later just means adding a character here instead of
+        // a new test method: '@' is common in real-world deployment ids; '[' / ']' show up in
+        // legacy model ids carrying a context-window suffix (e.g. "claude-opus-4-8[1m]"); '(' / ')'
+        // show up in vendor-qualified ids (e.g. "gpt-4(preview)").
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/org@validate-model(preview)[1m]",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(0, parsed.get("failed").asInt());
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateRejectsInvalidToolSetName() {
+        // '.' passes ENTITY_NAME_PATTERN but fails isValidToolSetKey — validate must reject it,
+        // consistent with the single-entity PUT (PlatformAppToolsetApiTest) and real-apply.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "ToolSet",
+                      "name": "toolsets/platform/my.validate-toolset",
+                      "spec": {
+                        "transport": "http",
+                        "endpoint": "http://localhost:9876",
+                        "display_name": "Validate Toolset"
+                      }
+                    }
+                  ]
+                }
+                """;
+        // precheck defaults to true, so a single failing entity atomically rejects the whole batch
+        // with 422, same as testValidateRejectsOutOfContractEntityName above.
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt());
     }
 
     @Test
@@ -178,6 +268,73 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
         verify(send(HttpMethod.GET, "/v1/models/platform/validate-precheck-bad", null, "",
                 "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateRejectsModelWithUnservedInterface() {
+        // Precheck must agree with ConfigApplyService#applyModel, or it greenlights a batch whose
+        // real-apply phase refuses the model mid-write, after earlier blobs have landed.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/validate-unserved-interface",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "interfaces": {"openaiChatCompletions": {}}
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("failed").asInt());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateRejectsModelWhoseInBatchTranslatorDisagrees() {
+        // Proves the in-batch translator is actually consulted, not merely tolerated: the model
+        // attaches it to anthropicMessages while the translator converts from openaiResponses.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/validate-translator-mismatch",
+                      "spec": {
+                        "type": "chat",
+                        "baseUrl": "http://localhost:7001",
+                        "interfaces": {
+                          "openaiChatCompletions": {},
+                          "anthropicMessages": {"mode": "translator", "translator": "mismatch-translator"}
+                        }
+                      }
+                    },
+                    {
+                      "kind": "Translator",
+                      "name": "translators/platform/mismatch-translator",
+                      "spec": {
+                        "in": "openaiResponses",
+                        "out": "openaiChatCompletions",
+                        "baseUrl": "http://localhost:7001/translate"
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertTrue(response.body().contains("Translator converts from"),
+                () -> "Expected the translator mismatch message: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt());
     }
 
     @Test
@@ -759,6 +916,139 @@ public class AdminValidateApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testValidateKeyDuplicateSecretWithinBatchRejected() {
+        // Precheck-side counterpart of AdminApplyApiTest#applyKeyDuplicateSecretFailsSecondEntity:
+        // the second key in a batch must collide with the first one validated before it.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/validate-dup-key-a",
+                      "spec": {"key": "validate-dup-secret", "project": "projA", "roles": ["admin"]}
+                    },
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/validate-dup-key-b",
+                      "spec": {"key": "validate-dup-secret", "project": "projB", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        assertEquals("SKIPPED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
+        assertEquals("FAILED", parsed.get("results").get(1).get("status").asText(), () -> "Body: " + response.body());
+        assertTrue(parsed.get("results").get(1).get("error").asText()
+                        .contains("already used by a different key entity"), () -> "Body: " + response.body());
+        assertFalse(response.body().contains("validate-dup-secret"),
+                () -> "Response must not echo the secret: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/keys/platform/validate-dup-key-a", null, "",
+                "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/keys/platform/validate-dup-key-b", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateKeyDuplicateSecretAgainstAppliedKeyRejected() {
+        String existingBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/validate-existing-key",
+                      "spec": {"key": "validate-existing-secret", "project": "projA", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, existingBody, "authorization", "admin"), 200);
+
+        String conflictBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/validate-conflict-key",
+                      "spec": {"key": "validate-existing-secret", "project": "projB", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, conflictBody, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/keys/platform/validate-conflict-key", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateKeyUnchangedSecretUpdateValid() {
+        // Re-supplying the entity's own current secret is an update, not a collision.
+        String existingBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/validate-unchanged-key",
+                      "spec": {"key": "validate-unchanged-secret", "project": "projA", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, existingBody, "authorization", "admin"), 200);
+
+        String updateBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/validate-unchanged-key",
+                      "spec": {"key": "validate-unchanged-secret", "project": "projB", "roles": ["default"]}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, updateBody, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(0, parsed.get("failed").asInt());
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateKeyWithFileKeySecretRejected() {
+        // File-sourced keys occupy their raw secret in the folded config; the file→blob handoff
+        // goes through the migration endpoint.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/validate-file-secret-key",
+                      "spec": {"key": "proxyKey1", "project": "someone-else", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        assertFalse(response.body().contains("proxyKey1"),
+                () -> "Response must not echo the secret: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/keys/platform/validate-file-secret-key", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
     void testV16SettingsDoesNotPersist() {
         // U.1 (2026-05-21): /v1/settings/platform/global is blob-only. After validate (no mutation),
         // there is no blob → GET returns 404. We additionally verify the sentinel does not appear
@@ -832,6 +1122,55 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                 "authorization", "admin"), 404);
     }
 
+    @Test
+    @SneakyThrows
+    void testV20RejectsModelCatalogPropertiesTypeMismatch() {
+        String catalogSchemaBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/validate-catalog-schema-mismatch",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/validate-model-mismatch",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object",
+                        "properties": {"featured": {"type": "boolean"}}
+                      }
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, catalogSchemaBody, "authorization", "admin"), 200);
+
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/validate-model-catalog-mismatch",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "catalogSchemaId": "https://dial.epam.com/catalog-schemas/validate-model-mismatch",
+                        "catalogProperties": {"featured": "not-a-boolean"}
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/models/platform/validate-model-catalog-mismatch", null, "",
+                "authorization", "admin"), 404);
+    }
+
     public static class SoftValidation extends ResourceBaseTest {
         @Override
         protected JsonObject additionalSettingsOverrides() {
@@ -876,9 +1215,12 @@ public class AdminValidateApiTest extends ResourceBaseTest {
 
         @Test
         @SneakyThrows
-        void testV19SoftValidationAdmitsCacheRateWithoutTokenUnit() {
-            // Same admission logic as testV17SoftValidationModePerEntityValid: softValidation
-            // downgrades the pricing violation to "valid" at validate-time too.
+        void testV19SoftValidationStillRejectsCacheRateWithoutTokenUnit() {
+            // Contrast with testV17SoftValidationModePerEntityValid. Soft mode admits only what the
+            // rebuild itself tolerates — cross-references, which a later write repairs. Pricing is a
+            // rebuild invariant (processModels validates it unconditionally in both abort and skip
+            // mode), so admitting it here would greenlight a blob the next reload discards, and under
+            // onInvalidEntity=abort would stop the pod from starting.
             String body = """
                     {
                       "precheck": false,
@@ -902,11 +1244,10 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                     """;
             Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body,
                     "authorization", "admin");
-            verify(response, 200);
             JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
-            assertEquals(1, parsed.get("valid").asInt(), () -> "Body: " + response.body());
-            assertEquals(0, parsed.get("failed").asInt());
-            assertEquals("VALID", parsed.get("results").get(0).get("status").asText());
+            assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+            assertEquals(1, parsed.get("failed").asInt());
+            assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
             verify(send(HttpMethod.GET, "/v1/models/platform/validate-soft-cache-pricing", null, "",
                     "authorization", "admin"), 404);
         }

@@ -9,8 +9,7 @@ import lombok.NoArgsConstructor;
 import java.util.Map;
 
 /**
- * Per-interface routing configuration for a {@link Deployment}. Intentionally minimal;
- * future per-interface options (auth mode, defaults, ...) go here.
+ * Per-interface routing and request configuration for a {@link Deployment}.
  */
 @Data
 @NoArgsConstructor
@@ -32,12 +31,43 @@ public class DeploymentInterface {
     private InterfaceMode mode;
 
     /**
+     * The translator serving this interface, named or defined inline, when {@link #mode} is
+     * {@link InterfaceMode#TRANSLATOR}. An interface is served either by a base url or by a translator,
+     * never by both.
+     */
+    private TranslatorRef translator;
+
+    /**
      * Headers added to a request for this interface that carries none under that name, laid over the
      * deployment-level {@code defaultHeaders}. Resolved by {@link Deployment#resolveDefaultHeaders}.
      */
     @JsonAlias({"defaultHeaders", "default_headers"})
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     private Map<String, String> defaultHeaders = Map.of();
+
+    /**
+     * Body parameters added to a request for this interface that carries none under that key. Declaring
+     * any replaces the deployment-level defaults for this interface rather than adding to them.
+     * Resolved by {@link Deployment#resolveDefaults}.
+     */
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private Map<String, Object> defaults = Map.of();
+
+    /**
+     * Non-null fields override deployment-level features for this interface only.
+     * Resolved by {@link Deployment#resolveFeatures} before applying Core defaults.
+     */
+    private Features features;
+
+    /**
+     * Upstream paths replacing the operation's default path under the base url, keyed by
+     * {@link InterfacePathMapping#getValue()}. A value substitutes exactly two tokens: {@code {id}}
+     * renders the operation's id and {@code {overrideName}} the deployment's override name. Every
+     * other character, braces included, is path text forwarded as written.
+     */
+    @JsonAlias({"overridePaths", "override_paths"})
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private Map<String, String> overridePaths = Map.of();
 
     public DeploymentInterface(String baseUrl) {
         this.baseUrl = baseUrl;

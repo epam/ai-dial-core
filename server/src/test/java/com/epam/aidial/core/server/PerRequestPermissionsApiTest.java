@@ -206,6 +206,129 @@ public class PerRequestPermissionsApiTest extends ResourceBaseTest {
         }
     }
 
+    @SuppressWarnings("checkstyle:LineLength")
+    @Test
+    public void testGrant_UrlEncodingVariants() {
+        String requestBody = """
+                {
+                  "model": {
+                    "id": "app1"
+                  },
+                 "messages": [
+                  {
+                     "content": "How are you?",
+                     "role": "user"
+                  }
+                 ]
+                 }
+                """;
+        String responseBody = """
+                data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":"stop","delta":{"content":"ok"}}], "usage":{"completion_tokens": 1, "prompt_tokens": 1, "total_tokens": 2}}\r
+                data: [DONE]\r
+                """;
+        ApplicationService applicationService = dial.getProxy().getApplicationService();
+        Application app1 = new Application();
+        app1.setEndpoint("http://localhost:17324/app1");
+        applicationService.putApplication(ResourceDescriptorFactory.fromPublicUrl("applications/public/app1"),
+                EtagHeader.ANY, null, app1, false, AdminManagedFieldsWriteMode.INHERIT_ONLY);
+        Application app2 = new Application();
+        app2.setEndpoint("http://localhost:17324/app2");
+        applicationService.putApplication(ResourceDescriptorFactory.fromPublicUrl("applications/public/app2"),
+                EtagHeader.ANY, null, app2, false, AdminManagedFieldsWriteMode.INHERIT_ONLY);
+
+        try (TestWebServer server = new TestWebServer(17324)) {
+            MutableObject<String> appBucketRef = new MutableObject<>();
+            TestWebServer.Handler handler1 = request -> {
+                String apiKey = request.getHeader(Proxy.HEADER_API_KEY);
+                try {
+                    Response response = send(HttpMethod.GET, "/v1/bucket", null, "", "api-key", apiKey);
+                    verify(response, 200);
+                    String appBucket = new JsonObject(response.body()).getString("bucket");
+                    assertNotNull(appBucket);
+                    appBucketRef.setValue(appBucket);
+
+                    // upload two files whose names contain RFC 3986 sub-delimiters (apostrophe, parentheses)
+                    // that Core's canonical URL form leaves literal but that a caller may needlessly over-escape
+                    response = upload(HttpMethod.PUT, "/v1/files/" + appBucket + "/folder1/notes's.txt", null, "some some", "api-key", apiKey);
+                    verify(response, 200);
+                    response = upload(HttpMethod.PUT, "/v1/files/" + appBucket + "/folder2/data%20(2).csv", null, "some some", "api-key", apiKey);
+                    verify(response, 200);
+
+                    // grant permissions to app2, submitting each url over-escaped -- percent-encoding characters
+                    // ("'" and "(" ")") that Core's canonical form leaves literal, the same kind of mismatch a
+                    // non-compliant client encoder produces
+                    response = send(HttpMethod.POST, "/v1/ops/resource/per-request-permissions/grant", null, """
+                            {
+                             "resourcePermissions": [
+                               {
+                                 "url": "files/%s/folder1/notes%%27s.txt",
+                                 "permissions": ["READ"]
+                               },
+                               {
+                                 "url": "files/%s/folder2/data%%20%%282%%29.csv",
+                                 "permissions": ["READ"]
+                               }
+                             ],
+                             "receiver": "applications/public/app2"
+                            }
+                            """.formatted(appBucket, appBucket), "api-key", apiKey);
+                    verify(response, 200);
+
+                    response = send(HttpMethod.POST, "/openai/deployments/applications/public/app2/chat/completions",
+                            null, requestBody, "api-key", apiKey,
+                            "content-type", Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
+                    verify(response, 200);
+
+                    MockResponse mockResponse = new MockResponse();
+                    mockResponse.setResponseCode(200);
+                    mockResponse.setChunkedBody(responseBody, 200);
+                    return mockResponse;
+                } catch (Throwable e) {
+                    return (new MockResponse()).setResponseCode(500);
+                }
+            };
+            server.map(HttpMethod.POST, "/app1", handler1);
+
+            TestWebServer.Handler handler2 = request -> {
+                String apiKey = request.getHeader(Proxy.HEADER_API_KEY);
+                try {
+                    var response = send(HttpMethod.POST, "/v1/ops/resource/per-request-permissions/list", null, """
+                            {
+                             "with": "ME"
+                            }
+                            """, "api-key", apiKey);
+                    verify(response, 200);
+                    JsonArray resources = new JsonObject(response.body()).getJsonArray("resources");
+
+                    if (resources.isEmpty()) {
+                        return (new MockResponse()).setResponseCode(403);
+                    }
+                    // both grants -- regardless of the encoding the caller submitted -- must authorize
+                    // the download of the exact same canonical resource
+                    assertEquals(2, resources.size());
+                    String appBucket = appBucketRef.getValue();
+
+                    response = send(HttpMethod.GET, "/v1/files/" + appBucket + "/folder1/notes's.txt", null, null, "api-key", apiKey);
+                    verify(response, 200);
+
+                    response = send(HttpMethod.GET, "/v1/files/" + appBucket + "/folder2/data%20(2).csv", null, null, "api-key", apiKey);
+                    verify(response, 200);
+
+                    MockResponse mockResponse = new MockResponse();
+                    mockResponse.setResponseCode(200);
+                    mockResponse.setChunkedBody(responseBody, 200);
+                    return mockResponse;
+                } catch (Throwable e) {
+                    return (new MockResponse()).setResponseCode(500);
+                }
+            };
+            server.map(HttpMethod.POST, "/app2", handler2);
+            var response = send(HttpMethod.POST, "/openai/deployments/applications/public/app1/chat/completions",
+                    null, requestBody, "content-type", Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
+            verify(response, 200);
+        }
+    }
+
     @Test
     public void testGrant_WithNoPerRequestKey() {
         var response = send(HttpMethod.POST, "/v1/ops/resource/per-request-permissions/grant", null, """

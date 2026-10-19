@@ -69,14 +69,14 @@ public class ShareService {
     private final LongSupplier clock;
     private final ResourceCredentialsService resourceCredentialsService;
 
-    private static final Map<ResourceType, ShareResourceLimit> DEFAULT_LIMITS = Map.of(
-            ResourceTypes.APPLICATION, new ShareResourceLimit(10, 72),
-            ResourceTypes.CONVERSATION, new ShareResourceLimit(Integer.MAX_VALUE, 72),
-            ResourceTypes.FILE, new ShareResourceLimit(Integer.MAX_VALUE, 72),
-            ResourceTypes.PROMPT, new ShareResourceLimit(Integer.MAX_VALUE, 72),
-            ResourceTypes.TOOL_SET, new ShareResourceLimit(10, 72),
-            ResourceTypes.CREDENTIALS, new ShareResourceLimit(10, 72),
-            ResourceTypes.SKILL, new ShareResourceLimit(10, 72));
+    private static final Map<ResourceType, Integer> DEFAULT_MAX_ACCEPTED_USERS = Map.of(
+            ResourceTypes.APPLICATION, 10,
+            ResourceTypes.CONVERSATION, Integer.MAX_VALUE,
+            ResourceTypes.FILE, Integer.MAX_VALUE,
+            ResourceTypes.PROMPT, Integer.MAX_VALUE,
+            ResourceTypes.TOOL_SET, 10,
+            ResourceTypes.CREDENTIALS, 10,
+            ResourceTypes.SKILL, 10);
 
     private static final Set<ResourceType> CREDS_SHARABLE_RESOURCE_TYPES = Set.of(ResourceTypes.TOOL_SET);
 
@@ -293,7 +293,7 @@ public class ShareService {
     private ShareResourceLimit getLimit(ProxyContext context, ResourceType resourceType) {
         List<String> userRoles = context.getUserRoles();
         Map<String, Role> roles = context.getConfig().getRoles();
-        ShareResourceLimit defaultLimit = DEFAULT_LIMITS.get(resourceType);
+        ShareResourceLimit defaultLimit = getDefaultLimit(resourceType);
         ShareResourceLimit limit = null;
         for (String userRole : userRoles) {
             ShareResourceLimit candidate = Optional.ofNullable(roles.get(userRole)).map(Role::getShare).map(limits -> limits.get(resourceType.name())).orElse(null);
@@ -312,13 +312,15 @@ public class ShareService {
                 }
             }
         }
-        if (limit != null) {
-            return limit;
-        }
-        if (defaultLimit == null) {
+        return (limit != null) ? limit : defaultLimit;
+    }
+
+    private ShareResourceLimit getDefaultLimit(ResourceType resourceType) {
+        Integer maxAcceptedUsers = DEFAULT_MAX_ACCEPTED_USERS.get(resourceType);
+        if (maxAcceptedUsers == null) {
             throw new IllegalArgumentException("Unsupported resource type: " + resourceType);
         }
-        return defaultLimit;
+        return new ShareResourceLimit(maxAcceptedUsers, invitationService.getDefaultTtlInHours());
     }
 
     private void addCredentialsSharing(ProxyContext context,
@@ -394,10 +396,7 @@ public class ShareService {
                 // add user location for each link
                 for (SharedResource resource : links) {
                     int numOfAcceptedUsers = dto.getNumOfAcceptedUsers(resource.getUrl());
-                    ShareResourceLimit limit = dto.getLimits().getOrDefault(resource.getUrl(), DEFAULT_LIMITS.get(resourceType));
-                    if (limit == null) {
-                        throw new IllegalArgumentException("Limit is not found for the resource:" + resource.getUrl());
-                    }
+                    ShareResourceLimit limit = dto.getLimits().getOrDefault(resource.getUrl(), getDefaultLimit(resourceType));
                     if (numOfAcceptedUsers >= limit.getMaxAcceptedUsers()) {
                         throw new IllegalArgumentException("Limit is exceeded on the number of accepted users for the resource: " + resource.getUrl());
                     }

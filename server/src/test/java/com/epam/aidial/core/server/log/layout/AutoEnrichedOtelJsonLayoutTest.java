@@ -21,12 +21,18 @@ import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.slf4j.LoggerFactory;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AutoEnrichedOtelJsonLayoutTest {
@@ -36,6 +42,7 @@ class AutoEnrichedOtelJsonLayoutTest {
     private MockedStatic<Vertx> vertxMock;
     private MockedStatic<ContextManager> contextManagerMock;
     private MockedStatic<Span> spanMock;
+    private Span currentSpan;
 
     @BeforeEach
     void setUp() {
@@ -52,9 +59,9 @@ class AutoEnrichedOtelJsonLayoutTest {
         
         // Mock Span
         spanMock = mockStatic(Span.class);
-        Span mockSpan = mock(Span.class);
-        when(mockSpan.isRecording()).thenReturn(false);
-        spanMock.when(Span::current).thenReturn(mockSpan);
+        currentSpan = mock(Span.class);
+        when(currentSpan.isRecording()).thenReturn(false);
+        spanMock.when(Span::current).thenReturn(currentSpan);
     }
     
     @AfterEach
@@ -280,6 +287,38 @@ class AutoEnrichedOtelJsonLayoutTest {
         assertEquals("22510e56eb9b21f6b03dbc038cd8fb71", jsonNode.get("TraceId").asText());
         assertEquals("8a46c76f1554b00a", jsonNode.get("SpanId").asText());
         assertEquals("01", jsonNode.get("TraceFlags").asText());
+    }
+
+    @Test
+    void shouldIncludeTracingAttributesAndKeepSpanSettersTyped() throws Exception {
+        ProxyContext proxyContext = mock(ProxyContext.class);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(response.ended()).thenReturn(false);
+        when(proxyContext.getResponse()).thenReturn(response);
+        Map<String, Object> tracingAttributes = new LinkedHashMap<>();
+        tracingAttributes.put("gen_ai.conversation.id", "conversation-1");
+        tracingAttributes.put("gen_ai.usage.input_tokens", 10L);
+        tracingAttributes.put("gen_ai.request.encoding_formats", List.of("base64"));
+        when(proxyContext.getTracingAttributes()).thenReturn(tracingAttributes);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        when(currentSpan.isRecording()).thenReturn(true);
+
+        LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        Logger testLogger = context.getLogger("test.logger");
+        LoggingEvent event = new LoggingEvent();
+        event.setLoggerName(testLogger.getName());
+        event.setLevel(Level.INFO);
+        event.setMessage("Typed tracing attributes");
+        event.setTimeStamp(System.currentTimeMillis());
+        event.setLoggerContext(context);
+
+        String result = layout.doLayout(event);
+        JsonNode attributes = objectMapper.readTree(result).get("Attributes");
+
+        assertEquals("conversation-1", attributes.get("gen_ai.conversation.id").asText());
+        assertEquals(10, attributes.get("gen_ai.usage.input_tokens").asInt());
+        assertEquals("base64", attributes.get("gen_ai.request.encoding_formats").get(0).asText());
+        verify(currentSpan, never()).setAttribute("gen_ai.usage.input_tokens", "10");
     }
 
     @Test

@@ -17,10 +17,12 @@ import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectMessagesTokenUsageFn;
+import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import io.vertx.core.Future;
@@ -55,6 +57,17 @@ public class MessagesController extends MessagesBaseController {
         List<BaseRequestFunction<RequestObject>> functions = new ArrayList<>(super.buildEnhancementFunctions());
         functions.add(functions.size() - 1, new BuildUpstreamCacheFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES));
         return functions;
+    }
+
+    /**
+     * Adds GenAI request attributes here rather than in the base parser, so that
+     * {@link MessagesCountTokensController} - which generates nothing - publishes none.
+     */
+    @Override
+    protected MessagesApiRequest parseBody(Buffer body) {
+        MessagesApiRequest request = super.parseBody(body);
+        GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.ANTHROPIC_MESSAGES, request.getTree());
+        return request;
     }
 
     @ApiOperations({
@@ -95,7 +108,7 @@ public class MessagesController extends MessagesBaseController {
 
     @Override
     protected Future<Void> verifyLimit() {
-        return proxy.getRateLimiter().limit(context, context.getDeployment())
+        return checkLimits(context.getDeployment())
                 .map(rateLimit -> {
                     rateLimit.throwIfError();
                     return null;
@@ -116,7 +129,7 @@ public class MessagesController extends MessagesBaseController {
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
+        putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
         responseStream.pipe()
                 .endOnFailure(false)
@@ -132,7 +145,7 @@ public class MessagesController extends MessagesBaseController {
         HttpServerResponse response = context.getResponse();
         ProxyUtil.copyResponse(response, proxyResponse);
         response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
+        putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
         return collectTokenUsage(body)
                 .transform(result -> {
                     if (result.failed()) {
@@ -159,13 +172,20 @@ public class MessagesController extends MessagesBaseController {
         endResponse.run();
         proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
         Upstream currentUpstream = context.getUpstreamRoute().get();
-        log.info("Sent response to client. Deployment: {}. Interface: {}. Endpoint: {}. Upstream: {}. Length: {}. Tokens: {}.",
+        log.info("Sent response to client. Deployment: {}. Interface: {}. Endpoint: {}. Upstream: {}. Length: {}."
+                        + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",
                 context.getDeployment().getName(),
                 InterfaceType.ANTHROPIC_MESSAGES.getValue(),
                 context.getProxyRequestUri(),
                 currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
                 context.getResponseBody() == null ? 0 : context.getResponseBody().length(),
-                context.getTokenUsage() == null ? "N/A" : context.getTokenUsage());
+                context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
+                context.getRequestBodyTimestamp() - context.getRequestTimestamp(),
+                context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
+                context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
+                context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
+                context.getTokenUsage() == null ? "N/A" : context.getTokenUsage(),
+                currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
         finalizeRequest();
     }

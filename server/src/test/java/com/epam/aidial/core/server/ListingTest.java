@@ -62,12 +62,12 @@ public class ListingTest extends ResourceBaseTest {
                     , "system_prompt": true, "tools": false, "seed": false
                     , "url_attachments": false, "folder_attachments": false
                     , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true,
-                    "content_parts": false, "temperature" : true, "cache" : false,
+                    "content_parts": false, "temperature" : false, "cache" : false,
                     "auto_caching" : false, "parallel_tool_calls": true,
                     "assistant_attachments_in_request": false, "mcp" : false,
                     "chat_completion": false, "responses_api": false,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
-                    "custom_temperature_supported": true, "reasoning_efforts": []
+                    "custom_temperature_supported": true, "skills_supported": false, "reasoning_efforts": []
                     }
                 """));
     }
@@ -79,12 +79,12 @@ public class ListingTest extends ResourceBaseTest {
                     , "system_prompt": true, "tools": true, "seed": true
                     , "url_attachments": true, "folder_attachments": false
                     , "configuration": true, "allow_resume": true, "accessible_by_per_request_key": true,
-                    "content_parts": false, "temperature" : true, "cache" : false,
+                    "content_parts": false, "temperature" : false, "cache" : false,
                     "auto_caching" : false, "parallel_tool_calls": true,
                     "assistant_attachments_in_request": false, "mcp" : false,
                     "chat_completion": true, "responses_api": false,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
-                    "custom_temperature_supported": true, "reasoning_efforts": []
+                    "custom_temperature_supported": true, "skills_supported": false, "reasoning_efforts": []
                     }
                 """));
     }
@@ -96,12 +96,12 @@ public class ListingTest extends ResourceBaseTest {
                     , "system_prompt": false, "tools": false, "seed": false
                     , "url_attachments": false, "folder_attachments": false
                     , "configuration": true, "allow_resume": true, "accessible_by_per_request_key": true,
-                    "content_parts": false, "temperature" : true, "cache" : false,
+                    "content_parts": false, "temperature" : false, "cache" : false,
                     "auto_caching" : false, "parallel_tool_calls": true,
                     "assistant_attachments_in_request": false, "mcp" : false,
                     "chat_completion": true, "responses_api": false,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
-                    "custom_temperature_supported": true, "reasoning_efforts": []
+                    "custom_temperature_supported": true, "skills_supported": false, "reasoning_efforts": []
                     }
                 """));
     }
@@ -113,12 +113,12 @@ public class ListingTest extends ResourceBaseTest {
                     , "system_prompt": true, "tools": false, "seed": false
                     , "url_attachments": false, "folder_attachments": false
                     , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true,
-                    "content_parts": false, "temperature" : true, "cache" : false,
+                    "content_parts": false, "temperature" : false, "cache" : false,
                     "auto_caching" : false, "parallel_tool_calls": true,
                     "assistant_attachments_in_request": false, "mcp" : false,
                     "chat_completion": true, "responses_api": true,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
-                    "custom_temperature_supported": true, "reasoning_efforts": []
+                    "custom_temperature_supported": true, "skills_supported": false, "reasoning_efforts": []
                     }
                 """));
     }
@@ -130,12 +130,12 @@ public class ListingTest extends ResourceBaseTest {
                     , "system_prompt": true, "tools": false, "seed": false
                     , "url_attachments": false, "folder_attachments": false
                     , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true,
-                    "content_parts": false, "temperature" : true, "cache" : false,
+                    "content_parts": false, "temperature" : false, "cache" : false,
                     "auto_caching" : false, "parallel_tool_calls": true,
                     "assistant_attachments_in_request": false, "mcp" : false,
                     "chat_completion": true, "responses_api": true,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
-                    "custom_temperature_supported": true, "reasoning_efforts": []
+                    "custom_temperature_supported": true, "skills_supported": false, "reasoning_efforts": []
                     }
                 """));
     }
@@ -147,12 +147,12 @@ public class ListingTest extends ResourceBaseTest {
                     , "system_prompt": true, "tools": false, "seed": false
                     , "url_attachments": false, "folder_attachments": false
                     , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true,
-                    "content_parts": false, "temperature" : true, "cache" : false,
+                    "content_parts": false, "temperature" : false, "cache" : false,
                     "auto_caching" : false, "parallel_tool_calls": true,
                     "assistant_attachments_in_request": false, "mcp" : false,
                     "chat_completion": true, "responses_api": true,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
-                    "custom_temperature_supported": true, "reasoning_efforts": []
+                    "custom_temperature_supported": true, "skills_supported": false, "reasoning_efforts": []
                     }
                 """));
     }
@@ -164,12 +164,12 @@ public class ListingTest extends ResourceBaseTest {
                     , "system_prompt": true, "tools": false, "seed": false
                     , "url_attachments": false, "folder_attachments": false
                     , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true,
-                    "content_parts": false, "temperature" : true, "cache" : false,
+                    "content_parts": false, "temperature" : false, "cache" : false,
                     "auto_caching" : false, "parallel_tool_calls": true,
                     "assistant_attachments_in_request": false, "mcp" : false,
                     "chat_completion": false, "responses_api": false,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
-                    "custom_temperature_supported": true, "reasoning_efforts": []
+                    "custom_temperature_supported": true, "skills_supported": false, "reasoning_efforts": []
                     }
                 """));
     }

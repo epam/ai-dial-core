@@ -10,11 +10,13 @@ concurrency:
 
 jobs:
   run_tests:
-    uses: epam/ai-dial-ci/.github/workflows/java_pr.yml@4.10.0
+    uses: epam/ai-dial-ci/.github/workflows/java_pr.yml@4.12.0
     secrets: inherit
     with:
       platforms: "linux/amd64,linux/arm64"
       java-version: 21
+      trivy-severity: "CRITICAL,HIGH,MEDIUM,LOW"
+      trivy-severity-for-sarif: "CRITICAL,HIGH,MEDIUM,LOW"
       trivy-limit-severities-for-sarif: false
 
   generate_openai_spec:
@@ -26,7 +28,7 @@ jobs:
         with:
           lfs: true
           ref: ${{ github.head_ref }}
-      - uses: epam/ai-dial-ci/actions/java_prepare@4.10.0
+      - uses: epam/ai-dial-ci/actions/java_prepare@4.12.0
         with:
           java-version: 21
           java-distribution: temurin

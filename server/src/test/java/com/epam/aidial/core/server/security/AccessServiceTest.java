@@ -399,6 +399,53 @@ public class AccessServiceTest {
     }
 
     @Test
+    public void testGetOwnResourcesAccessForChainedSchemaRichApplication_DeclaredPromptAndSkill() {
+        Application application = mock(Application.class);
+        when(application.hasApplicationTypeSchemaId()).thenReturn(true);
+        when(context.getDeployment()).thenReturn(application);
+
+        String initiatorBucket = "Users/user-sub-id/";
+        ResourceDescriptor prompt = new ResourceDescriptor(ResourceTypes.PROMPT, "prompt", List.of(), "bucket", initiatorBucket, false);
+        ResourceDescriptor skill = new ResourceDescriptor(ResourceTypes.SKILL, "skill", List.of(), "bucket", initiatorBucket, false);
+
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        when(applicationSchemaService.getPrompts(application)).thenReturn(List.of(prompt));
+        when(applicationSchemaService.getSkills(application)).thenReturn(List.of(skill));
+
+        try (MockedStatic<BucketBuilder> bucketBuilderMock = mockStatic(BucketBuilder.class)) {
+            bucketBuilderMock.when(() -> BucketBuilder.buildInitiatorBucket(context)).thenReturn(initiatorBucket);
+
+            Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService(applicationSchemaService)
+                    .getOwnResourcesAccessForChainedSchemaRichApplication(Set.of(prompt, skill), context);
+
+            assertEquals(ResourceAccessType.READ_ONLY, result.get(prompt));
+            assertEquals(ResourceAccessType.READ_ONLY, result.get(skill));
+        }
+    }
+
+    @Test
+    public void testGetOwnResourcesAccessForChainedSchemaRichApplication_PromptNotDeclared() {
+        Application application = mock(Application.class);
+        when(application.hasApplicationTypeSchemaId()).thenReturn(true);
+        when(context.getDeployment()).thenReturn(application);
+
+        String initiatorBucket = "Users/user-sub-id/";
+        ResourceDescriptor prompt = new ResourceDescriptor(ResourceTypes.PROMPT, "prompt", List.of(), "bucket", initiatorBucket, false);
+
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        when(applicationSchemaService.getPrompts(application)).thenReturn(List.of());
+
+        try (MockedStatic<BucketBuilder> bucketBuilderMock = mockStatic(BucketBuilder.class)) {
+            bucketBuilderMock.when(() -> BucketBuilder.buildInitiatorBucket(context)).thenReturn(initiatorBucket);
+
+            Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService(applicationSchemaService)
+                    .getOwnResourcesAccessForChainedSchemaRichApplication(Set.of(prompt), context);
+
+            assertTrue(result.isEmpty());
+        }
+    }
+
+    @Test
     public void testGetOwnResourcesAccessForChainedSchemaRichApplication_FilesAndDeploymentsTogether() {
         Application application = mock(Application.class);
         when(application.hasApplicationTypeSchemaId()).thenReturn(true);

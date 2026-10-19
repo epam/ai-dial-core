@@ -267,10 +267,10 @@ public class BufferingReadStream implements ReadStream<Buffer> {
         @SneakyThrows
         private Future<Void> handle(SseEvent event) {
             Future<JsonNode> result;
-            if (functions.isEmpty() || skipEvent(event)) {
+            String data = event.getData();
+            if (functions.isEmpty() || skipEvent(event) || data == null || data.isBlank()) {
                 result = Future.succeededFuture();
             } else {
-                String data = event.getData();
                 try {
                     JsonNode tree = ProxyUtil.MAPPER.readTree(data);
                     result = Future.succeededFuture(tree);

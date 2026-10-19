@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ToolSetData;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
@@ -23,6 +24,7 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -65,8 +67,8 @@ public class ToolSetController {
         taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
             if (deployment instanceof ToolSet toolSet) {
-                String encodedToolSetId = UrlUtil.encodePath(toolSetId);
-                toolSetService.setResourceAuthStatuses(context, toolSet, encodedToolSetId);
+                new ResourceAuthStatusEnricher(context, context.getProxy().getResourceAuthSettingsService())
+                        .enrichToolSet(toolSetId, toolSet);
                 return toolSet;
             }
             throw new ResourceNotFoundException("Toolset is not found: " + toolSetId);
@@ -100,10 +102,12 @@ public class ToolSetController {
     }
 
     private List<ToolSet> mergeToolsets(List<ToolSet> resourceToolsets, Config config) {
+        ResourceAuthStatusEnricher enricher =
+                new ResourceAuthStatusEnricher(context, context.getProxy().getResourceAuthSettingsService());
         List<ToolSet> list = new ArrayList<>();
         for (ToolSet toolSet : config.getToolsets().values()) {
             if (toolSet.hasAccess(context.getUserRoles())) {
-                toolSetService.setResourceAuthStatuses(context, toolSet, toolSet.getName());
+                enricher.enrichToolSet(UrlUtil.tryDecodePath(toolSet.getName()), toolSet);
                 list.add(toolSet);
             }
         }
@@ -138,9 +142,11 @@ public class ToolSetController {
         if (end - start <= 0) {
             return null;
         }
+        ResourceAuthStatusEnricher enricher =
+                new ResourceAuthStatusEnricher(context, context.getProxy().getResourceAuthSettingsService());
         for (int i = start; i < end; i++) {
             ToolSet toolSet = toolSets.get(i);
-            toolSetService.setResourceAuthStatuses(context, toolSet, toolSet.getName());
+            enricher.enrichToolSet(UrlUtil.tryDecodePath(toolSet.getName()), toolSet);
         }
         return null;
     }
@@ -149,8 +155,16 @@ public class ToolSetController {
         return deploymentService.listDeployments(context, ResourceTypes.TOOL_SET, new DeploymentService.DeploymentExtractor() {
             @SuppressWarnings("unchecked")
             @Override
-            public ToolSet extract(String content, ResourceItemMetadata metadata, ProxyContext context) {
-                return toolSetService.extractFrom(content, metadata);
+            public <T extends Deployment> List<T> extract(List<Pair<ResourceItemMetadata, String>> items, ProxyContext context) {
+                List<T> result = new ArrayList<>();
+                for (Pair<ResourceItemMetadata, String> item : items) {
+                    try {
+                        result.add((T) toolSetService.extractFrom(item.getValue(), item.getKey()));
+                    } catch (Exception e) {
+                        log.warn("Can't extract toolset {} due to the error", item.getKey().getUrl(), e);
+                    }
+                }
+                return result;
             }
         });
     }

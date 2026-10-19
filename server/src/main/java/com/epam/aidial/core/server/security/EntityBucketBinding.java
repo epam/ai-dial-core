@@ -33,6 +33,7 @@ public class EntityBucketBinding {
             Map.entry(ResourceTypes.PROMPT.group(), Set.of(ResourceDescriptor.PUBLIC_BUCKET, USER_BUCKET_WILDCARD)),
             Map.entry(ResourceTypes.CONVERSATION.group(), Set.of(ResourceDescriptor.PUBLIC_BUCKET, USER_BUCKET_WILDCARD)),
             Map.entry("interceptors", Set.of(PLATFORM_BUCKET)),
+            Map.entry("translators", Set.of(PLATFORM_BUCKET)),
             Map.entry("roles", Set.of(PLATFORM_BUCKET)),
             Map.entry("keys", Set.of(PLATFORM_BUCKET)),
             Map.entry("routes", Set.of(PLATFORM_BUCKET)),

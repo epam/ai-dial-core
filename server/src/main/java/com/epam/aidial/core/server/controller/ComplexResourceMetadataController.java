@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
@@ -9,12 +10,17 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.data.ComplexResourceItemMetadata;
 import com.epam.aidial.core.storage.data.MetadataBase;
+import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpHeaders;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.Set;
 
 /**
  * Metadata listing for the v2 complex resource API. In children mode it lists the classified, enriched
@@ -62,7 +68,7 @@ public class ComplexResourceMetadataController extends AccessControlBaseControll
             },
             responses = {
                     @ApiResponse(code = 200, description = "The complex resources and grouping folders at this level",
-                            body = @ApiSchema(implementation = MetadataBase.class)),
+                            body = @ApiSchema(oneOf = {ResourceFolderMetadata.class, ComplexResourceItemMetadata.class})),
                     @ApiResponse(code = 400, description = "Bad request - limit out of range"),
                     @ApiResponse(code = 403),
                     @ApiResponse(code = 404, description = "Grouping folder not found"),
@@ -127,5 +133,48 @@ public class ComplexResourceMetadataController extends AccessControlBaseControll
                 });
 
         return Future.succeededFuture();
+    }
+
+    /**
+     * Entry point for the children-listing metadata route, where the target path may name either a
+     * specific skill or a grouping folder - the client has no way to know which up front, so a share
+     * could be recorded against either shape. Both candidates are checked and their permissions unioned;
+     * the item-shaped resource is used for the actual lookup afterward, since
+     * {@link ComplexResourceService#getMetadata} resolves the real shape itself via the marker check.
+     */
+    public Future<?> handle(String itemResourceUrl, String folderResourceUrl) {
+        ResourceDescriptor itemResource;
+        ResourceDescriptor folderResource;
+
+        try {
+            itemResource = ResourceDescriptorFactory.fromAnyUrl(itemResourceUrl, proxy.getEncryptionService());
+            folderResource = ResourceDescriptorFactory.fromAnyUrl(folderResourceUrl, proxy.getEncryptionService());
+        } catch (Exception e) {
+            String errorMessage = e.getMessage() != null ? e.getMessage() : ("Invalid resource url provided: " + itemResourceUrl);
+            return context.respond(HttpStatus.BAD_REQUEST, errorMessage);
+        }
+
+        ResourceDescriptor finalItemResource = itemResource;
+        ResourceDescriptor finalFolderResource = folderResource;
+        Set<ResourceDescriptor> resourcesToCheck = itemResource.equals(folderResource)
+                ? Set.of(itemResource)
+                : Set.of(itemResource, folderResource);
+
+        return proxy.getTaskExecutor()
+                .submit(() -> proxy.getAccessService().lookupPermissions(resourcesToCheck, context))
+                .compose(permissions -> {
+                    Set<ResourceAccessType> itemPermissions = permissions.getOrDefault(finalItemResource, Set.of());
+                    Set<ResourceAccessType> folderPermissions = permissions.getOrDefault(finalFolderResource, Set.of());
+                    boolean hasAccess = itemPermissions.contains(ResourceAccessType.READ)
+                            || folderPermissions.contains(ResourceAccessType.READ);
+                    if (hasAccess) {
+                        boolean hasWriteAccess = itemPermissions.contains(ResourceAccessType.WRITE)
+                                || folderPermissions.contains(ResourceAccessType.WRITE);
+                        return handle(finalItemResource, hasWriteAccess);
+                    } else {
+                        context.respond(HttpStatus.FORBIDDEN, "You don't have an access to: " + itemResourceUrl);
+                        return Future.succeededFuture();
+                    }
+                });
     }
 }

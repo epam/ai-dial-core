@@ -4,9 +4,9 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -19,7 +19,7 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
-import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -31,16 +31,21 @@ import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.RequestOptions;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RedissonClient;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -55,12 +60,13 @@ public class BackgroundJobService {
     private final ApiKeyStore apiKeyStore;
     private final RateLimiter rateLimiter;
     private final TokenStatsTracker tokenStatsTracker;
-    private final UpstreamRouteProvider upstreamRouteProvider;
-    private final ResponsesApiClient client;
+    private final HttpClient httpClient;
     private final LogStore logStore;
     private final CredentialEncryptionService encryptionService;
     private final Settings settings;
     private BackgroundJobScheduler scheduler;
+    @Setter
+    private volatile String localBaseUrl;
 
     public BackgroundJobService(
             Vertx vertx,
@@ -73,8 +79,7 @@ public class BackgroundJobService {
             ApiKeyStore apiKeyStore,
             RateLimiter rateLimiter,
             TokenStatsTracker tokenStatsTracker,
-            UpstreamRouteProvider upstreamRouteProvider,
-            ResponsesApiClient client,
+            HttpClient httpClient,
             LogStore logStore,
             CredentialEncryptionService encryptionService,
             Settings settings) {
@@ -88,8 +93,7 @@ public class BackgroundJobService {
         this.apiKeyStore = apiKeyStore;
         this.rateLimiter = rateLimiter;
         this.tokenStatsTracker = tokenStatsTracker;
-        this.upstreamRouteProvider = upstreamRouteProvider;
-        this.client = client;
+        this.httpClient = httpClient;
         this.logStore = logStore;
         this.encryptionService = encryptionService;
         this.settings = settings;
@@ -188,28 +192,18 @@ public class BackgroundJobService {
     }
 
     @VisibleForTesting
-    Future<ResponsesApiClient.TerminalResult> poll(ResponseMapping mapping) {
-        Config config = configStore.get();
-        Deployment deployment = config.selectDeployment(mapping.getDeploymentName());
-        if (deployment == null) {
-            return Future.failedFuture("Deployment {} not found");
-        }
-        if (deployment.getResponsesEndpoint() == null) {
-            return Future.failedFuture("Deployment " + deployment.getName() + " does not have a responses endpoint");
-        }
-        Upstream upstream;
-        try {
-            upstream = upstreamRouteProvider.get(deployment, null, mapping.getUpstreamKey()).next();
-        } catch (Exception e) {
-            return Future.failedFuture("Failed to get upstream for deployment " + deployment.getName()
-                    + " and upstream key " + mapping.getUpstreamKey() + ": " + e.getMessage());
-        }
-        String targetUrl = deployment.getResponsesEndpoint() + "/" + mapping.getUpstreamResponseId();
-        return client.send(targetUrl, HttpMethod.GET, upstream)
+    Future<ResponsesApiClient.TerminalResult> poll(String dialResponseId, String apiKey) {
+        String url = DeploymentEndpointUtil.resolveLocalResponseItemUri(localBaseUrl, dialResponseId);
+        RequestOptions options = new RequestOptions()
+                .setAbsoluteURI(url)
+                .setMethod(HttpMethod.GET)
+                .setTimeout(settings.getPollTimeoutMs());
+        return httpClient.request(options)
+                .compose(request -> request.putHeader(Proxy.HEADER_API_KEY, apiKey).send())
                 .compose(response -> {
                     int statusCode = response.statusCode();
                     if (statusCode != 200) {
-                        return Future.failedFuture("Unexpected status " + statusCode + " from upstream for background job " + mapping.getUpstreamResponseId());
+                        return Future.failedFuture(new PollStatusException(statusCode, dialResponseId));
                     }
                     return response.body().map(ResponsesApiClient::parseTerminalBody);
                 });
@@ -253,7 +247,8 @@ public class BackgroundJobService {
                             return Future.succeededFuture(List.of());
                         }
                         return tokenStatsTracker.updateDeploymentStats(traceId, spanId, responseMapping.getDeploymentName(), usage)
-                                .map(TokenStatsTracker.UsageStats::usagePerModel);
+                                .compose(stats -> recordAggregatedCosts(stats.aggregatedCosts(), responseMapping.getInitiatorBucket())
+                                        .map(ignored2 -> stats.usagePerModel()));
                     });
 
                     if (traceId != null && Boolean.TRUE.equals(jobRecord.isRootSpan())) {
@@ -270,6 +265,28 @@ public class BackgroundJobService {
                             .onFailure(error -> log.error("Failed to finalize background job {}", responseId, error));
                 });
         return Future.succeededFuture();
+    }
+
+    /**
+     * Persists each ancestor's aggregated-cost increment collected by this report, mirroring
+     * {@code BaseDeploymentPostController.recordAggregatedCosts} for the polled/background path, which
+     * has no live {@link com.epam.aidial.core.server.ProxyContext} to derive a bucket from. Never fails
+     * the caller: a write failure here is logged and swallowed.
+     */
+    private Future<Void> recordAggregatedCosts(List<TokenStatsTracker.AggregatedCost> aggregatedCosts, String bucket) {
+        if (aggregatedCosts.isEmpty()) {
+            return Future.succeededFuture();
+        }
+        List<Future<Void>> futures = new ArrayList<>(aggregatedCosts.size());
+        for (TokenStatsTracker.AggregatedCost cost : aggregatedCosts) {
+            futures.add(rateLimiter.recordAggregatedCost(cost.deploymentName(), bucket, cost.cost()));
+        }
+        return Future.all(futures).<Void>transform(result -> {
+            if (result.failed()) {
+                log.warn("Failed to record aggregated cost", result.cause());
+            }
+            return Future.succeededFuture();
+        });
     }
 
     private String encryptKey(ResourceDescriptor descriptor, String key) {
@@ -329,6 +346,9 @@ public class BackgroundJobService {
         int maxParallelJobs = 100;
         long scanIntervalMs = TimeUnit.MINUTES.toMillis(10);
         long schedulerTickIntervalMs = TimeUnit.SECONDS.toMillis(5);
+        long pollTimeoutMs = TimeUnit.MINUTES.toMillis(5);
+        String localBaseUrl;
+        Set<Integer> pollGiveUpStatusCodes = Set.of(401, 403, 404);
     }
 
     @RequiredArgsConstructor
@@ -338,7 +358,8 @@ public class BackgroundJobService {
         private final ResponseMapping mapping;
 
         public Future<Boolean> poll() {
-            return BackgroundJobService.this.poll(mapping)
+            String apiKey = decryptKey(ResponseIdUtil.getBackgroundJobDescriptor(dialId), record.perRequestKey());
+            return BackgroundJobService.this.poll(dialId, apiKey)
                     .compose(result -> {
                                 if (result != null) {
                                     return completeAndProcess(dialId, record, mapping, result)

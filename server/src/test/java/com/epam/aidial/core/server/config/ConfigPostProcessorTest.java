@@ -1,29 +1,40 @@
 package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Condition;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
+import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Operator;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.PricingRate;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.Translator;
+import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.config.UpstreamAuthType;
 import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static com.epam.aidial.core.config.InterfaceType.ANTHROPIC_MESSAGES;
+import static com.epam.aidial.core.config.InterfaceType.OPENAI_CHAT_COMPLETIONS;
+import static com.epam.aidial.core.config.InterfaceType.OPENAI_RESPONSES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -172,6 +183,84 @@ public class ConfigPostProcessorTest {
     }
 
     @Test
+    void testSemanticAllowsFlatPromptCompletionRateWithoutTokenUnit() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        Pricing pricing = new Pricing();
+        pricing.setUnit("char_without_whitespace");
+        pricing.setPrompt(flatRate("0.56"));
+        pricing.setCompletion(flatRate("0.67"));
+        model.setPricing(pricing);
+        config.getModels().put("model", model);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getModels().containsKey("model"));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnDecisionTreePromptWithoutTokenUnit() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        Pricing pricing = new Pricing();
+        pricing.setUnit("char_without_whitespace");
+        pricing.setPrompt(decisionTree("promptTokens", 272000, flatRate("0.000004"), flatRate("0.000002")));
+        model.setPricing(pricing);
+        config.getModels().put("model", model);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAllowsDecisionTreePromptCompletionWithTokenUnit() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        Pricing pricing = new Pricing();
+        pricing.setUnit("token");
+        pricing.setPrompt(decisionTree("promptTokens", 272000, flatRate("0.000004"), flatRate("0.000002")));
+        pricing.setCompletion(decisionTree("promptTokens", 272000, flatRate("0.000018"), flatRate("0.000012")));
+        pricing.setCacheRead(decisionTree("promptTokens", 272000, flatRate("0.0000004"), flatRate("0.0000002")));
+        pricing.setCacheWrite(decisionTree("promptTokens", 272000, flatRate("0.000005"), flatRate("0.0000025")));
+        model.setPricing(pricing);
+        config.getModels().put("model", model);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getModels().containsKey("model"));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnRouteBearerUpstreamWithoutKey() {
+        Config config = newMutableConfig();
+        Upstream upstream = new Upstream();
+        upstream.setEndpoint("https://openrouter.ai/api/v1/chat/completions");
+        upstream.setAuthType(UpstreamAuthType.BEARER);
+        Route route = new Route();
+        route.setUpstreams(List.of(upstream));
+        config.getRoutes().put("openrouter", route);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAllowsRouteBearerUpstreamWithKey() {
+        Config config = newMutableConfig();
+        Upstream upstream = new Upstream();
+        upstream.setEndpoint("https://openrouter.ai/api/v1/chat/completions");
+        upstream.setKey("openrouter-key");
+        upstream.setAuthType(UpstreamAuthType.BEARER);
+        Route route = new Route();
+        route.setUpstreams(List.of(upstream));
+        config.getRoutes().put("openrouter", route);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getRoutes().containsKey("openrouter"));
+    }
+
+    @Test
     void testSemanticAbortThrowsOnUpstreamInterfaceWithNothingToResolveTo() {
         Config config = newMutableConfig();
         Model model = new Model();
@@ -253,6 +342,390 @@ public class ConfigPostProcessorTest {
         assertEquals(3, config.getModels().get("model").getInterfaces().size());
     }
 
+    @Test
+    void testSemanticThrowsOnRegistryTranslatorWithoutIn() {
+        // a registry entry is declared under no interface, so in is the only thing tying it to one
+        Config config = newMutableConfig();
+        config.setTranslators(Map.of("anthropicMessagesToOpenaiChatCompletions",
+                new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://translator/to-chat-completions")));
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticSkipDropsRegistryTranslatorWithoutIn() {
+        Config config = newMutableConfig();
+        config.setTranslators(new HashMap<>(Map.of("anthropicMessagesToOpenaiChatCompletions",
+                new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://translator/to-chat-completions"))));
+
+        AtomicReference<ResourceTypes> capturedType = new AtomicReference<>();
+        AtomicReference<String> capturedKey = new AtomicReference<>();
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), (type, error) -> {
+            capturedType.set(type);
+            capturedKey.set(error.getMapKey());
+        });
+
+        assertEquals(ResourceTypes.TRANSLATOR, capturedType.get());
+        assertEquals("anthropicMessagesToOpenaiChatCompletions", capturedKey.get());
+        assertTrue(config.getTranslators().isEmpty());
+    }
+
+    @Test
+    void testSemanticKeepsNamedTranslatorAsReference() {
+        Config config = newMutableConfig();
+        config.setTranslators(Map.of("anthropicMessagesToOpenaiChatCompletions",
+                new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://translator/to-chat-completions")));
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of("anthropicMessages",
+                translated(TranslatorRef.named("anthropicMessagesToOpenaiChatCompletions"))));
+        config.getModels().put("model", model);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        // nothing is materialized onto the model: the name stays a name and resolves against the live
+        // registry when asked, so an edit to the registry entry needs no walk over the models naming it
+        TranslatorRef translator = config.getModels().get("model").getInterfaces().get("anthropicMessages").getTranslator();
+        assertEquals("anthropicMessagesToOpenaiChatCompletions", translator.getName());
+        assertNull(translator.getInline());
+        assertEquals("http://translator/to-chat-completions", translator.resolve(config.getTranslators()).getBaseUrl());
+    }
+
+    @Test
+    void testSemanticKeepsModelWithAnUnknownTranslator() {
+        // an unresolved reference leaves that one interface unserved, the same as it does for an
+        // application or interceptor; it does not make the model invalid (DeploymentEndpointUtilTest
+        // covers the 503 side of it)
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of("anthropicMessages", translated(TranslatorRef.named("missing"))));
+        config.getModels().put("model", model);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getModels().containsKey("model"));
+        assertNull(model.getInterfaces().get("anthropicMessages").getTranslator().resolve(config.getTranslators()));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnBothTranslatorAndBaseUrl() {
+        // an interface is served by one or the other, so a config declaring both is rejected, not resolved
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        DeploymentInterface anthropic = translated(TranslatorRef.inline(
+                new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://translator")));
+        anthropic.setBaseUrl("http://anthropic");
+        model.setInterfaces(Map.of("anthropicMessages", anthropic));
+        config.getModels().put("model", model);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnTranslatorWithoutTranslatorMode() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        DeploymentInterface anthropic = new DeploymentInterface();
+        anthropic.setTranslator(TranslatorRef.inline(new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://translator")));
+        model.setInterfaces(Map.of("anthropicMessages", anthropic));
+        config.getModels().put("model", model);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnTranslatorModeWithoutTranslator() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setBaseUrl("http://model");
+        model.setInterfaces(Map.of("anthropicMessages", translated(null)));
+        config.getModels().put("model", model);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAbortThrowsWhenTheModelDoesNotServeTheTranslatorOutput() {
+        // the translator calls Core back on openaiResponses, which this model serves nowhere
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of("anthropicMessages", translated(TranslatorRef.inline(
+                new Translator(ANTHROPIC_MESSAGES, OPENAI_RESPONSES, "http://translator/to-responses")))));
+        config.getModels().put("model", model);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAbortThrowsWhenTheTranslatorOutputIsItselfTranslated() {
+        // anthropicMessages converts to openaiResponses, which converts back to anthropicMessages: the
+        // callback would arrive on a translated interface and be handed to a translator again
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setBaseUrl("http://model");
+        model.setInterfaces(Map.of(
+                "anthropicMessages", translated(TranslatorRef.inline(
+                        new Translator(ANTHROPIC_MESSAGES, OPENAI_RESPONSES, "http://translator/to-responses"))),
+                "openaiResponses", translated(TranslatorRef.inline(
+                        new Translator(OPENAI_RESPONSES, ANTHROPIC_MESSAGES, "http://translator/to-messages")))));
+        config.getModels().put("model", model);
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+
+        // both ends of the cycle are reported, each as the translated interface its own output lands on
+        assertEquals(2, error.getWarnings().size());
+        assertTrue(error.getMessage().contains("handed to a translator again"), error.getMessage());
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnTranslatorConvertingAnInterfaceToItself() {
+        // the translator's own output arrives back on the interface it came from, and Core hands it
+        // straight back to the translator: a loop, not a 503
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of("anthropicMessages", translated(TranslatorRef.inline(
+                new Translator(ANTHROPIC_MESSAGES, ANTHROPIC_MESSAGES, "http://translator")))));
+        config.getModels().put("model", model);
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+
+        // and it is reported as what it is, not as an interface the model fails to serve
+        assertEquals(1, error.getWarnings().size());
+        assertTrue(error.getMessage().contains("cannot convert 'anthropicMessages' to itself"), error.getMessage());
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnInlineTranslatorConvertingToItsOwnInterface() {
+        // an inline definition names no in, so the interface it sits under is what it converts from
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setEndpoint("http://legacy/chat/completions");
+        model.setInterfaces(Map.of("anthropicMessages", translated(TranslatorRef.inline(
+                new Translator(null, ANTHROPIC_MESSAGES, "http://translator")))));
+        config.getModels().put("model", model);
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+
+        assertTrue(error.getMessage().contains("cannot convert 'anthropicMessages' to itself"), error.getMessage());
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnInterfaceWithNoBaseUrlAnywhere() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setInterfaces(Map.of("openaiChatCompletions", new DeploymentInterface()));
+        config.getModels().put("model", model);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAllowsInterfacesCompletedByTheModelBaseUrl() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setBaseUrl("http://model");
+        model.setInterfaces(Map.of(
+                "openaiChatCompletions", new DeploymentInterface(),
+                "openaiResponses", new DeploymentInterface("http://model-responses")));
+        config.getModels().put("model", model);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getModels().containsKey("model"));
+    }
+
+    private static Config configWithOverridePaths(String interfaceType, Map<String, String> overridePaths) {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setBaseUrl("http://model");
+        DeploymentInterface declared = new DeploymentInterface();
+        declared.setOverridePaths(overridePaths);
+        model.setInterfaces(Map.of(interfaceType, declared));
+        config.getModels().put("model", model);
+        return config;
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnInterfacePathMappingUnderTheWrongInterface() {
+        Config config = configWithOverridePaths("openaiChatCompletions", Map.of("postAnthropicMessages", "/v1/messages"));
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAllowsBracesThatAreNotTheSupportedTokens() {
+        // only {id} and {overrideName} are substituted; any other brace is plain path text
+        Config config = configWithOverridePaths("openaiChatCompletions",
+                Map.of("postAzureOpenaiChatCompletions", "/v1/{Id}/{nope}/{id"));
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getModels().containsKey("model"));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnIdVariableWhereTheOperationHasNone() {
+        Config config = configWithOverridePaths("anthropicMessages", Map.of("postAnthropicMessages", "/v1/{id}/messages"));
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnOverridePathsForTranslatedInterfaces() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setBaseUrl("http://model");
+        DeploymentInterface anthropic = translated(TranslatorRef.inline(
+                new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://translator")));
+        anthropic.setOverridePaths(Map.of("postAnthropicMessages", "/v1/messages"));
+        model.setInterfaces(Map.of(
+                "openaiChatCompletions", new DeploymentInterface(),
+                "anthropicMessages", anthropic));
+        config.getModels().put("model", model);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAllowsValidOverridePathsAndToleratesUnknownKeys() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setBaseUrl("http://model");
+        DeploymentInterface chat = new DeploymentInterface();
+        chat.setOverridePaths(Map.of(
+                "postAzureOpenaiChatCompletions", "/openai/deployments/{overrideName}/v1/{id}/re{ponses",
+                "someFutureKey", "/whatever/{unvalidated}"));
+        DeploymentInterface responses = new DeploymentInterface();
+        responses.setOverridePaths(Map.of(
+                "postOpenaiResponses", "/v1/responses",
+                "getOpenaiResponsesById", "/v1/responses/{id}"));
+        model.setInterfaces(Map.of(
+                "openaiChatCompletions", chat,
+                "openaiResponses", responses));
+        config.getModels().put("model", model);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getModels().containsKey("model"));
+    }
+
+    private static Application applicationWithOverridePaths(String type, Map<String, String> overridePaths) {
+        Application application = new Application();
+        DeploymentInterface declared = new DeploymentInterface("http://app");
+        declared.setOverridePaths(overridePaths);
+        application.setInterfaces(Map.of(type, declared));
+        return application;
+    }
+
+    private static Interceptor interceptorWithOverridePaths(String type, Map<String, String> overridePaths) {
+        Interceptor interceptor = new Interceptor();
+        DeploymentInterface declared = new DeploymentInterface("http://interceptor");
+        declared.setOverridePaths(overridePaths);
+        interceptor.setInterfaces(Map.of(type, declared));
+        return interceptor;
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnApplicationOverridePathTemplate() {
+        Config config = newMutableConfig();
+        config.getApplications().put("app",
+                applicationWithOverridePaths("openaiResponses", Map.of("postOpenaiResponses", "/v1/{id}/responses")));
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticSkipDropsApplicationWithBadOverridePathTemplate() {
+        Config config = newMutableConfig();
+        config.getApplications().put("app",
+                applicationWithOverridePaths("openaiResponses", Map.of("postOpenaiResponses", "/v1/{id}/responses")));
+
+        AtomicReference<ResourceTypes> capturedType = new AtomicReference<>();
+        AtomicReference<String> capturedKey = new AtomicReference<>();
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), (type, error) -> {
+            capturedType.set(type);
+            capturedKey.set(error.getMapKey());
+        });
+
+        assertEquals(ResourceTypes.APPLICATION, capturedType.get());
+        assertEquals("app", capturedKey.get());
+        assertFalse(config.getApplications().containsKey("app"));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnInterceptorOverridePathTemplate() {
+        Config config = newMutableConfig();
+        config.getInterceptors().put("interceptor",
+                interceptorWithOverridePaths("openaiResponses", Map.of("postOpenaiResponses", "/v1/{id}/responses")));
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAllowsValidApplicationAndInterceptorOverridePaths() {
+        Config config = newMutableConfig();
+        config.getApplications().put("app",
+                applicationWithOverridePaths("openaiChatCompletions", Map.of("postAzureOpenaiChatCompletions", "/openai/deployments/{id}/v1/chat/completions")));
+        config.getInterceptors().put("interceptor",
+                interceptorWithOverridePaths("openaiChatCompletions", Map.of("postAzureOpenaiChatCompletions", "/v1/chat/completions")));
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getApplications().containsKey("app"));
+        assertTrue(config.getInterceptors().containsKey("interceptor"));
+    }
+
+    @Test
+    void testValidateSingleApplicationSkipsBadOverridePaths() {
+        Config config = newMutableConfig();
+        config.getApplications().put("app",
+                applicationWithOverridePaths("openaiResponses", Map.of("postOpenaiResponses", "/v1/{id}/responses")));
+
+        AtomicReference<ResourceTypes> capturedType = new AtomicReference<>();
+        ConfigPostProcessor.validateSingleApplication(config, "app", (type, error) -> capturedType.set(type));
+
+        assertEquals(ResourceTypes.APPLICATION, capturedType.get());
+        assertFalse(config.getApplications().containsKey("app"));
+    }
+
+    @Test
+    void testValidateSingleInterceptorThrowsInAbortMode() {
+        Config config = newMutableConfig();
+        config.getInterceptors().put("interceptor",
+                interceptorWithOverridePaths("openaiResponses", Map.of("postOpenaiResponses", "/v1/{id}/responses")));
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.validateSingleInterceptor(config, "interceptor", null));
+    }
+
+    private static DeploymentInterface translated(TranslatorRef translator) {
+        DeploymentInterface declared = new DeploymentInterface();
+        declared.setMode(InterfaceMode.TRANSLATOR);
+        declared.setTranslator(translator);
+        return declared;
+    }
+
     private static Config newMutableConfig() {
         Config config = new Config();
         config.setModels(new HashMap<>());
@@ -265,6 +738,19 @@ public class ConfigPostProcessorTest {
     private static PricingRate flatRate(String rate) {
         PricingRate pricingRate = new PricingRate();
         pricingRate.setRate(rate);
+        return pricingRate;
+    }
+
+    private static PricingRate decisionTree(String field, Object value, PricingRate ifTrue, PricingRate ifFalse) {
+        Condition condition = new Condition();
+        condition.setField(field);
+        condition.setOperator(Operator.GT);
+        condition.setValue(value);
+
+        PricingRate pricingRate = new PricingRate();
+        pricingRate.setTest(condition);
+        pricingRate.setIfTrue(ifTrue);
+        pricingRate.setIfFalse(ifFalse);
         return pricingRate;
     }
 
@@ -281,5 +767,114 @@ public class ConfigPostProcessorTest {
         ConfigPostProcessor.process(config, null);
 
         assertEquals(List.of("good"), List.copyOf(config.getModels().keySet()));
+    }
+
+    // --- validateModelInvariants: the shared set every pre-write surface must call ---------------
+    // These guard the anti-drift contract. processModels/validateSingleModel and the three pre-write
+    // sites all route through validateModelInvariants, so a write can never be admitted that the
+    // next rebuild would reject.
+
+    /**
+     * The abort-mode rebuild and {@code validateModelInvariants} must report identical warnings,
+     * so a validator added only to {@link ConfigPostProcessor#processModels} fails here — provided
+     * {@code maximallyInvalidModel} trips it; extend that fixture when adding a rule.
+     */
+    @Test
+    void testValidateModelInvariantsReportsExactlyWhatTheRebuildReports() {
+        Config config = newMutableConfig();
+        config.getModels().put("model", maximallyInvalidModel());
+
+        InvalidEntityException rebuild = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+
+        Model standalone = maximallyInvalidModel();
+        standalone.setName("model");
+        List<ValidationWarning> preWrite = new ArrayList<>();
+        ConfigPostProcessor.validateModelInvariants(standalone, config.getTranslators(), preWrite);
+
+        assertEquals(rebuild.getWarnings(), preWrite,
+                () -> "rebuild and pre-write validation diverged — a validator was added to "
+                        + "processModels but not to validateModelInvariants (or vice versa).\n"
+                        + "rebuild:  " + rebuild.getWarnings() + "\npre-write: " + preWrite);
+
+        // Non-empty, so an accidentally-valid fixture can't make the comparison vacuous.
+        List<String> fields = preWrite.stream().map(ValidationWarning::getField).toList();
+        assertTrue(fields.contains("pricing"), () -> "expected a pricing warning: " + fields);
+        assertTrue(fields.contains("upstreams[0].id"), () -> "expected an upstream id warning: " + fields);
+        assertTrue(fields.contains("interfaces.openaiChatCompletions"),
+                () -> "expected a deployment-interface warning: " + fields);
+    }
+
+    /**
+     * A model violating every rule in the shared set at once. One rule per family, so the
+     * differential comparison above has something to compare on each.
+     */
+    private static Model maximallyInvalidModel() {
+        Model model = new Model();
+
+        Pricing pricing = new Pricing();
+        pricing.setUnit("char_without_whitespace");
+        pricing.setCacheRead(flatRate("0.01"));
+        model.setPricing(pricing);
+
+        Upstream upstream = new Upstream();
+        upstream.setInterfaces(Map.of("openaiChatCompletions", new UpstreamInterface()));
+        model.setUpstreams(List.of(upstream));
+
+        model.setInterfaces(Map.of("openaiChatCompletions", new DeploymentInterface()));
+        return model;
+    }
+
+    @Test
+    void testValidateModelInvariantsWithEmptyTranslatorMapToleratesUnresolvedName() {
+        // A name with no entry leaves the interface unserved, not the model invalid — so a partial
+        // translator map can only yield fewer warnings, never spurious ones. This is what makes it
+        // safe to validate against the live snapshot / batch scratch rather than the merged config.
+        Model model = new Model();
+        model.setName("model");
+        model.setInterfaces(Map.of("anthropicMessages", translated(TranslatorRef.named("not-registered-yet"))));
+
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateModelInvariants(model, Map.of(), warnings);
+
+        assertTrue(warnings.isEmpty(), () -> "unresolved translator name must not warn: " + warnings);
+    }
+
+    @Test
+    void testValidateModelInvariantsDoesNotDuplicateOverridePathWarnings() {
+        // validateDeploymentInterfaces already runs the per-entry override-path check, so callers
+        // must not also call validateOverridePaths(Deployment, ...) — this pins that contract.
+        Model model = new Model();
+        model.setName("model");
+        model.setBaseUrl("http://model");
+        DeploymentInterface declared = new DeploymentInterface();
+        declared.setOverridePaths(Map.of("postAnthropicMessages", "/v1/messages"));
+        model.setInterfaces(Map.of("openaiChatCompletions", declared));
+
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateModelInvariants(model, Map.of(), warnings);
+
+        assertEquals(1, warnings.size(), () -> "override-path warning reported more than once: " + warnings);
+    }
+
+    @Test
+    void testValidateCrossReferencesReportsOnlyItsOwnWarnings() {
+        Config config = newMutableConfig();
+        config.getInterceptors().put("known", new Interceptor());
+        Model model = new Model();
+        model.setName("model");
+        model.setInterceptors(List.of("known"));
+
+        List<ValidationWarning> warnings = new ArrayList<>();
+        warnings.add(new ValidationWarning("pricing", "pre-existing hard failure"));
+
+        assertTrue(ConfigPostProcessor.validateCrossReferences(model, config, warnings),
+                () -> "resolved refs must report true regardless of earlier warnings: " + warnings);
+        assertEquals(1, warnings.size());
+
+        model.setInterceptors(List.of("known", "missing"));
+        assertFalse(ConfigPostProcessor.validateCrossReferences(model, config, warnings));
+        assertEquals(2, warnings.size());
+        assertEquals("interceptors[1]", warnings.get(1).getField());
     }
 }

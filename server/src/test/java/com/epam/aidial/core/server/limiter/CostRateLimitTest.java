@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
+import com.epam.aidial.core.config.PricingRate;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -25,6 +26,7 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.json.Json;
@@ -56,6 +58,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -118,7 +121,11 @@ public class CostRateLimitTest {
         LockService lockService = new LockService(redissonClient, null);
         ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
         ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage, lockService, settings, null);
-        rateLimiter = new RateLimiter(taskExecutor, resourceService);
+        // increase() only ever needs the schedule, and no test configures a non-default one;
+        // lenient() since not every test method calls increase()
+        ConfigStore configStore = mock(ConfigStore.class);
+        lenient().when(configStore.get()).thenReturn(new Config());
+        rateLimiter = new RateLimiter(taskExecutor, resourceService, configStore, BlockingCallTracer.NOOP);
     }
 
     private static Proxy mockProxy(Config config) {
@@ -175,8 +182,8 @@ public class CostRateLimitTest {
 
         Pricing pricing = new Pricing();
         pricing.setUnit("token");
-        pricing.setPrompt("0.001"); // $0.001 per prompt token
-        pricing.setCompletion("0.002"); // $0.002 per completion token
+        pricing.setPrompt(PricingRate.flat("0.001")); // $0.001 per prompt token
+        pricing.setCompletion(PricingRate.flat("0.002")); // $0.002 per completion token
         model.setPricing(pricing);
 
         proxyContext.setDeployment(model);
@@ -203,7 +210,8 @@ public class CostRateLimitTest {
                     .thenReturn(new BigDecimal("0.05"));
 
             // First increase and limit check should succeed
-            Future<Void> increaseLimitFuture = rateLimiter.increase(model, bucketLocation, proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+            Future<Void> increaseLimitFuture = rateLimiter.increase(
+                    model, bucketLocation, proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
             assertNotNull(increaseLimitFuture);
             assertNull(increaseLimitFuture.cause());
 
@@ -217,7 +225,8 @@ public class CostRateLimitTest {
                     .thenReturn(new BigDecimal("0.15"));
 
             // Second increase and limit check should fail due to cost limit
-            increaseLimitFuture = rateLimiter.increase(model, bucketLocation, proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+            increaseLimitFuture = rateLimiter.increase(
+                    model, bucketLocation, proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
             assertNotNull(increaseLimitFuture);
             assertNull(increaseLimitFuture.cause());
 
@@ -271,8 +280,8 @@ public class CostRateLimitTest {
 
         Pricing pricing = new Pricing();
         pricing.setUnit("token");
-        pricing.setPrompt("0.001"); // $0.001 per prompt token
-        pricing.setCompletion("0.002"); // $0.002 per completion token
+        pricing.setPrompt(PricingRate.flat("0.001")); // $0.001 per prompt token
+        pricing.setCompletion(PricingRate.flat("0.002")); // $0.002 per completion token
         model.setPricing(pricing);
 
         proxyContext.setDeployment(model);
@@ -298,7 +307,8 @@ public class CostRateLimitTest {
                     .thenReturn(new BigDecimal("0.05"));
 
             // Increase limit to record usage
-            Future<Void> increaseLimitFuture = rateLimiter.increase(model, bucketLocation, proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+            Future<Void> increaseLimitFuture = rateLimiter.increase(
+                    model, bucketLocation, proxyContext.getTokenUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
             assertNotNull(increaseLimitFuture);
             assertNull(increaseLimitFuture.cause());
 
@@ -352,8 +362,8 @@ public class CostRateLimitTest {
 
         Pricing pricing = new Pricing();
         pricing.setUnit("token");
-        pricing.setPrompt("0.001"); // $0.001 per prompt token
-        pricing.setCompletion("0.002"); // $0.002 per completion token
+        pricing.setPrompt(PricingRate.flat("0.001")); // $0.001 per prompt token
+        pricing.setCompletion(PricingRate.flat("0.002")); // $0.002 per completion token
         model.setPricing(pricing);
 
         // Mock vertx.executeBlocking
@@ -405,12 +415,14 @@ public class CostRateLimitTest {
                     .thenReturn(new BigDecimal("0.08"));
 
             // First user increases limit
-            Future<Void> increaseLimitFuture1 = rateLimiter.increase(model, bucketLocation1, tokenUsage1, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+            Future<Void> increaseLimitFuture1 = rateLimiter.increase(
+                    model, bucketLocation1, tokenUsage1, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
             assertNotNull(increaseLimitFuture1);
             assertNull(increaseLimitFuture1.cause());
 
             // Second user increases limit
-            Future<Void> increaseLimitFuture2 = rateLimiter.increase(model, bucketLocation2, tokenUsage2, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
+            Future<Void> increaseLimitFuture2 = rateLimiter.increase(
+                    model, bucketLocation2, tokenUsage2, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null);
             assertNotNull(increaseLimitFuture2);
             assertNull(increaseLimitFuture2.cause());
 

@@ -11,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doCallRealMethod;
 
@@ -65,6 +66,15 @@ class CollectChatCompletionUsageFnTest {
         JsonNode output = fn.apply(input).result();
 
         assertEquals(input, output);
+    }
+
+    @Test
+    public void testTolerantOfNullTree() {
+        CollectChatCompletionUsageFn fn = new CollectChatCompletionUsageFn(null, context);
+
+        JsonNode output = fn.apply(null).result();
+
+        assertNull(output);
     }
 
     private static JsonNode tree(String json) throws JsonProcessingException {

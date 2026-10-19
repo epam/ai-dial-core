@@ -7,9 +7,7 @@ import com.epam.aidial.core.credentials.util.ResourceEndpointUtil;
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.google.common.annotations.VisibleForTesting;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.hc.core5.http.ContentType;
 
 import java.util.LinkedHashSet;
 import java.util.Optional;
@@ -40,21 +38,17 @@ public class ProtectedResourceMetadataService {
     private final ResourceAuthorizationClient resourceAuthorizationClient;
     private final ProtectedResourceMetadataValidator protectedResourceMetadataValidator;
     private final HttpHeadersHandler httpHeadersHandler;
+    private final AuthorizationChallengeProvider authorizationChallengeProvider;
 
 
     public ProtectedResourceMetadataService(ResourceAuthorizationClient resourceAuthorizationClient,
                                             ProtectedResourceMetadataValidator protectedResourceMetadataValidator,
-                                            HttpHeadersHandler httpHeadersHandler) {
+                                            HttpHeadersHandler httpHeadersHandler,
+                                            AuthorizationChallengeProvider authorizationChallengeProvider) {
         this.resourceAuthorizationClient = resourceAuthorizationClient;
         this.protectedResourceMetadataValidator = protectedResourceMetadataValidator;
         this.httpHeadersHandler = httpHeadersHandler;
-    }
-
-    @VisibleForTesting
-    private ProtectedResourceMetadataService() {
-        this.resourceAuthorizationClient = new ResourceAuthorizationClient(null);
-        this.protectedResourceMetadataValidator = new ProtectedResourceMetadataValidator();
-        this.httpHeadersHandler = new HttpHeadersHandler();
+        this.authorizationChallengeProvider = authorizationChallengeProvider;
     }
 
     /**
@@ -94,33 +88,22 @@ public class ProtectedResourceMetadataService {
     }
 
     /**
-     * Attempts to fetch metadata using the `WWW-Authenticate` header.
-     *
-     * <p>
-     * This method sends a POST request to the resource endpoint. If the response contains
-     * a 401 Unauthorized status code, the method extracts the `WWW-Authenticate` header
-     * to locate the metadata URL and fetch the metadata from that endpoint.
-     * </p>
+     * Attempts to fetch metadata from the pointer in the MCP server's authorization challenge.
      *
      * @param resourceEndpoint The base URL of the resource endpoint.
-     * @return The {@link AuthorizationServerProtectedResourceMetadata}, or {@code null} if metadata cannot be resolved.
+     * @return The {@link AuthorizationServerProtectedResourceMetadata}, or {@code null} if the server
+     *         issues no challenge or the challenge carries no pointer.
      */
     private AuthorizationServerProtectedResourceMetadata tryFetchMetadataUsingHeader(String resourceEndpoint) {
-        try {
-            log.debug("Resolving Resource Metadata endpoint for resource: {}", resourceEndpoint);
-            resourceAuthorizationClient.executePost(resourceEndpoint, "{}", ContentType.APPLICATION_JSON.toString(), Object.class);
-        } catch (HttpException e) {
-            HttpStatus httpExceptionStatus = e.getStatus();
-            if (httpExceptionStatus.equals(HttpStatus.UNAUTHORIZED)) {
-                Optional<String> metadataUrl = httpHeadersHandler.extractMetadataUrl(e.getHeaders());
-                if (metadataUrl.isPresent()) {
-                    log.debug("Retrieved metadata URL from WWW-Authenticate header: {}", metadataUrl.get());
-                    return tryFetchMetadata(metadataUrl.get());
-                }
-            }
-            log.debug("{} at endpoint: {}. Proceeding to next fallback.", httpExceptionStatus.getCode(), resourceEndpoint);
+        log.debug("Resolving Resource Metadata endpoint for resource: {}", resourceEndpoint);
+        Optional<String> metadataUrl = authorizationChallengeProvider.challenge(resourceEndpoint)
+                .flatMap(httpHeadersHandler::extractMetadataUrl);
+        if (metadataUrl.isEmpty()) {
+            log.debug("No resource metadata pointer from endpoint: {}. Proceeding to next fallback.", resourceEndpoint);
+            return null;
         }
-        return null;
+        log.debug("Retrieved metadata URL from WWW-Authenticate header: {}", metadataUrl.get());
+        return tryFetchMetadata(metadataUrl.get());
     }
 
     /**

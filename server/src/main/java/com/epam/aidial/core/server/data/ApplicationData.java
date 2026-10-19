@@ -76,6 +76,7 @@ public class ApplicationData extends DeploymentData {
         data.setMaxInputAttachments(application.getMaxInputAttachments());
         data.setDefaults(application.getDefaults());
         data.setResponsesDefaults(application.getResponsesDefaults());
+        data.setInterfaceConfigs(InterfaceConfigData.createInterfaceConfigs(application));
         data.setDescriptionKeywords(application.getDescriptionKeywords());
 
         data.setApplicationTypeSchemaId(application.getApplicationTypeSchemaId());

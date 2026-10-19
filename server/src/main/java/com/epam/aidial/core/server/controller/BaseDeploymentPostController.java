@@ -13,11 +13,13 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
+import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
@@ -39,16 +41,17 @@ import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
@@ -111,7 +114,18 @@ public class BaseDeploymentPostController {
         context.respond(status, result);
     }
 
+    /**
+     * Publishes the upstream attempt count to the client as {@code X-UPSTREAM-ATTEMPTS}, and onto Core's own
+     * span when span enrichment is on.
+     */
+    protected void putUpstreamAttempts(HttpServerResponse response, int attemptCount) {
+        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(attemptCount));
+        GenAiTraceAttributes.setUpstreamAttempts(context, attemptCount);
+    }
+
     protected void finalizeRequest() {
+        // every terminal path of all four LLM surfaces reaches here, including the respond(...) helpers above
+        GenAiTraceAttributes.setLatencyAttributes(context);
         proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData != null) {
@@ -170,6 +184,22 @@ public class BaseDeploymentPostController {
     }
 
     protected Future<Void> collectTokenUsage(Buffer responseBody) {
+        return collectTokenUsage(responseBody, null);
+    }
+
+    /**
+     * @param responseId DIAL's own response id when the caller knows it, null to publish none.
+     */
+    protected Future<Void> collectTokenUsage(Buffer responseBody, String responseId) {
+        if (GenAiTraceAttributes.isEnabled(context)) {
+            try {
+                // interfaceType() reads the request path, which not every deployment kind reaching here has,
+                // and this runs before the client response is completed - tracing must not fail the request
+                GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), responseId);
+            } catch (Throwable e) {
+                log.warn("Failed to set GenAI response trace attributes", e);
+            }
+        }
         if (context.getDeployment() instanceof Model model) {
             if (context.getResponse().getStatusCode() != HttpStatus.OK.getCode()) {
                 return Future.succeededFuture();
@@ -189,6 +219,7 @@ public class BaseDeploymentPostController {
                 tokenUsage = new TokenUsage();
             }
             context.setTokenUsage(tokenUsage);
+            GenAiTraceAttributes.setUsageAttributes(context, tokenUsage);
             TokenUsage usage = context.getTokenUsage();
             return increaseLimits(usage)
                     .transform(result -> {
@@ -210,20 +241,34 @@ public class BaseDeploymentPostController {
         return trackDeploymentStats(context.getDeployment().getName(), ownUsage, true);
     }
 
+    private boolean subjectToLimits(Deployment deployment) {
+        return DeploymentEndpointUtil.resolveMode(deployment, interfaceType()).isSubjectToLimits();
+    }
+
     /**
-     * Charges the request's usage to the initiator's token and cost limits, unless the interface it arrived
-     * on is served by a translator: the translator calls Core back to have the completion served, and that
-     * inner request is what carries the usage to the limits. Charging here as well would count it twice.
+     * Checks the initiator's limits before the request is forwarded. A translated request is not one the
+     * initiator is accountable for: the call the translator makes back to Core is, so a caller over quota
+     * is rejected on that one rather than on this.
+     */
+    protected Future<RateLimitResult> checkLimits(Deployment deployment) {
+        if (!subjectToLimits(deployment)) {
+            return Future.succeededFuture(RateLimitResult.SUCCESS);
+        }
+        return proxy.getRateLimiter().limit(context, deployment);
+    }
+
+    /**
+     * Charges the request's usage to the initiator's token and cost limits. Skipped on the same terms
+     * {@link #checkLimits} is, so the two can never disagree about what a mode exempts.
      */
     private Future<Void> increaseLimits(TokenUsage usage) {
         Deployment deployment = context.getDeployment();
-        InterfaceType type = interfaceType();
-        if (DeploymentEndpointUtil.resolveMode(deployment, type) == InterfaceMode.TRANSLATOR) {
+        if (!subjectToLimits(deployment)) {
             return Future.succeededFuture();
         }
         return proxy.getRateLimiter().increase(
                 deployment, BucketBuilder.buildInitiatorBucket(context), usage,
-                context.getRequestBody(), context.getResponseBody(), type, context.getPricingUsageNode()
+                context.getRequestBody(), context.getResponseBody(), interfaceType(), context.getPricingUsageNode()
         );
     }
 
@@ -258,8 +303,31 @@ public class BaseDeploymentPostController {
                     forLog.setAggCost(stats.total().getAggCost());
                 }
                 context.setTokenUsage(forLog);
+                GenAiTraceAttributes.setUsageAttributes(context, forLog);
             }
-            return Future.<Void>succeededFuture();
+            return recordAggregatedCosts(stats.aggregatedCosts());
+        });
+    }
+
+    /**
+     * Persists each ancestor's aggregated-cost increment collected by this report - deployment-kind-agnostic,
+     * on its own ledger apart from the caller's global spend and from any deployment's own direct-cost record.
+     * Never fails the request: a write failure here is logged and swallowed, same as {@link #increaseLimits}.
+     */
+    private Future<Void> recordAggregatedCosts(List<TokenStatsTracker.AggregatedCost> aggregatedCosts) {
+        if (aggregatedCosts.isEmpty()) {
+            return Future.succeededFuture();
+        }
+        String bucket = BucketBuilder.buildInitiatorBucket(context);
+        List<Future<Void>> futures = new ArrayList<>(aggregatedCosts.size());
+        for (TokenStatsTracker.AggregatedCost cost : aggregatedCosts) {
+            futures.add(proxy.getRateLimiter().recordAggregatedCost(cost.deploymentName(), bucket, cost.cost()));
+        }
+        return Future.all(futures).<Void>transform(result -> {
+            if (result.failed()) {
+                log.warn("Failed to record aggregated cost", result.cause());
+            }
+            return Future.succeededFuture();
         });
     }
 
@@ -325,7 +393,8 @@ public class BaseDeploymentPostController {
         return createProxyRequest(
                 DeploymentEndpointUtil.resolveRequestUri(
                         context.getDeployment(),
-                        type, request.path(),
+                        type, context.getConfig().getTranslators(),
+                        request.path(),
                         request.query()
                 )
         );
@@ -349,7 +418,7 @@ public class BaseDeploymentPostController {
         proxyRequest.headers().add(Proxy.HEADER_API_KEY, context.getProxyApiKeyData().getPerRequestKey());
 
         proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_FEATURES,
-                ProxyUtil.convertToString(FeaturesData.createDeploymentFeatures(context.getDeployment())));
+                ProxyUtil.convertToString(FeaturesData.createDeploymentFeatures(context.getDeployment(), type)));
 
         if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
             Upstream upstream = Objects.requireNonNull(context.getUpstreamRoute().get());
@@ -369,6 +438,13 @@ public class BaseDeploymentPostController {
                     proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, propsString);
                 }
             });
+        }
+
+        // a translator has to know which deployment to call Core back for, and by the time it reads the body
+        // the model may already have been rewritten to overrideName. MessagesBaseController carries the id
+        // the client itself wrote and overrides this below; every other interface has only the deployment.
+        if (DeploymentEndpointUtil.resolveMode(context.getDeployment(), type) == InterfaceMode.TRANSLATOR) {
+            proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, context.getDeployment().getName());
         }
 
         enrichProxyRequestHeaders(proxyRequest);

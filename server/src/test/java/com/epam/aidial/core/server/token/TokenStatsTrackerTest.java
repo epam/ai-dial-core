@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.token;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
@@ -297,6 +298,110 @@ public class TokenStatsTrackerTest {
         assertNotNull(stats);
         assertNull(stats.total());
         assertEquals(List.of(), stats.usagePerModel());
+    }
+
+    /**
+     * Tests the flow: chat back-end -> core -> router-app -> core -> inner-app -> core -> model.
+     * Both ancestor apps must be credited with the model's cost, and the mechanism must not care
+     * that they are Applications specifically - only that a deployment name was recorded on the span.
+     */
+    @Test
+    public void testAggregatedCostCreditsEveryAncestorRegardlessOfKind() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        final String traceId = "trace-id-aggregated";
+
+        ProxyContext chatBackend = mock(ProxyContext.class);
+        when(chatBackend.getSpanId()).thenReturn("chat");
+        when(chatBackend.getTraceId()).thenReturn(traceId);
+        // the top-level span has no deployment of its own (a bare chat client) - it must be
+        // skipped, not credited, even though it is a real ancestor of the model
+        tracker.startSpan(chatBackend);
+
+        Application router = new Application();
+        router.setName("router-app");
+        ProxyContext routerCtx = mock(ProxyContext.class);
+        when(routerCtx.getSpanId()).thenReturn("router");
+        when(routerCtx.getTraceId()).thenReturn(traceId);
+        when(routerCtx.getParentSpanId()).thenReturn("chat");
+        when(routerCtx.getDeployment()).thenReturn(router);
+        tracker.startSpan(routerCtx);
+
+        Application inner = new Application();
+        inner.setName("inner-app");
+        ProxyContext innerCtx = mock(ProxyContext.class);
+        when(innerCtx.getSpanId()).thenReturn("inner");
+        when(innerCtx.getTraceId()).thenReturn(traceId);
+        when(innerCtx.getParentSpanId()).thenReturn("router");
+        when(innerCtx.getDeployment()).thenReturn(inner);
+        tracker.startSpan(innerCtx);
+
+        ProxyContext modelCtx = mock(ProxyContext.class);
+        when(modelCtx.getSpanId()).thenReturn("model");
+        when(modelCtx.getTraceId()).thenReturn(traceId);
+        when(modelCtx.getParentSpanId()).thenReturn("inner");
+        tracker.startSpan(modelCtx);
+
+        TokenUsage modelUsage = new TokenUsage();
+        modelUsage.setTotalTokens(100);
+        modelUsage.setCost(new BigDecimal("0.40"));
+        modelUsage.setAggCost(new BigDecimal("0.40"));
+
+        TokenStatsTracker.UsageStats stats = tracker.updateDeploymentStats(traceId, "model", "gpt-4o", modelUsage).result();
+
+        // both Application ancestors are credited with the same delta - the mechanism never
+        // special-cases which one is "closer"; the top-level bare-client span is skipped since
+        // it has no recorded deployment name
+        assertEquals(2, stats.aggregatedCosts().size());
+        assertEquals("inner-app", stats.aggregatedCosts().get(0).deploymentName());
+        assertEquals(new BigDecimal("0.40"), stats.aggregatedCosts().get(0).cost());
+        assertEquals("router-app", stats.aggregatedCosts().get(1).deploymentName());
+        assertEquals(new BigDecimal("0.40"), stats.aggregatedCosts().get(1).cost());
+
+        // a second, unrelated model call under the same router charges only the router again,
+        // not the inner app (it is not an ancestor of this new leaf) - deltas accumulate
+        // independently per call, never double-counted
+        ProxyContext secondModelCtx = mock(ProxyContext.class);
+        when(secondModelCtx.getSpanId()).thenReturn("model-2");
+        when(secondModelCtx.getTraceId()).thenReturn(traceId);
+        when(secondModelCtx.getParentSpanId()).thenReturn("router");
+        tracker.startSpan(secondModelCtx);
+
+        TokenUsage secondUsage = new TokenUsage();
+        secondUsage.setTotalTokens(50);
+        secondUsage.setCost(new BigDecimal("0.10"));
+        secondUsage.setAggCost(new BigDecimal("0.10"));
+
+        TokenStatsTracker.UsageStats secondStats =
+                tracker.updateDeploymentStats(traceId, "model-2", "gpt-4o-mini", secondUsage).result();
+        assertEquals(1, secondStats.aggregatedCosts().size());
+        assertEquals("router-app", secondStats.aggregatedCosts().get(0).deploymentName());
+        assertEquals(new BigDecimal("0.10"), secondStats.aggregatedCosts().get(0).cost());
+    }
+
+    @Test
+    public void testPureReadNeverReportsAggregatedCosts() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        final String traceId = "trace-id-read-only";
+        Application router = new Application();
+        router.setName("router-app");
+        ProxyContext routerCtx = mock(ProxyContext.class);
+        when(routerCtx.getSpanId()).thenReturn("router");
+        when(routerCtx.getTraceId()).thenReturn(traceId);
+        when(routerCtx.getDeployment()).thenReturn(router);
+        tracker.startSpan(routerCtx);
+
+        // nothing was ever known outside an update() call, even though the span belongs to an
+        // Application that could in principle have aggregated cost
+        TokenStatsTracker.UsageStats stats = tracker.getUsageStats(routerCtx).result();
+        assertEquals(List.of(), stats.aggregatedCosts());
     }
 
 }

@@ -48,20 +48,36 @@ public class ProxyUtil {
     private static final MultiMap TRACE_HEADERS = MultiMap.caseInsensitiveMultiMap()
             .add("traceparent", "whatever")
             .add("tracestate", "whatever");
-    private static final MultiMap HOP_BY_HOP_HEADERS = MultiMap.caseInsensitiveMultiMap()
-            .add(HttpHeaders.CONNECTION, "whatever")
-            .add(HttpHeaders.KEEP_ALIVE, "whatever")
-            .add(HttpHeaders.HOST, "whatever")
-            .add(HttpHeaders.PROXY_AUTHENTICATE, "whatever")
-            .add(HttpHeaders.PROXY_AUTHORIZATION, "whatever")
-            .add("te", "whatever")
-            .add("trailer", "whatever")
-            .add(HttpHeaders.TRANSFER_ENCODING, "whatever")
-            .add(HttpHeaders.UPGRADE, "whatever")
-            .add(HttpHeaders.CONTENT_LENGTH, "whatever")
-            .add(Proxy.HEADER_API_KEY, "whatever")
-            .add(Proxy.HEADER_X_API_KEY, "whatever");
+    private static MultiMap HOP_BY_HOP_HEADERS = baseHopByHopHeaders();
     public static final String METADATA_PREFIX = "metadata/";
+
+    /**
+     * Rebuilds the hop-by-hop header set from the built-in defaults plus the configured additions.
+     * Safe to call more than once (e.g. from tests) - each call replaces the previous set rather than appending to it.
+     */
+    public static void init(ProxySettings settings) {
+        MultiMap headers = baseHopByHopHeaders();
+        for (String header : settings.additionalHopByHopHeaders()) {
+            headers.add(header, "whatever");
+        }
+        HOP_BY_HOP_HEADERS = headers;
+    }
+
+    private static MultiMap baseHopByHopHeaders() {
+        return MultiMap.caseInsensitiveMultiMap()
+                .add(HttpHeaders.CONNECTION, "whatever")
+                .add(HttpHeaders.KEEP_ALIVE, "whatever")
+                .add(HttpHeaders.HOST, "whatever")
+                .add(HttpHeaders.PROXY_AUTHENTICATE, "whatever")
+                .add(HttpHeaders.PROXY_AUTHORIZATION, "whatever")
+                .add("te", "whatever")
+                .add("trailer", "whatever")
+                .add(HttpHeaders.TRANSFER_ENCODING, "whatever")
+                .add(HttpHeaders.UPGRADE, "whatever")
+                .add(HttpHeaders.CONTENT_LENGTH, "whatever")
+                .add(Proxy.HEADER_API_KEY, "whatever")
+                .add(Proxy.HEADER_X_API_KEY, "whatever");
+    }
 
     public static void copyHeaders(MultiMap from, MultiMap to) {
         copyHeaders(from, to, MultiMap.caseInsensitiveMultiMap());

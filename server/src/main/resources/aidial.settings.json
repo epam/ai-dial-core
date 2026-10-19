@@ -113,11 +113,25 @@
   "asyncTaskExecutor": {
     "useVirtualThreads": true
   },
+  "tracing": {
+    "genAiSpanAttributes": true,
+    "responseTraceHeaders": true,
+    "conversationIdHeaders": [
+      "x-claude-code-session-id",
+      "thread-id",
+      "x-session-id",
+      "x-dial-client-channel-id",
+      "X-CONVERSATION-ID"
+    ]
+  },
   "analytics": {
     "collectClaims": false,
     "claimsAllowlist": [],
     "collectHeaders": false,
     "headersBlacklist": ["authorization", "api-key", "cookie", "proxy-authorization"]
+  },
+  "proxy": {
+    "additionalHopByHopHeaders": []
   },
   "backgroundJob": {
     "initialPollIntervalMs": 10000,
@@ -128,6 +142,8 @@
     "leaseTimeoutMs": 300000,
     "maxParallelJobs": 100,
     "scanIntervalMs": 600000,
-    "schedulerTickIntervalMs": 5000
+    "schedulerTickIntervalMs": 5000,
+    "pollTimeoutMs": 300000,
+    "pollGiveUpStatusCodes": [401, 403, 404]
   }
 }
