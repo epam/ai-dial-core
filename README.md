@@ -278,7 +278,7 @@ without putting the raw address in the log.
 <details> 
 <summary><b>Complex Resource Limits Configurations</b></summary>
 
-Per-resource limits for folder-as-resource complex resources (e.g. skills), enforced on whole-resource
+Per-resource limits for folder-as-resource complex resources (skills, projects), enforced on whole-resource
 PUT and single-file PUT. Exceeding a limit rejects the request and leaves nothing observable written.
 These limits also bound listing reads, archive (ZIP download) size and how long a mutation holds the
 resource lock (a single-file PUT copies the whole current version under the lock).
@@ -288,6 +288,7 @@ resource lock (a single-file PUT copies the whole current version under the lock
 | complexResource.maxFiles           |   100    |    No    | Max number of files a complex resource may contain.               |
 | complexResource.maxTotalBytes      | 16777216 |    No    | Max aggregate size in bytes of all files in a complex resource.   |
 | complexResource.maxFileSizeBytes   | 1048576  |    No    | Max size in bytes of a single file within a complex resource.     |
+| complexResource.types.\<group\>    |    -     |    No    | Per-type override keyed by URL group (`skills`, `projects`) with any subset of `maxFiles`, `maxTotalBytes`, `maxFileSizeBytes`; unset fields fall back to the values above. The built-in `projects` override is 1000 files, 67108864 total bytes, 5242880 bytes per file; setting `types` replaces it. |
 
 </details>
 
