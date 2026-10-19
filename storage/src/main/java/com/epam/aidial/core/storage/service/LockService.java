@@ -37,8 +37,9 @@ public class LockService {
     private final String prefix;
     private final RScript script;
     private final ConcurrentHashMap<String, LocalLock> locks;
-    // lock() only: tryLock() never waits, and its holds (e.g. an application deployment) are not measured either
+    // lock() and lockLocally() only: tryLock() never waits, and its holds (e.g. an application deployment) are not measured either
     private static final Timer LOCAL_WAIT_TIMER = buildWaitTimer("local", "success");
+    private static final Timer LOCAL_ONLY_WAIT_TIMER = buildWaitTimer("local_only", "success");
     private static final Timer REDIS_WAIT_TIMER = buildWaitTimer("redis", "success");
     private static final Timer FAILED_REDIS_WAIT_TIMER = buildWaitTimer("redis", "error");
     private static final Timer HOLD_TIMER = Timer.builder("dial_lock_hold")
@@ -47,6 +48,7 @@ public class LockService {
             .register(Metrics.globalRegistry);
     // static: Micrometer keeps the first gauge registered under a name
     private static final AtomicInteger LOCAL_QUEUE = registerQueueGauge("local");
+    private static final AtomicInteger LOCAL_ONLY_QUEUE = registerQueueGauge("local_only");
     private static final AtomicInteger REDIS_QUEUE = registerQueueGauge("redis");
 
     private static class LocalLock {
@@ -55,16 +57,16 @@ public class LockService {
 
         ReentrantLock lock = new ReentrantLock();
 
-        void lock() {
+        void lock(AtomicInteger queue) {
             // a free or re-entered lock is not a wait
             if (lock.tryLock()) {
                 return;
             }
-            LOCAL_QUEUE.incrementAndGet();
+            queue.incrementAndGet();
             try {
                 lock.lock();
             } finally {
-                LOCAL_QUEUE.decrementAndGet();
+                queue.decrementAndGet();
             }
         }
 
@@ -86,7 +88,7 @@ public class LockService {
         // try to get a local lock the first
         LocalLock localLock = acquireLocalLock(id);
         long waitStart = System.nanoTime();
-        localLock.lock();
+        localLock.lock(LOCAL_QUEUE);
         long localAcquired = System.nanoTime();
         LOCAL_WAIT_TIMER.record(localAcquired - waitStart, TimeUnit.NANOSECONDS);
 
@@ -113,6 +115,22 @@ public class LockService {
         };
     }
 
+    /**
+     * A lock on {@code key} within this pod: threads of this pod take turns, threads of other pods do not wait.
+     * It does not exclude {@link #lock} on the same key, so it never queues behind a lock() that waits for Redis.
+     */
+    public Lock lockLocally(String key) {
+        String id = "local:" + key;
+        LocalLock localLock = acquireLocalLock(id);
+        long waitStart = System.nanoTime();
+        localLock.lock(LOCAL_ONLY_QUEUE);
+        LOCAL_ONLY_WAIT_TIMER.record(System.nanoTime() - waitStart, TimeUnit.NANOSECONDS);
+        return () -> {
+            localLock.unlock();
+            releaseLocalLock(id);
+        };
+    }
+
     private void lockInRedis(String id, long owner) {
         long ttl = tryLock(id, owner);
         if (ttl <= 0) {
@@ -134,7 +152,7 @@ public class LockService {
 
     private static Timer buildWaitTimer(String phase, String outcome) {
         return Timer.builder("dial_lock_wait")
-                .description("Time lock() waits before the lock is acquired, or before it fails")
+                .description("Time lock() or lockLocally() waits before the lock is acquired, or before it fails")
                 .tag("phase", phase)
                 .tag("outcome", outcome)
                 .serviceLevelObjectives(LatencyBuckets.waitBuckets())
@@ -144,7 +162,7 @@ public class LockService {
     private static AtomicInteger registerQueueGauge(String phase) {
         AtomicInteger queue = new AtomicInteger();
         Gauge.builder("dial_lock_queue_size", queue, AtomicInteger::get)
-                .description("Threads of this pod blocked in lock() until the key is released")
+                .description("Threads of this pod blocked in lock() or lockLocally() until the key is released")
                 .tag("phase", phase)
                 .register(Metrics.globalRegistry);
         return queue;

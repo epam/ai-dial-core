@@ -96,7 +96,7 @@ class LockServiceTest {
     @Test
     void testLocalContentionIsRecordedAsLocalWait() throws Exception {
         LockService.Lock lock = service.lock("local-contended");
-        Thread waiter = startWaiter("local-contended");
+        Thread waiter = startWaiter(() -> service.lock("local-contended").close());
         Assertions.assertEquals(1, queueSize("local"));
         Assertions.assertEquals(0, queueSize("redis"));
         Thread.sleep(300);
@@ -113,7 +113,7 @@ class LockServiceTest {
         // a second LockService has its own local locks, like another Core pod sharing the Redis
         LockService otherPod = new LockService(client, null);
         LockService.Lock lock = otherPod.lock("redis-contended");
-        Thread waiter = startWaiter("redis-contended");
+        Thread waiter = startWaiter(() -> service.lock("redis-contended").close());
         awaitQueueSize("redis", 1);
         Assertions.assertEquals(0, queueSize("local"));
         Thread.sleep(300);
@@ -124,16 +124,34 @@ class LockServiceTest {
         Assertions.assertTrue(waitTimer("redis").max(TimeUnit.MILLISECONDS) >= 250);
     }
 
+    @Test
+    void testLockLocallyContentionIsRecordedApartFromLock() throws Exception {
+        LockService.Lock lock = service.lockLocally("local-only-contended");
+        // another pod and lock() on the same key do not wait for it
+        new LockService(client, null).lockLocally("local-only-contended").close();
+        service.lock("local-only-contended").close();
+        Thread waiter = startWaiter(() -> service.lockLocally("local-only-contended").close());
+        Assertions.assertEquals(1, queueSize("local_only"));
+        Assertions.assertEquals(0, queueSize("local"));
+        Thread.sleep(300);
+        lock.close();
+        join(waiter);
+        Assertions.assertEquals(0, queueSize("local_only"));
+
+        Assertions.assertTrue(waitTimer("local_only").max(TimeUnit.MILLISECONDS) >= 250);
+        Assertions.assertTrue(waitTimer("local").max(TimeUnit.MILLISECONDS) < 250);
+    }
+
     /**
-     * Returns once the waiter thread is parked inside lock(): the whole hold that follows counts as its wait,
-     * however late the thread is scheduled. Before lock() the thread has nothing to park on.
+     * Returns once the waiter thread is parked inside the lock call: the whole hold that follows counts as its wait,
+     * however late the thread is scheduled. Before the call the thread has nothing to park on.
      */
-    private static Thread startWaiter(String key) throws InterruptedException {
-        Thread waiter = new Thread(() -> service.lock(key).close());
+    private static Thread startWaiter(Runnable locking) throws InterruptedException {
+        Thread waiter = new Thread(locking);
         waiter.start();
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
         while (!isParked(waiter)) {
-            Assertions.assertTrue(System.nanoTime() < deadline, () -> "the waiter should block in lock(), state=" + waiter.getState());
+            Assertions.assertTrue(System.nanoTime() < deadline, () -> "the waiter should block in the lock call, state=" + waiter.getState());
             Thread.sleep(1);
         }
         return waiter;
