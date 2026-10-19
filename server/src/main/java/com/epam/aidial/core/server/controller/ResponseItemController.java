@@ -221,10 +221,9 @@ public class ResponseItemController implements Controller {
             ApiKeyData.initFromContext(proxyApiKeyData, context);
             context.setProxyApiKeyData(proxyApiKeyData);
 
-            String requestContentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
             String perRequestKey = proxyApiKeyData.getPerRequestKey();
             proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
-            sendRequest(mapping, targetUrl, upstream, perRequestKey, requestContentType)
+            sendRequest(mapping, targetUrl, upstream, perRequestKey)
                     .eventually(this::finalizeRequest)
                     .onFailure(this::handleError);
 
@@ -232,12 +231,8 @@ public class ResponseItemController implements Controller {
         });
     }
 
-    private Future<Void> sendRequest(ResponseMapping mapping, String targetUrl, Upstream upstream, String perRequestKey, String requestContentType) {
-        return context.getRequest().body()
-                .compose(body -> {
-                    context.setRequestBodyWithTimestamp(body);
-                    return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, perRequestKey, body, requestContentType);
-                })
+    private Future<Void> sendRequest(ResponseMapping mapping, String targetUrl, Upstream upstream, String perRequestKey) {
+        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, perRequestKey)
                 .compose(response -> {
                     context.setProxyResponse(response);
                     String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
