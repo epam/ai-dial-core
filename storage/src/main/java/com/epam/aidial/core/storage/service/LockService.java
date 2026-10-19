@@ -11,12 +11,14 @@ import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.locks.ReentrantLock;
@@ -29,7 +31,9 @@ import javax.annotation.Nullable;
 @Slf4j
 public class LockService {
 
-    private static final long PERIOD = TimeUnit.SECONDS.toMicros(300);
+    public static final Duration LOCK_PERIOD = Duration.ofSeconds(300);
+
+    private static final long PERIOD = TimeUnit.SECONDS.toMicros(LOCK_PERIOD.toSeconds());
     private static final long WAIT_MIN = TimeUnit.MILLISECONDS.toNanos(1);
     private static final long WAIT_MAX = TimeUnit.MILLISECONDS.toNanos(128);
 
@@ -174,12 +178,7 @@ public class LockService {
     }
 
     public <T> T underBucketLocks(Collection<String> bucketLocations, Supplier<T> function) {
-        List<String> keys = bucketLocations.stream()
-                .map(bucketLocation -> BlobStorageUtil.toStoragePath(prefix, bucketLocation))
-                .distinct()
-                .sorted()
-                .toList();
-
+        List<String> keys = bucketKeys(bucketLocations);
         List<Lock> locks = new ArrayList<>(keys.size());
 
         try {
@@ -190,10 +189,41 @@ public class LockService {
 
             return function.get();
         } finally {
-            for (Lock lock : locks) {
-                lock.close();
-            }
+            closeAll(locks);
         }
+    }
+
+    /**
+     * Takes the locks of all the buckets without waiting, in the same order as {@link #underBucketLocks}.
+     * Unlike {@link #lock}, it takes only the Redis locks and not the in-pod local ones. Writers under
+     * {@link #underBucketLocks} hold the Redis locks as well, so they are excluded all the same.
+     *
+     * @return a lock that releases all of them once, or null if any is held by someone else, in which case none is kept
+     */
+    @Nullable
+    public Lock tryLockBuckets(Collection<String> bucketLocations) {
+        List<Lock> locks = new ArrayList<>();
+
+        try {
+            for (String key : bucketKeys(bucketLocations)) {
+                Lock lock = tryLock(key);
+                if (lock == null) {
+                    closeAll(locks);
+                    return null;
+                }
+                locks.add(lock);
+            }
+        } catch (Throwable e) {
+            closeAll(locks);
+            throw e;
+        }
+
+        AtomicBoolean closed = new AtomicBoolean();
+        return () -> {
+            if (closed.compareAndSet(false, true)) {
+                closeAll(locks);
+            }
+        };
     }
 
     @Nullable
@@ -263,6 +293,20 @@ public class LockService {
         } catch (Throwable e) {
             log.error("Lock service failed to unlock: {}", id, e);
             return false;
+        }
+    }
+
+    private List<String> bucketKeys(Collection<String> bucketLocations) {
+        return bucketLocations.stream()
+                .map(bucketLocation -> BlobStorageUtil.toStoragePath(prefix, bucketLocation))
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
+    private static void closeAll(List<Lock> locks) {
+        for (Lock lock : locks) {
+            lock.close();
         }
     }
 
