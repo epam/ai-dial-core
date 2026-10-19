@@ -15184,7 +15184,7 @@ components:
         baseUrl:
           type: string
         resource_dependencies:
-          description: "Declared resource dependencies for this application. Present only when the application declares dependencies; omitted otherwise."
+          description: Declared resource dependencies for this application. Present only when the application declares dependencies; omitted otherwise.
           type: array
           items:
             $ref: "#/components/schemas/ResourceDependency"
@@ -18149,10 +18149,8 @@ components:
       - SIGNED_OUT
       - FAILED
     ResourceDependency:
-      description: >
-        A declared resource dependency — a request, not a grant. The record carries no access of
-        its own; at request start Core verifies the originating user's reach and the required
-        admin consent, and only then bakes the grant into the per-request key the app holds.
+      description: |
+        A declared resource dependency — a request, not a grant. The record carries no access of its own; at request start Core verifies the originating user's reach and the required admin consent, and only then bakes the grant into the per-request key the app holds.
       type: object
       properties:
         access:
@@ -18161,15 +18159,14 @@ components:
           items:
             $ref: "#/components/schemas/ResourceAccessType"
         kind:
-          description: "Descriptor kind; must be \"dial.resourceLink\"."
+          description: Descriptor kind; must be "dial.resourceLink".
           type: string
         link_id:
-          description: "Unique identity of this record within the application's declaration."
+          description: Unique identity of this record within the application's declaration.
           type: string
         required:
-          description: >
-            When true, an unresolvable or unconsented dependency fails the call with 403.
-            When false (default), the dependency degrades silently.
+          description: |
+            When true, an unresolvable or unconsented dependency fails the call with 403. When false (default), the dependency degrades silently.
           type: boolean
         target:
           $ref: "#/components/schemas/ResourceDependencyTarget"
@@ -18177,10 +18174,8 @@ components:
       type: object
       properties:
         url:
-          description: >
-            A DIAL resource URL in one of two forms: a concrete global-view path
-            (e.g. "files/public/policies/") or a current-user placeholder path
-            (e.g. "files/{current-user}/skills/"). Write-time validation enforces the grammar.
+          description: |
+            A DIAL resource URL in one of two forms: a concrete global-view path (e.g. "files/public/policies/") or a current-user placeholder path (e.g. "files/{current-user}/skills/"). Write-time validation enforces the grammar.
           type: string
     ResourceEvent:
       type: object
