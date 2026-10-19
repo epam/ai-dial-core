@@ -125,7 +125,7 @@ public class ResourceDependencyValidator {
         List<String> issues = new ArrayList<>();
         String path = pathOf(dependency);
         if (path == null) {
-            issues.add(at + ": target.path is required");
+            issues.add(at + ": target.url is required");
             return issues;
         }
         // Token rules run on decoded segments, mirroring ResourceDescriptorFactory's single tryDecodePath
@@ -134,7 +134,7 @@ public class ResourceDependencyValidator {
         String[] segments = decodedSegments(path);
         // A path of slashes only splits to zero segments; treat it as a missing path, not a crash.
         if (segments.length == 0) {
-            issues.add(at + ": target.path is required");
+            issues.add(at + ": target.url is required");
             return issues;
         }
         String root = segments[0];
@@ -177,10 +177,10 @@ public class ResourceDependencyValidator {
     }
 
     private static String pathOf(ResourceDependency dependency) {
-        if (dependency.getTarget() == null || dependency.getTarget().getPath() == null) {
+        if (dependency.getTarget() == null || dependency.getTarget().getUrl() == null) {
             return null;
         }
-        String path = dependency.getTarget().getPath().trim();
+        String path = dependency.getTarget().getUrl().trim();
         return path.isEmpty() ? null : path;
     }
 

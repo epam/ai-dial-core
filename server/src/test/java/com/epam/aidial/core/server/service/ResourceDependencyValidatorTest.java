@@ -27,7 +27,7 @@ public class ResourceDependencyValidatorTest {
         return new ResourceDependency()
                 .setKind(ResourceDependency.KIND)
                 .setLinkId("lnk_1")
-                .setTarget(new ResourceDependency.Target().setPath(path))
+                .setTarget(new ResourceDependency.Target().setUrl(path))
                 .setAccess(Set.of(ResourceAccessType.READ));
     }
 
@@ -86,7 +86,7 @@ public class ResourceDependencyValidatorTest {
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
         Application application = appWith(dependency(null));
 
-        assertTrue(validatorShapeMessage(validator, application).contains("target.path is required"));
+        assertTrue(validatorShapeMessage(validator, application).contains("target.url is required"));
     }
 
     @Test
@@ -204,7 +204,7 @@ public class ResourceDependencyValidatorTest {
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
         ResourceDependencyValidator flagOnValidator = new ResourceDependencyValidator(true);
 
-        assertTrue(validatorShapeMessage(validator, appWith(dependency("//"))).contains("target.path is required"));
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("//"))).contains("target.url is required"));
         assertDoesNotThrow(() -> flagOnValidator.validateUserAuthored(appWith(dependency("//"))));
     }
 
