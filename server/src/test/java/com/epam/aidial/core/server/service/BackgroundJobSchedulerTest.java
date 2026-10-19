@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
+import com.epam.aidial.core.server.log.JsonLogCapture;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
@@ -12,6 +13,7 @@ import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
@@ -36,13 +38,16 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -389,6 +394,82 @@ class BackgroundJobSchedulerTest {
     // Helpers
     // -------------------------------------------------------------------------
 
+    @Test
+    void pollRetriesAfterSubmitThrowsRuntimeException(Vertx vertx, VertxTestContext ctx) throws Throwable {
+        assertPollingRecovers(vertx, ctx, new RejectedExecutionException("submission rejected"));
+    }
+
+    @Test
+    void pollRetriesAfterSubmitThrowsError(Vertx vertx, VertxTestContext ctx) throws Throwable {
+        assertPollingRecovers(vertx, ctx, new StackOverflowError("submission failed"));
+    }
+
+    /**
+     * Poll ticks keep firing while every submission fails; each failure must release the polling flag, so that the job
+     * is polled as soon as submissions succeed again.
+     */
+    private void assertPollingRecovers(Vertx vertx, VertxTestContext ctx, Throwable failure) throws Throwable {
+        BackgroundJobService.Poller poller = mock(BackgroundJobService.Poller.class);
+        when(poller.poll()).thenReturn(Future.succeededFuture(true));
+        AtomicBoolean failing = new AtomicBoolean(true);
+
+        BackgroundJobScheduler scheduler = buildScheduler(vertx, failingExecutor(vertx, failing, failure),
+                defaultSettings(), id -> {}, id -> poller);
+        scheduler.schedule(JOB_ID, System.currentTimeMillis() - 1000);
+        scheduler.init();
+
+        RScoredSortedSet<String> schedule = redissonClient.getScoredSortedSet(SCHEDULE_KEY, StringCodec.INSTANCE);
+        vertx.setTimer(200, id -> failing.set(false));
+        vertx.setTimer(1000, id -> ctx.verify(() -> {
+            assertFalse(schedule.contains(JOB_ID), "job must be polled once submissions succeed again");
+            ctx.completeNow();
+        }));
+        await(ctx);
+    }
+
+    @Test
+    void pollSubmitFailureIsLoggedAndRetriedThroughTheRealTracer(Vertx vertx, VertxTestContext ctx) throws Throwable {
+        BackgroundJobService.Poller poller = mock(BackgroundJobService.Poller.class);
+        when(poller.poll()).thenReturn(Future.succeededFuture(true));
+        AtomicBoolean failing = new AtomicBoolean(true);
+
+        try (JsonLogCapture logs = JsonLogCapture.attach()) {
+            BackgroundJobScheduler scheduler = buildScheduler(vertx, failingExecutor(vertx, failing,
+                    new RejectedExecutionException("submission rejected")),
+                    new BackgroundOperationTracer(vertx), defaultSettings(), id -> {}, id -> poller);
+            scheduler.schedule(JOB_ID, System.currentTimeMillis() - 1000);
+            scheduler.init();
+
+            RScoredSortedSet<String> schedule = redissonClient.getScoredSortedSet(SCHEDULE_KEY, StringCodec.INSTANCE);
+            vertx.setTimer(200, id -> failing.set(false));
+            vertx.setTimer(1000, id -> ctx.verify(() -> {
+                JsonNode attributes = logs.await("Failed to start a background operation").path("Attributes");
+                assertEquals("java.util.concurrent.RejectedExecutionException", attributes.path("exception.type").asText());
+                String stackTrace = attributes.path("exception.stacktrace").asText();
+                assertTrue(stackTrace.contains("submission rejected") && stackTrace.contains("BackgroundJobScheduler"),
+                        "the logged stack trace must name the failure and the scheduler: " + stackTrace);
+                assertFalse(schedule.contains(JOB_ID), "job must be polled once submissions succeed again");
+                ctx.completeNow();
+            }));
+            await(ctx);
+        }
+    }
+
+    private static AsyncTaskExecutor failingExecutor(Vertx vertx, AtomicBoolean failing, Throwable failure) {
+        return new AsyncTaskExecutor(vertx, new JsonObject().put("useVirtualThreads", false)) {
+            @Override
+            public <T> Future<T> submit(Callable<T> blockingCall) {
+                if (failing.get()) {
+                    if (failure instanceof Error error) {
+                        throw error;
+                    }
+                    throw (RuntimeException) failure;
+                }
+                return super.submit(blockingCall);
+            }
+        };
+    }
+
     private BackgroundJobScheduler buildScheduler(Vertx vertx) {
         return buildScheduler(vertx, defaultSettings(), id -> {});
     }
@@ -403,11 +484,23 @@ class BackgroundJobSchedulerTest {
                                                   Function<String, BackgroundJobService.Poller> pollerProvider) {
         AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx,
                 new JsonObject().put("useVirtualThreads", false));
+        return buildScheduler(vertx, taskExecutor, settings, jobExpirer, pollerProvider);
+    }
+
+    private BackgroundJobScheduler buildScheduler(Vertx vertx, AsyncTaskExecutor taskExecutor, BackgroundJobService.Settings settings,
+                                                  Consumer<String> jobExpirer,
+                                                  Function<String, BackgroundJobService.Poller> pollerProvider) {
         BackgroundOperationTracer backgroundTracer = org.mockito.Mockito.mock(BackgroundOperationTracer.class);
         org.mockito.Mockito.lenient().when(backgroundTracer.traceFuture(org.mockito.Mockito.any())).thenAnswer(inv -> {
             java.util.function.Supplier<io.vertx.core.Future<?>> supplier = inv.getArgument(0);
             return supplier.get();
         });
+        return buildScheduler(vertx, taskExecutor, backgroundTracer, settings, jobExpirer, pollerProvider);
+    }
+
+    private BackgroundJobScheduler buildScheduler(Vertx vertx, AsyncTaskExecutor taskExecutor, BackgroundOperationTracer backgroundTracer,
+                                                  BackgroundJobService.Settings settings, Consumer<String> jobExpirer,
+                                                  Function<String, BackgroundJobService.Poller> pollerProvider) {
         return new BackgroundJobScheduler(vertx, redissonClient, PREFIX,
                 resourceService, taskExecutor, settings, pollerProvider, jobExpirer, backgroundTracer);
     }

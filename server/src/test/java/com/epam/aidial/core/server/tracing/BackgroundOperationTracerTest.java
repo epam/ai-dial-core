@@ -253,6 +253,29 @@ public class BackgroundOperationTracerTest {
     }
 
     @Test
+    void testSynchronousExceptionIsLoggedWithItsStackTrace(VertxTestContext testContext) {
+        JsonLogCapture logs = JsonLogCapture.attach();
+
+        tracer.<Object>traceFuture(() -> {
+            throw new IllegalStateException("tracer-test sync boom");
+        }).onComplete(ar -> {
+            try {
+                testContext.verify(() -> {
+                    assertTrue(ar.failed());
+                    JsonNode attributes = logs.await("Failed to start a background operation").path("Attributes");
+                    assertEquals("java.lang.IllegalStateException", attributes.path("exception.type").asText());
+                    assertEquals("tracer-test sync boom", attributes.path("exception.message").asText());
+                    assertTrue(attributes.path("exception.stacktrace").asText().contains("testSynchronousExceptionIsLoggedWithItsStackTrace"),
+                            "the stack trace must name the throwing code");
+                });
+                testContext.completeNow();
+            } finally {
+                logs.close();
+            }
+        });
+    }
+
+    @Test
     void testConsoleJsonCarriesTraceIdSpanIdAndFlagsOfTheRun(VertxTestContext testContext) {
         JsonLogCapture logs = JsonLogCapture.attach();
         AtomicReference<SpanContext> run = new AtomicReference<>();

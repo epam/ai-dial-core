@@ -13,6 +13,7 @@ import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.impl.ContextInternal;
 import io.vertx.tracing.opentelemetry.VertxContextStorageProvider;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -30,10 +31,10 @@ import java.util.function.Supplier;
  * {@code AsyncTaskExecutor.submit}, captures the duplicate, and so do the callbacks of the returned future, so
  * virtual threads and handlers log with the run's trace id.
  *
- * <p>The OTel log records read the trace context from the Vert.x context storage. The console JSON layout, which
- * takes the trace of a request from its {@code ProxyContext}, reads it with {@link #resolveBackgroundTrace()}, which accepts only
- * the {@link BackgroundSpan} stored here and so never the span of a request.
+ * <p>The console JSON layout takes the trace of a background log line from {@link #resolveBackgroundTrace()} only,
+ * never from the span of a request.
  */
+@Slf4j
 public class BackgroundOperationTracer {
 
     private static final IdGenerator ID_GENERATOR = IdGenerator.random();
@@ -62,6 +63,8 @@ public class BackgroundOperationTracer {
             try {
                 futureSupplier.get().onComplete(result);
             } catch (Throwable e) {
+                // nothing subscribes to the returned future of a periodic run, so the failure is logged here
+                log.warn("Failed to start a background operation", e);
                 result.tryFail(e);
             }
         });
