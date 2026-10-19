@@ -330,7 +330,7 @@ public class AiDial {
 
             Settings backgroundJobSettings =
                     Json.decodeValue(settings("backgroundJob").toBuffer(), Settings.class);
-            long costStatsTtlMs = settings("costStats").getLong("ttlMs");
+            long costStatsTtlMs = settings("costStats").getLong("ttlMs", TimeUnit.HOURS.toMillis(1));
             if (costStatsTtlMs <= 0) {
                 throw new IllegalArgumentException("costStats.ttlMs must be positive, but got: " + costStatsTtlMs);
             }
