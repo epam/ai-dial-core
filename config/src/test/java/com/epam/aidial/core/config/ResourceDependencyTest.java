@@ -10,7 +10,6 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -32,7 +31,7 @@ public class ResourceDependencyTest {
                 {
                     "kind": "dial.resourceLink",
                     "link_id": "lnk_1",
-                    "target": {"path": "current-user/skills/"},
+                    "target": {"url": "current-user/skills/"},
                     "access": ["read", "write"],
                     "required": true
                 }
@@ -41,7 +40,7 @@ public class ResourceDependencyTest {
 
         assertEquals(ResourceDependency.KIND, dependency.getKind());
         assertEquals("lnk_1", dependency.getLinkId());
-        assertEquals("current-user/skills/", dependency.getTarget().getPath());
+        assertEquals("current-user/skills/", dependency.getTarget().getUrl());
         assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE), dependency.getAccess());
         assertTrue(dependency.isRequired());
     }
@@ -49,17 +48,17 @@ public class ResourceDependencyTest {
     @Test
     void parsesTheCamelCaseForm() throws Exception {
         ResourceDependency dependency = MAPPER.readValue(
-                "{\"linkId\": \"lnk_2\", \"target\": {\"path\": \"files/public/policies/\"}}",
+                "{\"linkId\": \"lnk_2\", \"target\": {\"url\": \"files/public/policies/\"}}",
                 ResourceDependency.class);
 
         assertEquals("lnk_2", dependency.getLinkId());
-        assertEquals("files/public/policies/", dependency.getTarget().getPath());
+        assertEquals("files/public/policies/", dependency.getTarget().getUrl());
     }
 
     @Test
     void defaultsWhenOptionalFieldsAreAbsent() throws Exception {
         ResourceDependency dependency = MAPPER.readValue(
-                "{\"kind\": \"dial.resourceLink\", \"target\": {\"path\": \"current-user/\"}}",
+                "{\"kind\": \"dial.resourceLink\", \"target\": {\"url\": \"current-user/\"}}",
                 ResourceDependency.class);
 
         assertNull(dependency.getLinkId());
@@ -73,7 +72,7 @@ public class ResourceDependencyTest {
                 {
                     "kind": "dial.resourceLink",
                     "linkId": "lnk_1",
-                    "target": {"path": "current-user/skills/"},
+                    "target": {"url": "current-user/skills/"},
                     "access": ["write"],
                     "required": true
                 }
@@ -87,19 +86,19 @@ public class ResourceDependencyTest {
     void omitsDefaultValuesFromSerialization() throws Exception {
         ResourceDependency dependency = new ResourceDependency()
                 .setKind(ResourceDependency.KIND)
-                .setTarget(new ResourceDependency.Target().setPath("current-user/"));
+                .setTarget(new ResourceDependency.Target().setUrl("current-user/"));
 
         String json = MAPPER.writeValueAsString(dependency);
 
         assertFalse(json.contains("required"));
         assertFalse(json.contains("access"));
-        assertEquals("{\"kind\":\"dial.resourceLink\",\"target\":{\"path\":\"current-user/\"}}", json);
+        assertEquals("{\"kind\":\"dial.resourceLink\",\"target\":{\"url\":\"current-user/\"}}", json);
     }
 
     @Test
     void serializesAccessAsEnumNamesWhileAcceptingLowercaseInput() throws Exception {
         ResourceDependency dependency = MAPPER.readValue("""
-                {"kind": "dial.resourceLink", "target": {"path": "files/public/f/"}, "access": ["read", "write"]}
+                {"kind": "dial.resourceLink", "target": {"url": "files/public/f/"}, "access": ["read", "write"]}
                 """, ResourceDependency.class);
 
         String json = MAPPER.writeValueAsString(dependency);
@@ -111,10 +110,10 @@ public class ResourceDependencyTest {
     @Test
     void applicationSectionParsesBothForms() throws Exception {
         String snake = """
-                {"name": "app", "resource_dependencies": [{"link_id": "lnk_1", "target": {"path": "public/folder/"}}]}
+                {"name": "app", "resource_dependencies": [{"link_id": "lnk_1", "target": {"url": "public/folder/"}}]}
                 """;
         String camel = """
-                {"name": "app", "resourceDependencies": [{"linkId": "lnk_1", "target": {"path": "public/folder/"}}]}
+                {"name": "app", "resourceDependencies": [{"linkId": "lnk_1", "target": {"url": "public/folder/"}}]}
                 """;
 
         assertEquals(MAPPER.readValue(snake, Application.class).getResourceDependencies(),
@@ -130,17 +129,27 @@ public class ResourceDependencyTest {
     }
 
     @Test
+    void deploymentDependenciesFieldIsUntouched() throws Exception {
+        String json = "{\"name\": \"app\", \"dependencies\": [\"app1\", \"app2\"]}";
+        Application app = MAPPER.readValue(json, Application.class);
+
+        assertEquals(List.of("app1", "app2"), app.getDependencies());
+        assertTrue(app.getResourceDependencies().isEmpty());
+        assertFalse(MAPPER.writeValueAsString(app).contains("resource_dependencies"));
+    }
+
+    @Test
     void copyConstructorCarriesTheSection() {
         Application source = new Application()
                 .setResourceDependencies(List.of(new ResourceDependency()
                         .setKind(ResourceDependency.KIND)
                         .setLinkId("lnk_1")
-                        .setTarget(new ResourceDependency.Target().setPath("current-user/skills/"))
+                        .setTarget(new ResourceDependency.Target().setUrl("current-user/skills/"))
                         .setAccess(Set.of(ResourceAccessType.WRITE))
                         .setRequired(true)));
 
         Application copy = new Application(source);
 
-        assertSame(source.getResourceDependencies(), copy.getResourceDependencies());
+        assertEquals(source.getResourceDependencies(), copy.getResourceDependencies());
     }
 }
