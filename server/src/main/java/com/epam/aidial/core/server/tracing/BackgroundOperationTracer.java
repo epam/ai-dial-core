@@ -20,19 +20,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 /**
- * Gives every run of a periodic background operation its own trace id, so the log lines of the run, the OTel log
- * records included, can be told apart and grouped. It records no spans: the trace context of a run is not sampled,
- * so nothing is exported as a trace and the storage calls of the run create no child spans
- * (see {@code BlockingCallTracer}).
- *
- * <p>Each run gets its own duplicated Vert.x context and the trace context is kept only in that duplicate's locals,
- * the way every HTTP request keeps its own. The context a timer fires on is shared by all runs and by whatever else
- * uses it, so nothing is written to it and there is nothing to restore. Work submitted from inside the run, such as
- * {@code AsyncTaskExecutor.submit}, captures the duplicate, and so do the callbacks of the returned future, so
- * virtual threads and handlers log with the run's trace id.
- *
- * <p>The console JSON layout takes the trace of a background log line from {@link #resolveBackgroundTrace()} only,
- * never from the span of a request.
+ * Runs periodic background work under a trace id of its own, so the log lines of one run can be grouped.
+ * The design and its limits are described in "Background operations" in docs/tracing.md.
  */
 @Slf4j
 public class BackgroundOperationTracer {
@@ -64,7 +53,7 @@ public class BackgroundOperationTracer {
                 futureSupplier.get().onComplete(result);
             } catch (Throwable e) {
                 // nothing subscribes to the returned future of a periodic run, so the failure is logged here
-                log.warn("Failed to start a background operation", e);
+                log.warn("Background operation failed synchronously", e);
                 result.tryFail(e);
             }
         });
@@ -72,9 +61,18 @@ public class BackgroundOperationTracer {
     }
 
     /**
-     * The trace context of the background run the current Vert.x context belongs to, empty outside a run: without a
-     * Vert.x context, without an active OTel context, or when the active span is not a run's {@link BackgroundSpan},
-     * such as the span of a request.
+     * Runs the work on the calling thread under a new trace id, for work that completes before it returns.
+     */
+    public void trace(Runnable work) {
+        traceFuture(() -> {
+            work.run();
+            return Future.<Void>succeededFuture();
+        });
+    }
+
+    /**
+     * The trace of the background run the current Vert.x context belongs to; empty outside a run, including on the
+     * context of a request.
      */
     public static Optional<SpanContext> resolveBackgroundTrace() {
         io.vertx.core.Context vertxContext = Vertx.currentContext();

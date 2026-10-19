@@ -199,7 +199,7 @@ public final class MergedConfigStore implements ConfigStore {
         this.taskExecutor = taskExecutor;
         this.resourceService = resourceService;
         this.apiKeyStore = Objects.requireNonNull(apiKeyStore, "apiKeyStore must not be null");
-        this.backgroundTracer = backgroundTracer;
+        this.backgroundTracer = Objects.requireNonNull(backgroundTracer, "backgroundTracer must not be null");
         // Adopt ApiKeyStore's mutation lock so rebuild and key point-writes serialize on the same monitor.
         this.rebuildLock = Objects.requireNonNull(apiKeyStore.getMutationLock(),
                 "apiKeyStore.getMutationLock() must not be null (mock fixtures must stub it with a real ReentrantLock)");

@@ -16,7 +16,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Metrics;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonObject;
 import org.jclouds.blobstore.domain.PageSet;
@@ -39,7 +38,6 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -168,10 +166,11 @@ class ComplexResourceSweepServiceTest {
         Mockito.when(timerService.scheduleWithFixedDelay(Mockito.anyLong(), Mockito.anyLong(), Mockito.any()))
                 .thenReturn(() -> { });
         BackgroundOperationTracer backgroundTracer = Mockito.mock(BackgroundOperationTracer.class);
-        Mockito.lenient().when(backgroundTracer.traceFuture(Mockito.any())).thenAnswer(inv -> {
-            Supplier<Future<?>> supplier = inv.getArgument(0);
-            return supplier.get();
-        });
+        Mockito.lenient().doAnswer(inv -> {
+            Runnable work = inv.getArgument(0);
+            work.run();
+            return null;
+        }).when(backgroundTracer).trace(Mockito.any(Runnable.class));
         return new ComplexResourceSweepService(
                 timerService, blobStorage, redis, lockService, complexResourceService, encryptionService, settings, backgroundTracer);
     }

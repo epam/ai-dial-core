@@ -262,7 +262,7 @@ public class BackgroundOperationTracerTest {
             try {
                 testContext.verify(() -> {
                     assertTrue(ar.failed());
-                    JsonNode attributes = logs.await("Failed to start a background operation").path("Attributes");
+                    JsonNode attributes = logs.await("Background operation failed synchronously").path("Attributes");
                     assertEquals("java.lang.IllegalStateException", attributes.path("exception.type").asText());
                     assertEquals("tracer-test sync boom", attributes.path("exception.message").asText());
                     assertTrue(attributes.path("exception.stacktrace").asText().contains("testSynchronousExceptionIsLoggedWithItsStackTrace"),
@@ -273,6 +273,34 @@ public class BackgroundOperationTracerTest {
                 logs.close();
             }
         });
+    }
+
+    @Test
+    void testTraceRunsTheWorkUnderTheRunTrace(VertxTestContext testContext) {
+        tracer.trace(() -> testContext.verify(() -> {
+            assertTrue(BackgroundOperationTracer.resolveBackgroundTrace().isPresent());
+            testContext.completeNow();
+        }));
+    }
+
+    @Test
+    void testTraceLogsFailureOfTheWorkUnderTheRunTrace(VertxTestContext testContext) {
+        JsonLogCapture logs = JsonLogCapture.attach();
+
+        tracer.trace(() -> {
+            throw new IllegalStateException("tracer-test work boom");
+        });
+
+        try {
+            testContext.verify(() -> {
+                JsonNode line = logs.await("Background operation failed synchronously");
+                assertEquals("tracer-test work boom", line.path("Attributes").path("exception.message").asText());
+                assertEquals(32, line.path("TraceId").asText().length(), "the failure must be attributed to the run");
+            });
+            testContext.completeNow();
+        } finally {
+            logs.close();
+        }
     }
 
     @Test

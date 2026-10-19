@@ -43,6 +43,7 @@ import java.util.function.Supplier;
 import static com.epam.aidial.core.config.InterfaceType.ANTHROPIC_MESSAGES;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_CHAT_COMPLETIONS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -128,6 +129,16 @@ public class MergedConfigStoreTest {
                 DeploymentEndpointUtil.resolveServingEndpoint(merged, InterfaceType.ANTHROPIC_MESSAGES, config.getTranslators()));
         assertEquals("http://localhost:6001",
                 DeploymentEndpointUtil.resolveServingEndpoint(merged, InterfaceType.OPENAI_CHAT_COMPLETIONS, config.getTranslators()));
+    }
+
+    @Test
+    public void testRejectsNullBackgroundTracer() {
+        NullPointerException error = assertThrows(NullPointerException.class, () -> new MergedConfigStore(
+                vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
+                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
+                externalServiceService, resourceAuthSettingsEncryptionService, null));
+
+        assertEquals("backgroundTracer must not be null", error.getMessage());
     }
 
     @Test

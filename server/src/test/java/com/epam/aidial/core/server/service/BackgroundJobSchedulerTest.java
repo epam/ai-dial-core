@@ -55,6 +55,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -443,6 +444,21 @@ class BackgroundJobSchedulerTest {
     // -------------------------------------------------------------------------
 
     @Test
+    void scanFailureIsLoggedWithTheRunsTraceId(Vertx vertx) {
+        doThrow(new IllegalStateException("scan boom")).when(resourceService)
+                .getFolderMetadata(any(), any(), anyInt(), anyBoolean());
+
+        try (JsonLogCapture logs = JsonLogCapture.attach()) {
+            buildScheduler(vertx, new AsyncTaskExecutor(vertx, new JsonObject()), new BackgroundOperationTracer(vertx),
+                    defaultSettings(), id -> { }, id -> null).init();
+
+            JsonNode line = logs.await("Scan failed");
+            assertEquals(32, line.path("TraceId").asText().length());
+            assertEquals(16, line.path("SpanId").asText().length());
+        }
+    }
+
+    @Test
     void pollRetriesAfterSubmitThrowsRuntimeException(Vertx vertx, VertxTestContext ctx) throws Throwable {
         assertPollingRecovers(vertx, ctx, new RejectedExecutionException("submission rejected"));
     }
@@ -491,7 +507,7 @@ class BackgroundJobSchedulerTest {
             RScoredSortedSet<String> schedule = redissonClient.getScoredSortedSet(SCHEDULE_KEY, StringCodec.INSTANCE);
             vertx.setTimer(200, id -> failing.set(false));
             vertx.setTimer(1000, id -> ctx.verify(() -> {
-                JsonNode attributes = logs.await("Failed to start a background operation").path("Attributes");
+                JsonNode attributes = logs.await("Background operation failed synchronously").path("Attributes");
                 assertEquals("java.util.concurrent.RejectedExecutionException", attributes.path("exception.type").asText());
                 String stackTrace = attributes.path("exception.stacktrace").asText();
                 assertTrue(stackTrace.contains("submission rejected") && stackTrace.contains("BackgroundJobScheduler"),
