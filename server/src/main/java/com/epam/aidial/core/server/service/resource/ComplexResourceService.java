@@ -52,7 +52,7 @@ import javax.annotation.Nullable;
  * pointer to the current version and the single commit point of a write.
  *
  * <p>Individual files (the version files and the marker) are managed through {@link ResourceService} so
- * they participate in the resource cache, etag tracking and event propagation; the engine never touches
+ * they participate in the resource cache and etag tracking; the engine never touches
  * blob storage directly.
  *
  * <p>Type-specific behavior (validation, marker metadata) is delegated to a {@link ComplexResourceHandler}.
