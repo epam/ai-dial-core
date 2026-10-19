@@ -41,8 +41,8 @@ public enum ResourceTypes implements ResourceType {
     /**
      * Types published on the resource topic: those the resource subscribe API ({@code ResourceOperationController.SUBSCRIPTION_ALLOWED_TYPES})
      * or the config replicas ({@code MergedConfigStore.MANAGED_TYPES} and {@code GLOBAL_SETTINGS}) consume.
-     * Events of other types are not published, so pods no longer receive and decode events nobody consumes.
      * A consumer of an unlisted type must add it here, otherwise its subscription silently receives nothing.
+     * Pods on a release that does not list the type yet do not publish it, so during a rolling upgrade a new consumer misses their writes.
      */
     public static final Set<ResourceType> EVENT_TYPES = Set.of(
             FILE, CONVERSATION, PROMPT, APPLICATION, TOOL_SET,

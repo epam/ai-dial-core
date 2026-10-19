@@ -214,7 +214,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     /**
-     * Delivers events only for {@link ResourceTypes#EVENT_TYPES}.
+     * Events are published only for {@link ResourceTypes#EVENT_TYPES}.
      */
     public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescriptor> resources,
                                                          Consumer<ResourceEvent> subscriber) {
@@ -222,7 +222,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     /**
-     * Delivers events only for {@link ResourceTypes#EVENT_TYPES}.
+     * Events are published only for {@link ResourceTypes#EVENT_TYPES}.
      */
     public ResourceTopic.Subscription subscribeAllResources(Consumer<ResourceEvent> subscriber) {
         return topic.subscribeAll(subscriber);

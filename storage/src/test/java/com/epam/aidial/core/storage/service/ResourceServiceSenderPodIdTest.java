@@ -12,8 +12,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mockito;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
@@ -22,11 +20,15 @@ import redis.embedded.RedisServer;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 class ResourceServiceSenderPodIdTest {
 
@@ -52,6 +54,8 @@ class ResourceServiceSenderPodIdTest {
 
             testDir = FileUtil.baseTestPath(ResourceServiceSenderPodIdTest.class);
             FileUtil.createDir(testDir.resolve("test"));
+            ObjectMapper mapper = new ObjectMapper();
+            // the path must be JSON-encoded, otherwise a Windows path breaks parsing on its backslashes
             String blobStorageConfig = """
                     {
                         "bucket": "test",
@@ -60,11 +64,10 @@ class ResourceServiceSenderPodIdTest {
                         "credential": "secret-key",
                         "prefix": "test-pod-id",
                         "overrides": {
-                          "jclouds.filesystem.basedir": "%s"
+                          "jclouds.filesystem.basedir": %s
                         }
                       }
-                    """.formatted(testDir.toString());
-            ObjectMapper mapper = new ObjectMapper();
+                    """.formatted(mapper.writeValueAsString(testDir.toString()));
             Storage storageConfig = mapper.readValue(blobStorageConfig, Storage.class);
             storage = new BlobStorage(storageConfig);
         } catch (Throwable e) {
@@ -117,28 +120,36 @@ class ResourceServiceSenderPodIdTest {
         }
     }
 
-    @ParameterizedTest
-    @EnumSource(ResourceTypes.class)
-    void publishesOnlyEventTypes(ResourceTypes type) throws InterruptedException {
+    @Test
+    void publishesOnlyEventTypes() throws InterruptedException {
         ResourceService service = newService(() -> "pod-alpha");
-        ResourceDescriptor resource = new ResourceDescriptor(type, "resource", List.of("folder"), "bucket", "bucket/", false);
         ResourceDescriptor sentinel = new ResourceDescriptor(
                 ResourceTypes.APPLICATION, "sentinel-app", List.of(), "public", "public/", false);
 
         CountDownLatch latch = new CountDownLatch(1);
-        List<String> urls = new CopyOnWriteArrayList<>();
+        Set<String> urls = ConcurrentHashMap.newKeySet();
         try (ResourceTopic.Subscription ignored = service.getTopic().subscribeAll(event -> {
-            urls.add(event.getUrl());
             if (event.getUrl().equals(sentinel.getUrl())) {
                 latch.countDown();
+            } else {
+                urls.add(event.getUrl());
             }
         })) {
-            service.putResource(resource, "{}", EtagHeader.ANY);
+            Map<String, ResourceTypes> typesByUrl = new HashMap<>();
+            for (ResourceTypes type : ResourceTypes.values()) {
+                ResourceDescriptor resource = new ResourceDescriptor(type, "resource", List.of("folder"), "bucket", "bucket/", false);
+                typesByUrl.put(resource.getUrl(), type);
+                service.putResource(resource, "{}", EtagHeader.ANY);
+            }
             service.putResource(sentinel, "{}", EtagHeader.ANY);
 
-            // events arrive in publish order, so by the time the sentinel arrives the resource event would already be in urls
+            // events arrive in publish order, so by the time the sentinel arrives every other event is already in urls
             Assertions.assertTrue(latch.await(5, TimeUnit.SECONDS));
-            Assertions.assertEquals(ResourceTypes.EVENT_TYPES.contains(type), urls.contains(resource.getUrl()));
+            Set<ResourceTypes> published = urls.stream().map(typesByUrl::get).collect(Collectors.toSet());
+            Assertions.assertEquals(ResourceTypes.EVENT_TYPES, published);
+            // the per-request counters and cost records this filter keeps off the topic
+            Assertions.assertFalse(published.contains(ResourceTypes.LIMIT));
+            Assertions.assertFalse(published.contains(ResourceTypes.DEPLOYMENT_COST_STATS));
         }
     }
 
