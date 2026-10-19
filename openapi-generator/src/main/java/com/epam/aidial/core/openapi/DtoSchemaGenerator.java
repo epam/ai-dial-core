@@ -31,6 +31,7 @@ import com.github.victools.jsonschema.module.jackson.JacksonOption;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +47,7 @@ public class DtoSchemaGenerator {
 
     private final SchemaGenerator generator;
     private final Map<String, ObjectNode> schemas = new LinkedHashMap<>();
+    private final Map<String, Class<?>> schemaClasses = new LinkedHashMap<>();
     private final ExternalSchemaRegistry externalSchemaRegistry = new ExternalSchemaRegistry(schemas);
 
     public DtoSchemaGenerator() {
@@ -67,7 +69,9 @@ public class DtoSchemaGenerator {
                 }
                 return sb.toString();
             }
-            return buildSchemaName(clazz);
+            String name = buildSchemaName(clazz);
+            schemaClasses.putIfAbsent(sanitizeSchemaName(name), clazz);
+            return name;
         });
         configBuilder.with(jacksonModule);
         configBuilder.with(Option.DEFINITIONS_FOR_ALL_OBJECTS);
@@ -89,12 +93,14 @@ public class DtoSchemaGenerator {
             return createPolymorphicDefinition(javaType, context);
         });
         configBuilder.forFields().withCustomDefinitionProvider(this::createFieldOneOfDefinition);
+        configBuilder.forFields().withInstanceAttributeOverride(DtoSchemaGenerator::applyFieldNullable);
 
         SchemaGeneratorConfig config = configBuilder.build();
         this.generator = new SchemaGenerator(config);
     }
 
     public Map<String, ObjectNode> getSchemas() {
+        schemas.forEach((name, schema) -> pinDiscriminator(schemaClasses.get(name), schema));
         return new LinkedHashMap<>(schemas);
     }
 
@@ -121,6 +127,9 @@ public class DtoSchemaGenerator {
         ObjectNode fixedRoot = fixRefPaths(rootNode);
         String schemaName = resolveTypeName(type);
         schemas.putIfAbsent(schemaName, fixedRoot);
+        if (type instanceof Class<?> clazz) {
+            schemaClasses.putIfAbsent(schemaName, clazz);
+        }
     }
 
     public String resolveTypeName(Type type) {
@@ -300,6 +309,64 @@ public class DtoSchemaGenerator {
         }
         discriminator.set("mapping", mapping);
         return discriminator;
+    }
+
+    /**
+     * Honors {@code @ApiSchema(nullable = true)} on a DTO field. Only inline schemas are marked (primitives and
+     * collections, which render as {@code type: array}): OpenAPI 3.0 ignores siblings of {@code $ref}, so a
+     * nullable reference cannot be expressed this way.
+     */
+    private static void applyFieldNullable(ObjectNode node, FieldScope field, SchemaGenerationContext context) {
+        ApiSchema apiSchema = field.getAnnotationConsideringFieldAndGetter(ApiSchema.class);
+        Class<?> type = field.getType().getErasedType();
+        if (apiSchema != null && apiSchema.nullable()
+                && (OpenApiParameterBuilder.isInlinePrimitiveType(type) || Collection.class.isAssignableFrom(type))) {
+            node.put("nullable", true);
+        }
+    }
+
+    /**
+     * A discriminator is ignored by plain JSON Schema validators, and subtype schemas without
+     * {@code additionalProperties: false} usually satisfy every branch of the generated {@code oneOf},
+     * so the union never validates. Pinning the discriminator property of each subtype (and of any class
+     * extending it) to its own mapping value makes the branches mutually exclusive.
+     */
+    private static void pinDiscriminator(Class<?> clazz, ObjectNode schema) {
+        if (clazz == null || !(schema.get("properties") instanceof ObjectNode properties)) {
+            return;
+        }
+        for (Class<?> ancestor = clazz.getSuperclass(); ancestor != null; ancestor = ancestor.getSuperclass()) {
+            ApiSubTypes subTypes = ancestor.getAnnotation(ApiSubTypes.class);
+            if (subTypes == null) {
+                continue;
+            }
+            String property = subTypes.discriminatorProperty();
+            if (!properties.has(property)) {
+                return;
+            }
+            for (ApiSubType subType : subTypes.value()) {
+                if (subType.type().isAssignableFrom(clazz)) {
+                    ObjectNode pinned = properties.objectNode();
+                    pinned.put("type", "string");
+                    pinned.putArray("enum").add(subType.discriminatorValue());
+                    properties.set(property, pinned);
+                    addRequired(schema, property);
+                    return;
+                }
+            }
+        }
+    }
+
+    private static void addRequired(ObjectNode schema, String property) {
+        ArrayNode required = schema.get("required") instanceof ArrayNode existing
+                ? existing
+                : schema.putArray("required");
+        for (JsonNode entry : required) {
+            if (property.equals(entry.asText())) {
+                return;
+            }
+        }
+        required.add(property);
     }
 
     private void registerDefinitions(ObjectNode rootNode) {

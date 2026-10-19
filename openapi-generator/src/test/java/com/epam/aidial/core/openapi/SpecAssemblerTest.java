@@ -1,9 +1,17 @@
 package com.epam.aidial.core.openapi;
 
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.swagger.v3.oas.models.media.Schema;
 import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -11,6 +19,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SpecAssemblerTest {
+
+    /** Plus any name ending in "_path" (file_path, application_path, ...). */
+    private static final Set<String> HIERARCHICAL_PATH_PARAMS = Set.of("path", "filePath");
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -184,6 +195,52 @@ class SpecAssemblerTest {
         assertTrue(uploadSection.contains("required: true"));
         assertFalse(uploadSection.contains("OpenApiBinary"),
                 "uploadFile request body must not reference OpenApiBinary component schema");
+    }
+
+    @Test
+    void uploadSkillFolderSupportsCreateOnlyAndMultipleFiles() {
+        String yaml = new SpecAssembler("1.0.0").assemble();
+
+        int start = yaml.indexOf("operationId: uploadSkillFolder");
+        assertTrue(start >= 0, "uploadSkillFolder operation should be present");
+        String section = yaml.substring(start, yaml.indexOf("operationId:", start + 1));
+
+        assertTrue(section.contains("name: If-None-Match"), "create-only uploads need If-None-Match");
+        assertTrue(section.contains("files:"));
+        assertTrue(section.contains("type: array"));
+        assertTrue(section.contains("format: binary"));
+        assertTrue(section.contains("x-mcp-allow-reserved: true"));
+    }
+
+    /**
+     * Guards new endpoints: a hierarchical path parameter without the marker makes MCP clients encode its
+     * '/' separators.
+     */
+    @Test
+    void hierarchicalPathParametersAllowReservedCharacters() throws Exception {
+        JsonNode spec = new ObjectMapper(new YAMLFactory()).readTree(new SpecAssembler("1.0.0").assemble());
+        List<String> missing = new ArrayList<>();
+        int checked = 0;
+
+        for (Map.Entry<String, JsonNode> path : spec.get("paths").properties()) {
+            for (Map.Entry<String, JsonNode> operation : path.getValue().properties()) {
+                for (JsonNode parameter : operation.getValue().path("parameters")) {
+                    String name = parameter.path("name").asText();
+                    boolean hierarchical = HIERARCHICAL_PATH_PARAMS.contains(name) || name.endsWith("_path");
+                    if (!"path".equals(parameter.path("in").asText()) || !hierarchical) {
+                        continue;
+                    }
+                    checked++;
+                    if (!parameter.path(OpenApiDescriptions.ALLOW_RESERVED_EXTENSION).asBoolean(false)) {
+                        missing.add(operation.getKey().toUpperCase() + " " + path.getKey() + " {" + name + "}");
+                    }
+                }
+            }
+        }
+
+        assertTrue(checked > 0, "expected hierarchical path parameters in the spec");
+        assertTrue(missing.isEmpty(), "Path parameters without " + OpenApiDescriptions.ALLOW_RESERVED_EXTENSION
+                + ": " + missing);
     }
 
     private Schema<?> invokeConvert(ObjectNode schemaNode) throws Exception {

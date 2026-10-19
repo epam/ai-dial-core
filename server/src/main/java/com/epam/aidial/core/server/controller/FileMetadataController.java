@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
@@ -46,7 +47,8 @@ public class FileMetadataController extends AccessControlBaseController {
             tags = {"Files"},
             parameters = {
                     @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                    @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_FILES),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_FILES,
+                            extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                     @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.QUERY_TOKEN),
                     @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.QUERY_LIMIT, schema = Integer.class),
                     @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.QUERY_RECURSIVE, schema = Boolean.class),

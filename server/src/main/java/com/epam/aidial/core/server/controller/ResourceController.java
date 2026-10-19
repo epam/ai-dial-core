@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiOperations;
@@ -104,7 +105,8 @@ public class ResourceController extends AccessControlBaseController {
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "application_path", in = ParameterIn.PATH, required = true,
-                                    description = OpenApiDescriptions.APPLICATION_PATH_SAVE),
+                                    description = OpenApiDescriptions.APPLICATION_PATH_SAVE,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_UPLOAD_APPLICATION),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_APPLICATION)
                     },
@@ -130,7 +132,8 @@ public class ResourceController extends AccessControlBaseController {
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "application_path", in = ParameterIn.PATH, required = true,
-                                    description = OpenApiDescriptions.APPLICATION_PATH)
+                                    description = OpenApiDescriptions.APPLICATION_PATH,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true"))
                     },
                 responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.class),
@@ -153,7 +156,8 @@ public class ResourceController extends AccessControlBaseController {
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "application_path", in = ParameterIn.PATH, required = true,
-                                    description = OpenApiDescriptions.APPLICATION_PATH),
+                                    description = OpenApiDescriptions.APPLICATION_PATH,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_APPLICATION)
                     },
                     responses = {
@@ -172,7 +176,8 @@ public class ResourceController extends AccessControlBaseController {
                     tags = {"Applications"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_APPLICATIONS),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_APPLICATIONS,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
                             @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
                             @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
@@ -196,7 +201,8 @@ public class ResourceController extends AccessControlBaseController {
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "conversation_path", in = ParameterIn.PATH, required = true,
-                                    description = OpenApiDescriptions.CONVERSATION_PATH),
+                                    description = OpenApiDescriptions.CONVERSATION_PATH,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_UPLOAD_CONVERSATION),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_CONVERSATION)
                     },
@@ -220,7 +226,8 @@ public class ResourceController extends AccessControlBaseController {
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "conversation_path", in = ParameterIn.PATH, required = true,
-                                    description = OpenApiDescriptions.CONVERSATION_PATH)
+                                    description = OpenApiDescriptions.CONVERSATION_PATH,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true"))
                     },
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Conversation.class),
@@ -243,7 +250,8 @@ public class ResourceController extends AccessControlBaseController {
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "conversation_path", in = ParameterIn.PATH, required = true,
-                                    description = OpenApiDescriptions.CONVERSATION_PATH),
+                                    description = OpenApiDescriptions.CONVERSATION_PATH,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_CONVERSATION)
                     },
                     responses = {
@@ -262,7 +270,8 @@ public class ResourceController extends AccessControlBaseController {
                     tags = {"Conversations"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_CONVERSATIONS),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_CONVERSATIONS,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
                             @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
                             @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
@@ -286,7 +295,8 @@ public class ResourceController extends AccessControlBaseController {
                     tags = {"Prompts"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "prompt_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.PROMPT_PATH),
+                            @ApiParameter(name = "prompt_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.PROMPT_PATH,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_UPLOAD_PROMPT),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_PROMPT)
                     },
@@ -309,7 +319,8 @@ public class ResourceController extends AccessControlBaseController {
                     tags = {"Prompts"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "prompt_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.PROMPT_PATH)
+                            @ApiParameter(name = "prompt_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.PROMPT_PATH,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true"))
                     },
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Prompt.class),
@@ -331,7 +342,8 @@ public class ResourceController extends AccessControlBaseController {
                     tags = {"Prompts"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "prompt_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.PROMPT_PATH),
+                            @ApiParameter(name = "prompt_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.PROMPT_PATH,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_PROMPT)
                     },
                     responses = {
@@ -350,7 +362,8 @@ public class ResourceController extends AccessControlBaseController {
                     tags = {"Prompts"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_PROMPTS),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_PROMPTS,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
                             @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
                             @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
@@ -373,7 +386,8 @@ public class ResourceController extends AccessControlBaseController {
                     tags = {"Toolsets"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "toolset_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.TOOLSET_PATH),
+                            @ApiParameter(name = "toolset_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.TOOLSET_PATH,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_UPLOAD_TOOLSET),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_TOOLSET)
                     },
@@ -396,7 +410,8 @@ public class ResourceController extends AccessControlBaseController {
                     tags = {"Toolsets"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "toolset_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.TOOLSET_PATH)
+                            @ApiParameter(name = "toolset_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.TOOLSET_PATH,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true"))
                     },
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ToolSet.class),
@@ -418,7 +433,8 @@ public class ResourceController extends AccessControlBaseController {
                     tags = {"Toolsets"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "toolset_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.TOOLSET_PATH),
+                            @ApiParameter(name = "toolset_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.TOOLSET_PATH,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_TOOLSET)
                     },
                     responses = {
@@ -437,7 +453,8 @@ public class ResourceController extends AccessControlBaseController {
                     tags = {"Toolsets"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_TOOLSETS),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_TOOLSETS,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
                             @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
                             @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
@@ -459,7 +476,8 @@ public class ResourceController extends AccessControlBaseController {
                     tags = {"Files"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
-                            @ApiParameter(name = "file_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.FILE_PATH),
+                            @ApiParameter(name = "file_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.FILE_PATH,
+                                    extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_FILE)
                     },
                     responses = {

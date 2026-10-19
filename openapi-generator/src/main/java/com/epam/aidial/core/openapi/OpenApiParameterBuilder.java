@@ -56,6 +56,7 @@ public final class OpenApiParameterBuilder {
 
         Schema<?> schema = buildSchema(apiParameter);
         parameter.setSchema(schema);
+        ExtensionSupport.parse(apiParameter.extensions()).forEach(parameter::addExtension);
         return parameter;
     }
 

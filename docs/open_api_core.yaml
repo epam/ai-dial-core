@@ -3216,6 +3216,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-None-Match
         in: header
         description: ETag precondition.
@@ -3280,6 +3281,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -3358,6 +3360,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -3737,6 +3740,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       responses:
         "200":
           description: Success
@@ -3815,6 +3819,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: |
@@ -3983,6 +3988,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: |
@@ -4220,6 +4226,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-None-Match
         in: header
         description: Conditional creation precondition.
@@ -4290,6 +4297,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -4374,6 +4382,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -4545,6 +4554,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       responses:
         "200":
           description: Success
@@ -4624,6 +4634,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: |
@@ -4713,6 +4724,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: |
@@ -5475,6 +5487,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       responses:
         "200":
           description: Success
@@ -5507,6 +5520,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: "The entity tag (ETag) of the file. This is used for conditional requests to ensure that the file is only uploaded if it matches the specified ETag. If the file does not exist, and this header is provided, the request returns 412 Precondition Failed response. If this header is not provided or the value is \"*\", any existing file at the specified path will be overwritten."
@@ -5610,6 +5624,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: "The entity tag (ETag) of the file. This is used for conditional requests to ensure that the file is only deleted if it matches the specified ETag. \n"
@@ -5674,6 +5689,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-None-Match
         in: header
         description: ETag precondition.
@@ -5756,6 +5772,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -5848,6 +5865,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -6131,6 +6149,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-None-Match
         in: header
         description: ETag precondition.
@@ -6213,6 +6232,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -6305,6 +6325,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -6374,6 +6395,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: token
         in: query
         description: The token from the previous request to request next items.
@@ -6485,6 +6507,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: token
         in: query
         description: The token from the previous request to request next items.
@@ -6612,6 +6635,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: token
         in: query
         description: The token from the previous request to request next items.
@@ -6685,6 +6709,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: token
         in: query
         description: The token from the previous request to request next items.
@@ -6794,6 +6819,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: token
         in: query
         description: Pagination token.
@@ -6874,6 +6900,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: token
         in: query
         description: The token from the previous request to request next items.
@@ -6948,6 +6975,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: token
         in: query
         description: The token from the previous request to request next items.
@@ -7022,6 +7050,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: token
         in: query
         description: The token from the previous request to request next items.
@@ -7100,6 +7129,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: token
         in: query
         description: The token from the previous request to request next items.
@@ -7180,6 +7210,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: token
         in: query
         description: The token from the previous request to request next items.
@@ -7254,6 +7285,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: token
         in: query
         description: The token from the previous request to request next items.
@@ -7328,6 +7360,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: token
         in: query
         description: The token from the previous request to request next items.
@@ -7402,6 +7435,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: token
         in: query
         description: The token from the previous request to request next items.
@@ -7472,6 +7506,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: token
         in: query
         description: The token from the previous request to request next items.
@@ -7541,6 +7576,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: token
         in: query
         description: The token from the previous request to request next items.
@@ -7621,6 +7657,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: token
         in: query
         description: The token from the previous request to request next items.
@@ -7689,6 +7726,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-None-Match
         in: header
         description: ETag precondition.
@@ -7771,6 +7809,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -7863,6 +7902,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -10721,6 +10761,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       responses:
         "200":
           description: "ToolSet successfully repaired: new client_id issued, all credentials cleared"
@@ -10778,6 +10819,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       responses:
         "200":
           description: Success
@@ -10863,6 +10905,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: "The entity tag (ETag) of the prompt. This is used for conditional requests to ensure that the prompt is only uploaded if it matches the specified ETag. If the prompt does not exist, this header is ignored. If this header is not provided or the value is \"*\", any existing prompt at the specified path will be overwritten."
@@ -10971,6 +11014,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: The entity tag (ETag) of the prompt. This is used for conditional requests to ensure that the prompt is only deleted if it matches the specified ETag.
@@ -11035,6 +11079,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-None-Match
         in: header
         description: ETag precondition.
@@ -11117,6 +11162,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -11209,6 +11255,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -11280,6 +11327,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-None-Match
         in: header
         description: ETag precondition.
@@ -11362,6 +11410,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -11454,6 +11503,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -11525,6 +11575,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-None-Match
         in: header
         description: ETag precondition.
@@ -11607,6 +11658,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -11699,6 +11751,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -11770,6 +11823,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-None-Match
         in: header
         description: ETag precondition.
@@ -11846,6 +11900,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -11938,6 +11993,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -12240,6 +12296,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-None-Match
         in: header
         description: ETag precondition.
@@ -12304,6 +12361,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -12382,6 +12440,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -12440,6 +12499,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       responses:
         "200":
           description: Success
@@ -12617,6 +12677,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: "The entity tag (ETag) of the toolset. This is used for conditional requests to ensure that the toolset is only uploaded if it matches the specified ETag. If the toolset does not exist, this header is ignored. If this header is not provided or the value is \"*\", any existing toolset at the specified path will be overwritten."
@@ -12774,6 +12835,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: The entity tag (ETag) of the toolset. This is used for conditional requests to ensure that the toolset is only deleted if it matches the specified ETag.
@@ -12838,6 +12900,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-None-Match
         in: header
         description: ETag precondition.
@@ -12908,6 +12971,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -12992,6 +13056,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag precondition.
@@ -13540,6 +13605,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: token
         in: query
         description: Continuation token from a previous page; omit for the first page.
@@ -13603,12 +13669,14 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: filePath
         in: path
         description: The relative path of a subfolder inside the resource to scope the listing.
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: token
         in: query
         description: Continuation token from a previous page; omit for the first page.
@@ -13670,6 +13738,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       responses:
         "200":
           description: Folder resource downloaded as ZIP archive
@@ -13747,9 +13816,16 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
-        description: "ETag of the version to replace. Use * to overwrite any existing version, or omit to create only if not exists."
+        description: "The entity tag (ETag) of the skill version to replace. This is used for conditional requests to ensure that the skill is only uploaded if its current version matches the specified ETag. If the skill does not exist, and this header is provided, the request returns 412 Precondition Failed response. If this header is not provided or the value is \"*\", any existing skill at the specified path will be overwritten; use If-None-Match to create a skill only if it does not exist."
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: The entity tag (ETag) used to ensure that the skill is only uploaded if it does not already exist. The only supported value is "*".
         required: false
         schema:
           type: string
@@ -13758,12 +13834,16 @@ paths:
           multipart/form-data:
             schema:
               required:
-              - file
+              - files
               type: object
               properties:
-                file:
-                  type: string
-                  format: binary
+                files:
+                  minItems: 1
+                  type: array
+                  description: One multipart part per file. The part's filename is the file's relative path inside the resource (e.g. SKILL.md or scripts/run.py); the part name is ignored.
+                  items:
+                    type: string
+                    format: binary
         required: true
       responses:
         "200":
@@ -13799,7 +13879,7 @@ paths:
         "405":
           description: Method Not Allowed
         "412":
-          description: Precondition failed - ETag mismatch
+          description: "Precondition failed - ETag mismatch, or the resource already exists and If-None-Match: * was sent"
         "422":
           description: Unprocessable Entity
           content:
@@ -13831,6 +13911,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag of the version to delete. Use * to delete any existing version.
@@ -13888,6 +13969,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       responses:
         "400":
           description: Path is a folder; use metadata listing
@@ -13922,6 +14004,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       responses:
         "200":
           description: Grouping folder created successfully
@@ -13970,6 +14053,7 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag of the folder to delete. Use * to delete regardless of the current ETag.
@@ -14023,18 +14107,20 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: filePath
         in: path
         description: The relative path of the file within the skill.
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       responses:
         "200":
           description: File downloaded successfully
           headers:
             ETag:
-              description: The ETag of the skill version
+              description: "The ETag of this file in the current skill version. It is not the skill version ETag: for If-Match on skill uploads, use the ETag returned by downloadSkillFolder or by the last upload."
               required: false
               schema:
                 type: string
@@ -14093,12 +14179,14 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: filePath
         in: path
         description: The relative path of the file within the skill.
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag of the skill version. The file is added/replaced in the skill atomically.
@@ -14173,12 +14261,14 @@ paths:
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: filePath
         in: path
         description: The relative path of the file within the skill.
         required: true
         schema:
           type: string
+        x-mcp-allow-reserved: true
       - name: If-Match
         in: header
         description: ETag of the skill version. The file is removed from the skill atomically.
@@ -14590,6 +14680,8 @@ components:
           type: string
         object:
           type: string
+          enum:
+          - application
         owner:
           type: string
         reference:
@@ -14619,6 +14711,8 @@ components:
           format: uri
         interface_configs:
           $ref: "#/components/schemas/MapStringInterfaceConfigData"
+      required:
+      - object
     ApplicationFunction:
       type: object
       properties:
@@ -15722,10 +15816,14 @@ components:
           type: string
         name:
           type: string
+          nullable: true
         nodeType:
-          $ref: "#/components/schemas/NodeType"
+          type: string
+          enum:
+          - ITEM
         parentPath:
           type: string
+          nullable: true
         permissions:
           type: array
           items:
@@ -15744,6 +15842,8 @@ components:
           type: integer
         url:
           type: string
+      required:
+      - nodeType
     Condition:
       type: object
       properties:
@@ -16452,10 +16552,14 @@ components:
           type: string
         name:
           type: string
+          nullable: true
         nodeType:
-          $ref: "#/components/schemas/NodeType"
+          type: string
+          enum:
+          - ITEM
         parentPath:
           type: string
+          nullable: true
         permissions:
           type: array
           items:
@@ -16474,6 +16578,8 @@ components:
           type: integer
         url:
           type: string
+      required:
+      - nodeType
     FunctionMapping:
       type: object
       properties:
@@ -17106,6 +17212,8 @@ components:
           type: string
         object:
           type: string
+          enum:
+          - model
         owner:
           type: string
         pricing:
@@ -17133,6 +17241,8 @@ components:
           format: uri
         interface_configs:
           $ref: "#/components/schemas/MapStringInterfaceConfigData"
+      required:
+      - object
     ModelType:
       type: string
       enum:
@@ -17528,14 +17638,19 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MetadataBase"
+          nullable: true
         name:
           type: string
+          nullable: true
         nextToken:
           type: string
         nodeType:
-          $ref: "#/components/schemas/NodeType"
+          type: string
+          enum:
+          - FOLDER
         parentPath:
           type: string
+          nullable: true
         permissions:
           type: array
           items:
@@ -17552,6 +17667,8 @@ components:
             $ref: "#/components/schemas/ShareMetadata"
         url:
           type: string
+      required:
+      - nodeType
     ResourceItemMetadata:
       type: object
       properties:
@@ -17565,10 +17682,14 @@ components:
           type: string
         name:
           type: string
+          nullable: true
         nodeType:
-          $ref: "#/components/schemas/NodeType"
+          type: string
+          enum:
+          - ITEM
         parentPath:
           type: string
+          nullable: true
         permissions:
           type: array
           items:
@@ -17587,6 +17708,8 @@ components:
           type: integer
         url:
           type: string
+      required:
+      - nodeType
     ResourceLink:
       type: object
       properties:
@@ -18210,6 +18333,8 @@ components:
           type: string
         object:
           type: string
+          enum:
+          - toolset
         owner:
           type: string
         reference:
@@ -18239,6 +18364,8 @@ components:
           format: uri
         interface_configs:
           $ref: "#/components/schemas/MapStringInterfaceConfigData"
+      required:
+      - object
     ToolSetRepairControllerRepairResponse:
       type: object
       properties:
@@ -18388,12 +18515,8 @@ components:
           description: The user id as DIAL resolves it from the identity provider configuration (not necessarily the token's sub claim). Present only for user-based session authentication. Use this value as owner_user_id when retrieving credentials on behalf of the user.
         userClaims:
           type: object
-          additionalProperties:
-            type: array
-            description: Array representation of a specific claim value (normalized for backward compatibility)
-            items:
-              type: string
-          description: Normalized token claims. Present only for user-based session authentication.
+          additionalProperties: {}
+          description: "Token claims. Present only for user-based session authentication. String claims are normalized to a single-element string array for backward compatibility; all other claim values (numbers such as exp/iat, booleans, arrays, objects) are returned as-is."
         userDisplayName:
           type: string
           description: Human-readable caller name. For user-based session authentication it is resolved from the identity provider's configured userDisplayName claim path; for API key authentication it is the key's project name. Absent when not configured.

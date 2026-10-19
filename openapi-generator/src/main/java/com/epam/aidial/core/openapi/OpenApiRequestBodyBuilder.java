@@ -21,7 +21,9 @@ public final class OpenApiRequestBodyBuilder {
         Content content = new Content();
         MediaType mediaType = new MediaType();
         Schema<?> schema;
-        if (ResponseSchemaFactory.isMultipartBinaryUpload(endpoint.requestBody(), endpoint.contentType())) {
+        if (ResponseSchemaFactory.isMultipartMultiFileUpload(endpoint.requestBody(), endpoint.contentType())) {
+            schema = ResponseSchemaFactory.multipartMultiFileUploadSchema();
+        } else if (ResponseSchemaFactory.isMultipartBinaryUpload(endpoint.requestBody(), endpoint.contentType())) {
             schema = ResponseSchemaFactory.multipartBinaryFileUploadSchema();
         } else {
             schema = ResponseSchemaFactory.forSchema(endpoint.requestBody(), schemaGenerator);
@@ -33,6 +35,10 @@ public final class OpenApiRequestBodyBuilder {
     }
 
     public static void registerRequestBodySchemas(EndpointMetadata.Endpoint endpoint, DtoSchemaGenerator schemaGenerator) {
+        if (ResponseSchemaFactory.isMultipartMultiFileUpload(endpoint.requestBody(), endpoint.contentType())) {
+            // Rendered inline; registering List<byte[]> would add an unused component schema.
+            return;
+        }
         ResponseSchemaFactory.registerSchema(endpoint.requestBody(), schemaGenerator);
     }
 }

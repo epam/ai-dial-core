@@ -3,12 +3,15 @@ package com.epam.aidial.core.openapi;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.server.data.ResourceLink;
 import io.swagger.v3.core.util.Yaml;
 import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.parameters.RequestBody;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -51,6 +54,43 @@ class OpenApiRequestBodyBuilderTest {
         assertEquals("file", schema.getRequired().get(0));
         assertFalse(schemaGenerator.getSchemas().containsKey("OpenApiBinary"),
                 "OpenApiBinary must not be registered as a component schema");
+    }
+
+    @Test
+    void multipartListOfBinaryUsesFilesArraySchema() throws Exception {
+        ApiSchema listOfFiles = MultiFileFixture.class.getDeclaredMethod("upload").getAnnotation(ApiSchema.class);
+        EndpointMetadata.Endpoint endpoint = new EndpointMetadata.Endpoint(
+                "PUT",
+                "/v2/skills/{bucket}/{path}",
+                "uploadSkillFolder",
+                listOfFiles,
+                new String[]{"Skills"},
+                "multipart/form-data",
+                new ApiParameter[0],
+                new ApiResponse[0],
+                new ApiExtension[0]
+        );
+        DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
+        OpenApiRequestBodyBuilder.registerRequestBodySchemas(endpoint, schemaGenerator);
+
+        RequestBody requestBody = OpenApiRequestBodyBuilder.build(endpoint, schemaGenerator);
+
+        var schema = requestBody.getContent().get("multipart/form-data").getSchema();
+        assertEquals("object", schema.getType());
+        assertEquals("files", schema.getRequired().get(0));
+        Schema<?> files = (Schema<?>) schema.getProperties().get("files");
+        assertEquals("array", files.getType());
+        assertEquals(1, files.getMinItems());
+        assertEquals("string", files.getItems().getType());
+        assertEquals("binary", files.getItems().getFormat());
+        assertTrue(files.getDescription().contains("filename"));
+        assertTrue(schemaGenerator.getSchemas().isEmpty(), "List<byte[]> must not be registered as a component schema");
+    }
+
+    private static class MultiFileFixture {
+        @ApiSchema(implementation = List.class, typeArguments = byte[].class)
+        void upload() {
+        }
     }
 
     @Test

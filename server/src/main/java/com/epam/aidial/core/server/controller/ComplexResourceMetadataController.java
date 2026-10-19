@@ -6,6 +6,7 @@ import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -58,7 +59,8 @@ public class ComplexResourceMetadataController extends AccessControlBaseControll
             parameters = {
                     @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
                     @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
-                            description = "The grouping folder path within the bucket; empty lists the bucket root."),
+                            description = "The grouping folder path within the bucket; empty lists the bucket root.",
+                            extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                     @ApiParameter(name = "token", in = ParameterIn.QUERY,
                             description = "Continuation token from a previous page; omit for the first page."),
                     @ApiParameter(name = "limit", in = ParameterIn.QUERY, schema = Integer.class,
@@ -86,9 +88,10 @@ public class ComplexResourceMetadataController extends AccessControlBaseControll
             parameters = {
                     @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
                     @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
-                            description = "The resource path within the bucket."),
+                            description = "The resource path within the bucket.", extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                     @ApiParameter(name = "filePath", in = ParameterIn.PATH, required = true,
-                            description = "The relative path of a subfolder inside the resource to scope the listing."),
+                            description = "The relative path of a subfolder inside the resource to scope the listing.",
+                            extensions = @ApiExtension(name = OpenApiDescriptions.ALLOW_RESERVED_EXTENSION, value = "true")),
                     @ApiParameter(name = "token", in = ParameterIn.QUERY,
                             description = "Continuation token from a previous page; omit for the first page."),
                     @ApiParameter(name = "limit", in = ParameterIn.QUERY, schema = Integer.class,
