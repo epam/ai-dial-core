@@ -722,11 +722,11 @@ public class ControllerSelector {
     // Builds the whole-resource url (still percent-encoded, decoded downstream by fromAnyUrl) for a
     // single-file or metadata route match, so access control is evaluated against the whole resource.
     private static String complexResourceUrl(Matcher matcher) {
-        return "skills/" + matcher.group("bucket") + "/" + matcher.group("path");
+        return matcher.group("group") + "/" + matcher.group("bucket") + "/" + matcher.group("path");
     }
 
     // Builds the grouping-folder url (trailing slash so fromAnyUrl marks it a folder) for folder ops, and
-    // as the metadata route's second access-check candidate: {path} may name either a specific skill (shared
+    // as the metadata route's second access-check candidate: {path} may name either a specific complex resource (shared
     // as the non-folder url from complexResourceUrl) or a grouping folder (shared as this folder url), and
     // the client has no way to know which up front, so both shapes are checked. An empty path addresses the
     // bucket root.
@@ -736,7 +736,7 @@ public class ControllerSelector {
             path = path.substring(0, path.length() - 1);
         }
         String suffix = (path == null || path.isEmpty()) ? "" : path + "/";
-        return "skills/" + matcher.group("bucket") + "/" + suffix;
+        return matcher.group("group") + "/" + matcher.group("bucket") + "/" + suffix;
     }
 
     private record ControllerRoute(HttpMethod method, Pattern pathPattern, Initializer initializer) {
