@@ -114,6 +114,17 @@ public class TokenStatsTracker {
      * read-modify-write so callers never need a separate read.
      */
     public Future<UsageStats> updateDeploymentStats(String traceId, String spanId, String deploymentName, TokenUsage tokenUsage) {
+        return updateDeploymentStats(traceId, spanId, deploymentName, tokenUsage, false);
+    }
+
+    /**
+     * Same as {@link #updateDeploymentStats(String, String, String, TokenUsage)}.
+     *
+     * @param rootMayHaveEnded the report can arrive after the root's {@code endSpan} has deleted the record,
+     *     as for a background job started by a child span: a missing record is then logged at debug, not warn
+     */
+    public Future<UsageStats> updateDeploymentStats(String traceId, String spanId, String deploymentName, TokenUsage tokenUsage,
+            boolean rootMayHaveEnded) {
         return taskExecutor.submit(() -> {
             UsageStats result = update(traceId, false, traceContext -> {
                 if (!traceContext.spans.containsKey(spanId)) {
@@ -124,8 +135,12 @@ public class TokenStatsTracker {
                 return new UsageStats(usageStats.total(), usageStats.usagePerModel(), aggregatedCosts);
             });
             if (result == null) {
-                // expected once the root has ended, e.g. for a background job started by a child
-                log.debug("Usage of span {} is not rolled up: trace {} has no record holding it", spanId, traceId);
+                if (rootMayHaveEnded) {
+                    log.debug("Usage of span {} is not rolled up: trace {} has no record holding it", spanId, traceId);
+                } else {
+                    // the root has not deleted the record yet, so it was evicted, expired or lost in a Redis restart
+                    log.warn("Usage of span {} is lost: trace {} has no record holding it", spanId, traceId);
+                }
                 return UsageStats.EMPTY;
             }
             return result;
