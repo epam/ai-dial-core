@@ -58,7 +58,7 @@ public class PublicationService {
             ResourceTypes.PUBLICATION, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, PUBLICATIONS_NAME);
 
     private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceTypes.FILE, ResourceTypes.CONVERSATION,
-            ResourceTypes.PROMPT, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET, ResourceTypes.SKILL);
+            ResourceTypes.PROMPT, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET, ResourceTypes.SKILL, ResourceTypes.PROJECT);
 
     private final EncryptionService encryption;
     private final ResourceService resourceService;
@@ -307,7 +307,7 @@ public class PublicationService {
                 ResourceDescriptor resource = ResourceDescriptorFactory.fromPrivateUrl(reviewResource.getReviewUrl(), encryption);
                 if (resource.getType() == ResourceTypes.TOOL_SET) {
                     toolSetService.deleteToolset(context, resource, EtagHeader.ANY);
-                } else if (resource.getType() == ResourceTypes.SKILL) {
+                } else if (resource.getType().isComplex()) {
                     complexResourceService.delete(resource, EtagHeader.ANY);
                 } else {
                     resourceService.deleteResource(resource, EtagHeader.ANY);
@@ -667,7 +667,7 @@ public class PublicationService {
     }
 
     private boolean hasResource(ResourceDescriptor descriptor) {
-        return descriptor.getType() == ResourceTypes.SKILL
+        return descriptor.getType().isComplex()
                 ? complexResourceService.getMarker(descriptor) != null
                 : resourceService.hasResource(descriptor);
     }
@@ -706,7 +706,7 @@ public class PublicationService {
                 Map<CredentialsLevel, Boolean> credentialsToCopy = getCredentialsLevelsToCopy(resource);
                 toolSetService.copyToolSet(context, from, to, null, false, credentialsToCopy,
                         toolSet -> toolSet.setIconUrl(replaceLink(replacementLinks, toolSet.getIconUrl())));
-            } else if (from.getType() == ResourceTypes.SKILL) {
+            } else if (from.getType().isComplex()) {
                 if (!complexResourceService.copyResource(from, to, null, false)) {
                     throw new IllegalStateException("Can't copy source resource from: " + from.getUrl() + " to review: " + to.getUrl());
                 }
@@ -755,7 +755,7 @@ public class PublicationService {
                 Map<CredentialsLevel, Boolean> credentialsToCopy = getCredentialsLevelsToCopy(resource);
                 toolSetService.copyToolSet(context, from, to, publication.getDisplayAuthor(), false,
                         credentialsToCopy, toolSet -> toolSet.setIconUrl(replaceLink(replacementLinks, toolSet.getIconUrl())));
-            } else if (from.getType() == ResourceTypes.SKILL) {
+            } else if (from.getType().isComplex()) {
                 // approvePublication is always invoked under the public bucket lock (see
                 // PublicationController#approvePublication), so the "already locked" variant is required
                 // here: taking the same bucket lock again would self-deadlock.

@@ -15,13 +15,17 @@ import com.epam.aidial.core.storage.data.UserMetadata;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceType;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagBuilder;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.vertx.core.buffer.Buffer;
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -31,6 +35,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -102,6 +107,31 @@ public class ComplexResourceService {
         private int maxFiles = 100;
         private long maxTotalBytes = 16L * 1024 * 1024;
         private long maxFileSizeBytes = 1024 * 1024;
+        // Sparse per-type overrides keyed by resource group; unset fields fall back to the values above.
+        // Projects are larger than skills by default; supplying "types" replaces this map.
+        private Map<String, Limits> types = new HashMap<>(Map.of(
+                ResourceTypes.PROJECT.group(), new Limits(1000, 64L * 1024 * 1024, 5L * 1024 * 1024)));
+
+        /**
+         * Returns the limits that apply to the given resource type: its override where set, the defaults otherwise.
+         */
+        public Limits resolveLimits(ResourceType type) {
+            Limits override = types.get(type.group());
+            return new Limits(
+                    override != null && override.maxFiles != null ? override.maxFiles : maxFiles,
+                    override != null && override.maxTotalBytes != null ? override.maxTotalBytes : maxTotalBytes,
+                    override != null && override.maxFileSizeBytes != null ? override.maxFileSizeBytes : maxFileSizeBytes);
+        }
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class Limits {
+        private Integer maxFiles;
+        private Long maxTotalBytes;
+        private Long maxFileSizeBytes;
     }
 
     /**
@@ -132,7 +162,7 @@ public class ComplexResourceService {
 
         // Enforced before any write (and before the handler reads file content), so a rejection never
         // takes the bucket/resource lock and leaves nothing observable.
-        validateLimits(files);
+        validateLimits(resource, files);
         handler.validate(files);
 
         // Creating a resource is a structural change: the bucket lock serializes the ancestor walk
@@ -251,23 +281,24 @@ public class ComplexResourceService {
      *                       REQUEST_ENTITY_TOO_LARGE if any single file or the aggregate size exceeds
      *                       {@code maxFileSizeBytes}/{@code maxTotalBytes}
      */
-    private void validateLimits(Map<String, byte[]> files) {
-        if (files.size() > settings.getMaxFiles()) {
+    private void validateLimits(ResourceDescriptor resource, Map<String, byte[]> files) {
+        Limits limits = settings.resolveLimits(resource.getType());
+        if (files.size() > limits.getMaxFiles()) {
             throw new HttpException(HttpStatus.BAD_REQUEST,
-                    "Resource contains %d files which exceeds the limit of %d".formatted(files.size(), settings.getMaxFiles()));
+                    "Resource contains %d files which exceeds the limit of %d".formatted(files.size(), limits.getMaxFiles()));
         }
         long totalBytes = 0;
         for (Map.Entry<String, byte[]> entry : files.entrySet()) {
             long size = entry.getValue().length;
-            if (size > settings.getMaxFileSizeBytes()) {
+            if (size > limits.getMaxFileSizeBytes()) {
                 throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE,
-                        "File '%s' size %d exceeds max file size of %d".formatted(entry.getKey(), size, settings.getMaxFileSizeBytes()));
+                        "File '%s' size %d exceeds max file size of %d".formatted(entry.getKey(), size, limits.getMaxFileSizeBytes()));
             }
             totalBytes += size;
         }
-        if (totalBytes > settings.getMaxTotalBytes()) {
+        if (totalBytes > limits.getMaxTotalBytes()) {
             throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE,
-                    "Resource size %d exceeds max total size of %d".formatted(totalBytes, settings.getMaxTotalBytes()));
+                    "Resource size %d exceeds max total size of %d".formatted(totalBytes, limits.getMaxTotalBytes()));
         }
     }
 
@@ -298,25 +329,26 @@ public class ComplexResourceService {
     public String putFile(ResourceDescriptor resource, ComplexResourceHandler handler, String relativePath,
                           byte[] content, EtagHeader etag, String author) {
         String normalized = normalizePath(relativePath);
-        if (content.length > settings.getMaxFileSizeBytes()) {
+        Limits limits = settings.resolveLimits(resource.getType());
+        if (content.length > limits.getMaxFileSizeBytes()) {
             throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE,
-                    "File size %d exceeds max file size of %d".formatted(content.length, settings.getMaxFileSizeBytes()));
+                    "File size %d exceeds max file size of %d".formatted(content.length, limits.getMaxFileSizeBytes()));
         }
         handler.validateFileMutation(normalized, ComplexResourceHandler.FileMutation.PUT);
         return copyOnWrite(resource, etag, author,
                 fileMetadata -> {
                     boolean newFile = !fileMetadata.containsKey(normalized);
-                    if (newFile && fileMetadata.size() + 1 > settings.getMaxFiles()) {
+                    if (newFile && fileMetadata.size() + 1 > limits.getMaxFiles()) {
                         throw new HttpException(HttpStatus.BAD_REQUEST,
-                                "Resource would contain more than %d files".formatted(settings.getMaxFiles()));
+                                "Resource would contain more than %d files".formatted(limits.getMaxFiles()));
                     }
                     long existingTotal = fileMetadata.values().stream()
                             .mapToLong(FolderResourceMarker.ResourceFileMetadata::getSize).sum();
                     long oldSize = newFile ? 0L : fileMetadata.get(normalized).getSize();
                     long prospectiveTotal = existingTotal - oldSize + content.length;
-                    if (prospectiveTotal > settings.getMaxTotalBytes()) {
+                    if (prospectiveTotal > limits.getMaxTotalBytes()) {
                         throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE,
-                                "Resource size %d exceeds max total size of %d".formatted(prospectiveTotal, settings.getMaxTotalBytes()));
+                                "Resource size %d exceeds max total size of %d".formatted(prospectiveTotal, limits.getMaxTotalBytes()));
                     }
                 },
                 (newVersionId, fileMetadata) -> {
