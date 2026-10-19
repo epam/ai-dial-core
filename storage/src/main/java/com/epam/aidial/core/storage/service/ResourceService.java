@@ -1286,6 +1286,17 @@ public class ResourceService implements AutoCloseable {
         return System.currentTimeMillis();
     }
 
+    /**
+     * Writes the resource's current state to the blob store now rather than at the next sync, for a document whose
+     * loss with Redis would undo changes that must stick.
+     */
+    public void syncNow(ResourceDescriptor descriptor) {
+        String redisKey = redisKey(descriptor);
+        try (var ignore = lockService.lock(redisKey)) {
+            sync(redisKey);
+        }
+    }
+
     private void flushToBlobStore(String redisKey) {
         RMap<String, byte[]> map = sync(redisKey);
         map.delete();

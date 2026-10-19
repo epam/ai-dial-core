@@ -411,6 +411,16 @@ public class ControllerSelector {
                 default -> null;
             };
         });
+        get(RouteTemplate.ORG_UNIT, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.getOrgUnit(path);
+        });
+        post(RouteTemplate.ORG_UNIT, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.createOrgUnit(path);
+        });
         post(RouteTemplate.PUBLICATION_RULES, (proxy, context, pathMatcher) -> {
             PublicationController controller = new PublicationController(proxy, context);
             return controller::listRules;
