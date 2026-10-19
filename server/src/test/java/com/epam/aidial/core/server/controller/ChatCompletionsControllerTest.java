@@ -100,8 +100,7 @@ public class ChatCompletionsControllerTest {
         controller.handle();
 
         verify(request, times(1)).body();
-        verify(context).setRequestBody(BODY);
-        verify(context).setRequestBodyTimestamp(anyLong());
+        verify(context).setRequestBodyWithTimestamp(BODY);
         verify(context).setInitialDeployment("test-model");
         verify(context).setInterceptors(apiKeyData.getInterceptors());
         // interceptor2 is not declared in the config, so reaching this response proves it was dispatched to
@@ -131,8 +130,7 @@ public class ChatCompletionsControllerTest {
         controller.handle();
 
         verify(request, times(1)).body();
-        verify(context).setRequestBody(BODY);
-        verify(context).setRequestBodyTimestamp(anyLong());
+        verify(context).setRequestBodyWithTimestamp(BODY);
         verify(context).setInitialDeployment("test-model");
         verify(context).respond(eq(HttpStatus.NOT_FOUND), anyString());
         verify(proxy, never()).getUpstreamRouteProvider();

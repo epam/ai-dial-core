@@ -331,4 +331,9 @@ public class ProxyContext {
         }
         return assembledStreamingResponse;
     }
+
+    public void setRequestBodyWithTimestamp(Buffer body) {
+        requestBody = body;
+        requestBodyTimestamp = System.currentTimeMillis();
+    }
 }

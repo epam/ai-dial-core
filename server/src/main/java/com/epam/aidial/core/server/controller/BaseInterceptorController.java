@@ -67,14 +67,23 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
                 context.getDeployment().getName(),
                 context.getRequest().headers().size());
 
-        return proxy.getTokenStatsTracker().startSpan(context).compose(ignore ->
+        return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
+            if (context.getRequestBody() == null) {
+                context.getRequest().body()
+                        .onSuccess(body -> proxy.getTaskExecutor().submit(() -> {
+                            context.setRequestBodyWithTimestamp(body);
+                            handleRequestBody(body);
+                            return null;
+                        }).onFailure(this::handleError))
+                        .onFailure(this::handleRequestBodyError);
+            } else {
                 proxy.getTaskExecutor().submit(() -> {
                     handleRequestBody(context.getRequestBody());
                     return null;
-                }).otherwise(e -> {
-                    handleError(e);
-                    return null;
-                }));
+                }).onFailure(this::handleError);
+            }
+            return null;
+        });
     }
 
     private void handleError(Throwable error) {

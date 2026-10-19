@@ -145,8 +145,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         }
         context.getRequest().body()
                 .map(body -> {
-                    context.setRequestBody(body);
-                    context.setRequestBodyTimestamp(System.currentTimeMillis());
+                    context.setRequestBodyWithTimestamp(body);
                     return parseBody(body);
                 })
                 .compose(this::dispatch)
@@ -293,7 +292,6 @@ public class ResponsesController extends BaseDeploymentPostController {
                         dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES,
                                 context.getConfig().getTranslators()), upstreamId);
 
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);
         sendRequest();
 

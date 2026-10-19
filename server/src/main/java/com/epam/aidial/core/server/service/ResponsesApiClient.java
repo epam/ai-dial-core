@@ -40,10 +40,16 @@ public class ResponsesApiClient {
                                     UpstreamInterfaceUtil.resolveEndpoint(upstream, InterfaceType.OPENAI_RESPONSES))
                             .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA,
                                     UpstreamExtraDataMerger.merge(upstream, InterfaceType.OPENAI_RESPONSES));
+
+                    if (body.length() == 0) {
+                        return request.send();
+                    }
+
                     if (contentType != null) {
                         request.putHeader(HttpHeaders.CONTENT_TYPE, contentType);
                     }
                     return request.send(body);
+
                 });
     }
 

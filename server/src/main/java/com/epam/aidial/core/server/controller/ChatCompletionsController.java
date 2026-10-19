@@ -78,8 +78,7 @@ public class ChatCompletionsController extends BaseChatCompletionController {
         }
         context.getRequest().body()
                 .map(body -> {
-                    context.setRequestBody(body);
-                    context.setRequestBodyTimestamp(System.currentTimeMillis());
+                    context.setRequestBodyWithTimestamp(body);
                     return parseBody(body);
                 })
                 .compose(this::dispatch)

@@ -176,8 +176,7 @@ public class ResponseItemControllerTest {
         when(context.getUserId()).thenReturn("test-user");
         when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer(REQUEST_BODY)));
         when(serverRequest.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(REQUEST_CONTENT_TYPE);
-        doCallRealMethod().when(context).setRequestBody(any());
-        doCallRealMethod().when(context).getRequestBody();
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(200)).thenReturn(response);
@@ -286,8 +285,7 @@ public class ResponseItemControllerTest {
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer(REQUEST_BODY)));
         when(serverRequest.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(REQUEST_CONTENT_TYPE);
-        doCallRealMethod().when(context).setRequestBody(any());
-        doCallRealMethod().when(context).getRequestBody();
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(200)).thenReturn(response);
         when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
@@ -339,8 +337,7 @@ public class ResponseItemControllerTest {
         when(context.getUserId()).thenReturn("test-user");
         when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer(REQUEST_BODY)));
         when(serverRequest.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(REQUEST_CONTENT_TYPE);
-        doCallRealMethod().when(context).setRequestBody(any());
-        doCallRealMethod().when(context).getRequestBody();
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(200)).thenReturn(response);
@@ -388,8 +385,7 @@ public class ResponseItemControllerTest {
         when(context.getUserId()).thenReturn("test-user");
         when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer(REQUEST_BODY)));
         when(serverRequest.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(REQUEST_CONTENT_TYPE);
-        doCallRealMethod().when(context).setRequestBody(any());
-        doCallRealMethod().when(context).getRequestBody();
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(400)).thenReturn(response);
@@ -480,8 +476,6 @@ public class ResponseItemControllerTest {
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(context.getUserId()).thenReturn("test-user");
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
-        when(context.getRequest()).thenReturn(serverRequest);
-        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
         when(context.getResponse()).thenReturn(response);
         when(response.ended()).thenReturn(false);
         when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> complete(testContext));
@@ -526,8 +520,7 @@ public class ResponseItemControllerTest {
         when(context.getUserId()).thenReturn("test-user");
         when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer(REQUEST_BODY)));
         when(serverRequest.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(REQUEST_CONTENT_TYPE);
-        doCallRealMethod().when(context).setRequestBody(any());
-        doCallRealMethod().when(context).getRequestBody();
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setStatusCode(200)).thenReturn(response);
@@ -794,8 +787,7 @@ public class ResponseItemControllerTest {
         when(context.getApiKeyData()).thenReturn(apiKeyData);
         when(serverRequest.body()).thenReturn(Future.succeededFuture(requestBody));
         when(serverRequest.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(REQUEST_CONTENT_TYPE);
-        doCallRealMethod().when(context).setRequestBody(any());
-        doCallRealMethod().when(context).getRequestBody();
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(response.setStatusCode(200)).thenReturn(response);
         when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
@@ -808,8 +800,7 @@ public class ResponseItemControllerTest {
 
         verify(serverRequest, times(1)).body();
         verifyUpstreamRequest(REQUEST_CONTENT_TYPE, "request");
-        verify(context).setRequestBody(requestBody);
-        verify(context).setRequestBodyTimestamp(anyLong());
+        verify(context).setRequestBodyWithTimestamp(requestBody);
         verify(context).setInitialDeployment("test-deployment");
         verify(context).setInterceptors(List.of("interceptor1"));
         verify(proxy.getResponsesApiClient()).send(eq("http://adapter/responses/upstream-id-123"), eq(HttpMethod.GET), any(Upstream.class), any(), any(), any());
@@ -836,6 +827,7 @@ public class ResponseItemControllerTest {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getRequest()).thenReturn(serverRequest);
         when(serverRequest.body()).thenReturn(Future.failedFuture(failure));
+        when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
         when(context.getResponse()).thenReturn(response);
         when(response.ended()).thenReturn(false);
         when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> complete(testContext));
@@ -846,12 +838,12 @@ public class ResponseItemControllerTest {
 
         verify(context).respond(failure, "Failed to process response operation");
         verify(serverRequest, times(1)).body();
-        verify(context, never()).setRequestBody(any());
+        verify(context, never()).setRequestBodyWithTimestamp(any());
         verify(proxy.getResponsesApiClient(), never()).send(any(), any(), any(), any(), any(), any());
     }
 
     @Test
-    public void testBodyReadFailureOnInterceptorReentryRespondsWithError(Vertx vertx, VertxTestContext testContext) throws Throwable {
+    public void testInterceptorReentryDispatchesToNextInterceptorWithoutReadingBody(Vertx vertx, VertxTestContext testContext) throws Throwable {
         ResponseMapping mapping = ResponseMapping.builder()
                 .upstreamResponseId("upstream-id-123")
                 .upstreamKey("endpoint")
@@ -861,7 +853,6 @@ public class ResponseItemControllerTest {
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
-        RuntimeException failure = new RuntimeException("connection reset");
 
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("per-request-key");
@@ -874,18 +865,20 @@ public class ResponseItemControllerTest {
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(context.getUserId()).thenReturn("test-user");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
-        when(context.getRequest()).thenReturn(serverRequest);
-        when(serverRequest.body()).thenReturn(Future.failedFuture(failure));
-        when(context.getResponse()).thenReturn(response);
-        when(response.ended()).thenReturn(false);
-        when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> complete(testContext));
+        when(context.getInterceptors()).thenReturn(apiKeyData.getInterceptors());
+        // interceptor2 is not declared in the config, so reaching this response proves it was dispatched to
+        when(context.respond(HttpStatus.NOT_FOUND, "Interceptor is not found")).thenAnswer(invocation -> {
+            testContext.completeNow();
+            return Future.succeededFuture();
+        });
 
         controller("dial_test-deployment_123", GET).handle();
 
         await(testContext);
 
-        verify(context).respond(failure, "Failed to process response operation");
-        verify(serverRequest, times(1)).body();
+        verify(context).setInterceptors(List.of("interceptor1", "interceptor2"));
+        // the body is read by the interceptor controller itself, not on reentry
+        verify(serverRequest, never()).body();
         verify(context, never()).setProxyApiKeyData(any());
         verify(proxy.getTokenStatsTracker(), never()).startSpan(any());
     }

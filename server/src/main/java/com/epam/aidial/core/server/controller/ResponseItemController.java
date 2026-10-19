@@ -44,7 +44,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -185,71 +184,69 @@ public class ResponseItemController implements Controller {
                         context.setInterceptors(apiKeyData.getInterceptors());
                         int nextIndex = apiKeyData.getInterceptorIndex() + 1;
                         if (nextIndex < apiKeyData.getInterceptors().size()) {
-                            return withRequestBody(() -> handleInterceptor(nextIndex));
+                            return handleInterceptor(nextIndex);
                         }
                     } else {
                         context.setInterceptors(proxy.getDeploymentService().getInterceptors(context, deployment));
                         if (context.hasNextInterceptor()) {
                             context.setInitialDeployment(deployment.getName());
-                            return withRequestBody(() -> handleInterceptor(0));
+                            return handleInterceptor(0);
                         }
                     }
 
-                    return withRequestBody(() -> forwardToUpstream(mapping, deployment));
+                    return forwardToUpstream(mapping, deployment);
                 });
     }
 
-    private Future<Void> withRequestBody(Supplier<Future<Void>> continuation) {
-        context.getRequest().body()
-                .compose(body -> {
-                    context.setRequestBody(body);
-                    context.setRequestBodyTimestamp(System.currentTimeMillis());
-                    return continuation.get();
-                })
-                .onFailure(this::handleError);
-        return Future.succeededFuture();
-    }
 
     private Future<Void> handleInterceptor(int interceptorIndex) {
         return new ResponsesInterceptorController(proxy, context, dialResponseId, operation.pathMapping, interceptorIndex).handle().mapEmpty();
     }
 
     private Future<Void> forwardToUpstream(ResponseMapping mapping, Deployment deployment) {
-        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
-                .get(deployment,
-                        null,
-                        dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES,
-                                context.getConfig().getTranslators()),
-                        mapping.getUpstreamKey());
-        Upstream upstream = upstreamRoute.next();
-
-        String targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment,
-                context.getConfig().getTranslators(), operation.pathMapping, mapping.getUpstreamResponseId(),
-                context.getRequest().query());
-
-        ApiKeyData proxyApiKeyData = new ApiKeyData();
-        ApiKeyData.initFromContext(proxyApiKeyData, context);
-        context.setProxyApiKeyData(proxyApiKeyData);
-
-        String requestContentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
-        Buffer requestBody = context.getRequestBody();
-        String perRequestKey = proxyApiKeyData.getPerRequestKey();
-
         return proxy.getTaskExecutor().submit(() -> {
+            UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
+                    .get(deployment,
+                            null,
+                            dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES,
+                                    context.getConfig().getTranslators()),
+                            mapping.getUpstreamKey());
+            Upstream upstream = upstreamRoute.next();
+
+            String targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment,
+                    context.getConfig().getTranslators(), operation.pathMapping, mapping.getUpstreamResponseId(),
+                    context.getRequest().query());
+
+            ApiKeyData proxyApiKeyData = new ApiKeyData();
+            ApiKeyData.initFromContext(proxyApiKeyData, context);
+            context.setProxyApiKeyData(proxyApiKeyData);
+
+            String requestContentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
+            String perRequestKey = proxyApiKeyData.getPerRequestKey();
             proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+            sendRequest(mapping, targetUrl, upstream, perRequestKey, requestContentType)
+                    .eventually(this::finalizeRequest)
+                    .onFailure(this::handleError);
+
             return null;
-        }).compose(ignore ->
-                proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, perRequestKey, requestBody, requestContentType)
-                        .compose(response -> {
-                            context.setProxyResponse(response);
-                            String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
-                            if (operation == Operation.GET
-                                    && Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM)) {
-                                return collectAndForwardStreaming(response, mapping);
-                            }
-                            return collectAndForward(response, mapping);
-                        }))
-                .eventually(this::finalizeRequest);
+        });
+    }
+
+    private Future<Void> sendRequest(ResponseMapping mapping, String targetUrl, Upstream upstream, String perRequestKey, String requestContentType) {
+        return context.getRequest().body()
+                .compose(body -> {
+                    context.setRequestBodyWithTimestamp(body);
+                    return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, perRequestKey, body, requestContentType);
+                })
+                .compose(response -> {
+                    context.setProxyResponse(response);
+                    String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
+                    if (operation == Operation.GET
+                            && Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM)) {
+                        return collectAndForwardStreaming(response, mapping);
+                    }
+                    return collectAndForward(response, mapping);
+                });
     }
 
     private Future<Void> collectAndForward(HttpClientResponse proxyResponse, ResponseMapping mapping) {
