@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.CopyResourcesRequest;
 import com.epam.aidial.core.server.data.MoveResourcesRequest;
 import com.epam.aidial.core.server.data.SubscribeResourcesRequest;
+import com.epam.aidial.core.server.orgunit.OrgUnitService;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.HeartbeatService;
@@ -51,6 +52,7 @@ public class ResourceOperationController {
     private final LockService lockService;
     private final AccessService accessService;
     private final HeartbeatService heartbeatService;
+    private final OrgUnitService orgUnitService;
 
     public ResourceOperationController(Proxy proxy, ProxyContext context) {
         this.context = context;
@@ -60,6 +62,7 @@ public class ResourceOperationController {
         this.lockService = proxy.getLockService();
         this.accessService = proxy.getAccessService();
         this.heartbeatService = proxy.getHeartbeatService();
+        this.orgUnitService = proxy.getOrgUnitService();
     }
 
     @ApiOperation(
@@ -72,6 +75,7 @@ public class ResourceOperationController {
                     @ApiResponse(code = 200, description = "Success"),
                     @ApiResponse(code = 400),
                     @ApiResponse(code = 403),
+                    @ApiResponse(code = 409, description = "The move would hand the resource to another org unit, or take it out of its unit"),
                     @ApiResponse(code = 500)
             }
     )
@@ -122,6 +126,7 @@ public class ResourceOperationController {
 
                     List<String> buckets = List.of(source.getBucketLocation(), destination.getBucketLocation());
                     return taskExecutor.submit(() -> lockService.underBucketLocks(buckets, () -> {
+                        orgUnitService.requireSameUnit(source, destination);
                         resourceOperationService.moveResource(context, source, destination, request.isOverwrite());
                         return null;
                     }));
