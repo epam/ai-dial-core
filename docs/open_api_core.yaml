@@ -2938,6 +2938,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/admin/export:
+    post:
+      tags:
+      - Admin
+      summary: /v1/admin/export
+      operationId: exportAdminBuckets
+      responses:
+        "200":
+          description: ZIP archive of the public and platform buckets
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: "Another export or a write holds a bucket lock, retry later"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/health/config:
     get:
       tags:
