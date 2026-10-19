@@ -39,10 +39,9 @@ public enum ResourceTypes implements ResourceType {
     BACKGROUND_JOB("background_jobs", true, TimeUnit.MINUTES.toMillis(5));
 
     /**
-     * Types published on the resource topic: those the resource subscribe API ({@code ResourceOperationController.SUBSCRIPTION_ALLOWED_TYPES})
-     * or the config replicas ({@code MergedConfigStore.MANAGED_TYPES} and {@code GLOBAL_SETTINGS}) consume.
-     * A consumer of an unlisted type must add it here, otherwise its subscription silently receives nothing.
-     * Pods on a release that does not list the type yet do not publish it, so during a rolling upgrade a new consumer misses their writes.
+     * Types published on the resource topic: those the resource subscribe API or the config replicas consume.
+     * A new consumer of another type must add it here one release before it starts consuming:
+     * pods of a release that does not list the type do not publish it.
      */
     public static final Set<ResourceType> EVENT_TYPES = Set.of(
             FILE, CONVERSATION, PROMPT, APPLICATION, TOOL_SET,
