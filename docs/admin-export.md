@@ -41,8 +41,9 @@ central directory, so it is not a valid ZIP. Always check that the download comp
 - The archive is built from blob storage. A resource written within the resource sync delay (`resources.syncDelay`)
   may not be in it yet.
 - Memory per export is bounded to a few MiB regardless of the archive size: a slow client slows the export down instead.
-- The archive contains everything in both buckets unencrypted. Treat it as confidential. Encryption keys are not
-  exported, so keep the key material out-of-band.
+- Blobs are exported exactly as stored, so secret fields stay encrypted as they are in storage. The encryption keys are not
+  exported (`encryption_keys/` is excluded), so keep the key material separately if the archive has to be restored.
+  The archive still holds the full content of both buckets, so treat it as confidential.
 
 ## Settings
 
