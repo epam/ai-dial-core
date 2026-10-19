@@ -88,11 +88,14 @@ public class MergedConfigStoreTest {
 
     @Test
     public void testReplicaTypesArePublishedOnResourceTopic() {
+        int replicated = 0;
         for (ResourceTypes type : ResourceTypes.values()) {
             if (MergedConfigStore.isManagedEventUrl(type.urlSegment() + "/platform/x")) {
                 assertTrue(ResourceTypes.EVENT_TYPES.contains(type), type.name());
+                replicated++;
             }
         }
+        assertTrue(replicated > 0);
     }
 
     @Test
