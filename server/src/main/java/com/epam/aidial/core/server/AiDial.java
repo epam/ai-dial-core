@@ -28,7 +28,6 @@ import com.epam.aidial.core.credentials.util.TimeProvider;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.credentials.validation.AuthorizationServerMetadataValidator;
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
-import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
@@ -106,6 +105,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.core.instrument.Clock;
 import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.binder.netty4.NettyEventExecutorMetrics;
 import io.micrometer.prometheus.PrometheusConfig;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
@@ -198,6 +198,14 @@ public class AiDial {
 
             vertx = Vertx.vertx(vertxOptions);
             BackgroundOperationTracer backgroundTracer = new BackgroundOperationTracer(vertx);
+            // bound to the registries, not the global composite: it would keep the gauges of the first vertx after a restart
+            NettyEventExecutorMetrics eventLoopMetrics = new NettyEventExecutorMetrics(vertx.nettyEventLoopGroup());
+            if (prometheusRegistry != null) {
+                eventLoopMetrics.bindTo(prometheusRegistry);
+            }
+            if (otlpRegistry != null) {
+                eventLoopMetrics.bindTo(otlpRegistry);
+            }
             HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
             // upstream bodies (including SSE streams) are parsed/proxied, so they must be decoded
             clientOptions.setDecompressionSupported(true);
@@ -370,8 +378,7 @@ public class AiDial {
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(),
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
-                    upstreamRouteProvider, responsesApiClient, logStore, credentialEncryptionService, backgroundJobSettings, backgroundTracer);
-            backgroundJobService.init();
+                    client, logStore, credentialEncryptionService, backgroundJobSettings, backgroundTracer);
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, mergedConfigStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
@@ -390,6 +397,9 @@ public class AiDial {
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
+            String localBaseUrl = backgroundJobSettings.getLocalBaseUrl();
+            backgroundJobService.setLocalBaseUrl(localBaseUrl != null ? localBaseUrl : "http://localhost:" + server.actualPort());
+            backgroundJobService.init();
             log.info("Proxy started on {}", server.actualPort());
         } catch (Throwable e) {
             log.error("Proxy failed to start:", e);

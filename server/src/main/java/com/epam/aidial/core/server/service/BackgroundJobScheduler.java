@@ -207,6 +207,12 @@ class BackgroundJobScheduler {
 
     private Future<Void> handleFailure(Throwable error, String jobId, ClaimResult claimResult, Supplier<Future<Void>> failureHandler) {
         int newErrors = claimResult.errors() + 1;
+        if (error instanceof PollStatusException statusError
+                && settings.getPollGiveUpStatusCodes().contains(statusError.getStatusCode())) {
+            log.error("Background job {} polling returned status {}, giving up", jobId, statusError.getStatusCode(), error);
+            return complete(jobId, claimResult.owner())
+                    .eventually(failureHandler);
+        }
         if (newErrors >= settings.getMaxSequentialPollFailures()) {
             log.error("Background job {} exceeded max poll failures, giving up", jobId, error);
             return complete(jobId, claimResult.owner())

@@ -57,6 +57,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -371,6 +372,53 @@ class BackgroundJobSchedulerTest {
         vertx.setTimer(1000, id -> ctx.verify(() -> {
             assertFalse(schedule.contains(JOB_ID), "job should be removed after hitting error limit");
             assertTrue(failCalled.get(), "fail() should be called when error limit is exceeded");
+            ctx.completeNow();
+        }));
+        await(ctx);
+    }
+
+    @Test
+    void pollGivesUpImmediatelyOnConfiguredStatusCode(Vertx vertx, VertxTestContext ctx) throws Throwable {
+        AtomicBoolean failCalled = new AtomicBoolean(false);
+        BackgroundJobService.Poller poller = mock(BackgroundJobService.Poller.class);
+        when(poller.poll()).thenReturn(Future.failedFuture(new PollStatusException(403, JOB_ID)));
+        when(poller.fail()).thenAnswer(inv -> {
+            failCalled.set(true);
+            return Future.succeededFuture();
+        });
+
+        BackgroundJobService.Settings settings = defaultSettings();
+        settings.setMaxSequentialPollFailures(5);
+
+        BackgroundJobScheduler scheduler = buildScheduler(vertx, settings, id -> {}, id -> poller);
+        scheduler.schedule(JOB_ID, System.currentTimeMillis() - 1000);
+        scheduler.init();
+
+        RScoredSortedSet<String> schedule = redissonClient.getScoredSortedSet(SCHEDULE_KEY, StringCodec.INSTANCE);
+        vertx.setTimer(1000, id -> ctx.verify(() -> {
+            assertFalse(schedule.contains(JOB_ID), "job should be removed on a give-up status code");
+            assertTrue(failCalled.get(), "fail() should be called on a give-up status code");
+            ctx.completeNow();
+        }));
+        await(ctx);
+    }
+
+    @Test
+    void pollRetriesOnStatusCodeNotConfiguredToGiveUp(Vertx vertx, VertxTestContext ctx) throws Throwable {
+        BackgroundJobService.Poller poller = mock(BackgroundJobService.Poller.class);
+        when(poller.poll()).thenReturn(Future.failedFuture(new PollStatusException(500, JOB_ID)));
+
+        BackgroundJobService.Settings settings = defaultSettings();
+        settings.setInitialPollIntervalMs(10_000);
+
+        BackgroundJobScheduler scheduler = buildScheduler(vertx, settings, id -> {}, id -> poller);
+        scheduler.schedule(JOB_ID, System.currentTimeMillis() - 1000);
+        scheduler.init();
+
+        RScoredSortedSet<String> schedule = redissonClient.getScoredSortedSet(SCHEDULE_KEY, StringCodec.INSTANCE);
+        vertx.setTimer(1000, id -> ctx.verify(() -> {
+            assertTrue(schedule.contains(JOB_ID), "job should stay scheduled for retry on a non-give-up status code");
+            verify(poller, never()).fail();
             ctx.completeNow();
         }));
         await(ctx);
