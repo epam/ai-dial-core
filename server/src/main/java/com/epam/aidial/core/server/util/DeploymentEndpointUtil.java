@@ -11,6 +11,7 @@ import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.experimental.UtilityClass;
+import org.apache.commons.lang3.Strings;
 
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -141,6 +142,16 @@ public class DeploymentEndpointUtil {
             uri = responsesBaseUri == null ? null : responsesBaseUri + "/" + responseId + itemOperationSuffix(pathMapping);
         }
         return uri == null || query == null ? uri : uri + "?" + query;
+    }
+
+    /**
+     * The absolute uri of a response item served by this Core itself, for {@code localBaseUrl} such as
+     * {@code http://localhost:8080}. The trailing slash of the base is dropped and {@code responseId} is
+     * escaped to stay inside one path segment.
+     */
+    public String resolveLocalResponseItemUri(String localBaseUrl, String responseId) {
+        return Strings.CS.removeEnd(localBaseUrl, "/")
+                + OPENAI_RESPONSES_BASE_PATH + "/" + UrlUtil.encodePathSegment(responseId);
     }
 
     /**

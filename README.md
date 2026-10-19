@@ -279,7 +279,7 @@ without putting the raw address in the log.
 <details> 
 <summary><b>Complex Resource Limits Configurations</b></summary>
 
-Per-resource limits for folder-as-resource complex resources (e.g. skills), enforced on whole-resource
+Per-resource limits for folder-as-resource complex resources (skills, projects), enforced on whole-resource
 PUT and single-file PUT. Exceeding a limit rejects the request and leaves nothing observable written.
 These limits also bound listing reads, archive (ZIP download) size and how long a mutation holds the
 resource lock (a single-file PUT copies the whole current version under the lock).
@@ -289,6 +289,7 @@ resource lock (a single-file PUT copies the whole current version under the lock
 | complexResource.maxFiles           |   100    |    No    | Max number of files a complex resource may contain.               |
 | complexResource.maxTotalBytes      | 16777216 |    No    | Max aggregate size in bytes of all files in a complex resource.   |
 | complexResource.maxFileSizeBytes   | 1048576  |    No    | Max size in bytes of a single file within a complex resource.     |
+| complexResource.types.\<group\>    |    -     |    No    | Per-type override keyed by URL group (`skills`, `projects`) with any subset of `maxFiles`, `maxTotalBytes`, `maxFileSizeBytes`; unset fields fall back to the values above. The built-in `projects` override is 1000 files, 67108864 total bytes, 5242880 bytes per file; setting `types` replaces it. |
 
 </details>
 
@@ -304,6 +305,20 @@ reclaiming resources tombstoned by DELETE and GCs stale versions left behind by 
 | complexResourceSweep.batch               |   1000   |    No    | Number of references listed (and potentially processed) per batch.                                                                                   |
 | complexResourceSweep.activeBatches       |    5     |    No    | Max number of batches this instance may have mid-processing in parallel at any moment. Enforced locally per instance; not a cluster-wide total.      |
 | complexResourceSweep.gracePeriod         | 3600000  |    No    | Minimum age in milliseconds a tombstoned resource or a superseded version must reach before the sweep physically deletes it, to protect any reader that started before the delete/supersession. |
+
+</details>
+
+<details> 
+<summary><b>Background Job Configurations</b></summary>
+
+Background responses are polled through this Core instance's own HTTP endpoint, so polling requests pass
+through the interceptor chain.
+
+| Setting                    | Default                               | Required | Description                                                                                                  |
+|-----------------------------|:-------------------------------------:|:--------:|--------------------------------------------------------------------------------------------------------------|
+| backgroundJob.localBaseUrl | http://localhost:{actual server port} |    No    | Base URL that background job polling uses to reach this Core instance's own HTTP endpoint.                   |
+| backgroundJob.pollTimeoutMs | 300000                               |    No    | Timeout in milliseconds of a single polling request. A request exceeding it fails and counts as a poll failure. |
+| backgroundJob.pollGiveUpStatusCodes | [401, 403, 404]               |    No    | HTTP status codes of a polling response that make the job give up immediately instead of retrying.         |
 
 </details>
 

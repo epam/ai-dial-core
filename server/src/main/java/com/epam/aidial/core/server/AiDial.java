@@ -28,7 +28,6 @@ import com.epam.aidial.core.credentials.util.TimeProvider;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.credentials.validation.AuthorizationServerMetadataValidator;
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
-import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
@@ -381,8 +380,7 @@ public class AiDial {
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(),
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
-                    upstreamRouteProvider, responsesApiClient, logStore, credentialEncryptionService, backgroundJobSettings);
-            backgroundJobService.init();
+                    client, logStore, credentialEncryptionService, backgroundJobSettings);
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, mergedConfigStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
@@ -401,6 +399,9 @@ public class AiDial {
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
+            String localBaseUrl = backgroundJobSettings.getLocalBaseUrl();
+            backgroundJobService.setLocalBaseUrl(localBaseUrl != null ? localBaseUrl : "http://localhost:" + server.actualPort());
+            backgroundJobService.init();
             log.info("Proxy started on {}", server.actualPort());
         } catch (Throwable e) {
             log.error("Proxy failed to start:", e);
