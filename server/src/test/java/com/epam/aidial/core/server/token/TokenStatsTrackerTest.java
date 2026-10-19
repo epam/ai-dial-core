@@ -27,11 +27,15 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -48,11 +52,15 @@ public class TokenStatsTrackerTest {
 
     private static final Duration BACKGROUND_TTL = Duration.ofDays(2);
 
+    private static final String PREFIX = "prefix";
+
     @Mock
     private AsyncTaskExecutor taskExecutor;
 
     @InjectMocks
     private TokenStatsTracker tracker;
+
+    private LockService lockService;
 
     @BeforeAll
     public static void beforeAll() throws IOException {
@@ -91,8 +99,12 @@ public class TokenStatsTrackerTest {
         for (String key : keys.getKeys()) {
             keys.delete(key);
         }
-        LockService lockService = new LockService(redissonClient, null);
-        tracker = new TokenStatsTracker(taskExecutor, redissonClient, lockService, null, BlockingCallTracer.NOOP, TTL, BACKGROUND_TTL);
+        lockService = new LockService(redissonClient, null);
+        tracker = new TokenStatsTracker(taskExecutor, redissonClient, lockService, PREFIX, BlockingCallTracer.NOOP, TTL, BACKGROUND_TTL);
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
     }
 
     /**
@@ -100,11 +112,6 @@ public class TokenStatsTrackerTest {
      */
     @Test
     public void testWorkflow() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable<?> callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
         final String traceId = "trace-id";
         ProxyContext chatBackend = mock(ProxyContext.class);
         when(chatBackend.getSpanId()).thenReturn("chat");
@@ -197,11 +204,6 @@ public class TokenStatsTrackerTest {
 
     @Test
     public void testSameDeploymentCalledTwiceAppendsTwoSeparateEntries() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable<?> callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
         final String traceId = "trace-id-repeat";
         ProxyContext root = mock(ProxyContext.class);
         when(root.getSpanId()).thenReturn("root");
@@ -259,11 +261,6 @@ public class TokenStatsTrackerTest {
 
     @Test
     public void testSoloModelCallHasEmptyUsagePerModel() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable<?> callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
         final String traceId = "trace-id-solo";
         ProxyContext root = mock(ProxyContext.class);
         when(root.getSpanId()).thenReturn("root");
@@ -287,11 +284,6 @@ public class TokenStatsTrackerTest {
 
     @Test
     public void testMissingTraceReturnsEmptyUsageStats() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable<?> callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
         ProxyContext ctx = mock(ProxyContext.class);
         when(ctx.getTraceId()).thenReturn("nonexistent-trace");
 
@@ -308,11 +300,6 @@ public class TokenStatsTrackerTest {
      */
     @Test
     public void testAggregatedCostCreditsEveryAncestorRegardlessOfKind() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable<?> callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
         final String traceId = "trace-id-aggregated";
 
         ProxyContext chatBackend = mock(ProxyContext.class);
@@ -385,11 +372,6 @@ public class TokenStatsTrackerTest {
 
     @Test
     public void testPureReadNeverReportsAggregatedCosts() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable<?> callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
         final String traceId = "trace-id-read-only";
         Application router = new Application();
         router.setName("router-app");
@@ -407,11 +389,6 @@ public class TokenStatsTrackerTest {
 
     @Test
     public void testTraceRecordLifecycle() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable<?> callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
         final String traceId = "trace-id-lifecycle";
         ProxyContext root = mock(ProxyContext.class);
         when(root.getSpanId()).thenReturn("root");
@@ -445,16 +422,12 @@ public class TokenStatsTrackerTest {
 
     @Test
     public void testBackgroundRootGetsBackgroundTtl() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable<?> callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
         final String traceId = "trace-id-background";
         ProxyContext root = mock(ProxyContext.class);
         when(root.getSpanId()).thenReturn("root");
         when(root.getTraceId()).thenReturn(traceId);
         when(root.isBackgroundJob()).thenReturn(true);
+        when(root.isOriginalRequest()).thenReturn(true);
         tracker.startSpan(root);
 
         RBucket<String> record = getRecord(traceId);
@@ -477,12 +450,7 @@ public class TokenStatsTrackerTest {
     }
 
     @Test
-    public void testChildBackgroundJobGetsBackgroundTtl() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable<?> callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
+    public void testChildBackgroundJobKeepsTraceTtl() {
         final String traceId = "trace-id-child-background";
         ProxyContext root = mock(ProxyContext.class);
         when(root.getSpanId()).thenReturn("root");
@@ -497,16 +465,12 @@ public class TokenStatsTrackerTest {
         when(job.getParentSpanId()).thenReturn("root");
         when(job.isBackgroundJob()).thenReturn(true);
         tracker.startSpan(job);
-        assertTtl(getRecord(traceId), BACKGROUND_TTL);
+        // the root's endSpan deletes the record, so a longer TTL would only keep orphans longer
+        assertTtl(getRecord(traceId), TTL);
     }
 
     @Test
     public void testChildWithoutRootCreatesRecord() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable<?> callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
         // e.g. the root already ended, or it is a feature endpoint that never starts a span
         final String traceId = "trace-id-orphan";
         ProxyContext model = mock(ProxyContext.class);
@@ -520,11 +484,6 @@ public class TokenStatsTrackerTest {
 
     @Test
     public void testRootMergesIntoExistingRecord() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable<?> callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
         // e.g. a child reached core before its root's startSpan
         final String traceId = "trace-id-shared";
         ProxyContext model = mock(ProxyContext.class);
@@ -547,11 +506,6 @@ public class TokenStatsTrackerTest {
 
     @Test
     public void testUpdateOfUnknownSpanLeavesRecordUnchanged() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable<?> callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
         final String traceId = "trace-id-unknown-span";
         ProxyContext root = mock(ProxyContext.class);
         when(root.getSpanId()).thenReturn("root");
@@ -565,8 +519,28 @@ public class TokenStatsTrackerTest {
         assertEquals(json, getRecord(traceId).get());
     }
 
+    @Test
+    public void testEndSpanWaitsForConcurrentUpdate() throws Exception {
+        final String traceId = "trace-id-lock";
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        tracker.startSpan(root);
+        RBucket<String> record = getRecord(traceId);
+
+        CompletableFuture<Void> end;
+        // the test holds the lock an update would hold
+        try (var ignore = lockService.lock(record.getName())) {
+            end = CompletableFuture.runAsync(() -> tracker.endSpan(traceId));
+            assertThrows(TimeoutException.class, () -> end.get(200, TimeUnit.MILLISECONDS));
+            assertTrue(record.isExists());
+        }
+        end.get(10, TimeUnit.SECONDS);
+        assertFalse(record.isExists());
+    }
+
     private static RBucket<String> getRecord(String traceId) {
-        return redissonClient.getBucket(TokenStatsTracker.KEY_PREFIX + traceId, StringCodec.INSTANCE);
+        return redissonClient.getBucket(TokenStatsTracker.KEY_PREFIX + PREFIX + "/" + traceId, StringCodec.INSTANCE);
     }
 
     private static void assertTtl(RBucket<String> record, Duration ttl) {

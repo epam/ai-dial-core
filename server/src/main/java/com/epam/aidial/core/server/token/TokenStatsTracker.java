@@ -28,7 +28,7 @@ import java.util.function.Function;
 @Slf4j
 @RequiredArgsConstructor
 public class TokenStatsTracker {
-    // not "deployment_cost_stats:": ResourceService keys its Redis hashes "<resource type>:<path>"
+    // not "deployment_cost_stats:": older versions keep a ResourceService hash of the trace under that key
     static final String KEY_PREFIX = "deployment_cost_stats_tmp:";
 
     private final AsyncTaskExecutor taskExecutor;
@@ -39,7 +39,7 @@ public class TokenStatsTracker {
     // refreshed on every write: bounds records nobody deletes, and a request that reports its usage later than this
     // after the trace's last write loses it
     private final Duration ttl;
-    // for a trace with a background Responses job, which outlives its HTTP request
+    // for a trace whose root is a background Responses job, which outlives its HTTP request
     private final Duration backgroundTtl;
 
     /**
@@ -53,9 +53,9 @@ public class TokenStatsTracker {
         return taskExecutor.submit(() -> {
             update(context.getTraceId(), true, traceContext -> {
                 traceContext.addSpan(context);
-                // a child may start a background job too. The poller reports its usage when the job ends,
-                // which is lost if the root's endSpan has deleted the record by then
-                if (context.isBackgroundJob()) {
+                // only the root: its poller deletes the record when the job ends. A job started by a child
+                // reports into the record only while the root runs, and the root's endSpan deletes it
+                if (context.isBackgroundJob() && context.isOriginalRequest()) {
                     traceContext.background = true;
                 }
                 return true;
@@ -124,7 +124,8 @@ public class TokenStatsTracker {
                 return new UsageStats(usageStats.total(), usageStats.usagePerModel(), aggregatedCosts);
             });
             if (result == null) {
-                log.warn("Usage of span {} is lost: trace {} has no record holding it", spanId, traceId);
+                // expected once the root has ended, e.g. for a background job started by a child
+                log.debug("Usage of span {} is not rolled up: trace {} has no record holding it", spanId, traceId);
                 return UsageStats.EMPTY;
             }
             return result;
@@ -135,7 +136,7 @@ public class TokenStatsTracker {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class TraceContext {
         Map<String, TokenStats> spans = new HashMap<>();
-        // a span of the trace is a background Responses job: the record gets the background TTL
+        // the root span is a background Responses job: the record gets the background TTL
         boolean background;
 
         void addSpan(ProxyContext context) {
