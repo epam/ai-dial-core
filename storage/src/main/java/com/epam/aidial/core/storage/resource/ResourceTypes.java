@@ -36,7 +36,8 @@ public enum ResourceTypes implements ResourceType {
     GLOBAL_SETTINGS("settings", true, TimeUnit.DAYS.toMillis(30)),
     RESPONSE_MAPPING("response_mappings", true, TimeUnit.MINUTES.toMillis(5)),
     SKILL("skills", false, TimeUnit.MINUTES.toMillis(5)),
-    BACKGROUND_JOB("background_jobs", true, TimeUnit.MINUTES.toMillis(5));
+    BACKGROUND_JOB("background_jobs", true, TimeUnit.MINUTES.toMillis(5)),
+    PROJECT("projects", false, TimeUnit.MINUTES.toMillis(5));
 
     /**
      * Types published on the resource topic: those the resource subscribe API or the config replicas consume.
@@ -86,6 +87,7 @@ public enum ResourceTypes implements ResourceType {
             case "settings" -> GLOBAL_SETTINGS;
             case "response_mappings" -> RESPONSE_MAPPING;
             case "skills" -> SKILL;
+            case "projects" -> PROJECT;
             default -> throw new IllegalArgumentException("Unsupported resource type: " + group);
         };
     }
@@ -103,6 +105,11 @@ public enum ResourceTypes implements ResourceType {
     @Override
     public boolean requireCompression() {
         return requireCompression;
+    }
+
+    @Override
+    public boolean isComplex() {
+        return this == SKILL || this == PROJECT;
     }
 
     @Override
