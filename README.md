@@ -319,6 +319,8 @@ through the interceptor chain.
 | backgroundJob.localBaseUrl | http://localhost:{actual server port} |    No    | Base URL that background job polling uses to reach this Core instance's own HTTP endpoint.                   |
 | backgroundJob.pollTimeoutMs | 300000                               |    No    | Timeout in milliseconds of a single polling request. A request exceeding it fails and counts as a poll failure. |
 | backgroundJob.pollGiveUpStatusCodes | [401, 403, 404]               |    No    | HTTP status codes of a polling response that make the job give up immediately instead of retrying.         |
+| backgroundJob.jobTtlMs     | 86400000                              |    No    | Lifetime in milliseconds of a background job and its per-request API key. The scheduler's next scan expires a job older than this. |
+| backgroundJob.scanIntervalMs | 600000                              |    No    | Interval in milliseconds between the scheduler's scans of stored jobs. A scan schedules each job for polling or expires it. |
 
 </details>
 

@@ -399,6 +399,8 @@ public class TokenStatsTrackerTest {
         RBucket<String> record = getRecord(traceId);
         assertTtl(record, TTL);
 
+        // each write refreshes the TTL
+        record.expire(Duration.ofMinutes(1));
         ProxyContext model = mock(ProxyContext.class);
         when(model.getSpanId()).thenReturn("model");
         when(model.getTraceId()).thenReturn(traceId);

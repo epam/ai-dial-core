@@ -478,7 +478,7 @@ public class ResponsesControllerTest {
                 .thenReturn(Future.succeededFuture());
         // the response body carries its own "usage" object, so it's captured as this app's
         // self-reported usage (see issue #1753) rather than read from the trace aggregate
-        when(proxy.getTokenStatsTracker().updateDeploymentStats(any(), any(), any(), any()))
+        when(proxy.getTokenStatsTracker().updateDeploymentStats(any(), any(), any(), any(), anyBoolean()))
                 .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(tokenUsage, List.of(), List.of())));
         doAnswer(invocation -> {
             textContext.completeNow();

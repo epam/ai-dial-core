@@ -120,8 +120,8 @@ public class TokenStatsTracker {
     /**
      * Same as {@link #updateDeploymentStats(String, String, String, TokenUsage)}.
      *
-     * @param rootMayHaveEnded the report can arrive after the root's {@code endSpan} has deleted the record,
-     *     as for a background job started by a child span: a missing record is then logged at debug, not warn
+     * @param rootMayHaveEnded the report comes from a child span, which can report after the root's {@code endSpan}
+     *     has deleted the record: a missing record is then logged at debug, not warn
      */
     public Future<UsageStats> updateDeploymentStats(String traceId, String spanId, String deploymentName, TokenUsage tokenUsage,
             boolean rootMayHaveEnded) {
