@@ -5,7 +5,9 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.jclouds.blobstore.domain.Blob;
@@ -19,13 +21,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.function.LongSupplier;
 import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -55,10 +57,10 @@ public class AdminExportService {
 
     private final BlobStorage blobStorage;
     private final LockService lockService;
-    private final Clock clock;
+    private final LongSupplier clock;
     private final String coreVersion;
 
-    public AdminExportService(BlobStorage blobStorage, LockService lockService, Clock clock, String coreVersion) {
+    public AdminExportService(BlobStorage blobStorage, LockService lockService, LongSupplier clock, String coreVersion) {
         this.blobStorage = blobStorage;
         this.lockService = lockService;
         this.clock = clock;
@@ -78,18 +80,19 @@ public class AdminExportService {
             throw new AdminExportBusyException("A bucket lock is held by another export or a write");
         }
 
-        Instant start = clock.instant();
+        long startMillis = clock.getAsLong();
+        Instant start = Instant.ofEpochMilli(startMillis);
         ExportStats stats = new ExportStats();
         try (locks) {
             writeArchive(out, start, stats);
         } catch (Throwable e) {
-            Duration duration = Duration.between(start, clock.instant());
+            Duration duration = Duration.ofMillis(clock.getAsLong() - startMillis);
             log.error("Admin export failed: duration={}ms, entries={}, bytes={}", duration.toMillis(), stats.entries, stats.bytes, e);
             warnIfLockPeriodExceeded(duration);
             throw e;
         }
 
-        Duration duration = Duration.between(start, clock.instant());
+        Duration duration = Duration.ofMillis(clock.getAsLong() - startMillis);
         log.info("Admin export completed: duration={}ms, entries={}, bytes={}", duration.toMillis(), stats.entries, stats.bytes);
         warnIfLockPeriodExceeded(duration);
     }
@@ -242,6 +245,15 @@ public class AdminExportService {
     }
 
     private record Manifest(int formatVersion, String coreVersion, String createdAt) {
+    }
+
+    @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class Settings {
+        /**
+         * Milliseconds a client may read nothing before the export fails. Keep it well below the lock period.
+         */
+        private long stallTimeout = 60_000;
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

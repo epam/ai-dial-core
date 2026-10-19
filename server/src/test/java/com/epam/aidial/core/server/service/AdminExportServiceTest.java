@@ -36,10 +36,7 @@ import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.LinkedHashMap;
@@ -49,7 +46,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.IntFunction;
+import java.util.function.LongSupplier;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipEntry;
@@ -118,7 +117,7 @@ class AdminExportServiceTest {
             blobStorage = new BlobStorage(mapper.readValue(blobStorageConfig, Storage.class));
 
             lockService = new LockService(redis, null);
-            service = new AdminExportService(blobStorage, lockService, Clock.fixed(NOW, ZoneOffset.UTC), CORE_VERSION);
+            service = new AdminExportService(blobStorage, lockService, NOW::toEpochMilli, CORE_VERSION);
         } catch (Throwable e) {
             destroy();
             throw e;
@@ -450,26 +449,9 @@ class AdminExportServiceTest {
         appender.start();
         logger.addAppender(appender);
         try {
-            Clock steppingClock = new Clock() {
-                private Instant current = NOW;
-
-                @Override
-                public ZoneId getZone() {
-                    return ZoneOffset.UTC;
-                }
-
-                @Override
-                public Clock withZone(ZoneId zone) {
-                    return this;
-                }
-
-                @Override
-                public synchronized Instant instant() {
-                    Instant result = current;
-                    current = current.plus(LockService.LOCK_PERIOD).plusSeconds(1);
-                    return result;
-                }
-            };
+            AtomicLong current = new AtomicLong(NOW.toEpochMilli());
+            long step = LockService.LOCK_PERIOD.plusSeconds(1).toMillis();
+            LongSupplier steppingClock = () -> current.getAndAdd(step);
 
             export(new AdminExportService(blobStorage, lockService, steppingClock, CORE_VERSION));
 
@@ -535,7 +517,7 @@ class AdminExportServiceTest {
     }
 
     private AdminExportService newService(BlobStorage storage) {
-        return new AdminExportService(storage, lockService, Clock.fixed(NOW, ZoneOffset.UTC), CORE_VERSION);
+        return new AdminExportService(storage, lockService, NOW::toEpochMilli, CORE_VERSION);
     }
 
     private static BlobStorage singleBlobStorage(String path, Blob blob) {

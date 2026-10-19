@@ -50,6 +50,7 @@ import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.AdminExportService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -378,6 +379,9 @@ public class AiDial {
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
                     client, logStore, credentialEncryptionService, backgroundJobSettings);
 
+            AdminExportService adminExportService = new AdminExportService(storage, lockService, clock, version());
+            AdminExportService.Settings adminExportSettings = Json.decodeValue(settings("adminExport").toBuffer(), AdminExportService.Settings.class);
+
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, mergedConfigStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
@@ -391,7 +395,8 @@ public class AiDial {
                     printAuthorizationHeader,
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,
-                    TracingSettings.from(settings("tracing")), blockingCallTracer);
+                    TracingSettings.from(settings("tracing")), blockingCallTracer,
+                    adminExportService, adminExportSettings);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
