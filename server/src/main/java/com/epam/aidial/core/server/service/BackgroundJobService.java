@@ -246,7 +246,9 @@ public class BackgroundJobService {
                         if (!hasUsage || traceId == null || spanId == null) {
                             return Future.succeededFuture(List.of());
                         }
-                        return tokenStatsTracker.updateDeploymentStats(traceId, spanId, responseMapping.getDeploymentName(), usage)
+                        // a job started by a child usually ends after its root, whose endSpan deletes the record
+                        boolean rootMayHaveEnded = !Boolean.TRUE.equals(jobRecord.isRootSpan());
+                        return tokenStatsTracker.updateDeploymentStats(traceId, spanId, responseMapping.getDeploymentName(), usage, rootMayHaveEnded)
                                 .compose(stats -> recordAggregatedCosts(stats.aggregatedCosts(), responseMapping.getInitiatorBucket())
                                         .map(ignored2 -> stats.usagePerModel()));
                     });

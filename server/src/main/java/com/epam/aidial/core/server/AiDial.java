@@ -328,7 +328,16 @@ public class AiDial {
             ConfigValidationService configValidationService = new ConfigValidationService(
                     resourceService, mergedConfigStore.isSoftValidation(), catalogSchemaService);
 
-            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, resourceService);
+            Settings backgroundJobSettings =
+                    Json.decodeValue(settings("backgroundJob").toBuffer(), Settings.class);
+            long deploymentStatsTtlMs = settings("deploymentStats").getLong("ttlMs", TimeUnit.HOURS.toMillis(1));
+            if (deploymentStatsTtlMs <= 0) {
+                throw new IllegalArgumentException("deploymentStats.ttlMs must be positive, but got: " + deploymentStatsTtlMs);
+            }
+            // a background job's record lives until the job ends or the scheduler expires it, and never shorter than any other record
+            long backgroundDeploymentStatsTtlMs = Math.max(deploymentStatsTtlMs, backgroundJobSettings.getJobTtlMs() + backgroundJobSettings.getScanIntervalMs());
+            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, redis, lockService, storage.getPrefix(), blockingCallTracer,
+                    Duration.ofMillis(deploymentStatsTtlMs), Duration.ofMillis(backgroundDeploymentStatsTtlMs));
 
             HeartbeatService heartbeatService = new HeartbeatService(
                     vertx, taskExecutor, settings("resources").getLong("heartbeatPeriod"));
@@ -371,8 +380,6 @@ public class AiDial {
                     complexResourceService, encryptionService, complexResourceSweepSettings);
 
             ResponsesApiClient responsesApiClient = new ResponsesApiClient(client, clientOptions);
-            Settings backgroundJobSettings =
-                    Json.decodeValue(settings("backgroundJob").toBuffer(), Settings.class);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(),
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,

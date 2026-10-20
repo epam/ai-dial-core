@@ -110,6 +110,9 @@
   "perRequestApiKey": {
     "ttl": 1800
   },
+  "deploymentStats": {
+    "ttlMs": 3600000
+  },
   "asyncTaskExecutor": {
     "useVirtualThreads": true
   },
