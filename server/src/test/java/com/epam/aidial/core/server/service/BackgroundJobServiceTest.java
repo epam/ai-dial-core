@@ -12,6 +12,7 @@ import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -53,6 +54,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -163,10 +165,15 @@ class BackgroundJobServiceTest {
         BackgroundJobService.Settings settings = buildTestSettings(10);
         AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx,
                 new JsonObject().put("useVirtualThreads", false));
+        BackgroundOperationTracer backgroundTracer = mock(BackgroundOperationTracer.class);
+        lenient().when(backgroundTracer.traceFuture(any())).thenAnswer(inv -> {
+            Supplier<Future<?>> supplier = inv.getArgument(0);
+            return supplier.get();
+        });
         service = spy(new BackgroundJobService(vertx, redissonClient, PREFIX,
                 responseMappingService, resourceService, taskExecutor,
                 configStore, apiKeyStore, rateLimiter, tokenStatsTracker,
-                httpClient, logStore, encryptionService, settings));
+                httpClient, logStore, encryptionService, settings, backgroundTracer));
         service.init();
 
         lenient().when(proxyContext.getProxyApiKeyData().getPerRequestKey()).thenReturn("test-per-request-key");
@@ -182,7 +189,7 @@ class BackgroundJobServiceTest {
         poller = new BackgroundJobService(null, null, null,
                 null, null, null,
                 configStore, null, null, null,
-                httpClient, null, encryptionService, new BackgroundJobService.Settings());
+                httpClient, null, encryptionService, new BackgroundJobService.Settings(), backgroundTracer);
         poller.setLocalBaseUrl("http://localhost");
     }
 
@@ -359,7 +366,8 @@ class BackgroundJobServiceTest {
         List<TokenStatsTracker.AggregatedCost> aggregatedCosts = List.of(
                 new TokenStatsTracker.AggregatedCost("inner-app", new BigDecimal("0.40")),
                 new TokenStatsTracker.AggregatedCost("router-app", new BigDecimal("0.40")));
-        when(tokenStatsTracker.updateDeploymentStats(eq("trace-id"), eq("span-id"), eq(DEPLOYMENT_NAME), any()))
+        // the mocked context is not an original request, so the job is a child's and its root may have ended
+        when(tokenStatsTracker.updateDeploymentStats(eq("trace-id"), eq("span-id"), eq(DEPLOYMENT_NAME), any(), eq(true)))
                 .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of(), aggregatedCosts)));
         when(rateLimiter.recordAggregatedCost(any(), any(), any())).thenReturn(Future.succeededFuture());
         when(apiKeyStore.invalidatePerRequestApiKey(any()))
@@ -626,10 +634,15 @@ class BackgroundJobServiceTest {
         BackgroundJobService.Settings settings = buildTestSettings(maxFailures);
         AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx,
                 new JsonObject().put("useVirtualThreads", false));
+        BackgroundOperationTracer backgroundTracer = mock(BackgroundOperationTracer.class);
+        lenient().when(backgroundTracer.traceFuture(any())).thenAnswer(inv -> {
+            Supplier<Future<?>> supplier = inv.getArgument(0);
+            return supplier.get();
+        });
         BackgroundJobService svc = spy(new BackgroundJobService(vertx, redissonClient, PREFIX,
                 responseMappingService, resourceService, taskExecutor,
                 configStore, apiKeyStore, rateLimiter, tokenStatsTracker,
-                httpClient, logStore, encryptionService, settings));
+                httpClient, logStore, encryptionService, settings, backgroundTracer));
         return new ServiceBundle(svc);
     }
 

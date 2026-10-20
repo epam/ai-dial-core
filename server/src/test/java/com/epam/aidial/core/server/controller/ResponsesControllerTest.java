@@ -66,6 +66,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
@@ -477,7 +478,7 @@ public class ResponsesControllerTest {
                 .thenReturn(Future.succeededFuture());
         // the response body carries its own "usage" object, so it's captured as this app's
         // self-reported usage (see issue #1753) rather than read from the trace aggregate
-        when(proxy.getTokenStatsTracker().updateDeploymentStats(any(), any(), any(), any()))
+        when(proxy.getTokenStatsTracker().updateDeploymentStats(any(), any(), any(), any(), anyBoolean()))
                 .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(tokenUsage, List.of(), List.of())));
         doAnswer(invocation -> {
             textContext.completeNow();
@@ -846,7 +847,12 @@ public class ResponsesControllerTest {
         when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
-        when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
+        // a background job's usage record gets the longer TTL, so the flag must be set before startSpan
+        AtomicBoolean backgroundAtStartSpan = new AtomicBoolean();
+        when(proxy.getTokenStatsTracker().startSpan(context)).thenAnswer(invocation -> {
+            backgroundAtStartSpan.set(context.isBackgroundJob());
+            return Future.succeededFuture();
+        });
         when(proxy.getResponseMappingService().saveMapping(any(), any())).thenReturn(expectedDialId);
         when(context.getUserId()).thenReturn("test-user");
         when(proxy.getBackgroundJobService().saveJob(anyString(), any())).thenAnswer(invocation -> {
@@ -869,6 +875,7 @@ public class ResponsesControllerTest {
         controller.handle();
 
         await(textContext);
+        assertTrue(backgroundAtStartSpan.get());
     }
 
     @Test
