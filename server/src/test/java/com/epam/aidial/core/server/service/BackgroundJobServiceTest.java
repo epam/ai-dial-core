@@ -366,7 +366,8 @@ class BackgroundJobServiceTest {
         List<TokenStatsTracker.AggregatedCost> aggregatedCosts = List.of(
                 new TokenStatsTracker.AggregatedCost("inner-app", new BigDecimal("0.40")),
                 new TokenStatsTracker.AggregatedCost("router-app", new BigDecimal("0.40")));
-        when(tokenStatsTracker.updateDeploymentStats(eq("trace-id"), eq("span-id"), eq(DEPLOYMENT_NAME), any()))
+        // the mocked context is not an original request, so the job is a child's and its root may have ended
+        when(tokenStatsTracker.updateDeploymentStats(eq("trace-id"), eq("span-id"), eq(DEPLOYMENT_NAME), any(), eq(true)))
                 .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of(), aggregatedCosts)));
         when(rateLimiter.recordAggregatedCost(any(), any(), any())).thenReturn(Future.succeededFuture());
         when(apiKeyStore.invalidatePerRequestApiKey(any()))

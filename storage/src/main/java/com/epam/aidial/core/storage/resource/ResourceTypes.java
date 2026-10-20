@@ -17,7 +17,6 @@ public enum ResourceTypes implements ResourceType {
     API_KEY_DATA("api_key_data", true, TimeUnit.MINUTES.toMillis(5)),
     NOTIFICATION("notifications", true, TimeUnit.MINUTES.toMillis(5)),
     APPLICATION("applications", true, TimeUnit.DAYS.toMillis(30)),
-    DEPLOYMENT_COST_STATS("deployment_cost_stats", true, TimeUnit.MINUTES.toMillis(5)),
     CODE_INTERPRETER_SESSION("code_interpreter_session", true, TimeUnit.MINUTES.toMillis(5)),
     USER_CONSENT("user_consent", true, TimeUnit.MINUTES.toMillis(5)),
     TOOL_SET("toolsets", true, TimeUnit.DAYS.toMillis(30)),
