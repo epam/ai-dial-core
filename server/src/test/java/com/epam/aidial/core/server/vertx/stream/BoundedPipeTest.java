@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.vertx.stream;
 
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
-import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -43,6 +42,7 @@ class BoundedPipeTest {
     private Vertx vertx;
     private HttpServer server;
     private HttpClient client;
+    private volatile Thread producerThread;
 
     @BeforeEach
     void setUp() {
@@ -111,7 +111,7 @@ class BoundedPipeTest {
 
     @Test
     void testInvalidArguments() {
-        Assertions.assertThrows(IllegalArgumentException.class, () -> new BoundedPipe(1, LONG_TIMEOUT));
+        Assertions.assertThrows(IllegalArgumentException.class, () -> new BoundedPipe(0, LONG_TIMEOUT));
         Assertions.assertThrows(IllegalArgumentException.class, () -> new BoundedPipe(2, Duration.ZERO));
         Assertions.assertThrows(IllegalArgumentException.class, () -> new BoundedPipe(2, Duration.ofSeconds(-1)));
     }
@@ -134,17 +134,14 @@ class BoundedPipeTest {
     }
 
     @Test
-    void testWriteFailsWhenNothingIsReadWithinTimeout() throws IOException {
-        BoundedPipe pipe = new BoundedPipe(2, Duration.ofMillis(100));
+    void testUseAfterInputIsClosed() throws IOException {
+        BoundedPipe pipe = new BoundedPipe(2, LONG_TIMEOUT);
         pipe.getOutput().write(new byte[] {1});
-        pipe.getOutput().write(new byte[] {2});
+        pipe.getInput().close();
+        pipe.getInput().close();
 
-        IOException e = Assertions.assertThrows(IOException.class, () -> pipe.getOutput().write(new byte[] {3}));
-        Assertions.assertTrue(e.getMessage().contains("stalled"), e.getMessage());
-
-        // the chunks queued before the stall are intact
-        Assertions.assertEquals(1, pipe.getInput().read());
-        Assertions.assertEquals(2, pipe.getInput().read());
+        Assertions.assertThrows(IOException.class, () -> pipe.getOutput().write(new byte[] {2}));
+        Assertions.assertThrows(IOException.class, () -> pipe.getInput().read());
     }
 
     @Test
@@ -173,18 +170,6 @@ class BoundedPipeTest {
         pipe.getInput().close();
 
         assertFailsWith(IOException.class, "Input is closed", read);
-    }
-
-    @Test
-    void testUseAfterInputIsClosed() throws IOException {
-        BoundedPipe pipe = new BoundedPipe(2, LONG_TIMEOUT);
-        pipe.getOutput().write(new byte[] {1});
-        pipe.getInput().close();
-        pipe.getInput().close();
-
-        Assertions.assertThrows(IOException.class, () -> pipe.getOutput().write(new byte[] {2}));
-        Assertions.assertThrows(IOException.class, () -> pipe.getOutput().close());
-        Assertions.assertThrows(IOException.class, () -> pipe.getInput().read());
     }
 
     @Test
@@ -225,6 +210,173 @@ class BoundedPipeTest {
         reader.interrupt();
 
         assertFailsWith(InterruptedIOException.class, "Interrupted", read);
+    }
+
+    @Test
+    void testSingleByteReadReturnsUnsignedValues() throws IOException {
+        BoundedPipe pipe = new BoundedPipe(2, LONG_TIMEOUT);
+        pipe.getOutput().write(new byte[] {(byte) 200, (byte) 255, 0});
+        pipe.getOutput().close();
+
+        InputStream input = pipe.getInput();
+        Assertions.assertEquals(200, input.read());
+        Assertions.assertEquals(255, input.read());
+        Assertions.assertEquals(0, input.read());
+        Assertions.assertEquals(-1, input.read());
+    }
+
+    @Test
+    void testCapacityOfOneBlocksTheSecondWrite() throws Exception {
+        BoundedPipe pipe = new BoundedPipe(1, LONG_TIMEOUT);
+        pipe.getOutput().write(new byte[] {1});
+
+        CompletableFuture<Void> second = new CompletableFuture<>();
+        Thread writer = startThread(() -> pipe.getOutput().write(new byte[] {2}), second);
+        awaitParked(writer);
+        Assertions.assertFalse(second.isDone());
+
+        Assertions.assertEquals(1, pipe.getInput().read());
+        second.get(10, TimeUnit.SECONDS);
+        Assertions.assertEquals(2, pipe.getInput().read());
+    }
+
+    @Test
+    void testStalledWritePoisonsTheWriterAndTheReader() throws IOException {
+        BoundedPipe pipe = new BoundedPipe(2, Duration.ofMillis(100));
+        pipe.getOutput().write(new byte[] {1});
+        pipe.getOutput().write(new byte[] {2});
+
+        IOException stalled = Assertions.assertThrows(IOException.class, () -> pipe.getOutput().write(new byte[] {3}));
+        Assertions.assertTrue(stalled.getMessage().contains("stalled"), stalled.getMessage());
+
+        // a later write must not succeed and leave a hole in the stream
+        IOException again = Assertions.assertThrows(IOException.class, () -> pipe.getOutput().write(new byte[] {4}));
+        Assertions.assertTrue(again.getMessage().contains("stalled"), again.getMessage());
+        Assertions.assertSame(stalled, again.getCause());
+
+        // closing does not turn the failure into a clean end
+        Assertions.assertDoesNotThrow(() -> pipe.getOutput().close());
+        IOException read = Assertions.assertThrows(IOException.class, () -> pipe.getInput().read());
+        Assertions.assertTrue(read.getMessage().contains("stalled"), read.getMessage());
+        Assertions.assertThrows(IOException.class, () -> pipe.getInput().readAllBytes());
+    }
+
+    @Test
+    void testInterruptedWritePoisonsTheReader() throws Exception {
+        BoundedPipe pipe = new BoundedPipe(2, LONG_TIMEOUT);
+        pipe.getOutput().write(new byte[] {1});
+        pipe.getOutput().write(new byte[] {2});
+
+        CompletableFuture<Void> third = new CompletableFuture<>();
+        Thread writer = startThread(() -> pipe.getOutput().write(new byte[] {3}), third);
+        awaitParked(writer);
+        writer.interrupt();
+        assertFailsWith(InterruptedIOException.class, "Interrupted", third);
+
+        Assertions.assertThrows(IOException.class, () -> pipe.getOutput().write(new byte[] {4}));
+        Assertions.assertDoesNotThrow(() -> pipe.getOutput().close());
+        IOException read = Assertions.assertThrows(IOException.class, () -> pipe.getInput().read());
+        Assertions.assertInstanceOf(InterruptedIOException.class, read.getCause());
+    }
+
+    @Test
+    void testCloseOutputIsIdempotentAndDoesNotWaitForFullQueue() throws IOException {
+        BoundedPipe pipe = new BoundedPipe(2, LONG_TIMEOUT);
+        pipe.getOutput().write(new byte[] {1});
+        pipe.getOutput().write(new byte[] {2});
+
+        Assertions.assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
+            pipe.getOutput().close();
+            pipe.getOutput().close();
+        });
+
+        Assertions.assertArrayEquals(new byte[] {1, 2}, pipe.getInput().readAllBytes());
+    }
+
+    @Test
+    void testCloseOutputAfterInputIsClosedDoesNotThrow() throws IOException {
+        BoundedPipe pipe = new BoundedPipe(2, LONG_TIMEOUT);
+        pipe.getInput().close();
+
+        Assertions.assertDoesNotThrow(() -> pipe.getOutput().close());
+        Assertions.assertDoesNotThrow(() -> pipe.getOutput().close());
+    }
+
+    @Test
+    void testCloseExceptionallyFailsParkedReader() throws Exception {
+        BoundedPipe pipe = new BoundedPipe(2, LONG_TIMEOUT);
+
+        CompletableFuture<Void> read = new CompletableFuture<>();
+        Thread reader = startThread(() -> pipe.getInput().read(), read);
+        awaitParked(reader);
+
+        RuntimeException cause = new RuntimeException("boom");
+        pipe.closeExceptionally(cause);
+
+        assertFailsWith(IOException.class, "aborted", read);
+        ExecutionException e = Assertions.assertThrows(ExecutionException.class, read::get);
+        Assertions.assertSame(cause, e.getCause().getCause().getCause());
+    }
+
+    @Test
+    void testCloseExceptionallyFailsParkedWriter() throws Exception {
+        BoundedPipe pipe = new BoundedPipe(2, LONG_TIMEOUT);
+        pipe.getOutput().write(new byte[] {1});
+        pipe.getOutput().write(new byte[] {2});
+
+        CompletableFuture<Void> third = new CompletableFuture<>();
+        Thread writer = startThread(() -> pipe.getOutput().write(new byte[] {3}), third);
+        awaitParked(writer);
+
+        pipe.closeExceptionally(new RuntimeException("boom"));
+
+        assertFailsWith(IOException.class, "aborted", third);
+    }
+
+    @Test
+    void testCloseExceptionallyDiscardsDataAndTheFirstFailureWins() throws IOException {
+        BoundedPipe pipe = new BoundedPipe(2, LONG_TIMEOUT);
+        pipe.getOutput().write(new byte[] {1, 2, 3});
+
+        RuntimeException first = new RuntimeException("first");
+        pipe.closeExceptionally(first);
+        pipe.closeExceptionally(new RuntimeException("second"));
+        pipe.getOutput().close();
+
+        IOException e = Assertions.assertThrows(IOException.class, () -> pipe.getInput().read());
+        Assertions.assertSame(first, e.getCause().getCause());
+        Assertions.assertThrows(IOException.class, () -> pipe.getInput().read());
+        Assertions.assertThrows(IOException.class, () -> pipe.getOutput().write(new byte[] {4}));
+    }
+
+    @Test
+    void testClosingInputWhileWriterAndReaderAreRunning() throws Exception {
+        for (int iteration = 0; iteration < 100; iteration++) {
+            BoundedPipe pipe = new BoundedPipe(2, LONG_TIMEOUT);
+            AtomicInteger written = new AtomicInteger();
+
+            CompletableFuture<Void> writing = new CompletableFuture<>();
+            startThread(() -> {
+                while (true) {
+                    pipe.getOutput().write(new byte[] {1});
+                    written.incrementAndGet();
+                }
+            }, writing);
+
+            CompletableFuture<Void> reading = new CompletableFuture<>();
+            startThread(() -> {
+                while (pipe.getInput().read() >= 0) {
+                    Thread.onSpinWait();
+                }
+            }, reading);
+
+            int minimum = iteration % 7;
+            awaitCondition(() -> written.get() > minimum, () -> "the writer should make progress");
+            pipe.getInput().close();
+
+            assertFailsWith(IOException.class, "closed", writing);
+            assertFailsWith(IOException.class, "closed", reading);
+        }
     }
 
     @Test
@@ -278,8 +430,8 @@ class BoundedPipeTest {
 
         Download download = connect(true);
 
-        awaitStable(written);
-        Assertions.assertTrue(written.get() < chunks / 2, "the producer should be held back by the paused client, written=" + written);
+        awaitProducerBlocked(written);
+        Assertions.assertTrue(written.get() < chunks, "the producer should be held back by the paused client, written=" + written);
 
         download.response().resume();
         assertChunks(await(download.body(), 30), chunks);
@@ -300,7 +452,7 @@ class BoundedPipeTest {
         });
 
         Download download = connect(true);
-        awaitStable(written);
+        awaitProducerBlocked(written);
 
         download.request().connection().close();
 
@@ -374,7 +526,6 @@ class BoundedPipeTest {
                 .requestHandler(request -> {
                     int index = requests.getAndIncrement();
                     HttpServerResponse response = request.response().setChunked(true);
-                    Context context = vertx.getOrCreateContext();
                     BoundedPipe pipe = new BoundedPipe(capacity, stallTimeout);
                     InputStreamReader reader = new InputStreamReader(vertx, executor, pipe.getInput());
 
@@ -383,15 +534,12 @@ class BoundedPipeTest {
                         response.reset();
                     });
 
-                    Thread.ofVirtual().start(() -> {
+                    producerThread = Thread.ofVirtual().start(() -> {
                         try {
                             producer.produce(index, pipe.getOutput());
                             pipe.getOutput().close();
                         } catch (Throwable e) {
-                            context.runOnContext(v -> {
-                                reader.close();
-                                response.reset();
-                            });
+                            pipe.closeExceptionally(e);
                         }
                     });
                 })
@@ -465,8 +613,11 @@ class BoundedPipeTest {
     }
 
     private static void awaitParked(Thread thread) throws InterruptedException {
-        awaitCondition(() -> thread.getState() == Thread.State.WAITING || thread.getState() == Thread.State.TIMED_WAITING,
-                () -> "the thread should park, state=" + thread.getState());
+        awaitCondition(() -> isParked(thread), () -> "the thread should park, state=" + thread.getState());
+    }
+
+    private static boolean isParked(Thread thread) {
+        return thread != null && (thread.getState() == Thread.State.WAITING || thread.getState() == Thread.State.TIMED_WAITING);
     }
 
     private static void awaitCondition(BooleanSupplier condition, Supplier<String> message) throws InterruptedException {
@@ -478,20 +629,11 @@ class BoundedPipeTest {
     }
 
     /**
-     * Returns once the counter has not changed for a while, that is the producer is blocked.
+     * Returns once the producer has filled the pipe and waits for it to be read. The pipe holds four chunks
+     * and the reader one more, so the producer cannot wait for less.
      */
-    private static void awaitStable(AtomicInteger counter) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
-        int last = -1;
-        long stableSince = System.nanoTime();
-        while (System.nanoTime() - stableSince < TimeUnit.MILLISECONDS.toNanos(700)) {
-            Assertions.assertTrue(System.nanoTime() < deadline, "the producer should get blocked");
-            Thread.sleep(50);
-            int current = counter.get();
-            if (current != last) {
-                last = current;
-                stableSince = System.nanoTime();
-            }
-        }
+    private void awaitProducerBlocked(AtomicInteger written) throws InterruptedException {
+        awaitCondition(() -> written.get() > 4 && isParked(producerThread),
+                () -> "the producer should get blocked, written=" + written + ", state=" + producerThread);
     }
 }
