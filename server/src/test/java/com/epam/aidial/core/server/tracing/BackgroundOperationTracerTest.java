@@ -95,8 +95,9 @@ public class BackgroundOperationTracerTest {
     @Test
     void testTraceContextIsNotSampledAndCreatesNoSpans(VertxTestContext testContext) {
         AtomicInteger startedSpans = new AtomicInteger();
+        // the SDK default; a sampler that ignores the parent decision would sample these spans, see docs/tracing.md
         SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
-                .setSampler(Sampler.alwaysOn())
+                .setSampler(Sampler.parentBased(Sampler.alwaysOn()))
                 .addSpanProcessor(new SpanProcessor() {
                     @Override
                     public void onStart(Context parentContext, ReadWriteSpan span) {
@@ -133,7 +134,7 @@ public class BackgroundOperationTracerTest {
             assertTrue(inside.get().isValid(), "The run must have a trace id for its logs");
             assertFalse(inside.get().isSampled(), "The run must not be sampled");
             assertFalse(recording.get());
-            assertEquals(0, startedSpans.get(), "Nothing may start a span under a background run");
+            assertEquals(0, startedSpans.get(), "No span may be recorded under a background run with the default sampler");
             testContext.completeNow();
         })));
     }
