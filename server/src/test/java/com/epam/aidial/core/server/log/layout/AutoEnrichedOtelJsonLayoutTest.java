@@ -5,9 +5,11 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.LoggingEvent;
 import ch.qos.logback.classic.spi.ThrowableProxy;
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.server.ContextManager;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -31,9 +33,12 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -390,6 +395,89 @@ class AutoEnrichedOtelJsonLayoutTest {
         assertEquals(10, attributes.get("gen_ai.usage.input_tokens").asInt());
         assertEquals("base64", attributes.get("gen_ai.request.encoding_formats").get(0).asText());
         verify(currentSpan, never()).setAttribute("gen_ai.usage.input_tokens", "10");
+    }
+
+    @Test
+    void shouldIncludeGlobalRouteInLogLine() throws Exception {
+        ProxyContext proxyContext = proxyContextOnRoute("vector-store", RouteType.GLOBAL);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(infoEvent("Global route"))).get("Attributes");
+
+        assertEquals("vector-store", attributes.get("dial.route.name").asText());
+        assertEquals("global", attributes.get("dial.route.type").asText());
+    }
+
+    @Test
+    void shouldIncludeApplicationRouteInLogLine() throws Exception {
+        ProxyContext proxyContext = proxyContextOnRoute("index-search", RouteType.APPLICATION);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(infoEvent("Application route"))).get("Attributes");
+
+        assertEquals("index-search", attributes.get("dial.route.name").asText());
+        assertEquals("application", attributes.get("dial.route.type").asText());
+    }
+
+    @Test
+    void shouldKeepRouteOffTheSpanAndLeaveOtherSpanAttributesUnchanged() throws Exception {
+        ProxyContext proxyContext = proxyContextOnRoute("vector-store", RouteType.GLOBAL);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        when(currentSpan.isRecording()).thenReturn(true);
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(infoEvent("Route and span"))).get("Attributes");
+
+        assertEquals("vector-store", attributes.get("dial.route.name").asText());
+        verify(currentSpan, never()).setAttribute(eq("dial.route.name"), anyString());
+        verify(currentSpan, never()).setAttribute(eq("dial.route.type"), anyString());
+        verify(currentSpan).setAttribute("loggerName", "test.logger");
+    }
+
+    @Test
+    void shouldOmitRouteWithoutRoute() throws Exception {
+        ProxyContext proxyContext = proxyContextOnRoute(null, null);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(infoEvent("No route"))).get("Attributes");
+
+        assertFalse(attributes.has("dial.route.name"));
+        assertFalse(attributes.has("dial.route.type"));
+    }
+
+    @Test
+    void shouldOmitRouteOutsideRequest() throws Exception {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(infoEvent("No request"))).get("Attributes");
+
+        assertFalse(attributes.has("dial.route.name"));
+        assertFalse(attributes.has("dial.route.type"));
+    }
+
+    private static ProxyContext proxyContextOnRoute(String routeName, RouteType routeType) {
+        ProxyContext proxyContext = mock(ProxyContext.class);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(response.ended()).thenReturn(false);
+        when(proxyContext.getResponse()).thenReturn(response);
+        when(proxyContext.getTracingAttributes()).thenReturn(new LinkedHashMap<>());
+        if (routeName != null) {
+            Route route = new Route();
+            route.setName(routeName);
+            when(proxyContext.getRoute()).thenReturn(route);
+            when(proxyContext.getRouteType()).thenReturn(routeType);
+        }
+        return proxyContext;
+    }
+
+    private static LoggingEvent infoEvent(String message) {
+        LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        LoggingEvent event = new LoggingEvent();
+        event.setLoggerName("test.logger");
+        event.setLevel(Level.INFO);
+        event.setMessage(message);
+        event.setTimeStamp(System.currentTimeMillis());
+        event.setLoggerContext(context);
+        return event;
     }
 
     @Test

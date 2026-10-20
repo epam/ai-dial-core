@@ -1,9 +1,11 @@
 package com.epam.aidial.core.server.log;
 
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
+import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
@@ -60,6 +62,9 @@ public class AnalyticsLogContext {
 
     private final String upstreamEndpoint;
 
+    private final String routeName;
+    private final String routeType;
+
     private final int responseStatusCode;
     private final Buffer responseBody;
     private final String assembledStreamingResponse;
@@ -71,6 +76,8 @@ public class AnalyticsLogContext {
 
     public static AnalyticsLogContext from(ProxyContext context, String assembledStreamingResponse) {
         Buffer responseBody = context.getResponseBody();
+        Route route = context.getRoute();
+        RouteType routeType = context.getRouteType();
         return AnalyticsLogContext.builder()
                 .traceId(context.getTraceId())
                 .spanId(context.getSpanId())
@@ -98,6 +105,8 @@ public class AnalyticsLogContext {
                         .map(UpstreamRoute::get)
                         .map(Upstream::getEndpoint)
                         .orElse(null))
+                .routeName(route == null ? null : route.getName())
+                .routeType(route == null || routeType == null ? null : routeType.getValue())
                 .responseStatusCode(context.getResponse().getStatusCode())
                 .responseBody(responseBody)
                 .assembledStreamingResponse(assembledStreamingResponse)

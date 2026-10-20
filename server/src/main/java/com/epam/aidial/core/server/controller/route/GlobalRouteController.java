@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.RouteType;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -17,6 +18,11 @@ public class GlobalRouteController extends BaseRouteController {
 
     public GlobalRouteController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
+    }
+
+    @Override
+    protected RouteType routeType() {
+        return RouteType.GLOBAL;
     }
 
     @Override

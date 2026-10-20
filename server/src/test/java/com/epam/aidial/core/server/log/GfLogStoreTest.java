@@ -16,6 +16,7 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -576,6 +577,73 @@ public class GfLogStoreTest {
 
         JsonNode log = ProxyUtil.MAPPER.readTree(buffer.toString());
         assertEquals("{\"id\":\"chatcmpl-1\"}", log.get("assembled_response").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testRouteIsWrittenFlatBetweenExecutionPathAndDuration() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getExecutionPath()).thenReturn(List.of("route"));
+        when(context.getRouteName()).thenReturn("vector-store");
+        when(context.getRouteType()).thenReturn("global");
+
+        JsonNode log = logOf(context);
+
+        assertEquals("vector-store", log.get("route_name").asText());
+        assertEquals("global", log.get("route_type").asText());
+        assertFalse(log.has("route"));
+        List<String> fields = new ArrayList<>();
+        log.fieldNames().forEachRemaining(fields::add);
+        assertEquals(List.of("execution_path", "route_name", "route_type", "operation_duration_ms"),
+                fields.subList(fields.indexOf("execution_path"), fields.indexOf("operation_duration_ms") + 1));
+    }
+
+    @SneakyThrows
+    @Test
+    public void testApplicationRouteWritesNameAndTypeNextToTheDeployment() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getDeploymentName()).thenReturn("applications/public/dial_scheduler__1.0.0");
+        when(context.getRouteName()).thenReturn("index-search");
+        when(context.getRouteType()).thenReturn("application");
+
+        JsonNode log = logOf(context);
+
+        assertEquals("index-search", log.get("route_name").asText());
+        assertEquals("application", log.get("route_type").asText());
+        assertEquals("applications/public/dial_scheduler__1.0.0", log.get("deployment").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testRouteIsOmittedWhenNoRouteIsSelected() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getDeploymentName()).thenReturn("model");
+        when(context.getRouteType()).thenReturn("global");
+
+        JsonNode log = logOf(context);
+
+        assertFalse(log.has("route_name"));
+        assertFalse(log.has("route_type"));
+        assertEquals("model", log.get("deployment").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testRouteNamesAreEscaped() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getRouteName()).thenReturn("na\"me\\\n");
+        when(context.getRouteType()).thenReturn("global");
+
+        JsonNode log = logOf(context);
+
+        assertEquals("na\"me\\\n", log.get("route_name").asText());
+    }
+
+    @SneakyThrows
+    private static JsonNode logOf(AnalyticsLogContext context) {
+        StringBuilder buffer = new StringBuilder();
+        new GfLogStore(settings(false)).append(context, capturingEntry(buffer));
+        return ProxyUtil.MAPPER.readTree(buffer.toString());
     }
 
     @Test
