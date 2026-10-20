@@ -19,6 +19,7 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
@@ -64,6 +65,7 @@ public class BackgroundJobService {
     private final LogStore logStore;
     private final CredentialEncryptionService encryptionService;
     private final Settings settings;
+    private final BackgroundOperationTracer backgroundTracer;
     private BackgroundJobScheduler scheduler;
     @Setter
     private volatile String localBaseUrl;
@@ -82,7 +84,8 @@ public class BackgroundJobService {
             HttpClient httpClient,
             LogStore logStore,
             CredentialEncryptionService encryptionService,
-            Settings settings) {
+            Settings settings,
+            BackgroundOperationTracer backgroundTracer) {
         this.vertx = vertx;
         this.redis = redis;
         this.prefix = prefix;
@@ -97,11 +100,12 @@ public class BackgroundJobService {
         this.logStore = logStore;
         this.encryptionService = encryptionService;
         this.settings = settings;
+        this.backgroundTracer = backgroundTracer;
     }
 
     public void init() {
         scheduler = new BackgroundJobScheduler(vertx, redis, prefix, resourceService, taskExecutor,
-                settings, this::jobPoller, this::expireJob);
+                settings, this::jobPoller, this::expireJob, backgroundTracer);
         scheduler.init();
     }
 

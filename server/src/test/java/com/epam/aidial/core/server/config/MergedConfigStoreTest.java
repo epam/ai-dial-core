@@ -13,6 +13,7 @@ import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceService;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -42,6 +43,7 @@ import java.util.function.Supplier;
 import static com.epam.aidial.core.config.InterfaceType.ANTHROPIC_MESSAGES;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_CHAT_COMPLETIONS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -75,6 +77,15 @@ public class MergedConfigStoreTest {
     private ExternalServiceService externalServiceService;
     @Mock
     private ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
+
+    private static BackgroundOperationTracer mockBackgroundTracer() {
+        BackgroundOperationTracer tracer = org.mockito.Mockito.mock(BackgroundOperationTracer.class);
+        lenient().when(tracer.traceFuture(any())).thenAnswer(inv -> {
+            Supplier<Future<?>> supplier = inv.getArgument(0);
+            return supplier.get();
+        });
+        return tracer;
+    }
 
     @BeforeEach
     public void setUpLockService() {
@@ -119,7 +130,7 @@ public class MergedConfigStoreTest {
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
                 secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
-                externalServiceService, resourceAuthSettingsEncryptionService);
+                externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
 
         Config config = store.get();
@@ -133,11 +144,21 @@ public class MergedConfigStoreTest {
     }
 
     @Test
+    public void testRejectsNullBackgroundTracer() {
+        NullPointerException error = assertThrows(NullPointerException.class, () -> new MergedConfigStore(
+                vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
+                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
+                externalServiceService, resourceAuthSettingsEncryptionService, null));
+
+        assertEquals("backgroundTracer must not be null", error.getMessage());
+    }
+
+    @Test
     public void testRequestRebuildIsNoOpBeforeInit() {
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
                 secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
-                externalServiceService, resourceAuthSettingsEncryptionService);
+                externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
 
         store.requestRebuild();
         store.requestRebuild();
@@ -155,7 +176,7 @@ public class MergedConfigStoreTest {
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
                 secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
-                externalServiceService, resourceAuthSettingsEncryptionService);
+                externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
 
         store.requestRebuild();
@@ -177,7 +198,7 @@ public class MergedConfigStoreTest {
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
                 secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
-                externalServiceService, resourceAuthSettingsEncryptionService);
+                externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
 
         Config config = store.get();
@@ -200,7 +221,7 @@ public class MergedConfigStoreTest {
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
                 secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
-                externalServiceService, resourceAuthSettingsEncryptionService);
+                externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
 
         Config config = store.get();
@@ -224,7 +245,7 @@ public class MergedConfigStoreTest {
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
                 secretFieldProcessor, lockService, MergedConfigStore.MODE_SKIP,
-                externalServiceService, resourceAuthSettingsEncryptionService);
+                externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
 
         Config config = store.get();
@@ -311,7 +332,7 @@ public class MergedConfigStoreTest {
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
                 secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT, false, thisPodId,
-                externalServiceService, resourceAuthSettingsEncryptionService);
+                externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
 
         ArgumentCaptor<Consumer<ResourceEvent>> captor = ArgumentCaptor.forClass(Consumer.class);

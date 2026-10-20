@@ -192,3 +192,27 @@ after the response has ended was rejected because a worker thread of the same re
 root context in between. The scratch copy's empty locals lose nothing: every server-span start in
 Vert.x 4.5.30 already hands in a freshly duplicated context, so the incoming `traceparent` is the
 only parent source either way.
+
+## Background operations
+
+Periodic work that no request started has no trace of its own, so its log lines would carry no trace id. Core
+gives every run of the background job poll and scan, the complex resource sweep, the code interpreter session
+check and the merged config rebuild a trace id of its own, so the log lines of one run, in the console JSON and
+in the OTel log records, can be found and grouped by it.
+
+These runs record no spans of their own. The trace context of a run is not sampled, so with the default parent-based
+sampler nothing is exported as a trace and the storage calls a run makes export no `blob.*` or `resource.*` spans.
+With a sampler that ignores the parent decision, such as `always_on`, the storage calls and the HTTP calls a run makes
+(a job poll) do export spans under the run's trace id. Their parent is the run, which is never exported, so a trace
+viewer shows them without a root; use a parent-based sampler (the OpenTelemetry default, `parentbased_always_on`) to
+avoid this. Tracing a run as a span would be a separate change.
+
+`BackgroundOperationTracer` keeps each run's trace context on a duplicate of the timer's Vert.x context that only
+that run uses, the same way a request keeps its own. The context a timer fires on is shared by every run and by
+anything else created from it, so writing the trace context there and restoring it later would let overlapping
+runs, or callbacks on other threads, read each other's trace id. Work the run submits (`AsyncTaskExecutor`) and the
+callbacks of the future `traceFuture` returns capture the duplicate, so they log with the run's trace id.
+The console JSON layout reads the run's trace id, span id and trace flags from that duplicate, but only when the span
+stored there is the run's own `BackgroundSpan`: it never takes them from the span of a request, and a log line without
+a request and outside a run keeps empty identifiers.
+`pollJobs` starts the poll of each claimed job from inside the run; the poll and its failure handling keep the run's trace id.
