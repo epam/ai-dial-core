@@ -44,6 +44,8 @@ import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.mcp.McpAuthorizationChallengeProvider;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
+import com.epam.aidial.core.server.orgunit.OrgUnitService;
+import com.epam.aidial.core.server.orgunit.OrgUnitSettings;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
@@ -314,6 +316,9 @@ public class AiDial {
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService,
                     lockService, applicationSchemaService, clock, resourceCredentialsService);
             RuleService ruleService = new RuleService(resourceService);
+            OrgUnitService orgUnitService = new OrgUnitService(resourceService, ruleService, lockService,
+                    OrgUnitSettings.from(settings("orgUnits")), generator, clock);
+            orgUnitService.checkOnStartup();
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
             RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService, mergedConfigStore, blockingCallTracer);
@@ -391,7 +396,7 @@ public class AiDial {
                     printAuthorizationHeader,
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,
-                    TracingSettings.from(settings("tracing")), blockingCallTracer);
+                    TracingSettings.from(settings("tracing")), blockingCallTracer, orgUnitService);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

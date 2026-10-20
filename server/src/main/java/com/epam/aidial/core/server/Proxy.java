@@ -16,6 +16,7 @@ import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
+import com.epam.aidial.core.server.orgunit.OrgUnitService;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -207,6 +208,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ConfigValidationService configValidationService;
     private final TracingSettings tracingSettings;
     private final BlockingCallTracer blockingCallTracer;
+    private final OrgUnitService orgUnitService;
 
     @Override
     public void handle(HttpServerRequest request) {

@@ -82,6 +82,19 @@ public class RuleService {
         return result;
     }
 
+    /**
+     * Whether the folder has rules of its own that close it: at least one, and none that lets everyone in. Rules
+     * of one folder are alternatives, so a single {@code TRUE} among them opens the folder.
+     */
+    public boolean hasOwnClosingRules(ResourceDescriptor folder) {
+        List<Rule> rules = getCachedRules().get(ruleUrl(folder));
+        return rules != null && !rules.isEmpty() && rules.stream().noneMatch(rule -> rule.getFunction() == Rule.Function.TRUE);
+    }
+
+    public boolean hasOwnRules(ResourceDescriptor folder) {
+        List<Rule> rules = getCachedRules().get(ruleUrl(folder));
+        return rules != null && !rules.isEmpty();
+    }
 
     public Set<ResourceDescriptor> getAllowedPublicResources(
             ProxyContext context, Set<ResourceDescriptor> resources) {
@@ -171,7 +184,7 @@ public class RuleService {
         return evaluated;
     }
 
-    private static String ruleUrl(ResourceDescriptor resource) {
+    public static String ruleUrl(ResourceDescriptor resource) {
         String prefix = resource.getType().group();
         return resource.getUrl().substring(prefix.length() + 1);
     }

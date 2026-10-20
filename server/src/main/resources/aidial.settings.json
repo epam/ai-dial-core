@@ -65,6 +65,9 @@
     "compressionMinSize": 256,
     "heartbeatPeriod": 60000
   },
+  "orgUnits": {
+    "enabled": false
+  },
   "complexResource": {
     "maxFiles": 100,
     "maxTotalBytes": 16777216,

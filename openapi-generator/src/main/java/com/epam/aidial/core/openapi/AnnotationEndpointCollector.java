@@ -36,6 +36,7 @@ import com.epam.aidial.core.server.controller.McpResourceController;
 import com.epam.aidial.core.server.controller.ModelController;
 import com.epam.aidial.core.server.controller.NotificationController;
 import com.epam.aidial.core.server.controller.OfflineCredentialsController;
+import com.epam.aidial.core.server.controller.OrgUnitController;
 import com.epam.aidial.core.server.controller.PerRequestPermissionController;
 import com.epam.aidial.core.server.controller.PublicationController;
 import com.epam.aidial.core.server.controller.RateResponseController;
@@ -100,6 +101,7 @@ public final class AnnotationEndpointCollector {
             ModelController.class,
             NotificationController.class,
             OfflineCredentialsController.class,
+            OrgUnitController.class,
             PerRequestPermissionController.class,
             PublicationController.class,
             RateResponseController.class,
