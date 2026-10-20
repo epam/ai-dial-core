@@ -330,14 +330,14 @@ public class AiDial {
 
             Settings backgroundJobSettings =
                     Json.decodeValue(settings("backgroundJob").toBuffer(), Settings.class);
-            long costStatsTtlMs = settings("costStats").getLong("ttlMs", TimeUnit.HOURS.toMillis(1));
-            if (costStatsTtlMs <= 0) {
-                throw new IllegalArgumentException("costStats.ttlMs must be positive, but got: " + costStatsTtlMs);
+            long deploymentStatsTtlMs = settings("deploymentStats").getLong("ttlMs", TimeUnit.HOURS.toMillis(1));
+            if (deploymentStatsTtlMs <= 0) {
+                throw new IllegalArgumentException("deploymentStats.ttlMs must be positive, but got: " + deploymentStatsTtlMs);
             }
             // a background job's record lives until the job ends or the scheduler expires it, and never shorter than any other record
-            long backgroundCostStatsTtlMs = Math.max(costStatsTtlMs, backgroundJobSettings.getJobTtlMs() + backgroundJobSettings.getScanIntervalMs());
+            long backgroundDeploymentStatsTtlMs = Math.max(deploymentStatsTtlMs, backgroundJobSettings.getJobTtlMs() + backgroundJobSettings.getScanIntervalMs());
             TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, redis, lockService, storage.getPrefix(), blockingCallTracer,
-                    Duration.ofMillis(costStatsTtlMs), Duration.ofMillis(backgroundCostStatsTtlMs));
+                    Duration.ofMillis(deploymentStatsTtlMs), Duration.ofMillis(backgroundDeploymentStatsTtlMs));
 
             HeartbeatService heartbeatService = new HeartbeatService(
                     vertx, taskExecutor, settings("resources").getLong("heartbeatPeriod"));

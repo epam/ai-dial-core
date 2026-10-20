@@ -150,7 +150,7 @@ maxmemory-policy volatile-lfu
 ```
 
 Some data lives in Redis only and has a TTL, so these policies can evict it under memory pressure: per-request API keys and
-the per-trace usage records (`costStats.ttlMs`). An evicted usage record loses its trace's roll-up: `aggCost` in the analytics log,
+the per-trace usage records (`deploymentStats.ttlMs`). An evicted usage record loses its trace's roll-up: `aggCost` in the analytics log,
 `statistics.usage_per_model` and the aggregated costs reported by the limits API. Limit enforcement is not affected.
 Size `maxmemory` so that eviction stays rare.
 

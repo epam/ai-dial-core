@@ -110,7 +110,7 @@
   "perRequestApiKey": {
     "ttl": 1800
   },
-  "costStats": {
+  "deploymentStats": {
     "ttlMs": 3600000
   },
   "asyncTaskExecutor": {
