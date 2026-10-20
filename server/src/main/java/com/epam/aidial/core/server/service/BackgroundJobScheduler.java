@@ -96,17 +96,10 @@ class BackgroundJobScheduler {
             if (nextJobTime.get() <= System.currentTimeMillis()
                     && polling.compareAndSet(false, true)) {
                 // The trace id covers job claiming, not the execution of each claimed job
-                backgroundTracer.traceFuture(() -> {
-                    try {
-                        return taskExecutor.submit(this::pollJobs)
+                backgroundTracer.traceFuture(() ->
+                        taskExecutor.submit(this::pollJobs)
                                 .onComplete(ignore -> polling.set(false))
-                                .onFailure(e -> log.warn("Failed to poll background jobs", e));
-                    } catch (RuntimeException | Error e) {
-                        // a failed submission never runs pollJobs, so nothing else clears the flag and polling would stop
-                        polling.set(false);
-                        throw e;
-                    }
-                });
+                                .onFailure(e -> log.warn("Failed to poll background jobs", e)));
             }
         });
         // Set up periodic scans in case of a Redis restart

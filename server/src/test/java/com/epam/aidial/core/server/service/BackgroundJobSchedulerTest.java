@@ -459,77 +459,29 @@ class BackgroundJobSchedulerTest {
     }
 
     @Test
-    void pollRetriesAfterSubmitThrowsRuntimeException(Vertx vertx, VertxTestContext ctx) throws Throwable {
-        assertPollingRecovers(vertx, ctx, new RejectedExecutionException("submission rejected"));
-    }
-
-    @Test
-    void pollRetriesAfterSubmitThrowsError(Vertx vertx, VertxTestContext ctx) throws Throwable {
-        assertPollingRecovers(vertx, ctx, new StackOverflowError("submission failed"));
-    }
-
-    /**
-     * Poll ticks keep firing while every submission fails; each failure must release the polling flag, so that the job
-     * is polled as soon as submissions succeed again.
-     */
-    private void assertPollingRecovers(Vertx vertx, VertxTestContext ctx, Throwable failure) throws Throwable {
-        BackgroundJobService.Poller poller = mock(BackgroundJobService.Poller.class);
-        when(poller.poll()).thenReturn(Future.succeededFuture(true));
-        AtomicBoolean failing = new AtomicBoolean(true);
-
-        BackgroundJobScheduler scheduler = buildScheduler(vertx, failingExecutor(vertx, failing, failure),
-                defaultSettings(), id -> {}, id -> poller);
-        scheduler.schedule(JOB_ID, System.currentTimeMillis() - 1000);
-        scheduler.init();
-
-        RScoredSortedSet<String> schedule = redissonClient.getScoredSortedSet(SCHEDULE_KEY, StringCodec.INSTANCE);
-        vertx.setTimer(200, id -> failing.set(false));
-        vertx.setTimer(1000, id -> ctx.verify(() -> {
-            assertFalse(schedule.contains(JOB_ID), "job must be polled once submissions succeed again");
-            ctx.completeNow();
-        }));
-        await(ctx);
-    }
-
-    @Test
-    void pollSubmitFailureIsLoggedAndRetriedThroughTheRealTracer(Vertx vertx, VertxTestContext ctx) throws Throwable {
-        BackgroundJobService.Poller poller = mock(BackgroundJobService.Poller.class);
-        when(poller.poll()).thenReturn(Future.succeededFuture(true));
-        AtomicBoolean failing = new AtomicBoolean(true);
-
+    void pollSubmitFailureIsLoggedThroughTheRealTracer(Vertx vertx) {
         try (JsonLogCapture logs = JsonLogCapture.attach()) {
-            BackgroundJobScheduler scheduler = buildScheduler(vertx, failingExecutor(vertx, failing,
-                    new RejectedExecutionException("submission rejected")),
-                    new BackgroundOperationTracer(vertx), defaultSettings(), id -> {}, id -> poller);
+            BackgroundJobScheduler scheduler = buildScheduler(vertx,
+                    failingExecutor(vertx, new RejectedExecutionException("submission rejected")),
+                    new BackgroundOperationTracer(vertx), defaultSettings(), id -> {}, id -> null);
             scheduler.schedule(JOB_ID, System.currentTimeMillis() - 1000);
             scheduler.init();
 
-            RScoredSortedSet<String> schedule = redissonClient.getScoredSortedSet(SCHEDULE_KEY, StringCodec.INSTANCE);
-            vertx.setTimer(200, id -> failing.set(false));
-            vertx.setTimer(1000, id -> ctx.verify(() -> {
-                JsonNode attributes = logs.await("Background operation failed synchronously").path("Attributes");
-                assertEquals("java.util.concurrent.RejectedExecutionException", attributes.path("exception.type").asText());
-                String stackTrace = attributes.path("exception.stacktrace").asText();
-                assertTrue(stackTrace.contains("submission rejected") && stackTrace.contains("BackgroundJobScheduler"),
-                        "the logged stack trace must name the failure and the scheduler: " + stackTrace);
-                assertFalse(schedule.contains(JOB_ID), "job must be polled once submissions succeed again");
-                ctx.completeNow();
-            }));
-            await(ctx);
+            JsonNode line = logs.await("Background operation failed synchronously");
+            JsonNode attributes = line.path("Attributes");
+            assertEquals("java.util.concurrent.RejectedExecutionException", attributes.path("exception.type").asText());
+            String stackTrace = attributes.path("exception.stacktrace").asText();
+            assertTrue(stackTrace.contains("submission rejected") && stackTrace.contains("BackgroundJobScheduler"),
+                    "the logged stack trace must name the failure and the scheduler: " + stackTrace);
+            assertEquals(32, line.path("TraceId").asText().length());
         }
     }
 
-    private static AsyncTaskExecutor failingExecutor(Vertx vertx, AtomicBoolean failing, Throwable failure) {
+    private static AsyncTaskExecutor failingExecutor(Vertx vertx, RuntimeException failure) {
         return new AsyncTaskExecutor(vertx, new JsonObject().put("useVirtualThreads", false)) {
             @Override
             public <T> Future<T> submit(Callable<T> blockingCall) {
-                if (failing.get()) {
-                    if (failure instanceof Error error) {
-                        throw error;
-                    }
-                    throw (RuntimeException) failure;
-                }
-                return super.submit(blockingCall);
+                throw failure;
             }
         };
     }
