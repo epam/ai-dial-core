@@ -19,6 +19,7 @@ import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.service.config.ConfigApplyService;
 import com.epam.aidial.core.server.service.config.ConfigManifestSupport;
 import com.epam.aidial.core.server.service.config.ConfigValidationService;
+import com.epam.aidial.core.server.service.policy.PolicyAssignmentPrecheck;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -136,10 +137,11 @@ public class AdminApplyController {
         Config scratch = ConfigManifestSupport.newScratch(mergedConfigStore);
 
         if (precheck) {
+            PolicyAssignmentPrecheck policyPrecheck = validationService.newLimitPrecheck();
             List<ConfigApplyService.EntityResult> precheckResults = new ArrayList<>();
             boolean anyFailure = false;
             for (AdminManifest entry : entries) {
-                ValidationResult result = validationService.validateOnly(entry, scratch);
+                ValidationResult result = validationService.validateOnly(entry, scratch, policyPrecheck);
                 if (!ValidationStatus.VALID.equals(result.status())) {
                     anyFailure = true;
                     // Mirror /v1/admin/validate: the offending entry stays FAILED (carrying its

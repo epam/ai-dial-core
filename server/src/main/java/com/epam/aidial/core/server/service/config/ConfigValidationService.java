@@ -14,6 +14,8 @@ import com.epam.aidial.core.server.data.config.manifest.AdminInterceptorManifest
 import com.epam.aidial.core.server.data.config.manifest.AdminKeyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminModelManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPolicyAssignmentManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPolicyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRoleManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRouteManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminSchemaManifest;
@@ -23,8 +25,10 @@ import com.epam.aidial.core.server.data.config.manifest.AdminTranslatorManifest;
 import com.epam.aidial.core.server.data.config.manifest.ValidationResult;
 import com.epam.aidial.core.server.data.config.manifest.ValidationStatus;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
+import com.epam.aidial.core.server.service.policy.PolicyAssignmentPrecheck;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.validation.ValidationUtil;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -51,7 +55,18 @@ public class ConfigValidationService {
         this.catalogSchemaService = catalogSchemaService;
     }
 
+    public PolicyAssignmentPrecheck newLimitPrecheck() {
+        return new PolicyAssignmentPrecheck(resourceService);
+    }
+
     public ValidationResult validateOnly(AdminManifest entry, Config scratch) {
+        return validateOnly(entry, scratch, newLimitPrecheck());
+    }
+
+    /**
+     * @param policyPrecheck shared by the entries of one batch, so that a policy record sees the valid ones before it
+     */
+    public ValidationResult validateOnly(AdminManifest entry, Config scratch, PolicyAssignmentPrecheck policyPrecheck) {
         String id = entry.name();
         ConfigManifestSupport.ParsedManifest parsed;
         try {
@@ -142,6 +157,12 @@ public class ConfigValidationService {
                         }
                     }
                 }
+                case AdminPolicyManifest policyManifest -> {
+                    policyPrecheck.checkPolicy(parsed.name().name(), policyManifest.spec());
+                }
+                case AdminPolicyAssignmentManifest assignmentManifest -> {
+                    policyPrecheck.checkAssignment(parsed.name().name(), assignmentManifest.spec());
+                }
                 case AdminSchemaManifest schemaManifest -> {
                     String schemaError = ConfigManifestSupport.validateSchema(schemaManifest.spec(), parsed.name(), scratch,
                             ResourceTypes.APP_TYPE_SCHEMA, resourceService);
@@ -157,7 +178,7 @@ public class ConfigValidationService {
                     }
                 }
             }
-        } catch (IllegalArgumentException | ConstraintViolationException ex) {
+        } catch (IllegalArgumentException | ConstraintViolationException | HttpException ex) {
             return new ValidationResult(id, ValidationStatus.FAILED, ex.getMessage());
         }
         return new ValidationResult(id, ValidationStatus.VALID, null);

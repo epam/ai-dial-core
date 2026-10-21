@@ -16,6 +16,7 @@ import com.epam.aidial.core.server.data.config.manifest.ValidationStatus;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.service.config.ConfigManifestSupport;
 import com.epam.aidial.core.server.service.config.ConfigValidationService;
+import com.epam.aidial.core.server.service.policy.PolicyAssignmentPrecheck;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -136,6 +137,7 @@ public class AdminValidateController implements Controller {
         entries.sort(ConfigManifestSupport.DEPENDENCY_ORDER_COMPARATOR);
 
         Config scratch = ConfigManifestSupport.newScratch(mergedConfigStore);
+        PolicyAssignmentPrecheck policyPrecheck = validationService.newLimitPrecheck();
         List<ValidationResult> results = new ArrayList<>();
         boolean anyFailure = false;
 
@@ -148,7 +150,7 @@ public class AdminValidateController implements Controller {
             if (!ConfigManifestSupport.KIND_URL_SEGMENT.containsKey(entry.kind())) {
                 error = "Unknown kind: " + entry.kind();
             } else {
-                ValidationResult validation = validationService.validateOnly(entry, scratch);
+                ValidationResult validation = validationService.validateOnly(entry, scratch, policyPrecheck);
                 if (!ValidationStatus.VALID.equals(validation.status())) {
                     error = validation.error();
                 }
