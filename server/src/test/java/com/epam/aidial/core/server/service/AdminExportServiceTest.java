@@ -26,17 +26,17 @@ import org.redisson.config.Config;
 import org.slf4j.LoggerFactory;
 import redis.embedded.RedisServer;
 
-import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -45,8 +45,10 @@ import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.IntFunction;
@@ -59,7 +61,10 @@ import java.util.zip.ZipInputStream;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -76,6 +81,8 @@ class AdminExportServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-01-02T03:04:05.678Z");
     private static final String CORE_VERSION = "1.2.3";
+    private static final String CONTENT_PATH = "public/files/user1/content.bin";
+    private static final byte[] END_OF_CENTRAL_DIRECTORY = {'P', 'K', 5, 6};
 
     private RedisServer redisServer;
     private RedissonClient redis;
@@ -118,7 +125,7 @@ class AdminExportServiceTest {
             blobStorage = new BlobStorage(mapper.readValue(blobStorageConfig, Storage.class));
 
             lockService = new LockService(redis, null);
-            service = new AdminExportService(blobStorage, lockService, Clock.fixed(NOW, ZoneOffset.UTC), CORE_VERSION);
+            service = newService(blobStorage);
         } catch (Throwable e) {
             destroy();
             throw e;
@@ -231,10 +238,7 @@ class AdminExportServiceTest {
         blobStorage.store("public/files/user1/plain.txt", "text/plain", null, Map.of(), "x".repeat(10_000).getBytes(StandardCharsets.UTF_8));
         blobStorage.store("public/files/user1/identity.txt", "text/plain", "identity", Map.of(), "x".repeat(10_000).getBytes(StandardCharsets.UTF_8));
         Path file = testDir.resolve("compression.zip");
-
-        try (OutputStream out = Files.newOutputStream(file)) {
-            service.export(out);
-        }
+        Files.write(file, export(service));
 
         try (ZipFile zip = new ZipFile(file.toFile())) {
             ZipEntry encoded = zip.getEntry("public/files/user1/encoded");
@@ -315,9 +319,7 @@ class AdminExportServiceTest {
         AdminExportService exportService = newService(storage);
 
         Path file = testDir.resolve("export.zip");
-        try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(file))) {
-            exportService.export(out);
-        }
+        Files.write(file, export(exportService));
 
         try (ZipFile zip = new ZipFile(file.toFile())) {
             assertEquals(1 + 2 * count, zip.size());
@@ -354,10 +356,7 @@ class AdminExportServiceTest {
     @Test
     void testConcurrentBucketLockWaitsForExport() throws Exception {
         store("public/files/user1/a.txt", "text/plain", null, Map.of(), "a");
-        try (GatedOutputStream gatedOut = new GatedOutputStream()) {
-            CompletableFuture<Void> exporting = CompletableFuture.runAsync(() -> service.export(gatedOut));
-            assertTrue(gatedOut.writing.await(10, TimeUnit.SECONDS));
-
+        try (AdminExportService.ExportStream stream = service.openExport()) {
             AtomicBoolean acquired = new AtomicBoolean();
             CompletableFuture<Void> competing = CompletableFuture.runAsync(() ->
                     lockService.underBucketLocks(List.of("public/"), () -> {
@@ -367,8 +366,7 @@ class AdminExportServiceTest {
             Thread.sleep(500);
             assertFalse(acquired.get());
 
-            gatedOut.proceed.countDown();
-            exporting.get(10, TimeUnit.SECONDS);
+            stream.readAllBytes();
             competing.get(10, TimeUnit.SECONDS);
             assertTrue(acquired.get());
         }
@@ -377,16 +375,10 @@ class AdminExportServiceTest {
     @Test
     void testConcurrentExportIsRejected() throws Exception {
         store("public/files/user1/a.txt", "text/plain", null, Map.of(), "a");
-        try (GatedOutputStream gatedOut = new GatedOutputStream()) {
-            CompletableFuture<Void> exporting = CompletableFuture.runAsync(() -> service.export(gatedOut));
-            assertTrue(gatedOut.writing.await(10, TimeUnit.SECONDS));
+        try (AdminExportService.ExportStream first = service.openExport()) {
+            assertThrows(AdminExportBusyException.class, () -> service.openExport());
 
-            ByteArrayOutputStream rejectedOut = new ByteArrayOutputStream();
-            assertThrows(AdminExportBusyException.class, () -> service.export(rejectedOut));
-            assertEquals(0, rejectedOut.size());
-
-            gatedOut.proceed.countDown();
-            exporting.get(10, TimeUnit.SECONDS);
+            first.readAllBytes();
         }
 
         assertFalse(readEntries(export(service)).isEmpty(), "the lock must be free after the export");
@@ -397,11 +389,8 @@ class AdminExportServiceTest {
         LockService.Lock held = lockService.tryLock("platform/");
         assertNotNull(held);
         try {
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            assertThrows(AdminExportBusyException.class, () -> service.openExport());
 
-            assertThrows(AdminExportBusyException.class, () -> service.export(out));
-
-            assertEquals(0, out.size());
             LockService.Lock publicLock = lockService.tryLock("public/");
             assertNotNull(publicLock, "public/ lock must be released after the rejected export");
             publicLock.close();
@@ -411,36 +400,19 @@ class AdminExportServiceTest {
     }
 
     @Test
-    void testFailingOutputLeavesArchiveUnfinishedAndReleasesLocks() throws IOException {
-        for (int i = 0; i < 20; i++) {
-            store("public/files/user1/f" + i + ".txt", "text/plain", null, Map.of(), "content " + i);
-        }
-        ByteArrayOutputStream written = new ByteArrayOutputStream();
-        OutputStream failingOut = new OutputStream() {
-            @Override
-            public void write(int b) throws IOException {
-                write(new byte[] {(byte) b}, 0, 1);
-            }
+    void testFailedReadLeavesArchiveUnfinishedAndReleasesLocks() {
+        AdminExportService.ExportStream stream = newService(brokenBlobStorage()).openExport();
+        ByteArrayOutputStream received = new ByteArrayOutputStream();
 
-            @Override
-            public void write(byte[] b, int off, int len) throws IOException {
-                if (written.size() > 300) {
-                    throw new IOException("broken pipe");
-                }
-                written.write(b, off, len);
-            }
-        };
+        IOException e = assertThrows(IOException.class, () -> stream.transferTo(received));
 
-        UncheckedIOException e = assertThrows(UncheckedIOException.class, () -> service.export(failingOut));
+        assertEquals("broken blob", e.getMessage());
+        assertTrue(received.size() > 0);
+        assertEquals(-1, indexOf(received.toByteArray(), END_OF_CENTRAL_DIRECTORY), "end of central directory must not be written");
+        assertLocksReleased();
 
-        assertEquals("broken pipe", e.getCause().getMessage());
-        byte[] bytes = written.toByteArray();
-        assertEquals(-1, indexOf(bytes, new byte[] {'P', 'K', 5, 6}), "end of central directory must not be written");
-        for (String location : List.of("public/", "platform/")) {
-            LockService.Lock lock = lockService.tryLock(location);
-            assertNotNull(lock, location + " lock must be released");
-            lock.close();
-        }
+        IOException again = assertThrows(IOException.class, stream::read);
+        assertSame(e, again.getCause(), "a failure must stay failed instead of ending the stream");
     }
 
     @Test
@@ -471,7 +443,7 @@ class AdminExportServiceTest {
                 }
             };
 
-            export(new AdminExportService(blobStorage, lockService, steppingClock, CORE_VERSION));
+            export(new AdminExportService(blobStorage, lockService, steppingClock, CORE_VERSION, Runnable::run));
 
             assertEquals(1, appender.list.stream().filter(event -> event.getLevel() == Level.WARN).count());
             assertTrue(appender.list.stream().anyMatch(event -> event.getLevel() == Level.INFO
@@ -482,27 +454,140 @@ class AdminExportServiceTest {
     }
 
     @Test
-    void testFailedExportLogsError() throws IOException {
-        Logger logger = (Logger) LoggerFactory.getLogger(AdminExportService.class);
-        ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        logger.addAppender(appender);
-        try (OutputStream failingOut = new OutputStream() {
-            @Override
-            public void write(int b) throws IOException {
-                throw new IOException("broken pipe");
-            }
-        }) {
-            assertThrows(UncheckedIOException.class, () -> service.export(failingOut));
+    void testFailedExportLogsError() {
+        List<ILoggingEvent> events = logsOf(() ->
+                assertThrows(IOException.class, () -> newService(brokenBlobStorage()).openExport().readAllBytes()));
 
-            List<ILoggingEvent> errors = appender.list.stream().filter(event -> event.getLevel() == Level.ERROR).toList();
-            assertEquals(1, errors.size());
-            assertTrue(errors.get(0).getFormattedMessage().startsWith("Admin export failed"));
-            assertNotNull(errors.get(0).getThrowableProxy());
-            assertTrue(appender.list.stream().noneMatch(event -> event.getFormattedMessage().startsWith("Admin export completed")));
-        } finally {
-            logger.detachAppender(appender);
+        List<ILoggingEvent> errors = events.stream().filter(event -> event.getLevel() == Level.ERROR).toList();
+        assertEquals(1, errors.size());
+        assertTrue(errors.get(0).getFormattedMessage().startsWith("Admin export failed"));
+        assertNotNull(errors.get(0).getThrowableProxy());
+        assertTrue(events.stream().noneMatch(event -> event.getFormattedMessage().startsWith("Admin export completed")));
+    }
+
+    @Test
+    void testCloseReleasesLocksWithoutFinishingArchive() throws IOException {
+        store("public/files/user1/a.txt", "text/plain", null, Map.of(), "a");
+        AdminExportService.ExportStream stream = service.openExport();
+        assertTrue(stream.read(new byte[16]) > 0);
+
+        List<ILoggingEvent> events = logsOf(() -> {
+            stream.close();
+            stream.close();
+        });
+
+        assertLocksReleased();
+        assertThrows(IOException.class, () -> stream.read(new byte[16]));
+        assertEquals(1, events.stream().filter(event -> event.getFormattedMessage().startsWith("Admin export aborted")).count());
+        assertTrue(events.stream().noneMatch(event -> event.getLevel() == Level.ERROR));
+    }
+
+    @Test
+    void testCloseHandsTheReleaseToTheExecutorInsteadOfRunningIt() {
+        List<Runnable> queued = new ArrayList<>();
+        AdminExportService.ExportStream stream =
+                new AdminExportService(blobStorage, lockService, Clock.fixed(NOW, ZoneOffset.UTC), CORE_VERSION, queued::add).openExport();
+
+        stream.close();
+
+        assertEquals(1, queued.size());
+        assertNull(lockService.tryLock("public/"), "the locks must be held until the executor runs the release");
+
+        queued.get(0).run();
+        assertLocksReleased();
+        stream.close();
+        assertEquals(1, queued.size(), "a released export has nothing left to release");
+    }
+
+    @Test
+    void testCloseDuringReadWaitsForTheReadToEnd() throws Exception {
+        GatedInputStream content = new GatedInputStream();
+        AdminExportService.ExportStream stream =
+                new AdminExportService(singleBlobStorage(CONTENT_PATH, blob(CONTENT_PATH, content)), lockService, Clock.fixed(NOW, ZoneOffset.UTC),
+                        CORE_VERSION, command -> CompletableFuture.runAsync(command)).openExport();
+        CompletableFuture<byte[]> reading = readAllAsync(stream);
+        assertTrue(content.reading.await(10, TimeUnit.SECONDS));
+
+        stream.close();
+        Thread.sleep(200);
+
+        assertNull(lockService.tryLock("public/"), "the locks must be held while a read is in progress");
+        content.proceed.countDown();
+        ExecutionException e = assertThrows(ExecutionException.class, () -> reading.get(10, TimeUnit.SECONDS));
+        assertInstanceOf(IOException.class, e.getCause().getCause());
+        awaitLocksReleased();
+    }
+
+    @Test
+    void testReadInProgressIsNotIdle() throws Exception {
+        GatedInputStream content = new GatedInputStream();
+        AdminExportService.ExportStream stream = newService(singleBlobStorage(CONTENT_PATH, blob(CONTENT_PATH, content))).openExport();
+        CompletableFuture<byte[]> reading = readAllAsync(stream);
+        assertTrue(content.reading.await(10, TimeUnit.SECONDS));
+
+        Thread.sleep(100);
+        assertFalse(stream.isIdleLongerThan(Duration.ofMillis(10)));
+
+        content.proceed.countDown();
+        reading.get(10, TimeUnit.SECONDS);
+    }
+
+    @Test
+    void testIdleUntilTheNextReadAndNeverAfterTheEnd() throws IOException, InterruptedException {
+        store("public/files/user1/a.txt", "text/plain", null, Map.of(), "a");
+        AdminExportService.ExportStream stream = service.openExport();
+        assertFalse(stream.isIdleLongerThan(Duration.ofHours(1)));
+
+        Thread.sleep(100);
+        assertTrue(stream.isIdleLongerThan(Duration.ofMillis(10)));
+
+        assertTrue(stream.read(new byte[1]) > 0);
+        assertFalse(stream.isIdleLongerThan(Duration.ofSeconds(30)));
+
+        stream.readAllBytes();
+        Thread.sleep(100);
+        assertFalse(stream.isIdleLongerThan(Duration.ofMillis(10)), "a finished export is not stalled");
+    }
+
+    @Test
+    void testOnlyWhatIsReadIsBuiltAhead() throws IOException {
+        CountingInputStream content = new CountingInputStream(50L * 1024 * 1024);
+        try (AdminExportService.ExportStream stream = newService(singleBlobStorage(CONTENT_PATH, blob(CONTENT_PATH, content))).openExport()) {
+            assertEquals(1024, stream.readNBytes(1024).length);
+
+            assertTrue(content.consumed() > 0);
+            assertTrue(content.consumed() <= 256 * 1024, "consumed " + content.consumed());
         }
+    }
+
+    @Test
+    void testSingleByteReadsExportTheSameEntries() throws IOException {
+        store("public/files/user1/a.txt", "text/plain", null, Map.of(), "alpha");
+        ByteArrayOutputStream archive = new ByteArrayOutputStream();
+
+        try (AdminExportService.ExportStream stream = service.openExport()) {
+            for (int value = stream.read(); value != -1; value = stream.read()) {
+                archive.write(value);
+            }
+        }
+
+        Map<String, byte[]> entries = readEntries(archive.toByteArray());
+        assertArrayEquals("alpha".getBytes(StandardCharsets.UTF_8), entries.get("public/files/user1/a.txt"));
+    }
+
+    @Test
+    void testReadArguments() throws IOException {
+        try (AdminExportService.ExportStream stream = service.openExport()) {
+            assertEquals(0, stream.read(new byte[1], 0, 0));
+            assertThrows(IndexOutOfBoundsException.class, () -> stream.read(new byte[1], 1, 1));
+        }
+    }
+
+    @Test
+    void testEmptyBucketsExportOnlyTheManifest() throws IOException {
+        Map<String, byte[]> entries = readEntries(export(service));
+
+        assertEquals(List.of(AdminExportService.MANIFEST_ENTRY), new ArrayList<>(entries.keySet()));
     }
 
     @Test
@@ -531,11 +616,11 @@ class AdminExportServiceTest {
         zip.discard();
 
         assertThrows(NullPointerException.class, () -> zip.write(new byte[1024]), "the deflater must be ended");
-        assertEquals(-1, indexOf(out.toByteArray(), new byte[] {'P', 'K', 5, 6}), "end of central directory must not be written");
+        assertEquals(-1, indexOf(out.toByteArray(), END_OF_CENTRAL_DIRECTORY), "end of central directory must not be written");
     }
 
     private AdminExportService newService(BlobStorage storage) {
-        return new AdminExportService(storage, lockService, Clock.fixed(NOW, ZoneOffset.UTC), CORE_VERSION);
+        return new AdminExportService(storage, lockService, Clock.fixed(NOW, ZoneOffset.UTC), CORE_VERSION, Runnable::run);
     }
 
     private static BlobStorage singleBlobStorage(String path, Blob blob) {
@@ -554,9 +639,59 @@ class AdminExportServiceTest {
     }
 
     private static byte[] export(AdminExportService exportService) {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        exportService.export(out);
-        return out.toByteArray();
+        try (AdminExportService.ExportStream stream = exportService.openExport()) {
+            return stream.readAllBytes();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static CompletableFuture<byte[]> readAllAsync(InputStream stream) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return stream.readAllBytes();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+    }
+
+    private BlobStorage brokenBlobStorage() {
+        return singleBlobStorage(CONTENT_PATH, blob(CONTENT_PATH, new BrokenInputStream(100_000)));
+    }
+
+    private void assertLocksReleased() {
+        for (String location : List.of("public/", "platform/")) {
+            LockService.Lock lock = lockService.tryLock(location);
+            assertNotNull(lock, location + " lock must be released");
+            lock.close();
+        }
+    }
+
+    private void awaitLocksReleased() throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (true) {
+            LockService.Lock lock = lockService.tryLockBuckets(List.of("public/", "platform/"));
+            if (lock != null) {
+                lock.close();
+                return;
+            }
+            assertTrue(System.nanoTime() < deadline, "the locks must be released");
+            Thread.sleep(50);
+        }
+    }
+
+    private static List<ILoggingEvent> logsOf(Runnable action) {
+        Logger logger = (Logger) LoggerFactory.getLogger(AdminExportService.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            action.run();
+            return new ArrayList<>(appender.list);
+        } finally {
+            logger.detachAppender(appender);
+        }
     }
 
     private static byte[] gzip(String body) throws IOException {
@@ -611,6 +746,10 @@ class AdminExportServiceTest {
         return new BlobBuilderImpl().name(path).payload(body.getBytes(StandardCharsets.UTF_8)).build();
     }
 
+    private static Blob blob(String path, InputStream content) {
+        return new BlobBuilderImpl().name(path).payload(content).build();
+    }
+
     private static void stubList(BlobStorage storage, String bucketLocation, int count, IntFunction<String> pathOf) {
         int pageSize = 1000;
         List<StorageMetadata> all = new ArrayList<>(count);
@@ -625,28 +764,81 @@ class AdminExportServiceTest {
         });
     }
 
-    private static final class GatedOutputStream extends OutputStream {
-        private final CountDownLatch writing = new CountDownLatch(1);
+    private static final class GatedInputStream extends InputStream {
+        private final CountDownLatch reading = new CountDownLatch(1);
         private final CountDownLatch proceed = new CountDownLatch(1);
 
         @Override
-        public void write(int b) throws IOException {
-            gate();
+        public int read() {
+            throw new UnsupportedOperationException();
         }
 
         @Override
-        public void write(byte[] b, int off, int len) throws IOException {
-            gate();
-        }
-
-        private void gate() throws IOException {
-            writing.countDown();
+        public int read(byte[] bytes, int offset, int length) throws IOException {
+            reading.countDown();
             try {
                 proceed.await();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new IOException(e);
             }
+            return -1;
+        }
+    }
+
+    private static final class BrokenInputStream extends InputStream {
+        private final int healthyBytes;
+        private int position;
+
+        private BrokenInputStream(int healthyBytes) {
+            this.healthyBytes = healthyBytes;
+        }
+
+        @Override
+        public int read() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public int read(byte[] bytes, int offset, int length) throws IOException {
+            if (position >= healthyBytes) {
+                throw new IOException("broken blob");
+            }
+            int size = Math.min(length, healthyBytes - position);
+            position += size;
+            return size;
+        }
+    }
+
+    private static final class CountingInputStream extends InputStream {
+        private final Random random = new Random(1);
+        private final long size;
+        private long position;
+
+        private CountingInputStream(long size) {
+            this.size = size;
+        }
+
+        long consumed() {
+            return position;
+        }
+
+        @Override
+        public int read() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public int read(byte[] bytes, int offset, int length) {
+            if (position >= size) {
+                return -1;
+            }
+            int count = (int) Math.min(length, size - position);
+            byte[] data = new byte[count];
+            random.nextBytes(data);
+            System.arraycopy(data, 0, bytes, offset, count);
+            position += count;
+            return count;
         }
     }
 }
