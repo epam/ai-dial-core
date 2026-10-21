@@ -19,6 +19,7 @@ import static com.epam.aidial.core.config.InterfaceType.OPENAI_EMBEDDINGS;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_RESPONSES;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.hasRoutingInterface;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.isInterfaceDeclared;
+import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveLocalResponseItemUri;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveMode;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveRequestUri;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveResponseItemUri;
@@ -624,6 +625,14 @@ public class DeploymentEndpointUtilTest {
                 resolveResponseItemUri(model, NO_TRANSLATORS, InterfacePathMapping.GET_OPENAI_RESPONSES_BY_ID, "resp_1", null));
         assertEquals("http://adapter/openai/v1/responses/resp_1/cancel?a=b",
                 resolveResponseItemUri(model, NO_TRANSLATORS, InterfacePathMapping.POST_OPENAI_RESPONSES_CANCEL, "resp_1", "a=b"));
+    }
+
+    @Test
+    void localResponseItemUriNormalizesBaseUrlAndEncodesResponseId() {
+        assertEquals("http://localhost:8080/openai/v1/responses/resp_1",
+                resolveLocalResponseItemUri("http://localhost:8080/", "resp_1"));
+        assertEquals("http://localhost:8080/openai/v1/responses/a%2Fb%3Fc%23d%20e",
+                resolveLocalResponseItemUri("http://localhost:8080", "a/b?c#d e"));
     }
 
     @Test

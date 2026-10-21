@@ -8,9 +8,11 @@ import com.epam.aidial.core.server.AiDial;
 import com.epam.aidial.core.server.ContextManager;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.log.otl.OtelLogRecord;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -51,6 +53,14 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
             traceId = proxyContext.getTraceId();
             spanId = proxyContext.getSpanId();
             traceFlags = proxyContext.getTraceFlags();
+        } else {
+            // logs of a background run have no request: the run keeps its own trace on its Vert.x context
+            SpanContext backgroundTrace = BackgroundOperationTracer.resolveBackgroundTrace().orElse(null);
+            if (backgroundTrace != null) {
+                traceId = backgroundTrace.getTraceId();
+                spanId = backgroundTrace.getSpanId();
+                traceFlags = backgroundTrace.getTraceFlags().asHex();
+            }
         }
 
         Map<String, Object> attributes = new LinkedHashMap<>();
