@@ -201,29 +201,29 @@ public class ResponseItemController implements Controller {
 
     private Future<Void> forwardToUpstream(ResponseMapping mapping, Deployment deployment) {
         return proxy.getTaskExecutor().submit(() -> {
-                    UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
-                            .get(deployment,
-                                    null,
-                                    dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES,
-                                            context.getConfig().getTranslators()),
-                                    mapping.getUpstreamKey());
-                    upstreamRoute.next(); // Verify the route is available
-                    context.setUpstreamRoute(upstreamRoute);
+            UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
+                    .get(deployment,
+                            null,
+                            dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES,
+                                    context.getConfig().getTranslators()),
+                            mapping.getUpstreamKey());
+            upstreamRoute.next(); // Verify the route is available
+            context.setUpstreamRoute(upstreamRoute);
 
-                    ApiKeyData proxyApiKeyData = new ApiKeyData();
-                    ApiKeyData.initFromContext(proxyApiKeyData, context);
-                    context.setProxyApiKeyData(proxyApiKeyData);
-                    proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+            ApiKeyData proxyApiKeyData = new ApiKeyData();
+            ApiKeyData.initFromContext(proxyApiKeyData, context);
+            context.setProxyApiKeyData(proxyApiKeyData);
+            proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
 
-                    return null;
-                })
-                .compose(ignored -> {
-                    String targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment,
-                            context.getConfig().getTranslators(), operation.pathMapping, mapping.getUpstreamResponseId(),
-                            context.getRequest().query());
-                    return sendRequest(mapping, targetUrl, context.getUpstreamRoute().get(), context.getProxyApiKeyData().getPerRequestKey());
-                })
-                .eventually(this::finalizeRequest);
+            return null;
+        })
+        .compose(ignored -> {
+            String targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment,
+                    context.getConfig().getTranslators(), operation.pathMapping, mapping.getUpstreamResponseId(),
+                    context.getRequest().query());
+            return sendRequest(mapping, targetUrl, context.getUpstreamRoute().get(), context.getProxyApiKeyData().getPerRequestKey());
+        })
+        .eventually(this::finalizeRequest);
     }
 
     private Future<Void> sendRequest(ResponseMapping mapping, String targetUrl, Upstream upstream, String perRequestKey) {
