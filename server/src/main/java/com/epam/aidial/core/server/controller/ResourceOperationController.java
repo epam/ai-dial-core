@@ -243,10 +243,14 @@ public class ResourceOperationController {
                         return subscription;
                     });
                 })
-                .onSuccess(subscription -> response.closeHandler(event -> {
-                    heartbeatService.unsubscribe(heartbeat);
-                    subscription.close();
-                }))
+                .onSuccess(subscription -> {
+                    // an open subscription is not work in progress, so it gives its in-flight slot back
+                    context.getReleaseInFlightSlot().run();
+                    response.closeHandler(event -> {
+                        heartbeatService.unsubscribe(heartbeat);
+                        subscription.close();
+                    });
+                })
                 .onFailure(this::handleServiceError);
 
         return Future.succeededFuture();

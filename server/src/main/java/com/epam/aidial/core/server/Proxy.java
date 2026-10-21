@@ -77,6 +77,7 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.HttpVersion;
 import io.vertx.core.http.WebSocketClient;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
@@ -87,6 +88,8 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import javax.annotation.Nullable;
@@ -207,6 +210,11 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ConfigValidationService configValidationService;
     private final TracingSettings tracingSettings;
     private final BlockingCallTracer blockingCallTracer;
+    // null, 0 or less: no limit
+    private final Integer maxInFlightRequests;
+    @Getter(AccessLevel.NONE)
+    private final AtomicInteger inFlightRequests = new AtomicInteger();
+    private static final Runnable NOT_COUNTED = () -> { };
 
     @Override
     public void handle(HttpServerRequest request) {
@@ -311,6 +319,39 @@ public class Proxy implements Handler<HttpServerRequest> {
         authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, request, result.apiKeyData, traceId, spanId, traceFlags))
                 .onFailure(error -> handleError(error, request))
                 .onComplete(ignore -> request.resume());
+    }
+
+    /**
+     * Counts the request against {@code maxInFlightRequests} until its response ends or its connection closes,
+     * so a pod past its limit rejects new work before reading its body instead of queueing it in heap.
+     * A per-request key belongs to a request admitted earlier (an interceptor, application or background poll
+     * calling back), so its calls are not counted: rejecting them would fail work already in progress.
+     * An upgraded WebSocket and an open subscription never end their response, so their handlers give the slot back.
+     *
+     * @return what gives the slot back, which runs at most once; {@code null} when the request is over the limit
+     */
+    @Nullable
+    private Runnable admit(HttpServerRequest request, ApiKeyData apiKeyData) {
+        if (maxInFlightRequests == null || maxInFlightRequests <= 0 || apiKeyData.getPerRequestKey() != null) {
+            return NOT_COUNTED;
+        }
+        if (inFlightRequests.getAndUpdate(count -> count < maxInFlightRequests ? count + 1 : count) >= maxInFlightRequests) {
+            return null;
+        }
+        AtomicBoolean released = new AtomicBoolean();
+        Runnable release = () -> {
+            if (released.compareAndSet(false, true)) {
+                inFlightRequests.decrementAndGet();
+            }
+        };
+        request.response().endHandler(ignore -> release.run());
+        // reset() and close() skip the endHandler but close the connection, which on HTTP/1.1 serves one request at a time
+        request.connection().closeHandler(ignore -> release.run());
+        // the client may have left during authorization, and neither handler fires after a close
+        if (request.response().closed()) {
+            release.run();
+        }
+        return release;
     }
 
     /**
@@ -466,9 +507,15 @@ public class Proxy implements Handler<HttpServerRequest> {
     private Future<?> processAuthorizationResult(ExtractedClaims extractedClaims,
                                                  HttpServerRequest request, ApiKeyData apiKeyData,
                                                  String traceId, String spanId, String traceFlags) {
+        Runnable releaseInFlightSlot = admit(request, apiKeyData);
+        if (releaseInFlightSlot == null) {
+            return Future.failedFuture(new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "Too many requests in progress, retry later",
+                    Map.of(HttpHeaders.RETRY_AFTER.toString(), "1")));
+        }
         Future<?> future;
         try {
             ProxyContext context = new ProxyContext(this, request, apiKeyData, extractedClaims, traceId, spanId, traceFlags);
+            context.setReleaseInFlightSlot(releaseInFlightSlot);
             GenAiTraceAttributes.initialize(context);
             ContextManager.setProxyContext(context);
             ControllerTemplate controllerTemplate = ControllerSelector.select(request);

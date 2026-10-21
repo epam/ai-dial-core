@@ -103,6 +103,8 @@ public class ResponsesControllerTest {
     void stubConfig() {
         // the controller resolves translator references against the request's config on every routing step
         lenient().when(context.getConfig()).thenReturn(new Config());
+        // every upstream call first checks that the client is still connected
+        lenient().when(context.getResponse()).thenReturn(response);
     }
 
     @Mock(answer = Answers.RETURNS_DEEP_STUBS)

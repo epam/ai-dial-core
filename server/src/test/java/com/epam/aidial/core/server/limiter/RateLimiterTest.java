@@ -38,6 +38,7 @@ import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpServerResponse;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -85,6 +86,9 @@ public class RateLimiterTest {
     @Mock
     private HttpServerRequest request;
 
+    @Mock
+    private HttpServerResponse response;
+
     private BlobStorage blobStorage;
 
     private Path testDir;
@@ -130,6 +134,8 @@ public class RateLimiterTest {
      */
     @BeforeEach
     public void beforeEach() throws IOException {
+        // the request limit checks whether the client is still connected; lenient() since not every test charges it
+        lenient().when(request.response()).thenReturn(response);
         RKeys keys = redissonClient.getKeys();
         for (String key : keys.getKeys()) {
             keys.delete(key);
@@ -538,6 +544,40 @@ public class RateLimiterTest {
         assertNotNull(checkLimitFuture.result());
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, checkLimitFuture.result().status());
 
+    }
+
+    /**
+     * A request whose client left while it waited for the counter lock goes no further: the result stops the
+     * caller, and the caller's quota is not used up.
+     */
+    @Test
+    public void testLimit_RequestLimitNotChargedWhenClientIsGone() {
+        Config config = new Config();
+        Role role = new Role();
+        Limit limit = new Limit();
+        limit.setRequestHour(1);
+        role.setLimits(Map.of("model", limit));
+        config.getRoles().put("role", role);
+
+        ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, new ApiKeyData(),
+                new ExtractedClaims("sub", List.of("role"), "user-hash",
+                        ProxyUtil.MAPPER.createObjectNode(), null, null),
+                "trace-id", "span-id", "01");
+        Model model = new Model();
+        model.setName("model");
+        proxyContext.setDeployment(model);
+
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        when(response.closed()).thenReturn(true);
+        assertEquals(HttpStatus.CLIENT_CLOSED_REQUEST, rateLimiter.limit(proxyContext, model).result().status());
+
+        when(response.closed()).thenReturn(false);
+        assertEquals(HttpStatus.OK, rateLimiter.limit(proxyContext, model).result().status());
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, rateLimiter.limit(proxyContext, model).result().status());
     }
 
     @Test
