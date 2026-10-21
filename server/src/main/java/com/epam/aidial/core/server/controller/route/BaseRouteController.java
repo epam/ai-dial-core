@@ -60,7 +60,7 @@ abstract class BaseRouteController implements Controller {
             return Future.succeededFuture();
         }
         context.setRoute(route);
-        context.setRouteType(routeType());
+        context.setRouteType(getRouteType());
 
         if (!hasAccessByUserRoles(route)) {
             respond(HttpStatus.FORBIDDEN, "Forbidden route");
@@ -135,7 +135,7 @@ abstract class BaseRouteController implements Controller {
         return Strings.CI.contains(upgradeHeader, "websocket");
     }
 
-    protected abstract RouteType routeType();
+    protected abstract RouteType getRouteType();
 
     protected abstract Future<Boolean> hasRequiredPermissions(Set<ResourceAccessType> permissions);
 

@@ -49,7 +49,7 @@ public class ApplicationRouteController extends BaseRouteController {
     }
 
     @Override
-    protected RouteType routeType() {
+    protected RouteType getRouteType() {
         return RouteType.APPLICATION;
     }
 

@@ -37,8 +37,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -420,7 +418,7 @@ class AutoEnrichedOtelJsonLayoutTest {
     }
 
     @Test
-    void shouldKeepRouteOffTheSpanAndLeaveOtherSpanAttributesUnchanged() throws Exception {
+    void shouldIncludeRouteOnTheSpan() throws Exception {
         ProxyContext proxyContext = proxyContextOnRoute("vector-store", RouteType.GLOBAL);
         contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
         when(currentSpan.isRecording()).thenReturn(true);
@@ -428,8 +426,8 @@ class AutoEnrichedOtelJsonLayoutTest {
         JsonNode attributes = objectMapper.readTree(layout.doLayout(infoEvent("Route and span"))).get("Attributes");
 
         assertEquals("vector-store", attributes.get("dial.route.name").asText());
-        verify(currentSpan, never()).setAttribute(eq("dial.route.name"), anyString());
-        verify(currentSpan, never()).setAttribute(eq("dial.route.type"), anyString());
+        verify(currentSpan).setAttribute("dial.route.name", "vector-store");
+        verify(currentSpan).setAttribute("dial.route.type", "global");
         verify(currentSpan).setAttribute("loggerName", "test.logger");
     }
 

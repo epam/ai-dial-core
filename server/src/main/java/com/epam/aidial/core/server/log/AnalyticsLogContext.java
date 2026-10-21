@@ -106,7 +106,7 @@ public class AnalyticsLogContext {
                         .map(Upstream::getEndpoint)
                         .orElse(null))
                 .routeName(route == null ? null : route.getName())
-                .routeType(route == null || routeType == null ? null : routeType.getValue())
+                .routeType(routeType == null ? null : routeType.getValue())
                 .responseStatusCode(context.getResponse().getStatusCode())
                 .responseBody(responseBody)
                 .assembledStreamingResponse(assembledStreamingResponse)

@@ -94,6 +94,21 @@ Which request attributes apply depends on the API surface: `stop_sequences`, `ch
 `frequency_penalty`, `presence_penalty` and `seed` come from Chat Completions,
 `previous_response.id` from Responses, `encoding_formats` from Embeddings.
 
+## Route on log lines and analytics
+
+A request served by a global route or by an application route records which route handled it:
+
+| Where                                           | Fields                                      |
+|-------------------------------------------------|---------------------------------------------|
+| Request span and console JSON log lines         | `dial.route.name`, `dial.route.type`        |
+| Analytics log entry (flat fields)               | `route_name`, `route_type`                  |
+
+`dial.route.type` and `route_type` are `global` (a route from `routes`) or `application` (a route from
+`applications.<name>.routes`). The fields are omitted when no route served the request.
+
+The route is published regardless of `genAiSpanAttributes`. Metric labels, `http.route` and trace/span ids
+are unchanged.
+
 ## Storage and rate-limit spans
 
 Core adds child spans for the storage, Redis, identity and key-management work a request does. They are emitted

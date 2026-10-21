@@ -8,7 +8,6 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.AiDial;
 import com.epam.aidial.core.server.ContextManager;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.log.otl.OtelLogRecord;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -83,8 +82,6 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         // after the span pass: GenAiTraceAttributes already set these on the span, typed
         if (proxyContext != null) {
             attributes.putAll(proxyContext.getTracingAttributes());
-            // also after the span pass: the route is published on the console log lines only, never on the span
-            enrichRouteAttributes(proxyContext, attributes);
         }
 
         Map<String, Object> resource = new HashMap<>();
@@ -120,15 +117,11 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
                 attributes.put("response.status", proxyContext.getResponse().getStatusMessage());
                 attributes.put("response.status.code", proxyContext.getResponse().getStatusCode());
             }
-        }
-    }
-
-    private void enrichRouteAttributes(ProxyContext proxyContext, Map<String, Object> attributes) {
-        Route route = proxyContext.getRoute();
-        RouteType routeType = proxyContext.getRouteType();
-        if (route != null && routeType != null) {
-            attributes.put("dial.route.name", route.getName());
-            attributes.put("dial.route.type", routeType.getValue());
+            Route route = proxyContext.getRoute();
+            if (route != null) {
+                attributes.put("dial.route.name", route.getName());
+                attributes.put("dial.route.type", proxyContext.getRouteType().getValue());
+            }
         }
     }
 

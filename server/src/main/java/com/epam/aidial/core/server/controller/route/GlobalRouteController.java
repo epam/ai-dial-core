@@ -21,7 +21,7 @@ public class GlobalRouteController extends BaseRouteController {
     }
 
     @Override
-    protected RouteType routeType() {
+    protected RouteType getRouteType() {
         return RouteType.GLOBAL;
     }
 

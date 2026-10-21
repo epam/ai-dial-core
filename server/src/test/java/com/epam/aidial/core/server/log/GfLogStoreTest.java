@@ -618,13 +618,36 @@ public class GfLogStoreTest {
     public void testRouteIsOmittedWhenNoRouteIsSelected() {
         AnalyticsLogContext context = mock(AnalyticsLogContext.class);
         when(context.getDeploymentName()).thenReturn("model");
-        when(context.getRouteType()).thenReturn("global");
 
         JsonNode log = logOf(context);
 
         assertFalse(log.has("route_name"));
         assertFalse(log.has("route_type"));
         assertEquals("model", log.get("deployment").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testRouteTypeIsOmittedWhenItIsNull() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getRouteName()).thenReturn("vector-store");
+
+        JsonNode log = logOf(context);
+
+        assertEquals("vector-store", log.get("route_name").asText());
+        assertFalse(log.has("route_type"));
+    }
+
+    @SneakyThrows
+    @Test
+    public void testRouteNameIsOmittedWhenItIsNull() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getRouteType()).thenReturn("global");
+
+        JsonNode log = logOf(context);
+
+        assertFalse(log.has("route_name"));
+        assertEquals("global", log.get("route_type").asText());
     }
 
     @SneakyThrows
