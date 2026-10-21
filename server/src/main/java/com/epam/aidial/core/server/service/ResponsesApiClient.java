@@ -33,13 +33,13 @@ public class ResponsesApiClient {
                 .setIdleTimeout(clientOptions.getIdleTimeout());
         return httpClient.request(options)
                 .compose(request -> request.putHeader(Proxy.HEADER_API_KEY, apiKey)
-                        .putHeader(Proxy.HEADER_UPSTREAM_KEY,
-                                UpstreamInterfaceUtil.resolveKey(upstream, InterfaceType.OPENAI_RESPONSES))
-                        .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT,
-                                UpstreamInterfaceUtil.resolveEndpoint(upstream, InterfaceType.OPENAI_RESPONSES))
-                        .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA,
-                                UpstreamExtraDataMerger.merge(upstream, InterfaceType.OPENAI_RESPONSES))
-                        .send());
+                            .putHeader(Proxy.HEADER_UPSTREAM_KEY,
+                                    UpstreamInterfaceUtil.resolveKey(upstream, InterfaceType.OPENAI_RESPONSES))
+                            .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT,
+                                    UpstreamInterfaceUtil.resolveEndpoint(upstream, InterfaceType.OPENAI_RESPONSES))
+                            .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA,
+                                    UpstreamExtraDataMerger.merge(upstream, InterfaceType.OPENAI_RESPONSES))
+                            .send());
     }
 
     private static boolean isTerminal(String status) {

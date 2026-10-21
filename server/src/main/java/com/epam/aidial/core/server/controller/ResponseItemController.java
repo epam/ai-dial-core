@@ -165,39 +165,35 @@ public class ResponseItemController implements Controller {
         if (!currentBucket.equals(mapping.getInitiatorBucket())) {
             throw new HttpException(HttpStatus.FORBIDDEN, "Access denied");
         }
+        Deployment deployment = proxy.getDeploymentService().findDeployment(context, mapping.getDeploymentName());
+        if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES,
+                context.getConfig().getTranslators()) == null) {
+            throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "Deployment for response_id does not support Responses API");
+        }
+        context.setDeployment(deployment);
         return mapping;
     }
 
     private Future<Void> dispatch(ResponseMapping mapping) {
-        return proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findDeployment(context, mapping.getDeploymentName()))
-                .compose(deployment -> {
-                    if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES,
-                            context.getConfig().getTranslators()) == null) {
-                        return context.respond(HttpStatus.SERVICE_UNAVAILABLE, "Deployment for response_id does not support Responses API")
-                                .mapEmpty();
-                    }
-                    context.setDeployment(deployment);
+        Deployment deployment = context.getDeployment();
+        ApiKeyData apiKeyData = context.getApiKeyData();
+        if (apiKeyData.isInterceptor()) {
+            context.setInitialDeployment(apiKeyData.getInitialDeployment());
+            context.setInterceptors(apiKeyData.getInterceptors());
+            int nextIndex = apiKeyData.getInterceptorIndex() + 1;
+            if (nextIndex < apiKeyData.getInterceptors().size()) {
+                return handleInterceptor(nextIndex);
+            }
+        } else {
+            context.setInterceptors(proxy.getDeploymentService().getInterceptors(context, deployment));
+            if (context.hasNextInterceptor()) {
+                context.setInitialDeployment(deployment.getName());
+                return handleInterceptor(0);
+            }
+        }
 
-                    ApiKeyData apiKeyData = context.getApiKeyData();
-                    if (apiKeyData.isInterceptor()) {
-                        context.setInitialDeployment(apiKeyData.getInitialDeployment());
-                        context.setInterceptors(apiKeyData.getInterceptors());
-                        int nextIndex = apiKeyData.getInterceptorIndex() + 1;
-                        if (nextIndex < apiKeyData.getInterceptors().size()) {
-                            return handleInterceptor(nextIndex);
-                        }
-                    } else {
-                        context.setInterceptors(proxy.getDeploymentService().getInterceptors(context, deployment));
-                        if (context.hasNextInterceptor()) {
-                            context.setInitialDeployment(deployment.getName());
-                            return handleInterceptor(0);
-                        }
-                    }
-
-                    return forwardToUpstream(mapping, deployment);
-                });
+        return forwardToUpstream(mapping, deployment);
     }
-
 
     private Future<Void> handleInterceptor(int interceptorIndex) {
         return new ResponsesInterceptorController(proxy, context, dialResponseId, operation.pathMapping, interceptorIndex).handle().mapEmpty();
@@ -205,30 +201,29 @@ public class ResponseItemController implements Controller {
 
     private Future<Void> forwardToUpstream(ResponseMapping mapping, Deployment deployment) {
         return proxy.getTaskExecutor().submit(() -> {
-            UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
-                    .get(deployment,
-                            null,
-                            dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES,
-                                    context.getConfig().getTranslators()),
-                            mapping.getUpstreamKey());
-            Upstream upstream = upstreamRoute.next();
+                    UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
+                            .get(deployment,
+                                    null,
+                                    dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES,
+                                            context.getConfig().getTranslators()),
+                                    mapping.getUpstreamKey());
+                    upstreamRoute.next(); // Verify the route is available
+                    context.setUpstreamRoute(upstreamRoute);
 
-            String targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment,
-                    context.getConfig().getTranslators(), operation.pathMapping, mapping.getUpstreamResponseId(),
-                    context.getRequest().query());
+                    ApiKeyData proxyApiKeyData = new ApiKeyData();
+                    ApiKeyData.initFromContext(proxyApiKeyData, context);
+                    context.setProxyApiKeyData(proxyApiKeyData);
+                    proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
 
-            ApiKeyData proxyApiKeyData = new ApiKeyData();
-            ApiKeyData.initFromContext(proxyApiKeyData, context);
-            context.setProxyApiKeyData(proxyApiKeyData);
-
-            String perRequestKey = proxyApiKeyData.getPerRequestKey();
-            proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
-            sendRequest(mapping, targetUrl, upstream, perRequestKey)
-                    .eventually(this::finalizeRequest)
-                    .onFailure(this::handleError);
-
-            return null;
-        });
+                    return null;
+                })
+                .compose(ignored -> {
+                    String targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment,
+                            context.getConfig().getTranslators(), operation.pathMapping, mapping.getUpstreamResponseId(),
+                            context.getRequest().query());
+                    return sendRequest(mapping, targetUrl, context.getUpstreamRoute().get(), context.getProxyApiKeyData().getPerRequestKey());
+                })
+                .eventually(this::finalizeRequest);
     }
 
     private Future<Void> sendRequest(ResponseMapping mapping, String targetUrl, Upstream upstream, String perRequestKey) {

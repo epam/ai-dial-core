@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResponseMapping;
+import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -68,12 +69,15 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith({MockitoExtension.class, VertxExtension.class})
 public class ResponseItemControllerTest {
+
+    private static final String PER_REQUEST_KEY = "generated-per-request-key";
 
     @Mock(answer = Answers.RETURNS_DEEP_STUBS)
     private Proxy proxy;
@@ -91,6 +95,38 @@ public class ResponseItemControllerTest {
     void stubConfig() {
         // the controller resolves translator references against the request's config on every routing step
         lenient().when(context.getConfig()).thenReturn(new Config());
+    }
+
+    @BeforeEach
+    void stubContextState() {
+        // the controller keeps deployment, upstream route and proxy key data on the context between steps
+        lenient().doCallRealMethod().when(context).setDeployment(any());
+        lenient().doCallRealMethod().when(context).getDeployment();
+        lenient().doCallRealMethod().when(context).setUpstreamRoute(any());
+        lenient().doCallRealMethod().when(context).getUpstreamRoute();
+        lenient().doCallRealMethod().when(context).setProxyApiKeyData(any());
+        lenient().doCallRealMethod().when(context).getProxyApiKeyData();
+    }
+
+    @BeforeEach
+    void stubApiKeyStore() {
+        ApiKeyStore apiKeyStore = proxy.getApiKeyStore();
+        lenient().doAnswer(invocation -> {
+            ApiKeyData data = invocation.getArgument(0);
+            data.setPerRequestKey(PER_REQUEST_KEY);
+            return null;
+        }).when(apiKeyStore).assignPerRequestApiKey(any(ApiKeyData.class));
+        lenient().when(apiKeyStore.invalidatePerRequestApiKey(any(ApiKeyData.class)))
+                .thenReturn(Future.succeededFuture(true));
+    }
+
+    private void verifyPerRequestKeyUsed(String expectedUrl, HttpMethod expectedMethod) {
+        ArgumentCaptor<ApiKeyData> assigned = ArgumentCaptor.captor();
+        verify(proxy.getApiKeyStore()).assignPerRequestApiKey(assigned.capture());
+        assertEquals(PER_REQUEST_KEY, assigned.getValue().getPerRequestKey());
+        verify(context).setProxyApiKeyData(assigned.getValue());
+        verify(proxy.getResponsesApiClient()).send(eq(expectedUrl), eq(expectedMethod), any(Upstream.class), eq(PER_REQUEST_KEY));
+        verify(proxy.getApiKeyStore(), timeout(1000)).invalidatePerRequestApiKey(assigned.getValue());
     }
 
     private ResponseItemController controller(String dialId, ResponseItemController.Operation op) {
@@ -187,6 +223,7 @@ public class ResponseItemControllerTest {
         verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), methodCaptor.capture(), any(Upstream.class), any());
         assertEquals("http://adapter/responses/upstream-id-123", urlCaptor.getValue());
         assertEquals(HttpMethod.GET, methodCaptor.getValue());
+        verifyPerRequestKeyUsed("http://adapter/responses/upstream-id-123", HttpMethod.GET);
 
         ArgumentCaptor<Buffer> bodyCaptor = ArgumentCaptor.forClass(Buffer.class);
         verify(response).end(bodyCaptor.capture());
@@ -243,6 +280,7 @@ public class ResponseItemControllerTest {
         verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), methodCaptor.capture(), any(Upstream.class), any());
         assertEquals("http://adapter/openai/v1/responses/upstream-id-123", urlCaptor.getValue());
         assertEquals(HttpMethod.GET, methodCaptor.getValue());
+        verifyPerRequestKeyUsed("http://adapter/openai/v1/responses/upstream-id-123", HttpMethod.GET);
     }
 
     @Test
@@ -289,6 +327,7 @@ public class ResponseItemControllerTest {
         verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), methodCaptor.capture(), any(Upstream.class), any());
         assertEquals("http://adapter/responses/upstream-id-123/cancel", urlCaptor.getValue());
         assertEquals(HttpMethod.POST, methodCaptor.getValue());
+        verifyPerRequestKeyUsed("http://adapter/responses/upstream-id-123/cancel", HttpMethod.POST);
 
         verifyClientResponse("application/json");
         assertEquals("dial_test-deployment_123", sentJson().path("id").asText());
@@ -317,7 +356,7 @@ public class ResponseItemControllerTest {
         when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any()))
                 .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
-        when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
+        when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(null);
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
@@ -334,6 +373,7 @@ public class ResponseItemControllerTest {
         await(testContext);
 
         verify(proxy.getResponseMappingService()).deleteMapping("dial_test-deployment_del");
+        verifyPerRequestKeyUsed("http://adapter/responses/upstream-id-del", HttpMethod.DELETE);
         verifyClientResponse(null);
         assertEquals(0, sentBody().length());
     }
@@ -391,7 +431,12 @@ public class ResponseItemControllerTest {
                 .initiatorBucket("Users/test-user/")
                 .build();
 
+        Model deployment = new Model();
+        deployment.setName("test-deployment");
+        deployment.setResponsesEndpoint("http://adapter/responses");
+
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
+        when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getBackgroundJobService().isJobActive(anyString())).thenReturn(Future.succeededFuture(true));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(context.getUserId()).thenReturn("test-user");
@@ -426,14 +471,20 @@ public class ResponseItemControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "no-responses-deployment")).thenReturn(deployment);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(context.getUserId()).thenReturn("test-user");
-        when(context.respond(any(HttpStatus.class), anyString())).thenAnswer(invocation -> complete(testContext));
+        when(context.getResponse()).thenReturn(response);
+        when(response.ended()).thenReturn(false);
+        when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> complete(testContext));
 
         controller("dial_no-responses-deployment_x", GET).handle();
 
         await(testContext);
 
-        verify(context).respond(HttpStatus.SERVICE_UNAVAILABLE,
-                "Deployment for response_id does not support Responses API");
+        verify(context).respond(
+                argThat((Throwable e) -> e instanceof HttpException
+                        && ((HttpException) e).getStatus() == HttpStatus.SERVICE_UNAVAILABLE
+                        && "Deployment for response_id does not support Responses API".equals(e.getMessage())),
+                anyString());
+        verify(proxy.getApiKeyStore(), never()).assignPerRequestApiKey(any(ApiKeyData.class));
     }
 
     @Test
@@ -492,7 +543,7 @@ public class ResponseItemControllerTest {
         when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any()))
                 .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
-        when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
+        when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(null);
         when(context.getResponse()).thenReturn(response);
         when(context.getRequest()).thenReturn(serverRequest);
@@ -647,7 +698,7 @@ public class ResponseItemControllerTest {
         when(context.getConfig()).thenReturn(config);
         when(context.getRequest()).thenReturn(serverRequest);
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
-        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(serverRequest.method()).thenReturn(HttpMethod.GET);
         doAnswer(invocation -> {
             testContext.completeNow();
@@ -702,7 +753,7 @@ public class ResponseItemControllerTest {
         when(context.getConfig()).thenReturn(config);
         when(context.getRequest()).thenReturn(serverRequest);
         when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
-        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer()));
+        when(serverRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(serverRequest.method()).thenReturn(HttpMethod.GET);
         doAnswer(invocation -> {
             testContext.completeNow();
