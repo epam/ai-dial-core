@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.util;
 
+import com.epam.aidial.core.config.BuiltinTranslator;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.InterfaceMode;
@@ -37,7 +38,7 @@ public class DeploymentEndpointUtil {
     private static final Pattern DEPLOYMENT_SEGMENT =
             Pattern.compile("/deployments/(?<deployment>.+?)/(?<action>completions|chat/completions|embeddings)(?=$|\\?)");
 
-    private static final String OPENAI_RESPONSES_BASE_PATH = "/openai/v1/responses";
+    public static final String OPENAI_RESPONSES_BASE_PATH = "/openai/v1/responses";
 
     /**
      * The endpoint a request for the type is sent to, or null when the deployment has nothing serving it —
@@ -166,6 +167,22 @@ public class DeploymentEndpointUtil {
         return baseUrl != null
                 ? baseUrl + OPENAI_RESPONSES_BASE_PATH
                 : resolveLegacyEndpoint(deployment, InterfaceType.OPENAI_RESPONSES);
+    }
+
+    /**
+     * The translation Core performs itself for the type, or null when the type is served over HTTP. Only a
+     * {@link Model} translates in process: the translated request is served by the model's own interface,
+     * which an application does not have.
+     */
+    @Nullable
+    public BuiltinTranslator resolveBuiltinTranslator(Deployment deployment, InterfaceType type, Map<String, Translator> translators) {
+        DeploymentInterface deploymentInterface = findInterface(deployment, type);
+        if (!(deployment instanceof Model) || deploymentInterface == null || deploymentInterface.getMode() != InterfaceMode.TRANSLATOR
+                || deploymentInterface.getTranslator() == null) {
+            return null;
+        }
+        Translator definition = deploymentInterface.getTranslator().resolve(translators);
+        return definition == null ? null : definition.getBuiltin();
     }
 
     /**

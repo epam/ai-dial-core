@@ -15346,6 +15346,10 @@ components:
           type: string
         bucket:
           type: string
+    BuiltinTranslator:
+      type: string
+      enum:
+      - anthropicMessagesToOpenaiResponses
     CacheBreakpoint:
       type: object
       properties:
@@ -18914,6 +18918,8 @@ components:
           $ref: "#/components/schemas/InterfaceType"
         out:
           $ref: "#/components/schemas/InterfaceType"
+        builtin:
+          $ref: "#/components/schemas/BuiltinTranslator"
     TranslatorRef:
       type: object
       properties:
