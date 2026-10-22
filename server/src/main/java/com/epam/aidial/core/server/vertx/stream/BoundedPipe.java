@@ -21,8 +21,8 @@ import java.util.concurrent.locks.ReentrantLock;
  * everything is written, and call {@link #closeExceptionally(Throwable)} on a failure instead, because closing ends
  * the stream cleanly.
  *
- * <p>A write that stalls or is interrupted, and {@link #closeExceptionally(Throwable)}, fail the reader and all later
- * writes. Closing the input fails the pending and all later writes.
+ * <p>A write that stalls or is interrupted, a read that is interrupted, and {@link #closeExceptionally(Throwable)}
+ * fail the pending and all later reads and writes. Closing the input fails the pending and all later writes.
  */
 public class BoundedPipe {
 
@@ -263,7 +263,7 @@ public class BoundedPipe {
                 notEmpty.await();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                throw new InterruptedIOException("Interrupted while waiting for the pipe to be written");
+                throw fail(new InterruptedIOException("Interrupted while waiting for the pipe to be written"));
             }
         }
     }

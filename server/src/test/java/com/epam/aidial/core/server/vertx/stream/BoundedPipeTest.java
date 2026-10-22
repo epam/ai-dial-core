@@ -350,6 +350,23 @@ class BoundedPipeTest {
     }
 
     @Test
+    void testInterruptedReadPoisonsTheWriterAndTheReader() throws Exception {
+        BoundedPipe pipe = new BoundedPipe(2, LONG_TIMEOUT);
+
+        CompletableFuture<Void> read = new CompletableFuture<>();
+        Thread reader = startThread(() -> pipe.getInput().read(), read);
+        awaitParked(reader);
+        reader.interrupt();
+        assertFailsWith(InterruptedIOException.class, "Interrupted", read);
+
+        IOException write = Assertions.assertThrows(IOException.class, () -> pipe.getOutput().write(1));
+        Assertions.assertInstanceOf(InterruptedIOException.class, write.getCause());
+        Assertions.assertDoesNotThrow(() -> pipe.getOutput().close());
+        IOException retried = Assertions.assertThrows(IOException.class, () -> pipe.getInput().read());
+        Assertions.assertInstanceOf(InterruptedIOException.class, retried.getCause());
+    }
+
+    @Test
     void testCloseOutputIsIdempotentAndDoesNotWaitForFullQueue() throws IOException {
         BoundedPipe pipe = new BoundedPipe(2, LONG_TIMEOUT);
         pipe.getOutput().write(new byte[] {1});
