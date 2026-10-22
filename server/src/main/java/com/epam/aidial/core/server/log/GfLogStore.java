@@ -172,6 +172,17 @@ public class GfLogStore implements LogStore {
             append(entry, ProxyUtil.MAPPER.writeValueAsString(executionPath), false);
         }
 
+        if (logContext.getRouteName() != null) {
+            append(entry, ",\"route_name\":\"", false);
+            append(entry, logContext.getRouteName(), true);
+            append(entry, "\"", false);
+        }
+        if (logContext.getRouteType() != null) {
+            append(entry, ",\"route_type\":\"", false);
+            append(entry, logContext.getRouteType(), true);
+            append(entry, "\"", false);
+        }
+
         append(entry, ",\"operation_duration_ms\":", false);
         append(entry, Long.toString(logContext.getOperationDurationMs()), true);
 

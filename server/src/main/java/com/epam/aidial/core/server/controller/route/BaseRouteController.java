@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.Controller;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
+import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
@@ -59,6 +60,7 @@ abstract class BaseRouteController implements Controller {
             return Future.succeededFuture();
         }
         context.setRoute(route);
+        context.setRouteType(getRouteType());
 
         if (!hasAccessByUserRoles(route)) {
             respond(HttpStatus.FORBIDDEN, "Forbidden route");
@@ -132,6 +134,8 @@ abstract class BaseRouteController implements Controller {
         String upgradeHeader = request.getHeader(HttpHeaders.UPGRADE);
         return Strings.CI.contains(upgradeHeader, "websocket");
     }
+
+    protected abstract RouteType getRouteType();
 
     protected abstract Future<Boolean> hasRequiredPermissions(Set<ResourceAccessType> permissions);
 
