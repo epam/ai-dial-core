@@ -164,11 +164,12 @@ class PolicyAssignmentValidatorTest {
         PolicySubjectRule bob = rule("sub", PolicySubjectRule.Function.EQUAL, "bob");
         PolicySubjectRule everyone = rule("sub", PolicySubjectRule.Function.TRUE);
         PolicySubjectRule nobody = rule("sub", PolicySubjectRule.Function.FALSE);
-        PolicySubjectRule gold = rule("roles", PolicySubjectRule.Function.EQUAL, "gold");
-        PolicySubjectRule goldMember = rule("roles", PolicySubjectRule.Function.CONTAIN, "old");
-        PolicySubjectRule silverMember = rule("roles", PolicySubjectRule.Function.CONTAIN, "silver");
-        PolicySubjectRule tier = rule("roles", PolicySubjectRule.Function.REGEX, "gol.");
-        PolicySubjectRule otherTier = rule("roles", PolicySubjectRule.Function.REGEX, "silv.");
+        PolicySubjectRule gold = rule("plan", PolicySubjectRule.Function.EQUAL, "gold");
+        PolicySubjectRule goldMember = rule("plan", PolicySubjectRule.Function.CONTAIN, "old");
+        PolicySubjectRule silverMember = rule("plan", PolicySubjectRule.Function.CONTAIN, "silver");
+        PolicySubjectRule tier = rule("plan", PolicySubjectRule.Function.REGEX, "gol.");
+        PolicySubjectRule otherTier = rule("plan", PolicySubjectRule.Function.REGEX, "silv.");
+        PolicySubjectRule goldUpper = rule("plan", PolicySubjectRule.Function.EQUAL, "GOLD");
 
         assertTrue(PolicyAssignmentValidator.subjectsOverlap(List.of(alice), List.of(aliceUpper)));
         assertFalse(PolicyAssignmentValidator.subjectsOverlap(List.of(alice), List.of(bob)));
@@ -184,7 +185,25 @@ class PolicyAssignmentValidatorTest {
         assertFalse(PolicyAssignmentValidator.subjectsOverlap(List.of(otherTier), List.of(gold)));
         assertTrue(PolicyAssignmentValidator.subjectsOverlap(List.of(tier), List.of(tier)));
         assertFalse(PolicyAssignmentValidator.subjectsOverlap(List.of(tier), List.of(otherTier)));
-        assertFalse(PolicyAssignmentValidator.subjectsOverlap(List.of(tier), List.of(silverMember)));
+        // EQUAL ignores case, so "GOLD" also matches the value "gold" that the pattern matches
+        assertTrue(PolicyAssignmentValidator.subjectsOverlap(List.of(tier), List.of(goldUpper)));
+        assertTrue(PolicyAssignmentValidator.subjectsOverlap(List.of(goldUpper), List.of(tier)));
+        // whether a substring and a pattern share a value is not decidable here, so they are taken to overlap
+        assertTrue(PolicyAssignmentValidator.subjectsOverlap(List.of(tier), List.of(silverMember)));
+        assertTrue(PolicyAssignmentValidator.subjectsOverlap(List.of(silverMember), List.of(otherTier)));
+    }
+
+    @Test
+    void testRoleRulesAlwaysOverlap() {
+        // a caller holds several roles at once, so two rules on roles can both match
+        PolicySubjectRule gold = rule("roles", PolicySubjectRule.Function.EQUAL, "gold");
+        PolicySubjectRule silver = rule("roles", PolicySubjectRule.Function.EQUAL, "silver");
+        PolicySubjectRule silverTier = rule("roles", PolicySubjectRule.Function.REGEX, "silv.");
+        PolicySubjectRule nobody = rule("roles", PolicySubjectRule.Function.FALSE);
+
+        assertTrue(PolicyAssignmentValidator.subjectsOverlap(List.of(gold), List.of(silver)));
+        assertTrue(PolicyAssignmentValidator.subjectsOverlap(List.of(gold), List.of(silverTier)));
+        assertFalse(PolicyAssignmentValidator.subjectsOverlap(List.of(gold), List.of(nobody)));
     }
 
     @Test

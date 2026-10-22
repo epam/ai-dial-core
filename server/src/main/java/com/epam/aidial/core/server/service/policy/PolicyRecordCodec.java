@@ -23,9 +23,17 @@ public class PolicyRecordCodec {
     private static final JsonMapper MAPPER = JsonMapper.builder()
             .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
             .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS)
-            // an amount of 500 must not read back as 5E+2
+            // an amount is read as BigDecimal, never through a double, and 500 must not read back as 5E+2
+            .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
             .configure(JsonNodeFeature.STRIP_TRAILING_BIGDECIMAL_ZEROES, false)
             .build();
+
+    /**
+     * Reads a request body into a tree that keeps every decimal exact, for {@link #parsePolicy} and {@link #parseAssignment}.
+     */
+    public static JsonNode readTree(String body) throws JsonProcessingException {
+        return MAPPER.readTree(body);
+    }
 
     public static Policy parsePolicy(JsonNode node) {
         return parse(node, Policy.class);

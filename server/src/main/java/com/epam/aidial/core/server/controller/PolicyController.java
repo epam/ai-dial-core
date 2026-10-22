@@ -41,8 +41,6 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import java.nio.charset.StandardCharsets;
 
-import static com.epam.aidial.core.server.service.config.ConfigEntityCodec.BLOB_MAPPER;
-
 /**
  * Serves {@code /v1/policies/platform/[<costObject>/]<name>} and
  * {@code /v1/policy_assignments/platform/<costObject>/<id>}: the same Configuration-API verbs as
@@ -93,7 +91,7 @@ public class PolicyController implements Controller {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
                                     description = "Policy name, with the folder of its cost object for a project policy: [<costObject>/]<name>"),
-                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = "ETag of the cached copy; answers 304 when it is still current")
                     },
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Policy.class),
@@ -123,7 +121,7 @@ public class PolicyController implements Controller {
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigResourceController.ConfigWriteResponse.class),
                                     headers = {@ApiHeader(name = "ETag", description = "Entity tag for the saved policy", required = true)}),
-                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 400, description = "Malformed path or JSON, or a body that does not fit the record schema: an unknown field, a wrong type"),
                             @ApiResponse(code = 403),
                             @ApiResponse(code = 409, description = "The policy would tie in priority with another budget of a cost object, "
                                     + "or its name is taken by an assignment"),
@@ -163,7 +161,7 @@ public class PolicyController implements Controller {
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Assignment path: <costObject>/<id>"),
-                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = "ETag of the cached copy; answers 304 when it is still current")
                     },
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = PolicyAssignment.class),
@@ -192,7 +190,7 @@ public class PolicyController implements Controller {
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigResourceController.ConfigWriteResponse.class),
                                     headers = {@ApiHeader(name = "ETag", description = "Entity tag for the saved assignment", required = true)}),
-                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 400, description = "Malformed path or JSON, or a body that does not fit the record schema: an unknown field, a wrong type"),
                             @ApiResponse(code = 403),
                             @ApiResponse(code = 409, description = "The assignment would tie in priority with another budget of the cost object, "
                                     + "or its id is taken by a self-applying policy"),
@@ -315,7 +313,7 @@ public class PolicyController implements Controller {
             throw new HttpException(HttpStatus.BAD_REQUEST, "Request body must not be empty");
         }
         try {
-            return BLOB_MAPPER.readTree(text);
+            return PolicyRecordCodec.readTree(text);
         } catch (JsonProcessingException e) {
             String location = e.getLocation() == null
                     ? "unknown location"

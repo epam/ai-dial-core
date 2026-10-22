@@ -23,6 +23,11 @@ public class PolicyAssignmentValidator {
 
     public static final String SUBJECT_PER = "subject";
 
+    /**
+     * The subject source of the caller's roles, which unlike most claims holds several values at once.
+     */
+    public static final String ROLES_SOURCE = "roles";
+
     private static final String NOT_SUPPORTED = "'%s' is not supported yet";
 
     /**
@@ -127,8 +132,10 @@ public class PolicyAssignmentValidator {
 
     /**
      * Whether some caller can match both subjects, as far as the rules show. Rules on different sources can
-     * always be met by one caller. On one source, equal targets overlap, a substring target overlaps anything
-     * it is contained in, and two patterns overlap only when identical, since nothing else is decidable.
+     * always be met by one caller, and so can any two rules on {@code roles}: a caller holds several roles. On one
+     * other source, an exact target overlaps the targets equal to it ignoring case, containing it, or matching a
+     * pattern in any case; a substring target overlaps any other substring or pattern; and two patterns overlap
+     * only when identical, since nothing else is decidable.
      */
     public static boolean subjectsOverlap(List<PolicySubjectRule> first, List<PolicySubjectRule> second) {
         for (PolicySubjectRule a : first) {
@@ -145,7 +152,7 @@ public class PolicyAssignmentValidator {
         if (a.getFunction() == PolicySubjectRule.Function.FALSE || b.getFunction() == PolicySubjectRule.Function.FALSE) {
             return false;
         }
-        if (!a.getSource().equals(b.getSource())
+        if (!a.getSource().equals(b.getSource()) || ROLES_SOURCE.equals(a.getSource())
                 || a.getFunction() == PolicySubjectRule.Function.TRUE || b.getFunction() == PolicySubjectRule.Function.TRUE) {
             return true;
         }
@@ -153,23 +160,29 @@ public class PolicyAssignmentValidator {
             case EQUAL -> switch (b.getFunction()) {
                 case EQUAL -> anyPair(a, b, (x, y) -> x.equalsIgnoreCase(y));
                 case CONTAIN -> anyPair(a, b, (x, y) -> lower(x).contains(lower(y)));
-                default -> anyPair(a, b, (x, y) -> Pattern.matches(y, x));
+                default -> anyPair(a, b, (x, y) -> matchesIgnoringCase(y, x));
             };
             case CONTAIN -> switch (b.getFunction()) {
                 case EQUAL -> anyPair(a, b, (x, y) -> lower(y).contains(lower(x)));
-                case CONTAIN -> true;
-                default -> false;
+                default -> true;
             };
             default -> switch (b.getFunction()) {
-                case EQUAL -> anyPair(a, b, (x, y) -> Pattern.matches(x, y));
+                case EQUAL -> anyPair(a, b, (x, y) -> matchesIgnoringCase(x, y));
                 case REGEX -> anyPair(a, b, String::equals);
-                default -> false;
+                default -> true;
             };
         };
     }
 
     private static boolean anyPair(PolicySubjectRule a, PolicySubjectRule b, BiPredicate<String, String> test) {
         return a.getTargets().stream().anyMatch(x -> b.getTargets().stream().anyMatch(y -> test.test(x, y)));
+    }
+
+    /**
+     * An exact target matches its value in any case, so it overlaps a pattern that matches one of its spellings.
+     */
+    private static boolean matchesIgnoringCase(String pattern, String value) {
+        return Pattern.compile(pattern, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(value).matches();
     }
 
     private static String lower(String value) {

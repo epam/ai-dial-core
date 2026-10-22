@@ -10918,7 +10918,7 @@ paths:
           type: string
       - name: If-None-Match
         in: header
-        description: ETag precondition.
+        description: ETag of the cached copy; answers 304 when it is still current
         required: false
         schema:
           type: string
@@ -11014,7 +11014,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
         "400":
-          description: Bad request
+          description: "Malformed path or JSON, or a body that does not fit the record schema: an unknown field, a wrong type"
           content:
             application/json:
               schema:
@@ -11115,7 +11115,7 @@ paths:
           type: string
       - name: If-None-Match
         in: header
-        description: ETag precondition.
+        description: ETag of the cached copy; answers 304 when it is still current
         required: false
         schema:
           type: string
@@ -11211,7 +11211,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
         "400":
-          description: Bad request
+          description: "Malformed path or JSON, or a body that does not fit the record schema: an unknown field, a wrong type"
           content:
             application/json:
               schema:

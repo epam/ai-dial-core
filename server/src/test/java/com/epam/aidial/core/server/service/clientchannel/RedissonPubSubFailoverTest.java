@@ -75,12 +75,9 @@ class RedissonPubSubFailoverTest {
         if (client != null) {
             client.shutdown(0, 1, TimeUnit.SECONDS);
         }
-        // both are null when setUp aborted the test before starting them
-        if (newRedis != null) {
-            newRedis.stop();
-        }
+        newRedis.stop();
         // already stopped by the test itself
-        if (oldRedis != null && oldRedis.isActive()) {
+        if (oldRedis.isActive()) {
             oldRedis.stop();
         }
     }

@@ -137,7 +137,7 @@ public class AdminValidateController implements Controller {
         entries.sort(ConfigManifestSupport.DEPENDENCY_ORDER_COMPARATOR);
 
         Config scratch = ConfigManifestSupport.newScratch(mergedConfigStore);
-        PolicyAssignmentPrecheck policyPrecheck = validationService.newLimitPrecheck();
+        PolicyAssignmentPrecheck policyPrecheck = validationService.newPolicyPrecheck();
         List<ValidationResult> results = new ArrayList<>();
         boolean anyFailure = false;
 

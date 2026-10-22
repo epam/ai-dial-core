@@ -412,8 +412,13 @@ public class PolicyApiTest extends ResourceBaseTest {
 
         String silver = """
                 "subject": [ { "source": "roles", "function": "EQUAL", "targets": ["silver"] } ], "costObject": "v11s-a" """;
-        // disjoint roles, same source: no tie even at the same priority
-        verify(put(POLICIES + "v11s-a/silver", policy(100, "\"*\"", silver)), 200);
+        // one caller can hold both roles: a tie even though the targets differ
+        verifyRejected(put(POLICIES + "v11s-a/silver", policy(100, "\"*\"", silver)), 409, "has the same priority 100");
+        // disjoint values of a claim other than roles: no tie even at the same priority
+        verify(put(POLICIES + "v11s-b/gold", policy(100, "\"*\"", """
+                "subject": [ { "source": "plan", "function": "EQUAL", "targets": ["gold"] } ], "costObject": "v11s-b" """)), 200);
+        verify(put(POLICIES + "v11s-b/silver", policy(100, "\"*\"", """
+                "subject": [ { "source": "plan", "function": "EQUAL", "targets": ["silver"] } ], "costObject": "v11s-b" """)), 200);
         // a self-applying policy that overlaps an existing one at the same priority
         verifyRejected(put(POLICIES + "v11s-a/gold-too", policy(100, "[\"opus\"]", tier)), 409, "has the same priority 100");
     }
@@ -442,6 +447,18 @@ public class PolicyApiTest extends ResourceBaseTest {
         verifyRejected(put(POLICIES + "amount-none", head + "\"cost\": {}}"), 422, "at least one window");
         verifyRejected(put(POLICIES + "amount-missing", head.substring(0, head.length() - 2) + "}"), 422, "at least one window");
         verify(put(POLICIES + "amount-ok", head + "\"cost\": {\"day\": 1.5}}"), 200);
+    }
+
+    @Test
+    void testPolicyAmountsKeepEveryDigit() {
+        String head = "{\"priority\": 1, \"kind\": \"budget\", \"quantity\": \"cost\", \"object\": \"*\", \"per\": [\"subject\"], ";
+
+        // more digits than a double holds, and trailing zeros
+        verify(put(POLICIES + "amount-exact", head + "\"cost\": {\"day\": 12345678901234567.89, \"month\": 500.00}}"), 200);
+        Response stored = get(POLICIES + "amount-exact");
+        verify(stored, 200);
+        assertTrue(stored.body().contains("12345678901234567.89"), () -> "Body: " + stored.body());
+        assertTrue(stored.body().contains("500.00"), () -> "Body: " + stored.body());
     }
 
     @Test
@@ -495,6 +512,10 @@ public class PolicyApiTest extends ResourceBaseTest {
         verify(put(POLICIES + "re-grant", policy(20, "[\"sonnet\"]", "")), 200);
         verify(put(POLICIES + "re-grant", policy(30, "[\"opus\"]", "")), 200);
         assertEquals(30, json(get(POLICIES + "re-grant")).get("priority").asInt());
+        // a new amount leaves the assignments as they are
+        verify(put(POLICIES + "re-grant", """
+                { "priority": 30, "kind": "budget", "quantity": "cost", "object": ["opus"], "per": ["subject"], "cost": { "month": 250 } }"""), 200);
+        assertEquals(250, json(get(POLICIES + "re-grant")).get("cost").get("month").asInt());
 
         // pinning the subject in the policy would pin it twice for the existing assignment
         verifyRejected(put(POLICIES + "re-grant", policy(30, "[\"opus\"]", "\"subject\": " + ALICE)), 422,

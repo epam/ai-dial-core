@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import javax.annotation.Nullable;
@@ -89,7 +90,7 @@ public class PolicyService {
     public ResourceItemMetadata putPolicy(String path, Policy policy, EtagHeader etag, String author) {
         ResourceDescriptor descriptor = describe(ResourceTypes.POLICY, path);
         return resourceService.computeResource(descriptor, etag, author, existing -> {
-            checkPolicy(path, policy, existing != null);
+            checkPolicy(path, policy, existing == null ? null : PolicyRecordCodec.readPolicy(existing));
             policy.setId(path);
             return PolicyRecordCodec.write(policy);
         });
@@ -143,7 +144,7 @@ public class PolicyService {
      * Checks a policy against the stored records and those staged, without writing it.
      */
     public void validatePolicy(String path, Policy policy) {
-        checkPolicy(path, policy, resourceService.hasResource(describe(ResourceTypes.POLICY, path)));
+        checkPolicy(path, policy, findPolicy(path));
     }
 
     /**
@@ -155,10 +156,9 @@ public class PolicyService {
     }
 
     /**
-     * @param exists whether a policy is stored at the path; only then can an assignment already refer to it
+     * @param previous the policy stored or staged at the path; only then can an assignment already refer to it
      */
-    private void checkPolicy(String path, Policy policy, boolean exists) {
-        describe(ResourceTypes.POLICY, path);
+    private void checkPolicy(String path, Policy policy, @Nullable Policy previous) {
         requireIdMatches(policy.getId(), path);
         reject(PolicyAssignmentValidator.validatePolicy(policy));
         String folder = folderOf(path);
@@ -183,7 +183,8 @@ public class PolicyService {
         if (policy.isSelfApplying()) {
             costObjects.add(folder);
         }
-        if (exists) {
+        // Reading every assignment of a global policy is costly: skip it when nothing they depend on changes.
+        if (previous != null && !sameForAssignments(previous, policy)) {
             for (Map.Entry<String, PolicyAssignment> entry : listAssignments(referencingScope(path)).entrySet()) {
                 if (!path.equals(entry.getValue().getPolicy())) {
                     continue;
@@ -204,7 +205,6 @@ public class PolicyService {
     }
 
     private void checkAssignment(String path, PolicyAssignment assignment, @Nullable PolicyAssignment previous) {
-        describe(ResourceTypes.POLICY_ASSIGNMENT, path);
         requireIdMatches(assignment.getId(), path);
         reject(PolicyAssignmentValidator.validateAssignment(assignment));
         String folder = folderOf(path);
@@ -238,7 +238,18 @@ public class PolicyService {
         if (sameName != null && sameName.isSelfApplying()) {
             throw new HttpException(HttpStatus.CONFLICT, "'" + path + "' is already used by a self-applying policy of the cost object");
         }
-        new Instances(Map.of(), Map.of(path, assignment)).requireNoTie(folder, policyPath);
+        // the policy just read stands in for its stored version, so that it is not read again
+        new Instances(Map.of(policyPath, policy), Map.of(path, assignment)).requireNoTie(folder, policyPath);
+    }
+
+    /**
+     * Whether the assignments of the policy stay valid and keep their ties when {@code previous} is replaced by {@code next}.
+     */
+    private static boolean sameForAssignments(Policy previous, Policy next) {
+        return Objects.equals(previous.getPriority(), next.getPriority())
+                && Objects.equals(previous.getObject(), next.getObject())
+                && Objects.equals(previous.getSubject(), next.getSubject())
+                && Objects.equals(previous.getCostObject(), next.getCostObject());
     }
 
     private static String pinProblem(Policy policy, PolicyAssignment assignment, String folder) {

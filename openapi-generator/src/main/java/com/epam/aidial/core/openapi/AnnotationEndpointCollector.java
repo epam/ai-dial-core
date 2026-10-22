@@ -1,6 +1,7 @@
 package com.epam.aidial.core.openapi;
 
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiOperations;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.server.controller.AdminApplyController;

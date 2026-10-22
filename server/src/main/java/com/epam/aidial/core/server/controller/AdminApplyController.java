@@ -137,7 +137,7 @@ public class AdminApplyController {
         Config scratch = ConfigManifestSupport.newScratch(mergedConfigStore);
 
         if (precheck) {
-            PolicyAssignmentPrecheck policyPrecheck = validationService.newLimitPrecheck();
+            PolicyAssignmentPrecheck policyPrecheck = validationService.newPolicyPrecheck();
             List<ConfigApplyService.EntityResult> precheckResults = new ArrayList<>();
             boolean anyFailure = false;
             for (AdminManifest entry : entries) {

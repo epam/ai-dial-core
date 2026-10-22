@@ -55,12 +55,12 @@ public class ConfigValidationService {
         this.catalogSchemaService = catalogSchemaService;
     }
 
-    public PolicyAssignmentPrecheck newLimitPrecheck() {
+    public PolicyAssignmentPrecheck newPolicyPrecheck() {
         return new PolicyAssignmentPrecheck(resourceService);
     }
 
     public ValidationResult validateOnly(AdminManifest entry, Config scratch) {
-        return validateOnly(entry, scratch, newLimitPrecheck());
+        return validateOnly(entry, scratch, newPolicyPrecheck());
     }
 
     /**
