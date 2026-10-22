@@ -2,7 +2,7 @@ name: SCA Scan
 
 on:
   schedule:
-    - cron: "57 2 * * *"
+    - cron: "02 02 * * *"
   workflow_dispatch:
     inputs:
       scan-tag:
