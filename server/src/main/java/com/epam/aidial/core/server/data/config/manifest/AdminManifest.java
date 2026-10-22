@@ -23,7 +23,9 @@ import com.fasterxml.jackson.databind.JsonNode;
                 @ApiSubType(discriminatorValue = "Route", type = AdminRouteManifest.class),
                 @ApiSubType(discriminatorValue = "Model", type = AdminModelManifest.class),
                 @ApiSubType(discriminatorValue = "ToolSet", type = AdminToolSetManifest.class),
-                @ApiSubType(discriminatorValue = "Application", type = AdminApplicationManifest.class)
+                @ApiSubType(discriminatorValue = "Application", type = AdminApplicationManifest.class),
+                @ApiSubType(discriminatorValue = "Policy", type = AdminPolicyManifest.class),
+                @ApiSubType(discriminatorValue = "PolicyAssignment", type = AdminPolicyAssignmentManifest.class)
         }
 )
 public record AdminManifest(String kind, String name, JsonNode spec) {

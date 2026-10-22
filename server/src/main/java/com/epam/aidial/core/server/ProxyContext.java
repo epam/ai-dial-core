@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.security.ExtractedClaims;
@@ -85,6 +86,7 @@ public class ProxyContext {
     // for non-streaming requests, where ModelCostCalculator parses responseBody directly instead.
     private JsonNode pricingUsageNode;
     private Route route;
+    private RouteType routeType;
     private UpstreamRoute upstreamRoute;
     private HttpClientRequest proxyRequest;
     private String proxyRequestUri;
