@@ -38,6 +38,7 @@ class BoundedPipeTest {
 
     private static final Duration LONG_TIMEOUT = Duration.ofSeconds(30);
     private static final int CHUNK_SIZE = 64 * 1024;
+    private static final int PIPE_CAPACITY = 4 * CHUNK_SIZE;
 
     private Vertx vertx;
     private HttpServer server;
@@ -62,7 +63,7 @@ class BoundedPipeTest {
 
     @Test
     void testRoundTrip() throws IOException {
-        BoundedPipe pipe = new BoundedPipe(4, LONG_TIMEOUT);
+        BoundedPipe pipe = new BoundedPipe(8, LONG_TIMEOUT);
         pipe.getOutput().write(new byte[] {1, 2, 3});
         pipe.getOutput().write(new byte[] {9, 4, 5, 6, 9}, 1, 3);
         pipe.getOutput().write(7);
@@ -72,8 +73,8 @@ class BoundedPipeTest {
     }
 
     @Test
-    void testReadSplitsChunkAndEndIsSticky() throws IOException {
-        BoundedPipe pipe = new BoundedPipe(4, LONG_TIMEOUT);
+    void testPartialReadsAndEndIsSticky() throws IOException {
+        BoundedPipe pipe = new BoundedPipe(8, LONG_TIMEOUT);
         pipe.getOutput().write(new byte[] {10, 20, 30, 40, (byte) 200});
         pipe.getOutput().close();
 
@@ -117,7 +118,7 @@ class BoundedPipeTest {
     }
 
     @Test
-    void testWriterBlocksWhenFullUntilChunkIsRead() throws Exception {
+    void testWriterBlocksWhenFullUntilByteIsRead() throws Exception {
         BoundedPipe pipe = new BoundedPipe(2, LONG_TIMEOUT);
         pipe.getOutput().write(new byte[] {1});
         pipe.getOutput().write(new byte[] {2});
@@ -214,7 +215,7 @@ class BoundedPipeTest {
 
     @Test
     void testSingleByteReadReturnsUnsignedValues() throws IOException {
-        BoundedPipe pipe = new BoundedPipe(2, LONG_TIMEOUT);
+        BoundedPipe pipe = new BoundedPipe(4, LONG_TIMEOUT);
         pipe.getOutput().write(new byte[] {(byte) 200, (byte) 255, 0});
         pipe.getOutput().close();
 
@@ -238,6 +239,100 @@ class BoundedPipeTest {
         Assertions.assertEquals(1, pipe.getInput().read());
         second.get(10, TimeUnit.SECONDS);
         Assertions.assertEquals(2, pipe.getInput().read());
+    }
+
+    @Test
+    void testWriteLargerThanCapacityCompletesAsTheReaderDrains() throws Exception {
+        BoundedPipe pipe = new BoundedPipe(4, LONG_TIMEOUT);
+        byte[] bytes = sequence(0, 10);
+
+        CompletableFuture<Void> written = new CompletableFuture<>();
+        Thread writer = startThread(() -> {
+            pipe.getOutput().write(bytes);
+            pipe.getOutput().close();
+        }, written);
+        awaitParked(writer);
+        Assertions.assertFalse(written.isDone());
+
+        Assertions.assertArrayEquals(bytes, pipe.getInput().readAllBytes());
+        written.get(10, TimeUnit.SECONDS);
+    }
+
+    @Test
+    void testReadingOneByteLetsTheBlockedWriteProgress() throws Exception {
+        BoundedPipe pipe = new BoundedPipe(2, LONG_TIMEOUT);
+        pipe.getOutput().write(new byte[] {1, 2});
+
+        CompletableFuture<Void> written = new CompletableFuture<>();
+        Thread writer = startThread(() -> pipe.getOutput().write(new byte[] {3, 4}), written);
+        awaitParked(writer);
+
+        Assertions.assertEquals(1, pipe.getInput().read());
+        Assertions.assertEquals(2, pipe.getInput().read());
+        written.get(10, TimeUnit.SECONDS);
+        Assertions.assertEquals(3, pipe.getInput().read());
+        Assertions.assertEquals(4, pipe.getInput().read());
+    }
+
+    @Test
+    void testWrappedBufferKeepsOrderAndContent() throws IOException {
+        int capacity = 5;
+        BoundedPipe pipe = new BoundedPipe(capacity, LONG_TIMEOUT);
+        int written = 0;
+        int read = 0;
+
+        for (int i = 0; i < 200; i++) {
+            int toWrite = Math.min(1 + i % 4, capacity - (written - read));
+            pipe.getOutput().write(sequence(written, toWrite));
+            written += toWrite;
+
+            byte[] bytes = new byte[8];
+            int size = pipe.getInput().read(bytes, 1, Math.min(1 + i * 3 % 5, written - read));
+            Assertions.assertArrayEquals(sequence(read, size), Arrays.copyOfRange(bytes, 1, 1 + size));
+            read += size;
+        }
+
+        pipe.getOutput().close();
+        Assertions.assertArrayEquals(sequence(read, written - read), pipe.getInput().readAllBytes());
+    }
+
+    @Test
+    void testSingleByteWritesAndReadsWrapAround() throws IOException {
+        BoundedPipe pipe = new BoundedPipe(3, LONG_TIMEOUT);
+
+        for (int i = 0; i < 100; i++) {
+            pipe.getOutput().write(i);
+            pipe.getOutput().write(i + 1);
+            Assertions.assertEquals(i & 0xFF, pipe.getInput().read());
+            Assertions.assertEquals((i + 1) & 0xFF, pipe.getInput().read());
+        }
+    }
+
+    @Test
+    void testReadsProgressResetTheStallClock() throws Exception {
+        BoundedPipe pipe = new BoundedPipe(1, Duration.ofSeconds(1));
+        pipe.getOutput().write(0);
+
+        CompletableFuture<Void> written = new CompletableFuture<>();
+        startThread(() -> pipe.getOutput().write(new byte[] {1, 2, 3}), written);
+
+        // the write takes longer than the stall timeout in total, but the reader never makes it wait that long at once
+        for (int i = 0; i < 4; i++) {
+            Thread.sleep(400);
+            Assertions.assertEquals(i, pipe.getInput().read());
+        }
+        written.get(10, TimeUnit.SECONDS);
+    }
+
+    @Test
+    void testStalledLargeWriteDiscardsThePartialBytes() {
+        BoundedPipe pipe = new BoundedPipe(2, Duration.ofMillis(100));
+
+        IOException stalled = Assertions.assertThrows(IOException.class, () -> pipe.getOutput().write(sequence(0, 5)));
+        Assertions.assertTrue(stalled.getMessage().contains("stalled"), stalled.getMessage());
+
+        IOException read = Assertions.assertThrows(IOException.class, () -> pipe.getInput().read());
+        Assertions.assertTrue(read.getMessage().contains("stalled"), read.getMessage());
     }
 
     @Test
@@ -335,7 +430,7 @@ class BoundedPipeTest {
 
     @Test
     void testCloseExceptionallyDiscardsDataAndTheFirstFailureWins() throws IOException {
-        BoundedPipe pipe = new BoundedPipe(2, LONG_TIMEOUT);
+        BoundedPipe pipe = new BoundedPipe(4, LONG_TIMEOUT);
         pipe.getOutput().write(new byte[] {1, 2, 3});
 
         RuntimeException first = new RuntimeException("first");
@@ -426,7 +521,7 @@ class BoundedPipeTest {
     void testStreamsLargeBodyToSlowClientWithBoundedMemory() throws Exception {
         int chunks = 1000;
         AtomicInteger written = new AtomicInteger();
-        start(4, LONG_TIMEOUT, (index, out) -> writeChunks(out, chunks, written));
+        start(PIPE_CAPACITY, LONG_TIMEOUT, (index, out) -> writeChunks(out, chunks, written));
 
         Download download = connect(true);
 
@@ -442,7 +537,7 @@ class BoundedPipeTest {
     void testClientDisconnectFailsTheProducer() throws Exception {
         AtomicInteger written = new AtomicInteger();
         CompletableFuture<Throwable> producerError = new CompletableFuture<>();
-        start(4, LONG_TIMEOUT, (index, out) -> {
+        start(PIPE_CAPACITY, LONG_TIMEOUT, (index, out) -> {
             try {
                 writeChunks(out, 1000, written);
             } catch (Throwable e) {
@@ -464,7 +559,7 @@ class BoundedPipeTest {
     @Test
     void testStalledClientTripsTheTimeoutAndTheResponseIsReset() throws Exception {
         CompletableFuture<Throwable> producerError = new CompletableFuture<>();
-        start(4, Duration.ofMillis(500), (index, out) -> {
+        start(PIPE_CAPACITY, Duration.ofMillis(500), (index, out) -> {
             try {
                 writeChunks(out, 1000, new AtomicInteger());
             } catch (Throwable e) {
@@ -486,7 +581,7 @@ class BoundedPipeTest {
     @Test
     void testProducerFailureResetsTheResponseInsteadOfEndingIt() throws Exception {
         AtomicInteger written = new AtomicInteger();
-        start(4, LONG_TIMEOUT, (index, out) -> {
+        start(PIPE_CAPACITY, LONG_TIMEOUT, (index, out) -> {
             if (index == 0) {
                 writeChunks(out, 10, written);
                 throw new IOException("export failed");
@@ -502,7 +597,7 @@ class BoundedPipeTest {
 
     @Test
     void testCompletedBodyEndsCleanly() throws Exception {
-        start(4, LONG_TIMEOUT, (index, out) -> writeChunks(out, 50, new AtomicInteger()));
+        start(PIPE_CAPACITY, LONG_TIMEOUT, (index, out) -> writeChunks(out, 50, new AtomicInteger()));
 
         assertChunks(await(connect(false).body(), 30), 50);
     }
@@ -579,6 +674,14 @@ class BoundedPipeTest {
             out.write(chunk);
             written.incrementAndGet();
         }
+    }
+
+    private static byte[] sequence(int start, int length) {
+        byte[] bytes = new byte[length];
+        for (int i = 0; i < length; i++) {
+            bytes[i] = (byte) (start + i);
+        }
+        return bytes;
     }
 
     private static void assertChunks(Buffer body, int count) {

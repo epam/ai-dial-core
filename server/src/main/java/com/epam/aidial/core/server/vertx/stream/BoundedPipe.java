@@ -7,17 +7,15 @@ import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.time.Duration;
-import java.util.ArrayDeque;
-import java.util.Arrays;
 import java.util.Objects;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Passes bytes from a writing thread to a reading thread through a queue of a fixed capacity, so that a slow reader
- * blocks the writer instead of growing memory. Every write is queued as one chunk, so write large chunks,
- * for example through a {@link java.io.BufferedOutputStream}. Both ends block, so neither may run on an event loop.
- * Not related to {@link io.vertx.core.streams.Pipe}.
+ * Passes bytes from a writing thread to a reading thread through a ring buffer of a fixed size, so that a slow reader
+ * blocks the writer instead of growing memory. Writes and reads of any size are accepted, a write larger than
+ * the free space is passed in parts as the reader frees it. Both ends block, so neither may run on an event loop.
+ * Use one writing thread, concurrent writers may interleave their bytes. Not related to {@link io.vertx.core.streams.Pipe}.
  *
  * <p>The reader sees the end of the stream only after the writer closes the output. Close the output only after
  * everything is written, and call {@link #closeExceptionally(Throwable)} on a failure instead, because closing ends
@@ -28,19 +26,18 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class BoundedPipe {
 
-    private final int capacity;
     private final Duration stallTimeout;
 
     // guards all the state below, and publishes it between reads that run on different virtual threads
     private final ReentrantLock lock = new ReentrantLock();
     private final Condition notEmpty = lock.newCondition();
     private final Condition notFull = lock.newCondition();
-    private final ArrayDeque<byte[]> queue;
+    private final byte[] buffer;
+    private int head;
+    private int count;
     private boolean writerClosed;
     private boolean readerClosed;
     private IOException failure;
-    private byte[] current;
-    private int position;
 
     @Getter
     private final OutputStream output = new Output();
@@ -48,8 +45,8 @@ public class BoundedPipe {
     private final InputStream input = new Input();
 
     /**
-     * @param capacity     max number of queued chunks
-     * @param stallTimeout how long a write waits for the reader to free a slot before it fails
+     * @param capacity     size of the buffer in bytes
+     * @param stallTimeout how long a write waits for the reader to take a byte before it fails
      */
     public BoundedPipe(int capacity, Duration stallTimeout) {
         if (capacity < 1) {
@@ -59,9 +56,8 @@ public class BoundedPipe {
             throw new IllegalArgumentException("Stall timeout must be positive: " + stallTimeout);
         }
 
-        this.capacity = capacity;
+        this.buffer = new byte[capacity];
         this.stallTimeout = stallTimeout;
-        this.queue = new ArrayDeque<>(capacity);
     }
 
     /**
@@ -76,34 +72,25 @@ public class BoundedPipe {
         }
     }
 
-    private void put(byte[] chunk) throws IOException {
+    // the lock must be held, returns when there is a free byte
+    private void awaitFreeSpace() throws IOException {
         long remainingNanos = stallTimeout.toNanos();
 
-        lock.lock();
-        try {
-            while (true) {
-                checkWritable();
+        checkWritable();
 
-                if (queue.size() < capacity) {
-                    break;
-                }
-
-                if (remainingNanos <= 0) {
-                    throw fail(new IOException("Pipe is stalled, nothing was read for " + stallTimeout));
-                }
-
-                try {
-                    remainingNanos = notFull.awaitNanos(remainingNanos);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw fail(new InterruptedIOException("Interrupted while waiting for the pipe to be read"));
-                }
+        while (count == buffer.length) {
+            if (remainingNanos <= 0) {
+                throw fail(new IOException("Pipe is stalled, nothing was read for " + stallTimeout));
             }
 
-            queue.add(chunk);
-            notEmpty.signal();
-        } finally {
-            lock.unlock();
+            try {
+                remainingNanos = notFull.awaitNanos(remainingNanos);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw fail(new InterruptedIOException("Interrupted while waiting for the pipe to be read"));
+            }
+
+            checkWritable();
         }
     }
 
@@ -118,8 +105,8 @@ public class BoundedPipe {
 
     // the lock must be held
     private void discard() {
-        queue.clear();
-        current = null;
+        head = 0;
+        count = 0;
         notEmpty.signalAll();
         notFull.signalAll();
     }
@@ -148,15 +135,40 @@ public class BoundedPipe {
 
         @Override
         public void write(int b) throws IOException {
-            put(new byte[] {(byte) b});
+            lock.lock();
+            try {
+                awaitFreeSpace();
+
+                buffer[(head + count) % buffer.length] = (byte) b;
+                count++;
+                notEmpty.signal();
+            } finally {
+                lock.unlock();
+            }
         }
 
         @Override
         public void write(byte[] bytes, int offset, int length) throws IOException {
             Objects.checkFromIndexSize(offset, length, bytes.length);
 
-            if (length > 0) {
-                put(Arrays.copyOfRange(bytes, offset, offset + length));
+            lock.lock();
+            try {
+                while (length > 0) {
+                    awaitFreeSpace();
+
+                    int size = Math.min(length, buffer.length - count);
+                    int tail = (head + count) % buffer.length;
+                    int beforeWrap = Math.min(size, buffer.length - tail);
+                    System.arraycopy(bytes, offset, buffer, tail, beforeWrap);
+                    System.arraycopy(bytes, offset + beforeWrap, buffer, 0, size - beforeWrap);
+
+                    count += size;
+                    offset += size;
+                    length -= size;
+                    notEmpty.signal();
+                }
+            } finally {
+                lock.unlock();
             }
         }
 
@@ -178,12 +190,14 @@ public class BoundedPipe {
         public int read() throws IOException {
             lock.lock();
             try {
-                if (!fill()) {
+                if (!awaitData()) {
                     return -1;
                 }
 
-                int value = current[position] & 0xFF;
-                advance(1);
+                int value = buffer[head] & 0xFF;
+                head = (head + 1) % buffer.length;
+                count--;
+                notFull.signal();
                 return value;
             } finally {
                 lock.unlock();
@@ -200,13 +214,18 @@ public class BoundedPipe {
 
             lock.lock();
             try {
-                if (!fill()) {
+                if (!awaitData()) {
                     return -1;
                 }
 
-                int size = Math.min(length, current.length - position);
-                System.arraycopy(current, position, bytes, offset, size);
-                advance(size);
+                int size = Math.min(length, count);
+                int beforeWrap = Math.min(size, buffer.length - head);
+                System.arraycopy(buffer, head, bytes, offset, beforeWrap);
+                System.arraycopy(buffer, 0, bytes, offset + beforeWrap, size - beforeWrap);
+
+                head = (head + size) % buffer.length;
+                count -= size;
+                notFull.signal();
                 return size;
             } finally {
                 lock.unlock();
@@ -225,33 +244,18 @@ public class BoundedPipe {
         }
 
         // the lock must be held, returns false at the end of the stream
-        private boolean fill() throws IOException {
-            while (current == null) {
+        private boolean awaitData() throws IOException {
+            while (count == 0) {
                 checkReadable();
 
-                byte[] chunk = queue.poll();
-
-                if (chunk != null) {
-                    current = chunk;
-                    position = 0;
-                    notFull.signal();
-                } else if (writerClosed) {
+                if (writerClosed) {
                     return false;
-                } else {
-                    await();
                 }
+
+                await();
             }
 
             return true;
-        }
-
-        // the lock must be held
-        private void advance(int size) {
-            position += size;
-
-            if (position == current.length) {
-                current = null;
-            }
         }
 
         private void await() throws IOException {
