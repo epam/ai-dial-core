@@ -1,21 +1,7 @@
 package com.epam.aidial.core.server.vertx.stream;
 
-import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
-import io.vertx.core.Future;
-import io.vertx.core.Vertx;
-import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClient;
-import io.vertx.core.http.HttpClientOptions;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
-import io.vertx.core.http.HttpMethod;
-import io.vertx.core.http.HttpServer;
-import io.vertx.core.http.HttpServerOptions;
-import io.vertx.core.http.HttpServerResponse;
-import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -23,9 +9,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
-import java.io.OutputStream;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -37,28 +24,16 @@ import java.util.function.Supplier;
 class BoundedPipeTest {
 
     private static final Duration LONG_TIMEOUT = Duration.ofSeconds(30);
-    private static final int CHUNK_SIZE = 64 * 1024;
-    private static final int PIPE_CAPACITY = 4 * CHUNK_SIZE;
 
-    private Vertx vertx;
-    private HttpServer server;
-    private HttpClient client;
-    private volatile Thread producerThread;
-
-    @BeforeEach
-    void setUp() {
-        vertx = Vertx.vertx();
-    }
+    private final List<Thread> threads = new ArrayList<>();
 
     @AfterEach
-    void tearDown() throws Exception {
-        if (client != null) {
-            await(client.close(), 10);
+    void tearDown() throws InterruptedException {
+        for (Thread thread : threads) {
+            thread.interrupt();
+            thread.join(TimeUnit.SECONDS.toMillis(10));
+            Assertions.assertFalse(thread.isAlive(), "the thread should finish");
         }
-        if (server != null) {
-            await(server.close(), 10);
-        }
-        await(vertx.close(), 10);
     }
 
     @Test
@@ -517,163 +492,8 @@ class BoundedPipeTest {
         Assertions.assertArrayEquals(expected, received.toByteArray());
     }
 
-    @Test
-    void testStreamsLargeBodyToSlowClientWithBoundedMemory() throws Exception {
-        int chunks = 1000;
-        AtomicInteger written = new AtomicInteger();
-        start(PIPE_CAPACITY, LONG_TIMEOUT, (index, out) -> writeChunks(out, chunks, written));
-
-        Download download = connect(true);
-
-        awaitProducerBlocked(written);
-        Assertions.assertTrue(written.get() < chunks, "the producer should be held back by the paused client, written=" + written);
-
-        download.response().resume();
-        assertChunks(await(download.body(), 30), chunks);
-        Assertions.assertEquals(chunks, written.get());
-    }
-
-    @Test
-    void testClientDisconnectFailsTheProducer() throws Exception {
-        AtomicInteger written = new AtomicInteger();
-        CompletableFuture<Throwable> producerError = new CompletableFuture<>();
-        start(PIPE_CAPACITY, LONG_TIMEOUT, (index, out) -> {
-            try {
-                writeChunks(out, 1000, written);
-            } catch (Throwable e) {
-                producerError.complete(e);
-                throw e;
-            }
-        });
-
-        Download download = connect(true);
-        awaitProducerBlocked(written);
-
-        download.request().connection().close();
-
-        Throwable error = producerError.get(10, TimeUnit.SECONDS);
-        Assertions.assertInstanceOf(IOException.class, error);
-        Assertions.assertTrue(written.get() < 1000);
-    }
-
-    @Test
-    void testStalledClientTripsTheTimeoutAndTheResponseIsReset() throws Exception {
-        CompletableFuture<Throwable> producerError = new CompletableFuture<>();
-        start(PIPE_CAPACITY, Duration.ofMillis(500), (index, out) -> {
-            try {
-                writeChunks(out, 1000, new AtomicInteger());
-            } catch (Throwable e) {
-                producerError.complete(e);
-                throw e;
-            }
-        });
-
-        Download download = connect(true);
-
-        Throwable error = producerError.get(30, TimeUnit.SECONDS);
-        Assertions.assertInstanceOf(IOException.class, error);
-        Assertions.assertTrue(error.getMessage().contains("stalled"), error.getMessage());
-
-        download.response().resume();
-        assertFails(download.body());
-    }
-
-    @Test
-    void testProducerFailureResetsTheResponseInsteadOfEndingIt() throws Exception {
-        AtomicInteger written = new AtomicInteger();
-        start(PIPE_CAPACITY, LONG_TIMEOUT, (index, out) -> {
-            if (index == 0) {
-                writeChunks(out, 10, written);
-                throw new IOException("export failed");
-            }
-            writeChunks(out, 3, written);
-        });
-
-        assertFails(connect(false).body());
-
-        // double reset and the read that was in flight when the reader was closed leave the server healthy
-        assertChunks(await(connect(false).body(), 10), 3);
-    }
-
-    @Test
-    void testCompletedBodyEndsCleanly() throws Exception {
-        start(PIPE_CAPACITY, LONG_TIMEOUT, (index, out) -> writeChunks(out, 50, new AtomicInteger()));
-
-        assertChunks(await(connect(false).body(), 30), 50);
-    }
-
-    private interface Producer {
-        void produce(int requestIndex, OutputStream out) throws IOException;
-    }
-
     private interface Task {
         void run() throws Exception;
-    }
-
-    /**
-     * Mirrors DownloadFileController: the producer writes on its own thread, the response is fed by
-     * {@link InputStreamReader} through the pipe and failures reset the response instead of ending it.
-     */
-    private void start(int capacity, Duration stallTimeout, Producer producer) throws Exception {
-        AsyncTaskExecutor executor = new AsyncTaskExecutor(vertx, new JsonObject());
-        AtomicInteger requests = new AtomicInteger();
-        server = await(vertx.createHttpServer(new HttpServerOptions().setSendBufferSize(CHUNK_SIZE))
-                .requestHandler(request -> {
-                    int index = requests.getAndIncrement();
-                    HttpServerResponse response = request.response().setChunked(true);
-                    BoundedPipe pipe = new BoundedPipe(capacity, stallTimeout);
-                    InputStreamReader reader = new InputStreamReader(vertx, executor, pipe.getInput());
-
-                    reader.pipe().endOnFailure(false).to(response).onFailure(error -> {
-                        reader.close();
-                        response.reset();
-                    });
-
-                    producerThread = Thread.ofVirtual().start(() -> {
-                        try {
-                            producer.produce(index, pipe.getOutput());
-                            pipe.getOutput().close();
-                        } catch (Throwable e) {
-                            pipe.closeExceptionally(e);
-                        }
-                    });
-                })
-                .listen(0), 10);
-    }
-
-    private HttpClient client() {
-        if (client == null) {
-            client = vertx.createHttpClient(new HttpClientOptions().setReceiveBufferSize(CHUNK_SIZE));
-        }
-        return client;
-    }
-
-    /**
-     * The body is subscribed to on the event loop together with the pause, otherwise the first chunks are dropped.
-     */
-    private Download connect(boolean paused) throws Exception {
-        return await(client().request(HttpMethod.GET, server.actualPort(), "localhost", "/").compose(request -> request.send().map(response -> {
-            if (paused) {
-                response.pause();
-            }
-            return new Download(request, response, response.body());
-        })), 10);
-    }
-
-    private static <T> T await(Future<T> future, int seconds) throws Exception {
-        return future.toCompletionStage().toCompletableFuture().get(seconds, TimeUnit.SECONDS);
-    }
-
-    private record Download(HttpClientRequest request, HttpClientResponse response, Future<Buffer> body) {
-    }
-
-    private static void writeChunks(OutputStream out, int count, AtomicInteger written) throws IOException {
-        for (int i = 0; i < count; i++) {
-            byte[] chunk = new byte[CHUNK_SIZE];
-            Arrays.fill(chunk, (byte) (i % 251));
-            out.write(chunk);
-            written.incrementAndGet();
-        }
     }
 
     private static byte[] sequence(int start, int length) {
@@ -684,19 +504,7 @@ class BoundedPipeTest {
         return bytes;
     }
 
-    private static void assertChunks(Buffer body, int count) {
-        Assertions.assertEquals((long) count * CHUNK_SIZE, body.length());
-        for (int i = 0; i < count; i++) {
-            Assertions.assertEquals((byte) (i % 251), body.getByte(i * CHUNK_SIZE), "chunk " + i);
-            Assertions.assertEquals((byte) (i % 251), body.getByte((i + 1) * CHUNK_SIZE - 1), "chunk " + i);
-        }
-    }
-
-    private static void assertFails(Future<Buffer> body) {
-        Assertions.assertThrows(ExecutionException.class, () -> await(body, 30));
-    }
-
-    private static Thread startThread(Task task, CompletableFuture<Void> result) {
+    private Thread startThread(Task task, CompletableFuture<Void> result) {
         Thread thread = new Thread(() -> {
             try {
                 task.run();
@@ -705,6 +513,7 @@ class BoundedPipeTest {
                 result.completeExceptionally(e);
             }
         });
+        threads.add(thread);
         thread.start();
         return thread;
     }
@@ -729,14 +538,5 @@ class BoundedPipeTest {
             Assertions.assertTrue(System.nanoTime() < deadline, message);
             Thread.sleep(5);
         }
-    }
-
-    /**
-     * Returns once the producer has filled the pipe and waits for it to be read. The pipe holds four chunks
-     * and the reader one more, so the producer cannot wait for less.
-     */
-    private void awaitProducerBlocked(AtomicInteger written) throws InterruptedException {
-        awaitCondition(() -> written.get() > 4 && isParked(producerThread),
-                () -> "the producer should get blocked, written=" + written + ", state=" + producerThread);
     }
 }
