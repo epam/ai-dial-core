@@ -13,16 +13,13 @@ import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Passes bytes from a writing thread to a reading thread through a ring buffer of a fixed size, so that a slow reader
- * blocks the writer instead of growing memory. Writes and reads of any size are accepted, a write larger than
- * the free space is passed in parts as the reader frees it. Both ends block, so neither may run on an event loop.
- * Use one writing thread, concurrent writers may interleave their bytes. Not related to {@link io.vertx.core.streams.Pipe}.
+ * blocks the writer instead of growing memory. Both ends block, so neither may run on an event loop. Use one writing thread.
  *
- * <p>The reader sees the end of the stream only after the writer closes the output. Close the output only after
- * everything is written, and call {@link #closeExceptionally(Throwable)} on a failure instead, because closing ends
- * the stream cleanly.
+ * <p>The reader waits until the writer closes the output or calls {@link #closeExceptionally(Throwable)}, and sees a clean
+ * end of the stream only after the former, so call the latter on a failure instead of closing.
  *
- * <p>A write that stalls or is interrupted, a read that is interrupted, and {@link #closeExceptionally(Throwable)}
- * fail the pending and all later reads and writes. Closing the input fails the pending and all later writes.
+ * <p>A stalled or interrupted write, an interrupted read and {@link #closeExceptionally(Throwable)} fail the pipe: the pending
+ * and all later reads and writes throw an {@link IOException} caused by the first failure. Closing the input fails them too.
  */
 public class BoundedPipe {
 
@@ -141,7 +138,7 @@ public class BoundedPipe {
 
                 buffer[(head + count) % buffer.length] = (byte) b;
                 count++;
-                notEmpty.signal();
+                notEmpty.signalAll();
             } finally {
                 lock.unlock();
             }
@@ -165,7 +162,7 @@ public class BoundedPipe {
                     count += size;
                     offset += size;
                     length -= size;
-                    notEmpty.signal();
+                    notEmpty.signalAll();
                 }
             } finally {
                 lock.unlock();
@@ -197,7 +194,7 @@ public class BoundedPipe {
                 int value = buffer[head] & 0xFF;
                 head = (head + 1) % buffer.length;
                 count--;
-                notFull.signal();
+                notFull.signalAll();
                 return value;
             } finally {
                 lock.unlock();
@@ -225,8 +222,19 @@ public class BoundedPipe {
 
                 head = (head + size) % buffer.length;
                 count -= size;
-                notFull.signal();
+                notFull.signalAll();
                 return size;
+            } finally {
+                lock.unlock();
+            }
+        }
+
+        @Override
+        public int available() throws IOException {
+            lock.lock();
+            try {
+                checkReadable();
+                return count;
             } finally {
                 lock.unlock();
             }
@@ -252,19 +260,15 @@ public class BoundedPipe {
                     return false;
                 }
 
-                await();
+                try {
+                    notEmpty.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw fail(new InterruptedIOException("Interrupted while waiting for the pipe to be written"));
+                }
             }
 
             return true;
-        }
-
-        private void await() throws IOException {
-            try {
-                notEmpty.await();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw fail(new InterruptedIOException("Interrupted while waiting for the pipe to be written"));
-            }
         }
     }
 }

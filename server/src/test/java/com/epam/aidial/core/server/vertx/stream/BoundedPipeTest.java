@@ -284,6 +284,33 @@ class BoundedPipeTest {
     }
 
     @Test
+    void testAvailableReportsBufferedBytes() throws IOException {
+        BoundedPipe pipe = new BoundedPipe(4, LONG_TIMEOUT);
+        Assertions.assertEquals(0, pipe.getInput().available());
+
+        pipe.getOutput().write(new byte[] {1, 2, 3});
+        Assertions.assertEquals(3, pipe.getInput().available());
+
+        pipe.getInput().read();
+        pipe.getOutput().close();
+        Assertions.assertEquals(2, pipe.getInput().available());
+
+        pipe.getInput().readAllBytes();
+        Assertions.assertEquals(0, pipe.getInput().available());
+    }
+
+    @Test
+    void testAvailableFailsOnFailedOrClosedPipe() throws IOException {
+        BoundedPipe failed = new BoundedPipe(4, LONG_TIMEOUT);
+        failed.closeExceptionally(new RuntimeException("boom"));
+        Assertions.assertThrows(IOException.class, () -> failed.getInput().available());
+
+        BoundedPipe closed = new BoundedPipe(4, LONG_TIMEOUT);
+        closed.getInput().close();
+        Assertions.assertThrows(IOException.class, () -> closed.getInput().available());
+    }
+
+    @Test
     void testReadsProgressResetTheStallClock() throws Exception {
         BoundedPipe pipe = new BoundedPipe(1, Duration.ofSeconds(1));
         pipe.getOutput().write(0);
@@ -546,7 +573,7 @@ class BoundedPipeTest {
     }
 
     private static boolean isParked(Thread thread) {
-        return thread != null && (thread.getState() == Thread.State.WAITING || thread.getState() == Thread.State.TIMED_WAITING);
+        return thread.getState() == Thread.State.WAITING || thread.getState() == Thread.State.TIMED_WAITING;
     }
 
     private static void awaitCondition(BooleanSupplier condition, Supplier<String> message) throws InterruptedException {
