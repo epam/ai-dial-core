@@ -120,7 +120,6 @@ public class ResponseItemController implements Controller {
     })
     public Future<?> handle() {
         return proxy.getTaskExecutor().submit(this::loadMapping)
-                .compose(this::checkNotDeletingActive)
                 .compose(this::dispatch)
                 .onFailure(this::handleError);
     }
@@ -146,16 +145,6 @@ public class ResponseItemController implements Controller {
                 .mapEmpty();
     }
 
-    private Future<ResponseMapping> checkNotDeletingActive(ResponseMapping mapping) {
-        if (operation != Operation.DELETE) {
-            return Future.succeededFuture(mapping);
-        }
-        return proxy.getBackgroundJobService().isJobActive(dialResponseId)
-                .compose(active -> active
-                        ? Future.failedFuture(new HttpException(HttpStatus.CONFLICT, "Cannot delete response while background job is in progress"))
-                        : Future.succeededFuture(mapping));
-    }
-
     private ResponseMapping loadMapping() {
         ResponseMapping mapping = proxy.getResponseMappingService().getMapping(dialResponseId);
         if (mapping == null) {
@@ -164,6 +153,9 @@ public class ResponseItemController implements Controller {
         String currentBucket = BucketBuilder.buildInitiatorBucket(context);
         if (!currentBucket.equals(mapping.getInitiatorBucket())) {
             throw new HttpException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+        if (proxy.getBackgroundJobService().isJobActive(dialResponseId)) {
+            throw new HttpException(HttpStatus.CONFLICT, "Cannot delete response while background job is in progress");
         }
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, mapping.getDeploymentName());
         if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES,
