@@ -4,6 +4,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.classic.spi.IThrowableProxy;
 import ch.qos.logback.classic.spi.ThrowableProxy;
 import ch.qos.logback.core.LayoutBase;
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.AiDial;
 import com.epam.aidial.core.server.ContextManager;
 import com.epam.aidial.core.server.ProxyContext;
@@ -115,6 +116,11 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
             if (proxyContext.getResponse().ended()) {
                 attributes.put("response.status", proxyContext.getResponse().getStatusMessage());
                 attributes.put("response.status.code", proxyContext.getResponse().getStatusCode());
+            }
+            Route route = proxyContext.getRoute();
+            if (route != null) {
+                attributes.put("dial.route.name", route.getName());
+                attributes.put("dial.route.type", proxyContext.getRouteType().getValue());
             }
         }
     }
