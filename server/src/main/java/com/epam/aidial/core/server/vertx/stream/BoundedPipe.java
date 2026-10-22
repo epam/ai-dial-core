@@ -187,7 +187,7 @@ public class BoundedPipe {
         public int read() throws IOException {
             lock.lock();
             try {
-                if (!awaitData()) {
+                if (isEndOfStream()) {
                     return -1;
                 }
 
@@ -211,7 +211,7 @@ public class BoundedPipe {
 
             lock.lock();
             try {
-                if (!awaitData()) {
+                if (isEndOfStream()) {
                     return -1;
                 }
 
@@ -251,13 +251,13 @@ public class BoundedPipe {
             }
         }
 
-        // the lock must be held, returns false at the end of the stream
-        private boolean awaitData() throws IOException {
+        // the lock must be held, waits for a byte and returns true if there will be none
+        private boolean isEndOfStream() throws IOException {
             while (count == 0) {
                 checkReadable();
 
                 if (writerClosed) {
-                    return false;
+                    return true;
                 }
 
                 try {
@@ -268,7 +268,7 @@ public class BoundedPipe {
                 }
             }
 
-            return true;
+            return false;
         }
     }
 }
