@@ -236,6 +236,49 @@ public class ResponseItemControllerTest {
     }
 
     @Test
+    public void testGetAllowedWhileBackgroundJobActive(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        ResponseMapping mapping = ResponseMapping.builder()
+                .upstreamResponseId("upstream-id-123")
+                .upstreamKey("endpoint")
+                .deploymentName("test-deployment")
+                .initiatorBucket("Users/test-user/")
+                .build();
+        Model deployment = new Model();
+        deployment.setName("test-deployment");
+        deployment.setResponsesEndpoint("http://adapter/responses");
+        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null, null, null, null);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+
+        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
+        when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
+        when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
+        when(upstreamRoute.next()).thenReturn(upstream);
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class), any()))
+                .thenReturn(Future.succeededFuture(proxyResponse));
+        when(proxyResponse.statusCode()).thenReturn(200);
+        when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer("{\"id\":\"upstream-id-123\",\"status\":\"in_progress\"}")));
+        when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
+        when(context.getResponse()).thenReturn(response);
+        when(context.getRequest()).thenReturn(serverRequest);
+        when(context.getUserId()).thenReturn("test-user");
+        when(serverRequest.headers()).thenReturn(new HeadersMultiMap());
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(response.setStatusCode(200)).thenReturn(response);
+        when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
+        when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+
+        controller("dial_test-deployment_123", GET).handle();
+
+        await(testContext);
+
+        verify(proxy.getResponsesApiClient()).send(eq("http://adapter/responses/upstream-id-123"), eq(HttpMethod.GET), any(Upstream.class), any());
+        verify(proxy.getBackgroundJobService(), never()).isJobActive(anyString());
+        verify(context, never()).respond(any(Throwable.class), anyString());
+    }
+
+    @Test
     public void testGetForwardsToUpstreamWithInterfaces(Vertx vertx, VertxTestContext testContext) throws Throwable {
         ResponseMapping mapping = ResponseMapping.builder()
                 .upstreamResponseId("upstream-id-123")
