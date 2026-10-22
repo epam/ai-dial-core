@@ -80,9 +80,67 @@ public class ComplexResourceMetadataController extends AccessControlBaseControll
     )
     @ApiOperation(
             method = "GET",
+            path = "/v2/metadata/projects/{bucket}/{path}",
+            operationId = "listProjectMetadata",
+            tags = {"Projects"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
+                            description = "The grouping folder path within the bucket; empty lists the bucket root."),
+                    @ApiParameter(name = "token", in = ParameterIn.QUERY,
+                            description = "Continuation token from a previous page; omit for the first page."),
+                    @ApiParameter(name = "limit", in = ParameterIn.QUERY, schema = Integer.class,
+                            description = "Maximum number of items per page (0-1000, default 100)."),
+                    @ApiParameter(name = "recursive", in = ParameterIn.QUERY, schema = Boolean.class,
+                            description = "If true, lists the whole subtree; otherwise only immediate children.")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "The complex resources and grouping folders at this level",
+                            body = @ApiSchema(oneOf = {ResourceFolderMetadata.class, ComplexResourceItemMetadata.class})),
+                    @ApiResponse(code = 400, description = "Bad request - limit out of range"),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404, description = "Grouping folder not found"),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
+    @ApiOperation(
+            method = "GET",
             path = "/v2/metadata/skills/{bucket}/{path}/files/{filePath}",
             operationId = "listSkillFileMetadata",
             tags = {"Skills"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
+                            description = "The resource path within the bucket."),
+                    @ApiParameter(name = "filePath", in = ParameterIn.PATH, required = true,
+                            description = "The relative path of a subfolder inside the resource to scope the listing."),
+                    @ApiParameter(name = "token", in = ParameterIn.QUERY,
+                            description = "Continuation token from a previous page; omit for the first page."),
+                    @ApiParameter(name = "limit", in = ParameterIn.QUERY, schema = Integer.class,
+                            description = "Maximum number of items per page (0-1000, default 100)."),
+                    @ApiParameter(name = "recursive", in = ParameterIn.QUERY, schema = Boolean.class,
+                            description = "If true, lists all files of the current version; otherwise only immediate entries.")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "The files of the resource's current version",
+                            body = @ApiSchema(implementation = MetadataBase.class)),
+                    @ApiResponse(code = 400, description = "Bad request - limit out of range"),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404, description = "Resource not found"),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
+    @ApiOperation(
+            method = "GET",
+            path = "/v2/metadata/projects/{bucket}/{path}/files/{filePath}",
+            operationId = "listProjectFileMetadata",
+            tags = {"Projects"},
             parameters = {
                     @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
                     @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
