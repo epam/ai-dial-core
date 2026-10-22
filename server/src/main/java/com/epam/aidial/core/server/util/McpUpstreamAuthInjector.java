@@ -74,10 +74,14 @@ public class McpUpstreamAuthInjector {
     }
 
     private String assignPerRequestKey(ProxyContext context) {
-        ApiKeyData keyData = new ApiKeyData();
-        context.setProxyApiKeyData(keyData);
-        ApiKeyData.initFromContext(keyData, context);
-        apiKeyStore.assignPerRequestApiKey(keyData);
+        ApiKeyData keyData = context.getProxyApiKeyData();
+        if (keyData == null) {
+            keyData = ApiKeyData.createFromContext(context);
+            context.setProxyApiKeyData(keyData);
+        }
+        if (keyData.getPerRequestKey() == null) {
+            apiKeyStore.assignPerRequestApiKey(keyData);
+        }
         return keyData.getPerRequestKey();
     }
 }

@@ -1,0 +1,19 @@
+<config>
+    <appender name="console" factory="com.epam.deltix.gflog.core.appender.ConsoleAppenderFactory"/>
+
+    <appender name="analytics-file" factory="com.epam.deltix.gflog.core.appender.FileAppenderFactory"
+              file="${analyticsLogFile}" append="false">
+        <layout template="%m%n"/>
+    </appender>
+
+    <logger level="INFO">
+        <appender-ref ref="console"/>
+    </logger>
+
+    <logger level="INFO" name="aidial.log">
+        <appender-ref ref="console"/>
+        <appender-ref ref="analytics-file"/>
+    </logger>
+
+    <service/>
+</config>

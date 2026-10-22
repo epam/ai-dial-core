@@ -21,6 +21,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
@@ -119,6 +120,83 @@ class McpUpstreamAuthInjectorTest {
         Map<String, String> headers = collect(toolSet);
 
         assertFalse(headers.containsKey(Proxy.HEADER_API_KEY));
+    }
+
+    // --- Per-request key / proxy API key data ---
+
+    @Test
+    void toolSet_forwardPerRequestKey_createsProxyApiKeyDataWhenAbsent() {
+        ToolSet toolSet = new ToolSet();
+        toolSet.setForwardPerRequestKey(true);
+        when(authSettingsResolver.resolve(toolSet, context)).thenReturn(mock(ResourceAuthSettings.class));
+        when(authorizationHeaderProvider.createAuthorizationHeader(any(), any(), any())).thenReturn(null);
+        mockPerRequestKeyAssignment("per-request-key-001");
+
+        collect(toolSet);
+
+        verify(context).setProxyApiKeyData(any(ApiKeyData.class));
+    }
+
+    @Test
+    void toolSet_forwardPerRequestKey_reusesExistingProxyApiKeyData() {
+        ToolSet toolSet = new ToolSet();
+        toolSet.setForwardPerRequestKey(true);
+        when(authSettingsResolver.resolve(toolSet, context)).thenReturn(mock(ResourceAuthSettings.class));
+        when(authorizationHeaderProvider.createAuthorizationHeader(any(), any(), any())).thenReturn(null);
+        mockPerRequestKeyAssignment("per-request-key-001");
+        ApiKeyData existing = new ApiKeyData();
+        existing.setExecutionPath(List.of("my-toolset"));
+        when(context.getProxyApiKeyData()).thenReturn(existing);
+
+        Map<String, String> headers = collect(toolSet);
+
+        assertEquals("per-request-key-001", headers.get(Proxy.HEADER_API_KEY));
+        assertEquals("per-request-key-001", existing.getPerRequestKey());
+        assertEquals(List.of("my-toolset"), existing.getExecutionPath());
+        verify(context, never()).setProxyApiKeyData(any());
+    }
+
+    @Test
+    void toolSet_forwardPerRequestKey_doesNotMintSecondKeyWhenAlreadyAssigned() {
+        ToolSet toolSet = new ToolSet();
+        toolSet.setForwardPerRequestKey(true);
+        when(authSettingsResolver.resolve(toolSet, context)).thenReturn(mock(ResourceAuthSettings.class));
+        when(authorizationHeaderProvider.createAuthorizationHeader(any(), any(), any())).thenReturn(null);
+        ApiKeyData existing = new ApiKeyData();
+        existing.setPerRequestKey("already-assigned");
+        when(context.getProxyApiKeyData()).thenReturn(existing);
+
+        Map<String, String> headers = collect(toolSet);
+
+        assertEquals("already-assigned", headers.get(Proxy.HEADER_API_KEY));
+        verify(apiKeyStore, never()).assignPerRequestApiKey(any());
+    }
+
+    @Test
+    void application_forwardPerRequestKey_reusesExistingProxyApiKeyData() {
+        Application app = appWithMcp(true, Application.McpConfigDelivery.META);
+        app.setName("my-app");
+        mockPerRequestKeyAssignment("per-request-key-app");
+        ApiKeyData existing = new ApiKeyData();
+        existing.setExecutionPath(List.of("my-app"));
+        when(context.getProxyApiKeyData()).thenReturn(existing);
+
+        Map<String, String> headers = collect(app);
+
+        assertEquals("per-request-key-app", headers.get(Proxy.HEADER_API_KEY));
+        assertEquals(List.of("my-app"), existing.getExecutionPath());
+        verify(context, never()).setProxyApiKeyData(any());
+    }
+
+    @Test
+    void application_noForwardPerRequestKey_leavesProxyApiKeyDataUntouched() {
+        Application app = appWithMcp(false, Application.McpConfigDelivery.META);
+        app.setName("my-app");
+
+        collect(app);
+
+        verify(context, never()).setProxyApiKeyData(any());
+        verify(apiKeyStore, never()).assignPerRequestApiKey(any());
     }
 
     // --- Application ---

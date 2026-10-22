@@ -1,0 +1,44 @@
+{
+  "toolsets": {
+    "tool-no-forward": {
+      "transport": "http",
+      "endpoint": "http://localhost:9876",
+      "allowed_tools": [],
+      "description": "Toolset that does not forward a per-request key",
+      "forwardPerRequestKey": false
+    },
+    "tool-forward": {
+      "transport": "http",
+      "endpoint": "http://localhost:9876",
+      "allowed_tools": [],
+      "description": "Toolset that forwards a per-request key",
+      "forwardPerRequestKey": true
+    }
+  },
+  "applications": {
+    "app-no-forward": {
+      "endpoint": "http://localhost:9876",
+      "displayName": "MCP App without per-request key",
+      "description": "Application exposing MCP tools, does not forward a per-request key",
+      "mcp": {
+        "endpoint": "http://localhost:9876",
+        "forwardPerRequestKey": false
+      }
+    },
+    "app-forward": {
+      "endpoint": "http://localhost:9876",
+      "displayName": "MCP App with per-request key",
+      "description": "Application exposing MCP tools, forwards a per-request key",
+      "mcp": {
+        "endpoint": "http://localhost:9876",
+        "forwardPerRequestKey": true
+      }
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "default"
+    }
+  }
+}

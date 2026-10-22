@@ -1,8 +1,20 @@
 <config>
     <appender name="console" factory="com.epam.deltix.gflog.core.appender.ConsoleAppenderFactory"/>
 
+    <!-- lets tests read back the analytics entries written to the aidial.log logger, see McpAnalyticsLogApiTest.
+         The file is truncated when the test JVM starts, so it never carries entries from earlier runs. -->
+    <appender name="analytics-file" factory="com.epam.deltix.gflog.core.appender.FileAppenderFactory"
+              bufferCapacity="1m" file="build/test-analytics/aidial.log" append="false">
+        <layout template="%m%n"/>
+    </appender>
+
     <logger level="INFO">
         <appender-ref ref="console"/>
+    </logger>
+
+    <logger level="INFO" name="aidial.log">
+        <appender-ref ref="console"/>
+        <appender-ref ref="analytics-file"/>
     </logger>
 
     <service/>

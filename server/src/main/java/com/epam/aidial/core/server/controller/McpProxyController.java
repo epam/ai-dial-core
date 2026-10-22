@@ -228,14 +228,6 @@ public class McpProxyController implements Controller {
     protected void injectProxyRequestHeaders(HttpClientRequest proxyRequest, MultiMap excludeHeaders) {
     }
 
-    protected String assignPerRequestKey() {
-        ApiKeyData proxyApiKeyData = new ApiKeyData();
-        context.setProxyApiKeyData(proxyApiKeyData);
-        ApiKeyData.initFromContext(proxyApiKeyData, context);
-        apiKeyStore.assignPerRequestApiKey(proxyApiKeyData);
-        return proxyApiKeyData.getPerRequestKey();
-    }
-
     /**
      * Called when proxy received the response headers from the origin.
      */
@@ -443,12 +435,20 @@ public class McpProxyController implements Controller {
             }
             context.setUpstreamRoute(upstreamRoute);
             context.setDeployment(deployment);
+            initProxyApiKeyData();
             context.setTraceOperation("Send request to %s deployment".formatted(deployment.getName()));
             context.getRequest().body()
                     .onFailure(this::handleRequestBodyError)
                     .onSuccess(this::handleRequestBody);
             return null;
         });
+    }
+
+    /**
+     * Records the execution path for the analytics log even when no per-request key is forwarded to the upstream.
+     */
+    private void initProxyApiKeyData() {
+        context.setProxyApiKeyData(ApiKeyData.createFromContext(context));
     }
 
     protected String getUpstreamEndpoint(Deployment deployment) {

@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.vertx.core.MultiMap;
 import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -27,6 +28,7 @@ import java.util.Map;
  * </p>
  */
 @Data
+@Slf4j
 public class ApiKeyData {
     private static final List<String> HTTP_HEADERS_TO_STORE = List.of(
             Proxy.HEADER_JOB_TITLE,
@@ -76,6 +78,12 @@ public class ApiKeyData {
     public ApiKeyData() {
     }
 
+    public static ApiKeyData createFromContext(ProxyContext context) {
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        initFromContext(proxyApiKeyData, context);
+        return proxyApiKeyData;
+    }
+
     public static void initFromContext(ApiKeyData proxyApiKeyData, ProxyContext context) {
         ApiKeyData apiKeyData = context.getApiKeyData();
         List<String> currentPath;
@@ -90,7 +98,11 @@ public class ApiKeyData {
             proxyApiKeyData.setOriginalKey(apiKeyData.getOriginalKey());
             proxyApiKeyData.setExtractedClaims(apiKeyData.getExtractedClaims());
             proxyApiKeyData.setTraceId(apiKeyData.getTraceId());
-            currentPath = new ArrayList<>(context.getApiKeyData().getExecutionPath());
+            List<String> callerPath = apiKeyData.getExecutionPath();
+            if (callerPath == null) {
+                log.warn("Per request key has no execution path, the path of the request starts from the current deployment");
+            }
+            currentPath = callerPath == null ? new ArrayList<>() : new ArrayList<>(callerPath);
         }
         String receiver = null;
         if (context.getDeployment() != null) {
