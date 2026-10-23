@@ -56,6 +56,7 @@ public class OrgUnitSkillApiTest extends ResourceBaseTest {
     void testSkillsCantTakeUnitFolders() {
         Response created = uploadSkill("public/Acme/Risk");
         assertEquals(409, created.status(), created.body());
+        assertEquals(409, uploadSkill("public/Acme/risk").status(), "unit names compare ignoring case");
         assertEquals(404, send(HttpMethod.GET, "/v2/metadata/skills/public/Acme/", null, null, "authorization", "admin").status(),
                 "a refused skill leaves no grouping folder behind");
         assertEquals(200, uploadSkill("public/Acme/acme-skill").status());
