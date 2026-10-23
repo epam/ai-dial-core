@@ -492,9 +492,11 @@ public class CostRateLimitTest {
         }
     }
 
+    private static final long MID_DAY_MILLIS = java.time.Instant.parse("2026-01-14T12:00:00Z").toEpochMilli();
+
     @Test
     public void check_minuteOnly_breachIsMinuteCost() {
-        long now = System.currentTimeMillis();
+        long now = MID_DAY_MILLIS;
         RateLimitSchedule schedule = new RateLimitSchedule();
         CostRateLimit rateLimit = new CostRateLimit();
         rateLimit.add(now, schedule, new BigDecimal("1"));
@@ -510,7 +512,7 @@ public class CostRateLimitTest {
 
     @Test
     public void check_dayAndMinute_breachIsDay() {
-        long now = System.currentTimeMillis();
+        long now = MID_DAY_MILLIS;
         RateLimitSchedule schedule = new RateLimitSchedule();
         CostRateLimit rateLimit = new CostRateLimit();
         rateLimit.add(now, schedule, new BigDecimal("1"));

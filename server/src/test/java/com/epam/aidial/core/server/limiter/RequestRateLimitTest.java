@@ -9,11 +9,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class RequestRateLimitTest {
 
+    private static final long MID_DAY_MILLIS = java.time.Instant.parse("2026-01-14T12:00:00Z").toEpochMilli();
+
     private final RateLimitSchedule schedule = new RateLimitSchedule();
 
     @Test
     public void check_hourOnly_breachIsHourRequests() {
-        long now = System.currentTimeMillis();
+        long now = MID_DAY_MILLIS;
         RequestRateLimit rateLimit = new RequestRateLimit();
         Limit limit = new Limit();
         limit.setRequestHour(1);
@@ -29,7 +31,7 @@ public class RequestRateLimitTest {
 
     @Test
     public void check_dayFires_breachIsDayRequests() {
-        long now = System.currentTimeMillis();
+        long now = MID_DAY_MILLIS;
         RequestRateLimit rateLimit = new RequestRateLimit();
         Limit limit = new Limit();
         limit.setRequestHour(1);
