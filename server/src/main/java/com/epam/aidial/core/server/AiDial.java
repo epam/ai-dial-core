@@ -45,6 +45,7 @@ import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.mcp.McpAuthorizationChallengeProvider;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.orgunit.OrgUnitApprovals;
+import com.epam.aidial.core.server.orgunit.OrgUnitGrants;
 import com.epam.aidial.core.server.orgunit.OrgUnitService;
 import com.epam.aidial.core.server.orgunit.OrgUnitSettings;
 import com.epam.aidial.core.server.security.AccessService;
@@ -322,7 +323,7 @@ public class AiDial {
                     lockService, applicationSchemaService, clock, resourceCredentialsService);
             OrgUnitApprovals orgUnitApprovals = new OrgUnitApprovals(orgUnitService, encryptionService, resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals,
-                    applicationSchemaService, settings("access"));
+                    new OrgUnitGrants(orgUnitService), applicationSchemaService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
             RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService, mergedConfigStore, blockingCallTracer);
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,

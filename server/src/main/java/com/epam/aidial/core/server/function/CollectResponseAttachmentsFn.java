@@ -88,7 +88,11 @@ public abstract class CollectResponseAttachmentsFn extends BaseResponseFunction 
         } else {
             // build context with API key data of the target deployment
             ProxyContext deploymentContext = context.copyWith(context.getProxyApiKeyData());
-            if (proxy.getAccessService().hasReadAccess(resource, deploymentContext)) {
+            AccessService accessService = proxy.getAccessService();
+            boolean readable = resource.isFolder()
+                    ? accessService.hasReadAccessToEverythingUnder(resource, deploymentContext)
+                    : accessService.hasReadAccess(resource, deploymentContext);
+            if (readable) {
                 permittedAttachments.put(resource.getUrl(), ResourceAccessType.READ_ONLY);
             }
         }

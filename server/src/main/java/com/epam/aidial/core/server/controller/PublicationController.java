@@ -435,8 +435,14 @@ public class PublicationController {
         return accessService.hasAdminAccess(context);
     }
 
+    /**
+     * Inside an org unit rules grant nothing, so whoever reads the folder there through roles may list its rules too:
+     * Chat loads them when a folder is picked to publish into.
+     */
     private void checkRuleAccess(ResourceDescriptor rule) {
-        if (!accessService.hasReadAccess(rule, context)) {
+        ResourceDescriptor folder = ResourceDescriptorFactory.fromPublicUrl(
+                ResourceTypes.FILE.urlSegment() + rule.getUrl().substring(ResourceTypes.RULES.urlSegment().length()));
+        if (!accessService.hasReadAccess(rule, context) && !accessService.hasReadAccess(folder, context)) {
             throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden resource: " + rule.getUrl());
         }
     }

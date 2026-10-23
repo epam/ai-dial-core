@@ -40,11 +40,12 @@ public class OrgUnitApprovals {
     }
 
     /**
-     * Approve or reject: the caller may read and write publications in every unit the request touches, the request
-     * changes no rules (an empty list would open the folder to everyone), and it isn't the caller's own.
+     * Approve or reject: the caller may read and write publications in every unit the request touches, and it isn't
+     * the caller's own. Rules a request still carries, as one filed before its folder became a unit does, are never
+     * stored inside a unit.
      */
     public boolean mayDecide(ProxyContext context, Publication publication) {
-        if (!isEnabled() || !isPerson(context) || publication.getRules() != null || isRequester(context, publication)) {
+        if (!isEnabled() || !isPerson(context) || isRequester(context, publication)) {
             return false;
         }
         Map<String, OrgUnit> units = orgUnits.getUnitList().units();
@@ -76,6 +77,13 @@ public class OrgUnitApprovals {
         Map<String, OrgUnit> units = orgUnits.getUnitList().units();
         String key = ownerOfFolder(units, targetFolder);
         return key != null && grants(context, orgUnits.roleAssignmentsOf(key, units.get(key)), OrgUnitRoles.READ);
+    }
+
+    /**
+     * Whether the folder lies in a unit, where roles decide who reads and read rules have no place.
+     */
+    public boolean isInsideUnit(@Nullable String targetFolder) {
+        return isEnabled() && ownerOfFolder(orgUnits.getUnitList().units(), targetFolder) != null;
     }
 
     public boolean approvesAnyUnit(ProxyContext context) {
