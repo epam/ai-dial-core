@@ -19651,7 +19651,7 @@ components:
           $ref: "#/components/schemas/UpstreamAuthType"
         headerName:
           type: string
-          description: Required for CUSTOM_HEADER, not allowed otherwise
+          description: "Required for CUSTOM_HEADER, not allowed otherwise"
     UpstreamAuthType:
       type: string
       enum:
