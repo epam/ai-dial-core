@@ -79,7 +79,7 @@ public class ChatCompletionsControllerTest {
         controller.handle();
 
         verify(context).respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
-        verify(context, never()).setRequestBody(any());
+        verify(context, never()).setRequestBodyWithTimestamp(any());
         verify(request, times(1)).body();
     }
 
