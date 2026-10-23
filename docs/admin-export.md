@@ -18,6 +18,10 @@ curl -X POST -H "Authorization: Bearer <admin token>" -o dial-export.zip https:/
 `<path>` is the blob path inside the storage bucket, for example `public/files/<bucket>/report.pdf`.
 `encryption_keys/` and `credentials/` are never exported.
 
+Entry names are blob paths, so they can contain characters that Windows does not allow in file names, such as `:` in
+`platform/models/openai.gpt-oss-120b-1:0`. The archive is valid, but Windows Explorer cannot extract such entries
+(error `0x80070057`). Extract it on Linux, or read it with a ZIP library, which does not create files.
+
 `creationDate` and `lastModified` are for reference only. Blob storage assigns them when a blob is written, so they
 cannot be restored.
 
