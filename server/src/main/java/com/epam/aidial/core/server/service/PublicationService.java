@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.data.Publication;
 import com.epam.aidial.core.server.data.RejectPublicationRequest;
 import com.epam.aidial.core.server.data.ResourceUrl;
 import com.epam.aidial.core.server.data.Rule;
+import com.epam.aidial.core.server.orgunit.OrgUnitApprovals;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
@@ -20,6 +21,8 @@ import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.data.UserMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -69,6 +72,7 @@ public class PublicationService {
     private final ToolSetService toolSetService;
     private final ResourceOperationService resourceOperationService;
     private final ComplexResourceService complexResourceService;
+    private final OrgUnitApprovals orgUnitApprovals;
     private final Supplier<String> ids;
     private final LongSupplier clock;
 
@@ -145,6 +149,35 @@ public class PublicationService {
             throw new ResourceNotFoundException("No publication: " + resource.getUrl());
         }
 
+        return publication;
+    }
+
+    /**
+     * The pending requests whose target folder lies in a unit the caller approves, for a caller who approves at least one.
+     */
+    public Collection<Publication> listPublicationsToApprove(ProxyContext context, ResourceDescriptor resource) {
+        if (!orgUnitApprovals.approvesAnyUnit(context)) {
+            throw forbidden(resource);
+        }
+        return listPublications(resource).stream()
+                .filter(publication -> orgUnitApprovals.approvesUnitOf(context, publication.getTargetFolder()))
+                .toList();
+    }
+
+    /**
+     * Another user's request, for a unit approver who may review it. A missing request answers like a refused one.
+     */
+    public Publication getPublicationToReview(ProxyContext context, ResourceDescriptor resource) {
+        requireAdminOrApprover(context, resource);
+        Publication publication;
+        try {
+            publication = getPublication(resource);
+        } catch (ResourceNotFoundException e) {
+            throw forbidden(resource);
+        }
+        if (!orgUnitApprovals.mayReview(context, publication)) {
+            throw forbidden(resource);
+        }
         return publication;
     }
 
@@ -366,7 +399,14 @@ public class PublicationService {
 
     @Nullable
     public Publication approvePublication(ProxyContext context, ResourceDescriptor resource) {
-        Publication publication = getPublication(resource);
+        boolean admin = requireAdminOrApprover(context, resource);
+        Publication publication;
+        try {
+            publication = getPublication(resource);
+        } catch (ResourceNotFoundException e) {
+            throw admin ? e : forbidden(resource);
+        }
+        requireDecider(context, resource, publication, admin);
         if (publication.getStatus() != Publication.Status.PENDING) {
             throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
         }
@@ -416,6 +456,7 @@ public class PublicationService {
 
     @Nullable
     public Publication rejectPublication(ProxyContext context, ResourceDescriptor resource, RejectPublicationRequest request) {
+        boolean admin = requireAdminOrApprover(context, resource);
         validatePublicationResourceDescriptor(resource);
 
         MutableObject<Publication> reference = new MutableObject<>();
@@ -424,8 +465,9 @@ public class PublicationService {
             Publication publication = publications.get(resource.getUrl());
 
             if (publication == null) {
-                throw new ResourceNotFoundException("No publication: " + resource.getUrl());
+                throw admin ? new ResourceNotFoundException("No publication: " + resource.getUrl()) : forbidden(resource);
             }
+            requireDecider(context, resource, publication, admin);
 
             if (publication.getStatus() != Publication.Status.PENDING) {
                 throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
@@ -455,6 +497,35 @@ public class PublicationService {
         notificationService.createNotification(resource.getBucketName(), resource.getBucketLocation(), notification);
 
         return publication;
+    }
+
+    /**
+     * Refuses, as before org units, anyone who is neither a DIAL admin nor an approver of some unit, before anything
+     * about the request is read.
+     *
+     * @return whether the caller is a DIAL admin
+     */
+    public boolean requireAdminOrApprover(ProxyContext context, ResourceDescriptor resource) {
+        boolean admin = accessService.hasAdminAccess(context);
+        if (!admin && !orgUnitApprovals.approvesAnyUnit(context)) {
+            throw forbidden(resource);
+        }
+        return admin;
+    }
+
+    /**
+     * DIAL admins decide every request; anyone else only what {@link OrgUnitApprovals#mayDecide} allows, and is refused
+     * the same way whether the request is outside their units, finalized or missing. Runs on the request being decided,
+     * so a change made after the check fails approve's comparison instead of widening it.
+     */
+    private void requireDecider(ProxyContext context, ResourceDescriptor resource, Publication publication, boolean admin) {
+        if (!admin && !orgUnitApprovals.mayDecide(context, publication)) {
+            throw forbidden(resource);
+        }
+    }
+
+    private static HttpException forbidden(ResourceDescriptor resource) {
+        return new HttpException(HttpStatus.FORBIDDEN, "Forbidden resource: " + resource.getUrl());
     }
 
     private void prepareAndValidatePublicationRequest(ProxyContext context, Publication publication,
