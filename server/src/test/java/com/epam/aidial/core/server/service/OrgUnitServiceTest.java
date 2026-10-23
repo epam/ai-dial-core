@@ -392,7 +392,6 @@ class OrgUnitServiceTest {
         OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         assertEquals(List.of("public/Acme"), service.delete(List.of("public", "Acme"), false));
-
     }
 
     @Test
