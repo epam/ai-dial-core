@@ -161,6 +161,62 @@ class MessagesSpendLimitApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void testTranslatedModelGetsSpendHeaders() {
+        seedSpend("spend", "8.2");
+        try (TestWebServer server = new TestWebServer(4848)) {
+            // the translator is the upstream of the outer request; the inner chat completions call is its business
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> TestWebServer.createResponse(200, NON_STREAM_RESPONSE,
+                    "Content-Type", "application/json",
+                    "anthropic-ratelimit-tokens-remaining", "5"));
+
+            Response response = postMessages(requestBody("claude-translated", false), "proxyKey1");
+
+            assertEquals(200, response.status(), response.body());
+            assertWarningHeaders(response, expectedDailyReset());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testTranslatedModelOverCapRejectsBeforeTranslator() {
+        seedSpend("spend", "10");
+        AtomicInteger translatorCalls = new AtomicInteger();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> {
+                translatorCalls.incrementAndGet();
+                return TestWebServer.createResponse(200, NON_STREAM_RESPONSE, "Content-Type", "application/json");
+            });
+
+            Response response = postMessages(requestBody("claude-translated", false), "proxyKey1");
+
+            assertEquals(429, response.status(), response.body());
+            assertEquals(0, translatorCalls.get());
+            assertTrue(response.body().contains("\"type\":\"billing_error\""), response.body());
+            assertEquals("rejected", header(response, UNIFIED + "status"));
+            assertEquals("daily", header(response, OVERAGE + "period"));
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testTranslatedModelIsNotCharged() throws InterruptedException {
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> TestWebServer.createResponse(200, NON_STREAM_RESPONSE,
+                    "Content-Type", "application/json"));
+
+            Response response = postMessages(requestBody("claude-translated", false), "proxyKey1");
+            assertEquals(200, response.status(), response.body());
+
+            Thread.sleep(1000); // a charge, if any, is written after the response
+            Response usage = send(HttpMethod.GET, USAGE_PATH, null, null, "api-key", "proxyKey1");
+            assertEquals(200, usage.status(), usage.body());
+            JsonNode body = ProxyUtil.convertToObject(usage.body(), JsonNode.class);
+            assertEquals(0, body.get("extra_usage").get("used_credits").asLong(), usage.body());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     void testUncappedUserGetsNoHeaders() {
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, MESSAGES_PATH, request -> TestWebServer.createResponse(200, NON_STREAM_RESPONSE,

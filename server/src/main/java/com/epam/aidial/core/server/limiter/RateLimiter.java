@@ -42,6 +42,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import javax.annotation.Nullable;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -154,6 +155,23 @@ public class RateLimiter {
         }
         return getUserStats(context, List.of(), true)
                 .map(stats -> SpendCaps.of(stats.getDayCostStats(), stats.getWeekCostStats(), stats.getMonthCostStats()));
+    }
+
+    /**
+     * The caller's spend caps as the pre-request check sees them, read without checking or charging anything -
+     * for a request whose limits are enforced by another one, such as the call a translator makes back to Core.
+     */
+    public Future<SpendCaps> readSpendCaps(ProxyContext context) {
+        if (resourceService == null) {
+            return Future.succeededFuture(SpendCaps.EMPTY);
+        }
+        try {
+            CostLimit costLimit = getCostLimitByUser(context);
+            RateLimitSchedule schedule = context.getConfig().getRateLimitSchedule();
+            return taskExecutor.submit(() -> buildSpendCaps(loadCostRateLimit(context), costLimit, System.currentTimeMillis(), schedule));
+        } catch (Throwable e) {
+            return Future.failedFuture(e);
+        }
     }
 
     public Future<LimitStats> getLimitStats(RoleBasedEntity roleBasedEntity, ProxyContext context) {
@@ -536,17 +554,24 @@ public class RateLimiter {
     }
 
     private RateLimitResult checkCostLimit(ProxyContext context, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
-        String costsPath = getPathToCosts();
-        ResourceDescriptor resourceDescription = getResourceDescription(context, costsPath);
-        String prevValue = resourceService.getResource(resourceDescription);
-        CostRateLimit rateLimit = ProxyUtil.convertToObject(prevValue, CostRateLimit.class);
+        CostRateLimit rateLimit = loadCostRateLimit(context);
+        SpendCaps spendCaps = buildSpendCaps(rateLimit, costLimit, timestamp, schedule);
+        RateLimitResult result = rateLimit == null ? RateLimitResult.SUCCESS : rateLimit.check(timestamp, schedule, costLimit);
+        return result.withSpendCaps(spendCaps);
+    }
+
+    @Nullable
+    private CostRateLimit loadCostRateLimit(ProxyContext context) {
+        ResourceDescriptor resourceDescription = getResourceDescription(context, getPathToCosts());
+        return ProxyUtil.convertToObject(resourceService.getResource(resourceDescription), CostRateLimit.class);
+    }
+
+    private SpendCaps buildSpendCaps(@Nullable CostRateLimit rateLimit, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
         LimitStats stats = create(DEFAULT_LIMIT, costLimit, timestamp, schedule);
         if (rateLimit != null) {
             rateLimit.update(timestamp, schedule, stats);
         }
-        SpendCaps spendCaps = SpendCaps.of(stats.getDayCostStats(), stats.getWeekCostStats(), stats.getMonthCostStats());
-        RateLimitResult result = rateLimit == null ? RateLimitResult.SUCCESS : rateLimit.check(timestamp, schedule, costLimit);
-        return result.withSpendCaps(spendCaps);
+        return SpendCaps.of(stats.getDayCostStats(), stats.getWeekCostStats(), stats.getMonthCostStats());
     }
 
     private RateLimitResult checkTokenLimit(

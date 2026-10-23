@@ -11,6 +11,16 @@
     "gpt-spend": {
       "type": "chat",
       "endpoint": "http://localhost:4848/openai/deployments/gpt-spend/chat/completions"
+    },
+    "claude-translated": {
+      "type": "chat",
+      "interfaces": {
+        "openaiChatCompletions": {"base_url": "http://localhost:4848"},
+        "anthropicMessages": {
+          "mode": "translator",
+          "translator": {"out": "openaiChatCompletions", "baseUrl": "http://localhost:4848"}
+        }
+      }
     }
   },
   "keys": {
@@ -22,7 +32,8 @@
       "limits": {
         "claude-spend": {},
         "claude-burst": {"minute": "10"},
-        "gpt-spend": {}
+        "gpt-spend": {},
+        "claude-translated": {}
       },
       "costLimit": {"day": "10", "week": "100", "month": "1000"}
     },

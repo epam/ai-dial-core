@@ -1276,6 +1276,30 @@ public class RateLimiterTest {
     }
 
     @Test
+    public void testReadSpendCaps_MatchesCheckPathWithoutWriting() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "8.2");
+
+        SpendCap fromLimit = rateLimiter.limit(proxyContext, model("model")).result().spendCaps().reported();
+        SpendCap fromRead = rateLimiter.readSpendCaps(proxyContext).result().reported();
+
+        assertEquals(fromLimit.period(), fromRead.period());
+        assertEquals(0, fromLimit.used().compareTo(fromRead.used()));
+        assertEquals(0, fromLimit.total().compareTo(fromRead.total()));
+        assertEquals(fromLimit.resetsAtMillis(), fromRead.resetsAtMillis());
+        // reading leaves the spend as it was
+        assertEquals(0, new BigDecimal("8.2").compareTo(rateLimiter.readSpendCaps(proxyContext).result().reported().used()));
+    }
+
+    @Test
+    public void testReadSpendCaps_NoRecordReportsZeroSpend() {
+        SpendCaps spendCaps = rateLimiter.readSpendCaps(spendCapContext("10")).result();
+
+        assertEquals(CalendarPeriod.DAY, spendCaps.reported().period());
+        assertEquals(0, spendCaps.reported().used().signum());
+    }
+
+    @Test
     public void testGetSpendCaps_NoCap_IsEmpty() {
         Config config = new Config();
         Role role = new Role();
