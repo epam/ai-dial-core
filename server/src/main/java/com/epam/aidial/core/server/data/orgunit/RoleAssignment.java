@@ -1,4 +1,6 @@
-package com.epam.aidial.core.server.orgunit;
+package com.epam.aidial.core.server.data.orgunit;
+
+import com.epam.aidial.core.server.service.OrgUnitRoles;
 
 /**
  * A role given to a subject at one unit; what it grants there comes from the configured roles ({@link OrgUnitRoles}).
