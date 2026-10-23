@@ -19643,12 +19643,21 @@ components:
         interfaces:
           $ref: "#/components/schemas/MapStringUpstreamInterface"
         authType:
+          $ref: "#/components/schemas/UpstreamAuthConfig"
+    UpstreamAuthConfig:
+      type: object
+      properties:
+        type:
           $ref: "#/components/schemas/UpstreamAuthType"
+        headerName:
+          type: string
+          description: "Required for CUSTOM_HEADER, not allowed otherwise"
     UpstreamAuthType:
       type: string
       enum:
       - API_KEY
       - BEARER
+      - CUSTOM_HEADER
     UpstreamInterface:
       type: object
       properties:

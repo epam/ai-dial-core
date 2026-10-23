@@ -431,9 +431,10 @@ public final class ConfigPostProcessor {
         }
         for (int i = 0; i < upstreams.size(); i++) {
             Upstream upstream = upstreams.get(i);
-            if (upstream.getAuthType() == UpstreamAuthType.BEARER && upstream.getKey() == null) {
+            UpstreamAuthType authType = upstream.getAuthType().type();
+            if (authType != UpstreamAuthType.API_KEY && upstream.getKey() == null) {
                 warnings.add(new ValidationWarning("upstreams[" + i + "].authType",
-                        messageWithEntityPrefix(entityLabel, entityName, "authType 'BEARER' requires a key")));
+                        messageWithEntityPrefix(entityLabel, entityName, "authType '" + authType + "' requires a key")));
             }
         }
     }
