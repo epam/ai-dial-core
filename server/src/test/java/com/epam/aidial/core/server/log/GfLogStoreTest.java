@@ -662,6 +662,57 @@ public class GfLogStoreTest {
         assertEquals("na\"me\\\n", log.get("route_name").asText());
     }
 
+    @Test
+    public void testSessionIsWrittenRightAfterChat() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getConversationId()).thenReturn("conversation-1");
+        when(context.getSessionId()).thenReturn("se\"ss\\ion\n");
+
+        JsonNode log = logOf(context);
+
+        assertEquals("conversation-1", log.get("chat").get("id").asText());
+        assertEquals("se\"ss\\ion\n", log.get("session").get("id").asText());
+        List<String> fields = new ArrayList<>();
+        log.fieldNames().forEachRemaining(fields::add);
+        assertEquals(fields.indexOf("chat") + 1, fields.indexOf("session"));
+    }
+
+    @Test
+    public void testSessionIsOmittedWithoutSessionId() {
+        JsonNode log = logOf(mock(AnalyticsLogContext.class));
+
+        assertFalse(log.has("session"));
+    }
+
+    @Test
+    public void testSessionIsWrittenForSecuredApiKey() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.isSecuredApiKey()).thenReturn(true);
+        when(context.getSessionId()).thenReturn("session-1");
+
+        JsonNode log = logOf(context);
+
+        assertEquals("session-1", log.get("session").get("id").asText());
+        assertFalse(log.get("request").has("body"));
+    }
+
+    @Test
+    public void testSessionFromBackgroundJobRecord() {
+        BackgroundJobRecord record = BackgroundJobRecord.builder()
+                .sessionId("session-1")
+                .requestBody("{}")
+                .build();
+
+        assertEquals("session-1", AnalyticsLogContext.from(record, null, null).getSessionId());
+    }
+
+    @Test
+    public void testBackgroundJobRecordStoredWithoutSessionLoadsWithNoSession() {
+        BackgroundJobRecord record = ProxyUtil.convertToObject("{\"requestBody\":\"{}\"}", BackgroundJobRecord.class);
+
+        assertNull(record.sessionId());
+    }
+
     @SneakyThrows
     private static JsonNode logOf(AnalyticsLogContext context) {
         StringBuilder buffer = new StringBuilder();
