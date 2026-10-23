@@ -195,7 +195,8 @@ public class ResourceDescriptorFactory {
     }
 
     public static boolean isValidFilename(String value) {
-        if (value == null || value.isEmpty()) {
+        // a dot segment names another folder to storage than to anything that reads the path, an org unit's owner included
+        if (value == null || value.isEmpty() || value.equals(".") || value.equals("..")) {
             return false;
         }
         for (int i = 0; i < value.length(); i++) {

@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.orgunit.OrgUnitApprovals;
+import com.epam.aidial.core.server.orgunit.OrgUnitGrants;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PublicationService;
@@ -32,12 +33,14 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 
 
@@ -48,6 +51,7 @@ public class AccessService {
     private final ShareService shareService;
     private final RuleService ruleService;
     private final OrgUnitApprovals orgUnitApprovals;
+    private final OrgUnitGrants orgUnitGrants;
     private final List<Rule> adminRules;
     private final List<Rule> globalReaderRules;
     private final boolean adminRulesConfigured;
@@ -59,7 +63,7 @@ public class AccessService {
 
     private static final Set<ResourceType> DEPLOYMENT_TYPES = Set.of(ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET);
 
-    private final List<PermissionRule> permissionRules = List.of(
+    private final List<PermissionRule> permissionRulesBesidesUnitRoles = List.of(
             AccessService::getOwnResourcesAccess,
             this::getAdminAccess,
             this::getGlobalReaderAccess,
@@ -72,16 +76,22 @@ public class AccessService {
             AccessService::getAppSelfAccess,
             this::getOwnResourcesAccessForChainedSchemaRichApplication);
 
+    // last, so a check the rules or anything else already satisfies never reads the unit tree
+    private final List<PermissionRule> permissionRules = Stream.concat(permissionRulesBesidesUnitRoles.stream(),
+            Stream.<PermissionRule>of(this::getUnitRoleAccess)).toList();
+
     public AccessService(EncryptionService encryptionService,
                          ShareService shareService,
                          RuleService ruleService,
                          OrgUnitApprovals orgUnitApprovals,
+                         OrgUnitGrants orgUnitGrants,
                          ApplicationSchemaService applicationSchemaService,
                          JsonObject settings) {
         this.encryptionService = encryptionService;
         this.shareService = shareService;
         this.ruleService = ruleService;
         this.orgUnitApprovals = orgUnitApprovals;
+        this.orgUnitGrants = orgUnitGrants;
         this.applicationSchemaService = applicationSchemaService;
         this.adminRules = adminRules(settings);
         this.globalReaderRules = globalReaderRules(settings);
@@ -115,16 +125,65 @@ public class AccessService {
     }
 
     /**
-     * Checks if USER has public access to the provided resources.
-     * This method also checks admin privileges.
+     * Read access from anything but roles in an org unit: what sharing a whole folder with an application needs, as
+     * that shares everything below it, child units included.
+     */
+    public boolean hasReadAccessBesidesUnitRoles(ResourceDescriptor resource, ProxyContext context) {
+        Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = lookupPermissions(Set.of(resource), context,
+                Set.of(ResourceAccessType.READ), permissionRulesBesidesUnitRoles);
+        return permissions.get(resource).contains(ResourceAccessType.READ);
+    }
+
+    /**
+     * Read on a folder and everything below it, as attaching a folder hands it all to an application. A folder the
+     * caller already received attached was checked when it was attached; otherwise a public folder needs its part under
+     * no unit read through the rules and its part in units read through roles at each of them.
+     */
+    public boolean hasReadAccessToEverythingUnder(ResourceDescriptor folder, ProxyContext context) {
+        if (!orgUnitGrants.isEnabled() || !folder.isPublic() || hasAdminAccess(context) || hasGlobalReaderAccess(context)) {
+            return hasReadAccessBesidesUnitRoles(folder, context);
+        }
+
+        Set<ResourceDescriptor> resources = Set.of(folder);
+        if (readable(getAutoSharedAccess(resources, context), folder) || readable(getPerRequestPermissions(resources, context), folder)) {
+            return true;
+        }
+        boolean folderReadable = orgUnitGrants.outsideUnits(resources).isEmpty() || !getPublicAccess(resources, context).isEmpty();
+        return folderReadable && orgUnitGrants.readsEveryUnitUnder(context, folder);
+    }
+
+    private static boolean readable(Map<ResourceDescriptor, Set<ResourceAccessType>> access, ResourceDescriptor resource) {
+        return access.getOrDefault(resource, Set.of()).contains(ResourceAccessType.READ);
+    }
+
+    /**
+     * Write access from anything but roles in an org unit: what operating a code app needs.
+     */
+    public boolean hasWriteAccessBesidesUnitRoles(ResourceDescriptor resource, ProxyContext context) {
+        Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = lookupPermissions(Set.of(resource), context,
+                Set.of(ResourceAccessType.WRITE), permissionRulesBesidesUnitRoles);
+        return permissions.get(resource).contains(ResourceAccessType.WRITE);
+    }
+
+    /**
+     * Checks if USER has public access to the provided resources: through the read rules outside every org unit, and
+     * through roles inside one. This method also checks admin privileges.
      *
      * @param resources - public resources
      * @param context - context
      * @return true - if all provided resources are public and user has permissions to all of them, otherwise - false
      */
     public boolean hasPublicAccess(Set<ResourceDescriptor> resources, ProxyContext context) {
-        return resources.stream().allMatch(ResourceDescriptor::isPublic) && hasAdminAccess(context)
-                || resources.equals(ruleService.getAllowedPublicResources(context, resources));
+        if (resources.stream().allMatch(ResourceDescriptor::isPublic) && hasAdminAccess(context)) {
+            return true;
+        }
+        Set<ResourceDescriptor> allowed = new HashSet<>(getPublicAccess(resources, context).keySet());
+        getUnitRoleAccess(resources, context).forEach((resource, access) -> {
+            if (access.contains(ResourceAccessType.READ)) {
+                allowed.add(resource);
+            }
+        });
+        return allowed.containsAll(resources);
     }
 
     public boolean canCreateCodeApps(ProxyContext context) {
@@ -160,9 +219,14 @@ public class AccessService {
 
     private Map<ResourceDescriptor, Set<ResourceAccessType>> lookupPermissions(
             Set<ResourceDescriptor> resources, ProxyContext context, Set<ResourceAccessType> toLookup) {
+        return lookupPermissions(resources, context, toLookup, permissionRules);
+    }
+
+    private Map<ResourceDescriptor, Set<ResourceAccessType>> lookupPermissions(Set<ResourceDescriptor> resources,
+            ProxyContext context, Set<ResourceAccessType> toLookup, List<PermissionRule> rules) {
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         Set<ResourceDescriptor> remainingResources = new HashSet<>(resources);
-        for (PermissionRule permissionRule : permissionRules) {
+        for (PermissionRule permissionRule : rules) {
             Map<ResourceDescriptor, Set<ResourceAccessType>> rulePermissions =
                     permissionRule.apply(remainingResources, context);
 
@@ -212,15 +276,22 @@ public class AccessService {
     }
 
     /**
-     * Returns USER permissions to the provided public resources.
-     *
-     * @param resources - public resources
-     * @param context - context
-     * @return USER permissions
+     * What the caller's roles grant on the shared-space resources units own; admins already hold everything.
+     */
+    private Map<ResourceDescriptor, Set<ResourceAccessType>> getUnitRoleAccess(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
+        if (!orgUnitGrants.isEnabled() || hasAdminAccess(context)) {
+            return Map.of();
+        }
+        return orgUnitGrants.access(context, resources);
+    }
+
+    /**
+     * Read through the rules, which decide only what lies under no org unit.
      */
     private Map<ResourceDescriptor, Set<ResourceAccessType>> getPublicAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        return ruleService.getAllowedPublicResources(context, resources).stream()
+        return ruleService.getAllowedPublicResources(context, orgUnitGrants.outsideUnits(resources)).stream()
                 .collect(Collectors.toUnmodifiableMap(
                         Function.identity(),
                         resource -> ResourceAccessType.READ_ONLY));
@@ -417,6 +488,7 @@ public class AccessService {
 
     private Map<ResourceDescriptor, Set<ResourceAccessType>> getReviewAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
+
         // admins already hold every review copy, so asking the unit approvers would only cost storage reads
         boolean admin = hasAdminAccess(context);
         return resources.stream()
@@ -460,11 +532,43 @@ public class AccessService {
         }
     }
 
+    /**
+     * Leaves out of a shared-space listing what the caller may not see: the read rules decide items under no org unit,
+     * roles decide items a unit owns. The rules take the listed folder as allowed when they let the caller read it;
+     * otherwise every item is checked against the rules of its whole path. A unit's folder read through anything but
+     * roles, such as an attachment, lists in full, as that access covers everything below it.
+     */
     public void filterForbidden(ProxyContext context, ResourceDescriptor descriptor, MetadataBase metadata) {
-        if (descriptor.isPublic() && descriptor.isFolder()
+        if (descriptor.isPublic() && descriptor.isFolder() && metadata instanceof ResourceFolderMetadata folder
                 && !hasAdminAccess(context) && !hasGlobalReaderAccess(context)) {
-            ResourceFolderMetadata folder = (ResourceFolderMetadata) metadata;
-            ruleService.filterForbidden(context, descriptor, folder);
+            if (!orgUnitGrants.isEnabled() || folder.getItems() == null) {
+                ruleService.filterForbidden(context, descriptor, folder);
+                return;
+            }
+
+            List<? extends MetadataBase> items = folder.getItems();
+            Map<MetadataBase, ResourceDescriptor> resources = new IdentityHashMap<>();
+            for (MetadataBase item : items) {
+                resources.put(item, ResourceDescriptorFactory.fromPublicUrl(item.getUrl()));
+            }
+            if (orgUnitGrants.outsideUnits(Set.of(descriptor)).isEmpty() && hasReadAccessBesidesUnitRoles(descriptor, context)) {
+                return;
+            }
+            Set<ResourceDescriptor> all = Set.copyOf(resources.values());
+            Set<ResourceDescriptor> outside = orgUnitGrants.outsideUnits(all);
+            Set<ResourceDescriptor> allowed = new HashSet<>();
+            if (!outside.isEmpty()) {
+                if (outside.size() == all.size() && hasReadAccessBesidesUnitRoles(descriptor, context)) {
+                    ruleService.filterForbidden(context, descriptor, folder);
+                    folder.getItems().forEach(item -> allowed.add(resources.get(item)));
+                } else {
+                    allowed.addAll(ruleService.getAllowedPublicResources(context, outside));
+                }
+            }
+            Set<ResourceDescriptor> inside = new HashSet<>(all);
+            inside.removeAll(outside);
+            allowed.addAll(orgUnitGrants.visibleInListing(context, inside));
+            folder.setItems(items.stream().filter(item -> allowed.contains(resources.get(item))).toList());
         }
     }
 

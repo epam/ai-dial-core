@@ -101,7 +101,7 @@ public class OrgUnitController {
                     @ApiResponse(code = 400),
                     @ApiResponse(code = 403),
                     @ApiResponse(code = 404),
-                    @ApiResponse(code = 409, description = "The name is taken, the depth limit is reached, or no read rule on the folder or above it closes it"),
+                    @ApiResponse(code = 409, description = "The name is taken or the depth limit is reached"),
                     @ApiResponse(code = 500)
             },
             extensions = {
@@ -174,7 +174,7 @@ public class OrgUnitController {
                             description = "Also remove every unit below it")
             },
             responses = {
-                    @ApiResponse(code = 200, description = "The unit is removed, with its folder markers and, unless content landed in it meanwhile, the read rules of its subtree",
+                    @ApiResponse(code = 200, description = "The units are removed, with their assignments, markers and the read rules of their subtree",
                             body = @ApiSchema(implementation = DeleteOrgUnitResult.class)),
                     @ApiResponse(code = 400),
                     @ApiResponse(code = 403),

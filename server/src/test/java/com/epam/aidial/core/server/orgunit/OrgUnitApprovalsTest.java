@@ -12,13 +12,11 @@ import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
-import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -137,15 +135,16 @@ class OrgUnitApprovalsTest {
     }
 
     @Test
-    void testRulesAndOwnRequestsAreNotDecided() {
+    void testRequestsStillCarryingRulesAreDecidedButOwnAreNot() {
         OrgUnitApprovals approvals = approvals(true);
         ProxyContext bob = person("bob@acme.com");
 
-        assertFalse(approvals.mayDecide(bob, publication("public/Acme/", "files/public/Acme/a.txt").setRules(List.of())));
+        // filed before its folder became a unit: the rules are never stored inside it
+        assertTrue(approvals.mayDecide(bob, publication("public/Acme/", "files/public/Acme/a.txt").setRules(List.of())));
         Rule open = new Rule();
         open.setSource("roles");
         open.setFunction(Rule.Function.TRUE);
-        assertFalse(approvals.mayDecide(bob, publication("public/Acme/", "files/public/Acme/a.txt").setRules(List.of(open))));
+        assertTrue(approvals.mayDecide(bob, publication("public/Acme/", "files/public/Acme/a.txt").setRules(List.of(open))));
         assertTrue(approvals.mayReview(bob, publication("public/Acme/", "files/public/Acme/a.txt").setRules(List.of())));
         assertFalse(approvals.mayDecide(bob, publication("public/Acme/", "files/public/Acme/a.txt")
                 .setUrl("publications/enc-Users_bob@acme.com_/7")));

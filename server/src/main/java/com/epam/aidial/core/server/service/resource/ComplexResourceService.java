@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service.resource;
 import com.epam.aidial.core.server.data.folder.ComplexResourceRef;
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.ComplexResourceItemMetadata;
@@ -1095,6 +1096,9 @@ public class ComplexResourceService {
     private static ResourceDescriptor subFolder(ResourceDescriptor versionFolder, String subPath) {
         List<String> segments = Arrays.asList(StringUtils.strip(subPath, ResourceDescriptor.PATH_SEPARATOR)
                 .split(ResourceDescriptor.PATH_SEPARATOR));
+        if (!segments.stream().allMatch(ResourceDescriptorFactory::isValidFilename)) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Invalid path provided: " + subPath);
+        }
         List<String> parentFolders = new ArrayList<>(versionFolder.getParentFolders());
         parentFolders.add(versionFolder.getName());
         parentFolders.addAll(segments.subList(0, segments.size() - 1));
