@@ -376,7 +376,7 @@ public class ResponsesControllerTest {
         }).when(apiKeyStore).invalidatePerRequestApiKey(any());
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
-        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
         doCallRealMethod().when(context).getRequestBody();
         doCallRealMethod().when(context).setResponseBody(any());
         doCallRealMethod().when(context).getResponseBody();
@@ -486,7 +486,7 @@ public class ResponsesControllerTest {
         }).when(apiKeyStore).invalidatePerRequestApiKey(any());
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
-        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
         doCallRealMethod().when(context).getRequestBody();
         doCallRealMethod().when(context).setResponseBody(any());
         doCallRealMethod().when(context).getResponseBody();
@@ -615,7 +615,7 @@ public class ResponsesControllerTest {
         }).when(apiKeyStore).invalidatePerRequestApiKey(any());
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
-        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
         doCallRealMethod().when(context).getRequestBody();
         doCallRealMethod().when(context).setResponseBody(any());
         doCallRealMethod().when(context).getResponseBody();
@@ -728,7 +728,7 @@ public class ResponsesControllerTest {
         }).when(apiKeyStore).invalidatePerRequestApiKey(any());
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
-        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
         doCallRealMethod().when(context).getRequestBody();
         doCallRealMethod().when(context).setResponseBody(any());
         doCallRealMethod().when(context).getResponseBody();
@@ -793,7 +793,7 @@ public class ResponsesControllerTest {
         when(apiKeyStore.invalidatePerRequestApiKey(any())).thenReturn(Future.succeededFuture(Boolean.TRUE));
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
-        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
         doCallRealMethod().when(context).setUpstreamRoute(any());
         doCallRealMethod().when(context).getUpstreamRoute();
 
@@ -861,7 +861,7 @@ public class ResponsesControllerTest {
         });
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
-        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
         doCallRealMethod().when(context).getRequestBody();
         doCallRealMethod().when(context).setResponseBody(any());
         doCallRealMethod().when(context).setUpstreamRoute(any());
@@ -918,6 +918,8 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setProxyApiKeyData(any());
         doCallRealMethod().when(context).getProxyApiKeyData();
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
+        doCallRealMethod().when(context).getRequestBody();
 
         controller.handle();
 
