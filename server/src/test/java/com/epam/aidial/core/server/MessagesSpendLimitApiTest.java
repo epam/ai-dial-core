@@ -11,11 +11,14 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
+import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
+import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -31,6 +34,7 @@ class MessagesSpendLimitApiTest extends ResourceBaseTest {
 
     private static final String CONFIG = "dial-config/anthropic-spend-limits.json";
     private static final String MESSAGES_PATH = "/anthropic/v1/messages";
+    private static final String USAGE_PATH = "/anthropic/api/oauth/usage";
     private static final String COUNT_TOKENS_PATH = "/anthropic/v1/messages/count_tokens";
     private static final String CHAT_COMPLETIONS_PATH = "/openai/deployments/gpt-spend/chat/completions";
     private static final String UNIFIED = "anthropic-ratelimit-unified-";
@@ -229,6 +233,93 @@ class MessagesSpendLimitApiTest extends ResourceBaseTest {
             assertFalse(hasHeaderWithPrefix(response, "anthropic-ratelimit-"), response.headers().toString());
             assertNull(header(response, "x-should-retry"));
         }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testUsageEndpointAtEightyTwoPercent() {
+        seedSpend("spend", "8.2");
+
+        Response response = getUsage("Bearer proxyKey1");
+
+        assertEquals(200, response.status(), response.body());
+        assertEquals("no-store", header(response, "cache-control"));
+        JsonNode body = parse(response.body());
+        JsonNode extra = body.get("extra_usage");
+        assertTrue(extra.get("is_enabled").asBoolean(), response.body());
+        assertEquals(1000, extra.get("monthly_limit").asLong());
+        assertEquals(820, extra.get("used_credits").asLong());
+        assertEquals(82, extra.get("utilization").asLong());
+        assertEquals("USD", extra.get("currency").asText());
+        JsonNode limits = body.get("limits");
+        assertEquals(3, limits.size(), response.body());
+        assertUsageRow(limits, "daily", "warning", 82, true);
+        assertUsageRow(limits, "weekly", "normal", 8, false);
+        assertUsageRow(limits, "monthly", "normal", 0, false);
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testUsageEndpointAgreesWithMessagesHeaders() {
+        seedSpend("spend", "8.2");
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> TestWebServer.createResponse(200, NON_STREAM_RESPONSE,
+                    "Content-Type", "application/json"));
+
+            Response messages = postMessages(requestBody("claude-spend", false), "proxyKey1");
+            Response usage = getUsage("Bearer proxyKey1");
+
+            assertEquals(200, messages.status(), messages.body());
+            assertEquals(200, usage.status(), usage.body());
+            JsonNode body = parse(usage.body());
+            JsonNode active = null;
+            for (JsonNode row : body.get("limits")) {
+                if (row.get("is_active").asBoolean()) {
+                    active = row;
+                }
+            }
+            assertTrue(active != null, usage.body());
+            assertEquals("daily", active.get("group").asText());
+            long resetsAt = Instant.parse(active.get("resets_at").asText()).getEpochSecond();
+            assertEquals(header(messages, OVERAGE + "reset"), String.valueOf(resetsAt));
+            double headerUtilization = Double.parseDouble(header(messages, OVERAGE + "utilization"));
+            assertEquals(headerUtilization, body.get("extra_usage").get("utilization").asLong() / 100.0, 1e-9);
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testUsageEndpointNoCap() {
+        Response response = send(HttpMethod.GET, USAGE_PATH, null, null, "api-key", "proxyKey2");
+
+        assertEquals(200, response.status(), response.body());
+        assertEquals("{\"limits\":[]}", response.body());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testUsageEndpointRequiresAuth() throws IOException {
+        HttpUriRequest request = new HttpUriRequestBase("GET", URI.create("http://127.0.0.1:" + serverPort + USAGE_PATH));
+
+        Response response = client.execute(request, ResourceBaseTest::toResponse);
+
+        assertEquals(401, response.status(), response.body());
+    }
+
+    private Response getUsage(String authorization) {
+        return send(HttpMethod.GET, USAGE_PATH, null, null, "authorization", authorization);
+    }
+
+    private static void assertUsageRow(JsonNode limits, String group, String severity, int utilization, boolean active) {
+        for (JsonNode row : limits) {
+            if (group.equals(row.get("group").asText())) {
+                assertEquals(severity, row.get("severity").asText(), row.toString());
+                assertEquals(utilization, row.get("percent").asInt(), row.toString());
+                assertEquals(active, row.get("is_active").asBoolean(), row.toString());
+                return;
+            }
+        }
+        throw new AssertionError("No row for group " + group + " in " + limits);
     }
 
     void seedSpend(String project, String dollars) {

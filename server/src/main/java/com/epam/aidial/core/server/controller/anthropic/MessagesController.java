@@ -118,9 +118,10 @@ public class MessagesController extends MessagesBaseController {
                             @ApiResponse(code = 404),
                             @ApiResponse(code = 415),
                             @ApiResponse(code = 429, description = "DIAL limit reached, with an Anthropic-format error body "
-                                    + "(`{\"type\":\"error\",\"error\":{\"type\":...,\"message\":...}}`). A reached spend cap or an unreadable spend counter gives "
-                                    + "`billing_error`, `x-should-retry: false` and `anthropic-ratelimit-unified-*` headers describing the cap; a token, request "
-                                    + "or per-minute cost limit gives `rate_limit_error` with `retry-after`, and `x-should-retry: true` for rolling windows only",
+                                    + "(`{\"type\":\"error\",\"error\":{\"type\":...,\"message\":...}}`). A reached spend cap gives `billing_error`, "
+                                    + "`x-should-retry: false` and `anthropic-ratelimit-unified-*` headers describing the cap; an unreadable spend counter gives "
+                                    + "`billing_error` with only `x-should-retry: false` and `anthropic-ratelimit-unified-overage-disabled-reason: fetch_error`; "
+                                    + "a token, request or per-minute cost limit gives `rate_limit_error` with `retry-after`, and `x-should-retry: true` for rolling windows only",
                                     body = @ApiSchema(implementation = ErrorData.class)),
                             @ApiResponse(code = 500),
                             @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
