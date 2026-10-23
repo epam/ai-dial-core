@@ -374,6 +374,16 @@ public class OrgUnitApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testEmptySkillFoldersDontKeepUnitsFromBeingRemoved() {
+        addReadRule("public/Acme/", "Manager");
+        assertEquals(200, create(ORG, "Acme").status());
+        assertEquals(200, send(HttpMethod.PUT, "/v2/skills/public/Acme/Team/", null, "", "authorization", "admin").status());
+
+        Response removed = remove(ORG + "/Acme", false);
+        assertEquals(200, removed.status(), removed.body());
+    }
+
+    @Test
     void testDeleteLeavesNothingOfAnEmptyUnit() {
         addReadRule("public/Acme/", "Manager");
         addReadRule("public/Acme/Risk/", "Manager");

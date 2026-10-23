@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.orgunit;
 
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.service.RuleService;
+import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
@@ -378,8 +379,8 @@ public class OrgUnitService {
     }
 
     /**
-     * The subtree's empty-folder markers in the files tree, and its other items in every type tree. Stops listing once
-     * more than three items are found: enough to name them.
+     * The subtree's empty-folder markers, in the files tree and the grouping folders of the skills and projects trees,
+     * and its other items in every type tree. Stops listing once more than three items are found: enough to name them.
      */
     private Subtree listSubtree(String key) {
         List<ResourceDescriptor> markers = new ArrayList<>();
@@ -395,7 +396,7 @@ public class OrgUnitService {
                     break;
                 }
                 for (MetadataBase item : page.getItems()) {
-                    if (type == ResourceTypes.FILE && FOLDER_MARKER.equals(item.getName())) {
+                    if (isMarker(type, item.getName())) {
                         markers.add(((ResourceItemMetadata) item).getDescriptor());
                     } else {
                         content.add(item.getUrl());
@@ -408,6 +409,10 @@ public class OrgUnitService {
     }
 
     private record Subtree(List<ResourceDescriptor> markers, List<String> content) {
+    }
+
+    private static boolean isMarker(ResourceTypes type, String name) {
+        return type == ResourceTypes.FILE ? FOLDER_MARKER.equals(name) : type.isComplex() && ComplexResourceService.FOLDER_MARKER_NAME.equals(name);
     }
 
     /**
