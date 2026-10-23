@@ -243,6 +243,23 @@ public class OrgUnitService {
     }
 
     /**
+     * The roles that can be assigned at the unit: the same for every unit.
+     */
+    public List<OrgUnitRoleData> listRoles(List<String> path, OrgUnitRoles roles) {
+        String key = keyOf(requireSharedSpace(path));
+        if (key.equals(SHARED_SPACE_KEY)) {
+            throw new IllegalArgumentException("The shared space is not a unit and holds no roles");
+        }
+        if (!getUnitList().units().containsKey(key)) {
+            throw new ResourceNotFoundException("No org unit: " + String.join("/", path));
+        }
+        return roles.roles().entrySet().stream()
+                .map(entry -> new OrgUnitRoleData(entry.getKey(), entry.getValue().getDescription(), true,
+                        List.copyOf(entry.getValue().getPermissions())))
+                .toList();
+    }
+
+    /**
      * Changes what clients show for a unit; a blank display name falls back to the name, as on create. Only the
      * stored entry's {@code displayName} changes, so fields this node doesn't know stay as stored. The unit's name and
      * folder never change.
