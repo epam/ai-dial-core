@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
@@ -12,6 +13,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -105,6 +107,41 @@ public class PolicyApiTest extends ResourceBaseTest {
         verify(delete(ASSIGNMENTS + "crud-a/grant-1"), 404);
         verify(delete(POLICIES + "crud-grant"), 204);
         verify(get(POLICIES + "crud-grant"), 404);
+    }
+
+    @Test
+    void testWriteAndDeleteReachTheConfigOfTheWriterPod() {
+        verify(put(POLICIES + "cfg-grant", GRANT_POLICY), 200);
+        verify(put(ASSIGNMENTS + "cfg-a/grant-1", assignment("cfg-grant", ALICE, "cfg-a")), 200);
+
+        Config config = dial.getProxy().getConfigStore().get();
+        assertTrue(config.getPolicies().containsKey("cfg-grant"));
+        assertTrue(config.getPolicyAssignments().containsKey("cfg-a/grant-1"));
+        assertEquals("cfg-a/grant-1", config.getCostObjectIndex().getInstances("cfg-a").get(0).id());
+
+        verify(delete(ASSIGNMENTS + "cfg-a/grant-1"), 204);
+
+        config = dial.getProxy().getConfigStore().get();
+        assertFalse(config.getPolicyAssignments().containsKey("cfg-a/grant-1"));
+        assertTrue(config.getCostObjectIndex().getInstances("cfg-a").isEmpty());
+        verify(delete(POLICIES + "cfg-grant"), 204);
+        assertFalse(dial.getProxy().getConfigStore().get().getPolicies().containsKey("cfg-grant"));
+    }
+
+    @Test
+    void testApplyReachesTheConfigOfTheWriterPod() {
+        String body = """
+                { "manifests": [
+                  { "kind": "PolicyAssignment", "name": "policy_assignments/platform/cfgapply-a/grant-1",
+                    "spec": { "policy": "cfgapply-grant", "costObject": "cfgapply-a", "subject": %s } },
+                  { "kind": "Policy", "name": "policies/platform/cfgapply-grant", "spec": %s }
+                ] }
+                """.formatted(ALICE, GRANT_POLICY);
+
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin"), 200);
+
+        Config config = dial.getProxy().getConfigStore().get();
+        assertEquals("cfgapply-a/grant-1", config.getCostObjectIndex().getInstances("cfgapply-a").get(0).id());
     }
 
     @Test

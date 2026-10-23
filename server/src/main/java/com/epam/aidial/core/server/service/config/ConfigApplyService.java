@@ -164,10 +164,15 @@ public class ConfigApplyService {
                     applyApplication(application.spec(), id, parsed.name(), scratch, pending);
             case AdminPolicyManifest policy -> {
                 policyService.putPolicy(parsed.name().name(), policy.spec(), EtagHeader.ANY, null);
+                pending.add(new EntityChange(ResourceTypes.POLICY,
+                        MergedConfigStore.resolveMapKeyFor(PolicyService.describe(ResourceTypes.POLICY, parsed.name().name())), policy.spec()));
                 yield new EntityResult(id, AdminApplyStatus.APPLIED, null);
             }
             case AdminPolicyAssignmentManifest assignment -> {
                 policyService.putAssignment(parsed.name().name(), assignment.spec(), EtagHeader.ANY, null);
+                pending.add(new EntityChange(ResourceTypes.POLICY_ASSIGNMENT,
+                        MergedConfigStore.resolveMapKeyFor(PolicyService.describe(ResourceTypes.POLICY_ASSIGNMENT, parsed.name().name())),
+                        assignment.spec()));
                 yield new EntityResult(id, AdminApplyStatus.APPLIED, null);
             }
         };
