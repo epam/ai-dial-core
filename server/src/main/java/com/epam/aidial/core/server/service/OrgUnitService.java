@@ -1,7 +1,9 @@
-package com.epam.aidial.core.server.orgunit;
+package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.service.RuleService;
+import com.epam.aidial.core.server.data.orgunit.OrgUnit;
+import com.epam.aidial.core.server.data.orgunit.OrgUnitData;
+import com.epam.aidial.core.server.data.orgunit.OrgUnitList;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;

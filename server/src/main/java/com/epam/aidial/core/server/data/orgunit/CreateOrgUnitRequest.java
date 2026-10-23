@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.orgunit;
+package com.epam.aidial.core.server.data.orgunit;
 
 /**
  * @param name        the new unit's folder name
