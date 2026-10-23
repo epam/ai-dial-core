@@ -106,6 +106,19 @@ public class OrgUnitService {
     }
 
     /**
+     * Whether the folder of this name, the resource's own folder for an item, is a unit's: a complex resource keeps
+     * its files there.
+     */
+    public boolean isUnitFolder(ResourceDescriptor resource) {
+        if (!isEnabled() || !resource.isPublic()) {
+            return false;
+        }
+        String path = resource.getDecodedUrl().substring(resource.getType().urlSegment().length() + 1);
+        String key = resource.isFolder() ? path : path + ResourceDescriptor.PATH_SEPARATOR;
+        return getUnitList().units().containsKey(key);
+    }
+
+    /**
      * Reads the list once, so a node that cannot read it refuses to start.
      */
     public void checkOnStartup() {

@@ -9391,6 +9391,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: A skill or project target is an org unit's folder
         "500":
           description: The server had an error while processing your request.
           content:
@@ -9479,6 +9481,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: A skill or project target is an org unit's folder
         "500":
           description: The server had an error while processing your request.
           content:
@@ -9987,6 +9991,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: The copy would put a skill or project on an org unit's folder
         "500":
           description: The server had an error while processing your request.
           content:
@@ -10046,6 +10052,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: The move would put a skill or project on an org unit's folder
         "500":
           description: The server had an error while processing your request.
           content:
@@ -14541,6 +14549,8 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "405":
           description: Method Not Allowed
+        "409":
+          description: An org unit holds this path
         "412":
           description: Precondition failed - ETag mismatch
         "422":

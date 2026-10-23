@@ -32,7 +32,9 @@ this version of core doesn't know, so a node running an older version can't stri
 A resource belongs to the nearest unit above it: `files/public/Acme/Risk/US Risk/Reports/q3.xlsx` belongs to
 `public/Acme/Risk/US Risk/`, and `files/public/Handbook/welcome.pdf` to no unit. Two checks keep that unambiguous:
 a unit's parent is a unit or the shared space, and a new unit never takes the name, in any letter case, of a folder
-or item that already exists under its parent in any type tree. Every unit has a folder in the files tree: when a
+or item that already exists under its parent in any type tree, and a skill or project, which keeps its files in the
+folder of its own name, never takes a unit's folder: creating, copying, moving or publishing `skills/public/Acme/Risk`
+while `public/Acme/Risk/` is a unit is refused with 409. Every unit has a folder in the files tree: when a
 unit is created, core puts the clients' hidden empty-folder marker `.dial_folder` into `files/public/<unit>/`, so
 Chat's publish dialog and the admin panel's folder tree show the unit before anything is published into it. If the
 marker can't be written, the unit is still created and shows once something is published into it.

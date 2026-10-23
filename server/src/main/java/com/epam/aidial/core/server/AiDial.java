@@ -288,8 +288,12 @@ public class AiDial {
             // lockService are already available above, so hoisting this construction earlier is safe.
             ComplexResourceService.Settings complexResourceSettings = Json.decodeValue(
                     settings("complexResource").toBuffer(), ComplexResourceService.Settings.class);
+            RuleService ruleService = new RuleService(resourceService);
+            OrgUnitService orgUnitService = new OrgUnitService(resourceService, ruleService, lockService,
+                    OrgUnitSettings.from(settings("orgUnits")), generator, clock);
+            orgUnitService.checkOnStartup();
             ComplexResourceService complexResourceService = new ComplexResourceService(
-                    resourceService, lockService, storage, complexResourceSettings);
+                    resourceService, lockService, storage, complexResourceSettings, orgUnitService::isUnitFolder);
 
             ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(
                     resourceService, mergedConfigStore, complexResourceService, encryptionService, httpProxySelector);
@@ -315,10 +319,6 @@ public class AiDial {
                     catalogSchemaService, mergedConfigStore, generator, settings("applications"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService,
                     lockService, applicationSchemaService, clock, resourceCredentialsService);
-            RuleService ruleService = new RuleService(resourceService);
-            OrgUnitService orgUnitService = new OrgUnitService(resourceService, ruleService, lockService,
-                    OrgUnitSettings.from(settings("orgUnits")), generator, clock);
-            orgUnitService.checkOnStartup();
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
             RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService, mergedConfigStore, blockingCallTracer);
