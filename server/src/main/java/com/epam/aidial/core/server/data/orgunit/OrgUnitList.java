@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.orgunit;
+package com.epam.aidial.core.server.data.orgunit;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
@@ -20,7 +20,7 @@ public record OrgUnitList(Map<String, OrgUnit> units) {
         units = units == null ? new TreeMap<>() : units instanceof SortedMap<String, OrgUnit> ? units : new TreeMap<>(units);
     }
 
-    OrgUnitList readOnly() {
+    public OrgUnitList readOnly() {
         return new OrgUnitList(Collections.unmodifiableSortedMap(new TreeMap<>(units)));
     }
 }

@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.orgunit;
+package com.epam.aidial.core.server.data.orgunit;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 
