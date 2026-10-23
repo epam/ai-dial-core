@@ -1,7 +1,11 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.policy.Policy;
+import com.epam.aidial.core.server.service.policy.PolicyRecordCodec;
+import com.epam.aidial.core.server.service.policy.PolicyService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import lombok.SneakyThrows;
@@ -11,6 +15,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -142,6 +147,57 @@ public class PolicyApiTest extends ResourceBaseTest {
 
         Config config = dial.getProxy().getConfigStore().get();
         assertEquals("cfgapply-a/grant-1", config.getCostObjectIndex().getInstances("cfgapply-a").get(0).id());
+    }
+
+    @Test
+    void testAssignmentWrittenWhileThisPodLagsBehindIsStoredAndReachesTheConfig() {
+        storePolicyBypassingTheConfig("lag-grant");
+        assertFalse(dial.getProxy().getConfigStore().get().getPolicies().containsKey("lag-grant"));
+
+        verify(put(ASSIGNMENTS + "lag-a/grant-1", assignment("lag-grant", ALICE, "lag-a")), 200);
+        verify(get(ASSIGNMENTS + "lag-a/grant-1"), 200);
+
+        Config config = awaitConfig(next -> next.getPolicyAssignments().containsKey("lag-a/grant-1"));
+        assertEquals("lag-a/grant-1", config.getCostObjectIndex().getInstances("lag-a").get(0).id());
+    }
+
+    @Test
+    void testApplyWhileThisPodLagsBehindReachesTheConfig() {
+        storePolicyBypassingTheConfig("lagapply-grant");
+        String body = """
+                { "manifests": [
+                  { "kind": "PolicyAssignment", "name": "policy_assignments/platform/lagapply-a/grant-1",
+                    "spec": { "policy": "lagapply-grant", "costObject": "lagapply-a", "subject": %s } }
+                ] }
+                """.formatted(ALICE);
+
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin"), 200);
+
+        Config config = awaitConfig(next -> next.getPolicyAssignments().containsKey("lagapply-a/grant-1"));
+        assertEquals("lagapply-a/grant-1", config.getCostObjectIndex().getInstances("lagapply-a").get(0).id());
+    }
+
+    /**
+     * Stores the policy as another pod would: in blob storage only. This pod ignores the replica events of its own
+     * writes, so its merged config misses the policy until a full rebuild.
+     */
+    @SneakyThrows
+    private void storePolicyBypassingTheConfig(String path) {
+        Policy policy = PolicyRecordCodec.parsePolicy(ProxyUtil.MAPPER.readTree(GRANT_POLICY));
+        new PolicyService(dial.getProxy().getResourceService()).putPolicy(path, policy, EtagHeader.ANY, null);
+    }
+
+    @SneakyThrows
+    private Config awaitConfig(Predicate<Config> condition) {
+        long deadline = System.nanoTime() + 10_000_000_000L;
+        while (System.nanoTime() < deadline) {
+            Config config = dial.getProxy().getConfigStore().get();
+            if (condition.test(config)) {
+                return config;
+            }
+            Thread.sleep(100);
+        }
+        throw new AssertionError("The merged config did not reach the expected state");
     }
 
     @Test

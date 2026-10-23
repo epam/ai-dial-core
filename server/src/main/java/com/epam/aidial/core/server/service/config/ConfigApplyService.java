@@ -129,10 +129,15 @@ public class ConfigApplyService {
             if (!pendingChanges.isEmpty()) {
                 Map<String, String> failures = mergedConfigStore.applyBatch(pendingChanges);
                 // Blobs are already written; if the in-memory swap of any entity failed (e.g. an
-                // unforeseen type coercion error not caught by precheck) the merged Config diverges
-                // from blob until the next full rebuild. Surface via log so operators see it.
+                // assignment whose policy another pod wrote and whose replica event has not arrived
+                // yet, or an unforeseen type coercion error not caught by precheck) the merged Config
+                // diverges from blob. This pod ignores the replica events of its own writes, so request
+                // a full rebuild to converge instead of waiting for the next periodic one.
                 failures.forEach((id, reason) ->
                         log.warn("Partial-update swap failed for {} after blob put: {}", id, reason));
+                if (!failures.isEmpty()) {
+                    mergedConfigStore.requestRebuild();
+                }
             }
             if (pendingSettings != null) {
                 mergedConfigStore.applySettingsWrite(pendingSettings);

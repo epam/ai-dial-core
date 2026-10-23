@@ -13,6 +13,7 @@ import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.InvalidEntityException;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EntityBucketBinding;
@@ -286,12 +287,12 @@ public class PolicyController implements Controller {
                 if (type == ResourceTypes.POLICY) {
                     Policy policy = PolicyRecordCodec.parsePolicy(request);
                     ResourceItemMetadata meta = policyService.putPolicy(path, policy, etag, author);
-                    mergedConfigStore.applyEntityWrite(type, mapKey, policy);
+                    applyStoredWrite(mapKey, policy);
                     return meta;
                 }
                 PolicyAssignment assignment = PolicyRecordCodec.parseAssignment(request);
                 ResourceItemMetadata meta = policyService.putAssignment(path, assignment, etag, author);
-                mergedConfigStore.applyEntityWrite(type, mapKey, assignment);
+                applyStoredWrite(mapKey, assignment);
                 return meta;
             }));
         }).onSuccess(meta -> {
@@ -300,6 +301,22 @@ public class PolicyController implements Controller {
             context.putHeader(HttpHeaders.ETAG, meta.getEtag()).respond(HttpStatus.OK, response);
         }).onFailure(this::handleError);
         return Future.succeededFuture();
+    }
+
+    /**
+     * Applies a record already stored to the merged config of this pod. The in-memory config can lag behind
+     * storage, for example when the policy of an assignment was written by another pod whose replica event has
+     * not arrived yet, and then the write is rejected. The stored record wins: the request still succeeds and
+     * the pod catches up with a full rebuild, since it ignores the replica event of its own write.
+     */
+    private void applyStoredWrite(String mapKey, Object record) {
+        try {
+            mergedConfigStore.applyEntityWrite(type, mapKey, record);
+        } catch (InvalidEntityException e) {
+            log.warn("Stored {} '{}', but the merged config of this pod rejected it, requesting a full rebuild: {}",
+                    type.urlSegment(), mapKey, e.getMessage());
+            mergedConfigStore.requestRebuild();
+        }
     }
 
     private Future<?> handleDelete() {
