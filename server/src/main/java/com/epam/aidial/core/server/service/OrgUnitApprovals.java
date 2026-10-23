@@ -1,9 +1,10 @@
-package com.epam.aidial.core.server.orgunit;
+package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Publication;
+import com.epam.aidial.core.server.data.orgunit.OrgUnit;
+import com.epam.aidial.core.server.data.orgunit.RoleAssignment;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;

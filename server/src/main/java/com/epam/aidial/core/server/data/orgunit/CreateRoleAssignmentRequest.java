@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.orgunit;
+package com.epam.aidial.core.server.data.orgunit;
 
 /**
  * @param roleName one of the roles {@code GET …/roles} lists

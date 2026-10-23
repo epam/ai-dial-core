@@ -1,7 +1,8 @@
-package com.epam.aidial.core.server.orgunit;
+package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.orgunit.OrgUnit;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import lombok.RequiredArgsConstructor;
 

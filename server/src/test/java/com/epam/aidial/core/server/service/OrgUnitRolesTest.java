@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.orgunit;
+package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.OrgUnitPermission;
@@ -10,15 +10,15 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-import static com.epam.aidial.core.server.orgunit.OrgUnitRoles.ADMIN;
-import static com.epam.aidial.core.server.orgunit.OrgUnitRoles.EDITOR;
-import static com.epam.aidial.core.server.orgunit.OrgUnitRoles.MEMBER;
-import static com.epam.aidial.core.server.orgunit.OrgUnitRoles.ORG_UNITS;
-import static com.epam.aidial.core.server.orgunit.OrgUnitRoles.PUBLICATIONS;
-import static com.epam.aidial.core.server.orgunit.OrgUnitRoles.READ;
-import static com.epam.aidial.core.server.orgunit.OrgUnitRoles.ROLE_ASSIGNMENTS;
-import static com.epam.aidial.core.server.orgunit.OrgUnitRoles.VIEWER;
-import static com.epam.aidial.core.server.orgunit.OrgUnitRoles.WRITE;
+import static com.epam.aidial.core.server.service.OrgUnitRoles.ADMIN;
+import static com.epam.aidial.core.server.service.OrgUnitRoles.EDITOR;
+import static com.epam.aidial.core.server.service.OrgUnitRoles.MEMBER;
+import static com.epam.aidial.core.server.service.OrgUnitRoles.ORG_UNITS;
+import static com.epam.aidial.core.server.service.OrgUnitRoles.PUBLICATIONS;
+import static com.epam.aidial.core.server.service.OrgUnitRoles.READ;
+import static com.epam.aidial.core.server.service.OrgUnitRoles.ROLE_ASSIGNMENTS;
+import static com.epam.aidial.core.server.service.OrgUnitRoles.VIEWER;
+import static com.epam.aidial.core.server.service.OrgUnitRoles.WRITE;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

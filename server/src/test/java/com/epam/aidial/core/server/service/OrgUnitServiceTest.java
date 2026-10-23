@@ -1,8 +1,12 @@
-package com.epam.aidial.core.server.orgunit;
+package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.data.Rule;
-import com.epam.aidial.core.server.service.RuleService;
+import com.epam.aidial.core.server.data.orgunit.OrgUnit;
+import com.epam.aidial.core.server.data.orgunit.OrgUnitData;
+import com.epam.aidial.core.server.data.orgunit.OrgUnitList;
+import com.epam.aidial.core.server.data.orgunit.RoleAssignment;
+import com.epam.aidial.core.server.data.orgunit.Subject;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;

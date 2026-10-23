@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.orgunit;
+package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.OrgUnitPermission;
@@ -9,7 +9,6 @@ import com.epam.aidial.core.server.data.Publication;
 import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
-import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;

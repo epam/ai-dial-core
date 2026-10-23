@@ -1,7 +1,9 @@
-package com.epam.aidial.core.server.orgunit;
+package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Rule;
+import com.epam.aidial.core.server.data.orgunit.RoleAssignment;
+import com.epam.aidial.core.server.data.orgunit.Subject;
 import com.epam.aidial.core.server.security.RuleMatcher;
 
 import java.util.HashSet;
