@@ -30,8 +30,8 @@ cannot be restored.
 | `409`  | Another export or a write to the `public` or `platform` bucket holds a bucket lock. Retry later.                    |
 | `500`  | The export failed before the archive started.                                                                       |
 
-The status cannot change once the archive has started. A failure after that, or a client that stops reading for
-`adminExport.stallTimeout`, resets the connection. The client sees a transport error and the partial file has no
+The status cannot change once the archive has started. A failure after that, or a client that is too slow
+(see `adminExport.stallTimeout` below), resets the connection. The client sees a transport error and the partial file has no
 central directory, so it is not a valid ZIP. Always check that the download completed without an error before using it.
 
 ## Operational notes
@@ -49,4 +49,4 @@ central directory, so it is not a valid ZIP. Always check that the download comp
 
 | Setting                   | Default | Description                                                                          |
 |---------------------------|:-------:|--------------------------------------------------------------------------------------|
-| `adminExport.stallTimeout` | 60000   | Milliseconds a client may read nothing before the export fails. Keep it well below the 5 minute lock period. |
+| `adminExport.stallTimeout` | 60000   | Milliseconds the export waits for a slow client to take the buffered data before it fails and the connection is reset. Raise it if clients with slow connections fail, and keep it well below the 5 minute lock period. |

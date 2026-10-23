@@ -347,7 +347,7 @@ Refer to [Admin export](docs/admin-export.md) to learn more.
 
 | Setting                    | Default | Required | Description                                                                                                                                              |
 |----------------------------|:-------:|:--------:|----------------------------------------------------------------------------------------------------------------------------------------------------------|
-| adminExport.stallTimeout   | 60000   |    No    | Time in milliseconds a client may read nothing before the export fails and the connection is reset. Keep it well below the 5 minute lifetime of the bucket locks the export holds. |
+| adminExport.stallTimeout   | 60000   |    No    | Time in milliseconds the export waits for a slow client to take the buffered data before it fails and the connection is reset. Raise it if clients with slow connections fail, and keep it well below the 5 minute lifetime of the bucket locks the export holds. |
 
 </details>
 

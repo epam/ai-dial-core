@@ -10,7 +10,7 @@ import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.service.AdminExportBusyException;
 import com.epam.aidial.core.server.service.AdminExportService;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
-//PART3 import com.epam.aidial.core.server.vertx.stream.BoundedPipe;
+import com.epam.aidial.core.server.vertx.stream.BoundedPipe;
 import com.epam.aidial.core.server.vertx.stream.InputStreamReader;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
@@ -18,8 +18,6 @@ import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
 
-import java.io.BufferedOutputStream;
-import java.io.OutputStream;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -38,8 +36,7 @@ import java.time.format.DateTimeFormatter;
  */
 public class AdminExportController implements Controller {
 
-    private static final int PIPE_CAPACITY = 16;
-    private static final int WRITE_BUFFER_SIZE = 64 * 1024;
+    private static final int PIPE_CAPACITY = 1024 * 1024;
     private static final DateTimeFormatter FILE_NAME_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC);
 
     private final ProxyContext context;
@@ -91,34 +88,32 @@ public class AdminExportController implements Controller {
             }
         });
 
-        //PART3 BoundedPipe pipe = new BoundedPipe(PIPE_CAPACITY, stallTimeout);
-        //PART3 InputStreamReader reader = new InputStreamReader(vertx, taskExecutor, pipe.getInput());
-        //PART3 reader.pipe()
-        //PART3         .endOnFailure(false)
-        //PART3         .to(response)
-        //PART3         .onFailure(error -> {
-        //PART3             reader.close();
-        //PART3             response.reset();
-        //PART3         });
+        BoundedPipe pipe = new BoundedPipe(PIPE_CAPACITY, stallTimeout);
+        InputStreamReader reader = new InputStreamReader(vertx, taskExecutor, pipe.getInput());
+        reader.pipe()
+                .endOnFailure(false)
+                .to(response)
+                .onFailure(error -> {
+                    reader.close();
+                    response.reset();
+                });
 
-        //PART3 taskExecutor.submit(() -> {
-        //PART3     // not in try-with-resources: closing the stream on a failure would end the response cleanly
-        //PART3     OutputStream out = new BufferedOutputStream(pipe.getOutput(), WRITE_BUFFER_SIZE);
-        //PART3     exportService.export(out);
-        //PART3     out.flush();
-        //PART3     pipe.getOutput().close();
-        //PART3     return null;
-        //PART3 }).onFailure(error -> {
-        //PART3     // the service has already logged the failure
-        //PART3     if (response.headWritten()) {
-        //PART3         response.reset();
-        //PART3     } else if (error instanceof AdminExportBusyException) {
-        //PART3         context.respond(HttpStatus.CONFLICT, error.getMessage());
-        //PART3     } else {
-        //PART3         context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to export the buckets");
-        //PART3     }
-        //PART3     reader.close();
-        //PART3 });
+        taskExecutor.submit(() -> {
+            // not in try-with-resources: closing the stream on a failure would end the response cleanly
+            exportService.export(pipe.getOutput());
+            pipe.getOutput().close();
+            return null;
+        }).onFailure(error -> {
+            // the service has already logged the failure
+            if (response.headWritten()) {
+                response.reset();
+            } else if (error instanceof AdminExportBusyException) {
+                context.respond(HttpStatus.CONFLICT, error.getMessage());
+            } else {
+                context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to export the buckets");
+            }
+            reader.close();
+        });
 
         return Future.succeededFuture();
     }
