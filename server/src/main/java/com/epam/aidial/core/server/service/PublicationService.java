@@ -552,6 +552,7 @@ public class PublicationService {
         if (source.getType() != target.getType()) {
             throw new IllegalArgumentException("Source and target resource types do not match: " + targetUrl);
         }
+        requireNoUnitFolder(target);
 
         if (isPublicationNew && !hasResource(source)) {
             throw new IllegalArgumentException("Source resource does not exist: " + sourceUrl);
@@ -653,11 +654,24 @@ public class PublicationService {
         }
     }
 
+    /**
+     * A skill or project keeps its files in the folder of its own name, which must not be an org unit's: refused before
+     * approving changes the request's status, as the copy would refuse it after.
+     */
+    private void requireNoUnitFolder(ResourceDescriptor target) {
+        if (target.getType().isComplex()) {
+            complexResourceService.requireNoUnitFolder(target);
+        }
+    }
+
     private void checkTargetResources(List<Publication.Resource> resources, boolean exists) {
         for (Publication.Resource resource : resources) {
             String url = resource.getTargetUrl();
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPublicUrl(url);
             verifyResourceType(descriptor);
+            if (!exists) {
+                requireNoUnitFolder(descriptor);
+            }
 
             if (resource.getAction() != Publication.ResourceAction.ADD_IF_ABSENT && hasResource(descriptor) != exists) {
                 String errorMessage = exists ? "Target resource does not exists: " + url : "Target resource exists: " + url;

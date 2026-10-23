@@ -180,6 +180,7 @@ public class ComplexResourceController extends AccessControlBaseController {
                     @ApiResponse(code = 400, description = "Bad request - invalid content type or malformed request"),
                     @ApiResponse(code = 403),
                     @ApiResponse(code = 404),
+                    @ApiResponse(code = 409, description = "An org unit holds this path"),
                     @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch"),
                     @ApiResponse(code = 500)
             },

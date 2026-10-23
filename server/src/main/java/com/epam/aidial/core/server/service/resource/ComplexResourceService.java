@@ -42,6 +42,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import javax.annotation.Nullable;
@@ -87,13 +88,30 @@ public class ComplexResourceService {
     private final LockService lockService;
     private final BlobStorage blobStorage;
     private final Settings settings;
+    // A resource keeps its marker in the folder of its own name, so it must not take an org unit's folder.
+    private final Predicate<ResourceDescriptor> unitFolder;
 
     public ComplexResourceService(ResourceService resourceService, LockService lockService,
                                  BlobStorage blobStorage, Settings settings) {
+        this(resourceService, lockService, blobStorage, settings, resource -> false);
+    }
+
+    public ComplexResourceService(ResourceService resourceService, LockService lockService,
+                                 BlobStorage blobStorage, Settings settings, Predicate<ResourceDescriptor> unitFolder) {
         this.resourceService = resourceService;
         this.lockService = lockService;
         this.blobStorage = blobStorage;
         this.settings = settings;
+        this.unitFolder = unitFolder;
+    }
+
+    /**
+     * Refuses a resource whose own folder is an org unit's, as creating it would.
+     */
+    public void requireNoUnitFolder(ResourceDescriptor resource) {
+        if (unitFolder.test(resource)) {
+            throw new HttpException(HttpStatus.CONFLICT, "An org unit holds this path: " + resource.getUrl());
+        }
     }
 
     /**
@@ -720,6 +738,10 @@ public class ComplexResourceService {
      * collision rules for {@code kind}.
      */
     private void ensureStructuralPath(ResourceDescriptor target, ResourceKind kind, String author) {
+        // before any grouping marker is written, so a refused resource leaves nothing behind
+        if (kind == ResourceKind.RESOURCE) {
+            requireNoUnitFolder(target);
+        }
         List<String> parents = target.getParentFolders();
         for (int depth = 1; depth <= parents.size(); depth++) {
             ResourceDescriptor ancestor = ancestorDescriptor(target, depth);
