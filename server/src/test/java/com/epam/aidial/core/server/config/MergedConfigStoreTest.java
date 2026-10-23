@@ -3,9 +3,12 @@ package com.epam.aidial.core.server.config;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.DeploymentInterface;
+import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.OrgUnitPermission;
+import com.epam.aidial.core.config.OrgUnitRole;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
@@ -130,6 +133,25 @@ public class MergedConfigStoreTest {
                 DeploymentEndpointUtil.resolveServingEndpoint(merged, InterfaceType.ANTHROPIC_MESSAGES, config.getTranslators()));
         assertEquals("http://localhost:6001",
                 DeploymentEndpointUtil.resolveServingEndpoint(merged, InterfaceType.OPENAI_CHAT_COMPLETIONS, config.getTranslators()));
+    }
+
+    @Test
+    public void testOrgUnitRolesSurviveTheRebuildAndEveryWrite() {
+        Config fileConfig = new Config();
+        Map<String, OrgUnitRole> roles = Map.of("auditor",
+                new OrgUnitRole("Reads files", List.of(new OrgUnitPermission(List.of("read"), "files/**"))));
+        fileConfig.setOrgUnitRoles(roles);
+        when(fileConfigStore.get()).thenReturn(fileConfig);
+
+        MergedConfigStore store = new MergedConfigStore(
+                vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
+                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
+                externalServiceService, resourceAuthSettingsEncryptionService);
+        store.init(fileConfigStore);
+
+        assertEquals(roles, store.get().getOrgUnitRoles());
+        assertEquals(roles, store.applySettingsWrite(new GlobalSettings()).getOrgUnitRoles());
+        assertEquals(roles, store.applySettingsDelete().getOrgUnitRoles());
     }
 
     @Test

@@ -12,6 +12,8 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.orgunit.CreateOrgUnitRequest;
 import com.epam.aidial.core.server.orgunit.DeleteOrgUnitResult;
 import com.epam.aidial.core.server.orgunit.OrgUnitData;
+import com.epam.aidial.core.server.orgunit.OrgUnitRoleList;
+import com.epam.aidial.core.server.orgunit.OrgUnitRoles;
 import com.epam.aidial.core.server.orgunit.OrgUnitService;
 import com.epam.aidial.core.server.orgunit.UpdateOrgUnitRequest;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -185,6 +187,39 @@ public class OrgUnitController {
                     requireEnabled();
                     requireAdmin();
                     return new DeleteOrgUnitResult(orgUnitService.delete(decode(rawPath), recursive));
+                })
+                .onSuccess(result -> context.respond(HttpStatus.OK, result))
+                .onFailure(this::respondError);
+        return Future.succeededFuture();
+    }
+
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/org-units/{path}/roles",
+            operationId = "listOrgUnitRoles",
+            tags = {"Org units"},
+            parameters = {
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
+                            description = "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = OrgUnitRoleList.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
+    public Future<?> listRoles(String rawPath) {
+        proxy.getTaskExecutor()
+                .submit(() -> {
+                    requireEnabled();
+                    requireAdmin();
+                    return new OrgUnitRoleList(orgUnitService.listRoles(decode(rawPath), OrgUnitRoles.of(context.getConfig())));
                 })
                 .onSuccess(result -> context.respond(HttpStatus.OK, result))
                 .onFailure(this::respondError);

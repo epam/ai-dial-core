@@ -411,6 +411,11 @@ public class ControllerSelector {
                 default -> null;
             };
         });
+        get(RouteTemplate.ORG_UNIT_ROLES, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.listRoles(path);
+        });
         get(RouteTemplate.ORG_UNIT, (proxy, context, pathMatcher) -> {
             OrgUnitController controller = new OrgUnitController(proxy, context);
             String path = pathMatcher.group("path");

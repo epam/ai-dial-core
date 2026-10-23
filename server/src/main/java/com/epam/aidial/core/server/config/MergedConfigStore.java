@@ -950,6 +950,7 @@ public final class MergedConfigStore implements ConfigStore {
         next.setGlobalInterceptors(base.getGlobalInterceptors());
         next.setRateLimitSchedule(base.getRateLimitSchedule());
         next.setTranslators(base.getTranslators());
+        next.setOrgUnitRoles(base.getOrgUnitRoles());
         return next;
     }
 
@@ -1132,6 +1133,7 @@ public final class MergedConfigStore implements ConfigStore {
         merged.setRetriableErrorCodes(base.getRetriableErrorCodes());
         merged.setGlobalInterceptors(base.getGlobalInterceptors());
         merged.setRateLimitSchedule(base.getRateLimitSchedule());
+        merged.setOrgUnitRoles(base.getOrgUnitRoles());
         // Wire the (still-being-populated) local maps onto merged now rather than after the blob
         // scan below — same references either way, but it lets addBlobEntity/removeAddedEntity
         // dispatch off a single Config parameter instead of a positional map per type (they used
