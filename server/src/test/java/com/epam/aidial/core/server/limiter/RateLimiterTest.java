@@ -63,6 +63,7 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -1262,20 +1263,6 @@ public class RateLimiterTest {
     }
 
     @Test
-    public void testGetSpendCaps_MatchesCheckPath() {
-        ProxyContext proxyContext = spendCapContext("10");
-        seedCost(proxyContext, "8.2");
-
-        SpendCap fromLimit = rateLimiter.limit(proxyContext, model("model")).result().spendCaps().reported();
-        SpendCap fromStats = rateLimiter.getSpendCaps(proxyContext).result().reported();
-
-        assertEquals(fromLimit.period(), fromStats.period());
-        assertEquals(0, fromLimit.used().compareTo(fromStats.used()));
-        assertEquals(0, fromLimit.total().compareTo(fromStats.total()));
-        assertEquals(fromLimit.resetsAtMillis(), fromStats.resetsAtMillis());
-    }
-
-    @Test
     public void testReadSpendCaps_MatchesCheckPathWithoutWriting() {
         ProxyContext proxyContext = spendCapContext("10");
         seedCost(proxyContext, "8.2");
@@ -1302,16 +1289,42 @@ public class RateLimiterTest {
     }
 
     @Test
-    public void testGetSpendCaps_NoCap_IsEmpty() {
+    public void testReadSpendCaps_NoCap_IsEmpty() {
         Config config = new Config();
         Role role = new Role();
         role.setLimits(Map.of());
         config.setRoles(Map.of("role", role));
         stubInlineExecutor();
 
-        SpendCaps spendCaps = rateLimiter.getSpendCaps(userContext(config, List.of("role"))).result();
+        SpendCaps spendCaps = rateLimiter.readSpendCaps(userContext(config, List.of("role"))).result();
 
         assertEquals(SpendCaps.EMPTY, spendCaps);
+    }
+
+    @Test
+    public void testReadSpendCaps_ResetIsTheNextPeriodStart() {
+        ProxyContext proxyContext = spendCapContext("10");
+        RateLimitSchedule schedule = new RateLimitSchedule();
+        long before = CalendarWindowCalculator.nextPeriodStart(CalendarPeriod.DAY, System.currentTimeMillis(), schedule);
+
+        long resetsAt = rateLimiter.readSpendCaps(proxyContext).result().reported().resetsAtMillis();
+
+        long after = CalendarWindowCalculator.nextPeriodStart(CalendarPeriod.DAY, System.currentTimeMillis(), schedule);
+        assertTrue(resetsAt == before || resetsAt == after, String.valueOf(resetsAt));
+    }
+
+    @Test
+    public void testHasCostLimit() {
+        Role capped = new Role();
+        capped.setLimits(Map.of());
+        capped.setCostLimit(costLimit("10"));
+        Role uncapped = new Role();
+        uncapped.setLimits(Map.of());
+        Config config = new Config();
+        config.setRoles(Map.of("capped", capped, "uncapped", uncapped));
+
+        assertTrue(rateLimiter.hasCostLimit(userContext(config, List.of("capped"))));
+        assertFalse(rateLimiter.hasCostLimit(userContext(config, List.of("uncapped"))));
     }
 
     private ProxyContext spendCapContext(String dayCap) {

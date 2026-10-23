@@ -81,9 +81,10 @@ anthropic-ratelimit-unified-overage-disabled-reason: org_spend_cap_reached
 
 ### Spend counter unreadable
 
-If the limit check fails, the request fails closed: 429 with `x-should-retry: false` and
+If the limit check fails for a caller with a cost limit, the request fails closed: 429 with `x-should-retry: false` and
 `anthropic-ratelimit-unified-overage-disabled-reason: fetch_error`, and no other `anthropic-ratelimit-*` header.
 The body is a `billing_error` with the message `DIAL could not read your spend limit; request rejected`.
+For a caller without a cost limit the failure is an ordinary server error (500), which clients retry.
 
 ### Other limits
 
@@ -96,7 +97,9 @@ carry `anthropic-ratelimit-unified-*` headers. The body is
 | minute cost, minute tokens, hourly requests (sliding windows) | `retry-after`, `x-should-retry: true` | `DIAL per-minute spend limit reached; retry in N s` / `DIAL per-minute token limit for <model> reached; retry in N s` / `DIAL hourly request limit for <model> reached; retry in N s` |
 | day/week/month tokens, daily requests (calendar windows) | `retry-after`, `x-should-retry: false` | `DIAL daily token limit for <model> reached (resets 2026-10-24 00:00 UTC)` |
 
-When several windows fire, the longest `retry-after` decides. Every other route keeps its Azure-format errors.
+When several windows fire, the longest `retry-after` decides. The limits are checked in the order token, request,
+cost, and the first one that rejects decides the answer: a caller over both a calendar token limit and a spend cap
+gets the `rate_limit_error`, not the `billing_error`. Every other route keeps its Azure-format errors.
 
 A cost cap configured as `0` is treated as unlimited for reporting (no headers, not in `limits`) while DIAL still enforces it,
 so such a user gets a `rate_limit_error` 429 naming the spend window rather than `billing_error`.

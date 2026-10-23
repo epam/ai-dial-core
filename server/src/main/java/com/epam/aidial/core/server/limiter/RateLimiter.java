@@ -149,12 +149,8 @@ public class RateLimiter {
         }
     }
 
-    public Future<SpendCaps> getSpendCaps(ProxyContext context) {
-        if (resourceService == null) {
-            return Future.succeededFuture(SpendCaps.EMPTY);
-        }
-        return getUserStats(context, List.of(), true)
-                .map(stats -> SpendCaps.of(stats.getDayCostStats(), stats.getWeekCostStats(), stats.getMonthCostStats()));
+    public boolean hasCostLimit(ProxyContext context) {
+        return getCostLimitByUser(context).hasLimits();
     }
 
     /**
@@ -567,12 +563,17 @@ public class RateLimiter {
         return ProxyUtil.convertToObject(resourceService.getResource(resourceDescription), CostRateLimit.class);
     }
 
-    private SpendCaps buildSpendCaps(@Nullable CostRateLimit rateLimit, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
-        LimitStats stats = create(DEFAULT_LIMIT, costLimit, timestamp, schedule);
-        if (rateLimit != null) {
-            rateLimit.update(timestamp, schedule, stats);
-        }
-        return SpendCaps.of(stats.getDayCostStats(), stats.getWeekCostStats(), stats.getMonthCostStats());
+    private static SpendCaps buildSpendCaps(@Nullable CostRateLimit rateLimit, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
+        return SpendCaps.of(List.of(
+                buildSpendCap(CalendarPeriod.DAY, rateLimit == null ? null : rateLimit.getDay(), costLimit.getDay(), timestamp, schedule),
+                buildSpendCap(CalendarPeriod.WEEK, rateLimit == null ? null : rateLimit.getWeek(), costLimit.getWeek(), timestamp, schedule),
+                buildSpendCap(CalendarPeriod.MONTH, rateLimit == null ? null : rateLimit.getMonth(), costLimit.getMonth(), timestamp, schedule)));
+    }
+
+    private static SpendCap buildSpendCap(
+            CalendarPeriod period, @Nullable CostFixedRateBucket bucket, BigDecimal total, long timestamp, RateLimitSchedule schedule) {
+        BigDecimal used = bucket == null ? BigDecimal.ZERO : bucket.reconcile(timestamp, period, schedule);
+        return new SpendCap(period, used, total, CalendarWindowCalculator.nextPeriodStart(period, timestamp, schedule));
     }
 
     private RateLimitResult checkTokenLimit(

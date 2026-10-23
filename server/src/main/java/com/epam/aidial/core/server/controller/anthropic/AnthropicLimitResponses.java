@@ -64,7 +64,7 @@ class AnthropicLimitResponses {
         String period = periodName(cap.period());
         String message = "DIAL spend limit reached (" + period + "; resets " + formatReset(cap.resetsAtMillis()) + ")";
         return new HttpException(HttpStatus.TOO_MANY_REQUESTS, errorBody("billing_error", message), Map.ofEntries(
-                Map.entry("retry-after", String.valueOf(Math.max(0, Math.ceilDiv(cap.resetsAtMillis() - nowMillis, 1000)))),
+                Map.entry("retry-after", String.valueOf(secondsUntil(cap.resetsAtMillis(), nowMillis))),
                 Map.entry(SHOULD_RETRY, "false"),
                 Map.entry(UNIFIED_PREFIX + "status", "rejected"),
                 Map.entry(UNIFIED_PREFIX + "reset", reset),
@@ -83,7 +83,7 @@ class AnthropicLimitResponses {
                 CONTENT_TYPE, APPLICATION_JSON));
     }
 
-    HttpException limitReached(LimitBreach breach, String deploymentName) {
+    HttpException limitReached(LimitBreach breach, String deploymentName, long nowMillis) {
         String label = breach.window().label();
         String message = switch (breach.kind()) {
             case COST -> "DIAL " + label + " spend limit reached";
@@ -91,11 +91,13 @@ class AnthropicLimitResponses {
             case REQUESTS -> "DIAL " + label + " request limit for " + deploymentName + " reached";
         };
         boolean rolling = breach.window().isRolling();
+        // a calendar window's own retry-after is floored, so in its last second it would say 0
+        long retryAfter = rolling ? breach.retryAfterSeconds() : secondsUntil(breach.resetsAtMillis(), nowMillis);
         message += rolling
                 ? "; retry in " + breach.retryAfterSeconds() + " s"
                 : " (resets " + formatReset(breach.resetsAtMillis()) + ")";
         return new HttpException(HttpStatus.TOO_MANY_REQUESTS, errorBody("rate_limit_error", message), Map.of(
-                "retry-after", String.valueOf(breach.retryAfterSeconds()),
+                "retry-after", String.valueOf(retryAfter),
                 SHOULD_RETRY, String.valueOf(rolling),
                 CONTENT_TYPE, APPLICATION_JSON));
     }
@@ -142,6 +144,10 @@ class AnthropicLimitResponses {
             case WEEK -> "weekly";
             case MONTH -> "monthly";
         };
+    }
+
+    private long secondsUntil(long resetsAtMillis, long nowMillis) {
+        return Math.max(0, Math.ceilDiv(resetsAtMillis - nowMillis, 1000));
     }
 
     private String formatReset(long epochMillis) {

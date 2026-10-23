@@ -32,7 +32,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * A passthrough request fails closed on an unreadable limit counter. A translated one only reads the spend caps:
+ * A passthrough request of a user with a cost limit fails closed on an unreadable limit counter. A translated one only reads the spend caps:
  * the inner call the translator makes back to Core enforces the limits.
  */
 @ExtendWith(MockitoExtension.class)
@@ -54,6 +54,7 @@ class MessagesControllerLimitTest {
         when(context.getDeployment()).thenReturn(model);
         when(proxy.getRateLimiter()).thenReturn(rateLimiter);
         when(rateLimiter.limit(any(), any())).thenReturn(Future.failedFuture(new IllegalStateException("redis down")));
+        when(rateLimiter.hasCostLimit(context)).thenReturn(true);
 
         Future<Void> result = new MessagesController(proxy, context).verifyLimit();
 
@@ -65,6 +66,23 @@ class MessagesControllerLimitTest {
         assertFalse(exception.getHeaders().keySet().stream()
                 .anyMatch(name -> name.toLowerCase().startsWith("anthropic-ratelimit-")
                         && !name.equalsIgnoreCase("anthropic-ratelimit-unified-overage-disabled-reason")));
+    }
+
+    @Test
+    void testVerifyLimit_withoutCostLimitPassesTheFailureOn() {
+        Model model = new Model();
+        model.setName("claude-spend");
+        when(context.getDeployment()).thenReturn(model);
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        IllegalStateException failure = new IllegalStateException("redis down");
+        when(rateLimiter.limit(any(), any())).thenReturn(Future.failedFuture(failure));
+        when(rateLimiter.hasCostLimit(context)).thenReturn(false);
+
+        Future<Void> result = new MessagesController(proxy, context).verifyLimit();
+
+        // no spend limit to blame: the request fails as any other server error does, which clients retry
+        assertTrue(result.failed());
+        assertEquals(failure, result.cause());
     }
 
     @Test

@@ -34,7 +34,7 @@ public class AnthropicUsageController {
             }
     )
     public Future<?> handle() {
-        proxy.getRateLimiter().getSpendCaps(context)
+        proxy.getRateLimiter().readSpendCaps(context)
                 .map(AnthropicLimitResponses::buildUsage)
                 .onSuccess(usage -> {
                     context.getResponse().putHeader(HttpHeaders.CACHE_CONTROL, "no-store");

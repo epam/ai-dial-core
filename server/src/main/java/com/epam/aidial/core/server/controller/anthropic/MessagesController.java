@@ -120,8 +120,9 @@ public class MessagesController extends MessagesBaseController {
                             @ApiResponse(code = 415),
                             @ApiResponse(code = 429, description = "DIAL limit reached, with an Anthropic-format error body "
                                     + "(`{\"type\":\"error\",\"error\":{\"type\":...,\"message\":...}}`). A reached spend cap gives `billing_error`, "
-                                    + "`x-should-retry: false` and `anthropic-ratelimit-unified-*` headers describing the cap; an unreadable spend counter gives "
-                                    + "`billing_error` with only `x-should-retry: false` and `anthropic-ratelimit-unified-overage-disabled-reason: fetch_error`; "
+                                    + "`x-should-retry: false` and `anthropic-ratelimit-unified-*` headers describing the cap; "
+                                    + "an unreadable spend counter of a caller with a cost limit gives `billing_error` with only `x-should-retry: false` and "
+                                    + "`anthropic-ratelimit-unified-overage-disabled-reason: fetch_error`; "
                                     + "a token, request or per-minute cost limit gives `rate_limit_error` with `retry-after`, and `x-should-retry: true` for rolling windows only",
                                     body = @ApiSchema(implementation = AnthropicErrorData.class)),
                             @ApiResponse(code = 500),
@@ -142,6 +143,10 @@ public class MessagesController extends MessagesBaseController {
         }
         return checkLimits(context.getDeployment())
                 .recover(error -> {
+                    // only a caller with a cost limit has one to blame; anyone else gets the usual retryable server error
+                    if (!proxy.getRateLimiter().hasCostLimit(context)) {
+                        return Future.failedFuture(error);
+                    }
                     log.warn("Failed to check limits, rejecting the request. Deployment: {}", context.getDeployment().getName(), error);
                     return Future.failedFuture(AnthropicLimitResponses.spendUnavailable());
                 })
@@ -153,7 +158,7 @@ public class MessagesController extends MessagesBaseController {
                             throw AnthropicLimitResponses.spendCapReached(reported, System.currentTimeMillis());
                         }
                         if (rateLimit.breach() != null) {
-                            throw AnthropicLimitResponses.limitReached(rateLimit.breach(), context.getDeployment().getName());
+                            throw AnthropicLimitResponses.limitReached(rateLimit.breach(), context.getDeployment().getName(), System.currentTimeMillis());
                         }
                     }
                     rateLimit.throwIfError();

@@ -1,10 +1,6 @@
 package com.epam.aidial.core.server.limiter;
 
-import com.epam.aidial.core.server.data.CostItemLimitStats;
-
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import javax.annotation.Nullable;
@@ -21,15 +17,15 @@ public record SpendCaps(List<SpendCap> windows, @Nullable SpendCap reported) {
 
     private static final BigDecimal UNLIMITED_THRESHOLD = BigDecimal.valueOf(1L << 53);
 
-    public static SpendCaps of(@Nullable CostItemLimitStats day, @Nullable CostItemLimitStats week, @Nullable CostItemLimitStats month) {
-        List<SpendCap> windows = new ArrayList<>(3);
-        addIfCapped(windows, CalendarPeriod.DAY, day);
-        addIfCapped(windows, CalendarPeriod.WEEK, week);
-        addIfCapped(windows, CalendarPeriod.MONTH, month);
+    /**
+     * Keeps the capped windows of {@code candidates}, in their order, and picks the one to report.
+     */
+    public static SpendCaps of(List<SpendCap> candidates) {
+        List<SpendCap> windows = candidates.stream().filter(SpendCaps::isCapped).toList();
         if (windows.isEmpty()) {
             return EMPTY;
         }
-        return new SpendCaps(List.copyOf(windows), select(windows));
+        return new SpendCaps(windows, select(windows));
     }
 
     /**
@@ -44,11 +40,7 @@ public record SpendCaps(List<SpendCap> windows, @Nullable SpendCap reported) {
         return windows.stream().max(Comparator.comparing(SpendCap::ratio).thenComparing(SpendCap::period)).orElse(null);
     }
 
-    private static void addIfCapped(List<SpendCap> windows, CalendarPeriod period, @Nullable CostItemLimitStats stats) {
-        if (stats == null || stats.getTotal().signum() <= 0 || stats.getTotal().compareTo(UNLIMITED_THRESHOLD) >= 0) {
-            return;
-        }
-        long resetsAtMillis = OffsetDateTime.parse(stats.getResetsAt()).toInstant().toEpochMilli();
-        windows.add(new SpendCap(period, stats.getUsed(), stats.getTotal(), resetsAtMillis));
+    private static boolean isCapped(SpendCap window) {
+        return window.total().signum() > 0 && window.total().compareTo(UNLIMITED_THRESHOLD) < 0;
     }
 }

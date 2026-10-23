@@ -39,7 +39,7 @@ class AnthropicUsageControllerTest {
     @Test
     void testHandle_respondsInternalErrorWhenSpendCapsFail() {
         when(proxy.getRateLimiter()).thenReturn(rateLimiter);
-        when(rateLimiter.getSpendCaps(context)).thenReturn(Future.failedFuture(new IllegalStateException("redis down")));
+        when(rateLimiter.readSpendCaps(context)).thenReturn(Future.failedFuture(new IllegalStateException("redis down")));
 
         new AnthropicUsageController(proxy, context).handle();
 
@@ -49,7 +49,7 @@ class AnthropicUsageControllerTest {
     @Test
     void testHandle_respondsUsageWithNoStore() {
         when(proxy.getRateLimiter()).thenReturn(rateLimiter);
-        when(rateLimiter.getSpendCaps(context)).thenReturn(Future.succeededFuture(new SpendCaps(List.of(), null)));
+        when(rateLimiter.readSpendCaps(context)).thenReturn(Future.succeededFuture(new SpendCaps(List.of(), null)));
         when(context.getResponse()).thenReturn(response);
 
         new AnthropicUsageController(proxy, context).handle();
