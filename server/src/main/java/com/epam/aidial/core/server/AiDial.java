@@ -44,6 +44,7 @@ import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.mcp.McpAuthorizationChallengeProvider;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
+import com.epam.aidial.core.server.orgunit.OrgUnitApprovals;
 import com.epam.aidial.core.server.orgunit.OrgUnitService;
 import com.epam.aidial.core.server.orgunit.OrgUnitSettings;
 import com.epam.aidial.core.server.security.AccessService;
@@ -319,7 +320,9 @@ public class AiDial {
                     catalogSchemaService, mergedConfigStore, generator, settings("applications"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService,
                     lockService, applicationSchemaService, clock, resourceCredentialsService);
-            AccessService accessService = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings("access"));
+            OrgUnitApprovals orgUnitApprovals = new OrgUnitApprovals(orgUnitService, encryptionService, resourceService);
+            AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals,
+                    applicationSchemaService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
             RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService, mergedConfigStore, blockingCallTracer);
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,
@@ -345,7 +348,7 @@ public class AiDial {
                     toolSetService, resourceService, invitationService, shareService, lockService, complexResourceService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
                     ruleService, notificationService, applicationService, toolSetService, resourceOperationService,
-                    complexResourceService, generator, clock);
+                    complexResourceService, orgUnitApprovals, generator, clock);
 
             DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
                     toolSetService, resourceService, applicationSchemaService);

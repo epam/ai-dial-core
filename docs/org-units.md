@@ -149,8 +149,8 @@ else fails to load, so a reload keeps the previous config. For example:
 
 ## Role assignments
 
-An assignment gives one of the roles above to a subject at one unit; units below it do not inherit it. For now only
-the `role-assignments` permission acts, as described below; content and publication grants follow.
+An assignment gives one of the roles above to a subject at one unit; units below it do not inherit it. The
+`role-assignments` permission acts as described below and `publications` in Approvers; content grants follow.
 
 Besides DIAL admins, a holder of `read role-assignments/**` at a unit — by default its `admin` — lists its roles and
 assignments, and a holder of `write role-assignments/**` adds and removes them, in that unit only. They give or remove
@@ -187,3 +187,20 @@ A caller matches a subject when they are signed in with a token, not acting thro
 and the claim holds one of the targets, ignoring case, read the same way as a read rule reads it (`roles` means the
 caller's DIAL roles). A stored subject with any other function, a source that isn't a plain claim name or path, `EQUAL`
 without targets or `TRUE` with them grants nothing.
+
+## Approvers
+
+A holder of `write publications/**` at a unit — by default its `admin` — approves and rejects publication requests
+into it through the usual `/v1/ops/publication/approve` and `/reject`, without being a DIAL admin. A request touches
+the unit of its `targetFolder` and of every resource's `targetUrl`, unpublish (`DELETE`) items included; the approver
+must hold the grant in every one of those units, and none of them may be the shared space. Two kinds of request stay
+with DIAL admins:
+
+- a request that carries `rules`, even an empty list: approving it replaces the folder's read rules, and an empty
+  list would open the folder to everyone;
+- the approver's own request.
+
+To review, a holder of `read publications/**` in every touched unit may `get` such a request, read (not change) its
+review copies while it is pending, and `list` `publications/public/` to see the pending requests whose `targetFolder`
+is in a unit where they hold it. Anyone who holds it in no unit is refused as before. Deciding needs both actions in every touched unit:
+a role with only `write publications/**` there is refused. With org units switched off, publications behave as they always have.

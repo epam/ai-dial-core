@@ -36,8 +36,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -629,7 +631,24 @@ class OrgUnitServiceTest {
             assertEquals(corrupt, storage.documents.get("a"));
             assertEquals(List.of(), service.roleAssignmentsOf("public/Acme/", list.units().get("public/Acme/")), corrupt);
             assertEquals(1, service.roleAssignmentsOf("public/Beta/", list.units().get("public/Beta/")).size(), corrupt);
+            Map<String, List<RoleAssignment>> all = service.roleAssignmentsOfAll(list.units());
+            assertEquals(Set.of("public/Beta/"), all.keySet(), corrupt);
         }
+    }
+
+    @Test
+    void testAllPoliciesAreReadInOneBatch() {
+        String tree = "{\"units\": {\"public/\": {\"id\": \"legacy\"}, \"public/Acme/\": {\"id\": \"a\"}, "
+                + "\"public/Beta/\": {\"id\": \"b\"}, \"public/Gamma/\": {\"id\": \"g\"}}}";
+        FakeOrgUnitStorage storage = new FakeOrgUnitStorage(Map.of("units", tree, "legacy", "{\"roleAssignments\": []}",
+                "a", "{\"roleAssignments\": []}", "b", "{\"roleAssignments\": []}"));
+        OrgUnitService service = service(storage);
+        OrgUnitList list = service.getUnitList();
+        clearInvocations(storage.resources);
+
+        assertEquals(Set.of("public/Acme/", "public/Beta/"), service.roleAssignmentsOfAll(list.units()).keySet());
+        verify(storage.resources, times(1)).load(anyList(), anyList());
+        verify(storage.resources, never()).getResourceWithMetadata(any(), any());
     }
 
     @Test
