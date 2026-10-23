@@ -251,6 +251,14 @@ public enum RouteTemplate {
             "^/v1/org-units/(?<path>[^/].*?)/roles/?$",
             "/v1/org-units/{path}/roles"
     ),
+    ORG_UNIT_ROLE_ASSIGNMENTS(
+            "^/v1/org-units/(?<path>[^/].*?)/role-assignments/?$",
+            "/v1/org-units/{path}/role-assignments"
+    ),
+    ORG_UNIT_ROLE_ASSIGNMENT(
+            "^/v1/org-units/(?<path>[^/].*?)/role-assignments/(?<id>[^/]+)$",
+            "/v1/org-units/{path}/role-assignments/{id}"
+    ),
     ORG_UNIT(
             "^/v1/org-units/(?<path>[^/].*?)/?$",
             "/v1/org-units/{path}"
