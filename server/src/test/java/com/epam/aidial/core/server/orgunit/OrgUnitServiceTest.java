@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -15,7 +16,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -319,6 +322,194 @@ class OrgUnitServiceTest {
         assertNull(acme.id());
         assertNull(acme.createdAt());
     }
+
+    @Test
+    void testNearestUnitOwnsItemOfAnyType() {
+        Map<String, OrgUnit> units = service(UNITS).getUnitList().units();
+
+        assertEquals("public/Risk/US Risk/", OrgUnitService.ownerOf(units, resource(ResourceTypes.FILE, "Risk/US Risk/Reports/Q3/var.xlsx")));
+        assertEquals("public/Risk/US Risk/", OrgUnitService.ownerOf(units, resource(ResourceTypes.PROMPT, "Risk/US Risk/Templates/memo")));
+        assertEquals("public/Risk/US Risk/Basel/", OrgUnitService.ownerOf(units, resource(ResourceTypes.APPLICATION, "Risk/US Risk/Basel/checkers/app")));
+        assertEquals("public/Risk/", OrgUnitService.ownerOf(units, resource(ResourceTypes.FILE, "Risk/Policies/2026/limits.pdf")));
+        assertEquals(OrgUnitService.SHARED_SPACE_KEY, OrgUnitService.ownerOf(units, resource(ResourceTypes.FILE, "Handbook/welcome.pdf")));
+        assertEquals(OrgUnitService.SHARED_SPACE_KEY, OrgUnitService.ownerOf(units, resource(ResourceTypes.FILE, "welcome.pdf")));
+        assertEquals(OrgUnitService.SHARED_SPACE_KEY, OrgUnitService.ownerOf(units, resource(ResourceTypes.FILE, "Risky/a.pdf")));
+    }
+
+    @Test
+    void testMoveGuardChecksOnlyItemMovesInsideTheSharedSpace() {
+        OrgUnitService service = service(UNITS);
+        ResourceDescriptor inRisk = resource(ResourceTypes.FILE, "Risk/a.pdf");
+        ResourceDescriptor inBasel = resource(ResourceTypes.FILE, "Risk/US Risk/Basel/a.pdf");
+        ResourceDescriptor own = ResourceDescriptorFactory.fromDecoded(ResourceTypes.FILE, "bucket", "Users/alice/", "a.pdf");
+
+        HttpException refused = assertThrows(HttpException.class, () -> service.requireSameUnit(inRisk, inBasel));
+        assertEquals(HttpStatus.CONFLICT, refused.getStatus());
+        service.requireSameUnit(inRisk, resource(ResourceTypes.FILE, "Risk/Policies/a.pdf"));
+        service.requireSameUnit(inRisk, own);
+        service.requireSameUnit(own, inBasel);
+        service.requireSameUnit(resource(ResourceTypes.FILE, "Risk/Policies/"), resource(ResourceTypes.FILE, "Risk/US Risk/Basel/Policies/"));
+        service.requireSameUnit(inRisk, resource(ResourceTypes.FILE, "Risk/US Risk/Basel/Policies/"));
+
+        ResourceService resources = mock(ResourceService.class);
+        new OrgUnitService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(false), () -> "id", () -> 0L)
+                .requireSameUnit(inRisk, inBasel);
+        verify(resources, never()).getResourceWithMetadata(any(), any());
+    }
+
+    @Test
+    void testDeleteNamesUpToThreeItemsAndStopsListing() {
+        ResourceService resources = writableResources("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", new AtomicReference<>());
+        ResourceDescriptor acme = resource(ResourceTypes.FILE, "Acme/");
+        when(resources.getFolderMetadata(eq(acme), eq(null), anyInt(), eq(true))).thenReturn(new ResourceFolderMetadata(acme, List.of(
+                new ResourceItemMetadata(resource(ResourceTypes.FILE, "Acme/.dial_folder")),
+                new ResourceItemMetadata(resource(ResourceTypes.FILE, "Acme/a.txt")),
+                new ResourceItemMetadata(resource(ResourceTypes.FILE, "Acme/b.txt"))), "page-2"));
+        when(resources.getFolderMetadata(eq(acme), eq("page-2"), anyInt(), eq(true))).thenReturn(new ResourceFolderMetadata(acme, List.of(
+                new ResourceItemMetadata(resource(ResourceTypes.FILE, "Acme/c.txt")),
+                new ResourceItemMetadata(resource(ResourceTypes.FILE, "Acme/d.txt"))), "page-3"));
+        OrgUnitService service = new OrgUnitService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        HttpException refused = assertThrows(HttpException.class, () -> service.delete(List.of("public", "Acme"), false));
+
+        assertEquals(HttpStatus.CONFLICT, refused.getStatus());
+        assertTrue(refused.getMessage().contains("Acme still holds content: files/public/Acme/a.txt, files/public/Acme/b.txt, "
+                + "files/public/Acme/c.txt, …"), refused.getMessage());
+        verify(resources, never()).getFolderMetadata(any(), eq("page-3"), anyInt(), anyBoolean());
+        verify(resources, never()).getFolderMetadata(argThat(folder -> folder != null && folder.getType() != ResourceTypes.FILE),
+                any(), anyInt(), anyBoolean());
+    }
+
+    @Test
+    void testMarkerOutsideTheFilesTreeIsContent() {
+        ResourceService resources = writableResources("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", new AtomicReference<>());
+        ResourceDescriptor prompts = resource(ResourceTypes.PROMPT, "Acme/");
+        when(resources.getFolderMetadata(eq(prompts), any(), anyInt(), eq(true))).thenReturn(new ResourceFolderMetadata(prompts,
+                List.of(new ResourceItemMetadata(resource(ResourceTypes.PROMPT, "Acme/.dial_folder"))), null));
+        OrgUnitService service = new OrgUnitService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        HttpException refused = assertThrows(HttpException.class, () -> service.delete(List.of("public", "Acme"), false));
+
+        assertTrue(refused.getMessage().contains("prompts/public/Acme/.dial_folder"), refused.getMessage());
+    }
+
+    @Test
+    void testDeleteKeepsReadRulesWhenContentLandsMeanwhile() throws Exception {
+        AtomicReference<String> written = new AtomicReference<>();
+        ResourceService resources = writableResources("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", written);
+        ResourceDescriptor acme = resource(ResourceTypes.FILE, "Acme/");
+        when(resources.getFolderMetadata(eq(acme), any(), anyInt(), eq(true))).thenReturn(null, new ResourceFolderMetadata(acme,
+                List.of(new ResourceItemMetadata(resource(ResourceTypes.FILE, "Acme/late.pdf"))), null));
+        RuleService rules = mock(RuleService.class);
+        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        assertEquals(List.of("public/Acme"), service.delete(List.of("public", "Acme"), false));
+
+        assertFalse(ProxyUtil.MAPPER.readTree(written.get()).get("units").has("public/Acme/"));
+        verify(rules, never()).removeRulesUnder(any());
+    }
+
+    @Test
+    void testDeleteFailingOnMarkerLeavesTheUnitToRepeat() {
+        AtomicReference<String> written = new AtomicReference<>();
+        ResourceService resources = writableResources("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", written);
+        ResourceDescriptor acme = resource(ResourceTypes.FILE, "Acme/");
+        ResourceDescriptor marker = resource(ResourceTypes.FILE, "Acme/.dial_folder");
+        when(resources.getFolderMetadata(eq(acme), any(), anyInt(), eq(true)))
+                .thenReturn(new ResourceFolderMetadata(acme, List.of(new ResourceItemMetadata(marker)), null));
+        when(resources.deleteResource(eq(marker), any())).thenThrow(new IllegalStateException("blob store down"));
+        RuleService rules = mock(RuleService.class);
+        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        assertThrows(IllegalStateException.class, () -> service.delete(List.of("public", "Acme"), false));
+
+        assertNull(written.get());
+        verify(rules, never()).removeRulesUnder(any());
+    }
+
+    @Test
+    void testDeleteAnswersWhenTheReadRulesCantBeRemoved() {
+        ResourceService resources = writableResources("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", new AtomicReference<>());
+        RuleService rules = mock(RuleService.class);
+        doThrow(new IllegalStateException("redis down")).when(rules).removeRulesUnder(any());
+        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        assertEquals(List.of("public/Acme"), service.delete(List.of("public", "Acme"), false));
+
+        verify(resources).syncNow(any());
+    }
+
+    @Test
+    void testDeleteKeepsReadRulesWhenTheSubtreeCantBeListedAfterwards() {
+        ResourceService resources = writableResources("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", new AtomicReference<>());
+        ResourceDescriptor acme = resource(ResourceTypes.FILE, "Acme/");
+        when(resources.getFolderMetadata(eq(acme), any(), anyInt(), eq(true)))
+                .thenReturn(null)
+                .thenThrow(new IllegalStateException("blob store down"));
+        RuleService rules = mock(RuleService.class);
+        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        assertEquals(List.of("public/Acme"), service.delete(List.of("public", "Acme"), false));
+
+        verify(rules, never()).removeRulesUnder(any());
+        verify(resources).syncNow(any());
+    }
+
+    @Test
+    void testDeleteRemovesTheSubtreeFromTheTreeAndItsRules() throws Exception {
+        String tree = "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}, \"public/Acme/Risk/\": {\"id\": \"r\"}, "
+                + "\"public/Beta/\": {\"id\": \"b\"}}}";
+        AtomicReference<String> written = new AtomicReference<>();
+        ResourceService resources = writableResources(tree, written);
+        RuleService rules = mock(RuleService.class);
+        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        assertEquals(List.of("public/Acme/Risk", "public/Acme"), service.delete(List.of("public", "Acme"), true));
+
+        List<String> left = new ArrayList<>();
+        ProxyUtil.MAPPER.readTree(written.get()).get("units").fieldNames().forEachRemaining(left::add);
+        assertEquals(List.of("public/Beta/"), left);
+        verify(rules).removeRulesUnder(argThat(folder -> folder.getUrl().equals("files/public/Acme/")));
+        verify(resources).syncNow(any());
+    }
+
+    @Test
+    void testDisplayNameUpdateKeepsWhatThisNodeDoesNotKnow() throws Exception {
+        String stored = "{\"units\": {\"public/Acme/\": {\"id\": \"a\", \"displayName\": \"Acme\", \"future\": {\"x\": 1}},"
+                + " \"public/Beta/\": {\"id\": \"b\", \"later\": true}}, \"version\": 3}";
+        AtomicReference<String> written = new AtomicReference<>();
+        OrgUnitService service = writable(stored, written);
+
+        service.updateDisplayName(List.of("public", "Acme"), "Acme Corp");
+
+        JsonNode document = ProxyUtil.MAPPER.readTree(written.get());
+        assertEquals("Acme Corp", document.at("/units/public~1Acme~1/displayName").textValue());
+        assertEquals(1, document.at("/units/public~1Acme~1/future/x").intValue());
+        assertEquals("a", document.at("/units/public~1Acme~1/id").textValue());
+        assertTrue(document.at("/units/public~1Beta~1/later").booleanValue());
+        assertEquals(3, document.get("version").intValue());
+
+        service.updateDisplayName(List.of("public", "Acme"), " ");
+        assertEquals("Acme", ProxyUtil.MAPPER.readTree(written.get()).at("/units/public~1Acme~1/displayName").textValue());
+    }
+
+    @Test
+    void testDisplayNameUpdateRefusals() {
+        AtomicReference<String> written = new AtomicReference<>();
+        OrgUnitService service = writable("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", written);
+
+        assertThrows(IllegalArgumentException.class, () -> service.updateDisplayName(List.of("public"), "Shared"));
+        assertThrows(IllegalArgumentException.class, () -> service.updateDisplayName(List.of("public", "Acme"), null));
+        assertThrows(IllegalArgumentException.class, () -> service.updateDisplayName(List.of("public", "Acme"), "x".repeat(129)));
+        assertThrows(IllegalArgumentException.class, () -> service.updateDisplayName(List.of("public", "Acme"), "line\nbreak"));
+        assertThrows(ResourceNotFoundException.class, () -> service.updateDisplayName(List.of("public", "Beta"), "Beta"));
+        assertNull(written.get());
+    }
+
+    private static ResourceDescriptor resource(ResourceTypes type, String path) {
+        return ResourceDescriptorFactory.fromDecoded(type, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path);
+    }
+
 
     private static OrgUnitService writable(String stored, AtomicReference<String> written) {
         RuleService rules = mock(RuleService.class);

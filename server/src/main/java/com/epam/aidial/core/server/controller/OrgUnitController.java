@@ -10,8 +10,10 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.orgunit.CreateOrgUnitRequest;
+import com.epam.aidial.core.server.orgunit.DeleteOrgUnitResult;
 import com.epam.aidial.core.server.orgunit.OrgUnitData;
 import com.epam.aidial.core.server.orgunit.OrgUnitService;
+import com.epam.aidial.core.server.orgunit.UpdateOrgUnitRequest;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -25,7 +27,7 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Reads and creates org units. Switched off, every route answers as one that does not exist.
+ * Reads, creates, renames and removes org units. Switched off, every route answers as one that does not exist.
  */
 @Slf4j
 public class OrgUnitController {
@@ -111,6 +113,80 @@ public class OrgUnitController {
                             orgUnitService.create(parentPath, request.name(), request.displayName(), author));
                 })
                 .onSuccess(unit -> context.respond(HttpStatus.OK, unit))
+                .onFailure(this::respondError);
+        return Future.succeededFuture();
+    }
+
+    @ApiOperation(
+            method = "PATCH",
+            path = "/v1/org-units/{path}",
+            operationId = "updateOrgUnit",
+            requestBody = @ApiSchema(implementation = UpdateOrgUnitRequest.class),
+            tags = {"Org units"},
+            parameters = {
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
+                            description = "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "The display name is changed",
+                            body = @ApiSchema(implementation = OrgUnitData.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
+    public Future<?> updateOrgUnit(String rawPath) {
+        context.getRequest().body()
+                .compose(body -> {
+                    requireEnabled();
+                    requireAdmin();
+                    List<String> path = decode(rawPath);
+                    UpdateOrgUnitRequest request = parse(body.toString(), UpdateOrgUnitRequest.class,
+                            "Request body must be {\"displayName\": \"<what clients show>\"}");
+                    return proxy.getTaskExecutor().submit(() -> orgUnitService.updateDisplayName(path, request.displayName()));
+                })
+                .onSuccess(unit -> context.respond(HttpStatus.OK, unit))
+                .onFailure(this::respondError);
+        return Future.succeededFuture();
+    }
+
+    @ApiOperation(
+            method = "DELETE",
+            path = "/v1/org-units/{path}",
+            operationId = "deleteOrgUnit",
+            tags = {"Org units"},
+            parameters = {
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
+                            description = "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk"),
+                    @ApiParameter(name = "recursive", in = ParameterIn.QUERY, schema = Boolean.class,
+                            description = "Also remove every unit below it")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "The unit is removed, with its folder markers and, unless content landed in it meanwhile, the read rules of its subtree",
+                            body = @ApiSchema(implementation = DeleteOrgUnitResult.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 409, description = "The unit holds content, or has units below it and recursive is not set"),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
+    public Future<?> deleteOrgUnit(String rawPath) {
+        boolean recursive = context.getBooleanRequestQueryParam("recursive");
+        proxy.getTaskExecutor()
+                .submit(() -> {
+                    requireEnabled();
+                    requireAdmin();
+                    return new DeleteOrgUnitResult(orgUnitService.delete(decode(rawPath), recursive));
+                })
+                .onSuccess(result -> context.respond(HttpStatus.OK, result))
                 .onFailure(this::respondError);
         return Future.succeededFuture();
     }

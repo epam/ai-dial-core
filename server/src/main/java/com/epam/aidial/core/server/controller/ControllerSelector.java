@@ -421,6 +421,16 @@ public class ControllerSelector {
             String path = pathMatcher.group("path");
             return () -> controller.createOrgUnit(path);
         });
+        patch(RouteTemplate.ORG_UNIT, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.updateOrgUnit(path);
+        });
+        delete(RouteTemplate.ORG_UNIT, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.deleteOrgUnit(path);
+        });
         post(RouteTemplate.PUBLICATION_RULES, (proxy, context, pathMatcher) -> {
             PublicationController controller = new PublicationController(proxy, context);
             return controller::listRules;
@@ -676,6 +686,10 @@ public class ControllerSelector {
 
     private static void put(RouteTemplate template, ControllerRoute.Initializer controllerTemplate) {
         ROUTES.add(new ControllerRoute(HttpMethod.PUT, template.getPattern(), controllerTemplate));
+    }
+
+    private static void patch(RouteTemplate template, ControllerRoute.Initializer controllerTemplate) {
+        ROUTES.add(new ControllerRoute(HttpMethod.PATCH, template.getPattern(), controllerTemplate));
     }
 
     private static void delete(RouteTemplate template, ControllerRoute.Initializer controllerTemplate) {

@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.orgunit;
 
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.service.RuleService;
+import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
@@ -24,6 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -41,6 +43,11 @@ import javax.annotation.Nullable;
 /**
  * Org units as folders of the shared space, recorded in a unit tree next to the rules document. One tree key covers
  * the unit's folder in every content type tree.
+ *
+ * <p>A resource belongs to the nearest unit above it, whatever its type: the type folder is dropped and the
+ * longest matching key wins, so {@code files/public/Risk/US Risk/a.pdf} and {@code applications/public/Risk/US Risk/x}
+ * both belong to {@code public/Risk/US Risk/}. Two invariants keep that unambiguous: a unit's parent is a unit or the
+ * shared space, and a new unit never takes the name of an existing folder or item in any type tree.
  *
  * <p>The shared space itself is not a unit: what lies under no unit stays with the DIAL admins. The customer's
  * organization is the first unit below it, such as {@code public/Acme/}.
@@ -146,6 +153,40 @@ public class OrgUnitService {
     }
 
     /**
+     * The key of the unit that owns the shared-space item, or {@link #SHARED_SPACE_KEY} when no unit is above it.
+     */
+    static String ownerOf(Map<String, OrgUnit> units, ResourceDescriptor item) {
+        String key = keyOf(item.getParent());
+        while (!key.equals(SHARED_SPACE_KEY)) {
+            if (units.containsKey(key)) {
+                return key;
+            }
+            key = parentKey(key);
+        }
+        return SHARED_SPACE_KEY;
+    }
+
+    /**
+     * Refuses a move inside the shared space that would hand an item to another unit. Folders are moved item by item,
+     * so this is what stops a unit's folder from being renamed or moved away from its entry. Folder moves are left to
+     * the move itself, which refuses them.
+     */
+    public void requireSameUnit(ResourceDescriptor source, ResourceDescriptor destination) {
+        if (!settings.enabled() || !source.isPublic() || !destination.isPublic() || source.isFolder() || destination.isFolder()) {
+            return;
+        }
+
+        Map<String, OrgUnit> units = getUnitList().units();
+        String from = ownerOf(units, source);
+        String to = ownerOf(units, destination);
+        if (!from.equals(to)) {
+            throw new HttpException(HttpStatus.CONFLICT, "Moves between org units aren't allowed: %s belongs to %s, %s to %s. "
+                    .formatted(source.getDecodedUrl(), describe(from), destination.getDecodedUrl(), describe(to))
+                    + "Publish into the other unit instead.");
+        }
+    }
+
+    /**
      * Reads the shared space or a unit with the units directly below it, or every unit below when {@code recursive}.
      * An admin sees every unit; anyone else sees the units whose folder the read rules let them see, and a unit they
      * can't see answers as one that doesn't exist.
@@ -199,6 +240,179 @@ public class OrgUnitService {
 
         return new OrgUnitData(unit.id(), name, unit.displayName(), path(key), encodedFolder(key), unit.author(), unit.createdAt(),
                 List.of());
+    }
+
+    /**
+     * Changes what clients show for a unit; a blank display name falls back to the name, as on create. Only the
+     * stored entry's {@code displayName} changes, so fields this node doesn't know stay as stored. The unit's name and
+     * folder never change.
+     */
+    public OrgUnitData updateDisplayName(List<String> path, @Nullable String displayName) {
+        String key = keyOf(requireSharedSpace(path));
+        if (key.equals(SHARED_SPACE_KEY)) {
+            throw new IllegalArgumentException("The shared space is not a unit");
+        }
+        if (displayName == null) {
+            throw new IllegalArgumentException("displayName is the only field a unit's update takes");
+        }
+        requireDisplayName(displayName);
+
+        String value = displayName.isBlank() ? lastSegment(key) : displayName;
+        resources.computeResource(UNITS, body -> {
+            ObjectNode document = parse(body);
+            if (!(units(document).get(key) instanceof ObjectNode entry)) {
+                throw new ResourceNotFoundException("No org unit: " + String.join("/", path));
+            }
+            entry.put("displayName", value);
+            return document.toString();
+        });
+        save();
+        return read(path, false, null, true);
+    }
+
+    /**
+     * Removes an empty unit; with {@code recursive}, every unit below it too. A unit is empty when its folder holds
+     * nothing but empty-folder markers in the files tree and nothing at all in any other type tree, the subtree of its
+     * child units included. Its tree entries and the markers in its subtree go, and so do the read rules of its subtree
+     * unless content landed in it meanwhile.
+     *
+     * @return the paths of the removed units, deepest first
+     */
+    public List<String> delete(List<String> path, boolean recursive) {
+        String key = keyOf(requireSharedSpace(path));
+        if (key.equals(SHARED_SPACE_KEY)) {
+            throw new IllegalArgumentException("The shared space is not a unit");
+        }
+
+        List<String> removed = locks.underBucketLock(SHARED_SPACE_KEY, () -> deleteLocked(path, key, recursive));
+        save();
+        return removed.stream().map(OrgUnitService::path).toList();
+    }
+
+    /**
+     * Runs under the shared space's bucket lock, which create, moves and publication approvals into the shared space
+     * also take, so none of them puts anything into the unit between the emptiness check and the removal. A direct
+     * write doesn't take that lock: if one lands meanwhile, the subtree's read rules stay, so its content stays as
+     * closed as it was.
+     *
+     * <p>The markers go before the tree entries: until the entries are gone the unit still exists, so a removal that
+     * fails part way can be repeated, and once they are gone no marker is left to keep the name taken.
+     *
+     * @return the keys of the removed units, deepest first
+     */
+    private List<String> deleteLocked(List<String> path, String key, boolean recursive) {
+        List<String> removed = new ArrayList<>(unitsBelow(getUnitList(), key, path, recursive));
+        List<ResourceDescriptor> markers = requireEmpty(key, removed);
+        removed.add(key);
+
+        for (ResourceDescriptor marker : markers) {
+            resources.deleteResource(marker, EtagHeader.ANY);
+        }
+        update(list -> removed.forEach(list.units()::remove));
+        if (isStillEmpty(key)) {
+            removeRulesUnder(key);
+        }
+        return removed;
+    }
+
+    /**
+     * The unit is gone by now, so a failure here only leaves the subtree's read rules, which keep its folder closed.
+     */
+    private void removeRulesUnder(String key) {
+        try {
+            ruleService.removeRulesUnder(folder(ResourceTypes.FILE, key));
+        } catch (RuntimeException e) {
+            log.warn("The read rules of {} stay after its removal: {}", describe(key), e.getMessage());
+        }
+    }
+
+    /**
+     * Whether the subtree is still empty once its markers are gone. Content that landed meanwhile, or a listing that
+     * fails, keeps the subtree's read rules: the unit is gone either way, and its content stays as closed as it was.
+     */
+    private boolean isStillEmpty(String key) {
+        try {
+            List<String> content = listSubtree(key).content();
+            if (content.isEmpty()) {
+                return true;
+            }
+            log.warn("Content landed in {} while it was removed, so its read rules stay: {}", describe(key), content);
+        } catch (RuntimeException e) {
+            log.warn("{} couldn't be listed after its removal, so its read rules stay: {}", describe(key), e.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * The units below the key, deepest first; refuses them unless {@code recursive}.
+     */
+    private static List<String> unitsBelow(OrgUnitList list, String key, List<String> path, boolean recursive) {
+        if (!list.units().containsKey(key)) {
+            throw new ResourceNotFoundException("No org unit: " + String.join("/", path));
+        }
+
+        List<String> below = list.units().keySet().stream()
+                .filter(unit -> unit.startsWith(key) && !unit.equals(key))
+                .sorted(Comparator.comparingInt(OrgUnitService::depth).reversed().thenComparing(Comparator.naturalOrder()))
+                .toList();
+        if (!below.isEmpty() && !recursive) {
+            throw new HttpException(HttpStatus.CONFLICT, "%s has units below it: %s. Remove them first, or remove all with recursive=true"
+                    .formatted(describe(key), String.join(", ", below.stream().map(OrgUnitService::describe).toList())));
+        }
+        return below;
+    }
+
+    /**
+     * Refuses a unit whose subtree holds anything but empty-folder markers in the files tree, naming up to three items.
+     *
+     * @return the markers to remove with it
+     */
+    private List<ResourceDescriptor> requireEmpty(String key, List<String> below) {
+        Subtree subtree = listSubtree(key);
+        List<String> content = subtree.content();
+        if (!content.isEmpty()) {
+            String units = below.isEmpty() ? describe(key) + " still holds" : describe(key) + " and the units below it still hold";
+            String shown = String.join(", ", content.subList(0, Math.min(3, content.size()))) + (content.size() > 3 ? ", …" : "");
+            throw new HttpException(HttpStatus.CONFLICT, "%s content: %s. Delete or move it first.".formatted(units, shown));
+        }
+        return subtree.markers();
+    }
+
+    /**
+     * The subtree's empty-folder markers, in the files tree and the grouping folders of the skills and projects trees,
+     * and its other items in every type tree. Stops listing once more than three items are found: enough to name them.
+     */
+    private Subtree listSubtree(String key) {
+        List<ResourceDescriptor> markers = new ArrayList<>();
+        List<String> content = new ArrayList<>();
+        for (ResourceTypes type : CONTENT_TYPES) {
+            if (content.size() > 3) {
+                break;
+            }
+            String token = null;
+            do {
+                ResourceFolderMetadata page = resources.getFolderMetadata(folder(type, key), token, LIST_PAGE, true);
+                if (page == null) {
+                    break;
+                }
+                for (MetadataBase item : page.getItems()) {
+                    if (isMarker(type, item.getName())) {
+                        markers.add(((ResourceItemMetadata) item).getDescriptor());
+                    } else {
+                        content.add(item.getUrl());
+                    }
+                }
+                token = content.size() > 3 ? null : page.getNextToken();
+            } while (token != null);
+        }
+        return new Subtree(markers, content);
+    }
+
+    private record Subtree(List<ResourceDescriptor> markers, List<String> content) {
+    }
+
+    private static boolean isMarker(ResourceTypes type, String name) {
+        return type == ResourceTypes.FILE ? FOLDER_MARKER.equals(name) : type.isComplex() && ComplexResourceService.FOLDER_MARKER_NAME.equals(name);
     }
 
     /**
@@ -273,8 +487,8 @@ public class OrgUnitService {
     }
 
     /**
-     * Saves the list to the blob store now rather than at the next sync, since a change lost with Redis would undo a
-     * created unit. Runs outside the shared space's lock, so a slow blob store doesn't hold up moves and approvals.
+     * Saves the list to the blob store now rather than at the next sync, since a change lost with Redis could restore a
+     * removed unit or undo a created one. Runs outside the shared space's lock, so a slow blob store doesn't hold up moves and approvals.
      */
     private void save() {
         try {
@@ -479,6 +693,15 @@ public class OrgUnitService {
     private static ResourceDescriptor folder(ResourceTypes type, String key) {
         return ResourceDescriptorFactory.fromDecoded(type, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION,
                 key.substring(SHARED_SPACE_KEY.length()));
+    }
+
+    private static String keyOf(@Nullable ResourceDescriptor folder) {
+        if (folder == null) {
+            return SHARED_SPACE_KEY;
+        }
+
+        String url = folder.getDecodedUrl();
+        return url.substring(folder.getType().urlSegment().length() + 1);
     }
 
     private static String keyOf(List<String> unitPath) {

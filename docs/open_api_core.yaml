@@ -10053,7 +10053,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
         "409":
-          description: The move would put a skill or project on an org unit's folder
+          description: "The move would hand the resource to another org unit, take it out of its unit, or put a skill or project on an org unit's folder"
         "500":
           description: The server had an error while processing your request.
           content:
@@ -10858,6 +10858,108 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "409":
           description: "The name is taken, the depth limit is reached, or no read rule on the folder or above it closes it"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Org units
+      summary: "/v1/org-units/{path}"
+      operationId: deleteOrgUnit
+      parameters:
+      - name: path
+        in: path
+        description: "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk"
+        required: true
+        schema:
+          type: string
+      - name: recursive
+        in: query
+        description: Also remove every unit below it
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: "The unit is removed, with its folder markers and, unless content landed in it meanwhile, the read rules of its subtree"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteOrgUnitResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: "The unit holds content, or has units below it and recursive is not set"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    patch:
+      tags:
+      - Org units
+      summary: "/v1/org-units/{path}"
+      operationId: updateOrgUnit
+      parameters:
+      - name: path
+        in: path
+        description: "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk"
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrgUnitRequest"
+        required: true
+      responses:
+        "200":
+          description: The display name is changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgUnitData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
           content:
@@ -16831,6 +16933,13 @@ components:
           type: array
           items:
             type: string
+    DeleteOrgUnitResult:
+      type: object
+      properties:
+        removed:
+          type: array
+          items:
+            type: string
     DeploymentData:
       required:
       - object
@@ -19127,6 +19236,11 @@ components:
           type: array
           items:
             type: integer
+    UpdateOrgUnitRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
     Upstream:
       type: object
       properties:
