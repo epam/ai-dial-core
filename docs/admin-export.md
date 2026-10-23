@@ -35,7 +35,7 @@ cannot be restored.
 | `500`  | The export failed before the archive started.                                                                       |
 
 The status cannot change once the archive has started. A failure after that, or a client that is too slow
-(see `adminExport.stallTimeout` below), resets the connection. The client sees a transport error and the partial file has no
+(see `adminExport.stallTimeout` in the [README](../README.md#static-settings)), resets the connection. The client sees a transport error and the partial file has no
 central directory, so it is not a valid ZIP. Always check that the download completed without an error before using it.
 
 ## Operational notes
@@ -49,9 +49,3 @@ central directory, so it is not a valid ZIP. Always check that the download comp
 - Blobs are exported exactly as stored, so secret fields stay encrypted as they are in storage. The encryption keys are not
   exported (`encryption_keys/` is excluded), so keep the key material separately if the archive has to be restored.
   The archive still holds the full content of both buckets, so treat it as confidential.
-
-## Settings
-
-| Setting                   | Default | Description                                                                          |
-|---------------------------|:-------:|--------------------------------------------------------------------------------------|
-| `adminExport.stallTimeout` | 60000   | Milliseconds the export waits for a slow client to take the buffered data before it fails and the connection is reset. Raise it if clients with slow connections fail. It must be positive and below the 5 minute lock period (300000), otherwise Core does not start. |

@@ -347,7 +347,7 @@ Refer to [Admin export](docs/admin-export.md) to learn more.
 
 | Setting                    | Default | Required | Description                                                                                                                                              |
 |----------------------------|:-------:|:--------:|----------------------------------------------------------------------------------------------------------------------------------------------------------|
-| adminExport.stallTimeout   | 60000   |    No    | Time in milliseconds the export waits for a slow client before it fails. Must be below 300000. See [Admin export](docs/admin-export.md#settings). |
+| adminExport.stallTimeout   | 60000   |    No    | Time in milliseconds the export waits for a slow client to take the buffered data before it fails and the connection is reset. Raise it if clients with slow connections fail. It must be positive and below the 5 minute lock period (300000), otherwise Core does not start. |
 
 </details>
 
