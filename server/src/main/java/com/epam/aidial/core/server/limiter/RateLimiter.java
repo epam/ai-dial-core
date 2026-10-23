@@ -42,6 +42,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import javax.annotation.Nullable;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -143,6 +144,28 @@ public class RateLimiter {
                 BlockingCallTracer.currentSpan().setAttribute("dial.rate_limit.status", result.status().getCode());
                 return result;
             }));
+        } catch (Throwable e) {
+            return Future.failedFuture(e);
+        }
+    }
+
+    public boolean hasCostLimit(ProxyContext context) {
+        return getCostLimitByUser(context).hasLimits();
+    }
+
+    /**
+     * The caller's spend caps as the pre-request check sees them, read without checking or charging anything -
+     * for a request whose limits are enforced by another one, such as the call a translator makes back to Core.
+     */
+    public Future<SpendCaps> readSpendCaps(ProxyContext context) {
+        if (resourceService == null) {
+            return Future.succeededFuture(SpendCaps.EMPTY);
+        }
+        try {
+            CostLimit costLimit = getCostLimitByUser(context);
+            RateLimitSchedule schedule = context.getConfig().getRateLimitSchedule();
+            return taskExecutor.submit(() -> blockingCallTracer.trace("rate_limit.read_spend",
+                    () -> buildSpendCaps(loadCostRateLimit(context), costLimit, System.currentTimeMillis(), schedule)));
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
@@ -528,14 +551,29 @@ public class RateLimiter {
     }
 
     private RateLimitResult checkCostLimit(ProxyContext context, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
-        String costsPath = getPathToCosts();
-        ResourceDescriptor resourceDescription = getResourceDescription(context, costsPath);
-        String prevValue = resourceService.getResource(resourceDescription);
-        CostRateLimit rateLimit = ProxyUtil.convertToObject(prevValue, CostRateLimit.class);
-        if (rateLimit == null) {
-            return RateLimitResult.SUCCESS;
-        }
-        return rateLimit.check(timestamp, schedule, costLimit);
+        CostRateLimit rateLimit = loadCostRateLimit(context);
+        SpendCaps spendCaps = buildSpendCaps(rateLimit, costLimit, timestamp, schedule);
+        RateLimitResult result = rateLimit == null ? RateLimitResult.SUCCESS : rateLimit.check(timestamp, schedule, costLimit);
+        return result.withSpendCaps(spendCaps);
+    }
+
+    @Nullable
+    private CostRateLimit loadCostRateLimit(ProxyContext context) {
+        ResourceDescriptor resourceDescription = getResourceDescription(context, getPathToCosts());
+        return ProxyUtil.convertToObject(resourceService.getResource(resourceDescription), CostRateLimit.class);
+    }
+
+    private static SpendCaps buildSpendCaps(@Nullable CostRateLimit rateLimit, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
+        return SpendCaps.of(List.of(
+                buildSpendCap(CalendarPeriod.DAY, rateLimit == null ? null : rateLimit.getDay(), costLimit.getDay(), timestamp, schedule),
+                buildSpendCap(CalendarPeriod.WEEK, rateLimit == null ? null : rateLimit.getWeek(), costLimit.getWeek(), timestamp, schedule),
+                buildSpendCap(CalendarPeriod.MONTH, rateLimit == null ? null : rateLimit.getMonth(), costLimit.getMonth(), timestamp, schedule)));
+    }
+
+    private static SpendCap buildSpendCap(
+            CalendarPeriod period, @Nullable CostFixedRateBucket bucket, BigDecimal total, long timestamp, RateLimitSchedule schedule) {
+        BigDecimal used = bucket == null ? BigDecimal.ZERO : bucket.reconcile(timestamp, period, schedule);
+        return new SpendCap(period, used, total, CalendarWindowCalculator.nextPeriodStart(period, timestamp, schedule));
     }
 
     private RateLimitResult checkTokenLimit(
