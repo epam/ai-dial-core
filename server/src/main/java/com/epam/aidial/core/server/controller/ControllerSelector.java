@@ -683,6 +683,9 @@ public class ControllerSelector {
         // FILES/RESOURCE routes (see ResourceDescriptorFactory.fromAnyUrl) and the {@code path}
         // contract on ResourceDescriptorFactory.fromDecoded ("url decoded relative path").
         String path = UrlUtil.decodePath(pathMatcher.group("path"));
+        if (PolicyController.serves(entityType)) {
+            return new PolicyController(proxy, context, entityType, bucket, path);
+        }
         return new ConfigResourceController(proxy, context, entityType, bucket, path);
     }
 

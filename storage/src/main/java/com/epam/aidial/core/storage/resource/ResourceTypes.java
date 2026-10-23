@@ -17,7 +17,6 @@ public enum ResourceTypes implements ResourceType {
     API_KEY_DATA("api_key_data", true, TimeUnit.MINUTES.toMillis(5)),
     NOTIFICATION("notifications", true, TimeUnit.MINUTES.toMillis(5)),
     APPLICATION("applications", true, TimeUnit.DAYS.toMillis(30)),
-    DEPLOYMENT_COST_STATS("deployment_cost_stats", true, TimeUnit.MINUTES.toMillis(5)),
     CODE_INTERPRETER_SESSION("code_interpreter_session", true, TimeUnit.MINUTES.toMillis(5)),
     USER_CONSENT("user_consent", true, TimeUnit.MINUTES.toMillis(5)),
     TOOL_SET("toolsets", true, TimeUnit.DAYS.toMillis(30)),
@@ -32,6 +31,8 @@ public enum ResourceTypes implements ResourceType {
     TRANSLATOR("translators", true, TimeUnit.DAYS.toMillis(30)),
     ROLE("roles", true, TimeUnit.DAYS.toMillis(30)),
     PROJECT_KEY("project_keys", "keys", true, TimeUnit.DAYS.toMillis(30)),
+    POLICY("policies", true, TimeUnit.DAYS.toMillis(30)),
+    POLICY_ASSIGNMENT("policy_assignments", true, TimeUnit.DAYS.toMillis(30)),
     ROUTE("routes", true, TimeUnit.DAYS.toMillis(30)),
     GLOBAL_SETTINGS("settings", true, TimeUnit.DAYS.toMillis(30)),
     RESPONSE_MAPPING("response_mappings", true, TimeUnit.MINUTES.toMillis(5)),
@@ -83,6 +84,8 @@ public enum ResourceTypes implements ResourceType {
             case "translators" -> TRANSLATOR;
             case "roles" -> ROLE;
             case "project_keys", "keys" -> PROJECT_KEY;
+            case "policies" -> POLICY;
+            case "policy_assignments" -> POLICY_ASSIGNMENT;
             case "routes" -> ROUTE;
             case "settings" -> GLOBAL_SETTINGS;
             case "response_mappings" -> RESPONSE_MAPPING;
