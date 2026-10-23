@@ -171,37 +171,6 @@ class OrgUnitServiceTest {
         OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         assertThrows(IllegalStateException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
-        verify(resources, never()).syncNow(any());
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void testEveryWriteIsSavedAtOnceOutsideTheLock() {
-        AtomicReference<String> written = new AtomicReference<>();
-        ResourceService resources = writableResources("{\"units\": {}}", written);
-        RuleService rules = mock(RuleService.class);
-        when(rules.hasOwnClosingRules(any())).thenReturn(true);
-        AtomicBoolean locked = new AtomicBoolean();
-        LockService locks = mock(LockService.class);
-        when(locks.underBucketLock(any(), any())).thenAnswer(invocation -> {
-            locked.set(true);
-            try {
-                return ((Supplier<Object>) invocation.getArgument(1)).get();
-            } finally {
-                locked.set(false);
-            }
-        });
-        AtomicBoolean savedUnderLock = new AtomicBoolean();
-        doAnswer(invocation -> {
-            savedUnderLock.compareAndSet(false, locked.get());
-            return null;
-        }).when(resources).syncNow(any());
-        OrgUnitService service = new OrgUnitService(resources, rules, locks, new OrgUnitSettings(true), () -> "id", () -> 0L);
-
-        service.create(List.of("public"), "Acme", null, "admin");
-
-        verify(resources).syncNow(any());
-        assertFalse(savedUnderLock.get());
     }
 
     @Test
@@ -244,22 +213,7 @@ class OrgUnitServiceTest {
         assertEquals("public/Acme", service.create(List.of("public"), "Acme", null, "admin").path());
 
         assertTrue(written.get().contains("public/Acme/"));
-        verify(resources).syncNow(any());
         verify(resources).putFile(any(), any(), any(), any(), any());
-    }
-
-    @Test
-    void testCreateAnswersWhenTheTreeReachesTheBlobStoreOnlyAtTheNextSync() {
-        AtomicReference<String> written = new AtomicReference<>();
-        ResourceService resources = writableResources("{\"units\": {}}", written);
-        doThrow(new IllegalStateException("blob store down")).when(resources).syncNow(any());
-        RuleService rules = mock(RuleService.class);
-        when(rules.hasOwnClosingRules(any())).thenReturn(true);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
-
-        assertEquals("public/Acme", service.create(List.of("public"), "Acme", null, "admin").path());
-
-        assertTrue(written.get().contains("public/Acme/"));
     }
 
     @Test
@@ -450,7 +404,6 @@ class OrgUnitServiceTest {
 
         assertEquals(List.of("public/Acme"), service.delete(List.of("public", "Acme"), false));
 
-        verify(resources).syncNow(any());
     }
 
     @Test
@@ -466,7 +419,6 @@ class OrgUnitServiceTest {
         assertEquals(List.of("public/Acme"), service.delete(List.of("public", "Acme"), false));
 
         verify(rules, never()).removeRulesUnder(any());
-        verify(resources).syncNow(any());
     }
 
     @Test
@@ -484,7 +436,6 @@ class OrgUnitServiceTest {
         ProxyUtil.MAPPER.readTree(written.get()).get("units").fieldNames().forEachRemaining(left::add);
         assertEquals(List.of("public/Beta/"), left);
         verify(rules).removeRulesUnder(argThat(folder -> folder.getUrl().equals("files/public/Acme/")));
-        verify(resources).syncNow(any());
     }
 
     @Test
@@ -579,7 +530,6 @@ class OrgUnitServiceTest {
         assertEquals(before.get("roleAssignments").get(0), stored.get("roleAssignments").get(0));
         assertEquals(before.get("roleAssignments").get(1), stored.get("roleAssignments").get(1));
         assertEquals(ProxyUtil.MAPPER.valueToTree(added), stored.get("roleAssignments").get(2));
-        verify(storage.resources).syncNow(argThat(descriptor -> descriptor.getName().equals("a")));
 
         List<String> asked = new ArrayList<>();
         HttpException refused = assertThrows(HttpException.class, () -> service.removeRoleAssignment(List.of("public", "Acme"), "r2", roleName -> {
@@ -613,7 +563,7 @@ class OrgUnitServiceTest {
     }
 
     @Test
-    void testSameRoleTwiceWritesNothing() {
+    void testSameRoleTwiceWritesNothing() throws Exception {
         String policy = """
                 {"roleAssignments": [
                   {"id": "r2", "roleName": "admin", "subject": {"type": "claimsPredicate", "source": "email", "function": "EQUAL", "targets": ["bob@acme.com"]}}]}
@@ -624,10 +574,9 @@ class OrgUnitServiceTest {
 
         assertEquals("r2", service.addRoleAssignment(List.of("public", "Acme"), "admin", bob, ROLES).id());
         assertEquals(policy, storage.documents.get("a"));
-        verify(storage.resources, never()).syncNow(any());
 
         assertEquals("id", service.addRoleAssignment(List.of("public", "Acme"), "editor", bob, ROLES).id());
-        verify(storage.resources).syncNow(any());
+        assertEquals(2, ProxyUtil.MAPPER.readTree(storage.documents.get("a")).get("roleAssignments").size());
     }
 
     @Test
