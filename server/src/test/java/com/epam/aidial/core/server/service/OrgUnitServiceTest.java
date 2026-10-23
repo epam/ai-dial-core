@@ -358,6 +358,8 @@ class OrgUnitServiceTest {
         ResourceService resources = mock(ResourceService.class);
         new OrgUnitService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(false), () -> "id", () -> 0L)
                 .requireSameUnit(inRisk, inBasel);
+        new OrgUnitService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L)
+                .requireSameUnit(inRisk, resource(ResourceTypes.FILE, "Risk/b.pdf"));
         verify(resources, never()).getResourceWithMetadata(any(), any());
     }
 
@@ -466,12 +468,23 @@ class OrgUnitServiceTest {
     }
 
     @Test
+    void testDisplayNameUpdateRepairsAnUnreadableEntry() throws Exception {
+        AtomicReference<String> written = new AtomicReference<>();
+        OrgUnitService service = writable("{\"units\": {\"public/Acme/\": \"x\"}}", written);
+
+        service.updateDisplayName(List.of("public", "Acme"), "Acme Corp");
+
+        assertEquals("Acme Corp", ProxyUtil.MAPPER.readTree(written.get()).at("/units/public~1Acme~1/displayName").textValue());
+    }
+
+    @Test
     void testDisplayNameUpdateRefusals() {
         AtomicReference<String> written = new AtomicReference<>();
         OrgUnitService service = writable("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", written);
 
         assertThrows(IllegalArgumentException.class, () -> service.updateDisplayName(List.of("public"), "Shared"));
-        assertThrows(IllegalArgumentException.class, () -> service.updateDisplayName(List.of("public", "Acme"), null));
+        assertEquals("displayName is required",
+                assertThrows(IllegalArgumentException.class, () -> service.updateDisplayName(List.of("public", "Acme"), null)).getMessage());
         assertThrows(IllegalArgumentException.class, () -> service.updateDisplayName(List.of("public", "Acme"), "x".repeat(129)));
         assertThrows(IllegalArgumentException.class, () -> service.updateDisplayName(List.of("public", "Acme"), "line\nbreak"));
         assertThrows(ResourceNotFoundException.class, () -> service.updateDisplayName(List.of("public", "Beta"), "Beta"));
