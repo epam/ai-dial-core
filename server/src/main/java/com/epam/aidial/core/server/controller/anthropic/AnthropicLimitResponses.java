@@ -63,17 +63,17 @@ class AnthropicLimitResponses {
         String reset = String.valueOf(cap.resetsAtMillis() / 1000);
         String period = periodName(cap.period());
         String message = "DIAL spend limit reached (" + period + "; resets " + formatReset(cap.resetsAtMillis()) + ")";
-        return new HttpException(HttpStatus.TOO_MANY_REQUESTS, errorBody("billing_error", message), Map.of(
-                "retry-after", String.valueOf(Math.max(0, Math.ceilDiv(cap.resetsAtMillis() - nowMillis, 1000))),
-                SHOULD_RETRY, "false",
-                UNIFIED_PREFIX + "status", "rejected",
-                UNIFIED_PREFIX + "reset", reset,
-                OVERAGE_PREFIX + "reset", reset,
-                OVERAGE_PREFIX + "utilization", "1",
-                OVERAGE_PREFIX + "surpassed-threshold", "1",
-                OVERAGE_PREFIX + "period", period,
-                OVERAGE_PREFIX + "disabled-reason", "org_spend_cap_reached",
-                CONTENT_TYPE, APPLICATION_JSON));
+        return new HttpException(HttpStatus.TOO_MANY_REQUESTS, errorBody("billing_error", message), Map.ofEntries(
+                Map.entry("retry-after", String.valueOf(Math.max(0, Math.ceilDiv(cap.resetsAtMillis() - nowMillis, 1000)))),
+                Map.entry(SHOULD_RETRY, "false"),
+                Map.entry(UNIFIED_PREFIX + "status", "rejected"),
+                Map.entry(UNIFIED_PREFIX + "reset", reset),
+                Map.entry(OVERAGE_PREFIX + "reset", reset),
+                Map.entry(OVERAGE_PREFIX + "utilization", "1"),
+                Map.entry(OVERAGE_PREFIX + "surpassed-threshold", "1"),
+                Map.entry(OVERAGE_PREFIX + "period", period),
+                Map.entry(OVERAGE_PREFIX + "disabled-reason", "org_spend_cap_reached"),
+                Map.entry(CONTENT_TYPE, APPLICATION_JSON)));
     }
 
     HttpException spendUnavailable() {

@@ -527,4 +527,20 @@ public class CostRateLimitTest {
         assertEquals(CalendarWindowCalculator.nextPeriodStart(CalendarPeriod.DAY, now, schedule), result.breach().resetsAtMillis());
         assertEquals(result.replyAfterSeconds(), result.breach().retryAfterSeconds());
     }
+
+    @Test
+    public void check_dayAndWeek_breachIsWeekWithItsReset() {
+        long now = MID_DAY_MILLIS;
+        RateLimitSchedule schedule = new RateLimitSchedule();
+        CostRateLimit rateLimit = new CostRateLimit();
+        rateLimit.add(now, schedule, new BigDecimal("1"));
+        CostLimit costLimit = new CostLimit();
+        costLimit.setDay(new BigDecimal("1"));
+        costLimit.setWeek(new BigDecimal("1"));
+
+        RateLimitResult result = rateLimit.check(now, schedule, costLimit);
+
+        assertEquals(LimitBreach.Window.WEEK, result.breach().window());
+        assertEquals(CalendarWindowCalculator.nextPeriodStart(CalendarPeriod.WEEK, now, schedule), result.breach().resetsAtMillis());
+    }
 }

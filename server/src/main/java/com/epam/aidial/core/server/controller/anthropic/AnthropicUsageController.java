@@ -35,9 +35,10 @@ public class AnthropicUsageController {
     )
     public Future<?> handle() {
         proxy.getRateLimiter().getSpendCaps(context)
-                .onSuccess(caps -> {
+                .map(AnthropicLimitResponses::buildUsage)
+                .onSuccess(usage -> {
                     context.getResponse().putHeader(HttpHeaders.CACHE_CONTROL, "no-store");
-                    context.respond(HttpStatus.OK, AnthropicLimitResponses.buildUsage(caps));
+                    context.respond(HttpStatus.OK, usage);
                 })
                 .onFailure(error -> {
                     log.error("AnthropicUsageController. Failed to get spend limits", error);

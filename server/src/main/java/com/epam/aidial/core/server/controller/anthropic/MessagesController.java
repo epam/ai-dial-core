@@ -13,6 +13,7 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.ResponsesController;
+import com.epam.aidial.core.server.data.AnthropicErrorData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
@@ -48,7 +49,7 @@ import javax.annotation.Nullable;
 public class MessagesController extends MessagesBaseController {
 
     /**
-     * The caller's caps as read by {@link #verifyLimit()}; null for a deployment exempt from limits.
+     * The caller's caps as read by {@link #verifyLimit()}; null when none were read (Redis not configured, or the request was rejected first).
      */
     @Nullable
     private SpendCaps spendCaps;
@@ -122,7 +123,7 @@ public class MessagesController extends MessagesBaseController {
                                     + "`x-should-retry: false` and `anthropic-ratelimit-unified-*` headers describing the cap; an unreadable spend counter gives "
                                     + "`billing_error` with only `x-should-retry: false` and `anthropic-ratelimit-unified-overage-disabled-reason: fetch_error`; "
                                     + "a token, request or per-minute cost limit gives `rate_limit_error` with `retry-after`, and `x-should-retry: true` for rolling windows only",
-                                    body = @ApiSchema(implementation = ErrorData.class)),
+                                    body = @ApiSchema(implementation = AnthropicErrorData.class)),
                             @ApiResponse(code = 500),
                             @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
                             @ApiResponse(code = 503)

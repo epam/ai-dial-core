@@ -87,10 +87,13 @@ carry `anthropic-ratelimit-unified-*` headers. The body is
 
 | What fired | Headers | Message |
 |---|---|---|
-| minute cost, minute tokens, hourly requests (sliding windows) | `retry-after`, `x-should-retry: true` | `DIAL per-minute token limit for <model> reached; retry in N s` |
+| minute cost, minute tokens, hourly requests (sliding windows) | `retry-after`, `x-should-retry: true` | `DIAL per-minute spend limit reached; retry in N s` / `DIAL per-minute token limit for <model> reached; retry in N s` / `DIAL hourly request limit for <model> reached; retry in N s` |
 | day/week/month tokens, daily requests (calendar windows) | `retry-after`, `x-should-retry: false` | `DIAL daily token limit for <model> reached (resets 2026-10-24 00:00 UTC)` |
 
 When several windows fire, the longest `retry-after` decides. Every other route keeps its Azure-format errors.
+
+A cost cap configured as `0` is treated as unlimited for reporting (no headers, not in `limits`) while DIAL still enforces it,
+so such a user gets a `rate_limit_error` 429 naming the spend window rather than `billing_error`.
 
 ## `GET /anthropic/api/oauth/usage`
 
