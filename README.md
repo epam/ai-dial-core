@@ -437,6 +437,19 @@ The workflow is split across three commands so each invocation maps to a single 
 > [!NOTE]
 > To add a new command, drop a Markdown file into [`.claude/commands/`](.claude/commands) and append a row to the table above.
 
+## Spec-driven process (OpenSpec)
+
+Behaviour specs and change proposals live under [`openspec/`](openspec) and follow [OpenSpec](https://github.com/Fission-AI/OpenSpec):
+`openspec/specs/<capability>/spec.md` describes current behaviour, `openspec/changes/<id>/` holds a proposal with its spec deltas, design and tasks, and `openspec/config.yaml` holds the project rules. See the "Process" section of [`CLAUDE.md`](CLAUDE.md) for the propose / apply / archive steps.
+
+Prerequisites: [Node.js](https://nodejs.org/) 20.19 or newer. The OpenSpec CLI is pinned and run through `npx`, so no global install is required:
+
+```bash
+npx -y @fission-ai/openspec@1.14.3 validate --all --strict
+```
+
+Claude Code entry points: the `/opsx:*` commands under [`.claude/commands/opsx/`](.claude/commands/opsx) (`explore`, `propose`, `apply`, `update`, `sync`, `archive`) and the `sdd-*` workflows under [`.claude/workflows/`](.claude/workflows).
+
 ## License
 
 Copyright (C) 2024 EPAM Systems
