@@ -114,9 +114,8 @@ public class BackgroundJobService {
                 .onSuccess(ignore -> scheduler.schedule(dialId, System.currentTimeMillis() + settings.getInitialPollIntervalMs()));
     }
 
-    public Future<Boolean> isJobActive(String dialId) {
-        return taskExecutor.submit(() ->
-                resourceService.hasResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId)));
+    public Boolean isJobActive(String dialId) {
+        return resourceService.hasResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId));
     }
 
     public Future<Boolean> deleteJob(String dialId) {
