@@ -390,6 +390,7 @@ public class AiDial {
 
             AdminExportService adminExportService = new AdminExportService(storage, lockService, clock, version());
             AdminExportService.Settings adminExportSettings = Json.decodeValue(settings("adminExport").toBuffer(), AdminExportService.Settings.class);
+            adminExportSettings.validate();
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, mergedConfigStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,

@@ -15,8 +15,10 @@ import com.epam.aidial.core.server.vertx.stream.InputStreamReader;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.streams.Pipe;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -28,7 +30,7 @@ import java.time.format.DateTimeFormatter;
  *
  * <p>The archive is streamed while it is built: {@link AdminExportService} writes it on a task thread into a
  * {@link BoundedPipe}, and {@link InputStreamReader} feeds the response from the pipe, so a slow client slows
- * the export down instead of growing memory, and a client that reads nothing for the stall timeout fails it.
+ * the export down instead of growing memory, and a client that is too slow for the stall timeout fails it.
  *
  * <p>Once the {@code 200} head is sent the status cannot change. A failure after that resets the connection,
  * so the client sees a transport error and an archive without the central directory, never a complete ZIP.
@@ -78,33 +80,40 @@ public class AdminExportController implements Controller {
             return Future.succeededFuture();
         }
 
+        Instant start = Instant.now();
         HttpServerResponse response = context.getResponse().setChunked(true);
         // set only when the archive starts, so that a status response sent before it does not carry them
         response.headersEndHandler(ignored -> {
             if (response.getStatusCode() == HttpStatus.OK.getCode()) {
                 response.putHeader(HttpHeaders.CONTENT_TYPE, "application/zip");
                 response.putHeader(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"dial-export-" + FILE_NAME_TIMESTAMP.format(Instant.now()) + ".zip\"");
+                        "attachment; filename=\"dial-export-" + FILE_NAME_TIMESTAMP.format(start) + ".zip\"");
             }
         });
 
         BoundedPipe pipe = new BoundedPipe(PIPE_CAPACITY, stallTimeout);
         InputStreamReader reader = new InputStreamReader(vertx, taskExecutor, pipe.getInput());
-        reader.pipe()
-                .endOnFailure(false)
-                .to(response)
-                .onFailure(error -> {
-                    reader.close();
-                    response.reset();
-                });
+        Pipe<Buffer> responsePipe = reader.pipe().endOnFailure(false);
+        responsePipe.to(response).onFailure(error -> {
+            reader.close();
+            if (response.headWritten()) {
+                response.reset();
+            }
+        });
 
         taskExecutor.submit(() -> {
             // not in try-with-resources: closing the stream on a failure would end the response cleanly
-            exportService.export(pipe.getOutput());
+            try {
+                exportService.export(pipe.getOutput(), start);
+            } catch (Throwable e) {
+                pipe.closeExceptionally(e);
+                throw e;
+            }
             pipe.getOutput().close();
             return null;
         }).onFailure(error -> {
-            // the service has already logged the failure
+            // the service has already logged the failure; stop feeding the response before it is ended
+            responsePipe.close();
             if (response.headWritten()) {
                 response.reset();
             } else if (error instanceof AdminExportBusyException) {

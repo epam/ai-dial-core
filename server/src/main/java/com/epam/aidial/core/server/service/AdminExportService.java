@@ -71,34 +71,35 @@ public class AdminExportService {
      * Blocks while holding both bucket locks. Does not close {@code out}. If this throws, the archive is
      * left unfinished, so the consumer must treat what it has received as truncated.
      *
+     * <p>The locks are not renewed, so the export fails once it has run for the lock period.
+     *
+     * @param start the time recorded in the manifest as the start of the export
      * @throws AdminExportBusyException if a bucket lock is held by another export or a writer, nothing is written then
      */
-    public void export(OutputStream out) {
+    public void export(OutputStream out, Instant start) {
+        long startMillis = clock.getAsLong();
         LockService.Lock locks = lockService.tryLockBuckets(MergedConfigStore.ADMIN_BUCKET_LOCATIONS);
         if (locks == null) {
             log.info("Admin export rejected: a bucket lock is held by another export or a write");
             throw new AdminExportBusyException("A bucket lock is held by another export or a write");
         }
 
-        long startMillis = clock.getAsLong();
-        Instant start = Instant.ofEpochMilli(startMillis);
         ExportStats stats = new ExportStats();
         try (locks) {
-            writeArchive(out, start, stats);
+            writeArchive(out, start, startMillis, stats);
         } catch (Throwable e) {
             Duration duration = Duration.ofMillis(clock.getAsLong() - startMillis);
             log.error("Admin export failed: duration={}ms, entries={}, bytes={}", duration.toMillis(), stats.entries, stats.bytes, e);
-            warnIfLockPeriodExceeded(duration);
             throw e;
         }
 
         Duration duration = Duration.ofMillis(clock.getAsLong() - startMillis);
         log.info("Admin export completed: duration={}ms, entries={}, bytes={}", duration.toMillis(), stats.entries, stats.bytes);
-        warnIfLockPeriodExceeded(duration);
     }
 
-    private void writeArchive(OutputStream out, Instant start, ExportStats stats) {
-        DiscardableZipOutputStream zip = new DiscardableZipOutputStream(new CountingOutputStream(out, stats));
+    private void writeArchive(OutputStream out, Instant start, long startMillis, ExportStats stats) {
+        long deadlineMillis = startMillis + LockService.LOCK_PERIOD.toMillis();
+        DiscardableZipOutputStream zip = new DiscardableZipOutputStream(new ExportOutputStream(out, stats, clock, deadlineMillis));
         try {
             writeJsonEntry(zip, MANIFEST_ENTRY, new Manifest(FORMAT_VERSION, coreVersion, start.truncatedTo(ChronoUnit.SECONDS).toString()), stats);
 
@@ -187,13 +188,6 @@ public class AdminExportService {
         return date == null ? null : date.toInstant().toString();
     }
 
-    private static void warnIfLockPeriodExceeded(Duration duration) {
-        if (duration.compareTo(LockService.LOCK_PERIOD) > 0) {
-            log.warn("Admin export took longer than the lock period {}s: duration={}s, the bucket locks may have expired",
-                    LockService.LOCK_PERIOD.toSeconds(), duration.toSeconds());
-        }
-    }
-
     private static final class ExportStats {
         private long entries;
         private long bytes;
@@ -217,25 +211,42 @@ public class AdminExportService {
         }
     }
 
-    private static final class CountingOutputStream extends OutputStream {
+    /**
+     * Counts the bytes and refuses to write once the bucket locks may have expired, so that the archive is
+     * never completed from blobs that were read without them.
+     */
+    private static final class ExportOutputStream extends OutputStream {
         private final OutputStream delegate;
         private final ExportStats stats;
+        private final LongSupplier clock;
+        private final long deadlineMillis;
 
-        private CountingOutputStream(OutputStream delegate, ExportStats stats) {
+        private ExportOutputStream(OutputStream delegate, ExportStats stats, LongSupplier clock, long deadlineMillis) {
             this.delegate = delegate;
             this.stats = stats;
+            this.clock = clock;
+            this.deadlineMillis = deadlineMillis;
         }
 
         @Override
         public void write(int b) throws IOException {
+            checkDeadline();
             delegate.write(b);
             stats.bytes++;
         }
 
         @Override
         public void write(byte[] b, int off, int len) throws IOException {
+            checkDeadline();
             delegate.write(b, off, len);
             stats.bytes += len;
+        }
+
+        private void checkDeadline() throws IOException {
+            if (clock.getAsLong() > deadlineMillis) {
+                throw new IOException("The export ran longer than the lock period of " + LockService.LOCK_PERIOD.toSeconds()
+                        + "s, so the buckets may have been modified");
+            }
         }
 
         @Override
@@ -251,9 +262,16 @@ public class AdminExportService {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Settings {
         /**
-         * Milliseconds a client may read nothing before the export fails. Keep it well below the lock period.
+         * Milliseconds the export waits for a slow client to take the buffered data before it fails.
          */
         private long stallTimeout = 60_000;
+
+        public void validate() {
+            if (stallTimeout <= 0 || stallTimeout >= LockService.LOCK_PERIOD.toMillis()) {
+                throw new IllegalArgumentException("adminExport.stallTimeout must be positive and below the lock period of "
+                        + LockService.LOCK_PERIOD.toMillis() + " ms, but got: " + stallTimeout);
+            }
+        }
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

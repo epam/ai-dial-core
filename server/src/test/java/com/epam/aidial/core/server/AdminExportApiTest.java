@@ -1,6 +1,11 @@
 package com.epam.aidial.core.server;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.service.AdminExportService;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.service.LockService;
 import io.vertx.core.Future;
@@ -14,10 +19,14 @@ import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -40,6 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class AdminExportApiTest extends ResourceBaseTest {
 
+    private static final DateTimeFormatter FILE_NAME_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC);
     private static final int LARGE_BLOBS = 32;
     private static final int LARGE_BLOB_SIZE = 2 * 1024 * 1024;
 
@@ -66,10 +76,12 @@ public class AdminExportApiTest extends ResourceBaseTest {
 
         assertEquals(200, download.status());
         assertEquals("application/zip", download.contentType());
-        assertTrue(download.contentDisposition().matches("attachment; filename=\"dial-export-\\d{8}T\\d{6}Z\\.zip\""), download.contentDisposition());
 
         Map<String, byte[]> entries = unzip(download.body());
         assertTrue(entries.containsKey(".dial-export/manifest.json"));
+        String manifest = new String(entries.get(".dial-export/manifest.json"), StandardCharsets.UTF_8);
+        Instant createdAt = Instant.parse(new JsonObject(manifest).getString("createdAt"));
+        assertEquals("attachment; filename=\"dial-export-" + FILE_NAME_TIMESTAMP.format(createdAt) + ".zip\"", download.contentDisposition());
         assertArrayEquals("alpha".getBytes(StandardCharsets.UTF_8), entries.get("public/files/user1/a.txt"));
         assertArrayEquals("{}".getBytes(StandardCharsets.UTF_8), entries.get("platform/models/m1"));
         String metadata = new String(entries.get(".dial-export/metadata/public/files/user1/a.txt"), StandardCharsets.UTF_8);
@@ -119,6 +131,30 @@ public class AdminExportApiTest extends ResourceBaseTest {
 
         stream.response().resume();
         assertThrows(ExecutionException.class, () -> await(stream.body()));
+    }
+
+    @Test
+    void testExportRunningLongerThanTheLockPeriodFailsInsteadOfEnding() throws Exception {
+        storeLargeBlobs();
+        Logger logger = (Logger) LoggerFactory.getLogger(AdminExportService.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            Stream stream = connect();
+            assertEquals(200, stream.response().statusCode());
+
+            time = LockService.LOCK_PERIOD.plusSeconds(1).toMillis();
+            stream.response().resume();
+
+            assertThrows(ExecutionException.class, () -> await(stream.body()));
+            awaitLocksReleased();
+            ILoggingEvent failure = appender.list.stream().filter(event -> event.getLevel() == Level.ERROR).findFirst().orElseThrow();
+            String cause = failure.getThrowableProxy().getCause().getMessage();
+            assertTrue(cause.contains("lock period"), cause);
+        } finally {
+            logger.detachAppender(appender);
+        }
     }
 
     private LockService lockService() {

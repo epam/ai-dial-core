@@ -41,7 +41,8 @@ central directory, so it is not a valid ZIP. Always check that the download comp
 ## Operational notes
 
 - The export holds the locks of both buckets for its whole duration, so writes to them wait and a second export gets `409`.
-  The locks expire after 5 minutes and are not renewed. Core logs a warning if an export runs longer than that.
+  The locks expire after 5 minutes and are not renewed, so an export that runs longer than that fails instead of producing
+  an archive that mixes data from before and after other writes.
 - The archive is built from blob storage. A resource written within the resource sync delay (`resources.syncDelay`)
   may not be in it yet.
 - Memory per export is bounded to a few MiB regardless of the archive size: a slow client slows the export down instead.
@@ -53,4 +54,4 @@ central directory, so it is not a valid ZIP. Always check that the download comp
 
 | Setting                   | Default | Description                                                                          |
 |---------------------------|:-------:|--------------------------------------------------------------------------------------|
-| `adminExport.stallTimeout` | 60000   | Milliseconds the export waits for a slow client to take the buffered data before it fails and the connection is reset. Raise it if clients with slow connections fail, and keep it well below the 5 minute lock period. |
+| `adminExport.stallTimeout` | 60000   | Milliseconds the export waits for a slow client to take the buffered data before it fails and the connection is reset. Raise it if clients with slow connections fail. It must be positive and below the 5 minute lock period (300000), otherwise Core does not start. |
