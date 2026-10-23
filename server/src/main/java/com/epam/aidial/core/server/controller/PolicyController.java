@@ -13,6 +13,7 @@ import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.InvalidEntityException;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EntityBucketBinding;
@@ -45,8 +46,8 @@ import java.nio.charset.StandardCharsets;
  * Serves {@code /v1/policies/platform/[<costObject>/]<name>} and
  * {@code /v1/policy_assignments/platform/<costObject>/<id>}: the same Configuration-API verbs as
  * {@link ConfigResourceController} (GET, PUT with {@code If-Match}/{@code If-None-Match}, DELETE; POST is
- * 405), admin-only, but over a path with one folder level. The records are not part of the merged config,
- * so a write never touches it. Listings by folder prefix go through
+ * 405), admin-only, but over a path with one folder level. A write also updates the merged config of
+ * this pod; the other pods follow through the replica event. Listings by folder prefix go through
  * {@link ConfigResourceMetadataController}.
  */
 @Slf4j
@@ -59,6 +60,7 @@ public class PolicyController implements Controller {
     private final ResourceService resourceService;
     private final AsyncTaskExecutor taskExecutor;
     private final LockService lockService;
+    private final MergedConfigStore mergedConfigStore;
     private final PolicyService policyService;
     private final ResourceTypes type;
     private final String bucket;
@@ -70,6 +72,7 @@ public class PolicyController implements Controller {
         this.resourceService = proxy.getResourceService();
         this.taskExecutor = proxy.getTaskExecutor();
         this.lockService = proxy.getLockService();
+        this.mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
         this.policyService = new PolicyService(resourceService);
         this.type = ResourceTypes.of(entityType);
         this.bucket = bucket;
@@ -280,10 +283,17 @@ public class PolicyController implements Controller {
             return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
                 // describe() before parsing the body: a malformed path is the more basic error
                 PolicyService.describe(type, path);
+                String mapKey = MergedConfigStore.resolveMapKeyFor(PolicyService.describe(type, path));
                 if (type == ResourceTypes.POLICY) {
-                    return policyService.putPolicy(path, PolicyRecordCodec.parsePolicy(request), etag, author);
+                    Policy policy = PolicyRecordCodec.parsePolicy(request);
+                    ResourceItemMetadata meta = policyService.putPolicy(path, policy, etag, author);
+                    applyStoredWrite(mapKey, policy);
+                    return meta;
                 }
-                return policyService.putAssignment(path, PolicyRecordCodec.parseAssignment(request), etag, author);
+                PolicyAssignment assignment = PolicyRecordCodec.parseAssignment(request);
+                ResourceItemMetadata meta = policyService.putAssignment(path, assignment, etag, author);
+                applyStoredWrite(mapKey, assignment);
+                return meta;
             }));
         }).onSuccess(meta -> {
             ObjectNode response = ProxyUtil.MAPPER.createObjectNode();
@@ -291,6 +301,22 @@ public class PolicyController implements Controller {
             context.putHeader(HttpHeaders.ETAG, meta.getEtag()).respond(HttpStatus.OK, response);
         }).onFailure(this::handleError);
         return Future.succeededFuture();
+    }
+
+    /**
+     * Applies a record already stored to the merged config of this pod. The in-memory config can lag behind
+     * storage, for example when the policy of an assignment was written by another pod whose replica event has
+     * not arrived yet, and then the write is rejected. The stored record wins: the request still succeeds and
+     * the pod catches up with a full rebuild, since it ignores the replica event of its own write.
+     */
+    private void applyStoredWrite(String mapKey, Object record) {
+        try {
+            mergedConfigStore.applyEntityWrite(type, mapKey, record);
+        } catch (InvalidEntityException e) {
+            log.warn("Stored {} '{}', but the merged config of this pod rejected it, requesting a full rebuild: {}",
+                    type.urlSegment(), mapKey, e.getMessage());
+            mergedConfigStore.requestRebuild();
+        }
     }
 
     private Future<?> handleDelete() {
@@ -302,6 +328,7 @@ public class PolicyController implements Controller {
             if (!deleted) {
                 throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + path);
             }
+            mergedConfigStore.applyEntityDelete(type, MergedConfigStore.resolveMapKeyFor(PolicyService.describe(type, path)));
             return true;
         })).onSuccess(deleted -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleError);
         return Future.succeededFuture();
