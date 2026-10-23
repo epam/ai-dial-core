@@ -84,7 +84,9 @@ anthropic-ratelimit-unified-overage-disabled-reason: org_spend_cap_reached
 If the limit check fails for a caller with a cost limit, the request fails closed: 429 with `x-should-retry: false` and
 `anthropic-ratelimit-unified-overage-disabled-reason: fetch_error`, and no other `anthropic-ratelimit-*` header.
 The body is a `billing_error` with the message `DIAL could not read your spend limit; request rejected`.
-For a caller without a cost limit the failure is an ordinary server error (500), which clients retry.
+A cost limit here means any enforced cost window, including the per-minute one and caps that are never
+reported (0 or at least 2^53). For a caller without one the failure is an ordinary server error (500), which
+clients retry.
 
 ### Other limits
 
