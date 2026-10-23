@@ -196,7 +196,7 @@ class BackgroundJobServiceTest {
     @Test
     void isJobActiveReturnsTrueWhenRecordExists(VertxTestContext ctx) throws Throwable {
         service.saveJob(JOB_ID, proxyContext)
-                .compose(ignored -> service.isJobActive(JOB_ID))
+                .map(ignored -> service.isJobActive(JOB_ID))
                 .onSuccess(active -> ctx.verify(() -> {
                     assertTrue(active);
                     ctx.completeNow();
@@ -206,26 +206,19 @@ class BackgroundJobServiceTest {
     }
 
     @Test
-    void isJobActiveReturnsFalseWhenNoRecord(VertxTestContext ctx) throws Throwable {
-        service.isJobActive(JOB_ID)
-                .onSuccess(active -> ctx.verify(() -> {
-                    assertFalse(active);
-                    ctx.completeNow();
-                }))
-                .onFailure(ctx::failNow);
-        await(ctx);
+    void isJobActiveReturnsFalseWhenNoRecord() {
+        assertFalse(service.isJobActive(JOB_ID));
     }
 
     @Test
     void deleteJobDeletesRecord(VertxTestContext ctx) throws Throwable {
         service.saveJob(JOB_ID, proxyContext)
                 .compose(ignored -> service.deleteJob(JOB_ID))
-                .compose(deleted -> service.isJobActive(JOB_ID)
-                        .onSuccess(active -> ctx.verify(() -> {
-                            assertTrue(deleted, "finishStreamingJob should return true when record existed");
-                            assertFalse(active, "job should no longer be active after cancellation");
-                            ctx.completeNow();
-                        })))
+                .onSuccess(deleted -> ctx.verify(() -> {
+                    assertTrue(deleted, "finishStreamingJob should return true when record existed");
+                    assertFalse(service.isJobActive(JOB_ID), "job should no longer be active after cancellation");
+                    ctx.completeNow();
+                }))
                 .onFailure(ctx::failNow);
         await(ctx);
     }
