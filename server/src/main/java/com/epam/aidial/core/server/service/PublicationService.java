@@ -71,6 +71,7 @@ public class PublicationService {
     private final ToolSetService toolSetService;
     private final ResourceOperationService resourceOperationService;
     private final ComplexResourceService complexResourceService;
+    private final OrgUnitService orgUnitService;
     private final OrgUnitApprovals orgUnitApprovals;
     private final Supplier<String> ids;
     private final LongSupplier clock;
@@ -739,7 +740,7 @@ public class PublicationService {
      */
     private void requireNoUnitFolder(ResourceDescriptor target) {
         if (target.getType().isComplex()) {
-            complexResourceService.requireNoUnitFolder(target);
+            orgUnitService.requireNoUnitFolder(target);
         }
     }
 
