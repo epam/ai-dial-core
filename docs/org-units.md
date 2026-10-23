@@ -36,7 +36,7 @@ after its tree entry, and a policy the tree doesn't reference is never read. A p
 nothing in its own unit; the other units are unaffected.
 
 A unit's `id` never changes. The tree is read through the shared resource cache and decoded again only when it
-changes; every write is saved to the blob store at once, or at the next sync when the blob store is unavailable. Writes change only the entries they touch and keep fields
+changes; like every cached resource, it reaches the blob store at the next sync. Writes change only the entries they touch and keep fields
 this version of core doesn't know, so a node running an older version can't strip a newer one's data.
 
 A resource belongs to the nearest unit above it: `files/public/Acme/Risk/US Risk/Reports/q3.xlsx` belongs to

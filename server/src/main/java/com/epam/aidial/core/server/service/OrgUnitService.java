@@ -41,7 +41,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
@@ -142,13 +141,22 @@ public class OrgUnitService {
      * its files there. Names compare ignoring case, as on create, since folders that differ only in case are one on
      * some storages.
      */
-    public boolean isUnitFolder(ResourceDescriptor resource) {
+    private boolean isUnitFolder(ResourceDescriptor resource) {
         if (!isEnabled() || !resource.isPublic()) {
             return false;
         }
         String path = keyOf(resource);
         String key = resource.isFolder() ? path : path + ResourceDescriptor.PATH_SEPARATOR;
         return getUnitList().units().keySet().stream().anyMatch(key::equalsIgnoreCase);
+    }
+
+    /**
+     * Refuses a skill or project whose own folder is a unit's, since it keeps its files there.
+     */
+    public void requireNoUnitFolder(ResourceDescriptor resource) {
+        if (isUnitFolder(resource)) {
+            throw new HttpException(HttpStatus.CONFLICT, "An org unit holds this path: " + resource.getUrl());
+        }
     }
 
     /**
@@ -245,9 +253,7 @@ public class OrgUnitService {
             ResourceDescriptorFactory.verifyPathSize(folder(type, key + FOLDER_MARKER));
         }
 
-        OrgUnitData created = locks.underBucketLock(SHARED_SPACE_KEY, () -> createLocked(parentKey, key, name, displayName, author));
-        save();
-        return created;
+        return locks.underBucketLock(SHARED_SPACE_KEY, () -> createLocked(parentKey, key, name, displayName, author));
     }
 
     /**
@@ -419,17 +425,12 @@ public class OrgUnitService {
         }
         ResourceDescriptor policy = policy(requirePolicyId(key, unit));
 
-        AtomicBoolean written = new AtomicBoolean();
         resources.computeResource(policy, body -> {
             ObjectNode document = parsePolicy(key, body);
             JsonNode stored = document.get(ROLE_ASSIGNMENTS);
             ArrayNode assignments = stored == null || stored.isNull() ? document.putArray(ROLE_ASSIGNMENTS) : (ArrayNode) stored;
-            written.set(change.test(assignments));
-            return written.get() ? document.toString() : body;
+            return change.test(assignments) ? document.toString() : body;
         });
-        if (written.get()) {
-            syncNow(policy, "The role assignments of %s reach the blob store at the next sync instead: {}".formatted(describe(key)));
-        }
     }
 
     private List<RoleAssignment> readPolicy(String key, OrgUnit unit) {
@@ -598,7 +599,6 @@ public class OrgUnitService {
             entry.put("displayName", value);
             return document.toString();
         });
-        save();
         return read(path, false, null, true);
     }
 
@@ -617,7 +617,6 @@ public class OrgUnitService {
         }
 
         Map<String, String> removed = locks.underBucketLock(SHARED_SPACE_KEY, () -> deleteLocked(path, key, recursive));
-        save();
         removed.values().forEach(this::deletePolicy);
         return removed.keySet().stream().map(OrgUnitService::path).toList();
     }
@@ -822,22 +821,6 @@ public class OrgUnitService {
                 raw.set(key, ProxyUtil.MAPPER.valueToTree(unit));
             }
         });
-    }
-
-    /**
-     * Saves the list to the blob store now rather than at the next sync, since a change lost with Redis could restore a
-     * removed unit or undo a created one. Runs outside the shared space's lock, so a slow blob store doesn't hold up moves and approvals.
-     */
-    private void save() {
-        syncNow(UNITS, "The org unit tree reaches the blob store at the next sync instead: {}");
-    }
-
-    private void syncNow(ResourceDescriptor document, String warning) {
-        try {
-            resources.syncNow(document);
-        } catch (RuntimeException e) {
-            log.warn(warning, e.getMessage());
-        }
     }
 
     /**

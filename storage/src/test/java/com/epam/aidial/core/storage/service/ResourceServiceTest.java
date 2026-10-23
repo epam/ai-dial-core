@@ -270,18 +270,6 @@ public class ResourceServiceTest {
         Mockito.verify(spy, Mockito.never()).load(Mockito.anyString());
     }
 
-    @Test
-    public void testSyncNowWritesTheBlobBeforeTheScheduledSync() {
-        ResourceDescriptor descriptor = resource("synced_now");
-        service.putResource(descriptor, "body", EtagHeader.NEW_ONLY);
-        assertEquals(0, storage.meta(descriptor.getAbsoluteFilePath()).getContentMetadata().getContentLength());
-
-        service.syncNow(descriptor);
-
-        assertTrue(storage.meta(descriptor.getAbsoluteFilePath()).getContentMetadata().getContentLength() > 0);
-        assertEquals("body", service.getResource(descriptor));
-    }
-
     /**
      * Resources present in blob storage but absent from Redis: every item is a cache miss, so this drives
      * the blob fallback across more than one chunk.
