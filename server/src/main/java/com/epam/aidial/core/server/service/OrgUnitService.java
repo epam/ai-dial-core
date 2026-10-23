@@ -177,9 +177,7 @@ public class OrgUnitService {
             ResourceDescriptorFactory.verifyPathSize(folder(type, key + FOLDER_MARKER));
         }
 
-        OrgUnitData created = locks.underBucketLock(SHARED_SPACE_KEY, () -> createLocked(parentKey, key, name, displayName, author));
-        save();
-        return created;
+        return locks.underBucketLock(SHARED_SPACE_KEY, () -> createLocked(parentKey, key, name, displayName, author));
     }
 
     /**
@@ -273,18 +271,6 @@ public class OrgUnitService {
                 raw.set(key, ProxyUtil.MAPPER.valueToTree(unit));
             }
         });
-    }
-
-    /**
-     * Saves the list to the blob store now rather than at the next sync, since a change lost with Redis would undo a
-     * created unit. Runs outside the shared space's lock, so a slow blob store doesn't hold up moves and approvals.
-     */
-    private void save() {
-        try {
-            resources.syncNow(UNITS);
-        } catch (RuntimeException e) {
-            log.warn("The org unit tree reaches the blob store at the next sync instead: {}", e.getMessage());
-        }
     }
 
     /**

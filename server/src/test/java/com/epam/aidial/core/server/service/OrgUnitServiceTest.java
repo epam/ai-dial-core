@@ -157,37 +157,6 @@ class OrgUnitServiceTest {
         OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         assertThrows(IllegalStateException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
-        verify(resources, never()).syncNow(any());
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void testEveryWriteIsSavedAtOnceOutsideTheLock() {
-        AtomicReference<String> written = new AtomicReference<>();
-        ResourceService resources = writableResources("{\"units\": {}}", written);
-        RuleService rules = mock(RuleService.class);
-        when(rules.hasOwnClosingRules(any())).thenReturn(true);
-        AtomicBoolean locked = new AtomicBoolean();
-        LockService locks = mock(LockService.class);
-        when(locks.underBucketLock(any(), any())).thenAnswer(invocation -> {
-            locked.set(true);
-            try {
-                return ((Supplier<Object>) invocation.getArgument(1)).get();
-            } finally {
-                locked.set(false);
-            }
-        });
-        AtomicBoolean savedUnderLock = new AtomicBoolean();
-        doAnswer(invocation -> {
-            savedUnderLock.compareAndSet(false, locked.get());
-            return null;
-        }).when(resources).syncNow(any());
-        OrgUnitService service = new OrgUnitService(resources, rules, locks, new OrgUnitSettings(true), () -> "id", () -> 0L);
-
-        service.create(List.of("public"), "Acme", null, "admin");
-
-        verify(resources).syncNow(any());
-        assertFalse(savedUnderLock.get());
     }
 
     @Test
@@ -230,22 +199,7 @@ class OrgUnitServiceTest {
         assertEquals("public/Acme", service.create(List.of("public"), "Acme", null, "admin").path());
 
         assertTrue(written.get().contains("public/Acme/"));
-        verify(resources).syncNow(any());
         verify(resources).putFile(any(), any(), any(), any(), any());
-    }
-
-    @Test
-    void testCreateAnswersWhenTheTreeReachesTheBlobStoreOnlyAtTheNextSync() {
-        AtomicReference<String> written = new AtomicReference<>();
-        ResourceService resources = writableResources("{\"units\": {}}", written);
-        doThrow(new IllegalStateException("blob store down")).when(resources).syncNow(any());
-        RuleService rules = mock(RuleService.class);
-        when(rules.hasOwnClosingRules(any())).thenReturn(true);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
-
-        assertEquals("public/Acme", service.create(List.of("public"), "Acme", null, "admin").path());
-
-        assertTrue(written.get().contains("public/Acme/"));
     }
 
     @Test
