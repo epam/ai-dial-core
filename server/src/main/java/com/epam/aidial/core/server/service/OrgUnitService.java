@@ -123,7 +123,7 @@ public class OrgUnitService {
         if (!isEnabled() || !resource.isPublic()) {
             return false;
         }
-        String path = resource.getDecodedUrl().substring(resource.getType().urlSegment().length() + 1);
+        String path = keyOf(resource);
         String key = resource.isFolder() ? path : path + ResourceDescriptor.PATH_SEPARATOR;
         return getUnitList().units().keySet().stream().anyMatch(key::equalsIgnoreCase);
     }
@@ -176,6 +176,9 @@ public class OrgUnitService {
      */
     public void requireSameUnit(ResourceDescriptor source, ResourceDescriptor destination) {
         if (!settings.enabled() || !source.isPublic() || !destination.isPublic() || source.isFolder() || destination.isFolder()) {
+            return;
+        }
+        if (keyOf(source.getParent()).equals(keyOf(destination.getParent()))) {
             return;
         }
 
@@ -256,16 +259,20 @@ public class OrgUnitService {
             throw new IllegalArgumentException("The shared space is not a unit");
         }
         if (displayName == null) {
-            throw new IllegalArgumentException("displayName is the only field a unit's update takes");
+            throw new IllegalArgumentException("displayName is required");
         }
         requireDisplayName(displayName);
 
         String value = displayName.isBlank() ? lastSegment(key) : displayName;
         resources.computeResource(UNITS, body -> {
             ObjectNode document = parse(body);
-            if (!(units(document).get(key) instanceof ObjectNode entry)) {
+            ObjectNode units = units(document);
+            JsonNode stored = units.get(key);
+            if (stored == null) {
                 throw new ResourceNotFoundException("No org unit: " + String.join("/", path));
             }
+            // an unreadable entry still counts as a unit, so the update repairs it
+            ObjectNode entry = stored instanceof ObjectNode object ? object : units.putObject(key);
             entry.put("displayName", value);
             return document.toString();
         });
