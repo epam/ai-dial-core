@@ -2,8 +2,10 @@ package com.epam.aidial.core.server.limiter;
 
 /**
  * The window that decided a rejection: the fired one with the longest wait, the longer window on a tie.
+ *
+ * @param resetsAtMillis the reset instant of a calendar window, -1 for a rolling one
  */
-public record LimitBreach(Kind kind, Window window, long retryAfterSeconds) {
+public record LimitBreach(Kind kind, Window window, long retryAfterSeconds, long resetsAtMillis) {
 
     public enum Kind {
         TOKENS, REQUESTS, COST
@@ -40,20 +42,22 @@ public record LimitBreach(Kind kind, Window window, long retryAfterSeconds) {
         private final Kind kind;
         private Window window;
         private long retryAfterSeconds = -1;
+        private long resetsAtMillis = -1;
 
         Picker(Kind kind) {
             this.kind = kind;
         }
 
-        void offer(Window candidate, long candidateRetryAfterSeconds) {
+        void offer(Window candidate, long candidateRetryAfterSeconds, long candidateResetsAtMillis) {
             if (candidateRetryAfterSeconds >= retryAfterSeconds) {
                 window = candidate;
                 retryAfterSeconds = candidateRetryAfterSeconds;
+                resetsAtMillis = candidateResetsAtMillis;
             }
         }
 
         LimitBreach build() {
-            return new LimitBreach(kind, window, retryAfterSeconds);
+            return new LimitBreach(kind, window, retryAfterSeconds, resetsAtMillis);
         }
     }
 }

@@ -508,6 +508,7 @@ public class CostRateLimitTest {
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
         assertEquals(LimitBreach.Kind.COST, result.breach().kind());
         assertEquals(LimitBreach.Window.MINUTE, result.breach().window());
+        assertEquals(-1, result.breach().resetsAtMillis());
     }
 
     @Test
@@ -523,6 +524,7 @@ public class CostRateLimitTest {
         RateLimitResult result = rateLimit.check(now, schedule, costLimit);
 
         assertEquals(LimitBreach.Window.DAY, result.breach().window());
+        assertEquals(CalendarWindowCalculator.nextPeriodStart(CalendarPeriod.DAY, now, schedule), result.breach().resetsAtMillis());
         assertEquals(result.replyAfterSeconds(), result.breach().retryAfterSeconds());
     }
 }

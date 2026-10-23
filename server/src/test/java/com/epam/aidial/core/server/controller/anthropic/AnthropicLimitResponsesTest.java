@@ -146,7 +146,7 @@ class AnthropicLimitResponsesTest {
 
     @Test
     void limitReached_rollingTokens() throws Exception {
-        HttpException exception = AnthropicLimitResponses.limitReached(new LimitBreach(Kind.TOKENS, Window.MINUTE, 4), "claude-sonnet", NOW);
+        HttpException exception = AnthropicLimitResponses.limitReached(new LimitBreach(Kind.TOKENS, Window.MINUTE, 4, -1), "claude-sonnet");
 
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, exception.getStatus());
         assertEquals("true", exception.getHeaders().get("x-should-retry"));
@@ -161,7 +161,7 @@ class AnthropicLimitResponsesTest {
 
     @Test
     void limitReached_rollingCost() throws Exception {
-        HttpException exception = AnthropicLimitResponses.limitReached(new LimitBreach(Kind.COST, Window.MINUTE, 4), "claude-sonnet", NOW);
+        HttpException exception = AnthropicLimitResponses.limitReached(new LimitBreach(Kind.COST, Window.MINUTE, 4, -1), "claude-sonnet");
 
         JsonNode body = ProxyUtil.MAPPER.readTree(exception.getMessage());
         assertEquals("DIAL per-minute spend limit reached; retry in 4 s", body.at("/error/message").asText());
@@ -169,8 +169,7 @@ class AnthropicLimitResponsesTest {
 
     @Test
     void limitReached_calendarRequests() throws Exception {
-        long now = Instant.parse("2026-10-23T20:00:00Z").toEpochMilli();
-        HttpException exception = AnthropicLimitResponses.limitReached(new LimitBreach(Kind.REQUESTS, Window.DAY, 14400), "claude-sonnet", now);
+        HttpException exception = AnthropicLimitResponses.limitReached(new LimitBreach(Kind.REQUESTS, Window.DAY, 14400, RESET), "claude-sonnet");
 
         assertEquals("false", exception.getHeaders().get("x-should-retry"));
         assertEquals("14400", exception.getHeaders().get("retry-after"));
@@ -180,13 +179,20 @@ class AnthropicLimitResponsesTest {
 
     @Test
     void limitReached_calendarCostWindow() throws Exception {
-        long now = Instant.parse("2026-10-23T20:00:00Z").toEpochMilli();
-        HttpException exception = AnthropicLimitResponses.limitReached(new LimitBreach(Kind.COST, Window.DAY, 14400), "claude-sonnet", now);
+        HttpException exception = AnthropicLimitResponses.limitReached(new LimitBreach(Kind.COST, Window.DAY, 14400, RESET), "claude-sonnet");
 
         assertEquals("false", exception.getHeaders().get("x-should-retry"));
         JsonNode body = ProxyUtil.MAPPER.readTree(exception.getMessage());
         assertEquals("DIAL daily spend limit reached (resets 2026-10-24 00:00 UTC)", body.at("/error/message").asText());
         assertEquals("rate_limit_error", body.at("/error/type").asText());
+    }
+
+    @Test
+    void limitReached_calendarWindowUsesRealResetNotFlooredRetry() throws Exception {
+        HttpException exception = AnthropicLimitResponses.limitReached(new LimitBreach(Kind.TOKENS, Window.DAY, 14399, RESET), "claude-sonnet");
+
+        JsonNode body = ProxyUtil.MAPPER.readTree(exception.getMessage());
+        assertEquals("DIAL daily token limit for claude-sonnet reached (resets 2026-10-24 00:00 UTC)", body.at("/error/message").asText());
     }
 
     @Test

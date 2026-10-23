@@ -26,6 +26,7 @@ public class TokenRateLimitTest {
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
         assertEquals(LimitBreach.Kind.TOKENS, result.breach().kind());
         assertEquals(LimitBreach.Window.MINUTE, result.breach().window());
+        assertEquals(-1, result.breach().resetsAtMillis());
         assertEquals(result.replyAfterSeconds(), result.breach().retryAfterSeconds());
     }
 
@@ -42,6 +43,7 @@ public class TokenRateLimitTest {
 
         assertEquals(LimitBreach.Kind.TOKENS, result.breach().kind());
         assertEquals(LimitBreach.Window.DAY, result.breach().window());
+        assertEquals(CalendarWindowCalculator.nextPeriodStart(CalendarPeriod.DAY, now, schedule), result.breach().resetsAtMillis());
         assertEquals(result.replyAfterSeconds(), result.breach().retryAfterSeconds());
     }
 }

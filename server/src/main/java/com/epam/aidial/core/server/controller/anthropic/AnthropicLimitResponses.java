@@ -83,7 +83,7 @@ class AnthropicLimitResponses {
                 CONTENT_TYPE, APPLICATION_JSON));
     }
 
-    HttpException limitReached(LimitBreach breach, String deploymentName, long nowMillis) {
+    HttpException limitReached(LimitBreach breach, String deploymentName) {
         String label = breach.window().label();
         String message = switch (breach.kind()) {
             case COST -> "DIAL " + label + " spend limit reached";
@@ -93,7 +93,7 @@ class AnthropicLimitResponses {
         boolean rolling = breach.window().isRolling();
         message += rolling
                 ? "; retry in " + breach.retryAfterSeconds() + " s"
-                : " (resets " + formatReset(nowMillis + breach.retryAfterSeconds() * 1000) + ")";
+                : " (resets " + formatReset(breach.resetsAtMillis()) + ")";
         return new HttpException(HttpStatus.TOO_MANY_REQUESTS, errorBody("rate_limit_error", message), Map.of(
                 "retry-after", String.valueOf(breach.retryAfterSeconds()),
                 SHOULD_RETRY, String.valueOf(rolling),

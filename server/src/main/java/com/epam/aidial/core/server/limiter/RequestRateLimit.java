@@ -27,12 +27,12 @@ public class RequestRateLimit {
             if (hourTotal >= limit.getRequestHour()) {
                 long windowRetryAfter = hour.retryAfter(limit.getRequestHour());
                 retryAfter = Math.max(retryAfter, windowRetryAfter);
-                breach.offer(LimitBreach.Window.HOUR, windowRetryAfter);
+                breach.offer(LimitBreach.Window.HOUR, windowRetryAfter, -1);
             }
             if (dayTotal >= limit.getRequestDay()) {
                 long windowRetryAfter = day.retryAfterSeconds(timestamp, CalendarPeriod.DAY, schedule);
                 retryAfter = Math.max(retryAfter, windowRetryAfter);
-                breach.offer(LimitBreach.Window.DAY, windowRetryAfter);
+                breach.offer(LimitBreach.Window.DAY, windowRetryAfter, day.resetsAtMillis(timestamp, CalendarPeriod.DAY, schedule));
             }
             List<String> limits = new ArrayList<>();
             StringBuilder displayError = new StringBuilder("You've exceeded your");
