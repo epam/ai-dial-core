@@ -33,7 +33,7 @@
         "claude-spend": {},
         "claude-burst": {"minute": "10"},
         "gpt-spend": {},
-        "claude-translated": {}
+        "claude-translated": {"minute": "10"}
       },
       "costLimit": {"day": "10", "week": "100", "month": "1000"}
     },

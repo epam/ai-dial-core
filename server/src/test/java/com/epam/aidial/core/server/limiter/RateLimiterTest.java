@@ -1279,16 +1279,18 @@ public class RateLimiterTest {
     public void testReadSpendCaps_MatchesCheckPathWithoutWriting() {
         ProxyContext proxyContext = spendCapContext("10");
         seedCost(proxyContext, "8.2");
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        ResourceDescriptor costs = ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "costs");
+        String storedBefore = resourceService.getResource(costs);
+
+        SpendCap fromRead = rateLimiter.readSpendCaps(proxyContext).result().reported();
+        assertEquals(storedBefore, resourceService.getResource(costs));
 
         SpendCap fromLimit = rateLimiter.limit(proxyContext, model("model")).result().spendCaps().reported();
-        SpendCap fromRead = rateLimiter.readSpendCaps(proxyContext).result().reported();
-
         assertEquals(fromLimit.period(), fromRead.period());
         assertEquals(0, fromLimit.used().compareTo(fromRead.used()));
         assertEquals(0, fromLimit.total().compareTo(fromRead.total()));
         assertEquals(fromLimit.resetsAtMillis(), fromRead.resetsAtMillis());
-        // reading leaves the spend as it was
-        assertEquals(0, new BigDecimal("8.2").compareTo(rateLimiter.readSpendCaps(proxyContext).result().reported().used()));
     }
 
     @Test

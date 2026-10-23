@@ -199,19 +199,19 @@ class MessagesSpendLimitApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void testTranslatedModelIsNotCharged() throws InterruptedException {
+    void testTranslatedModelIsNotChargedOrLimitedByTheOuterRequest() throws InterruptedException {
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, MESSAGES_PATH, request -> TestWebServer.createResponse(200, NON_STREAM_RESPONSE,
                     "Content-Type", "application/json"));
 
-            Response response = postMessages(requestBody("claude-translated", false), "proxyKey1");
-            assertEquals(200, response.status(), response.body());
-
+            // the response reports 20 tokens against a 10 tokens/minute limit: had the outer request been charged,
+            // the second one would be rejected
+            Response first = postMessages(requestBody("claude-translated", false), "proxyKey1");
+            assertEquals(200, first.status(), first.body());
             Thread.sleep(1000); // a charge, if any, is written after the response
-            Response usage = send(HttpMethod.GET, USAGE_PATH, null, null, "api-key", "proxyKey1");
-            assertEquals(200, usage.status(), usage.body());
-            JsonNode body = ProxyUtil.convertToObject(usage.body(), JsonNode.class);
-            assertEquals(0, body.get("extra_usage").get("used_credits").asLong(), usage.body());
+
+            Response second = postMessages(requestBody("claude-translated", false), "proxyKey1");
+            assertEquals(200, second.status(), second.body());
         }
     }
 

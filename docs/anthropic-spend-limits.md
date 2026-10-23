@@ -37,7 +37,9 @@ A model served in translated mode (`"mode": "translator"` on its `anthropicMessa
 headers. Its limits are checked and charged by the call the translator makes back to Core, so the outer
 request only reads the spend caps. It rejects with the spend-cap 429 below once a cap is already reached,
 and if the spend record can't be read it sends no headers instead of failing closed. Token and request limits
-for such a model are enforced only by the inner call.
+for such a model are enforced only by the inner call. When the inner call rejects (a token, request or
+per-minute cost limit, or a cap crossed after the outer read), the client gets whatever error the translator
+returns, without `anthropic-ratelimit-unified-*` headers.
 
 ## Headers on `POST /anthropic/v1/messages`
 

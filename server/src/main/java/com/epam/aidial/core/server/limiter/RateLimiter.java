@@ -168,7 +168,8 @@ public class RateLimiter {
         try {
             CostLimit costLimit = getCostLimitByUser(context);
             RateLimitSchedule schedule = context.getConfig().getRateLimitSchedule();
-            return taskExecutor.submit(() -> buildSpendCaps(loadCostRateLimit(context), costLimit, System.currentTimeMillis(), schedule));
+            return taskExecutor.submit(() -> blockingCallTracer.trace("rate_limit.read_spend",
+                    () -> buildSpendCaps(loadCostRateLimit(context), costLimit, System.currentTimeMillis(), schedule)));
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }

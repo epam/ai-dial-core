@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.controller.anthropic;
 
-import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.openapi.annotations.ApiHeader;
@@ -27,7 +26,6 @@ import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
-import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -51,7 +49,7 @@ import javax.annotation.Nullable;
 public class MessagesController extends MessagesBaseController {
 
     /**
-     * The caller's caps as read by {@link #verifyLimit()}; null when none were read (the request was rejected first).
+     * The caller's caps as read by {@link #verifyLimit()}; null when no caps were read.
      */
     @Nullable
     private SpendCaps spendCaps;
@@ -139,7 +137,7 @@ public class MessagesController extends MessagesBaseController {
 
     @Override
     protected Future<Void> verifyLimit() {
-        if (DeploymentEndpointUtil.resolveMode(context.getDeployment(), InterfaceType.ANTHROPIC_MESSAGES) == InterfaceMode.TRANSLATOR) {
+        if (!isSubjectToLimits(context.getDeployment())) {
             return readTranslatedSpendCaps();
         }
         return checkLimits(context.getDeployment())
