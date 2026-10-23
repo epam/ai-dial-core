@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.PricingRate;
+import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -489,5 +490,37 @@ public class CostRateLimitTest {
             assertNotNull(checkLimitFuture2.result());
             assertEquals(HttpStatus.OK, checkLimitFuture2.result().status());
         }
+    }
+
+    @Test
+    public void check_minuteOnly_breachIsMinuteCost() {
+        long now = System.currentTimeMillis();
+        RateLimitSchedule schedule = new RateLimitSchedule();
+        CostRateLimit rateLimit = new CostRateLimit();
+        rateLimit.add(now, schedule, new BigDecimal("1"));
+        CostLimit costLimit = new CostLimit();
+        costLimit.setMinute(new BigDecimal("1"));
+
+        RateLimitResult result = rateLimit.check(now, schedule, costLimit);
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(LimitBreach.Kind.COST, result.breach().kind());
+        assertEquals(LimitBreach.Window.MINUTE, result.breach().window());
+    }
+
+    @Test
+    public void check_dayAndMinute_breachIsDay() {
+        long now = System.currentTimeMillis();
+        RateLimitSchedule schedule = new RateLimitSchedule();
+        CostRateLimit rateLimit = new CostRateLimit();
+        rateLimit.add(now, schedule, new BigDecimal("1"));
+        CostLimit costLimit = new CostLimit();
+        costLimit.setMinute(new BigDecimal("1"));
+        costLimit.setDay(new BigDecimal("1"));
+
+        RateLimitResult result = rateLimit.check(now, schedule, costLimit);
+
+        assertEquals(LimitBreach.Window.DAY, result.breach().window());
+        assertEquals(result.replyAfterSeconds(), result.breach().retryAfterSeconds());
     }
 }

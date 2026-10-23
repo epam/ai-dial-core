@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.PricingRate;
+import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.server.FileUtil;
 import com.epam.aidial.core.server.Proxy;
@@ -65,6 +66,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -1223,6 +1225,93 @@ public class RateLimiterTest {
         UserLimitStats stats = rateLimiter.getUserStats(proxyContext, List.of(application), true).result();
         assertNotNull(stats);
         assertEquals(7, stats.getDeployments().get("applications/buck/my%20app").getMinuteTokenStats().getUsed());
+    }
+
+    @Test
+    public void testLimit_CostRecordAtEightyTwoPercent_CarriesSpendCaps() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "8.2");
+
+        RateLimitResult result = rateLimiter.limit(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.OK, result.status());
+        SpendCap reported = result.spendCaps().reported();
+        assertEquals(CalendarPeriod.DAY, reported.period());
+        assertEquals(0, new BigDecimal("0.82").compareTo(reported.ratio()));
+    }
+
+    @Test
+    public void testLimit_CostRecordMissing_CarriesZeroSpendCaps() {
+        ProxyContext proxyContext = spendCapContext("10");
+
+        RateLimitResult result = rateLimiter.limit(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.OK, result.status());
+        assertEquals(0, BigDecimal.ZERO.compareTo(result.spendCaps().reported().used()));
+    }
+
+    @Test
+    public void testLimit_CostExceeded_CarriesExceededSpendCaps() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "10");
+
+        RateLimitResult result = rateLimiter.limit(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertTrue(result.spendCaps().reported().isExceeded());
+    }
+
+    @Test
+    public void testGetSpendCaps_MatchesCheckPath() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "8.2");
+
+        SpendCap fromLimit = rateLimiter.limit(proxyContext, model("model")).result().spendCaps().reported();
+        SpendCap fromStats = rateLimiter.getSpendCaps(proxyContext).result().reported();
+
+        assertEquals(fromLimit.period(), fromStats.period());
+        assertEquals(0, fromLimit.used().compareTo(fromStats.used()));
+        assertEquals(0, fromLimit.total().compareTo(fromStats.total()));
+        assertEquals(fromLimit.resetsAtMillis(), fromStats.resetsAtMillis());
+    }
+
+    @Test
+    public void testGetSpendCaps_NoCap_IsEmpty() {
+        Config config = new Config();
+        Role role = new Role();
+        role.setLimits(Map.of());
+        config.setRoles(Map.of("role", role));
+        stubInlineExecutor();
+
+        SpendCaps spendCaps = rateLimiter.getSpendCaps(userContext(config, List.of("role"))).result();
+
+        assertEquals(SpendCaps.EMPTY, spendCaps);
+    }
+
+    private ProxyContext spendCapContext(String dayCap) {
+        Config config = new Config();
+        Role role = new Role();
+        Limit limit = new Limit();
+        limit.setMinute(1000);
+        limit.setDay(1000);
+        limit.setWeek(1000);
+        limit.setMonth(1000);
+        role.setLimits(Map.of("model", limit));
+        CostLimit costLimit = new CostLimit();
+        costLimit.setDay(new BigDecimal(dayCap));
+        role.setCostLimit(costLimit);
+        config.setRoles(Map.of("role", role));
+        stubInlineExecutor();
+        return userContext(config, List.of("role"));
+    }
+
+    private void seedCost(ProxyContext proxyContext, String cost) {
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        CostRateLimit costs = new CostRateLimit();
+        costs.add(System.currentTimeMillis(), new RateLimitSchedule(), new BigDecimal(cost));
+        resourceService.computeResource(
+                ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "costs"),
+                json -> ProxyUtil.convertToString(costs));
     }
 
     private ProxyContext userContext(Config config, List<String> roles) {

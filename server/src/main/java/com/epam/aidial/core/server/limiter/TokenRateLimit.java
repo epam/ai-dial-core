@@ -39,17 +39,26 @@ public class TokenRateLimit {
                     "Hit token rate limit. Minute limit: %d / %d tokens. Day limit: %d / %d tokens. Week limit: %d / %d tokens. Month limit: %d / %d tokens.",
                     minuteTotal, limit.getMinute(), dayTotal, limit.getDay(), weekTotal, limit.getWeek(), monthTotal, limit.getMonth());
             long retryAfter = 0;
+            LimitBreach.Picker breach = new LimitBreach.Picker(LimitBreach.Kind.TOKENS);
             if (minuteTotal >= limit.getMinute()) {
-                retryAfter = Math.max(retryAfter, minute.retryAfter(limit.getMinute()));
+                long windowRetryAfter = minute.retryAfter(limit.getMinute());
+                retryAfter = Math.max(retryAfter, windowRetryAfter);
+                breach.offer(LimitBreach.Window.MINUTE, windowRetryAfter);
             }
             if (dayTotal >= limit.getDay()) {
-                retryAfter = Math.max(retryAfter, day.retryAfterSeconds(timestamp, CalendarPeriod.DAY, schedule));
+                long windowRetryAfter = day.retryAfterSeconds(timestamp, CalendarPeriod.DAY, schedule);
+                retryAfter = Math.max(retryAfter, windowRetryAfter);
+                breach.offer(LimitBreach.Window.DAY, windowRetryAfter);
             }
             if (weekTotal >= limit.getWeek()) {
-                retryAfter = Math.max(retryAfter, week.retryAfterSeconds(timestamp, CalendarPeriod.WEEK, schedule));
+                long windowRetryAfter = week.retryAfterSeconds(timestamp, CalendarPeriod.WEEK, schedule);
+                retryAfter = Math.max(retryAfter, windowRetryAfter);
+                breach.offer(LimitBreach.Window.WEEK, windowRetryAfter);
             }
             if (monthTotal >= limit.getMonth()) {
-                retryAfter = Math.max(retryAfter, month.retryAfterSeconds(timestamp, CalendarPeriod.MONTH, schedule));
+                long windowRetryAfter = month.retryAfterSeconds(timestamp, CalendarPeriod.MONTH, schedule);
+                retryAfter = Math.max(retryAfter, windowRetryAfter);
+                breach.offer(LimitBreach.Window.MONTH, windowRetryAfter);
             }
             List<String> limits = new ArrayList<>();
             StringBuilder displayError = new StringBuilder("You've exceeded your");
@@ -80,7 +89,7 @@ public class TokenRateLimit {
             if (limits.size() > 1) {
                 displayError.append('s');
             }
-            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, displayError.toString(), retryAfter);
+            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, displayError.toString(), retryAfter, breach.build(), null);
         } else {
             return RateLimitResult.SUCCESS;
         }

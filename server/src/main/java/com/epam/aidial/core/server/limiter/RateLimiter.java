@@ -148,6 +148,14 @@ public class RateLimiter {
         }
     }
 
+    public Future<SpendCaps> getSpendCaps(ProxyContext context) {
+        if (resourceService == null) {
+            return Future.succeededFuture(SpendCaps.EMPTY);
+        }
+        return getUserStats(context, List.of(), true)
+                .map(stats -> SpendCaps.of(stats.getDayCostStats(), stats.getWeekCostStats(), stats.getMonthCostStats()));
+    }
+
     public Future<LimitStats> getLimitStats(RoleBasedEntity roleBasedEntity, ProxyContext context) {
         try {
             // skip checking limits if redis is not available
@@ -532,10 +540,13 @@ public class RateLimiter {
         ResourceDescriptor resourceDescription = getResourceDescription(context, costsPath);
         String prevValue = resourceService.getResource(resourceDescription);
         CostRateLimit rateLimit = ProxyUtil.convertToObject(prevValue, CostRateLimit.class);
-        if (rateLimit == null) {
-            return RateLimitResult.SUCCESS;
+        LimitStats stats = create(DEFAULT_LIMIT, costLimit, timestamp, schedule);
+        if (rateLimit != null) {
+            rateLimit.update(timestamp, schedule, stats);
         }
-        return rateLimit.check(timestamp, schedule, costLimit);
+        SpendCaps spendCaps = SpendCaps.of(stats.getDayCostStats(), stats.getWeekCostStats(), stats.getMonthCostStats());
+        RateLimitResult result = rateLimit == null ? RateLimitResult.SUCCESS : rateLimit.check(timestamp, schedule, costLimit);
+        return result.withSpendCaps(spendCaps);
     }
 
     private RateLimitResult checkTokenLimit(

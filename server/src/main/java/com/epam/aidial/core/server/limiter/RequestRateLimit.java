@@ -23,11 +23,16 @@ public class RequestRateLimit {
             String errorMsg = String.format("Hit request rate limit. Hour limit: %d / %d requests. Day limit: %d / %d requests.",
                     hourTotal, limit.getRequestHour(), dayTotal, limit.getRequestDay());
             long retryAfter = 0;
+            LimitBreach.Picker breach = new LimitBreach.Picker(LimitBreach.Kind.REQUESTS);
             if (hourTotal >= limit.getRequestHour()) {
-                retryAfter = Math.max(retryAfter, hour.retryAfter(limit.getRequestHour()));
+                long windowRetryAfter = hour.retryAfter(limit.getRequestHour());
+                retryAfter = Math.max(retryAfter, windowRetryAfter);
+                breach.offer(LimitBreach.Window.HOUR, windowRetryAfter);
             }
             if (dayTotal >= limit.getRequestDay()) {
-                retryAfter = Math.max(retryAfter, day.retryAfterSeconds(timestamp, CalendarPeriod.DAY, schedule));
+                long windowRetryAfter = day.retryAfterSeconds(timestamp, CalendarPeriod.DAY, schedule);
+                retryAfter = Math.max(retryAfter, windowRetryAfter);
+                breach.offer(LimitBreach.Window.DAY, windowRetryAfter);
             }
             List<String> limits = new ArrayList<>();
             StringBuilder displayError = new StringBuilder("You've exceeded your");
@@ -52,7 +57,7 @@ public class RequestRateLimit {
             if (limits.size() > 1) {
                 displayError.append('s');
             }
-            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, displayError.toString(), retryAfter);
+            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, displayError.toString(), retryAfter, breach.build(), null);
         } else {
             hour.add(timestamp, count);
             day.add(timestamp, CalendarPeriod.DAY, schedule, count);

@@ -71,17 +71,26 @@ public class CostRateLimit {
                     format(weekTotal), format(costLimit.getWeek()), format(monthTotal), format(costLimit.getMonth()));
 
             long retryAfter = 0;
+            LimitBreach.Picker breach = new LimitBreach.Picker(LimitBreach.Kind.COST);
             if (minuteTotal.compareTo(costLimit.getMinute()) >= 0) {
-                retryAfter = Math.max(retryAfter, minute.retryAfter(costLimit.getMinute()));
+                long windowRetryAfter = minute.retryAfter(costLimit.getMinute());
+                retryAfter = Math.max(retryAfter, windowRetryAfter);
+                breach.offer(LimitBreach.Window.MINUTE, windowRetryAfter);
             }
             if (dayTotal.compareTo(costLimit.getDay()) >= 0) {
-                retryAfter = Math.max(retryAfter, day.retryAfterSeconds(timestamp, CalendarPeriod.DAY, schedule));
+                long windowRetryAfter = day.retryAfterSeconds(timestamp, CalendarPeriod.DAY, schedule);
+                retryAfter = Math.max(retryAfter, windowRetryAfter);
+                breach.offer(LimitBreach.Window.DAY, windowRetryAfter);
             }
             if (weekTotal.compareTo(costLimit.getWeek()) >= 0) {
-                retryAfter = Math.max(retryAfter, week.retryAfterSeconds(timestamp, CalendarPeriod.WEEK, schedule));
+                long windowRetryAfter = week.retryAfterSeconds(timestamp, CalendarPeriod.WEEK, schedule);
+                retryAfter = Math.max(retryAfter, windowRetryAfter);
+                breach.offer(LimitBreach.Window.WEEK, windowRetryAfter);
             }
             if (monthTotal.compareTo(costLimit.getMonth()) >= 0) {
-                retryAfter = Math.max(retryAfter, month.retryAfterSeconds(timestamp, CalendarPeriod.MONTH, schedule));
+                long windowRetryAfter = month.retryAfterSeconds(timestamp, CalendarPeriod.MONTH, schedule);
+                retryAfter = Math.max(retryAfter, windowRetryAfter);
+                breach.offer(LimitBreach.Window.MONTH, windowRetryAfter);
             }
 
             List<String> limits = new ArrayList<>();
@@ -117,7 +126,7 @@ public class CostRateLimit {
                 displayError.append('s');
             }
 
-            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, displayError.toString(), retryAfter);
+            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, displayError.toString(), retryAfter, breach.build(), null);
         } else {
             return RateLimitResult.SUCCESS;
         }
