@@ -109,7 +109,8 @@ public class OrgUnitService {
 
     /**
      * Whether the folder of this name, the resource's own folder for an item, is a unit's: a complex resource keeps
-     * its files there.
+     * its files there. Names compare ignoring case, as on create, since folders that differ only in case are one on
+     * some storages.
      */
     public boolean isUnitFolder(ResourceDescriptor resource) {
         if (!isEnabled() || !resource.isPublic()) {
@@ -117,7 +118,7 @@ public class OrgUnitService {
         }
         String path = resource.getDecodedUrl().substring(resource.getType().urlSegment().length() + 1);
         String key = resource.isFolder() ? path : path + ResourceDescriptor.PATH_SEPARATOR;
-        return getUnitList().units().containsKey(key);
+        return getUnitList().units().keySet().stream().anyMatch(key::equalsIgnoreCase);
     }
 
     /**
