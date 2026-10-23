@@ -607,6 +607,35 @@ class TokenServiceTest {
                 "Expected no resource indicator when none is known, got: " + capturedFormData());
     }
 
+    // External services and config-file toolsets store the field as written, so a blank value reaches here.
+    @Test
+    void testBlankResourceIndicatorIsOmitted() {
+        TokenService tokenService = new TokenService(resourceAuthorizationClient, List.of("http://admin/callback"));
+
+        ResourceAuthSettings authSettings = ResourceAuthSettings.builder()
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .tokenEndpoint("http://auth-server/token")
+                .redirectUri("http://admin/callback")
+                .resource(" ")
+                .build();
+
+        when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
+                .thenReturn(TokenResponse.builder().accessToken("access").refreshToken("refresh").expiresIn(3600L).build());
+
+        tokenService.getToken("resource-1", authSettings,
+                ResourceSignInRequest.builder().code("auth-code").build());
+        tokenService.getToken("resource-1", authSettings, "refresh-token");
+
+        ArgumentCaptor<String> formDataCaptor = ArgumentCaptor.forClass(String.class);
+        verify(resourceAuthorizationClient, times(2)).executePost(
+                eq("http://auth-server/token"), formDataCaptor.capture(),
+                eq("application/x-www-form-urlencoded"), any(), eq(TokenResponse.class));
+        for (String formData : formDataCaptor.getAllValues()) {
+            assertFalse(formData.contains("resource="), "Expected no resource indicator, got: " + formData);
+        }
+    }
+
     private String capturedFormData() {
         ArgumentCaptor<String> formDataCaptor = ArgumentCaptor.forClass(String.class);
         verify(resourceAuthorizationClient).executePost(
