@@ -19,12 +19,15 @@ import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectMessagesTokenUsageFn;
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
+import com.epam.aidial.core.server.limiter.SpendCap;
+import com.epam.aidial.core.server.limiter.SpendCaps;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
@@ -34,6 +37,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
+import javax.annotation.Nullable;
 
 /**
  * Anthropic Messages API pass-through controller. Mirrors {@link ResponsesController} but forwards
@@ -42,6 +46,12 @@ import java.util.List;
  */
 @Slf4j
 public class MessagesController extends MessagesBaseController {
+
+    /**
+     * The caller's caps as read by {@link #verifyLimit()}; null for a deployment exempt from limits.
+     */
+    @Nullable
+    private SpendCaps spendCaps;
 
     public MessagesController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
@@ -88,13 +98,30 @@ public class MessagesController extends MessagesBaseController {
                             @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
                                     body = @ApiSchema(schemaRef = "ProxyResponse"),
                                     headers = {
-                                            @ApiHeader(name = Proxy.HEADER_UPSTREAM_ATTEMPTS, description = "Number of upstream attempts performed before returning the response")
+                                            @ApiHeader(name = Proxy.HEADER_UPSTREAM_ATTEMPTS,
+                                                    description = "Number of upstream attempts performed before returning the response"),
+                                            @ApiHeader(name = "anthropic-ratelimit-unified-status",
+                                                    description = "DIAL spend cap status before this request: `allowed`, or `allowed_warning` past 75%. "
+                                                            + "Sent only when the caller has a day/week/month cost limit; "
+                                                            + "the upstream's own `anthropic-ratelimit-*` headers are removed"),
+                                            @ApiHeader(name = "anthropic-ratelimit-unified-representative-claim", description = "Always `overage`"),
+                                            @ApiHeader(name = "anthropic-ratelimit-unified-overage-status", description = "Same value as `anthropic-ratelimit-unified-status`"),
+                                            @ApiHeader(name = "anthropic-ratelimit-unified-overage-utilization",
+                                                    description = "Used/total of the reported spend cap, floored to two decimals and capped at 0.99"),
+                                            @ApiHeader(name = "anthropic-ratelimit-unified-overage-surpassed-threshold",
+                                                    description = "`0.75` or `0.95` once the utilization reaches it; absent below 75%"),
+                                            @ApiHeader(name = "anthropic-ratelimit-unified-reset", description = "When the reported spend cap resets, Unix seconds"),
+                                            @ApiHeader(name = "anthropic-ratelimit-unified-overage-reset", description = "Same value as `anthropic-ratelimit-unified-reset`")
                                     }),
                             @ApiResponse(code = 400),
                             @ApiResponse(code = 403),
                             @ApiResponse(code = 404),
                             @ApiResponse(code = 415),
-                            @ApiResponse(code = 429, description = "Rate limit exceeded", body = @ApiSchema(implementation = ErrorData.class)),
+                            @ApiResponse(code = 429, description = "DIAL limit reached, with an Anthropic-format error body "
+                                    + "(`{\"type\":\"error\",\"error\":{\"type\":...,\"message\":...}}`). A reached spend cap or an unreadable spend counter gives "
+                                    + "`billing_error`, `x-should-retry: false` and `anthropic-ratelimit-unified-*` headers describing the cap; a token, request "
+                                    + "or per-minute cost limit gives `rate_limit_error` with `retry-after`, and `x-should-retry: true` for rolling windows only",
+                                    body = @ApiSchema(implementation = ErrorData.class)),
                             @ApiResponse(code = 500),
                             @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
                             @ApiResponse(code = 503)
@@ -109,10 +136,35 @@ public class MessagesController extends MessagesBaseController {
     @Override
     protected Future<Void> verifyLimit() {
         return checkLimits(context.getDeployment())
+                .recover(error -> {
+                    log.warn("Failed to check limits, rejecting the request. Deployment: {}", context.getDeployment().getName(), error);
+                    return Future.failedFuture(AnthropicLimitResponses.spendUnavailable());
+                })
                 .map(rateLimit -> {
+                    SpendCaps caps = rateLimit.spendCaps();
+                    if (rateLimit.status() == HttpStatus.TOO_MANY_REQUESTS) {
+                        SpendCap reported = caps == null ? null : caps.reported();
+                        if (reported != null && reported.isExceeded()) {
+                            throw AnthropicLimitResponses.spendCapReached(reported, System.currentTimeMillis());
+                        }
+                        if (rateLimit.breach() != null) {
+                            throw AnthropicLimitResponses.limitReached(rateLimit.breach(), context.getDeployment().getName());
+                        }
+                    }
                     rateLimit.throwIfError();
+                    spendCaps = caps;
                     return null;
                 });
+    }
+
+    /**
+     * Must run before the first body write. Spend headers go on a 200 only and carry the state read before the request.
+     */
+    private void putLimitHeaders(HttpServerResponse response, HttpClientResponse proxyResponse) {
+        AnthropicLimitResponses.stripUpstreamRateLimitHeaders(response.headers());
+        if (proxyResponse.statusCode() == 200 && spendCaps != null && spendCaps.reported() != null) {
+            AnthropicLimitResponses.putSpendHeaders(response.headers(), spendCaps.reported());
+        }
     }
 
     @Override
@@ -129,6 +181,7 @@ public class MessagesController extends MessagesBaseController {
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
+        putLimitHeaders(response, proxyResponse);
         putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
         responseStream.pipe()
@@ -144,6 +197,7 @@ public class MessagesController extends MessagesBaseController {
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         HttpServerResponse response = context.getResponse();
         ProxyUtil.copyResponse(response, proxyResponse);
+        putLimitHeaders(response, proxyResponse);
         response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
         putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
         return collectTokenUsage(body)
