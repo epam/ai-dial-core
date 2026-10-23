@@ -231,6 +231,7 @@ public class ResponsesController extends BaseDeploymentPostController {
     private ResponsesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
+            context.setRequestBodyWithTimestamp(body);
             ObjectNode tree = ProxyUtil.parseObject(body);
             if (tree.has("previous_response_id")) {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "previous_response_id is not supported");
@@ -292,7 +293,6 @@ public class ResponsesController extends BaseDeploymentPostController {
                         dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES,
                                 context.getConfig().getTranslators()), upstreamId);
 
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);
         sendRequest();
 
