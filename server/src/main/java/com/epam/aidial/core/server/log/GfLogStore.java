@@ -96,7 +96,15 @@ public class GfLogStore implements LogStore {
         append(entry, "{\"apiType\":\"DialOpenAI\",\"chat\":{\"id\":\"", false);
         append(entry, logContext.getConversationId(), true);
 
-        append(entry, "\"},\"project\":{\"id\":\"", false);
+        append(entry, "\"}", false);
+
+        if (logContext.getSessionId() != null) {
+            append(entry, ",\"session\":{\"id\":\"", false);
+            append(entry, logContext.getSessionId(), true);
+            append(entry, "\"}", false);
+        }
+
+        append(entry, ",\"project\":{\"id\":\"", false);
         append(entry, logContext.getProject(), true);
 
         append(entry, "\"},\"user\":{\"id\":\"", false);

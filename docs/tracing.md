@@ -24,7 +24,10 @@ These are static settings, so they are read once at startup: changing them needs
   them. Nothing is emitted when Core has no valid span context — with no OpenTelemetry SDK attached
   the ids are all zeros, and a `traceparent` built from those is malformed.
 * `conversationIdHeaders`: Request headers, in priority order, that may carry a conversation or
-  session id. The first usable one present is published as `gen_ai.conversation.id`. Matching is
+  session id. The first usable one present is published as `gen_ai.conversation.id`. The same value
+  is written to each analytics log entry as `"session":{"id":"..."}`, right after `chat`, regardless
+  of `genAiSpanAttributes` and even for secured API keys; the member is omitted when no header
+  matches. A Responses API background job resolves it when the job is created. Matching is
   case-insensitive and values are trimmed; a value longer than 256 characters is skipped rather than
   truncated — truncating one would correlate unrelated requests — and the next header on the list
   still gets its turn. Blank entries and the known credential headers (`authorization`,
