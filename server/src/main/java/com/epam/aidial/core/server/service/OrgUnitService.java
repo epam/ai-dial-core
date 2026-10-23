@@ -112,13 +112,22 @@ public class OrgUnitService {
      * its files there. Names compare ignoring case, as on create, since folders that differ only in case are one on
      * some storages.
      */
-    public boolean isUnitFolder(ResourceDescriptor resource) {
+    private boolean isUnitFolder(ResourceDescriptor resource) {
         if (!isEnabled() || !resource.isPublic()) {
             return false;
         }
         String path = resource.getDecodedUrl().substring(resource.getType().urlSegment().length() + 1);
         String key = resource.isFolder() ? path : path + ResourceDescriptor.PATH_SEPARATOR;
         return getUnitList().units().keySet().stream().anyMatch(key::equalsIgnoreCase);
+    }
+
+    /**
+     * Refuses a skill or project whose own folder is a unit's, since it keeps its files there.
+     */
+    public void requireNoUnitFolder(ResourceDescriptor resource) {
+        if (isUnitFolder(resource)) {
+            throw new HttpException(HttpStatus.CONFLICT, "An org unit holds this path: " + resource.getUrl());
+        }
     }
 
     /**
