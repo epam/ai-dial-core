@@ -12,10 +12,10 @@ per-request key's own lifecycle are other capabilities.
 ## Requirements
 
 ### Requirement: Origin URI and method
-Core SHALL send the client's HTTP method to the URI resolved for the deployment and the interface: under
-`interfaces`, the interface's base url plus the ingress path with the `/deployments/{id}/` segment rewritten to the
-name the deployment is called by (`overrideName` when set), or an interface path override rendered from its
-template; a pre-`interfaces` `endpoint` is used as the complete URL. The client's query string is carried over.
+Core SHALL send the client's HTTP method to the URI resolved for the deployment and the interface (which url or
+override path serves it is the deployment-interfaces-config capability): a base url with no override path gets the
+ingress path with the `/deployments/{id}/` segment rewritten to `overrideName` when set, and a pre-`interfaces`
+`endpoint` is the complete URL. The client's query string SHALL be carried over in every case.
 
 #### Scenario: Base url with the ingress path
 - **WHEN** a deployment `m` declares `interfaces.openaiChatCompletions.baseUrl: http://origin` and a client sends
@@ -49,8 +49,9 @@ has `forwardAuthToken: true`.
 - **THEN** the origin request carries `Authorization: Bearer t`
 
 ### Requirement: Headers Core adds for every origin
-Core SHALL add to every origin request `API-KEY` with the per-request key assigned for this request,
-`X-DIAL-DEPLOYMENT-FEATURES` with the JSON of the deployment's features resolved for the interface,
+Core SHALL add to every origin request `API-KEY` with the per-request key of this request (app-to-model-accounting),
+`X-DIAL-DEPLOYMENT-FEATURES` with the JSON of the features resolved for the interface
+(deployment-interfaces-config),
 `X-DIAL-OVERRIDE-NAME` with `overrideName` when the deployment has one, and `Content-Length` equal to the length of
 the body it sends, which is the client's body after the enhancement chain.
 
@@ -159,30 +160,34 @@ as they arrive.
   `X-UPSTREAM-ATTEMPTS: 1`, and no `Content-Length`
 
 ### Requirement: Non-streaming chat completion buffered for usage_per_model
-For a non-streaming `/chat/completions` answer Core SHALL read the whole origin body before answering, rewrite
-`statistics.usage_per_model` to Core's own per-model usage of this request or remove it when Core has none, and
-answer with a `Content-Length` of the rewritten body instead of chunking. `/completions` and `/embeddings` answers
-are relayed without this rewrite.
+For a non-streaming `/chat/completions` answer (one whose `Content-Type` is not `text/event-stream`) Core SHALL read
+the whole origin body and record its usage before answering, rewrite `statistics.usage_per_model` as the
+app-to-model-accounting capability specifies, and answer with a `Content-Length` of the rewritten body instead of
+chunking. `/completions` and `/embeddings` answers are relayed chunked as they arrive.
 
-#### Scenario: Usage per model stripped
-- **WHEN** a model answers a non-streaming chat completion whose body carries
-  `statistics.usage_per_model` and Core has no child usage for this request
-- **THEN** the client's body has no `statistics.usage_per_model`, and the response carries `Content-Length`
+#### Scenario: Buffered answer carries Content-Length
+- **WHEN** a model answers a non-streaming chat completion `200` with a JSON body
+- **THEN** the client's response carries `Content-Length` equal to the length of the body it receives, no
+  `Transfer-Encoding: chunked`, and `X-UPSTREAM-ATTEMPTS: 1`
+
+#### Scenario: Embeddings not buffered
+- **WHEN** a model answers `POST /openai/deployments/<model>/embeddings` `200` with a JSON body
+- **THEN** the client's response is chunked and carries no `Content-Length`
 
 ### Requirement: Records after the answer
-After the answer is complete Core SHALL, for a `Model` that answered 200, parse the token usage from the body or the
-stream, charge the initiator's token and cost limits, and update the request's token stats; for other deployments
-record the usage their body reports; and in every case write one analytics log row for the POST and invalidate the
-per-request key it assigned.
+After the answer is complete Core SHALL parse the token usage from the body, or from the assembled stream, of a
+`Model` that answered 200 and of any other deployment whose body reports usage, then write one analytics log row for
+the POST, whatever the status. How the usage is charged and rolled up, what the row carries, and the invalidation
+of the per-request key are the app-to-model-accounting capability.
 
-#### Scenario: Model usage charged
-- **WHEN** a model answers `200` with `usage.prompt_tokens: 10` and `usage.completion_tokens: 5`
-- **THEN** the initiator's token counters grow by 15, the request's token stats record the usage, one analytics row
-  is written, and the per-request key sent to the origin answers `401` afterwards
+#### Scenario: Model usage from the stream
+- **WHEN** a model streams a `200` answer whose last event carries `usage.prompt_tokens: 10` and
+  `usage.completion_tokens: 5`
+- **THEN** one analytics row is written for the POST with `token_usage.total_tokens: 15`
 
-#### Scenario: Error answer still finalized
+#### Scenario: Error answer still logged
 - **WHEN** the origin answers `400`
-- **THEN** no limits are charged, one analytics row is written, and the per-request key is invalidated
+- **THEN** no limits are charged and one analytics row is written with `response.status: "400"`
 
 ### Requirement: Client gone during the relay
 When writing to the client fails during the relay, Core SHALL reset the client connection; for a `Model` it SHALL
