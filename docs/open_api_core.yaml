@@ -10885,7 +10885,7 @@ paths:
           type: boolean
       responses:
         "200":
-          description: "The unit is removed, with its folder markers and, unless content landed in it meanwhile, the read rules of its subtree"
+          description: "The units are removed, with their folder markers"
           content:
             application/json:
               schema:
