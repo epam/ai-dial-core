@@ -231,7 +231,7 @@ public class OrgUnitService {
         }
 
         // the full scan runs before the lock, so a large shared space doesn't hold up moves and approvals
-        requireCreatable(getUnitList(), parentKey, key, name);
+        requireCreatable(getUnitList(), parentKey, name);
         requireNoFolderOrItemNamed(parentKey, name);
         return locks.underBucketLock(SHARED_SPACE_KEY, () -> createLocked(parentKey, key, name, displayName, author));
     }
@@ -242,7 +242,7 @@ public class OrgUnitService {
      * written under the lock too, so no removal of the unit can come between the two.
      */
     private OrgUnitData createLocked(String parentKey, String key, String name, @Nullable String displayName, String author) {
-        requireCreatable(getUnitList(), parentKey, key, name);
+        requireCreatable(getUnitList(), parentKey, name);
         requireNoFolderOrItemAt(parentKey, name);
 
         OrgUnit unit = new OrgUnit(ids.get(), displayName == null || displayName.isBlank() ? name : displayName,
@@ -429,28 +429,11 @@ public class OrgUnitService {
         return type == ResourceTypes.FILE ? FOLDER_MARKER.equals(name) : type.isComplex() && ComplexResourceService.FOLDER_MARKER_NAME.equals(name);
     }
 
-    /**
-     * Refuses a unit that no read rule closes: the unit's folder or a folder above it, below the shared space, must have
-     * rules of its own that don't let everyone in. Rules of every level must pass, so one closing level closes
-     * everything below it.
-     */
-    private void requireClosed(String key) {
-        for (String current = key; !current.equals(SHARED_SPACE_KEY); current = parentKey(current)) {
-            if (ruleService.hasOwnClosingRules(folder(ResourceTypes.FILE, current))) {
-                return;
-            }
-        }
-        throw new HttpException(HttpStatus.CONFLICT, (ruleService.hasOwnRules(folder(ResourceTypes.FILE, key))
-                ? "The read rule of %s lets everyone in, and no folder above it has a read rule that closes it; a unit must not be open to everyone"
-                : "Add a read rule to %s or to a unit above it before creating the unit: a unit without one is open to everyone").formatted(key));
-    }
-
-    private void requireCreatable(OrgUnitList list, String parentKey, String key, String name) {
+    private void requireCreatable(OrgUnitList list, String parentKey, String name) {
         requireParentAndFreeName(list, parentKey, name);
         if (depth(parentKey) >= MAX_DEPTH) {
             throw new HttpException(HttpStatus.CONFLICT, "Units can be at most %d levels deep".formatted(MAX_DEPTH));
         }
-        requireClosed(key);
     }
 
     /**

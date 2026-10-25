@@ -10857,7 +10857,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
         "409":
-          description: "The name is taken, the depth limit is reached, or no read rule on the folder or above it closes it"
+          description: "The name is taken or the depth limit is reached"
         "500":
           description: The server had an error while processing your request.
           content:
