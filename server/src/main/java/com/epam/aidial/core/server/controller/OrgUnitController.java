@@ -166,7 +166,7 @@ public class OrgUnitController {
                             description = "Also remove every unit below it")
             },
             responses = {
-                    @ApiResponse(code = 200, description = "The unit is removed, with its folder markers and, unless content landed in it meanwhile, the read rules of its subtree",
+                    @ApiResponse(code = 200, description = "The units are removed, with their folder markers",
                             body = @ApiSchema(implementation = DeleteOrgUnitResult.class)),
                     @ApiResponse(code = 400),
                     @ApiResponse(code = 403),
