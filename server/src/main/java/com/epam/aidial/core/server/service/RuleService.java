@@ -61,19 +61,6 @@ public class RuleService {
         });
     }
 
-    /**
-     * Removes the rules of the folder and of every folder below it.
-     *
-     * @param folder a folder of the shared space
-     */
-    public void removeRulesUnder(ResourceDescriptor folder) {
-        String prefix = ruleUrl(folder);
-        resources.computeResource(PUBLIC_RULES, body -> {
-            Map<String, List<Rule>> rulesMap = decodeRules(body);
-            return rulesMap.keySet().removeIf(key -> key.startsWith(prefix)) ? encodeRules(rulesMap) : body;
-        });
-    }
-
     public Map<String, List<Rule>> listRules(ResourceDescriptor resource) {
         if (!resource.isFolder() || !resource.isPublic()) {
             throw new IllegalArgumentException("Bad rule url: " + resource.getUrl());
@@ -93,20 +80,6 @@ public class RuleService {
         }
 
         return result;
-    }
-
-    /**
-     * Whether the folder has rules of its own that close it: at least one, and none that lets everyone in. Rules
-     * of one folder are alternatives, so a single {@code TRUE} among them opens the folder.
-     */
-    public boolean hasOwnClosingRules(ResourceDescriptor folder) {
-        List<Rule> rules = getCachedRules().get(ruleUrl(folder));
-        return rules != null && !rules.isEmpty() && rules.stream().noneMatch(rule -> rule.getFunction() == Rule.Function.TRUE);
-    }
-
-    public boolean hasOwnRules(ResourceDescriptor folder) {
-        List<Rule> rules = getCachedRules().get(ruleUrl(folder));
-        return rules != null && !rules.isEmpty();
     }
 
     public Set<ResourceDescriptor> getAllowedPublicResources(
