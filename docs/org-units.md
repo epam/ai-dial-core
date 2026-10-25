@@ -51,8 +51,9 @@ unit is created, core puts the clients' hidden empty-folder marker `.dial_folder
 Chat's publish dialog and the admin panel's folder tree show the unit before anything is published into it. If the
 marker can't be written, the unit is still created and shows once something is published into it.
 
-A move that would hand a resource in the shared space to another unit, or take it out of its unit into the part of
-the shared space no unit owns, is refused with 409, for every caller.
+A move inside the shared space that would change which unit owns a resource is refused with 409, for every caller of
+the move API: into another unit, out of its unit into the part of the shared space no unit owns, and from that part into
+a unit. Content enters a unit by a copy or a publication instead.
 Clients move folders item by item, so this stops a unit's folder from being renamed or moved away from its entry;
 folder moves themselves are refused by the move API as before;
 moves inside one unit work as before. To rename a unit, change its display name with `PATCH`.
