@@ -230,6 +230,9 @@ public class OrgUnitService {
             ResourceDescriptorFactory.verifyPathSize(folder(type, key + FOLDER_MARKER));
         }
 
+        // the full scan runs before the lock, so a large shared space doesn't hold up moves and approvals
+        requireCreatable(getUnitList(), parentKey, key, name);
+        requireNoFolderOrItemNamed(parentKey, name);
         return locks.underBucketLock(SHARED_SPACE_KEY, () -> createLocked(parentKey, key, name, displayName, author));
     }
 
@@ -239,12 +242,8 @@ public class OrgUnitService {
      * written under the lock too, so no removal of the unit can come between the two.
      */
     private OrgUnitData createLocked(String parentKey, String key, String name, @Nullable String displayName, String author) {
-        requireParentAndFreeName(getUnitList(), parentKey, name);
-        if (depth(parentKey) >= MAX_DEPTH) {
-            throw new HttpException(HttpStatus.CONFLICT, "Units can be at most %d levels deep".formatted(MAX_DEPTH));
-        }
-        requireClosed(key);
-        requireNoFolderOrItemNamed(parentKey, name);
+        requireCreatable(getUnitList(), parentKey, key, name);
+        requireNoFolderOrItemAt(parentKey, name);
 
         OrgUnit unit = new OrgUnit(ids.get(), displayName == null || displayName.isBlank() ? name : displayName,
                 author, clock.getAsLong());
@@ -446,6 +445,14 @@ public class OrgUnitService {
                 : "Add a read rule to %s or to a unit above it before creating the unit: a unit without one is open to everyone").formatted(key));
     }
 
+    private void requireCreatable(OrgUnitList list, String parentKey, String key, String name) {
+        requireParentAndFreeName(list, parentKey, name);
+        if (depth(parentKey) >= MAX_DEPTH) {
+            throw new HttpException(HttpStatus.CONFLICT, "Units can be at most %d levels deep".formatted(MAX_DEPTH));
+        }
+        requireClosed(key);
+    }
+
     /**
      * Refuses a name that a folder or item under the parent already has, in any letter case and any type tree, so the
      * unit never takes over content it wasn't created for. Stops at the first match.
@@ -471,10 +478,24 @@ public class OrgUnitService {
     }
 
     /**
+     * Under the lock, looks up only the exact name in every type tree: what landed since the full scan.
+     */
+    private void requireNoFolderOrItemAt(String parentKey, String name) {
+        String key = parentKey + name + ResourceDescriptor.PATH_SEPARATOR;
+        for (ResourceTypes type : CONTENT_TYPES) {
+            ResourceFolderMetadata folder = resources.getFolderMetadata(folder(type, key), null, 1, false);
+            boolean isFolder = folder != null && !folder.getItems().isEmpty();
+            if (isFolder || resources.hasResource(folder(type, parentKey + name))) {
+                throw new HttpException(HttpStatus.CONFLICT, "%s already has %s named %s. Choose another name."
+                        .formatted(describe(parentKey), isFolder ? "a folder" : "an item", name));
+            }
+        }
+    }
+
+    /**
      * Applies the change to the stored JSON entry by entry: entries the change leaves alone, and fields this node
      * doesn't know, are written back as they were, so a node running an older version can't strip a newer one's data.
-     * A {@code public/} entry is dropped: the shared space is never a unit. Callers {@link #save} once they have
-     * released the shared space's lock.
+     * A {@code public/} entry is dropped: the shared space is never a unit.
      */
     private void update(Consumer<OrgUnitList> change) {
         resources.computeResource(UNITS, body -> {
