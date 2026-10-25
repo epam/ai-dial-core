@@ -85,7 +85,6 @@ class OrgUnitServiceTest {
             return null;
         });
         RuleService rules = mock(RuleService.class);
-        when(rules.hasOwnClosingRules(any())).thenReturn(true);
         OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         OrgUnitData root = service.read(List.of("public"), false, null, true);
@@ -104,7 +103,6 @@ class OrgUnitServiceTest {
         ResourceItemMetadata metadata = metadata("\"1\"");
         when(resources.getResourceWithMetadata(any(), any())).thenReturn(Pair.of(metadata, "{\"units\": {}}"));
         RuleService rules = mock(RuleService.class);
-        when(rules.hasOwnClosingRules(any())).thenReturn(true);
         LockService locks = locks();
         OrgUnitService service = new OrgUnitService(resources, rules, locks, new OrgUnitSettings(true), () -> "new-id", () -> 0L);
 
@@ -151,7 +149,6 @@ class OrgUnitServiceTest {
         when(resources.computeResource(any(), any(Function.class)))
                 .thenAnswer(invocation -> ((Function<String, String>) invocation.getArgument(1)).apply("{not json"));
         RuleService rules = mock(RuleService.class);
-        when(rules.hasOwnClosingRules(any())).thenReturn(true);
         OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         assertThrows(IllegalStateException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
@@ -162,7 +159,6 @@ class OrgUnitServiceTest {
         AtomicReference<String> written = new AtomicReference<>();
         ResourceService resources = writableResources("{\"units\": {}}", written);
         RuleService rules = mock(RuleService.class);
-        when(rules.hasOwnClosingRules(any())).thenReturn(true);
         AtomicBoolean locked = new AtomicBoolean();
         LockService locks = mock(LockService.class);
         when(locks.underBucketLock(any(), any())).thenAnswer(invocation -> {
@@ -191,7 +187,6 @@ class OrgUnitServiceTest {
         ResourceService resources = writableResources("{\"units\": {}}", written);
         when(resources.putFile(any(), any(), any(), any(), any())).thenThrow(new IllegalStateException("blob store down"));
         RuleService rules = mock(RuleService.class);
-        when(rules.hasOwnClosingRules(any())).thenReturn(true);
         OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         assertEquals("public/Acme", service.create(List.of("public"), "Acme", null, "admin").path());
@@ -213,7 +208,6 @@ class OrgUnitServiceTest {
         when(resources.getFolderMetadata(argThat(folder -> folder != null && folder.getType() == ResourceTypes.FILE), eq("page-2"), anyInt(), anyBoolean()))
                 .thenReturn(new ResourceFolderMetadata(taken, List.of(new ResourceFolderMetadata(taken)), null));
         RuleService rules = mock(RuleService.class);
-        when(rules.hasOwnClosingRules(any())).thenReturn(true);
         OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         HttpException refused = assertThrows(HttpException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
@@ -233,7 +227,6 @@ class OrgUnitServiceTest {
         when(resources.getFolderMetadata(argThat(folder -> folder != null && folder.getType() == ResourceTypes.PROJECT), any(), anyInt(), anyBoolean()))
                 .thenReturn(new ResourceFolderMetadata(project, List.of(new ResourceFolderMetadata(project)), null));
         RuleService rules = mock(RuleService.class);
-        when(rules.hasOwnClosingRules(any())).thenReturn(true);
         OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         HttpException refused = assertThrows(HttpException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
@@ -255,7 +248,6 @@ class OrgUnitServiceTest {
         when(resources.getFolderMetadata(eq(folder), any(), anyInt(), anyBoolean()))
                 .thenReturn(null, new ResourceFolderMetadata(folder, List.of(new ResourceItemMetadata(published)), null));
         RuleService rules = mock(RuleService.class);
-        when(rules.hasOwnClosingRules(any())).thenReturn(true);
         OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         service.create(List.of("public"), "Acme", null, "admin");
@@ -285,7 +277,6 @@ class OrgUnitServiceTest {
                     return null;
                 });
         RuleService rules = mock(RuleService.class);
-        when(rules.hasOwnClosingRules(any())).thenReturn(true);
         OrgUnitService service = new OrgUnitService(resources, rules, locks, new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         service.create(List.of("public"), "Acme", null, "admin");
@@ -306,7 +297,6 @@ class OrgUnitServiceTest {
         when(resources.getFolderMetadata(eq(folder), any(), anyInt(), anyBoolean()))
                 .thenReturn(new ResourceFolderMetadata(folder, List.of(new ResourceItemMetadata(memo)), null));
         RuleService rules = mock(RuleService.class);
-        when(rules.hasOwnClosingRules(any())).thenReturn(true);
         OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         HttpException refused = assertThrows(HttpException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
@@ -336,7 +326,6 @@ class OrgUnitServiceTest {
 
     private static OrgUnitService writable(String stored, AtomicReference<String> written) {
         RuleService rules = mock(RuleService.class);
-        when(rules.hasOwnClosingRules(any())).thenReturn(true);
         return new OrgUnitService(writableResources(stored, written), rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
     }
 

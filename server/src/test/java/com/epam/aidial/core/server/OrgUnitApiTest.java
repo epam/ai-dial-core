@@ -66,10 +66,6 @@ public class OrgUnitApiTest extends ResourceBaseTest {
 
     @Test
     void testCreateRefusals() {
-        Response noRule = create(ORG, "Risk");
-        assertEquals(409, noRule.status(), noRule.body());
-        assertTrue(noRule.body().contains("read rule"), noRule.body());
-
         addReadRule("public/Risk/", "Manager");
         assertEquals(200, create(ORG, "Risk").status());
         addReadRule("public/risk/", "Manager");
@@ -148,18 +144,6 @@ public class OrgUnitApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testOpenRuleIsNotEnough() {
-        addRules("public/Open/", "[{\"source\": \"roles\", \"function\": \"TRUE\"}]");
-        Response open = create(ORG, "Open");
-        assertEquals(409, open.status());
-        assertTrue(open.body().contains("lets everyone in"), open.body());
-
-        addRules("public/Mixed/", "[{\"source\": \"title\", \"function\": \"EQUAL\", \"targets\": [\"Manager\"]},"
-                + " {\"source\": \"roles\", \"function\": \"TRUE\"}]");
-        assertEquals(409, create(ORG, "Mixed").status());
-    }
-
-    @Test
     void testDisplayNameIsChecked() {
         addReadRule("public/Risk/", "Manager");
         for (String displayName : List.of("x".repeat(129), "line\nbreak")) {
@@ -231,22 +215,20 @@ public class OrgUnitApiTest extends ResourceBaseTest {
         }
         assertEquals(List.of("Q1:2026", "R&D", "Ünits 日本"), childNames(read(ORG, false)));
 
-        // The url form keeps ":" as it is, and ":abc" is not a valid URI, so the name must not be checked through it:
-        // the name passes, and the missing rule is what refuses it.
+        // The url form keeps ":" as it is, and ":abc" is not a valid URI, so the name must not be checked through it
         for (String name : List.of(":abc", "R&D: Plan")) {
             Response colon = create(ORG, name);
-            assertEquals(409, colon.status(), colon.body());
-            assertTrue(colon.body().contains("Add a read rule"), colon.body());
+            assertEquals(200, colon.status(), colon.body());
         }
     }
 
     @Test
-    void testUnitUnderClosedUnitNeedsNoRuleOfItsOwn() {
-        addReadRule("public/Acme/", "Manager");
+    void testUnitsNeedNoReadRule() {
         assertEquals(200, create(ORG, "Acme").status());
         assertEquals(200, create(ORG + "/Acme", "Risk").status());
-        assertEquals(409, create(ORG, "Open").status());
         assertEquals(200, upload(HttpMethod.PUT, "/v1/files/public/Acme/Risk/a.txt", null, "a", "authorization", "admin").status());
+        assertEquals(200, send(HttpMethod.GET, "/v1/files/public/Acme/Risk/a.txt", null, null).status(), "read rules still decide");
+        addReadRule("public/Acme/", "Manager");
         assertEquals(403, send(HttpMethod.GET, "/v1/files/public/Acme/Risk/a.txt", null, null).status());
     }
 

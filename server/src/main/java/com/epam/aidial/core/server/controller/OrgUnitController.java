@@ -91,7 +91,7 @@ public class OrgUnitController {
                     @ApiResponse(code = 400),
                     @ApiResponse(code = 403),
                     @ApiResponse(code = 404),
-                    @ApiResponse(code = 409, description = "The name is taken, the depth limit is reached, or no read rule on the folder or above it closes it"),
+                    @ApiResponse(code = 409, description = "The name is taken or the depth limit is reached"),
                     @ApiResponse(code = 500)
             },
             extensions = {
