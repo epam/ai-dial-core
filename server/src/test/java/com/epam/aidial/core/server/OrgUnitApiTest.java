@@ -381,7 +381,7 @@ public class OrgUnitApiTest extends ResourceBaseTest {
         Response rules = send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Acme/Risk/\"}",
                 "authorization", "admin");
         assertEquals(200, rules.status(), rules.body());
-        assertTrue(new JsonObject(rules.body()).getJsonObject("rules").isEmpty(), rules.body());
+        assertTrue(new JsonObject(rules.body()).getJsonObject("rules").containsKey("public/Acme/Risk/"), "read rules aren't the unit's");
     }
 
     @Test

@@ -288,8 +288,7 @@ public class OrgUnitService {
     /**
      * Removes an empty unit; with {@code recursive}, every unit below it too. A unit is empty when its folder holds
      * nothing but empty-folder markers in the files tree and nothing at all in any other type tree, the subtree of its
-     * child units included. Its tree entries and the markers in its subtree go, and so do the read rules of its subtree
-     * unless content landed in it meanwhile.
+     * child units included. Its tree entries and the markers in its subtree go; read rules are left as they are.
      *
      * @return the paths of the removed units, deepest first
      */
@@ -306,8 +305,7 @@ public class OrgUnitService {
     /**
      * Runs under the shared space's bucket lock, which create, moves and publication approvals into the shared space
      * also take, so none of them puts anything into the unit between the emptiness check and the removal. A direct
-     * write doesn't take that lock: if one lands meanwhile, the subtree's read rules stay, so its content stays as
-     * closed as it was.
+     * write doesn't take that lock: content it lands meanwhile ends up under no unit, where the read rules decide.
      *
      * <p>The markers go before the tree entries: until the entries are gone the unit still exists, so a removal that
      * fails part way can be repeated, and once they are gone no marker is left to keep the name taken.
@@ -323,38 +321,7 @@ public class OrgUnitService {
             resources.deleteResource(marker, EtagHeader.ANY);
         }
         update(list -> removed.forEach(list.units()::remove));
-        if (isStillEmpty(key)) {
-            removeRulesUnder(key);
-        }
         return removed;
-    }
-
-    /**
-     * The unit is gone by now, so a failure here only leaves the subtree's read rules, which keep its folder closed.
-     */
-    private void removeRulesUnder(String key) {
-        try {
-            ruleService.removeRulesUnder(folder(ResourceTypes.FILE, key));
-        } catch (RuntimeException e) {
-            log.warn("The read rules of {} stay after its removal: {}", describe(key), e.getMessage());
-        }
-    }
-
-    /**
-     * Whether the subtree is still empty once its markers are gone. Content that landed meanwhile, or a listing that
-     * fails, keeps the subtree's read rules: the unit is gone either way, and its content stays as closed as it was.
-     */
-    private boolean isStillEmpty(String key) {
-        try {
-            List<String> content = listSubtree(key).content();
-            if (content.isEmpty()) {
-                return true;
-            }
-            log.warn("Content landed in {} while it was removed, so its read rules stay: {}", describe(key), content);
-        } catch (RuntimeException e) {
-            log.warn("{} couldn't be listed after its removal, so its read rules stay: {}", describe(key), e.getMessage());
-        }
-        return false;
     }
 
     /**

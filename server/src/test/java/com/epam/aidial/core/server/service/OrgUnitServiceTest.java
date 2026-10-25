@@ -36,10 +36,10 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class OrgUnitServiceTest {
@@ -402,22 +402,6 @@ class OrgUnitServiceTest {
     }
 
     @Test
-    void testDeleteKeepsReadRulesWhenContentLandsMeanwhile() throws Exception {
-        AtomicReference<String> written = new AtomicReference<>();
-        ResourceService resources = writableResources("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", written);
-        ResourceDescriptor acme = resource(ResourceTypes.FILE, "Acme/");
-        when(resources.getFolderMetadata(eq(acme), any(), anyInt(), eq(true))).thenReturn(null, new ResourceFolderMetadata(acme,
-                List.of(new ResourceItemMetadata(resource(ResourceTypes.FILE, "Acme/late.pdf"))), null));
-        RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
-
-        assertEquals(List.of("public/Acme"), service.delete(List.of("public", "Acme"), false));
-
-        assertFalse(ProxyUtil.MAPPER.readTree(written.get()).get("units").has("public/Acme/"));
-        verify(rules, never()).removeRulesUnder(any());
-    }
-
-    @Test
     void testDeleteFailingOnMarkerLeavesTheUnitToRepeat() {
         AtomicReference<String> written = new AtomicReference<>();
         ResourceService resources = writableResources("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", written);
@@ -432,36 +416,10 @@ class OrgUnitServiceTest {
         assertThrows(IllegalStateException.class, () -> service.delete(List.of("public", "Acme"), false));
 
         assertNull(written.get());
-        verify(rules, never()).removeRulesUnder(any());
     }
 
     @Test
-    void testDeleteAnswersWhenTheReadRulesCantBeRemoved() {
-        ResourceService resources = writableResources("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", new AtomicReference<>());
-        RuleService rules = mock(RuleService.class);
-        doThrow(new IllegalStateException("redis down")).when(rules).removeRulesUnder(any());
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
-
-        assertEquals(List.of("public/Acme"), service.delete(List.of("public", "Acme"), false));
-    }
-
-    @Test
-    void testDeleteKeepsReadRulesWhenTheSubtreeCantBeListedAfterwards() {
-        ResourceService resources = writableResources("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", new AtomicReference<>());
-        ResourceDescriptor acme = resource(ResourceTypes.FILE, "Acme/");
-        when(resources.getFolderMetadata(eq(acme), any(), anyInt(), eq(true)))
-                .thenReturn(null)
-                .thenThrow(new IllegalStateException("blob store down"));
-        RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
-
-        assertEquals(List.of("public/Acme"), service.delete(List.of("public", "Acme"), false));
-
-        verify(rules, never()).removeRulesUnder(any());
-    }
-
-    @Test
-    void testDeleteRemovesTheSubtreeFromTheTreeAndItsRules() throws Exception {
+    void testDeleteRemovesTheSubtreeFromTheTreeOnly() throws Exception {
         String tree = "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}, \"public/Acme/Risk/\": {\"id\": \"r\"}, "
                 + "\"public/Beta/\": {\"id\": \"b\"}}}";
         AtomicReference<String> written = new AtomicReference<>();
@@ -474,7 +432,7 @@ class OrgUnitServiceTest {
         List<String> left = new ArrayList<>();
         ProxyUtil.MAPPER.readTree(written.get()).get("units").fieldNames().forEachRemaining(left::add);
         assertEquals(List.of("public/Beta/"), left);
-        verify(rules).removeRulesUnder(argThat(folder -> folder.getUrl().equals("files/public/Acme/")));
+        verifyNoInteractions(rules);
     }
 
     @Test
