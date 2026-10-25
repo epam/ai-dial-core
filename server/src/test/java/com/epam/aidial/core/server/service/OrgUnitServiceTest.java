@@ -266,8 +266,9 @@ class OrgUnitServiceTest {
                 ResourceDescriptor.PUBLIC_LOCATION, "Acme/");
         ResourceDescriptor published = ResourceDescriptorFactory.fromDecoded(ResourceTypes.FILE, ResourceDescriptor.PUBLIC_BUCKET,
                 ResourceDescriptor.PUBLIC_LOCATION, "Acme/report.pdf");
+        // empty when checked under the lock, published into by a write that doesn't take it before the marker
         when(resources.getFolderMetadata(eq(folder), any(), anyInt(), anyBoolean()))
-                .thenReturn(new ResourceFolderMetadata(folder, List.of(new ResourceItemMetadata(published)), null));
+                .thenReturn(null, new ResourceFolderMetadata(folder, List.of(new ResourceItemMetadata(published)), null));
         RuleService rules = mock(RuleService.class);
         when(rules.hasOwnClosingRules(any())).thenReturn(true);
         OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
@@ -275,6 +276,66 @@ class OrgUnitServiceTest {
         service.create(List.of("public"), "Acme", null, "admin");
 
         verify(resources, never()).putFile(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testOnlyTheExactNameIsLookedUpUnderTheLock() {
+        AtomicReference<String> written = new AtomicReference<>();
+        ResourceService resources = writableResources("{\"units\": {}}", written);
+        AtomicBoolean locked = new AtomicBoolean();
+        LockService locks = mock(LockService.class);
+        when(locks.underBucketLock(any(), any())).thenAnswer(invocation -> {
+            locked.set(true);
+            try {
+                return ((Supplier<Object>) invocation.getArgument(1)).get();
+            } finally {
+                locked.set(false);
+            }
+        });
+        AtomicBoolean scannedUnderLock = new AtomicBoolean();
+        when(resources.getFolderMetadata(argThat(folder -> folder != null && folder.isRootFolder()), any(), anyInt(), anyBoolean()))
+                .thenAnswer(invocation -> {
+                    scannedUnderLock.compareAndSet(false, locked.get());
+                    return null;
+                });
+        RuleService rules = mock(RuleService.class);
+        when(rules.hasOwnClosingRules(any())).thenReturn(true);
+        OrgUnitService service = new OrgUnitService(resources, rules, locks, new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        service.create(List.of("public"), "Acme", null, "admin");
+
+        assertFalse(scannedUnderLock.get());
+        verify(resources).hasResource(ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION, ResourceDescriptor.PUBLIC_BUCKET,
+                ResourceDescriptor.PUBLIC_LOCATION, "Acme"));
+    }
+
+    @Test
+    void testNameTakenAfterTheScanIsRefusedUnderTheLock() {
+        AtomicReference<String> written = new AtomicReference<>();
+        ResourceService resources = writableResources("{\"units\": {}}", written);
+        ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(ResourceTypes.PROMPT, ResourceDescriptor.PUBLIC_BUCKET,
+                ResourceDescriptor.PUBLIC_LOCATION, "Acme/");
+        ResourceDescriptor memo = ResourceDescriptorFactory.fromDecoded(ResourceTypes.PROMPT, ResourceDescriptor.PUBLIC_BUCKET,
+                ResourceDescriptor.PUBLIC_LOCATION, "Acme/memo");
+        when(resources.getFolderMetadata(eq(folder), any(), anyInt(), anyBoolean()))
+                .thenReturn(new ResourceFolderMetadata(folder, List.of(new ResourceItemMetadata(memo)), null));
+        RuleService rules = mock(RuleService.class);
+        when(rules.hasOwnClosingRules(any())).thenReturn(true);
+        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        HttpException refused = assertThrows(HttpException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
+        assertTrue(refused.getMessage().contains("already has a folder named Acme"), refused.getMessage());
+
+        ResourceService items = writableResources("{\"units\": {}}", written);
+        ResourceDescriptor app = ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION, ResourceDescriptor.PUBLIC_BUCKET,
+                ResourceDescriptor.PUBLIC_LOCATION, "Acme");
+        when(items.hasResource(app)).thenReturn(true);
+        OrgUnitService other = new OrgUnitService(items, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        refused = assertThrows(HttpException.class, () -> other.create(List.of("public"), "Acme", null, "admin"));
+        assertTrue(refused.getMessage().contains("already has an item named Acme"), refused.getMessage());
+        assertNull(written.get());
     }
 
     @Test
