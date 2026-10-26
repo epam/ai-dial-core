@@ -10053,7 +10053,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
         "409":
-          description: "The move would hand the resource to another org unit, take it out of its unit, or put a skill or project on an org unit's folder"
+          description: "The move would change which org unit owns the resource (into, out of or between units), or put a skill or project on an org unit's folder"
         "500":
           description: The server had an error while processing your request.
           content:
@@ -10885,7 +10885,7 @@ paths:
           type: boolean
       responses:
         "200":
-          description: "The units are removed, with their folder markers"
+          description: "The units are removed, with their role assignments and folder markers"
           content:
             application/json:
               schema:

@@ -293,14 +293,36 @@ class OrgUnitServiceTest {
                     scannedUnderLock.compareAndSet(false, locked.get());
                     return null;
                 });
+        ResourceDescriptor app = ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION, ResourceDescriptor.PUBLIC_BUCKET,
+                ResourceDescriptor.PUBLIC_LOCATION, "Acme");
+        AtomicBoolean lookedUpUnderLock = new AtomicBoolean();
+        when(resources.hasResource(app)).thenAnswer(invocation -> {
+            lookedUpUnderLock.set(locked.get());
+            return false;
+        });
         RuleService rules = mock(RuleService.class);
         OrgUnitService service = new OrgUnitService(resources, rules, locks, new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         service.create(List.of("public"), "Acme", null, "admin");
 
         assertFalse(scannedUnderLock.get());
-        verify(resources).hasResource(ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION, ResourceDescriptor.PUBLIC_BUCKET,
-                ResourceDescriptor.PUBLIC_LOCATION, "Acme"));
+        assertTrue(lookedUpUnderLock.get());
+    }
+
+    @Test
+    void testUnitCreatedAfterTheScanIsRefusedUnderTheLock() {
+        AtomicReference<String> written = new AtomicReference<>();
+        ResourceService resources = writableResources("{\"units\": {}}", written);
+        ResourceItemMetadata before = metadata("\"1\"");
+        ResourceItemMetadata after = metadata("\"2\"");
+        when(resources.getResourceWithMetadata(any(), any()))
+                .thenReturn(Pair.of(before, "{\"units\": {}}"), Pair.of(after, "{\"units\": {\"public/acme/\": {\"id\": \"a\"}}}"));
+        OrgUnitService service = new OrgUnitService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        HttpException refused = assertThrows(HttpException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
+
+        assertTrue(refused.getMessage().contains("already has a unit named acme"), refused.getMessage());
+        assertNull(written.get());
     }
 
     @Test
