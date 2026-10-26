@@ -84,7 +84,7 @@ public class ResourceOperationController {
                     @ApiResponse(code = 200, description = "Success"),
                     @ApiResponse(code = 400),
                     @ApiResponse(code = 403),
-                    @ApiResponse(code = 409, description = "The move would hand the resource to another org unit, take it out of its unit, "
+                    @ApiResponse(code = 409, description = "The move would change which org unit owns the resource (into, out of or between units), "
                             + "or put a skill or project on an org unit's folder"),
                     @ApiResponse(code = 500)
             }
