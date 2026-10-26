@@ -61,6 +61,11 @@
       "methods": ["GET"],
       "upstreams": [{"endpoint": "http://localhost:9876", "key": "bearerKey123", "authType": "BEARER"}]
     },
+    "custom_header": {
+      "paths": ["/v1/custom_header"],
+      "methods": ["GET"],
+      "upstreams": [{"endpoint": "http://localhost:9876", "key": "customKey123", "authType": {"type": "CUSTOM_HEADER", "headerName": "X-Api-Token"}}]
+    },
     "vector_store_query": {
       "paths": ["/v1/vector_store(/[^/]+)*$"],
       "rewritePath": true,
