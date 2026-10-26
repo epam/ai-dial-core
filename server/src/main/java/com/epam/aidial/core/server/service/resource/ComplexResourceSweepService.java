@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service.resource;
 import com.epam.aidial.core.server.data.folder.ComplexResourceRef;
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
@@ -59,6 +60,7 @@ public class ComplexResourceSweepService implements AutoCloseable {
     private final ComplexResourceService complexResourceService;
     private final EncryptionService encryptionService;
     private final Settings settings;
+    private final BackgroundOperationTracer backgroundTracer;
     private final TimerService.Timer timer;
     private final AtomicInteger activeBatchCount = new AtomicInteger(0);
     private final String cursorStateKey;
@@ -70,20 +72,23 @@ public class ComplexResourceSweepService implements AutoCloseable {
 
     public ComplexResourceSweepService(TimerService timerService, BlobStorage blobStorage, RedissonClient redis,
                                        LockService lockService, ComplexResourceService complexResourceService,
-                                       EncryptionService encryptionService, Settings settings) {
+                                       EncryptionService encryptionService, Settings settings,
+                                       BackgroundOperationTracer backgroundTracer) {
         this.blobStorage = blobStorage;
         this.redis = redis;
         this.lockService = lockService;
         this.complexResourceService = complexResourceService;
         this.encryptionService = encryptionService;
         this.settings = settings;
+        this.backgroundTracer = backgroundTracer;
 
         this.batchesCounter = Counter.builder("dial_complex_resource_sweep_batches_total").register(Metrics.globalRegistry);
         this.reclaimedCounter = Counter.builder("dial_complex_resource_sweep_reclaimed_total").register(Metrics.globalRegistry);
         this.orphanVersionsCounter = Counter.builder("dial_complex_resource_sweep_orphan_versions_total").register(Metrics.globalRegistry);
         this.danglingRefsCounter = Counter.builder("dial_complex_resource_sweep_dangling_refs_total").register(Metrics.globalRegistry);
 
-        this.timer = timerService.scheduleWithFixedDelay(settings.getPeriod(), settings.getPeriod(), this::tick);
+        this.timer = timerService.scheduleWithFixedDelay(settings.getPeriod(), settings.getPeriod(),
+                () -> backgroundTracer.trace(this::tick));
         String prefix = lockService.getPrefix();
         this.cursorStateKey = "complex_resource:" + BlobStorageUtil.toStoragePath(prefix, CURSOR_STATE_KEY);
     }

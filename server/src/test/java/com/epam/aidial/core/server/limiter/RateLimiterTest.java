@@ -869,6 +869,44 @@ public class RateLimiterTest {
     }
 
     /**
+     * An aggregated cost is a re-tally of descendant spend that was already charged to the global record,
+     * so {@code getLimitStats} (the account-wide budget view behind {@code /limits}) must not add it again.
+     */
+    @Test
+    public void testGetLimitStats_DoesNotAddAggregatedCostOnTopOfGlobalCost() {
+        Config config = new Config();
+        Role role = new Role();
+        role.setLimits(Map.of());
+        role.setCostLimit(costLimit("100"));
+        config.setRoles(Map.of("role", role));
+
+        ProxyContext proxyContext = userContext(config, List.of("role"));
+        Model priced = model("router-app");
+        Pricing pricing = new Pricing();
+        pricing.setUnit("token");
+        pricing.setPrompt(PricingRate.flat("0.001"));
+        pricing.setCompletion(PricingRate.flat("0.001"));
+        priced.setPricing(pricing);
+        stubInlineExecutor();
+
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setPromptTokens(100);
+        tokenUsage.setCompletionTokens(100);
+        tokenUsage.setTotalTokens(200);
+        // global cost: 0.001 * 100 + 0.001 * 100 = 0.200
+        assertNull(rateLimiter.increase(
+                priced, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+        assertNull(rateLimiter.recordAggregatedCost("router-app", bucket, new BigDecimal("0.40")).cause());
+
+        LimitStats stats = rateLimiter.getLimitStats(priced, proxyContext).result();
+
+        assertNotNull(stats);
+        assertEquals(0, new BigDecimal("0.200").compareTo(stats.getDayCostStats().getUsed()));
+        assertEquals(0, new BigDecimal("0.200").compareTo(stats.getMonthCostStats().getUsed()));
+    }
+
+    /**
      * A deployment that was never used still reports 200 with zeroed usage against its real limits,
      * rather than 404 - the same contract {@code /limits} already honors.
      */

@@ -1,0 +1,36 @@
+name: SCA Scan
+
+on:
+  schedule:
+    - cron: "02 02 * * *"
+  workflow_dispatch:
+    inputs:
+      scan-tag:
+        description: "Scan only this git tag; empty = default branch and latest releases"
+        type: string
+        default: ""
+      force-image-scan:
+        description: "Run the OSV image scan on this run even if it is turned off"
+        type: boolean
+        default: false
+
+run-name: >-
+  SCA - ${{ github.event_name == 'schedule' && 'scheduled' || format('manual by {0}', github.triggering_actor) }}${{ inputs.scan-tag && format(' - tag {0}', inputs.scan-tag) || '' }}
+
+concurrency:
+  group: sca-scan
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  sca:
+    uses: epam/ai-dial-ci/.github/workflows/sca_scheduled.yml@4.13.0
+    with:
+      images: |
+        ${{ github.repository }}
+      java-version: "21"
+      scan-tag: ${{ inputs.scan-tag }}
+      force-image-scan: ${{ inputs.force-image-scan || false }}

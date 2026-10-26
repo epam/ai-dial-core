@@ -1341,4 +1341,25 @@ public class DeploymentPostControllerTest {
 
         verify(proxyRequest, never()).putHeader(eq(HEADER_APPLICATION_PROPERTIES), anyString());
     }
+
+    @Test
+    public void testInterceptorReentryDispatchesToNextInterceptorWithoutReadingBody() throws Exception {
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setInterceptors(List.of("interceptor1", "interceptor2"));
+        apiKeyData.setInterceptorIndex(0);
+
+        when(context.getRequest()).thenReturn(request);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        when(request.path()).thenReturn("/openai/deployments/interceptor/chat/completions");
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(context.getInterceptors()).thenReturn(apiKeyData.getInterceptors());
+        when(context.respond(NOT_FOUND, "Interceptor is not found")).thenReturn(Future.succeededFuture());
+
+        controller.handle("interceptor");
+
+        // the body is read by the interceptor controller itself, not on reentry
+        verify(request, never()).body();
+        // interceptor2 is not declared in the config, so reaching this response proves it was dispatched to
+        verify(context).respond(NOT_FOUND, "Interceptor is not found");
+    }
 }
