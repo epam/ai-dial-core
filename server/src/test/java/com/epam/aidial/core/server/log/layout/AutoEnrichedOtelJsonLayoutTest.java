@@ -5,12 +5,18 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.LoggingEvent;
 import ch.qos.logback.classic.spi.ThrowableProxy;
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.server.ContextManager;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.RouteType;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.TraceFlags;
+import io.opentelemetry.api.trace.TraceState;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -24,8 +30,10 @@ import org.slf4j.LoggerFactory;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -42,6 +50,7 @@ class AutoEnrichedOtelJsonLayoutTest {
     private MockedStatic<Vertx> vertxMock;
     private MockedStatic<ContextManager> contextManagerMock;
     private MockedStatic<Span> spanMock;
+    private MockedStatic<BackgroundOperationTracer> backgroundTracerMock;
     private Span currentSpan;
 
     @BeforeEach
@@ -57,10 +66,14 @@ class AutoEnrichedOtelJsonLayoutTest {
         // Mock ContextManager
         contextManagerMock = mockStatic(ContextManager.class);
         
+        backgroundTracerMock = mockStatic(BackgroundOperationTracer.class);
+        backgroundTracerMock.when(BackgroundOperationTracer::resolveBackgroundTrace).thenReturn(Optional.empty());
+
         // Mock Span
         spanMock = mockStatic(Span.class);
         currentSpan = mock(Span.class);
         when(currentSpan.isRecording()).thenReturn(false);
+        when(currentSpan.getSpanContext()).thenReturn(SpanContext.getInvalid());
         spanMock.when(Span::current).thenReturn(currentSpan);
     }
     
@@ -75,6 +88,9 @@ class AutoEnrichedOtelJsonLayoutTest {
         }
         if (spanMock != null) {
             spanMock.close();
+        }
+        if (backgroundTracerMock != null) {
+            backgroundTracerMock.close();
         }
     }
 
@@ -290,6 +306,64 @@ class AutoEnrichedOtelJsonLayoutTest {
     }
 
     @Test
+    void shouldIncludeTraceContextOfBackgroundRun_WhenNoProxyContext() throws Exception {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        backgroundTracerMock.when(BackgroundOperationTracer::resolveBackgroundTrace).thenReturn(Optional.of(SpanContext.create(
+                "22510e56eb9b21f6b03dbc038cd8fb71", "8a46c76f1554b00a", TraceFlags.getDefault(), TraceState.getDefault())));
+
+        JsonNode jsonNode = objectMapper.readTree(layout.doLayout(createEvent("Background run")));
+
+        assertEquals("22510e56eb9b21f6b03dbc038cd8fb71", jsonNode.get("TraceId").asText());
+        assertEquals("8a46c76f1554b00a", jsonNode.get("SpanId").asText());
+        assertEquals("00", jsonNode.get("TraceFlags").asText());
+    }
+
+    @Test
+    void shouldNotUseCurrentSpan_WhenNoProxyContextAndNoBackgroundRun() throws Exception {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        // the span of some request: only a background run's trace may fill the identifiers
+        when(currentSpan.getSpanContext()).thenReturn(SpanContext.create(
+                "22510e56eb9b21f6b03dbc038cd8fb71", "8a46c76f1554b00a", TraceFlags.getSampled(), TraceState.getDefault()));
+
+        JsonNode jsonNode = objectMapper.readTree(layout.doLayout(createEvent("Outside of any request")));
+
+        assertEquals("", jsonNode.get("TraceId").asText());
+        assertEquals("", jsonNode.get("SpanId").asText());
+        assertEquals("", jsonNode.get("TraceFlags").asText());
+    }
+
+    @Test
+    void shouldPreferProxyContextOverBackgroundRun() throws Exception {
+        ProxyContext proxyContext = mock(ProxyContext.class);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(response.ended()).thenReturn(false);
+        when(proxyContext.getTraceId()).thenReturn("22510e56eb9b21f6b03dbc038cd8fb71");
+        when(proxyContext.getSpanId()).thenReturn("8a46c76f1554b00a");
+        when(proxyContext.getTraceFlags()).thenReturn("01");
+        when(proxyContext.getResponse()).thenReturn(response);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        backgroundTracerMock.when(BackgroundOperationTracer::resolveBackgroundTrace).thenReturn(Optional.of(SpanContext.create(
+                "ffffffffffffffffffffffffffffffff", "ffffffffffffffff", TraceFlags.getDefault(), TraceState.getDefault())));
+
+        JsonNode jsonNode = objectMapper.readTree(layout.doLayout(createEvent("With both")));
+
+        assertEquals("22510e56eb9b21f6b03dbc038cd8fb71", jsonNode.get("TraceId").asText());
+        assertEquals("8a46c76f1554b00a", jsonNode.get("SpanId").asText());
+        assertEquals("01", jsonNode.get("TraceFlags").asText());
+    }
+
+    private static LoggingEvent createEvent(String message) {
+        LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        LoggingEvent event = new LoggingEvent();
+        event.setLoggerName(context.getLogger("test.logger").getName());
+        event.setLevel(Level.WARN);
+        event.setMessage(message);
+        event.setTimeStamp(System.currentTimeMillis());
+        event.setLoggerContext(context);
+        return event;
+    }
+
+    @Test
     void shouldIncludeTracingAttributesAndKeepSpanSettersTyped() throws Exception {
         ProxyContext proxyContext = mock(ProxyContext.class);
         HttpServerResponse response = mock(HttpServerResponse.class);
@@ -319,6 +393,89 @@ class AutoEnrichedOtelJsonLayoutTest {
         assertEquals(10, attributes.get("gen_ai.usage.input_tokens").asInt());
         assertEquals("base64", attributes.get("gen_ai.request.encoding_formats").get(0).asText());
         verify(currentSpan, never()).setAttribute("gen_ai.usage.input_tokens", "10");
+    }
+
+    @Test
+    void shouldIncludeGlobalRouteInLogLine() throws Exception {
+        ProxyContext proxyContext = proxyContextOnRoute("vector-store", RouteType.GLOBAL);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(infoEvent("Global route"))).get("Attributes");
+
+        assertEquals("vector-store", attributes.get("dial.route.name").asText());
+        assertEquals("global", attributes.get("dial.route.type").asText());
+    }
+
+    @Test
+    void shouldIncludeApplicationRouteInLogLine() throws Exception {
+        ProxyContext proxyContext = proxyContextOnRoute("index-search", RouteType.APPLICATION);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(infoEvent("Application route"))).get("Attributes");
+
+        assertEquals("index-search", attributes.get("dial.route.name").asText());
+        assertEquals("application", attributes.get("dial.route.type").asText());
+    }
+
+    @Test
+    void shouldIncludeRouteOnTheSpan() throws Exception {
+        ProxyContext proxyContext = proxyContextOnRoute("vector-store", RouteType.GLOBAL);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        when(currentSpan.isRecording()).thenReturn(true);
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(infoEvent("Route and span"))).get("Attributes");
+
+        assertEquals("vector-store", attributes.get("dial.route.name").asText());
+        verify(currentSpan).setAttribute("dial.route.name", "vector-store");
+        verify(currentSpan).setAttribute("dial.route.type", "global");
+        verify(currentSpan).setAttribute("loggerName", "test.logger");
+    }
+
+    @Test
+    void shouldOmitRouteWithoutRoute() throws Exception {
+        ProxyContext proxyContext = proxyContextOnRoute(null, null);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(infoEvent("No route"))).get("Attributes");
+
+        assertFalse(attributes.has("dial.route.name"));
+        assertFalse(attributes.has("dial.route.type"));
+    }
+
+    @Test
+    void shouldOmitRouteOutsideRequest() throws Exception {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(infoEvent("No request"))).get("Attributes");
+
+        assertFalse(attributes.has("dial.route.name"));
+        assertFalse(attributes.has("dial.route.type"));
+    }
+
+    private static ProxyContext proxyContextOnRoute(String routeName, RouteType routeType) {
+        ProxyContext proxyContext = mock(ProxyContext.class);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(response.ended()).thenReturn(false);
+        when(proxyContext.getResponse()).thenReturn(response);
+        when(proxyContext.getTracingAttributes()).thenReturn(new LinkedHashMap<>());
+        if (routeName != null) {
+            Route route = new Route();
+            route.setName(routeName);
+            when(proxyContext.getRoute()).thenReturn(route);
+            when(proxyContext.getRouteType()).thenReturn(routeType);
+        }
+        return proxyContext;
+    }
+
+    private static LoggingEvent infoEvent(String message) {
+        LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        LoggingEvent event = new LoggingEvent();
+        event.setLoggerName("test.logger");
+        event.setLevel(Level.INFO);
+        event.setMessage(message);
+        event.setTimeStamp(System.currentTimeMillis());
+        event.setLoggerContext(context);
+        return event;
     }
 
     @Test

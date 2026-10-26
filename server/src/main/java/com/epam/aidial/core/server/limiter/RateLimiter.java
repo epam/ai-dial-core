@@ -169,7 +169,6 @@ public class RateLimiter {
         collectTokenLimitStats(context, limitStats, timestamp, name, schedule);
         collectRequestLimitStats(context, limitStats, timestamp, name, schedule);
         collectCostLimitStats(context, limitStats, timestamp, schedule);
-        collectAggregatedCostLimitStats(context, limitStats, timestamp, name, schedule);
         return limitStats;
     }
 
@@ -418,12 +417,6 @@ public class RateLimiter {
             return;
         }
         rateLimit.update(timestamp, schedule, limitStats);
-    }
-
-    private void collectAggregatedCostLimitStats(
-            ProxyContext context, LimitStats limitStats, long timestamp, String name, RateLimitSchedule schedule) {
-        ResourceDescriptor resourceDescription = getResourceDescription(context, getPathToAggregatedCosts(name));
-        collectCostLimitStats(resourceService.getResource(resourceDescription), limitStats, timestamp, schedule);
     }
 
     private LimitStats create(Limit limit, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
