@@ -114,8 +114,8 @@ ends instead, except as Client gone from an application states. A request with a
 `API-KEY` SHALL be answered `401` with body `Unknown api key`.
 
 #### Scenario: Key rejected after the answer
-- **WHEN** `app` answers its request and then sends `POST /openai/deployments/gpt-4/chat/completions` with the key
-  it received
+- **WHEN** `app` has answered its request, the key's Redis record is gone (Core deletes it after the answer is
+  sent), and `app` sends `POST /openai/deployments/gpt-4/chat/completions` with that key
 - **THEN** Core answers `401` with body `Unknown api key` and nothing is sent to `gpt-4`
 
 #### Scenario: Key deleted on an error answer
@@ -190,8 +190,8 @@ translator's call back carry one, so a deployment with interceptors, or a transl
 For a deployment whose resolved features have `consentRequired: true`, Core SHALL read the consent stored under the
 initiator's bucket for the root deployment (the first `executionPath` entry for a per-request key, else the
 deployment itself) and answer `403` `User didn't accept consent to call the deployment: <id>`: `<id>` is the root
-when no consent is stored, else the called deployment when the consent lacks an `executionPath` entry or lacks it
-marked `consentRequired`.
+when no consent is stored, else the called deployment when the consent lacks an `executionPath` entry or lacks the
+called deployment marked `consentRequired`.
 
 #### Scenario: No consent yet
 - **WHEN** user `u1` calls `secured-app` (`consentRequired: true`) without having posted `/v1/consent/secured-app`
@@ -210,8 +210,9 @@ marked `consentRequired`.
   of that key's `executionPath` is `i1`
 
 ### Requirement: Token-stats span per pass
-Core SHALL add each forwarding pass as a span `{tokenUsage, parentSpanId, deploymentName, usagePerModel: []}`
-keyed by its span id to the Redis string `deployment_cost_stats_tmp:[<prefix>/]<traceId>`, refreshing its TTL
+Core SHALL add each forwarding pass, other than a deployment feature call or a Responses item operation, as a span
+`{tokenUsage, parentSpanId, deploymentName, usagePerModel: []}` keyed by its span id to the Redis string
+`deployment_cost_stats_tmp:[<prefix>/]<traceId>`, refreshing its TTL
 `deploymentStats.ttlMs` (default 3600000, must be positive) on every write; a trace whose root is a background
 Responses job uses max(ttlMs, `backgroundJob.jobTtlMs` + `backgroundJob.scanIntervalMs`).
 
@@ -219,6 +220,10 @@ Responses job uses max(ttlMs, `backgroundJob.jobTtlMs` + `backgroundJob.scanInte
 - **WHEN** root `app` (span `s1`, trace `t1`) calls `gpt-4` (span `s2`)
 - **THEN** `deployment_cost_stats_tmp:t1` holds spans `s1` and `s2`, `s2` with `parentSpanId: "s1"` and
   `deploymentName: "gpt-4"`
+
+#### Scenario: Feature call gets no span
+- **WHEN** a client sends `POST /v1/deployments/app/tokenize` and `app` calls `gpt-4` with the key it received
+- **THEN** `deployment_cost_stats_tmp:<traceId>` holds the `gpt-4` span and no span for the `tokenize` pass
 
 #### Scenario: Invalid TTL refused
 - **WHEN** settings set `deploymentStats.ttlMs: 0`
@@ -233,7 +238,8 @@ ends) and SHALL leave it when a child pass ends, except as Client gone from an a
 - **THEN** `deployment_cost_stats_tmp:<traceId>` no longer exists
 
 ### Requirement: Usage roll-up to the ancestors
-When a pass reports usage, Core SHALL store it as that span's own `tokenUsage` (keeping its accumulated `aggCost`),
+When a pass reports usage, Core SHALL store it as that span's own `tokenUsage` (adding the report's `aggCost` to the
+span's accumulated `aggCost`),
 and for every ancestor span add the report's `aggCost` to the ancestor's `aggCost` and append
 `{model: <reporting deployment>, usage}` to its `usagePerModel`, without merging by name and without adding raw
 token counts to the ancestor.
@@ -269,8 +275,8 @@ and `trace.trace_id`, `trace.core_span_id` and, for a child, `core_parent_span_i
 
 ### Requirement: Passes without an analytics row
 Core SHALL NOT write an analytics row for a pass that forwards to an interceptor, so usage an interceptor's body
-reports is not recorded, nor for an answer Core produces itself (a refusal, `No route`, `Service is not available`,
-a connect failure).
+reports is not recorded, nor for these answers Core produces itself: a refusal, `No route`, `Service is not
+available`, a connect failure.
 
 #### Scenario: Model behind interceptors
 - **WHEN** model `m` has interceptors `["i1", "i2"]` and a client calls `m`
@@ -291,8 +297,8 @@ TTL) or, for a root pass, delete the trace's token-stats record (it expires with
   exist in Redis
 
 ### Requirement: Usage in the analytics row
-Core SHALL write in a `Model` row its own `token_usage`, with `deployment_price` and `price` both its cost when the
-cost is positive and both absent otherwise; in another
+Core SHALL write in the row of a `Model` that answered 200 its own `token_usage` (none for another status), with
+`deployment_price` and `price` both its cost when the cost is positive and both absent otherwise; in another
 deployment's row the usage its body reports (zeros when none) with `price` the span's accumulated `aggCost`; and
 `usage_per_model` as the span's entries when there are any.
 

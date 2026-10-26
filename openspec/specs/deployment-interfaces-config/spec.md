@@ -346,7 +346,8 @@ SHALL be ignored.
 - **THEN** the config loads
 
 ### Requirement: Rejection outcome
-Core SHALL apply none of a file config holding a model or translator these rules reject: startup fails, and a
+Core SHALL apply none of a file config holding a model, application, interceptor or translator these rules reject:
+startup fails, and a
 periodic reload keeps the previous config live. A Configuration API write of such a model SHALL be answered `422`
 and not stored. The base-url and translator rules SHALL apply to models only.
 

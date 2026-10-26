@@ -151,7 +151,8 @@ Core SHALL relay an origin status that is not retriable as it is: a 4xx leaves t
 
 ### Requirement: Response relay
 Core SHALL relay the origin's status and response headers minus the hop-by-hop set, `traceparent` and
-`tracestate`, as a chunked response that carries `X-UPSTREAM-ATTEMPTS` with the number of attempts made, and
+`tracestate`, as a chunked response (a non-streaming chat completion is the exception below) that carries
+`X-UPSTREAM-ATTEMPTS` with the number of attempts made, and
 `X-Accel-Buffering: no` when the origin's `Content-Type` contains `text/event-stream`. Streamed bodies are passed on
 as they arrive.
 
@@ -176,8 +177,9 @@ chunking. `/completions` and `/embeddings` answers are relayed chunked as they a
 - **THEN** the client's response is chunked and carries no `Content-Length`
 
 ### Requirement: Records after the answer
-After the answer is complete Core SHALL parse the token usage from the body, or from the assembled stream, of a
-`Model` that answered 200 and of any other deployment whose body reports usage, then write one analytics log row for
+After the answer is complete Core SHALL parse the token usage from the last `usage` object in the body (the raw
+event stream for SSE) of a `Model` that answered 200 and of any other deployment whose body reports usage, then
+write one analytics log row for
 the POST, whatever the origin's status. How the usage is charged and rolled up, what the row carries, the answers
 that write no row, and the invalidation of the per-request key are the app-to-model-accounting capability.
 
