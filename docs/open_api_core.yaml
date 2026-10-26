@@ -82,6 +82,8 @@ tags:
 - name: Models
 - name: Notifications
 - name: Org units
+- name: Policies
+- name: Policy Assignments
 - name: Projects
 - name: Prompts
 - name: Publications
@@ -2932,6 +2934,35 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "405":
           description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/export:
+    post:
+      tags:
+      - Admin
+      summary: /v1/admin/export
+      operationId: exportAdminBuckets
+      responses:
+        "200":
+          description: ZIP archive of the public and platform buckets
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: "Another export or a write holds a bucket lock, retry later"
         "500":
           description: The server had an error while processing your request.
           content:
@@ -7079,6 +7110,142 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/policies/{bucket}/{path}:
+    get:
+      tags:
+      - Policies
+      summary: "/v1/metadata/policies/{bucket}/{path}"
+      operationId: getPolicyMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Empty for the root of the policies, a cost object folder (ending with a slash) to list its project policies, or a policy name."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/policy_assignments/{bucket}/{path}:
+    get:
+      tags:
+      - Policy Assignments
+      summary: "/v1/metadata/policy_assignments/{bucket}/{path}"
+      operationId: getPolicyAssignmentMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Empty for the cost objects that have assignments, a cost object folder (ending with a slash) to list its assignments, or an assignment path."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/metadata/prompts/{bucket}/{path}:
     get:
       tags:
@@ -10857,7 +11024,399 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
         "409":
-          description: "The name is taken or the depth limit is reached"
+          description: The name is taken or the depth limit is reached
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/policies/{bucket}/{path}:
+    get:
+      tags:
+      - Policies
+      summary: "/v1/policies/{bucket}/{path}"
+      operationId: getPolicy
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Policy name, with the folder of its cost object for a project policy: [<costObject>/]<name>"
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag of the cached copy; answers 304 when it is still current
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the policy
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Policies
+      summary: "/v1/policies/{bucket}/{path}"
+      operationId: savePolicy
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Policy name, with the folder of its cost object for a project policy: [<costObject>/]<name>"
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Policy"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved policy
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
+        "400":
+          description: "Malformed path or JSON, or a body that does not fit the record schema: an unknown field, a wrong type"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: "The policy would tie in priority with another budget of a cost object, or its name is taken by an assignment"
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: The policy breaks a validation rule
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Policies
+      summary: "/v1/policies/{bucket}/{path}"
+      operationId: deletePolicy
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Policy name, with the folder of its cost object for a project policy: [<costObject>/]<name>"
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: An assignment references the policy
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/policy_assignments/{bucket}/{path}:
+    get:
+      tags:
+      - Policy Assignments
+      summary: "/v1/policy_assignments/{bucket}/{path}"
+      operationId: getPolicyAssignment
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Assignment path: <costObject>/<id>"
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag of the cached copy; answers 304 when it is still current
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the assignment
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyAssignment"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Policy Assignments
+      summary: "/v1/policy_assignments/{bucket}/{path}"
+      operationId: savePolicyAssignment
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Assignment path: <costObject>/<id>"
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyAssignment"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved assignment
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
+        "400":
+          description: "Malformed path or JSON, or a body that does not fit the record schema: an unknown field, a wrong type"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: "The assignment would tie in priority with another budget of the cost object, or its id is taken by a self-applying policy"
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: The assignment breaks a validation rule
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Policy Assignments
+      summary: "/v1/policy_assignments/{bucket}/{path}"
+      operationId: deletePolicyAssignment
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Assignment path: <costObject>/<id>"
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "412":
+          description: Precondition Failed - ETag mismatch
         "500":
           description: The server had an error while processing your request.
           content:
@@ -15072,6 +15631,8 @@ components:
           Model: "#/components/schemas/AdminModelManifest"
           ToolSet: "#/components/schemas/AdminToolSetManifest"
           Application: "#/components/schemas/AdminApplicationManifest"
+          Policy: "#/components/schemas/AdminPolicyManifest"
+          PolicyAssignment: "#/components/schemas/AdminPolicyAssignmentManifest"
       oneOf:
       - $ref: "#/components/schemas/AdminSettingsManifest"
       - $ref: "#/components/schemas/AdminSchemaManifest"
@@ -15084,6 +15645,8 @@ components:
       - $ref: "#/components/schemas/AdminModelManifest"
       - $ref: "#/components/schemas/AdminToolSetManifest"
       - $ref: "#/components/schemas/AdminApplicationManifest"
+      - $ref: "#/components/schemas/AdminPolicyManifest"
+      - $ref: "#/components/schemas/AdminPolicyAssignmentManifest"
     AdminModelManifest:
       type: object
       properties:
@@ -15093,6 +15656,24 @@ components:
           type: string
         spec:
           $ref: "#/components/schemas/Model"
+    AdminPolicyAssignmentManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/PolicyAssignment"
+    AdminPolicyManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Policy"
     AdminRoleManifest:
       type: object
       properties:
@@ -18042,6 +18623,98 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PerRequestReceiver"
+    Policy:
+      type: object
+      properties:
+        attachedTo:
+          $ref: "#/components/schemas/JsonNode"
+        broker:
+          $ref: "#/components/schemas/JsonNode"
+        cost:
+          $ref: "#/components/schemas/PolicyAmounts"
+        costObject:
+          type: string
+        harness:
+          $ref: "#/components/schemas/JsonNode"
+        id:
+          type: string
+        kind:
+          $ref: "#/components/schemas/PolicyKind"
+        object:
+          $ref: "#/components/schemas/PolicyObjectSet"
+        packages:
+          $ref: "#/components/schemas/JsonNode"
+        per:
+          type: array
+          items:
+            type: string
+        priority:
+          type: integer
+        quantity:
+          $ref: "#/components/schemas/PolicyQuantity"
+        subject:
+          type: array
+          items:
+            $ref: "#/components/schemas/PolicySubjectRule"
+    PolicyAmounts:
+      type: object
+      properties:
+        day:
+          type: number
+        month:
+          type: number
+    PolicyAssignment:
+      type: object
+      properties:
+        costObject:
+          type: string
+        description:
+          type: string
+        expiresAt:
+          type: string
+        id:
+          type: string
+        policy:
+          type: string
+        source:
+          type: string
+        subject:
+          type: array
+          items:
+            $ref: "#/components/schemas/PolicySubjectRule"
+        ticket:
+          type: string
+    PolicyKind:
+      type: string
+      enum:
+      - budget
+    PolicyObjectSet:
+      type: object
+    PolicyQuantity:
+      type: string
+      enum:
+      - cost
+      - tokens
+      - requests
+    PolicySubjectRule:
+      type: object
+      properties:
+        function:
+          $ref: "#/components/schemas/PolicySubjectRuleFunction"
+        source:
+          type: string
+        targets:
+          type: array
+          items:
+            type: string
+    PolicySubjectRuleFunction:
+      type: string
+      enum:
+      - "TRUE"
+      - "FALSE"
+      - EQUAL
+      - CONTAIN
+      - REGEX
     Pricing:
       type: object
       properties:
@@ -18454,7 +19127,6 @@ components:
       - API_KEY_DATA
       - NOTIFICATION
       - APPLICATION
-      - DEPLOYMENT_COST_STATS
       - CODE_INTERPRETER_SESSION
       - USER_CONSENT
       - TOOL_SET
@@ -18486,7 +19158,6 @@ components:
       - API_KEY_DATA
       - NOTIFICATION
       - APPLICATION
-      - DEPLOYMENT_COST_STATS
       - CODE_INTERPRETER_SESSION
       - USER_CONSENT
       - TOOL_SET
@@ -18501,6 +19172,8 @@ components:
       - TRANSLATOR
       - ROLE
       - PROJECT_KEY
+      - POLICY
+      - POLICY_ASSIGNMENT
       - ROUTE
       - GLOBAL_SETTINGS
       - RESPONSE_MAPPING
