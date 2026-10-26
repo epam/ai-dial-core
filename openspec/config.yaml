@@ -21,6 +21,10 @@ context: |
   checkstyle (Google style, 180 columns). Blocking work runs on AsyncTaskExecutor virtual threads, never on the event
   loop. Every setting needs a code default: the test-resources aidial.settings.json shadows the built-in one.
 
+  Writing: plain words and short sentences, for a developer who knows Core. Explain a technical term the first time
+  it appears, or use a simpler one. Concrete over abstract: "Core skips the second Redis call", not "the cache path is
+  inert". Keep what the code or a measurement shows apart from what is expected or assumed.
+
   Checks: the commands in CLAUDE.md "Checks" (checkstyle and the touched test classes locally; the full suite in CI).
 
 rules:
