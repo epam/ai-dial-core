@@ -39,6 +39,12 @@ unit is created, core puts the clients' hidden empty-folder marker `.dial_folder
 Chat's publish dialog and the admin panel's folder tree show the unit before anything is published into it. If the
 marker can't be written, the unit is still created and shows once something is published into it.
 
+A write through the resource API doesn't take the shared space's lock that create holds, so content written into a
+folder while it becomes a unit can land after create's checks and then belong to the new unit; folder read rules
+still decide who reads it. Org units also assume storage that tells letter case apart, as S3, GCS and Azure Blob do: on
+storage that doesn't, such as the filesystem provider on macOS or Windows, a path that differs from a unit's folder
+only in letter case can reach the same content without the unit's checks.
+
 A node refuses to start when it cannot read the tree, and a tree that isn't a JSON object of units is never read as
 empty: that would hand every unit's content to the shared space. A `public/` entry in the tree is ignored and dropped
 on the next write: the shared space is never a unit.
