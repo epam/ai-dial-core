@@ -54,6 +54,7 @@ import com.epam.aidial.core.server.controller.ToolSetToolsController;
 import com.epam.aidial.core.server.controller.UploadFileController;
 import com.epam.aidial.core.server.controller.UserInfoController;
 import com.epam.aidial.core.server.controller.anthropic.AnthropicModelController;
+import com.epam.aidial.core.server.controller.anthropic.AnthropicUsageController;
 import com.epam.aidial.core.server.controller.anthropic.MessagesController;
 import com.epam.aidial.core.server.controller.anthropic.MessagesCountTokensController;
 import lombok.extern.slf4j.Slf4j;
@@ -72,6 +73,7 @@ public final class AnnotationEndpointCollector {
             AdminHealthConfigController.class,
             AdminValidateController.class,
             AnthropicModelController.class,
+            AnthropicUsageController.class,
             ApplicationController.class,
             ApplicationMcpProxyController.class,
             McpResourceController.class,
