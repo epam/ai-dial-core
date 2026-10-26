@@ -2,16 +2,21 @@ package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 
 import java.util.regex.Pattern;
 
 public record UpstreamAuthConfig(UpstreamAuthType type, String headerName) {
     private static final Pattern HEADER_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9!#$%&'*+.^_`|~-]+$");
+    private static final ObjectMapper ENUM_MAPPER = JsonMapper.builder().enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS).build();
     public static final UpstreamAuthConfig API_KEY = new UpstreamAuthConfig(UpstreamAuthType.API_KEY, null);
 
     @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
     public static UpstreamAuthConfig fromString(String type) {
-        return new UpstreamAuthConfig(UpstreamAuthType.valueOf(type), null);
+        // reuse Jackson enum parsing with the same feature as the application mappers, so the string and object forms agree
+        return new UpstreamAuthConfig(ENUM_MAPPER.convertValue(type, UpstreamAuthType.class), null);
     }
 
     @JsonCreator(mode = JsonCreator.Mode.PROPERTIES)
