@@ -127,8 +127,9 @@ public class RateLimiter {
 
     /**
      * Checks the caller's limits like {@link #limit(ProxyContext, RoleBasedEntity)}, and the result also carries the
-     * caller's spend caps, whichever check rejects. A failure to read the spend record fails the future with
-     * {@link SpendReadException} rather than an arbitrary error.
+     * caller's spend caps, whichever check rejects. A reached spend cap is checked first and wins over every other
+     * limit. A failure to read the spend record fails the future with {@link SpendReadException}, unless a token or
+     * request limit rejects the call, which then decides the result without caps.
      */
     public Future<RateLimitResult> limitWithSpendCaps(ProxyContext context, RoleBasedEntity roleBasedEntity) {
         return checkLimits(context, roleBasedEntity, true);
@@ -553,42 +554,65 @@ public class RateLimiter {
         long timestamp = System.currentTimeMillis();
         RateLimitSchedule schedule = context.getConfig().getRateLimitSchedule();
         CostLimit costLimit = getCostLimitByUser(context);
-
-        // read first when the caps are wanted, so they come back whichever check rejects
-        CostRateLimit costRateLimit = null;
-        SpendCaps spendCaps = null;
         if (withSpendCaps) {
-            costRateLimit = readCostRateLimit(context);
-            spendCaps = buildSpendCaps(costRateLimit, costLimit, timestamp, schedule);
+            return checkLimitWithSpendCaps(context, limit, roleBasedEntity, costLimit, timestamp, schedule);
         }
 
         // Check token limits
         RateLimitResult tokenResult = checkTokenLimit(context, limit, timestamp, schedule, roleBasedEntity);
         if (tokenResult.status() != HttpStatus.OK) {
-            return tokenResult.withSpendCaps(spendCaps);
+            return tokenResult;
         }
 
         // Check request limits
         RateLimitResult requestResult = checkRequestLimit(context, limit, timestamp, schedule, roleBasedEntity);
         if (requestResult.status() != HttpStatus.OK) {
-            return requestResult.withSpendCaps(spendCaps);
+            return requestResult;
         }
 
         // Check cost limits
-        if (!withSpendCaps) {
-            costRateLimit = loadCostRateLimit(context);
-        }
-        RateLimitResult costResult = costRateLimit == null ? RateLimitResult.SUCCESS : costRateLimit.check(timestamp, schedule, costLimit);
-        return costResult.withSpendCaps(spendCaps);
+        CostRateLimit costRateLimit = loadCostRateLimit(context);
+        return costRateLimit == null ? RateLimitResult.SUCCESS : costRateLimit.check(timestamp, schedule, costLimit);
     }
 
-    @Nullable
-    private CostRateLimit readCostRateLimit(ProxyContext context) {
+    /**
+     * Reads the spend record first, so a reached spend cap wins over every other limit and is rejected without touching
+     * the token or request records. A failed read decides only when no other limit rejects: the request is then
+     * about to go upstream with its spend unknown, so it fails with {@link SpendReadException}.
+     */
+    private RateLimitResult checkLimitWithSpendCaps(
+            ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
+        CostRateLimit costRateLimit = null;
+        SpendCaps spendCaps = null;
+        SpendReadException readError = null;
         try {
-            return loadCostRateLimit(context);
+            costRateLimit = loadCostRateLimit(context);
+            spendCaps = buildSpendCaps(costRateLimit, costLimit, timestamp, schedule);
         } catch (RuntimeException e) {
-            throw new SpendReadException(e);
+            readError = new SpendReadException(e);
         }
+
+        SpendCap reported = spendCaps == null ? null : spendCaps.reported();
+        if (reported != null && reported.isExceeded()) {
+            return costRateLimit.check(timestamp, schedule, costLimit).withSpendCaps(spendCaps);
+        }
+
+        RateLimitResult tokenResult = checkTokenLimit(context, limit, timestamp, schedule, roleBasedEntity);
+        if (tokenResult.status() != HttpStatus.OK) {
+            return tokenResult.withSpendCaps(spendCaps);
+        }
+
+        RateLimitResult requestResult = checkRequestLimit(context, limit, timestamp, schedule, roleBasedEntity);
+        if (requestResult.status() != HttpStatus.OK) {
+            return requestResult.withSpendCaps(spendCaps);
+        }
+
+        if (readError != null) {
+            throw readError;
+        }
+        // only the per-minute window or a cap of 0 can reject here: neither is reported
+        RateLimitResult costResult = costRateLimit == null ? RateLimitResult.SUCCESS : costRateLimit.check(timestamp, schedule, costLimit);
+        return costResult.withSpendCaps(spendCaps);
     }
 
     @Nullable

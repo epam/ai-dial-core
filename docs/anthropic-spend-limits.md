@@ -94,7 +94,8 @@ anthropic-ratelimit-unified-overage-disabled-reason: org_spend_cap_reached
 
 ### Spend counter unreadable
 
-If the spend record can't be read for a caller with a cost limit, the request fails closed: 429 with `x-should-retry: false` and
+If the spend record can't be read for a caller with a cost limit, and no token or request limit rejects the request
+(one that does decides the answer as usual), the request fails closed: 429 with `x-should-retry: false` and
 `anthropic-ratelimit-unified-overage-disabled-reason: fetch_error`, and no other `anthropic-ratelimit-*` header.
 The body is a `billing_error` with the message `DIAL could not read your spend limit; request rejected`.
 A cost limit here means any cost window below 2^53, including the per-minute one and a cap of 0, which is enforced but
@@ -116,9 +117,11 @@ carry `anthropic-ratelimit-unified-*` headers. The body is
 | day/week/month tokens, daily requests (calendar windows) | `retry-after`, `x-should-retry: false` | `DIAL daily token limit for <model> reached (resets 2026-10-24 00:00 UTC)` |
 
 When several windows fire, the longest `retry-after` decides; a sliding window never says less than 1 second. A reached
-spend cap takes precedence over every other limit: a caller over both a token limit and a spend cap gets the
-`billing_error`. Otherwise the limits are checked in the order token, request, cost, and the first one that rejects
-decides the answer. Every other route keeps its Azure-format errors.
+spend cap takes precedence over every other limit: the spend record is read first, and a caller over both a token limit
+and a spend cap gets the `billing_error`. Such a request is rejected before the token and request records are touched,
+so on this route it does not count toward the request limits. Otherwise the limits are checked in the order token,
+request, then the per-minute or zero cost limit, and the first one that rejects decides the answer. Every other route
+keeps its Azure-format errors and its order (token, request, cost).
 
 A cost cap configured as `0` is treated as unlimited for reporting (no headers, not in `limits`) while DIAL still enforces it,
 so such a user gets a `rate_limit_error` 429 naming the spend window rather than `billing_error`.

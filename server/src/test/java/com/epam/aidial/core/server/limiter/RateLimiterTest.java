@@ -1274,16 +1274,45 @@ public class RateLimiterTest {
     }
 
     @Test
-    public void testLimit_TokenLimitRejectionStillCarriesSpendCaps() {
+    public void testLimit_ReachedSpendCapWinsWithoutTouchingTokenOrRequestRecords() {
         ProxyContext proxyContext = spendCapContext("10");
         seedCost(proxyContext, "10");
+        seedRecord(proxyContext, "model/tokens", tokensOver(1000));
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        ResourceDescriptor requests = ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "model/requests");
+
+        RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(LimitBreach.Kind.COST, result.breach().kind());
+        assertTrue(result.spendCaps().reported().isExceeded());
+        assertNull(resourceService.getResource(requests));
+    }
+
+    @Test
+    public void testLimit_TokenLimitRejectionStillCarriesSpendCaps() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "8.2");
         seedRecord(proxyContext, "model/tokens", tokensOver(1000));
 
         RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
 
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
         assertEquals(LimitBreach.Kind.TOKENS, result.breach().kind());
-        assertTrue(result.spendCaps().reported().isExceeded());
+        assertEquals(CalendarPeriod.DAY, result.spendCaps().reported().period());
+    }
+
+    @Test
+    public void testLimit_UnreadableSpendRecordLeavesTokenRejectionAsIs() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedRecord(proxyContext, "costs", "not json");
+        seedRecord(proxyContext, "model/tokens", tokensOver(1000));
+
+        RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(LimitBreach.Kind.TOKENS, result.breach().kind());
+        assertNull(result.spendCaps());
     }
 
     @Test
