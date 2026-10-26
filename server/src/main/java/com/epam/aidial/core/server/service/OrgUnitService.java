@@ -218,10 +218,14 @@ public class OrgUnitService {
         String from = ownerOf(units, source);
         String to = ownerOf(units, destination);
         if (!from.equals(to)) {
-            throw new HttpException(HttpStatus.CONFLICT, "Moves between org units aren't allowed: %s belongs to %s, %s to %s. "
-                    .formatted(source.getDecodedUrl(), describe(from), destination.getDecodedUrl(), describe(to))
-                    + "Publish into the other unit instead.");
+            throw new HttpException(HttpStatus.CONFLICT, "A move can't change which org unit owns a resource: %s belongs to %s, %s to %s. "
+                    .formatted(source.getDecodedUrl(), owner(from), destination.getDecodedUrl(), owner(to))
+                    + "Copy or publish it instead.");
         }
+    }
+
+    private static String owner(String key) {
+        return key.equals(SHARED_SPACE_KEY) ? "no unit" : describe(key);
     }
 
     /**
