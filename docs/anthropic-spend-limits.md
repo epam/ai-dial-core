@@ -23,6 +23,19 @@ export ANTHROPIC_AUTH_TOKEN=<dial-api-key>
 
 `/anthropic/api/oauth/usage` uses the same authentication as `/anthropic/v1/messages`.
 
+`CLAUDE_CODE_USE_GATEWAY=1` is required: without it Claude Code ignores the limit headers and never calls the
+usage endpoint, so it shows no notices and no amounts.
+
+When Claude Code is started through the `dial` launcher, the launcher sets the base URL and the credential, and
+`CLAUDE_CODE_USE_GATEWAY` comes from its configuration. Add this key to the machine configuration the launcher
+reads (`C:\ProgramData\dial\config.json` on Windows, `/Library/Application Support/dial/config.json` on macOS):
+
+```json
+"claude-code.env.CLAUDE_CODE_USE_GATEWAY": "1"
+```
+
+Deploy it together with, or after, a Core version that includes this feature.
+
 ## Which cap is reported
 
 A user can have several cost caps (day, week, month). Exactly one is reported:
