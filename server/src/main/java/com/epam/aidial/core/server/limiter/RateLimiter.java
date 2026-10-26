@@ -122,15 +122,19 @@ public class RateLimiter {
     }
 
     public Future<RateLimitResult> limit(ProxyContext context, RoleBasedEntity roleBasedEntity) {
-        return limit(context, roleBasedEntity, false);
+        return checkLimits(context, roleBasedEntity, false);
     }
 
     /**
-     * Checks the caller's limits. With {@code withSpendCaps} the result also carries the caller's spend caps,
-     * whichever check rejects, and a failure to read the spend record fails the future with
+     * Checks the caller's limits like {@link #limit(ProxyContext, RoleBasedEntity)}, and the result also carries the
+     * caller's spend caps, whichever check rejects. A failure to read the spend record fails the future with
      * {@link SpendReadException} rather than an arbitrary error.
      */
-    public Future<RateLimitResult> limit(ProxyContext context, RoleBasedEntity roleBasedEntity, boolean withSpendCaps) {
+    public Future<RateLimitResult> limitWithSpendCaps(ProxyContext context, RoleBasedEntity roleBasedEntity) {
+        return checkLimits(context, roleBasedEntity, true);
+    }
+
+    private Future<RateLimitResult> checkLimits(ProxyContext context, RoleBasedEntity roleBasedEntity, boolean withSpendCaps) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {

@@ -86,7 +86,9 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                     String model = request.getModel();
                     deploymentId = model;
                     return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(model)))
-                            // independent reads, so neither waits on the other; join waits for both even when one fails,
+                            // the limit check reads the spend caps before every request, translated ones included, which read no
+                            // limits before; running it alongside startSpan keeps that read off the critical path. The cost is a
+                            // trace record written and removed for a rejected request. join waits for both even when one fails,
                             // so a rejection never ends the span before it is started
                             .compose(ignore -> Future.join(verifyLimit(), proxy.getTokenStatsTracker().startSpan(context)))
                             .compose(ignore -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request)))

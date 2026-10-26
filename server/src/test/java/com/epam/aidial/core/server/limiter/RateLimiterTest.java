@@ -1233,7 +1233,7 @@ public class RateLimiterTest {
         ProxyContext proxyContext = spendCapContext("10");
         seedCost(proxyContext, "8.2");
 
-        RateLimitResult result = rateLimiter.limit(proxyContext, model("model"), true).result();
+        RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
 
         assertEquals(HttpStatus.OK, result.status());
         SpendCap reported = result.spendCaps().reported();
@@ -1245,7 +1245,7 @@ public class RateLimiterTest {
     public void testLimit_CostRecordMissing_CarriesZeroSpendCaps() {
         ProxyContext proxyContext = spendCapContext("10");
 
-        RateLimitResult result = rateLimiter.limit(proxyContext, model("model"), true).result();
+        RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
 
         assertEquals(HttpStatus.OK, result.status());
         assertEquals(0, BigDecimal.ZERO.compareTo(result.spendCaps().reported().used()));
@@ -1256,7 +1256,7 @@ public class RateLimiterTest {
         ProxyContext proxyContext = spendCapContext("10");
         seedCost(proxyContext, "10");
 
-        RateLimitResult result = rateLimiter.limit(proxyContext, model("model"), true).result();
+        RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
 
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
         assertTrue(result.spendCaps().reported().isExceeded());
@@ -1279,7 +1279,7 @@ public class RateLimiterTest {
         seedCost(proxyContext, "10");
         seedRecord(proxyContext, "model/tokens", tokensOver(1000));
 
-        RateLimitResult result = rateLimiter.limit(proxyContext, model("model"), true).result();
+        RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
 
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
         assertEquals(LimitBreach.Kind.TOKENS, result.breach().kind());
@@ -1291,7 +1291,7 @@ public class RateLimiterTest {
         ProxyContext proxyContext = spendCapContext("10");
         seedRecord(proxyContext, "costs", "not json");
 
-        Future<RateLimitResult> result = rateLimiter.limit(proxyContext, model("model"), true);
+        Future<RateLimitResult> result = rateLimiter.limitWithSpendCaps(proxyContext, model("model"));
 
         assertTrue(result.failed());
         assertInstanceOf(SpendReadException.class, result.cause());
@@ -1302,7 +1302,7 @@ public class RateLimiterTest {
         ProxyContext proxyContext = spendCapContext("10");
         seedRecord(proxyContext, "model/tokens", "not json");
 
-        Future<RateLimitResult> result = rateLimiter.limit(proxyContext, model("model"), true);
+        Future<RateLimitResult> result = rateLimiter.limitWithSpendCaps(proxyContext, model("model"));
 
         assertTrue(result.failed());
         assertFalse(result.cause() instanceof SpendReadException, String.valueOf(result.cause()));
@@ -1330,7 +1330,7 @@ public class RateLimiterTest {
         SpendCap fromRead = rateLimiter.readSpendCaps(proxyContext).result().reported();
         assertEquals(storedBefore, resourceService.getResource(costs));
 
-        SpendCap fromLimit = rateLimiter.limit(proxyContext, model("model"), true).result().spendCaps().reported();
+        SpendCap fromLimit = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result().spendCaps().reported();
         assertEquals(fromLimit.period(), fromRead.period());
         assertEquals(0, fromLimit.used().compareTo(fromRead.used()));
         assertEquals(0, fromLimit.total().compareTo(fromRead.total()));

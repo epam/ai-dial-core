@@ -142,7 +142,7 @@ public class MessagesController extends MessagesBaseController {
         if (!isSubjectToLimits(context.getDeployment())) {
             return readTranslatedSpendCaps();
         }
-        return proxy.getRateLimiter().limit(context, context.getDeployment(), true)
+        return proxy.getRateLimiter().limitWithSpendCaps(context, context.getDeployment())
                 .recover(error -> {
                     // fail closed only when the spend itself is unknown to a caller it would cap; any other failure is retried
                     if (error instanceof SpendReadException && proxy.getRateLimiter().hasCostLimit(context)) {
@@ -155,10 +155,7 @@ public class MessagesController extends MessagesBaseController {
                 .map(rateLimit -> {
                     SpendCaps caps = rateLimit.spendCaps();
                     if (rateLimit.status() == HttpStatus.TOO_MANY_REQUESTS) {
-                        SpendCap reported = caps == null ? null : caps.reported();
-                        if (reported != null && reported.isExceeded()) {
-                            throw AnthropicLimitResponses.spendCapReached(reported, System.currentTimeMillis());
-                        }
+                        rejectIfSpendCapReached(caps);
                         if (rateLimit.breach() != null) {
                             throw AnthropicLimitResponses.limitReached(rateLimit.breach(), context.getDeployment().getName(), System.currentTimeMillis());
                         }
@@ -182,13 +179,20 @@ public class MessagesController extends MessagesBaseController {
                     return Future.succeededFuture(SpendCaps.EMPTY);
                 })
                 .map(caps -> {
-                    SpendCap reported = caps.reported();
-                    if (reported != null && reported.isExceeded()) {
-                        throw AnthropicLimitResponses.spendCapReached(reported, System.currentTimeMillis());
-                    }
+                    rejectIfSpendCapReached(caps);
                     spendCaps = caps;
                     return null;
                 });
+    }
+
+    /**
+     * A reached spend cap takes precedence over any other limit, so it is checked first wherever the caps are read.
+     */
+    private static void rejectIfSpendCapReached(@Nullable SpendCaps caps) {
+        SpendCap reported = caps == null ? null : caps.reported();
+        if (reported != null && reported.isExceeded()) {
+            throw AnthropicLimitResponses.spendCapReached(reported, System.currentTimeMillis());
+        }
     }
 
     /**

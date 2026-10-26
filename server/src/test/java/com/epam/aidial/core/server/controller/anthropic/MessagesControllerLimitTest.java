@@ -30,8 +30,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -59,7 +57,7 @@ class MessagesControllerLimitTest {
         model.setName("claude-spend");
         when(context.getDeployment()).thenReturn(model);
         when(proxy.getRateLimiter()).thenReturn(rateLimiter);
-        when(rateLimiter.limit(any(), any(), eq(true)))
+        when(rateLimiter.limitWithSpendCaps(any(), any()))
                 .thenReturn(Future.failedFuture(new SpendReadException(new IllegalStateException("redis down"))));
         when(rateLimiter.hasCostLimit(context)).thenReturn(true);
 
@@ -81,7 +79,7 @@ class MessagesControllerLimitTest {
         model.setName("claude-spend");
         when(context.getDeployment()).thenReturn(model);
         when(proxy.getRateLimiter()).thenReturn(rateLimiter);
-        when(rateLimiter.limit(any(), any(), eq(true)))
+        when(rateLimiter.limitWithSpendCaps(any(), any()))
                 .thenReturn(Future.failedFuture(new SpendReadException(new IllegalStateException("redis down"))));
         when(rateLimiter.hasCostLimit(context)).thenReturn(false);
 
@@ -97,7 +95,7 @@ class MessagesControllerLimitTest {
         model.setName("claude-spend");
         when(context.getDeployment()).thenReturn(model);
         when(proxy.getRateLimiter()).thenReturn(rateLimiter);
-        when(rateLimiter.limit(any(), any(), eq(true))).thenReturn(Future.failedFuture(new IllegalStateException("token record timeout")));
+        when(rateLimiter.limitWithSpendCaps(any(), any())).thenReturn(Future.failedFuture(new IllegalStateException("token record timeout")));
 
         Future<Void> result = new MessagesController(proxy, context).verifyLimit();
 
@@ -115,7 +113,7 @@ class MessagesControllerLimitTest {
         SpendCap month = new SpendCap(CalendarPeriod.MONTH, BigDecimal.TEN, BigDecimal.TEN, System.currentTimeMillis() + 3_600_000);
         LimitBreach tokens = new LimitBreach(LimitBreach.Kind.TOKENS, LimitBreach.Window.MINUTE, 30, -1);
         RateLimitResult rejected = new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, "tokens", "tokens", 30, tokens, new SpendCaps(List.of(month), month));
-        when(rateLimiter.limit(any(), any(), eq(true))).thenReturn(Future.succeededFuture(rejected));
+        when(rateLimiter.limitWithSpendCaps(any(), any())).thenReturn(Future.succeededFuture(rejected));
 
         Future<Void> result = new MessagesController(proxy, context).verifyLimit();
 
@@ -133,7 +131,8 @@ class MessagesControllerLimitTest {
         Future<Void> result = new MessagesController(proxy, context).verifyLimit();
 
         assertTrue(result.succeeded());
-        verify(rateLimiter, never()).limit(any(), any(), anyBoolean());
+        verify(rateLimiter, never()).limitWithSpendCaps(any(), any());
+        verify(rateLimiter, never()).limit(any(), any());
     }
 
     @Test
