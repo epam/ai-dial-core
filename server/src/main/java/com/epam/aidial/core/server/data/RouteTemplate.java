@@ -182,6 +182,11 @@ public enum RouteTemplate {
             "/v1/admin/apply"
     ),
 
+    ADMIN_EXPORT(
+            "^/v1/admin/export$",
+            "/v1/admin/export"
+    ),
+
     BUCKET(
             "^/v1/bucket$",
             "/v1/bucket"

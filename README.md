@@ -340,6 +340,18 @@ the client subscribed with no events ever reaching it.
 </details>
 
 <details> 
+<summary><b>Admin Export Configurations</b></summary>
+
+Settings of `POST /v1/admin/export`, which streams the `public` and `platform` buckets as a ZIP archive.
+Refer to [Admin export](docs/admin-export.md) to learn more.
+
+| Setting                    | Default | Required | Description                                                                                                                                              |
+|----------------------------|:-------:|:--------:|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| adminExport.stallTimeout   | 60000   |    No    | Time in milliseconds the export waits for a slow client to take the buffered data before it fails and the connection is reset. Raise it if clients with slow connections fail. It must be positive and below the 5 minute lock period (300000), otherwise Core does not start. |
+
+</details>
+
+<details> 
 <summary><b>Redis Configurations</b></summary>
 
 | Setting                                  | Default | Required | Description                                                                                                                                                                                                                                                                                                                                                                                    |
