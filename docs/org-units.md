@@ -52,8 +52,9 @@ Chat's publish dialog and the admin panel's folder tree show the unit before any
 marker can't be written, the unit is still created and shows once something is published into it.
 
 A write through the resource API doesn't take the shared space's lock that create holds, so content written into a
-folder while it becomes a unit can land after create's checks and then belong to the new unit; folder read rules
-still decide who reads it. Org units also assume storage that tells letter case apart, as S3, GCS and Azure Blob do: on
+folder while it becomes a unit can land after create's checks and then belong to the new unit, under its roles
+rather than the parent's. Only callers who can already write at the parent can do this, and the new unit's admins see
+what landed. Org units also assume storage that tells letter case apart, as S3, GCS and Azure Blob do: on
 storage that doesn't, such as the filesystem provider on macOS or Windows, a path that differs from a unit's folder
 only in letter case can reach the same content without the unit's checks.
 
