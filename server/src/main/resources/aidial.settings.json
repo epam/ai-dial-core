@@ -76,6 +76,9 @@
     "activeBatches": 5,
     "gracePeriod": 3600000
   },
+  "adminExport": {
+    "stallTimeout": 60000
+  },
   "clientChannel": {
     "watchdog": {
       "period": 10000
