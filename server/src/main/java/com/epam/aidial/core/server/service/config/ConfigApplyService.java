@@ -22,6 +22,8 @@ import com.epam.aidial.core.server.data.config.manifest.AdminInterceptorManifest
 import com.epam.aidial.core.server.data.config.manifest.AdminKeyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminModelManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPolicyAssignmentManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPolicyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRoleManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRouteManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminSchemaManifest;
@@ -34,6 +36,7 @@ import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.config.ConfigManifestSupport.ParsedName;
+import com.epam.aidial.core.server.service.policy.PolicyService;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.validation.ValidationUtil;
@@ -69,6 +72,7 @@ public class ConfigApplyService {
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
     private final CatalogSchemaService catalogSchemaService;
+    private final PolicyService policyService;
 
     public ConfigApplyService(MergedConfigStore mergedConfigStore,
                               ResourceService resourceService,
@@ -86,6 +90,7 @@ public class ConfigApplyService {
         this.applicationService = applicationService;
         this.toolSetService = toolSetService;
         this.catalogSchemaService = catalogSchemaService;
+        this.policyService = new PolicyService(resourceService);
     }
 
     /**
@@ -124,10 +129,15 @@ public class ConfigApplyService {
             if (!pendingChanges.isEmpty()) {
                 Map<String, String> failures = mergedConfigStore.applyBatch(pendingChanges);
                 // Blobs are already written; if the in-memory swap of any entity failed (e.g. an
-                // unforeseen type coercion error not caught by precheck) the merged Config diverges
-                // from blob until the next full rebuild. Surface via log so operators see it.
+                // assignment whose policy another pod wrote and whose replica event has not arrived
+                // yet, or an unforeseen type coercion error not caught by precheck) the merged Config
+                // diverges from blob. This pod ignores the replica events of its own writes, so request
+                // a full rebuild to converge instead of waiting for the next periodic one.
                 failures.forEach((id, reason) ->
                         log.warn("Partial-update swap failed for {} after blob put: {}", id, reason));
+                if (!failures.isEmpty()) {
+                    mergedConfigStore.requestRebuild();
+                }
             }
             if (pendingSettings != null) {
                 mergedConfigStore.applySettingsWrite(pendingSettings);
@@ -157,6 +167,19 @@ public class ConfigApplyService {
             case AdminToolSetManifest toolSet -> applyToolSet(toolSet.spec(), id, parsed.name(), scratch, pending);
             case AdminApplicationManifest application ->
                     applyApplication(application.spec(), id, parsed.name(), scratch, pending);
+            case AdminPolicyManifest policy -> {
+                policyService.putPolicy(parsed.name().name(), policy.spec(), EtagHeader.ANY, null);
+                pending.add(new EntityChange(ResourceTypes.POLICY,
+                        MergedConfigStore.resolveMapKeyFor(PolicyService.describe(ResourceTypes.POLICY, parsed.name().name())), policy.spec()));
+                yield new EntityResult(id, AdminApplyStatus.APPLIED, null);
+            }
+            case AdminPolicyAssignmentManifest assignment -> {
+                policyService.putAssignment(parsed.name().name(), assignment.spec(), EtagHeader.ANY, null);
+                pending.add(new EntityChange(ResourceTypes.POLICY_ASSIGNMENT,
+                        MergedConfigStore.resolveMapKeyFor(PolicyService.describe(ResourceTypes.POLICY_ASSIGNMENT, parsed.name().name())),
+                        assignment.spec()));
+                yield new EntityResult(id, AdminApplyStatus.APPLIED, null);
+            }
         };
     }
 

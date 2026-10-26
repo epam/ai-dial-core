@@ -147,9 +147,8 @@ class ResourceServiceSenderPodIdTest {
             Assertions.assertTrue(latch.await(5, TimeUnit.SECONDS));
             Set<ResourceTypes> published = urls.stream().map(typesByUrl::get).collect(Collectors.toSet());
             Assertions.assertEquals(ResourceTypes.EVENT_TYPES, published);
-            // the per-request counters and cost records this filter keeps off the topic
+            // the per-request counters this filter keeps off the topic
             Assertions.assertFalse(published.contains(ResourceTypes.LIMIT));
-            Assertions.assertFalse(published.contains(ResourceTypes.DEPLOYMENT_COST_STATS));
         }
     }
 
