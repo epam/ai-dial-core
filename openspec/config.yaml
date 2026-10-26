@@ -1,0 +1,60 @@
+schema: spec-driven
+
+context: |
+  Service: AI DIAL Core, an HTTP reverse proxy and API gateway for LLMs (Java 21, Eclipse Vert.x 4.5, Gradle 8;
+  modules config / storage / credentials / server, see CLAUDE.md). It serves the OpenAI chat completions,
+  embeddings and Responses interfaces and the Anthropic Messages interface, and routes to models (upstreams behind
+  adapters), applications, interceptors and translators.
+
+  Source of truth for behaviour: the code on `development` and its tests. Where a change ports behaviour from
+  another service, that service's code and tests are the reference, cited as path:line.
+
+  Boundaries a spec may describe, and nothing else: (1) the HTTP API Core serves, and the HTTP request Core sends to
+  an origin (a deployment endpoint, adapter, interceptor or translator); (2) the records Core writes: analytics log
+  rows, token-stats spans, per-request keys and limit counters in Redis, blob operations. Java internals belong in
+  design.md, not in a spec.
+
+  Cost per request: a change that adds a Core pass, a body copy, a parse of a body Core only forwards, or Redis /
+  blob round trips per request says so in design.md and names how it is measured.
+
+  Style: docs/CODE_STYLE.md (naming, Vert.x event-loop rules, scope discipline, error handling, tests, docs) and
+  checkstyle (Google style, 180 columns). Blocking work runs on AsyncTaskExecutor virtual threads, never on the event
+  loop. Every setting needs a code default: the test-resources aidial.settings.json shadows the built-in one.
+
+  Checks (Git Bash, repo root, JAVA_HOME a JDK 21; CLAUDE.md "Checks"): ./gradlew checkstyleMain checkstyleTest, then
+  the test classes the change touches with --tests. The full suite runs in CI after the push, not locally.
+
+rules:
+  proposal:
+    - Cite the Core source of every behaviour you change or rely on as path:line on `development`.
+    - State what is out of scope, and name the existing capability in openspec/specs each delta touches.
+    - A change that claims a cost effect per request names how it will be measured.
+  specs:
+    - Requirements describe observable behaviour at one of the two boundaries in the context, not Java internals.
+    - Every scenario must be testable by a JUnit 5 / Vert.x JUnit 5 test. A scenario at the HTTP boundary gets an
+      integration test in the server module (the full stack with embedded Redis and MockWebServer, as
+      ResourceApiTest and the other *ApiTest classes do).
+    - Reuse the existing capabilities in openspec/specs; add a capability only for a new concern.
+    - A MODIFIED requirement repeats the whole existing requirement block with its exact header.
+  design:
+    - Name the existing Core classes and helpers to reuse as File.java:method.
+    - Record each decision with the rejected alternative and why; record every deliberate difference from today's
+      behaviour and from the reference where one exists.
+    - State the effect per request on Core passes, body copies and parses, and Redis / blob round trips.
+  tasks:
+    - Tests are written before or with the code they cover; each spec scenario names its test.
+    - Every task group ends with ./gradlew checkstyleMain checkstyleTest and the touched test classes with --tests.
+    - Include tasks for docs/dynamic-settings/*.md, docs/*.md and CLAUDE.md where the change affects them, and a
+      measurement task wherever the change claims a cost effect.
+    - 'Mark checks that need an environment or credentials this machine lacks "(deferred: needs <what>)"; they stay unchecked.'
+
+operations:
+  apply:
+    guidance:
+      - Before coding, compare design.md with the current code; record any drift in design.md, never diverge silently.
+      - Do not commit and do not run git commands that change the working tree or history (checkout, restore, reset,
+        stash, clean); the orchestrator commits, staging files by name.
+      - Run checkstyle and the targeted test classes locally; the full suite runs in CI.
+  archive:
+    guidance:
+      - Archive only after all non-deferred tasks are checked and review.md exists in the change folder.
