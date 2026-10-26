@@ -19,8 +19,10 @@ curl -X POST -H "Authorization: Bearer <admin token>" -o dial-export.zip https:/
 `encryption_keys/` and `credentials/` are never exported.
 
 Entry names are blob paths, so they can contain characters that Windows does not allow in file names, such as `:` in
-`platform/models/openai.gpt-oss-120b-1:0`. The archive is valid, but Windows Explorer cannot extract such entries
-(error `0x80070057`). Extract it on Linux, or read it with a ZIP library, which does not create files.
+`platform/models/openai.gpt-oss-120b-1:0`, or `?` and `*` in the names of conversations, which are taken from chat titles.
+Names with non-Latin letters are common too. The archive is valid, but Windows tools can fail on it: Explorer can refuse to
+open it ("The Compressed (zipped) Folder is invalid") or to extract such entries (error `0x80070057`), and `tar` skips entries
+with non-ASCII names. Extract it on Linux, or read it with a ZIP library, which does not create files.
 
 `creationDate` and `lastModified` are for reference only. Blob storage assigns them when a blob is written, so they
 cannot be restored.
