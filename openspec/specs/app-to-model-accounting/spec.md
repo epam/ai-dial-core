@@ -143,7 +143,8 @@ the calling deployment's own bucket is never charged. Only a `Model`'s answer is
 On deployments-POST Core SHALL limit-check only a `Model`; `POST /openai/v1/chat/completions`,
 `/openai/v1/responses` and `/anthropic/v1/messages` SHALL check the limits of the deployment they call whatever its
 kind. A request for an interface the deployment serves in `translator` mode SHALL be neither checked nor charged:
-the translator's call back to Core is.
+the translator's call back to Core is. `/anthropic/v1/messages` alone still refuses it `429` when the initiator's
+day, week or month cost limit is already reached.
 
 #### Scenario: Translated interface not charged
 - **WHEN** user `u1` has used the `m` per-minute token limit of its role, and `m` serves `anthropicMessages` in
