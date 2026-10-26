@@ -14,8 +14,9 @@ per-request key's own lifecycle are other capabilities.
 ### Requirement: Origin URI and method
 Core SHALL send the client's HTTP method to the URI resolved for the deployment and the interface (which url or
 override path serves it is the deployment-interfaces-config capability): a base url with no override path gets the
-ingress path with the `/deployments/{id}/` segment rewritten to `overrideName` when set, and a pre-`interfaces`
-`endpoint` is the complete URL. The client's query string SHALL be carried over in every case.
+ingress path with the `/deployments/{id}/` segment, whatever id the client used, rewritten to the deployment's name,
+or `overrideName` when set, and a pre-`interfaces` `endpoint` is the complete URL. The client's query string SHALL
+be appended as `?<query>` in every case.
 
 #### Scenario: Base url with the ingress path
 - **WHEN** a deployment `m` declares `interfaces.openaiChatCompletions.baseUrl: http://origin` and a client sends
@@ -177,12 +178,12 @@ chunking. `/completions` and `/embeddings` answers are relayed chunked as they a
 ### Requirement: Records after the answer
 After the answer is complete Core SHALL parse the token usage from the body, or from the assembled stream, of a
 `Model` that answered 200 and of any other deployment whose body reports usage, then write one analytics log row for
-the POST, whatever the status. How the usage is charged and rolled up, what the row carries, and the invalidation
-of the per-request key are the app-to-model-accounting capability.
+the POST, whatever the origin's status. How the usage is charged and rolled up, what the row carries, the answers
+that write no row, and the invalidation of the per-request key are the app-to-model-accounting capability.
 
 #### Scenario: Model usage from the stream
-- **WHEN** a model streams a `200` answer whose last event carries `usage.prompt_tokens: 10` and
-  `usage.completion_tokens: 5`
+- **WHEN** a model streams a `200` answer whose last event carries `usage.prompt_tokens: 10`,
+  `usage.completion_tokens: 5` and `usage.total_tokens: 15`
 - **THEN** one analytics row is written for the POST with `token_usage.total_tokens: 15`
 
 #### Scenario: Error answer still logged

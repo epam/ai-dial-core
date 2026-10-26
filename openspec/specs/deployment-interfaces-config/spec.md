@@ -48,7 +48,8 @@ stripped. A deployment-level `baseUrl` SHALL serve only the interface types the 
 - **THEN** Core answers `503`
 
 ### Requirement: Legacy endpoint fields
-Core SHALL serve a type whose `interfaces` entry resolves to no url from the pre-`interfaces` field: `endpoint` for
+Core SHALL serve a type that has no `interfaces` entry, or a pass-through entry that resolves to no url, from the
+pre-`interfaces` field (a `translator`-mode entry never falls back, see Interface mode): `endpoint` for
 the whole deployments-POST family (`chat/completions`, `completions`, `embeddings`) and `responsesEndpoint` for the
 Responses API, each used as the complete URL. No legacy field SHALL serve `anthropicMessages`.
 
@@ -175,13 +176,19 @@ Core SHALL replace the ingress path under a pass-through base url with `interfac
 Core SHALL resolve the features in force for an interface field by field: a non-null field of
 `interfaces.<type>.features` overrides the deployment-level `features`, an explicit `false` or an empty list
 included; an absent or null field inherits. The resolved set SHALL be the one sent in `X-DIAL-DEPLOYMENT-FEATURES`
-and listed under `interface_configs.<type>.features`.
+and listed under `interface_configs.<type>.features`, but for `chat_completion` and `responses_api`.
 
 #### Scenario: Interface overrides reasoning efforts
 - **WHEN** a model declares `features.reasoning_efforts: ["low","medium"]` and
   `interfaces.anthropicMessages.features.reasoning_efforts: ["low","medium","high","xhigh","max"]`
 - **THEN** `GET /v1/deployments` lists `interface_configs.anthropicMessages.features.reasoning_efforts` as
   `["low","medium","high","xhigh","max"]` and the model's own `features.reasoning_efforts` as `["low","medium"]`
+
+#### Scenario: API flags differ between the header and interface_configs
+- **WHEN** a model declares `openaiChatCompletions` and `anthropicMessages`, and a client sends
+  `POST /anthropic/v1/messages` for it
+- **THEN** the origin's `X-DIAL-DEPLOYMENT-FEATURES` has `chat_completion: true`, saying the deployment serves that
+  API, while `interface_configs.anthropicMessages.features.chat_completion` is `false`
 
 ### Requirement: Default headers per interface
 Core SHALL put in force for an interface the deployment-level `defaultHeaders` (alias `default_headers`) with
@@ -292,7 +299,7 @@ interface it sits under, for an inline definition).
 
 #### Scenario: Inline translator converting to its own interface
 - **WHEN** a model declares `interfaces.anthropicMessages: {"mode": "translator", "translator": {"out": "anthropicMessages", "baseUrl": "http://t"}}`
-- **THEN** the config is rejected with a message starting `A translator cannot convert 'anthropicMessages' to itself`
+- **THEN** the config is rejected with a message containing `A translator cannot convert 'anthropicMessages' to itself`
 
 #### Scenario: Registry translator under the wrong interface
 - **WHEN** `translators.a2c` has `in: anthropicMessages` and a model references `a2c` from `interfaces.openaiResponses`

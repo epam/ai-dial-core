@@ -25,6 +25,16 @@ request stores its key with the `backgroundJob.jobTtlMs` TTL instead.
 - **WHEN** the application calls `POST /openai/deployments/gpt-4/chat/completions` with `API-KEY: <k>`
 - **THEN** the model's origin request carries `API-KEY: <k2>` with `<k2>` different from `<k>`
 
+### Requirement: Key TTL reset on update
+Core SHALL reset a key's TTL to `perRequestApiKey.ttl` whenever it updates the key's record (a per-request share
+granted with the key, attachments auto-shared from an answer), a background Responses key's included.
+
+#### Scenario: Grant shortens a background key
+- **WHEN** an application called by a background Responses request sends
+  `POST /v1/ops/resource/per-request-permissions/grant` with the key it received, and settings have no
+  `perRequestApiKey`
+- **THEN** the key's Redis record has a TTL of at most 1800 s
+
 ### Requirement: Key contents for a root request
 For a request authenticated by a project API key or a JWT, Core SHALL write into the key it mints: the client's
 project key as `originalKey` (none for a JWT), the JWT claims as `extractedClaims`, Core's trace id as `traceId`,
@@ -95,7 +105,8 @@ the key rather than the JWT, and SHALL NOT apply the original key's `allowedIpAd
 ### Requirement: Key invalidated when its pass ends
 Core SHALL delete the key it minted when the pass that minted it ends, whether the answer completed or an error was
 answered; for a background Responses request whose origin accepted the job, the key SHALL be deleted when the job
-ends instead. A request with a deleted or expired key SHALL be answered `401` with body `Unknown api key`.
+ends instead, except as Client gone from a deployment other than a model states. A request with a deleted or
+expired key SHALL be answered `401` with body `Unknown api key`.
 
 #### Scenario: Key rejected after the answer
 - **WHEN** `app` answers its request and then sends `POST /openai/deployments/gpt-4/chat/completions` with the key
@@ -157,7 +168,8 @@ key `bucket` is the encrypted initiator bucket and `appdata` is absent.
 ### Requirement: Deployment closed to per-request keys
 Core SHALL answer `403` `Deployment <id> is not accessible by <sourceDeployment>` to a request with a per-request
 key for a deployment whose features resolved for the interface have `accessibleByPerRequestKey: false`; a request
-without a per-request key is not affected.
+without a per-request key is not affected, but the call the last interceptor makes to reach the initial deployment
+carries one, so a deployment with interceptors and this feature answers that call `403`.
 
 #### Scenario: Application call refused
 - **WHEN** `gpt-4` declares `features.accessibleByPerRequestKey: false` and `app` calls it with its key
@@ -197,7 +209,7 @@ Responses job uses max(ttlMs, `backgroundJob.jobTtlMs` + `backgroundJob.scanInte
 
 ### Requirement: Trace record deleted when the root ends
 Core SHALL delete the trace's token-stats record when the root pass ends (or, for a background root, when its job
-ends) and SHALL leave it when a child pass ends.
+ends) and SHALL leave it when a child pass ends, except as Client gone from a deployment other than a model states.
 
 #### Scenario: Root ends
 - **WHEN** root `app` answers its client
@@ -224,9 +236,10 @@ initiator's `costs` record or the ancestor's `<deployment>/costs` record.
 - **THEN** `router-app/aggregated-costs` and `inner-app/aggregated-costs` under `Users/u1/` each grow by `0.40`
 
 ### Requirement: One analytics row per Core pass
-Core SHALL write one analytics row per pass with `deployment`, `execution_path` from the key it minted,
-`parent_deployment` set to the nearest preceding `execution_path` entry that is not one of the deployment's
-interceptors (absent for a root), and `trace.trace_id`, `trace.core_span_id` and, for a child, `core_parent_span_id`.
+Core SHALL write one analytics row per pass that relays an origin's answer, a `Model` pass whose client disconnected
+during the relay included, with `deployment`, `execution_path` from the key it minted, `parent_deployment` set to
+the nearest preceding `execution_path` entry that is not one of the deployment's interceptors (absent for a root),
+and `trace.trace_id`, `trace.core_span_id` and, for a child, `core_parent_span_id`.
 
 #### Scenario: Parent deployment of a model called by an app
 - **WHEN** root `app` calls `gpt-4`
@@ -236,6 +249,29 @@ interceptors (absent for a root), and `trace.trace_id`, `trace.core_span_id` and
 #### Scenario: Conversation id carried to the child row
 - **WHEN** the client sent `X-CONVERSATION-ID: c1` to `app` and `app` calls `gpt-4` without that header
 - **THEN** the `gpt-4` row carries conversation id `c1`
+
+### Requirement: Passes without an analytics row
+Core SHALL NOT write an analytics row for a pass that forwards to an interceptor, so usage an interceptor's body
+reports is not recorded, nor for an answer Core produces itself (a refusal, `No route`, `Service is not available`,
+a connect failure).
+
+#### Scenario: Model behind interceptors
+- **WHEN** model `m` has interceptors `["i1", "i2"]` and a client calls `m`
+- **THEN** one row is written, for `m`, and none for `i1` or `i2`
+
+#### Scenario: No route
+- **WHEN** a model's only upstream answers `503` and `maxRetryAttempts` is 1
+- **THEN** the client gets `502` and no row is written
+
+### Requirement: Client gone from a deployment other than a model
+When writing to the client fails during the relay of a deployment that is not a `Model`, Core SHALL reset the
+origin request and SHALL NOT write the pass's analytics row, delete the key it minted (it expires with its TTL) or,
+for a root pass, delete the trace's token-stats record (it expires with `deploymentStats.ttlMs`).
+
+#### Scenario: Client disconnects from an application
+- **WHEN** a client streams from root `app` and closes its connection mid-stream
+- **THEN** no `app` row is written, and the key Core sent `app` and `deployment_cost_stats_tmp:<traceId>` still
+  exist in Redis
 
 ### Requirement: Usage in the analytics row
 Core SHALL write in a `Model` row its own `token_usage`, with `deployment_price` and `price` both its cost when the
@@ -249,10 +285,11 @@ deployment's row the usage its body reports (zeros when none) with `price` the s
   entry `{"index": 0, "model": "gpt-4", "total_tokens": 15, ...}`
 
 ### Requirement: usage_per_model in the streamed answer
-For a streamed `/chat/completions` answer (deployments-POST or `/openai/v1/chat/completions`) Core SHALL remove
-`statistics.usage_per_model` from every event the origin sends and, when the span has entries, write before
-`data: [DONE]` one event `{"object":"chat.completion.chunk","choices":[],"statistics":{"usage_per_model":[...]}}`
-whose entries carry `index`, `model` and token counts but no cost.
+For a streamed `/chat/completions` answer (deployments-POST or `/openai/v1/chat/completions`: a
+`text/event-stream` answer to a request with `stream: true`) Core SHALL remove `statistics.usage_per_model` from
+every event the origin sends and, when the span has entries, write before `data: [DONE]` one event
+`{"object":"chat.completion.chunk","choices":[],"statistics":{"usage_per_model":[...]}}` whose entries carry
+`index`, `model` and token counts but no cost.
 
 #### Scenario: Usage chunk before the terminator
 - **WHEN** a client streams from `app`, which called `gpt-4` once using 15 tokens
@@ -264,9 +301,10 @@ whose entries carry `index`, `model` and token counts but no cost.
 - **THEN** no `statistics.usage_per_model` appears in any event
 
 ### Requirement: usage_per_model in the non-streamed answer
-For a non-streamed `/chat/completions` answer Core SHALL set `statistics.usage_per_model` to the span's entries,
-shaped as in the streamed answer, or remove it (and a `statistics` object it leaves empty) when there are none.
-`/completions` and `/embeddings` answers SHALL NOT be rewritten.
+For a non-streamed `/chat/completions` answer (one whose `Content-Type` is not `text/event-stream`) Core SHALL set
+`statistics.usage_per_model` to the span's entries, shaped as in the streamed answer, or remove it (and a
+`statistics` object it leaves empty) when there are none. `/completions` and `/embeddings` answers SHALL NOT be
+rewritten.
 
 #### Scenario: Non-streamed answer rewritten
 - **WHEN** a client sends a non-streaming chat completion to `app`, which called `gpt-4` once using 15 tokens, and
@@ -278,6 +316,15 @@ shaped as in the streamed answer, or remove it (and a `statistics` object it lea
 - **WHEN** a model answers a non-streaming chat completion whose body carries `statistics.usage_per_model` and the
   model called nothing
 - **THEN** the client's body has no `statistics.usage_per_model`
+
+### Requirement: Answers relayed without the usage_per_model rewrite
+Core SHALL relay as it arrives, with neither the removal nor the added event, the answer of a pass that forwards to
+an interceptor and a `text/event-stream` answer to a request without `stream: true`.
+
+#### Scenario: Interceptor answer untouched
+- **WHEN** model `m` has interceptor `i1`, and `i1` streams an answer to the client whose events carry
+  `statistics.usage_per_model`
+- **THEN** the client receives those events unchanged and no added `statistics.usage_per_model` event
 
 ### Requirement: Child reporting after the root ended
 When a child pass reports usage after its root has ended, Core SHALL still charge the initiator's limits and write
