@@ -506,6 +506,7 @@ public class ControllerSelector {
             };
         });
         post(RouteTemplate.CONFIG_VALIDATE, (proxy, context, pathMatcher) -> new AdminValidateController(proxy, context));
+        post(RouteTemplate.ADMIN_EXPORT, (proxy, context, pathMatcher) -> new AdminExportController(proxy, context));
         post(RouteTemplate.CONFIG_APPLY, (proxy, context, pathMatcher) -> {
             AdminApplyController controller = new AdminApplyController(proxy, context);
             return controller::handle;
