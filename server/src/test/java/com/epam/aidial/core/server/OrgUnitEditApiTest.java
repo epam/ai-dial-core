@@ -6,11 +6,13 @@ import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -247,6 +249,39 @@ public class OrgUnitEditApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testCopiesAndMovesOutOfTheUnitDontForwardTokens() {
+        for (String name : List.of("app", "app2")) {
+            assertEquals(200, send(HttpMethod.PUT, "/v1/applications/public/Acme/" + name, null, """
+                    {"endpoint": "http://example.com/v1/completions", "display_name": "App", "forward_auth_token": true}
+                    """, "authorization", "admin").status());
+        }
+        String own = "applications/" + bucketOf(EDITOR) + "/";
+
+        Response copied = operation("copy", "applications/public/Acme/app", own + "copy", EDITOR);
+        assertEquals(200, copied.status(), copied.body());
+        Response moved = operation("move", "applications/public/Acme/app2", own + "moved", EDITOR);
+        assertEquals(200, moved.status(), moved.body());
+        for (String name : List.of("copy", "moved")) {
+            Response read = send(HttpMethod.GET, "/v1/" + own + name, null, null, "authorization", EDITOR);
+            assertEquals(200, read.status(), read.body());
+            JsonObject stored = new JsonObject(read.body());
+            assertFalse(stored.getBoolean("forward_auth_token", false), stored.encode());
+        }
+    }
+
+    @Test
+    void testPrivateSourcesAnswerAtOnce() {
+        String other = "files/" + bucketOf(OTHER) + "/dir/x.txt";
+
+        Response copied = assertTimeoutPreemptively(Duration.ofSeconds(30),
+                () -> operation("copy", other, "files/public/Acme/x.txt", EDITOR));
+        assertEquals(403, copied.status(), copied.body());
+        Response moved = assertTimeoutPreemptively(Duration.ofSeconds(30),
+                () -> operation("move", other, "files/public/Acme/x.txt", EDITOR));
+        assertEquals(403, moved.status(), moved.body());
+    }
+
+    @Test
     void testCodeAppOperationsStayWithAdmins() {
         assertEquals(200, send(HttpMethod.PUT, "/v1/applications/public/Acme/app", null, """
                 {"endpoint": "http://example.com/v1/completions", "display_name": "App"}
@@ -282,6 +317,12 @@ public class OrgUnitEditApiTest extends ResourceBaseTest {
                 "{\"roleName\": \"%s\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"azp\", \"function\": \"EQUAL\", \"targets\": [\"%s\"]}}"
                         .formatted(roleName, azp), "authorization", "admin");
         assertEquals(200, response.status(), response.body());
+    }
+
+    private String bucketOf(String caller) {
+        Response bucket = send(HttpMethod.GET, "/v1/bucket", null, null, "authorization", caller);
+        assertEquals(200, bucket.status(), bucket.body());
+        return new JsonObject(bucket.body()).getString("bucket");
     }
 
     private Response operation(String name, String source, String destination, String caller) {

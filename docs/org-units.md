@@ -215,7 +215,7 @@ Applications and toolsets are edited like any content, every field included, wit
 a DIAL admin:
 
 - `forward_auth_token` keeps its stored value on every write through a role; a new one starts without it, and so does a
-  copy or a move made by anyone but a DIAL admin.
+  copy or a move into or out of the shared space made by anyone but a DIAL admin, private destinations included.
   `app_identity` and `allow_user_external_services` keep theirs, as on any non-admin write.
 - Deploying, undeploying and redeploying code apps and reading their logs need what they needed before: roles in a
   unit don't count.

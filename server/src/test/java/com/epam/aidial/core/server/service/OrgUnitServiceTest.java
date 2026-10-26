@@ -23,6 +23,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -374,6 +376,17 @@ class OrgUnitServiceTest {
         assertEquals(OrgUnitService.SHARED_SPACE_KEY, OrgUnitService.ownerOf(units, resource(ResourceTypes.FILE, "Handbook/welcome.pdf")));
         assertEquals(OrgUnitService.SHARED_SPACE_KEY, OrgUnitService.ownerOf(units, resource(ResourceTypes.FILE, "welcome.pdf")));
         assertEquals(OrgUnitService.SHARED_SPACE_KEY, OrgUnitService.ownerOf(units, resource(ResourceTypes.FILE, "Risky/a.pdf")));
+    }
+
+    @Test
+    void testNoUnitOwnsPrivateResources() {
+        Map<String, OrgUnit> units = service(UNITS).getUnitList().units();
+
+        for (String path : List.of("a.pdf", "Risk/a.pdf", "Risk/US Risk/a.pdf", "Risk/")) {
+            ResourceDescriptor resource = ResourceDescriptorFactory.fromDecoded(ResourceTypes.FILE, "bucket", "Users/alice/", path);
+            assertEquals(OrgUnitService.SHARED_SPACE_KEY,
+                    assertTimeoutPreemptively(Duration.ofSeconds(5), () -> OrgUnitService.ownerOf(units, resource)), path);
+        }
     }
 
     @Test

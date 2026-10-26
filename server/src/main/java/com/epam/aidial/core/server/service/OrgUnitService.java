@@ -187,9 +187,12 @@ public class OrgUnitService {
 
     /**
      * The key of the unit that owns the shared-space item or folder, or {@link #SHARED_SPACE_KEY} when no unit is
-     * above it. A unit's own folder belongs to that unit.
+     * above it, as for anything outside the shared space. A unit's own folder belongs to that unit.
      */
     static String ownerOf(Map<String, OrgUnit> units, ResourceDescriptor resource) {
+        if (!resource.isPublic()) {
+            return SHARED_SPACE_KEY;
+        }
         String key = keyOf(resource.isFolder() ? resource : resource.getParent());
         while (!key.equals(SHARED_SPACE_KEY)) {
             if (units.containsKey(key)) {

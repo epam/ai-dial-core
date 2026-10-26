@@ -138,7 +138,7 @@ public class ResourceOperationController {
                     return taskExecutor.submit(() -> lockService.underBucketLocks(buckets, () -> {
                         orgUnitService.requireSameUnit(source, destination);
                         resourceOperationService.moveResource(context, source, destination, request.isOverwrite(),
-                                deployment -> checkSharedCopy(deployment, destination));
+                                deployment -> checkSharedCopy(deployment, source, destination));
                         return null;
                     }));
                 })
@@ -214,7 +214,7 @@ public class ResourceOperationController {
 
                     return taskExecutor.submit(() -> {
                         resourceOperationService.copyResource(context, source, destination, request.isOverwrite(),
-                                deployment -> checkSharedCopy(deployment, destination));
+                                deployment -> checkSharedCopy(deployment, source, destination));
                         return null;
                     });
                 })
@@ -274,14 +274,19 @@ public class ResourceOperationController {
      * A copy into the shared space duplicates the files an application's or toolset's schemas point to. Only DIAL admins
      * could copy there before org units; anyone else must be able to read every such file. A folder is copied with
      * everything below it, which rules or child units may close to the caller even when the folder is readable, so
-     * they can't refer to one. Nor does it keep forwarding callers' tokens.
+     * they can't refer to one. A copy into or out of the shared space doesn't keep forwarding callers' tokens either.
      */
-    private void checkSharedCopy(Deployment deployment, ResourceDescriptor destination) {
-        if (!destination.isPublic() || !orgUnitService.isEnabled() || accessService.hasAdminAccess(context)) {
+    private void checkSharedCopy(Deployment deployment, ResourceDescriptor source, ResourceDescriptor destination) {
+        if (!orgUnitService.isEnabled() || accessService.hasAdminAccess(context)) {
             return;
         }
-        // only DIAL admins may let a shared resource receive callers' tokens, as on a write through a unit role
-        deployment.setForwardAuthToken(false);
+        if (source.isPublic() || destination.isPublic()) {
+            // only DIAL admins may let a resource receive callers' tokens, as on a write through a unit role
+            deployment.setForwardAuthToken(false);
+        }
+        if (!destination.isPublic()) {
+            return;
+        }
 
         Set<ResourceDescriptor> files = new HashSet<>(catalogSchemaService.getFiles(deployment));
         if (deployment instanceof Application application) {
