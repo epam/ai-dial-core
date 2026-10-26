@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.MergeChunks;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -40,6 +41,7 @@ public class AnalyticsLogContext {
     private final String project;
     private final String userHash;
     private final String conversationId;
+    private final String sessionId;
     private final String jobTitle;
     private final boolean securedApiKey;
 
@@ -85,6 +87,7 @@ public class AnalyticsLogContext {
                 .project(context.getProject())
                 .userHash(context.getUserHash())
                 .conversationId(context.getRequestHeader(Proxy.HEADER_CONVERSATION_ID))
+                .sessionId(GenAiTraceAttributes.resolveConversationId(context))
                 .jobTitle(context.getRequestHeader(Proxy.HEADER_JOB_TITLE))
                 .securedApiKey(context.isSecuredApiKey())
                 .userId(context.getUserId())
@@ -124,6 +127,7 @@ public class AnalyticsLogContext {
                 .project(record.project())
                 .userHash(record.userHash())
                 .conversationId(record.conversationId())
+                .sessionId(record.sessionId())
                 .jobTitle(record.jobTitle())
                 .securedApiKey(record.securedApiKey())
                 .userId(record.userId())
