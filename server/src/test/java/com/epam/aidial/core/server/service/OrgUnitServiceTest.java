@@ -454,6 +454,18 @@ class OrgUnitServiceTest {
     }
 
     @Test
+    void testCreateAnswersWhenTheReadRulesCantBeRemoved() {
+        AtomicReference<String> written = new AtomicReference<>();
+        ResourceService resources = writableResources("{\"units\": {}}", written);
+        RuleService rules = mock(RuleService.class);
+        doThrow(new IllegalStateException("redis down")).when(rules).removeRulesUnder(any());
+        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        assertEquals("public/Acme", service.create(List.of("public"), "Acme", null, "admin").path());
+        assertTrue(written.get().contains("public/Acme/"));
+    }
+
+    @Test
     void testDeleteAnswersWhenTheReadRulesCantBeRemoved() {
         ResourceService resources = writableResources("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", new AtomicReference<>());
         RuleService rules = mock(RuleService.class);
