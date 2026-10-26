@@ -86,17 +86,27 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                     String model = request.getModel();
                     deploymentId = model;
                     return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(model)))
-                            // the limit check reads the spend caps before every request, translated ones included, which read no
-                            // limits before; running it alongside startSpan keeps that read off the critical path. The cost is a
-                            // trace record written and removed for a rejected request. join waits for both even when one fails,
-                            // so a rejection never ends the span before it is started
-                            .compose(ignore -> Future.join(verifyLimit(), proxy.getTokenStatsTracker().startSpan(context)))
+                            .compose(ignore -> verifyLimitAndStartSpan())
                             .compose(ignore -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request)))
                             .otherwise(error -> handleRequestError(model, error));
                 })
                 .onFailure(this::handleRequestBodyError);
 
         return Future.succeededFuture();
+    }
+
+    /**
+     * A request subject to limits starts its span only once the check passes, so a rejected one writes no trace
+     * record. A translated request reads only the spend caps, a read it did not make before, so that read runs
+     * alongside the span start to stay off the critical path; it rejects only at a reached spend cap, which clients
+     * are told not to retry. join waits for both even when one fails, so a rejection never ends the span before it
+     * is started.
+     */
+    private Future<?> verifyLimitAndStartSpan() {
+        if (isSubjectToLimits(context.getDeployment())) {
+            return verifyLimit().compose(ignore -> proxy.getTokenStatsTracker().startSpan(context));
+        }
+        return Future.join(verifyLimit(), proxy.getTokenStatsTracker().startSpan(context));
     }
 
     /**
