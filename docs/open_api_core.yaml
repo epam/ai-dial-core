@@ -96,6 +96,31 @@ tags:
 - name: Translators
 - name: User Consent
 paths:
+  /anthropic/api/oauth/usage:
+    get:
+      tags:
+      - Anthropic
+      summary: /anthropic/api/oauth/usage
+      operationId: getAnthropicUsage
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnthropicUsageData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /anthropic/v1/messages:
     post:
       tags:
@@ -130,6 +155,41 @@ paths:
           headers:
             X-UPSTREAM-ATTEMPTS:
               description: Number of upstream attempts performed before returning the response
+              required: false
+              schema:
+                type: string
+            anthropic-ratelimit-unified-status:
+              description: "DIAL spend cap status before this request: `allowed`, or `allowed_warning` past 75%. Sent only when the caller has a day/week/month cost limit; the upstream's own `anthropic-ratelimit-*` headers are removed"
+              required: false
+              schema:
+                type: string
+            anthropic-ratelimit-unified-representative-claim:
+              description: Always `overage`
+              required: false
+              schema:
+                type: string
+            anthropic-ratelimit-unified-overage-status:
+              description: Same value as `anthropic-ratelimit-unified-status`
+              required: false
+              schema:
+                type: string
+            anthropic-ratelimit-unified-overage-utilization:
+              description: "Used/total of the reported spend cap, floored to two decimals and capped at 0.99"
+              required: false
+              schema:
+                type: string
+            anthropic-ratelimit-unified-overage-surpassed-threshold:
+              description: '`0.75` or `0.95` once the utilization reaches it; absent below 75%'
+              required: false
+              schema:
+                type: string
+            anthropic-ratelimit-unified-reset:
+              description: "When the reported spend cap resets, Unix seconds"
+              required: false
+              schema:
+                type: string
+            anthropic-ratelimit-unified-overage-reset:
+              description: Same value as `anthropic-ratelimit-unified-reset`
               required: false
               schema:
                 type: string
@@ -172,7 +232,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorData"
+                $ref: "#/components/schemas/AnthropicErrorData"
         "500":
           description: The server had an error while processing your request.
           content:
@@ -2933,6 +2993,35 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "405":
           description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/export:
+    post:
+      tags:
+      - Admin
+      summary: /v1/admin/export
+      operationId: exportAdminBuckets
+      responses:
+        "200":
+          description: ZIP archive of the public and platform buckets
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: "Another export or a write holds a bucket lock, retry later"
         "500":
           description: The server had an error while processing your request.
           content:
@@ -15611,6 +15700,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/McpTool"
+    AnthropicErrorData:
+      type: object
+      properties:
+        error:
+          $ref: "#/components/schemas/AnthropicErrorDataDetail"
+        type:
+          type: string
+    AnthropicErrorDataDetail:
+      type: object
+      properties:
+        message:
+          type: string
+        type:
+          type: string
     AnthropicModelData:
       type: object
       properties:
@@ -15638,6 +15741,43 @@ components:
         has_more:
           type: boolean
         last_id:
+          type: string
+    AnthropicUsageData:
+      type: object
+      properties:
+        extra_usage:
+          $ref: "#/components/schemas/AnthropicUsageDataExtraUsage"
+        limits:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnthropicUsageDataUsageLimit"
+    AnthropicUsageDataExtraUsage:
+      type: object
+      properties:
+        currency:
+          type: string
+        is_enabled:
+          type: boolean
+        monthly_limit:
+          type: integer
+        used_credits:
+          type: integer
+        utilization:
+          type: integer
+    AnthropicUsageDataUsageLimit:
+      type: object
+      properties:
+        group:
+          type: string
+        is_active:
+          type: boolean
+        kind:
+          type: string
+        percent:
+          type: integer
+        resets_at:
+          type: string
+        severity:
           type: string
     Application:
       type: object
@@ -19643,12 +19783,21 @@ components:
         interfaces:
           $ref: "#/components/schemas/MapStringUpstreamInterface"
         authType:
+          $ref: "#/components/schemas/UpstreamAuthConfig"
+    UpstreamAuthConfig:
+      type: object
+      properties:
+        type:
           $ref: "#/components/schemas/UpstreamAuthType"
+        headerName:
+          type: string
+          description: "Required for CUSTOM_HEADER, not allowed otherwise"
     UpstreamAuthType:
       type: string
       enum:
       - API_KEY
       - BEARER
+      - CUSTOM_HEADER
     UpstreamInterface:
       type: object
       properties:
