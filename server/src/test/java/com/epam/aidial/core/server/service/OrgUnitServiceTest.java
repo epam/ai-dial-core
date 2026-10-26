@@ -293,6 +293,22 @@ class OrgUnitServiceTest {
     }
 
     @Test
+    void testUnitCreatedAfterTheScanIsRefusedUnderTheLock() {
+        AtomicReference<String> written = new AtomicReference<>();
+        ResourceService resources = writableResources("{\"units\": {}}", written);
+        ResourceItemMetadata before = metadata("\"1\"");
+        ResourceItemMetadata after = metadata("\"2\"");
+        when(resources.getResourceWithMetadata(any(), any()))
+                .thenReturn(Pair.of(before, "{\"units\": {}}"), Pair.of(after, "{\"units\": {\"public/acme/\": {\"id\": \"a\"}}}"));
+        OrgUnitService service = new OrgUnitService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        HttpException refused = assertThrows(HttpException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
+
+        assertTrue(refused.getMessage().contains("already has a unit named acme"), refused.getMessage());
+        assertNull(written.get());
+    }
+
+    @Test
     void testNameTakenAfterTheScanIsRefusedUnderTheLock() {
         AtomicReference<String> written = new AtomicReference<>();
         ResourceService resources = writableResources("{\"units\": {}}", written);
