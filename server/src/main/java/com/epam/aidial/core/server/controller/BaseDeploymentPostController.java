@@ -284,8 +284,9 @@ public class BaseDeploymentPostController {
 
         Future<TokenStatsTracker.UsageStats> statsFuture;
         if (hasOwnUsage) {
+            // a child can report after its root ended, e.g. when the client stops the root behind an interceptor
             statsFuture = proxy.getTokenStatsTracker().updateDeploymentStats(
-                    context.getTraceId(), context.getSpanId(), deploymentName, ownUsage);
+                    context.getTraceId(), context.getSpanId(), deploymentName, ownUsage, !context.isOriginalRequest());
         } else {
             statsFuture = proxy.getTokenStatsTracker().getUsageStats(context);
         }

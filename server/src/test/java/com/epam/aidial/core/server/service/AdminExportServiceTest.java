@@ -36,10 +36,7 @@ import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.LinkedHashMap;
@@ -49,6 +46,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.IntFunction;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
@@ -57,6 +55,7 @@ import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -118,7 +117,7 @@ class AdminExportServiceTest {
             blobStorage = new BlobStorage(mapper.readValue(blobStorageConfig, Storage.class));
 
             lockService = new LockService(redis, null);
-            service = new AdminExportService(blobStorage, lockService, Clock.fixed(NOW, ZoneOffset.UTC), CORE_VERSION);
+            service = new AdminExportService(blobStorage, lockService, NOW::toEpochMilli, CORE_VERSION);
         } catch (Throwable e) {
             destroy();
             throw e;
@@ -233,7 +232,7 @@ class AdminExportServiceTest {
         Path file = testDir.resolve("compression.zip");
 
         try (OutputStream out = Files.newOutputStream(file)) {
-            service.export(out);
+            service.export(out, NOW);
         }
 
         try (ZipFile zip = new ZipFile(file.toFile())) {
@@ -316,7 +315,7 @@ class AdminExportServiceTest {
 
         Path file = testDir.resolve("export.zip");
         try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(file))) {
-            exportService.export(out);
+            exportService.export(out, NOW);
         }
 
         try (ZipFile zip = new ZipFile(file.toFile())) {
@@ -355,7 +354,7 @@ class AdminExportServiceTest {
     void testConcurrentBucketLockWaitsForExport() throws Exception {
         store("public/files/user1/a.txt", "text/plain", null, Map.of(), "a");
         try (GatedOutputStream gatedOut = new GatedOutputStream()) {
-            CompletableFuture<Void> exporting = CompletableFuture.runAsync(() -> service.export(gatedOut));
+            CompletableFuture<Void> exporting = CompletableFuture.runAsync(() -> service.export(gatedOut, NOW));
             assertTrue(gatedOut.writing.await(10, TimeUnit.SECONDS));
 
             AtomicBoolean acquired = new AtomicBoolean();
@@ -378,11 +377,11 @@ class AdminExportServiceTest {
     void testConcurrentExportIsRejected() throws Exception {
         store("public/files/user1/a.txt", "text/plain", null, Map.of(), "a");
         try (GatedOutputStream gatedOut = new GatedOutputStream()) {
-            CompletableFuture<Void> exporting = CompletableFuture.runAsync(() -> service.export(gatedOut));
+            CompletableFuture<Void> exporting = CompletableFuture.runAsync(() -> service.export(gatedOut, NOW));
             assertTrue(gatedOut.writing.await(10, TimeUnit.SECONDS));
 
             ByteArrayOutputStream rejectedOut = new ByteArrayOutputStream();
-            assertThrows(AdminExportBusyException.class, () -> service.export(rejectedOut));
+            assertThrows(AdminExportBusyException.class, () -> service.export(rejectedOut, NOW));
             assertEquals(0, rejectedOut.size());
 
             gatedOut.proceed.countDown();
@@ -399,7 +398,7 @@ class AdminExportServiceTest {
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-            assertThrows(AdminExportBusyException.class, () -> service.export(out));
+            assertThrows(AdminExportBusyException.class, () -> service.export(out, NOW));
 
             assertEquals(0, out.size());
             LockService.Lock publicLock = lockService.tryLock("public/");
@@ -431,7 +430,7 @@ class AdminExportServiceTest {
             }
         };
 
-        UncheckedIOException e = assertThrows(UncheckedIOException.class, () -> service.export(failingOut));
+        UncheckedIOException e = assertThrows(UncheckedIOException.class, () -> service.export(failingOut, NOW));
 
         assertEquals("broken pipe", e.getCause().getMessage());
         byte[] bytes = written.toByteArray();
@@ -444,40 +443,49 @@ class AdminExportServiceTest {
     }
 
     @Test
-    void testSlowExportLogsWarning() {
-        Logger logger = (Logger) LoggerFactory.getLogger(AdminExportService.class);
-        ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        logger.addAppender(appender);
-        try {
-            Clock steppingClock = new Clock() {
-                private Instant current = NOW;
+    void testExportFailsOnceItRunsLongerThanTheLockPeriod() throws IOException {
+        for (int i = 0; i < 5; i++) {
+            store("public/files/user1/f" + i + ".txt", "text/plain", null, Map.of(), "content " + i);
+        }
+        AtomicLong current = new AtomicLong(NOW.toEpochMilli());
+        ByteArrayOutputStream written = new ByteArrayOutputStream();
 
-                @Override
-                public ZoneId getZone() {
-                    return ZoneOffset.UTC;
-                }
+        UncheckedIOException e = assertThrows(UncheckedIOException.class, () ->
+                new AdminExportService(blobStorage, lockService, current::get, CORE_VERSION)
+                        .export(afterFirstWrite(written, () -> current.addAndGet(LockService.LOCK_PERIOD.plusSeconds(1).toMillis())), NOW));
 
-                @Override
-                public Clock withZone(ZoneId zone) {
-                    return this;
-                }
+        assertTrue(e.getCause().getMessage().contains("lock period"), e.getCause().getMessage());
+        assertEquals(-1, indexOf(written.toByteArray(), new byte[] {'P', 'K', 5, 6}), "end of central directory must not be written");
+        for (String location : List.of("public/", "platform/")) {
+            LockService.Lock lock = lockService.tryLock(location);
+            assertNotNull(lock, location + " lock must be released");
+            lock.close();
+        }
+    }
 
-                @Override
-                public synchronized Instant instant() {
-                    Instant result = current;
-                    current = current.plus(LockService.LOCK_PERIOD).plusSeconds(1);
-                    return result;
-                }
-            };
+    @Test
+    void testExportThatEndsExactlyAtTheLockPeriodSucceeds() throws IOException {
+        store("public/files/user1/a.txt", "text/plain", null, Map.of(), "a");
+        AtomicLong current = new AtomicLong(NOW.toEpochMilli());
+        ByteArrayOutputStream written = new ByteArrayOutputStream();
 
-            export(new AdminExportService(blobStorage, lockService, steppingClock, CORE_VERSION));
+        new AdminExportService(blobStorage, lockService, current::get, CORE_VERSION)
+                .export(afterFirstWrite(written, () -> current.addAndGet(LockService.LOCK_PERIOD.toMillis())), NOW);
 
-            assertEquals(1, appender.list.stream().filter(event -> event.getLevel() == Level.WARN).count());
-            assertTrue(appender.list.stream().anyMatch(event -> event.getLevel() == Level.INFO
-                    && event.getFormattedMessage().startsWith("Admin export completed")));
-        } finally {
-            logger.detachAppender(appender);
+        assertTrue(readEntries(written.toByteArray()).containsKey("public/files/user1/a.txt"));
+    }
+
+    @Test
+    void testStallTimeoutMustBePositiveAndBelowTheLockPeriod() {
+        AdminExportService.Settings settings = new AdminExportService.Settings();
+        assertDoesNotThrow(settings::validate);
+
+        settings.setStallTimeout(LockService.LOCK_PERIOD.toMillis() - 1);
+        assertDoesNotThrow(settings::validate);
+
+        for (long invalid : new long[] {0, -1, LockService.LOCK_PERIOD.toMillis(), LockService.LOCK_PERIOD.toMillis() + 1}) {
+            settings.setStallTimeout(invalid);
+            assertThrows(IllegalArgumentException.class, settings::validate, "stallTimeout=" + invalid);
         }
     }
 
@@ -493,28 +501,13 @@ class AdminExportServiceTest {
                 throw new IOException("broken pipe");
             }
         }) {
-            assertThrows(UncheckedIOException.class, () -> service.export(failingOut));
+            assertThrows(UncheckedIOException.class, () -> service.export(failingOut, NOW));
 
             List<ILoggingEvent> errors = appender.list.stream().filter(event -> event.getLevel() == Level.ERROR).toList();
             assertEquals(1, errors.size());
             assertTrue(errors.get(0).getFormattedMessage().startsWith("Admin export failed"));
             assertNotNull(errors.get(0).getThrowableProxy());
             assertTrue(appender.list.stream().noneMatch(event -> event.getFormattedMessage().startsWith("Admin export completed")));
-        } finally {
-            logger.detachAppender(appender);
-        }
-    }
-
-    @Test
-    void testFastExportDoesNotLogWarning() {
-        Logger logger = (Logger) LoggerFactory.getLogger(AdminExportService.class);
-        ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        logger.addAppender(appender);
-        try {
-            export(service);
-
-            assertTrue(appender.list.stream().noneMatch(event -> event.getLevel() == Level.WARN));
         } finally {
             logger.detachAppender(appender);
         }
@@ -534,8 +527,26 @@ class AdminExportServiceTest {
         assertEquals(-1, indexOf(out.toByteArray(), new byte[] {'P', 'K', 5, 6}), "end of central directory must not be written");
     }
 
+    private static OutputStream afterFirstWrite(ByteArrayOutputStream written, Runnable action) {
+        return new OutputStream() {
+            @Override
+            public void write(int b) {
+                write(new byte[] {(byte) b}, 0, 1);
+            }
+
+            @Override
+            public void write(byte[] b, int off, int len) {
+                boolean first = written.size() == 0;
+                written.write(b, off, len);
+                if (first) {
+                    action.run();
+                }
+            }
+        };
+    }
+
     private AdminExportService newService(BlobStorage storage) {
-        return new AdminExportService(storage, lockService, Clock.fixed(NOW, ZoneOffset.UTC), CORE_VERSION);
+        return new AdminExportService(storage, lockService, NOW::toEpochMilli, CORE_VERSION);
     }
 
     private static BlobStorage singleBlobStorage(String path, Blob blob) {
@@ -555,7 +566,7 @@ class AdminExportServiceTest {
 
     private static byte[] export(AdminExportService exportService) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        exportService.export(out);
+        exportService.export(out, NOW);
         return out.toByteArray();
     }
 

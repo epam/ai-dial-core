@@ -275,8 +275,7 @@ public class DeploymentPostController extends BaseChatCompletionController {
         log.info("Received body from client. Deployment: {}. Length: {}",
                 deployment.getName(), requestBody.length());
 
-        context.setRequestBody(requestBody);
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
+        context.setRequestBodyWithTimestamp(requestBody);
 
         try {
             ObjectNode requestTree = ProxyUtil.parseObject(requestBody);

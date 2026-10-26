@@ -50,6 +50,7 @@ import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.AdminExportService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -88,6 +89,7 @@ import com.epam.aidial.core.server.service.config.ConfigValidationService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceSweepService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -200,6 +202,7 @@ public class AiDial {
             BlockingCallTracer blockingCallTracer = new BlockingCallTracer(setupTracing(vertxOptions));
 
             vertx = Vertx.vertx(vertxOptions);
+            BackgroundOperationTracer backgroundTracer = new BackgroundOperationTracer(vertx);
             // bound to the registries, not the global composite: it would keep the gauges of the first vertx after a restart
             NettyEventExecutorMetrics eventLoopMetrics = new NettyEventExecutorMetrics(vertx.nettyEventLoopGroup());
             if (prometheusRegistry != null) {
@@ -277,7 +280,7 @@ public class AiDial {
             MergedConfigStore mergedConfigStore = new MergedConfigStore(
                     vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
                     secretFieldProcessor, lockService, onInvalidEntity, softValidation, podId,
-                    externalServiceService, resourceAuthSettingsEncryptionService);
+                    externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
             FileConfigStore fileConfigStore = new FileConfigStore(
                     vertx, settings("config"), null,
                     List.of(cfg -> mergedConfigStore.requestRebuild()));
@@ -327,7 +330,7 @@ public class AiDial {
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
             RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService, mergedConfigStore, blockingCallTracer);
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,
-                    accessService, encryptionService, operatorService, generator, settings("codeInterpreter"));
+                    accessService, encryptionService, operatorService, backgroundTracer, generator, settings("codeInterpreter"));
 
             ConfigAuthorizationService configAuthService = new AdminRoleAuthorizationService(accessService);
 
@@ -337,7 +340,16 @@ public class AiDial {
             ConfigValidationService configValidationService = new ConfigValidationService(
                     resourceService, mergedConfigStore.isSoftValidation(), catalogSchemaService);
 
-            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, resourceService);
+            Settings backgroundJobSettings =
+                    Json.decodeValue(settings("backgroundJob").toBuffer(), Settings.class);
+            long deploymentStatsTtlMs = settings("deploymentStats").getLong("ttlMs", TimeUnit.HOURS.toMillis(1));
+            if (deploymentStatsTtlMs <= 0) {
+                throw new IllegalArgumentException("deploymentStats.ttlMs must be positive, but got: " + deploymentStatsTtlMs);
+            }
+            // a background job's record lives until the job ends or the scheduler expires it, and never shorter than any other record
+            long backgroundDeploymentStatsTtlMs = Math.max(deploymentStatsTtlMs, backgroundJobSettings.getJobTtlMs() + backgroundJobSettings.getScanIntervalMs());
+            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, redis, lockService, storage.getPrefix(), blockingCallTracer,
+                    Duration.ofMillis(deploymentStatsTtlMs), Duration.ofMillis(backgroundDeploymentStatsTtlMs));
 
             HeartbeatService heartbeatService = new HeartbeatService(
                     vertx, taskExecutor, settings("resources").getLong("heartbeatPeriod"));
@@ -377,15 +389,17 @@ public class AiDial {
             ComplexResourceSweepService.Settings complexResourceSweepSettings = Json.decodeValue(
                     settings("complexResourceSweep").toBuffer(), ComplexResourceSweepService.Settings.class);
             complexResourceSweepService = new ComplexResourceSweepService(timerService, storage, redis, lockService,
-                    complexResourceService, encryptionService, complexResourceSweepSettings);
+                    complexResourceService, encryptionService, complexResourceSweepSettings, backgroundTracer);
 
             ResponsesApiClient responsesApiClient = new ResponsesApiClient(client, clientOptions);
-            Settings backgroundJobSettings =
-                    Json.decodeValue(settings("backgroundJob").toBuffer(), Settings.class);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(),
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
-                    client, logStore, credentialEncryptionService, backgroundJobSettings);
+                    client, logStore, credentialEncryptionService, backgroundJobSettings, backgroundTracer);
+
+            AdminExportService adminExportService = new AdminExportService(storage, lockService, clock, version());
+            AdminExportService.Settings adminExportSettings = Json.decodeValue(settings("adminExport").toBuffer(), AdminExportService.Settings.class);
+            adminExportSettings.validate();
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, mergedConfigStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
@@ -400,7 +414,8 @@ public class AiDial {
                     printAuthorizationHeader,
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,
-                    TracingSettings.from(settings("tracing")), blockingCallTracer, orgUnitService);
+                    TracingSettings.from(settings("tracing")), blockingCallTracer,
+                    adminExportService, adminExportSettings, orgUnitService);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

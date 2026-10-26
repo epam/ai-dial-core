@@ -5,6 +5,7 @@ import com.epam.aidial.core.openapi.annotations.ApiOperations;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.server.controller.AdminApplyController;
+import com.epam.aidial.core.server.controller.AdminExportController;
 import com.epam.aidial.core.server.controller.AdminHealthConfigController;
 import com.epam.aidial.core.server.controller.AdminValidateController;
 import com.epam.aidial.core.server.controller.ApplicationController;
@@ -38,6 +39,7 @@ import com.epam.aidial.core.server.controller.NotificationController;
 import com.epam.aidial.core.server.controller.OfflineCredentialsController;
 import com.epam.aidial.core.server.controller.OrgUnitController;
 import com.epam.aidial.core.server.controller.PerRequestPermissionController;
+import com.epam.aidial.core.server.controller.PolicyController;
 import com.epam.aidial.core.server.controller.PublicationController;
 import com.epam.aidial.core.server.controller.RateResponseController;
 import com.epam.aidial.core.server.controller.ResourceController;
@@ -67,6 +69,7 @@ public final class AnnotationEndpointCollector {
 
     private static final List<Class<?>> CONTROLLER_CLASSES = List.of(
             AdminApplyController.class,
+            AdminExportController.class,
             AdminHealthConfigController.class,
             AdminValidateController.class,
             AnthropicModelController.class,
@@ -96,6 +99,7 @@ public final class AnnotationEndpointCollector {
             ComplexResourceMetadataController.class,
             InvitationController.class,
             LimitController.class,
+            PolicyController.class,
             MessagesController.class,
             MessagesCountTokensController.class,
             ModelController.class,
