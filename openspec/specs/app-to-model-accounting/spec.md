@@ -11,19 +11,24 @@ completion answer.
 ## Requirements
 
 ### Requirement: One per-request key per Core pass
-Core SHALL mint a fresh 32-character random key for every pass that forwards a request to an origin, store its
-record as a Redis string under `api_key_data:` + `[<storage prefix>/]api_key_data/<key>` with the TTL
-`perRequestApiKey.ttl` (seconds, default 1800), and send it to the origin as `API-KEY`. A background Responses
-request stores its key with the `backgroundJob.jobTtlMs` TTL instead.
+Core SHALL mint a fresh 32-character random key for every pass that forwards a request to an origin, other than to
+a route upstream with its own `key`, store its record as a Redis string under `api_key_data:` +
+`[<storage prefix>/]api_key_data/api_key_data/<key>` with the TTL `perRequestApiKey.ttl` (seconds, default 1800),
+and send it to the origin as `API-KEY`. A background Responses request stores its key with the
+`backgroundJob.jobTtlMs` TTL instead.
 
 #### Scenario: Key stored with the default TTL
 - **WHEN** a client sends `POST /openai/deployments/app/chat/completions` and settings have no `perRequestApiKey`
 - **THEN** the origin request carries `API-KEY: <k>` where `<k>` is 32 characters, and Redis holds
-  `api_key_data:api_key_data/<k>` with a TTL of at most 1800 s
+  `api_key_data:api_key_data/api_key_data/<k>` with a TTL of at most 1800 s
 
 #### Scenario: Each pass gets its own key
 - **WHEN** the application calls `POST /openai/deployments/gpt-4/chat/completions` with `API-KEY: <k>`
 - **THEN** the model's origin request carries `API-KEY: <k2>` with `<k2>` different from `<k>`
+
+#### Scenario: Route upstream with its own key
+- **WHEN** a route's only upstream declares `key: k1` and a client calls the route
+- **THEN** the upstream request carries `k1` and Redis holds no new `api_key_data` record
 
 ### Requirement: Key TTL reset on update
 Core SHALL reset a key's TTL to `perRequestApiKey.ttl` whenever it updates the key's record (a per-request share
@@ -105,8 +110,8 @@ the key rather than the JWT, and SHALL NOT apply the original key's `allowedIpAd
 ### Requirement: Key invalidated when its pass ends
 Core SHALL delete the key it minted when the pass that minted it ends, whether the answer completed or an error was
 answered; for a background Responses request whose origin accepted the job, the key SHALL be deleted when the job
-ends instead, except as Client gone from a deployment other than a model states. A request with a deleted or
-expired key SHALL be answered `401` with body `Unknown api key`.
+ends instead, except as Client gone from an application states. A request with a deleted or expired key in
+`API-KEY` SHALL be answered `401` with body `Unknown api key`.
 
 #### Scenario: Key rejected after the answer
 - **WHEN** `app` answers its request and then sends `POST /openai/deployments/gpt-4/chat/completions` with the key
@@ -127,9 +132,10 @@ project from the key's claims, or the roles and project of its `originalKey` whe
 - **THEN** the analytics row of the `gpt-4` pass has `trace.trace_id: "t1"` and `trace.core_parent_span_id: "s1"`
 
 ### Requirement: Limits charged to the initiator
-Core SHALL check and charge the token, request and cost limits of a `Model` called with a per-request key against
-the initiator's bucket (`Users/<sub>/` for a JWT, `Keys/<project>/` for a project key) and the initiator's roles;
-the calling deployment's own bucket is never charged. Only a `Model`'s answer is charged token and cost usage.
+Core SHALL check and charge the token, request and cost limits of a `Model`, called by a client or with a
+per-request key, against the initiator's bucket (`Users/<sub>/` for a JWT, `Keys/<project>/` for a project key) and
+the initiator's roles; the calling deployment's own bucket is never charged. Only a `Model`'s answer is charged
+token and cost usage.
 
 #### Scenario: Initiator over quota
 - **WHEN** user `u1` has used the `gpt-4` per-minute token limit of its role, and `app`, called by `u1`, calls `gpt-4`
@@ -137,6 +143,10 @@ the calling deployment's own bucket is never charged. Only a `Model`'s answer is
 
 #### Scenario: Usage charged to the user
 - **WHEN** `app`, called by user `u1`, calls `gpt-4` and it answers `200` with `usage.total_tokens: 15`
+- **THEN** the `gpt-4/tokens` limit record under `Users/u1/` grows by 15
+
+#### Scenario: Root call charged
+- **WHEN** user `u1` calls `gpt-4` directly and it answers `200` with `usage.total_tokens: 15`
 - **THEN** the `gpt-4/tokens` limit record under `Users/u1/` grows by 15
 
 ### Requirement: Which requests are limit-checked
@@ -169,8 +179,8 @@ key `bucket` is the encrypted initiator bucket and `appdata` is absent.
 ### Requirement: Deployment closed to per-request keys
 Core SHALL answer `403` `Deployment <id> is not accessible by <sourceDeployment>` to a request with a per-request
 key for a deployment whose features resolved for the interface have `accessibleByPerRequestKey: false`; a request
-without a per-request key is not affected, but the call the last interceptor makes to reach the initial deployment
-carries one, so a deployment with interceptors and this feature answers that call `403`.
+without a per-request key is not affected, but the last interceptor's call to the initial deployment and a
+translator's call back carry one, so a deployment with interceptors, or a translated interface, is refused there.
 
 #### Scenario: Application call refused
 - **WHEN** `gpt-4` declares `features.accessibleByPerRequestKey: false` and `app` calls it with its key
@@ -193,6 +203,12 @@ marked `consentRequired`.
 - **THEN** Core answers `403` with body `User didn't accept consent to call the deployment: X`, because `D` is not
   in the consent
 
+#### Scenario: Consent behind interceptors
+- **WHEN** model `m` (`consentRequired: true`) has interceptors `["i1", "i2"]`, user `u1` has posted only
+  `/v1/consent/m`, and `i2` sends `POST /openai/deployments/interceptor/chat/completions` with its key
+- **THEN** Core answers `403` with body `User didn't accept consent to call the deployment: i1`, because the root
+  of that key's `executionPath` is `i1`
+
 ### Requirement: Token-stats span per pass
 Core SHALL add each forwarding pass as a span `{tokenUsage, parentSpanId, deploymentName, usagePerModel: []}`
 keyed by its span id to the Redis string `deployment_cost_stats_tmp:[<prefix>/]<traceId>`, refreshing its TTL
@@ -210,7 +226,7 @@ Responses job uses max(ttlMs, `backgroundJob.jobTtlMs` + `backgroundJob.scanInte
 
 ### Requirement: Trace record deleted when the root ends
 Core SHALL delete the trace's token-stats record when the root pass ends (or, for a background root, when its job
-ends) and SHALL leave it when a child pass ends, except as Client gone from a deployment other than a model states.
+ends) and SHALL leave it when a child pass ends, except as Client gone from an application states.
 
 #### Scenario: Root ends
 - **WHEN** root `app` answers its client
@@ -264,10 +280,10 @@ a connect failure).
 - **WHEN** a model's only upstream answers `503` and `maxRetryAttempts` is 1
 - **THEN** the client gets `502` and no row is written
 
-### Requirement: Client gone from a deployment other than a model
-When writing to the client fails during the relay of a deployment that is not a `Model`, Core SHALL reset the
-origin request and SHALL NOT write the pass's analytics row, delete the key it minted (it expires with its TTL) or,
-for a root pass, delete the trace's token-stats record (it expires with `deploymentStats.ttlMs`).
+### Requirement: Client gone from an application
+When writing to the client fails during the relay of an application (not a `Model` or an interceptor), Core SHALL
+reset the origin request and SHALL NOT write the pass's analytics row, delete the key it minted (it expires with its
+TTL) or, for a root pass, delete the trace's token-stats record (it expires with `deploymentStats.ttlMs`).
 
 #### Scenario: Client disconnects from an application
 - **WHEN** a client streams from root `app` and closes its connection mid-stream

@@ -69,7 +69,8 @@ Responses API, each used as the complete URL. No legacy field SHALL serve `anthr
 
 ### Requirement: Typed interfaces do not stand in for each other
 Core SHALL NOT serve embeddings from `interfaces.openaiChatCompletions` nor chat completions from
-`interfaces.openaiEmbeddings`.
+`interfaces.openaiEmbeddings`, except for an interceptor: Core sends every request to an interceptor, embeddings
+included, under its `openaiChatCompletions` interface.
 
 #### Scenario: Chat interface does not serve embeddings
 - **WHEN** a model declares only `interfaces.openaiChatCompletions.base_url: http://chat-adapter` and no `endpoint`,
@@ -176,7 +177,8 @@ Core SHALL replace the ingress path under a pass-through base url with `interfac
 Core SHALL resolve the features in force for an interface field by field: a non-null field of
 `interfaces.<type>.features` overrides the deployment-level `features`, an explicit `false` or an empty list
 included; an absent or null field inherits. The resolved set SHALL be the one sent in `X-DIAL-DEPLOYMENT-FEATURES`
-and listed under `interface_configs.<type>.features`, but for `chat_completion` and `responses_api`.
+and listed under `interface_configs.<type>.features`, but for `chat_completion`, `responses_api` and
+`accessible_by_per_request_key`, which carries the resolved `consentRequired`.
 
 #### Scenario: Interface overrides reasoning efforts
 - **WHEN** a model declares `features.reasoning_efforts: ["low","medium"]` and
@@ -214,8 +216,8 @@ be kept.
 
 #### Scenario: Interface defaults replace the model-level set
 - **WHEN** a model declares `defaults: {"temperature": 1, "custom_fields": {"configuration": "foo.baz"}}` and
-  `interfaces.anthropicMessages.defaults: {"temperature": 0.5}`, and a client sends `POST /anthropic/v1/messages`
-  without `temperature`
+  `interfaces.openaiChatCompletions.defaults: {"temperature": 0.5}`, and a client sends
+  `POST /openai/deployments/<model>/chat/completions` without `temperature`
 - **THEN** the origin body carries `"temperature": 0.5` and no `custom_fields`
 
 #### Scenario: Model-level defaults do not reach Responses
