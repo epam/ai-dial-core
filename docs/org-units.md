@@ -51,6 +51,12 @@ unit is created, core puts the clients' hidden empty-folder marker `.dial_folder
 Chat's publish dialog and the admin panel's folder tree show the unit before anything is published into it. If the
 marker can't be written, the unit is still created and shows once something is published into it.
 
+A write through the resource API doesn't take the shared space's lock that create holds, so content written into a
+folder while it becomes a unit can land after create's checks and then belong to the new unit; folder read rules
+still decide who reads it. Org units also assume storage that tells letter case apart, as S3, GCS and Azure Blob do: on
+storage that doesn't, such as the filesystem provider on macOS or Windows, a path that differs from a unit's folder
+only in letter case can reach the same content without the unit's checks.
+
 A move inside the shared space that would change which unit owns a resource is refused with 409, for every caller of
 the move API: into another unit, out of its unit into the part of the shared space no unit owns, and from that part into
 a unit. Content enters a unit by a copy or a publication instead.
