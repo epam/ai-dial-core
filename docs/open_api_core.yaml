@@ -10885,7 +10885,7 @@ paths:
           type: boolean
       responses:
         "200":
-          description: "The units are removed, with their folder markers"
+          description: "The units are removed, with their role assignments and folder markers"
           content:
             application/json:
               schema:
