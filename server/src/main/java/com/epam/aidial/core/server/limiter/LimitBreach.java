@@ -33,6 +33,14 @@ public record LimitBreach(Kind kind, Window window, long retryAfterSeconds, long
         public boolean isRolling() {
             return rolling;
         }
+
+        public static Window of(CalendarPeriod period) {
+            return switch (period) {
+                case DAY -> DAY;
+                case WEEK -> WEEK;
+                case MONTH -> MONTH;
+            };
+        }
     }
 
     /**
@@ -56,7 +64,13 @@ public record LimitBreach(Kind kind, Window window, long retryAfterSeconds, long
             }
         }
 
+        /**
+         * Only after at least one offer: a rejection always has a window that fired.
+         */
         LimitBreach build() {
+            if (window == null) {
+                throw new IllegalStateException("No window fired");
+            }
             return new LimitBreach(kind, window, retryAfterSeconds, resetsAtMillis);
         }
     }

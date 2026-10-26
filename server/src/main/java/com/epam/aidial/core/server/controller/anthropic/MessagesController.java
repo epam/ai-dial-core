@@ -22,6 +22,7 @@ import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.SpendCap;
 import com.epam.aidial.core.server.limiter.SpendCaps;
+import com.epam.aidial.core.server.limiter.SpendReadException;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -141,14 +142,15 @@ public class MessagesController extends MessagesBaseController {
         if (!isSubjectToLimits(context.getDeployment())) {
             return readTranslatedSpendCaps();
         }
-        return checkLimits(context.getDeployment())
+        return proxy.getRateLimiter().limit(context, context.getDeployment(), true)
                 .recover(error -> {
-                    // only a caller with a cost limit has one to blame; anyone else gets the usual retryable server error
-                    if (!proxy.getRateLimiter().hasCostLimit(context)) {
-                        return Future.failedFuture(error);
+                    // fail closed only when the spend itself is unknown to a caller it would cap; any other failure is retried
+                    if (error instanceof SpendReadException && proxy.getRateLimiter().hasCostLimit(context)) {
+                        log.warn("Failed to read spend, rejecting the request. Deployment: {}", context.getDeployment().getName(), error);
+                        return Future.failedFuture(AnthropicLimitResponses.spendUnavailable());
                     }
-                    log.warn("Failed to check limits, rejecting the request. Deployment: {}", context.getDeployment().getName(), error);
-                    return Future.failedFuture(AnthropicLimitResponses.spendUnavailable());
+                    log.warn("Failed to check limits. Deployment: {}", context.getDeployment().getName(), error);
+                    return Future.failedFuture(AnthropicLimitResponses.limitCheckFailed());
                 })
                 .map(rateLimit -> {
                     SpendCaps caps = rateLimit.spendCaps();

@@ -40,7 +40,18 @@ public record SpendCaps(List<SpendCap> windows, @Nullable SpendCap reported) {
         return windows.stream().max(Comparator.comparing(SpendCap::ratio).thenComparing(SpendCap::period)).orElse(null);
     }
 
+    /**
+     * Whether a cost window of this total is enforced at all; at or above 2^53 it counts as unlimited, as the client
+     * could not represent it exactly anyway.
+     */
+    public static boolean isLimited(BigDecimal total) {
+        return total.compareTo(UNLIMITED_THRESHOLD) < 0;
+    }
+
+    /**
+     * A cap of 0 is enforced but never reported: there is no ratio to show for it.
+     */
     private static boolean isCapped(SpendCap window) {
-        return window.total().signum() > 0 && window.total().compareTo(UNLIMITED_THRESHOLD) < 0;
+        return window.total().signum() > 0 && isLimited(window.total());
     }
 }

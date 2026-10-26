@@ -86,9 +86,10 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                     String model = request.getModel();
                     deploymentId = model;
                     return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(model)))
-                            .compose(ignore -> verifyLimit())
-                            .compose(ignore -> proxy.getTokenStatsTracker().startSpan(context)
-                                    .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request))))
+                            // independent reads, so neither waits on the other; join waits for both even when one fails,
+                            // so a rejection never ends the span before it is started
+                            .compose(ignore -> Future.join(verifyLimit(), proxy.getTokenStatsTracker().startSpan(context)))
+                            .compose(ignore -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request)))
                             .otherwise(error -> handleRequestError(model, error));
                 })
                 .onFailure(this::handleRequestBodyError);

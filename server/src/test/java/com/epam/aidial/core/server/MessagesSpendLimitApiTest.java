@@ -257,6 +257,29 @@ class MessagesSpendLimitApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void testReachedSpendCapWinsOverTokenLimit() throws InterruptedException {
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> TestWebServer.createResponse(200, NON_STREAM_RESPONSE,
+                    "Content-Type", "application/json"));
+
+            // claude-burst allows 10 tokens/minute; the first request passes and charges 20.
+            Response first = postMessages(requestBody("claude-burst", false), "proxyKey1");
+            assertEquals(200, first.status(), first.body());
+
+            Thread.sleep(1000); // wait for core to save usage
+            seedSpend("spend", "10");
+            Response second = postMessages(requestBody("claude-burst", false), "proxyKey1");
+
+            // the token limit would ask the client to retry in a minute; the spend cap will not reset by then
+            assertEquals(429, second.status(), second.body());
+            assertEquals("false", header(second, "x-should-retry"));
+            assertEquals("billing_error", parse(second.body()).at("/error/type").asText());
+            assertEquals("org_spend_cap_reached", header(second, OVERAGE + "disabled-reason"));
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     void testCountTokensUnchanged() {
         seedSpend("spend", "10");
         try (TestWebServer server = new TestWebServer(4848)) {

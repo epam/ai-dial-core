@@ -83,6 +83,19 @@ class AnthropicLimitResponses {
                 CONTENT_TYPE, APPLICATION_JSON));
     }
 
+    /**
+     * The limit check failed for a reason other than an unreadable spend record: a server error Claude Code retries.
+     */
+    HttpException limitCheckFailed() {
+        return serverError("DIAL could not check your limits; please retry");
+    }
+
+    HttpException serverError(String message) {
+        return new HttpException(HttpStatus.INTERNAL_SERVER_ERROR, errorBody("api_error", message), Map.of(
+                SHOULD_RETRY, "true",
+                CONTENT_TYPE, APPLICATION_JSON));
+    }
+
     HttpException limitReached(LimitBreach breach, String deploymentName, long nowMillis) {
         String label = breach.window().label();
         String message = switch (breach.kind()) {
@@ -91,10 +104,10 @@ class AnthropicLimitResponses {
             case REQUESTS -> "DIAL " + label + " request limit for " + deploymentName + " reached";
         };
         boolean rolling = breach.window().isRolling();
-        // a calendar window's own retry-after is floored, so in its last second it would say 0
-        long retryAfter = rolling ? breach.retryAfterSeconds() : secondsUntil(breach.resetsAtMillis(), nowMillis);
+        // a window's own retry-after is floored, so in its last second it would say 0 and a client would retry at once
+        long retryAfter = rolling ? Math.max(1, breach.retryAfterSeconds()) : secondsUntil(breach.resetsAtMillis(), nowMillis);
         message += rolling
-                ? "; retry in " + breach.retryAfterSeconds() + " s"
+                ? "; retry in " + retryAfter + " s"
                 : " (resets " + formatReset(breach.resetsAtMillis()) + ")";
         return new HttpException(HttpStatus.TOO_MANY_REQUESTS, errorBody("rate_limit_error", message), Map.of(
                 "retry-after", String.valueOf(retryAfter),
@@ -139,11 +152,7 @@ class AnthropicLimitResponses {
     }
 
     private String periodName(CalendarPeriod period) {
-        return switch (period) {
-            case DAY -> "daily";
-            case WEEK -> "weekly";
-            case MONTH -> "monthly";
-        };
+        return LimitBreach.Window.of(period).label();
     }
 
     private long secondsUntil(long resetsAtMillis, long nowMillis) {

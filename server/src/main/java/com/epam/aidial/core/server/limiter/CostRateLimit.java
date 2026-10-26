@@ -70,27 +70,21 @@ public class CostRateLimit {
                     format(minuteTotal), format(costLimit.getMinute()), format(dayTotal), format(costLimit.getDay()),
                     format(weekTotal), format(costLimit.getWeek()), format(monthTotal), format(costLimit.getMonth()));
 
-            long retryAfter = 0;
             LimitBreach.Picker breach = new LimitBreach.Picker(LimitBreach.Kind.COST);
             if (minuteTotal.compareTo(costLimit.getMinute()) >= 0) {
-                long windowRetryAfter = minute.retryAfter(costLimit.getMinute());
-                retryAfter = Math.max(retryAfter, windowRetryAfter);
-                breach.offer(LimitBreach.Window.MINUTE, windowRetryAfter, -1);
+                breach.offer(LimitBreach.Window.MINUTE, minute.retryAfter(costLimit.getMinute()), -1);
             }
             if (dayTotal.compareTo(costLimit.getDay()) >= 0) {
-                long windowRetryAfter = day.retryAfterSeconds(timestamp, CalendarPeriod.DAY, schedule);
-                retryAfter = Math.max(retryAfter, windowRetryAfter);
-                breach.offer(LimitBreach.Window.DAY, windowRetryAfter, day.resetsAtMillis(timestamp, CalendarPeriod.DAY, schedule));
+                breach.offer(LimitBreach.Window.DAY, day.retryAfterSeconds(timestamp, CalendarPeriod.DAY, schedule),
+                        day.resetsAtMillis(timestamp, CalendarPeriod.DAY, schedule));
             }
             if (weekTotal.compareTo(costLimit.getWeek()) >= 0) {
-                long windowRetryAfter = week.retryAfterSeconds(timestamp, CalendarPeriod.WEEK, schedule);
-                retryAfter = Math.max(retryAfter, windowRetryAfter);
-                breach.offer(LimitBreach.Window.WEEK, windowRetryAfter, week.resetsAtMillis(timestamp, CalendarPeriod.WEEK, schedule));
+                breach.offer(LimitBreach.Window.WEEK, week.retryAfterSeconds(timestamp, CalendarPeriod.WEEK, schedule),
+                        week.resetsAtMillis(timestamp, CalendarPeriod.WEEK, schedule));
             }
             if (monthTotal.compareTo(costLimit.getMonth()) >= 0) {
-                long windowRetryAfter = month.retryAfterSeconds(timestamp, CalendarPeriod.MONTH, schedule);
-                retryAfter = Math.max(retryAfter, windowRetryAfter);
-                breach.offer(LimitBreach.Window.MONTH, windowRetryAfter, month.resetsAtMillis(timestamp, CalendarPeriod.MONTH, schedule));
+                breach.offer(LimitBreach.Window.MONTH, month.retryAfterSeconds(timestamp, CalendarPeriod.MONTH, schedule),
+                        month.resetsAtMillis(timestamp, CalendarPeriod.MONTH, schedule));
             }
 
             List<String> limits = new ArrayList<>();
@@ -126,7 +120,8 @@ public class CostRateLimit {
                 displayError.append('s');
             }
 
-            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, displayError.toString(), retryAfter, breach.build(), null);
+            LimitBreach fired = breach.build();
+            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, displayError.toString(), fired.retryAfterSeconds(), fired, null);
         } else {
             return RateLimitResult.SUCCESS;
         }

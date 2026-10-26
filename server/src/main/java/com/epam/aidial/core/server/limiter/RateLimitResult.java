@@ -18,7 +18,10 @@ public record RateLimitResult(
         this(status, errorMessage, displayErrorMessage, replyAfterSeconds, null, null);
     }
 
-    public RateLimitResult withSpendCaps(SpendCaps spendCaps) {
+    public RateLimitResult withSpendCaps(@Nullable SpendCaps spendCaps) {
+        if (spendCaps == null) {
+            return this;
+        }
         return new RateLimitResult(status, errorMessage, displayErrorMessage, replyAfterSeconds, breach, spendCaps);
     }
 

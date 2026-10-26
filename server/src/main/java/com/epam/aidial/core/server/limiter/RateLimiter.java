@@ -42,6 +42,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -121,6 +122,15 @@ public class RateLimiter {
     }
 
     public Future<RateLimitResult> limit(ProxyContext context, RoleBasedEntity roleBasedEntity) {
+        return limit(context, roleBasedEntity, false);
+    }
+
+    /**
+     * Checks the caller's limits. With {@code withSpendCaps} the result also carries the caller's spend caps,
+     * whichever check rejects, and a failure to read the spend record fails the future with
+     * {@link SpendReadException} rather than an arbitrary error.
+     */
+    public Future<RateLimitResult> limit(ProxyContext context, RoleBasedEntity roleBasedEntity, boolean withSpendCaps) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {
@@ -140,7 +150,7 @@ public class RateLimiter {
 
             return taskExecutor.submit(() -> blockingCallTracer.trace("rate_limit.check", () -> {
                 BlockingCallTracer.currentSpan().setAttribute("dial.deployment", name);
-                RateLimitResult result = checkLimit(context, limit, roleBasedEntity);
+                RateLimitResult result = checkLimit(context, limit, roleBasedEntity, withSpendCaps);
                 BlockingCallTracer.currentSpan().setAttribute("dial.rate_limit.status", result.status().getCode());
                 return result;
             }));
@@ -149,8 +159,14 @@ public class RateLimiter {
         }
     }
 
+    /**
+     * Whether any cost window of the caller is enforced, the per-minute one and a cap of 0 included. Uses the same
+     * unlimited threshold as {@link SpendCaps}, so a window too large to report is not a limit to fail closed on.
+     */
     public boolean hasCostLimit(ProxyContext context) {
-        return getCostLimitByUser(context).hasLimits();
+        CostLimit costLimit = getCostLimitByUser(context);
+        return Stream.of(costLimit.getMinute(), costLimit.getDay(), costLimit.getWeek(), costLimit.getMonth())
+                .anyMatch(SpendCaps::isLimited);
     }
 
     /**
@@ -529,32 +545,46 @@ public class RateLimiter {
         return ResourceDescriptorFactory.fromEntityPath(ResourceTypes.LIMIT, bucketLocation, bucketLocation, path);
     }
 
-    private RateLimitResult checkLimit(ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity) {
+    private RateLimitResult checkLimit(ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity, boolean withSpendCaps) {
         long timestamp = System.currentTimeMillis();
         RateLimitSchedule schedule = context.getConfig().getRateLimitSchedule();
+        CostLimit costLimit = getCostLimitByUser(context);
+
+        // read first when the caps are wanted, so they come back whichever check rejects
+        CostRateLimit costRateLimit = null;
+        SpendCaps spendCaps = null;
+        if (withSpendCaps) {
+            costRateLimit = readCostRateLimit(context);
+            spendCaps = buildSpendCaps(costRateLimit, costLimit, timestamp, schedule);
+        }
 
         // Check token limits
         RateLimitResult tokenResult = checkTokenLimit(context, limit, timestamp, schedule, roleBasedEntity);
         if (tokenResult.status() != HttpStatus.OK) {
-            return tokenResult;
+            return tokenResult.withSpendCaps(spendCaps);
         }
 
         // Check request limits
         RateLimitResult requestResult = checkRequestLimit(context, limit, timestamp, schedule, roleBasedEntity);
         if (requestResult.status() != HttpStatus.OK) {
-            return requestResult;
+            return requestResult.withSpendCaps(spendCaps);
         }
 
         // Check cost limits
-        CostLimit costLimit = getCostLimitByUser(context);
-        return checkCostLimit(context, costLimit, timestamp, schedule);
+        if (!withSpendCaps) {
+            costRateLimit = loadCostRateLimit(context);
+        }
+        RateLimitResult costResult = costRateLimit == null ? RateLimitResult.SUCCESS : costRateLimit.check(timestamp, schedule, costLimit);
+        return costResult.withSpendCaps(spendCaps);
     }
 
-    private RateLimitResult checkCostLimit(ProxyContext context, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
-        CostRateLimit rateLimit = loadCostRateLimit(context);
-        SpendCaps spendCaps = buildSpendCaps(rateLimit, costLimit, timestamp, schedule);
-        RateLimitResult result = rateLimit == null ? RateLimitResult.SUCCESS : rateLimit.check(timestamp, schedule, costLimit);
-        return result.withSpendCaps(spendCaps);
+    @Nullable
+    private CostRateLimit readCostRateLimit(ProxyContext context) {
+        try {
+            return loadCostRateLimit(context);
+        } catch (RuntimeException e) {
+            throw new SpendReadException(e);
+        }
     }
 
     @Nullable

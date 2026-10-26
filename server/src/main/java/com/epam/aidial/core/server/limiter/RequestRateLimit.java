@@ -22,17 +22,13 @@ public class RequestRateLimit {
         if (result) {
             String errorMsg = String.format("Hit request rate limit. Hour limit: %d / %d requests. Day limit: %d / %d requests.",
                     hourTotal, limit.getRequestHour(), dayTotal, limit.getRequestDay());
-            long retryAfter = 0;
             LimitBreach.Picker breach = new LimitBreach.Picker(LimitBreach.Kind.REQUESTS);
             if (hourTotal >= limit.getRequestHour()) {
-                long windowRetryAfter = hour.retryAfter(limit.getRequestHour());
-                retryAfter = Math.max(retryAfter, windowRetryAfter);
-                breach.offer(LimitBreach.Window.HOUR, windowRetryAfter, -1);
+                breach.offer(LimitBreach.Window.HOUR, hour.retryAfter(limit.getRequestHour()), -1);
             }
             if (dayTotal >= limit.getRequestDay()) {
-                long windowRetryAfter = day.retryAfterSeconds(timestamp, CalendarPeriod.DAY, schedule);
-                retryAfter = Math.max(retryAfter, windowRetryAfter);
-                breach.offer(LimitBreach.Window.DAY, windowRetryAfter, day.resetsAtMillis(timestamp, CalendarPeriod.DAY, schedule));
+                breach.offer(LimitBreach.Window.DAY, day.retryAfterSeconds(timestamp, CalendarPeriod.DAY, schedule),
+                        day.resetsAtMillis(timestamp, CalendarPeriod.DAY, schedule));
             }
             List<String> limits = new ArrayList<>();
             StringBuilder displayError = new StringBuilder("You've exceeded your");
@@ -57,7 +53,8 @@ public class RequestRateLimit {
             if (limits.size() > 1) {
                 displayError.append('s');
             }
-            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, displayError.toString(), retryAfter, breach.build(), null);
+            LimitBreach fired = breach.build();
+            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, displayError.toString(), fired.retryAfterSeconds(), fired, null);
         } else {
             hour.add(timestamp, count);
             day.add(timestamp, CalendarPeriod.DAY, schedule, count);

@@ -204,6 +204,28 @@ class AnthropicLimitResponsesTest {
     }
 
     @Test
+    void limitReached_rollingWindowNeverSaysRetryAfterZero() throws Exception {
+        HttpException exception = AnthropicLimitResponses.limitReached(new LimitBreach(Kind.TOKENS, Window.MINUTE, 0, -1), "claude-sonnet", NOW);
+
+        assertEquals("1", exception.getHeaders().get("retry-after"));
+        assertEquals("true", exception.getHeaders().get("x-should-retry"));
+        JsonNode body = ProxyUtil.MAPPER.readTree(exception.getMessage());
+        assertEquals("DIAL per-minute token limit for claude-sonnet reached; retry in 1 s", body.at("/error/message").asText());
+    }
+
+    @Test
+    void limitCheckFailed_isRetriedApiError() throws Exception {
+        HttpException exception = AnthropicLimitResponses.limitCheckFailed();
+
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, exception.getStatus());
+        assertEquals("true", exception.getHeaders().get("x-should-retry"));
+        assertEquals("application/json", exception.getHeaders().get("content-type"));
+        assertNoRateLimitHeaders(exception);
+        JsonNode body = ProxyUtil.MAPPER.readTree(exception.getMessage());
+        assertEquals("api_error", body.at("/error/type").asText());
+    }
+
+    @Test
     void buildUsage_centsPercentsAndActiveRow() {
         SpendCap day = cap(CalendarPeriod.DAY, "8.2", "10", "2026-10-24T00:00:00Z");
         SpendCap month = cap(CalendarPeriod.MONTH, "271.40", "500", "2026-11-01T00:00:00Z");

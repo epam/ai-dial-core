@@ -42,7 +42,7 @@ public class AnthropicUsageController {
                 })
                 .onFailure(error -> {
                     log.error("AnthropicUsageController. Failed to get spend limits", error);
-                    context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to get spend limits");
+                    context.respond(AnthropicLimitResponses.serverError("Failed to get spend limits"));
                 });
         return Future.succeededFuture();
     }
