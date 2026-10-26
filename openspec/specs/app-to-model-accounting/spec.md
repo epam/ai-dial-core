@@ -177,10 +177,11 @@ key `bucket` is the encrypted initiator bucket and `appdata` is absent.
 - **THEN** the answer is `{"bucket": <enc(Keys/app/)>, "appdata": "<enc(Users/u1/)>/appdata/app"}`
 
 ### Requirement: Deployment closed to per-request keys
-Core SHALL answer `403` `Deployment <id> is not accessible by <sourceDeployment>` to a request with a per-request
-key for a deployment whose features resolved for the interface have `accessibleByPerRequestKey: false`; a request
-without a per-request key is not affected, but the last interceptor's call to the initial deployment and a
-translator's call back carry one, so a deployment with interceptors, or a translated interface, is refused there.
+Core SHALL answer `403` `Deployment <id> is not accessible by <sourceDeployment>` to a deployments-POST,
+`/openai/v1/chat/completions`, `/openai/v1/responses` or `/anthropic/v1/messages` request with a per-request key
+for a deployment whose features resolved for the interface have `accessibleByPerRequestKey: false`. The last
+interceptor's call to the initial deployment and a translator's call back carry such a key, so a deployment with
+interceptors, or a translated interface, is refused there.
 
 #### Scenario: Application call refused
 - **WHEN** `gpt-4` declares `features.accessibleByPerRequestKey: false` and `app` calls it with its key
@@ -231,7 +232,9 @@ Responses job uses max(ttlMs, `backgroundJob.jobTtlMs` + `backgroundJob.scanInte
 
 ### Requirement: Trace record deleted when the root ends
 Core SHALL delete the trace's token-stats record when the root pass ends (or, for a background root, when its job
-ends) and SHALL leave it when a child pass ends, except as Client gone from an application states.
+ends) and SHALL leave it when a child pass ends, except as Client gone from an application states. A trace rooted
+in a deployment feature call or a Responses item operation, which add no span, is never deleted and expires with
+`deploymentStats.ttlMs`.
 
 #### Scenario: Root ends
 - **WHEN** root `app` answers its client
@@ -287,9 +290,10 @@ available`, a connect failure.
 - **THEN** the client gets `502` and no row is written
 
 ### Requirement: Client gone from an application
-When writing to the client fails during the relay of an application (not a `Model` or an interceptor), Core SHALL
-reset the origin request and SHALL NOT write the pass's analytics row, delete the key it minted (it expires with its
-TTL) or, for a root pass, delete the trace's token-stats record (it expires with `deploymentStats.ttlMs`).
+When writing to the client fails during the chunked relay of an application's answer (not a `Model` or an
+interceptor), Core SHALL reset the origin request and SHALL NOT write the pass's analytics row, delete the key it
+minted (it expires with its TTL) or, for a root pass, delete the trace's token-stats record (it expires with
+`deploymentStats.ttlMs`). A buffered non-streaming chat completion does not notice a failed write and ends as answered.
 
 #### Scenario: Client disconnects from an application
 - **WHEN** a client streams from root `app` and closes its connection mid-stream
@@ -298,7 +302,8 @@ TTL) or, for a root pass, delete the trace's token-stats record (it expires with
 
 ### Requirement: Usage in the analytics row
 Core SHALL write in the row of a `Model` that answered 200 its own `token_usage` (none for another status), with
-`deployment_price` and `price` both its cost when the cost is positive and both absent otherwise; in another
+`deployment_price` and `price` both the DIAL cost when it is positive, else the `cost` and `aggCost` the upstream's
+`usage` object carries, if any; in another
 deployment's row the usage its body reports (zeros when none) with `price` the span's accumulated `aggCost`; and
 `usage_per_model` as the span's entries when there are any.
 

@@ -168,6 +168,10 @@ Core SHALL replace the ingress path under a pass-through base url with `interfac
   sends `POST /openai/deployments/foo-bar/completions`
 - **THEN** the origin receives `POST http://switchyard/openai/deployments/foo-bar/completions`
 
+#### Scenario: Chat override not applied to the unified chat endpoint
+- **WHEN** the same model is called with `POST /openai/v1/chat/completions`
+- **THEN** the origin receives `POST http://switchyard/openai/v1/chat/completions`
+
 #### Scenario: Not applied to the legacy endpoint
 - **WHEN** chat completions is served by `endpoint: http://legacy/chat/completions` and only
   `interfaces.anthropicMessages` declares `overridePaths`
@@ -178,7 +182,7 @@ Core SHALL resolve the features in force for an interface field by field: a non-
 `interfaces.<type>.features` overrides the deployment-level `features`, an explicit `false` or an empty list
 included; an absent or null field inherits. The resolved set SHALL be the one sent in `X-DIAL-DEPLOYMENT-FEATURES`
 and listed under `interface_configs.<type>.features`, but for `chat_completion`, `responses_api` and
-`accessible_by_per_request_key`, which carries the resolved `consentRequired`.
+`accessible_by_per_request_key` (see the scenarios).
 
 #### Scenario: Interface overrides reasoning efforts
 - **WHEN** a model declares `features.reasoning_efforts: ["low","medium"]` and
@@ -191,6 +195,11 @@ and listed under `interface_configs.<type>.features`, but for `chat_completion`,
   `POST /anthropic/v1/messages` for it
 - **THEN** the origin's `X-DIAL-DEPLOYMENT-FEATURES` has `chat_completion: true`, saying the deployment serves that
   API, while `interface_configs.anthropicMessages.features.chat_completion` is `false`
+
+#### Scenario: accessible_by_per_request_key follows consentRequired
+- **WHEN** a model declares `features.accessibleByPerRequestKey: false` and no `consentRequired`
+- **THEN** its `X-DIAL-DEPLOYMENT-FEATURES` and `interface_configs.<type>.features` carry
+  `accessible_by_per_request_key: true`, and with `consentRequired: true` they carry `false`
 
 ### Requirement: Default headers per interface
 Core SHALL put in force for an interface the deployment-level `defaultHeaders` (alias `default_headers`) with

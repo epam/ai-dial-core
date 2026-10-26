@@ -193,7 +193,8 @@ that write no row, and the invalidation of the per-request key are the app-to-mo
 - **THEN** no limits are charged and one analytics row is written with `response.status: "400"`
 
 ### Requirement: Client gone during the relay
-When writing to the client fails during the relay, Core SHALL reset the client connection; for a `Model` it SHALL
+When writing to the client fails during the chunked relay (a buffered non-streaming chat completion does not notice
+a failed write), Core SHALL reset the client connection; for a `Model` it SHALL
 keep reading the origin's stream to its end to collect the usage, then write the analytics row; for any other
 deployment it SHALL reset the origin request.
 
