@@ -319,8 +319,10 @@ public class OrgUnitApiTest extends ResourceBaseTest {
 
         Response renamed = move("files/public/Acme/Risk/a.txt", "files/public/Acme/Risk%20Renamed/a.txt");
         assertEquals(409, renamed.status(), renamed.body());
-        assertTrue(renamed.body().contains("Moves between org units aren't allowed"), renamed.body());
-        assertEquals(409, move("files/public/Handbook/h.txt", "files/public/Acme/h.txt").status());
+        assertTrue(renamed.body().contains("A move can't change which org unit owns a resource"), renamed.body());
+        Response intoUnit = move("files/public/Handbook/h.txt", "files/public/Acme/h.txt");
+        assertEquals(409, intoUnit.status(), intoUnit.body());
+        assertTrue(intoUnit.body().contains("belongs to no unit") && intoUnit.body().contains("Copy or publish it instead"), intoUnit.body());
         assertEquals(409, move("files/public/Acme/Risk/a.txt", "files/public/Loose/a.txt").status());
 
         assertEquals(200, move("files/public/Acme/Risk/a.txt", "files/public/Acme/Risk/Policies/a.txt").status());
