@@ -9495,7 +9495,7 @@ paths:
       tags:
       - Publications
       summary: /v1/ops/publication/approve
-      description: Admins only! <br> Call this endpoint to approve the publication request.
+      description: Admins only, or with org units on, a holder of read and write publications/** in every unit the request touches (see docs/org-units.md). <br> Call this endpoint to approve the publication request.
       operationId: approvePublication
       requestBody:
         content:
@@ -9830,7 +9830,7 @@ paths:
       tags:
       - Publications
       summary: /v1/ops/publication/reject
-      description: Admins only! <br> Call this endpoint to reject the publication request.
+      description: Admins only, or with org units on, a holder of read and write publications/** in every unit the request touches (see docs/org-units.md). <br> Call this endpoint to reject the publication request.
       operationId: rejectPublication
       requestBody:
         content:

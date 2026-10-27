@@ -25,8 +25,8 @@ import javax.annotation.Nullable;
 
 /**
  * What a unit's role holders may do with publication requests into it: {@code read publications/**} lists and reviews
- * them, {@code write publications/**} approves and rejects them. Nothing here concerns DIAL admins: callers check them
- * first. Everything fails closed: anything unreadable or outside every unit allows nothing.
+ * them, {@code read} and {@code write publications/**} together approve and reject them. Nothing here concerns DIAL
+ * admins: callers check them first. Everything fails closed: anything unreadable or outside every unit allows nothing.
  */
 @RequiredArgsConstructor
 public class OrgUnitApprovals {
