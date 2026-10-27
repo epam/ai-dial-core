@@ -22,6 +22,14 @@
 - The merged `docs/open_api_core.yaml` keeps the existing 429 description ("Rate limit exceeded"). The spec merge
   keeps manually maintained response descriptions, and the 429 description added for `/anthropic` in #2166 did not
   reach the YAML either. The new headers did reach it.
+- Follow-up after reading the review of #2166, which asked for duplicated cap handling to be shared. design.md
+  listed changing `MessagesController` as a non-goal; this reverses that for the shared parts only. The check flow
+  (verify, read caps for a translated deployment, reject a reached cap first, fail closed on an unreadable record)
+  is now one `controller/SpendCapCheck`, which `MessagesController` and `ResponsesController` call with their own
+  answers. `SpendCap.percent()` and `SpendCap.secondsUntilReset()` replace the copies in `AnthropicLimitResponses`
+  and `CodexLimitResponses`. `/anthropic` behaviour is unchanged: `MessagesSpendLimitApiTest`,
+  `MessagesControllerLimitTest`, `AnthropicLimitResponsesTest` and `MessagesApiTest` pass unmodified.
+  `SpendCapCheckTest` covers each branch.
 - After the PR review, the reached-cap 429 also carries `display_message`. The first version dropped it, and DIAL
   clients that show it would have lost the text.
 - `ResponsesControllerTest` mocked `RateLimiter.limit`. Its 8 stubs now mock `limitWithSpendCaps`, and 4 tests also

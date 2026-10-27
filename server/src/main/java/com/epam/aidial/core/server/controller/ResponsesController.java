@@ -32,9 +32,9 @@ import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequest
 import com.epam.aidial.core.server.function.enhancement.ResolveEncryptedContentAffinityFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
+import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.SpendCap;
 import com.epam.aidial.core.server.limiter.SpendCaps;
-import com.epam.aidial.core.server.limiter.SpendReadException;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
@@ -71,6 +71,31 @@ import static com.epam.aidial.core.server.Proxy.HEADER_CACHE_POLICY;
 
 @Slf4j
 public class ResponsesController extends BaseDeploymentPostController {
+
+    /**
+     * A reached spend cap answers in the shape Codex CLI reads; every other outcome keeps the DIAL answer.
+     */
+    private static final SpendCapCheck.Answers CODEX_ANSWERS = new SpendCapCheck.Answers() {
+        @Override
+        public HttpException spendCapReached(SpendCap cap, @Nullable String displayMessage, long nowMillis) {
+            return CodexLimitResponses.spendCapReached(cap, displayMessage, nowMillis);
+        }
+
+        @Override
+        public HttpException spendUnavailable() {
+            return CodexLimitResponses.spendUnavailable();
+        }
+
+        @Override
+        public Throwable limitCheckFailed(Throwable error) {
+            return error;
+        }
+
+        @Override
+        public void rejectOtherLimit(RateLimitResult result) {
+            result.throwIfError();
+        }
+    };
 
     private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
 
@@ -264,52 +289,11 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private Future<Void> verifyLimit() {
-        if (!isSubjectToLimits(context.getDeployment())) {
-            return readTranslatedSpendCaps();
-        }
-        return proxy.getRateLimiter().limitWithSpendCaps(context, context.getDeployment())
-                .recover(error -> {
-                    // fail closed only when the spend itself is unknown to a caller it would cap; any other failure stays a 500
-                    if (error instanceof SpendReadException && proxy.getRateLimiter().hasCostLimit(context)) {
-                        log.warn("Failed to read spend, rejecting the request. Deployment: {}", context.getDeployment().getName(), error);
-                        return Future.failedFuture(CodexLimitResponses.spendUnavailable());
-                    }
-                    return Future.failedFuture(error);
-                })
-                .map(rateLimit -> {
-                    rejectIfSpendCapReached(rateLimit.spendCaps(), rateLimit.displayErrorMessage());
-                    rateLimit.throwIfError();
-                    spendCaps = rateLimit.spendCaps();
-                    return null;
-                });
-    }
-
-    /**
-     * A translated request is checked and charged by the call the translator makes back to Core, so this one only
-     * reads the spend caps for the headers. It still rejects a cap that is already reached, and it fails open when the
-     * record is unreadable: the inner call enforces either way.
-     */
-    private Future<Void> readTranslatedSpendCaps() {
-        return proxy.getRateLimiter().readSpendCaps(context)
-                .recover(error -> {
-                    log.warn("Failed to read spend caps, sending no limit headers. Deployment: {}", context.getDeployment().getName(), error);
-                    return Future.succeededFuture(SpendCaps.EMPTY);
-                })
+        return SpendCapCheck.verify(proxy, context, isSubjectToLimits(context.getDeployment()), CODEX_ANSWERS)
                 .map(caps -> {
-                    rejectIfSpendCapReached(caps, null);
                     spendCaps = caps;
                     return null;
                 });
-    }
-
-    /**
-     * A reached spend cap takes precedence over any other limit, so it is checked first wherever the caps are read.
-     */
-    private static void rejectIfSpendCapReached(@Nullable SpendCaps caps, @Nullable String displayMessage) {
-        SpendCap reported = caps == null ? null : caps.reported();
-        if (reported != null && reported.isExceeded()) {
-            throw CodexLimitResponses.spendCapReached(reported, displayMessage, System.currentTimeMillis());
-        }
     }
 
     /**

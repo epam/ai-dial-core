@@ -11,7 +11,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.MultiMap;
 import lombok.experimental.UtilityClass;
 
-import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -70,9 +69,8 @@ class CodexLimitResponses {
                 .put("display_message", displayMessage == null ? "You've exceeded your " + label + " cost limit" : displayMessage)
                 .put("resets_at", resetAt)
                 .put("limit_window_minutes", windowMinutes);
-        long retryAfter = Math.max(0, Math.ceilDiv(cap.resetsAtMillis() - nowMillis, 1000));
         return new HttpException(HttpStatus.TOO_MANY_REQUESTS, body.toString(), Map.of(
-                "retry-after", String.valueOf(retryAfter),
+                "retry-after", String.valueOf(cap.secondsUntilReset(nowMillis)),
                 PRIMARY_PREFIX + "used-percent", "100",
                 PRIMARY_PREFIX + "window-minutes", String.valueOf(windowMinutes),
                 PRIMARY_PREFIX + "reset-at", String.valueOf(resetAt),
@@ -88,13 +86,9 @@ class CodexLimitResponses {
     }
 
     private void putWindow(MultiMap headers, String prefix, SpendCap cap) {
-        headers.set(prefix + "used-percent", String.valueOf(percent(cap)));
+        headers.set(prefix + "used-percent", String.valueOf(cap.percent()));
         headers.set(prefix + "window-minutes", String.valueOf(windowMinutes(cap.period())));
         headers.set(prefix + "reset-at", String.valueOf(cap.resetsAtMillis() / 1000));
-    }
-
-    private long percent(SpendCap cap) {
-        return cap.ratio().movePointRight(2).setScale(0, RoundingMode.DOWN).longValue();
     }
 
     private int windowMinutes(CalendarPeriod period) {
