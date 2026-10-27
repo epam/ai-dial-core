@@ -36,16 +36,17 @@ None. No existing capability covers how Core listens; `request-routing` starts o
 - One upstream HTTP client per event loop. Core keeps its one shared client, so the connection cap (`client.maxPoolSize`,
   4,096 per upstream host and port) stays a per-pod total. design.md records the cost this leaves.
 - Moving body parsing (`ObjectMapper.readTree` of the request body) off the event loop.
-- The Vert.x production JVM flags PP-28 also lists (`-Dvertx.disableContextTimings=true` and others): deployment
+- The Vert.x production JVM flags (`-Dvertx.disableContextTimings=true` and others): deployment
   settings, not Core code.
 - `CostRateLimit.CURRENCY_FORMAT`, a static `NumberFormat` (not thread-safe) used for the cost-limit error message. It
   already runs on virtual threads today, so the race exists without this change; it is reported, not fixed here.
 
 ## Impact
 
-- Motivation: MGDA perf journal, PF-26 ("one event loop carries all HTTP") and PP-28 ("HTTP on every event loop"),
-  and the perf runs of 2026-10-27 (statgpt-perf-analysis pipelines 951707, 2 pods, and 951601, 45 pods). This change
-  covers PP-28's server part. It leaves out PP-28's JVM flags.
+- Motivation: the perf improvement initiative's finding that one event loop carries all HTTP, and its perf runs of
+  2026-10-27 (2 Core pods for 2,000 users, compared with a 45-pod run at the same load). This change covers the
+  initiative's proposal to serve HTTP on every event loop, server part only. It leaves out the JVM flags that proposal
+  also lists.
 - Code: `AiDial` (start and stop of the HTTP server), `IdentityProvider` (user hash), `ResourceBaseTest` (how tests
   read the port). Docs: the settings table in `README.md`.
 - Operators: no change unless `aidial.server.instances` is set. With N > 1, upstream connections to one host may be

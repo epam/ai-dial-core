@@ -44,6 +44,10 @@ share every service today.
 Rejected: calling `listen()` N times from contexts made with `VertxInternal.createEventLoopContext()`. It does the
 same thing through an internal API.
 
+As built: the verticle is an anonymous `AbstractVerticle` inside `AiDial.java:start`. `AiDial.java:open` now returns the
+future's result (`AsyncOpener<R, T>`), because its only caller, which used to listen on one server, now needs the
+deployment id for `stop()`.
+
 ### D2. `server.instances` inside the `server` block
 The setting sits with the other server settings. `new HttpServerOptions(json)` ignores keys it does not know
 (`HttpServerOptionsConverter.fromJson` switches on the known names, with no default branch). The env var
@@ -66,6 +70,9 @@ has shown the effect. That is a later change.
 pattern as `deploymentStats.ttlMs` in `AiDial.java:start`. Vert.x would refuse too (`DeploymentManager`: "Can't
 specify < 1 instances to deploy"), but without naming the setting. No upper bound: more instances than event loops
 share loops, because Vert.x assigns verticle contexts in turn, and nothing fails.
+
+As built: the check runs first in `start()`, right after the settings are printed and before Vert.x, Redis or storage
+are created, so a bad value fails at once and leaves nothing to close.
 
 ### D5. Keep the port, not the server
 `AiDial` keeps the `actualPort()` of the started servers in an `int` field (they share it). The field feeds

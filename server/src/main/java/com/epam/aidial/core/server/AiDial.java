@@ -115,12 +115,14 @@ import io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppen
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SpanProcessor;
 import io.vertx.config.spi.utils.JsonObjectHelper;
+import io.vertx.core.AbstractVerticle;
+import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
-import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.WebSocketClient;
 import io.vertx.core.http.WebSocketClientOptions;
@@ -164,7 +166,8 @@ public class AiDial {
     private static final Set<String> NON_PRINTABLE_SETTINGS = Set.of("secret", "password", "key", "credential", "identity");
     private JsonObject settings;
     private Vertx vertx;
-    private HttpServer server;
+    private String serverDeploymentId;
+    private int serverPort;
     private HttpClient client;
     private WebSocketClient webSocketClient;
 
@@ -192,6 +195,10 @@ public class AiDial {
         try {
             settings = (settings == null) ? settings() : settings;
             printSettings(settings);
+            int serverInstances = settings("server").getInteger("instances", 1);
+            if (serverInstances < 1) {
+                throw new IllegalArgumentException("server.instances must be positive, but got: " + serverInstances);
+            }
             ProxyUtil.init(ProxySettings.from(settings("proxy")));
             VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
             setupMetrics(vertxOptions);
@@ -408,12 +415,20 @@ public class AiDial {
                     TracingSettings.from(settings("tracing")), blockingCallTracer,
                     adminExportService, adminExportSettings);
 
-            server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
-            open(server, HttpServer::listen);
+            // each instance listens on the same port from its own event loop; Vert.x hands new connections to them in turn
+            serverDeploymentId = open(vertx, v -> v.deployVerticle(() -> new AbstractVerticle() {
+                @Override
+                public void start(Promise<Void> startPromise) {
+                    vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy).listen()
+                            .onSuccess(server -> serverPort = server.actualPort())
+                            .<Void>mapEmpty()
+                            .onComplete(startPromise);
+                }
+            }, new DeploymentOptions().setInstances(serverInstances)));
             String localBaseUrl = backgroundJobSettings.getLocalBaseUrl();
-            backgroundJobService.setLocalBaseUrl(localBaseUrl != null ? localBaseUrl : "http://localhost:" + server.actualPort());
+            backgroundJobService.setLocalBaseUrl(localBaseUrl != null ? localBaseUrl : "http://localhost:" + serverPort);
             backgroundJobService.init();
-            log.info("Proxy started on {}", server.actualPort());
+            log.info("Proxy started on {} with {} server instance(s)", serverPort, serverInstances);
         } catch (Throwable e) {
             log.error("Proxy failed to start:", e);
             stop();
@@ -501,7 +516,10 @@ public class AiDial {
     @VisibleForTesting
     void stop() throws Exception {
         try {
-            close(server, HttpServer::close);
+            if (serverDeploymentId != null) {
+                // closes the server of every instance
+                close(vertx, v -> v.undeploy(serverDeploymentId));
+            }
             close(client, HttpClient::close);
             close(resourceService);
             close(complexResourceSweepService);
@@ -614,10 +632,10 @@ public class AiDial {
         return JsonObjectHelper.from(properties, false, true);
     }
 
-    private static <R> void open(R resource, AsyncOpener<R> opener) throws Exception {
-        CompletableFuture<R> startup = new CompletableFuture<>();
+    private static <R, T> T open(R resource, AsyncOpener<R, T> opener) throws Exception {
+        CompletableFuture<T> startup = new CompletableFuture<>();
         opener.open(resource).onSuccess(startup::complete).onFailure(startup::completeExceptionally);
-        startup.get(15, TimeUnit.SECONDS);
+        return startup.get(15, TimeUnit.SECONDS);
     }
 
     private static <R> void close(R resource, AsyncCloser<R> closer) throws Exception {
@@ -640,8 +658,8 @@ public class AiDial {
         }
     }
 
-    private interface AsyncOpener<R> {
-        Future<R> open(R resource);
+    private interface AsyncOpener<R, T> {
+        Future<T> open(R resource);
     }
 
     private interface AsyncCloser<R> {
