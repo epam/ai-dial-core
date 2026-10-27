@@ -25,6 +25,11 @@ class FakeOrgUnitStorage {
 
     final ResourceService resources = mock(ResourceService.class);
     final Map<String, String> documents = new HashMap<>();
+    /**
+     * Runs as a write takes its lock, before it reads the document: another request's change landing first.
+     */
+    Runnable beforeWrite = () -> {
+    };
     private int version;
 
     @SuppressWarnings("unchecked")
@@ -34,6 +39,7 @@ class FakeOrgUnitStorage {
         when(resources.computeResource(any(), any(Function.class))).thenAnswer(invocation -> {
             ResourceDescriptor descriptor = invocation.getArgument(0);
             Function<String, String> change = invocation.getArgument(1);
+            beforeWrite.run();
             String before = documents.get(descriptor.getName());
             String after = change.apply(before);
             if (after != null && !after.equals(before)) {
