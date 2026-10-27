@@ -1,5 +1,6 @@
 package com.epam.aidial.core.storage.resource;
 
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 public enum ResourceTypes implements ResourceType {
@@ -16,7 +17,6 @@ public enum ResourceTypes implements ResourceType {
     API_KEY_DATA("api_key_data", true, TimeUnit.MINUTES.toMillis(5)),
     NOTIFICATION("notifications", true, TimeUnit.MINUTES.toMillis(5)),
     APPLICATION("applications", true, TimeUnit.DAYS.toMillis(30)),
-    DEPLOYMENT_COST_STATS("deployment_cost_stats", true, TimeUnit.MINUTES.toMillis(5)),
     CODE_INTERPRETER_SESSION("code_interpreter_session", true, TimeUnit.MINUTES.toMillis(5)),
     USER_CONSENT("user_consent", true, TimeUnit.MINUTES.toMillis(5)),
     TOOL_SET("toolsets", true, TimeUnit.DAYS.toMillis(30)),
@@ -31,12 +31,26 @@ public enum ResourceTypes implements ResourceType {
     TRANSLATOR("translators", true, TimeUnit.DAYS.toMillis(30)),
     ROLE("roles", true, TimeUnit.DAYS.toMillis(30)),
     PROJECT_KEY("project_keys", "keys", true, TimeUnit.DAYS.toMillis(30)),
+    POLICY("policies", true, TimeUnit.DAYS.toMillis(30)),
+    POLICY_ASSIGNMENT("policy_assignments", true, TimeUnit.DAYS.toMillis(30)),
     ROUTE("routes", true, TimeUnit.DAYS.toMillis(30)),
     GLOBAL_SETTINGS("settings", true, TimeUnit.DAYS.toMillis(30)),
     RESPONSE_MAPPING("response_mappings", true, TimeUnit.MINUTES.toMillis(5)),
     SKILL("skills", false, TimeUnit.MINUTES.toMillis(5)),
     BACKGROUND_JOB("background_jobs", true, TimeUnit.MINUTES.toMillis(5)),
     PROJECT("projects", false, TimeUnit.MINUTES.toMillis(5));
+
+    /**
+     * Types published on the resource topic: those the resource subscribe API or the config replicas consume.
+     * A new consumer of another type must add it here one release before it starts consuming:
+     * pods of a release that does not list the type do not publish it.
+     * For {@link #isComplex() complex} types (SKILL, PROJECT) the events are published by the complex resource engine
+     * for the logical resource and file URLs, never for its internal marker and version files.
+     */
+    public static final Set<ResourceType> EVENT_TYPES = Set.of(
+            FILE, CONVERSATION, PROMPT, APPLICATION, TOOL_SET,
+            MODEL, APP_TYPE_SCHEMA, CATALOG_SCHEMA, INTERCEPTOR, TRANSLATOR, ROLE, PROJECT_KEY, ROUTE, GLOBAL_SETTINGS,
+            POLICY, POLICY_ASSIGNMENT, SKILL, PROJECT);
 
     private final String group;
     private final String urlSegment;
@@ -73,6 +87,8 @@ public enum ResourceTypes implements ResourceType {
             case "translators" -> TRANSLATOR;
             case "roles" -> ROLE;
             case "project_keys", "keys" -> PROJECT_KEY;
+            case "policies" -> POLICY;
+            case "policy_assignments" -> POLICY_ASSIGNMENT;
             case "routes" -> ROUTE;
             case "settings" -> GLOBAL_SETTINGS;
             case "response_mappings" -> RESPONSE_MAPPING;

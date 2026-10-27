@@ -42,6 +42,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Stream;
+import javax.annotation.Nullable;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -120,6 +122,20 @@ public class RateLimiter {
     }
 
     public Future<RateLimitResult> limit(ProxyContext context, RoleBasedEntity roleBasedEntity) {
+        return checkLimits(context, roleBasedEntity, false);
+    }
+
+    /**
+     * Checks the caller's limits like {@link #limit(ProxyContext, RoleBasedEntity)}, and the result also carries the
+     * caller's spend caps, whichever check rejects. A reached spend cap is checked first and wins over every other
+     * limit. A failure to read the spend record fails the future with {@link SpendReadException}, unless a token or
+     * request limit rejects the call, which then decides the result without caps.
+     */
+    public Future<RateLimitResult> limitWithSpendCaps(ProxyContext context, RoleBasedEntity roleBasedEntity) {
+        return checkLimits(context, roleBasedEntity, true);
+    }
+
+    private Future<RateLimitResult> checkLimits(ProxyContext context, RoleBasedEntity roleBasedEntity, boolean withSpendCaps) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {
@@ -139,10 +155,38 @@ public class RateLimiter {
 
             return taskExecutor.submit(() -> blockingCallTracer.trace("rate_limit.check", () -> {
                 BlockingCallTracer.currentSpan().setAttribute("dial.deployment", name);
-                RateLimitResult result = checkLimit(context, limit, roleBasedEntity);
+                RateLimitResult result = checkLimit(context, limit, roleBasedEntity, withSpendCaps);
                 BlockingCallTracer.currentSpan().setAttribute("dial.rate_limit.status", result.status().getCode());
                 return result;
             }));
+        } catch (Throwable e) {
+            return Future.failedFuture(e);
+        }
+    }
+
+    /**
+     * Whether any cost window of the caller is enforced, the per-minute one and a cap of 0 included. Uses the same
+     * unlimited threshold as {@link SpendCaps}, so a window too large to report is not a limit to fail closed on.
+     */
+    public boolean hasCostLimit(ProxyContext context) {
+        CostLimit costLimit = getCostLimitByUser(context);
+        return Stream.of(costLimit.getMinute(), costLimit.getDay(), costLimit.getWeek(), costLimit.getMonth())
+                .anyMatch(SpendCaps::isLimited);
+    }
+
+    /**
+     * The caller's spend caps as the pre-request check sees them, read without checking or charging anything -
+     * for a request whose limits are enforced by another one, such as the call a translator makes back to Core.
+     */
+    public Future<SpendCaps> readSpendCaps(ProxyContext context) {
+        if (resourceService == null) {
+            return Future.succeededFuture(SpendCaps.EMPTY);
+        }
+        try {
+            CostLimit costLimit = getCostLimitByUser(context);
+            RateLimitSchedule schedule = context.getConfig().getRateLimitSchedule();
+            return taskExecutor.submit(() -> blockingCallTracer.trace("rate_limit.read_spend",
+                    () -> buildSpendCaps(loadCostRateLimit(context), costLimit, System.currentTimeMillis(), schedule)));
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
@@ -169,7 +213,6 @@ public class RateLimiter {
         collectTokenLimitStats(context, limitStats, timestamp, name, schedule);
         collectRequestLimitStats(context, limitStats, timestamp, name, schedule);
         collectCostLimitStats(context, limitStats, timestamp, schedule);
-        collectAggregatedCostLimitStats(context, limitStats, timestamp, name, schedule);
         return limitStats;
     }
 
@@ -420,12 +463,6 @@ public class RateLimiter {
         rateLimit.update(timestamp, schedule, limitStats);
     }
 
-    private void collectAggregatedCostLimitStats(
-            ProxyContext context, LimitStats limitStats, long timestamp, String name, RateLimitSchedule schedule) {
-        ResourceDescriptor resourceDescription = getResourceDescription(context, getPathToAggregatedCosts(name));
-        collectCostLimitStats(resourceService.getResource(resourceDescription), limitStats, timestamp, schedule);
-    }
-
     private LimitStats create(Limit limit, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
         LimitStats limitStats = new LimitStats();
 
@@ -513,9 +550,13 @@ public class RateLimiter {
         return ResourceDescriptorFactory.fromEntityPath(ResourceTypes.LIMIT, bucketLocation, bucketLocation, path);
     }
 
-    private RateLimitResult checkLimit(ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity) {
+    private RateLimitResult checkLimit(ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity, boolean withSpendCaps) {
         long timestamp = System.currentTimeMillis();
         RateLimitSchedule schedule = context.getConfig().getRateLimitSchedule();
+        CostLimit costLimit = getCostLimitByUser(context);
+        if (withSpendCaps) {
+            return checkLimitWithSpendCaps(context, limit, roleBasedEntity, costLimit, timestamp, schedule);
+        }
 
         // Check token limits
         RateLimitResult tokenResult = checkTokenLimit(context, limit, timestamp, schedule, roleBasedEntity);
@@ -530,19 +571,67 @@ public class RateLimiter {
         }
 
         // Check cost limits
-        CostLimit costLimit = getCostLimitByUser(context);
-        return checkCostLimit(context, costLimit, timestamp, schedule);
+        CostRateLimit costRateLimit = loadCostRateLimit(context);
+        return costRateLimit == null ? RateLimitResult.SUCCESS : costRateLimit.check(timestamp, schedule, costLimit);
     }
 
-    private RateLimitResult checkCostLimit(ProxyContext context, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
-        String costsPath = getPathToCosts();
-        ResourceDescriptor resourceDescription = getResourceDescription(context, costsPath);
-        String prevValue = resourceService.getResource(resourceDescription);
-        CostRateLimit rateLimit = ProxyUtil.convertToObject(prevValue, CostRateLimit.class);
-        if (rateLimit == null) {
-            return RateLimitResult.SUCCESS;
+    /**
+     * Reads the spend record first, so a reached spend cap wins over every other limit and is rejected without touching
+     * the token or request records. A failed read decides only when no other limit rejects: the request is then
+     * about to go upstream with its spend unknown, so it fails with {@link SpendReadException}.
+     */
+    private RateLimitResult checkLimitWithSpendCaps(
+            ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
+        CostRateLimit costRateLimit = null;
+        SpendCaps spendCaps = null;
+        SpendReadException readError = null;
+        try {
+            costRateLimit = loadCostRateLimit(context);
+            spendCaps = buildSpendCaps(costRateLimit, costLimit, timestamp, schedule);
+        } catch (RuntimeException e) {
+            readError = new SpendReadException(e);
         }
-        return rateLimit.check(timestamp, schedule, costLimit);
+
+        SpendCap reported = spendCaps == null ? null : spendCaps.reported();
+        if (reported != null && reported.isExceeded()) {
+            return costRateLimit.check(timestamp, schedule, costLimit).withSpendCaps(spendCaps);
+        }
+
+        RateLimitResult tokenResult = checkTokenLimit(context, limit, timestamp, schedule, roleBasedEntity);
+        if (tokenResult.status() != HttpStatus.OK) {
+            return tokenResult.withSpendCaps(spendCaps);
+        }
+
+        RateLimitResult requestResult = checkRequestLimit(context, limit, timestamp, schedule, roleBasedEntity);
+        if (requestResult.status() != HttpStatus.OK) {
+            return requestResult.withSpendCaps(spendCaps);
+        }
+
+        if (readError != null) {
+            throw readError;
+        }
+        // only the per-minute window or a cap of 0 can reject here: neither is reported
+        RateLimitResult costResult = costRateLimit == null ? RateLimitResult.SUCCESS : costRateLimit.check(timestamp, schedule, costLimit);
+        return costResult.withSpendCaps(spendCaps);
+    }
+
+    @Nullable
+    private CostRateLimit loadCostRateLimit(ProxyContext context) {
+        ResourceDescriptor resourceDescription = getResourceDescription(context, getPathToCosts());
+        return ProxyUtil.convertToObject(resourceService.getResource(resourceDescription), CostRateLimit.class);
+    }
+
+    private static SpendCaps buildSpendCaps(@Nullable CostRateLimit rateLimit, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
+        return SpendCaps.of(List.of(
+                buildSpendCap(CalendarPeriod.DAY, rateLimit == null ? null : rateLimit.getDay(), costLimit.getDay(), timestamp, schedule),
+                buildSpendCap(CalendarPeriod.WEEK, rateLimit == null ? null : rateLimit.getWeek(), costLimit.getWeek(), timestamp, schedule),
+                buildSpendCap(CalendarPeriod.MONTH, rateLimit == null ? null : rateLimit.getMonth(), costLimit.getMonth(), timestamp, schedule)));
+    }
+
+    private static SpendCap buildSpendCap(
+            CalendarPeriod period, @Nullable CostFixedRateBucket bucket, BigDecimal total, long timestamp, RateLimitSchedule schedule) {
+        BigDecimal used = bucket == null ? BigDecimal.ZERO : bucket.reconcile(timestamp, period, schedule);
+        return new SpendCap(period, used, total, CalendarWindowCalculator.nextPeriodStart(period, timestamp, schedule));
     }
 
     private RateLimitResult checkTokenLimit(
