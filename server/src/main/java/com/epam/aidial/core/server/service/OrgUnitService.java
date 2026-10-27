@@ -288,12 +288,14 @@ public class OrgUnitService {
      * Every unit's readable assignments, read in one batch. Units whose policy can't be read are left out.
      */
     public Map<String, List<RoleAssignment>> roleAssignmentsOfAll(Map<String, OrgUnit> units) {
-        Map<String, String> keysById = new HashMap<>();
+        Map<String, List<String>> keysById = new HashMap<>();
         List<ResourceItemMetadata> items = new ArrayList<>();
         units.forEach((key, unit) -> {
             if (!key.equals(SHARED_SPACE_KEY) && unit.id() != null && isPolicyId(unit.id())) {
-                keysById.put(unit.id(), key);
-                items.add(new ResourceItemMetadata(policy(unit.id())));
+                if (!keysById.containsKey(unit.id())) {
+                    items.add(new ResourceItemMetadata(policy(unit.id())));
+                }
+                keysById.computeIfAbsent(unit.id(), id -> new ArrayList<>()).add(key);
             }
         });
         List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
@@ -302,11 +304,12 @@ public class OrgUnitService {
         Map<String, List<RoleAssignment>> result = new HashMap<>();
         for (Pair<ResourceItemMetadata, String> resource : loaded) {
             String id = resource.getKey().getDescriptor().getName();
-            String key = keysById.get(id);
+            List<String> keys = keysById.get(id);
             try {
-                result.put(key, decodePolicy(key, id, resource.getKey().getEtag(), resource.getValue()));
+                List<RoleAssignment> assignments = decodePolicy(keys.get(0), id, resource.getKey().getEtag(), resource.getValue());
+                keys.forEach(key -> result.put(key, assignments));
             } catch (IllegalStateException e) {
-                log.warn("The policy of org unit {} grants nothing until fixed: {}", key, e.getMessage());
+                log.warn("The policy of org units {} grants nothing until fixed: {}", keys, e.getMessage());
             }
         }
         return result;
