@@ -931,25 +931,23 @@ public class ComplexResourceService {
     public void delete(ResourceDescriptor resource, EtagHeader etag) {
         ResourceDescriptor marker = markerDescriptor(resource);
 
-        Map<String, FolderResourceMarker.ResourceFileMetadata> deletedFiles = new TreeMap<>();
-        resourceService.computeResource(marker, json -> {
-            if (json == null) {
-                throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + resource.getUrl());
-            }
-            FolderResourceMarker current = ProxyUtil.convertToObject(json, FolderResourceMarker.class);
+        // The events are published under the resource lock, like the other commit points, so a concurrent
+        // re-create of the resource cannot publish its CREATE before this DELETE.
+        try (LockService.Lock ignore = resourceService.lockResource(marker)) {
+            FolderResourceMarker current = readMarker(marker, false);
             if (!isActive(current)) {
                 throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + resource.getUrl());
             }
             etag.validate(current.getEtag());
-            deletedFiles.clear();
-            if (current.getFileMetadata() != null) {
-                deletedFiles.putAll(current.getFileMetadata());
-            }
+
+            Map<String, FolderResourceMarker.ResourceFileMetadata> deletedFiles =
+                    current.getFileMetadata() == null ? Map.of() : new TreeMap<>(current.getFileMetadata());
             current.setState(STATE_DELETING);
             current.setDeletedAt(System.currentTimeMillis());
-            return Objects.requireNonNull(ProxyUtil.convertToString(current));
-        });
-        publishEvents(resource, ResourceEvent.Action.DELETE, null, deletedFiles, Map.of());
+            resourceService.putResource(marker, Objects.requireNonNull(ProxyUtil.convertToString(current)),
+                    EtagHeader.ANY, null, false);
+            publishEvents(resource, ResourceEvent.Action.DELETE, null, deletedFiles, Map.of());
+        }
     }
 
     /**
