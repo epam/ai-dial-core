@@ -476,6 +476,39 @@ public class OrgUnitApiTest extends ResourceBaseTest {
     }
 
     @Test
+    @DialConfigLocation("dial-config/org-unit-roles.json")
+    void testConfiguredRolesSurviveManifestWritesAndAreSystemRoles() {
+        addReadRule("public/Acme/", "Manager");
+        assertEquals(200, create(ORG, "Acme").status());
+        List<String> expected = List.of("admin", "editor", "viewer", "member", "auditor", "manager");
+        assertEquals(expected, roleNames(roles(ORG + "/Acme")));
+
+        String manifests = """
+                { "manifests": [ { "kind": "Policy", "name": "policies/platform/roles-survive",
+                  "spec": { "priority": 10, "kind": "budget", "quantity": "cost", "object": ["opus"], "per": ["subject"],
+                            "cost": { "month": 5 } } } ] }
+                """;
+        Response validated = send(HttpMethod.POST, "/v1/admin/validate", null, manifests, "authorization", "admin");
+        assertEquals(200, validated.status(), validated.body());
+        Response applied = send(HttpMethod.POST, "/v1/admin/apply", null, manifests, "authorization", "admin");
+        assertEquals(200, applied.status(), applied.body());
+
+        JsonArray roles = roles(ORG + "/Acme");
+        assertEquals(expected, roleNames(roles));
+        for (int i = 0; i < roles.size(); i++) {
+            assertTrue(roles.getJsonObject(i).getBoolean("system"), roles.getJsonObject(i).encode());
+        }
+    }
+
+    private static List<String> roleNames(JsonArray roles) {
+        List<String> names = new ArrayList<>();
+        for (int i = 0; i < roles.size(); i++) {
+            names.add(roles.getJsonObject(i).getString("name"));
+        }
+        return names;
+    }
+
+    @Test
     void testRolesAreTheBuiltInOnes() {
         addReadRule("public/Acme/", "Manager");
         assertEquals(200, create(ORG, "Acme").status());

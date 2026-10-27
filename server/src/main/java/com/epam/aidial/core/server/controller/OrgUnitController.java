@@ -33,6 +33,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.function.BiPredicate;
 
 /**
  * Reads, creates, renames and removes org units. Switched off, every route answers as one that does not exist.
@@ -300,14 +301,11 @@ public class OrgUnitController {
                 .compose(body -> proxy.getTaskExecutor().submit(() -> {
                     requireEnabled();
                     List<String> path = decode(rawPath);
-                    Set<String> held = requireGrant(admin, path, roles, OrgUnitRoles.WRITE);
+                    requireGrant(admin, path, roles, OrgUnitRoles.WRITE);
                     CreateRoleAssignmentRequest request = parse(body.toString(), CreateRoleAssignmentRequest.class,
                             "Request body must be {\"roleName\": \"admin\", \"subject\": {\"type\": \"claimsPredicate\", "
                                     + "\"source\": \"email\", \"function\": \"EQUAL\", \"targets\": […]}}");
-                    if (held != null && roles.exists(request.roleName()) && !roles.covers(held, request.roleName())) {
-                        throw new HttpException(HttpStatus.FORBIDDEN, "You can give only roles whose permissions you hold in this unit");
-                    }
-                    return orgUnitService.addRoleAssignment(path, request.roleName(), request.subject(), roles);
+                    return orgUnitService.addRoleAssignment(path, request.roleName(), request.subject(), roles, mayChange(admin, roles));
                 }))
                 .onSuccess(assignment -> context.respond(HttpStatus.OK, assignment))
                 .onFailure(this::respondError);
@@ -343,8 +341,8 @@ public class OrgUnitController {
                 .submit(() -> {
                     requireEnabled();
                     List<String> path = decode(rawPath);
-                    Set<String> held = requireGrant(admin, path, roles, OrgUnitRoles.WRITE);
-                    orgUnitService.removeRoleAssignment(path, id, roleName -> held == null || roles.covers(held, roleName));
+                    requireGrant(admin, path, roles, OrgUnitRoles.WRITE);
+                    orgUnitService.removeRoleAssignment(path, id, mayChange(admin, roles));
                     return new DeleteRoleAssignmentResult(id);
                 })
                 .onSuccess(result -> context.respond(HttpStatus.OK, result))
@@ -382,18 +380,35 @@ public class OrgUnitController {
     }
 
     /**
-     * Lets a DIAL admin through, answering null; anyone else needs the action on the unit's role assignments, and gets
-     * their roles there. A path that names no unit refuses them the same way, so it tells them nothing.
+     * Lets a DIAL admin through; anyone else needs the action on the unit's role assignments. A path that names no unit
+     * refuses them the same way, so it tells them nothing. A change checks again in its own write ({@link #mayChange}).
      */
-    private Set<String> requireGrant(boolean admin, List<String> path, OrgUnitRoles roles, String action) {
+    private void requireGrant(boolean admin, List<String> path, OrgUnitRoles roles, String action) {
         if (admin) {
-            return null;
+            return;
         }
         Set<String> held = OrgUnitSubjects.heldRoles(context, orgUnitService.roleAssignmentsAt(path));
         if (!roles.allows(held, action, OrgUnitRoles.ROLE_ASSIGNMENTS)) {
             throw new HttpException(HttpStatus.FORBIDDEN, "Only administrators and the unit's admins may manage its role assignments");
         }
-        return held;
+    }
+
+    /**
+     * Whether the caller may give or remove the role, decided on the unit's assignments as they are when the change is
+     * written: a DIAL admin any role, anyone else only while they still hold write on the assignments there, and only
+     * roles their own roles there cover.
+     */
+    private BiPredicate<List<RoleAssignment>, String> mayChange(boolean admin, OrgUnitRoles roles) {
+        return (assignments, roleName) -> {
+            if (admin) {
+                return true;
+            }
+            Set<String> held = OrgUnitSubjects.heldRoles(context, assignments);
+            if (!roles.allows(held, OrgUnitRoles.WRITE, OrgUnitRoles.ROLE_ASSIGNMENTS)) {
+                throw new HttpException(HttpStatus.FORBIDDEN, "Only administrators and the unit's admins may manage its role assignments");
+            }
+            return roles.covers(held, roleName);
+        };
     }
 
     private static <T> T parse(String body, Class<T> type, String message) {
