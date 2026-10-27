@@ -7,8 +7,10 @@ import com.epam.aidial.core.server.data.orgunit.OrgUnitData;
 import com.epam.aidial.core.server.data.orgunit.OrgUnitList;
 import com.epam.aidial.core.server.data.orgunit.RoleAssignment;
 import com.epam.aidial.core.server.data.orgunit.Subject;
+import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
@@ -31,6 +33,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -74,7 +77,7 @@ class OrgUnitServiceTest {
         ResourceItemMetadata second = metadata("\"2\"");
         String withoutBasel = UNITS.replace("public/Risk/US Risk/Basel/", "public/Risk/Other/");
         when(resources.getResourceWithMetadata(any(), any())).thenReturn(Pair.of(first, withoutBasel), Pair.of(second, UNITS));
-        OrgUnitService service = new OrgUnitService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         assertFalse(service.getUnitList().units().containsKey("public/Risk/US Risk/Basel/"));
         assertTrue(service.getUnitList().units().containsKey("public/Risk/US Risk/Basel/"));
@@ -104,7 +107,7 @@ class OrgUnitServiceTest {
             return null;
         });
         RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         OrgUnitData root = service.read(List.of("public"), false, null, true);
         assertEquals("public", root.displayName());
@@ -123,7 +126,7 @@ class OrgUnitServiceTest {
         when(resources.getResourceWithMetadata(any(), any())).thenReturn(Pair.of(metadata, "{\"units\": {}}"));
         RuleService rules = mock(RuleService.class);
         LockService locks = locks();
-        OrgUnitService service = new OrgUnitService(resources, rules, locks, new OrgUnitSettings(true), () -> "new-id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks, new OrgUnitSettings(true), () -> "new-id", () -> 0L);
 
         OrgUnitData created = service.create(List.of("public"), "Acme", null, "admin");
 
@@ -168,7 +171,7 @@ class OrgUnitServiceTest {
         when(resources.computeResource(any(), any(Function.class)))
                 .thenAnswer(invocation -> ((Function<String, String>) invocation.getArgument(1)).apply("{not json"));
         RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         assertThrows(IllegalStateException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
     }
@@ -193,7 +196,7 @@ class OrgUnitServiceTest {
             markerUnderLock.set(locked.get());
             return null;
         });
-        OrgUnitService service = new OrgUnitService(resources, rules, locks, new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks, new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         service.create(List.of("public"), "Acme", null, "admin");
 
@@ -206,7 +209,7 @@ class OrgUnitServiceTest {
         ResourceService resources = writableResources("{\"units\": {}}", written);
         when(resources.putFile(any(), any(), any(), any(), any())).thenThrow(new IllegalStateException("blob store down"));
         RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         assertEquals("public/Acme", service.create(List.of("public"), "Acme", null, "admin").path());
 
@@ -227,7 +230,7 @@ class OrgUnitServiceTest {
         when(resources.getFolderMetadata(argThat(folder -> folder != null && folder.getType() == ResourceTypes.FILE), eq("page-2"), anyInt(), anyBoolean()))
                 .thenReturn(new ResourceFolderMetadata(taken, List.of(new ResourceFolderMetadata(taken)), null));
         RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         HttpException refused = assertThrows(HttpException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
 
@@ -246,7 +249,7 @@ class OrgUnitServiceTest {
         when(resources.getFolderMetadata(argThat(folder -> folder != null && folder.getType() == ResourceTypes.PROJECT), any(), anyInt(), anyBoolean()))
                 .thenReturn(new ResourceFolderMetadata(project, List.of(new ResourceFolderMetadata(project)), null));
         RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         HttpException refused = assertThrows(HttpException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
 
@@ -267,7 +270,7 @@ class OrgUnitServiceTest {
         when(resources.getFolderMetadata(eq(folder), any(), anyInt(), anyBoolean()))
                 .thenReturn(null, new ResourceFolderMetadata(folder, List.of(new ResourceItemMetadata(published)), null));
         RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         service.create(List.of("public"), "Acme", null, "admin");
 
@@ -303,7 +306,7 @@ class OrgUnitServiceTest {
             return false;
         });
         RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks, new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks, new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         service.create(List.of("public"), "Acme", null, "admin");
 
@@ -319,7 +322,7 @@ class OrgUnitServiceTest {
         ResourceItemMetadata after = metadata("\"2\"");
         when(resources.getResourceWithMetadata(any(), any()))
                 .thenReturn(Pair.of(before, "{\"units\": {}}"), Pair.of(after, "{\"units\": {\"public/acme/\": {\"id\": \"a\"}}}"));
-        OrgUnitService service = new OrgUnitService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         HttpException refused = assertThrows(HttpException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
 
@@ -338,7 +341,7 @@ class OrgUnitServiceTest {
         when(resources.getFolderMetadata(eq(folder), any(), anyInt(), anyBoolean()))
                 .thenReturn(new ResourceFolderMetadata(folder, List.of(new ResourceItemMetadata(memo)), null));
         RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         HttpException refused = assertThrows(HttpException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
         assertTrue(refused.getMessage().contains("already has a folder named Acme"), refused.getMessage());
@@ -347,7 +350,7 @@ class OrgUnitServiceTest {
         ResourceDescriptor app = ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION, ResourceDescriptor.PUBLIC_BUCKET,
                 ResourceDescriptor.PUBLIC_LOCATION, "Acme");
         when(items.hasResource(app)).thenReturn(true);
-        OrgUnitService other = new OrgUnitService(items, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService other = newService(items, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         refused = assertThrows(HttpException.class, () -> other.create(List.of("public"), "Acme", null, "admin"));
         assertTrue(refused.getMessage().contains("already has an item named Acme"), refused.getMessage());
@@ -405,9 +408,9 @@ class OrgUnitServiceTest {
         service.requireSameUnit(inRisk, resource(ResourceTypes.FILE, "Risk/US Risk/Basel/Policies/"));
 
         ResourceService resources = mock(ResourceService.class);
-        new OrgUnitService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(false), () -> "id", () -> 0L)
+        newService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(false), () -> "id", () -> 0L)
                 .requireSameUnit(inRisk, inBasel);
-        new OrgUnitService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L)
+        newService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L)
                 .requireSameUnit(inRisk, resource(ResourceTypes.FILE, "Risk/b.pdf"));
         verify(resources, never()).getResourceWithMetadata(any(), any());
     }
@@ -423,7 +426,7 @@ class OrgUnitServiceTest {
         when(resources.getFolderMetadata(eq(acme), eq("page-2"), anyInt(), eq(true))).thenReturn(new ResourceFolderMetadata(acme, List.of(
                 new ResourceItemMetadata(resource(ResourceTypes.FILE, "Acme/c.txt")),
                 new ResourceItemMetadata(resource(ResourceTypes.FILE, "Acme/d.txt"))), "page-3"));
-        OrgUnitService service = new OrgUnitService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         HttpException refused = assertThrows(HttpException.class, () -> service.delete(List.of("public", "Acme"), false));
 
@@ -441,7 +444,7 @@ class OrgUnitServiceTest {
         ResourceDescriptor prompts = resource(ResourceTypes.PROMPT, "Acme/");
         when(resources.getFolderMetadata(eq(prompts), any(), anyInt(), eq(true))).thenReturn(new ResourceFolderMetadata(prompts,
                 List.of(new ResourceItemMetadata(resource(ResourceTypes.PROMPT, "Acme/.dial_folder"))), null));
-        OrgUnitService service = new OrgUnitService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         HttpException refused = assertThrows(HttpException.class, () -> service.delete(List.of("public", "Acme"), false));
 
@@ -458,7 +461,7 @@ class OrgUnitServiceTest {
                 .thenReturn(new ResourceFolderMetadata(acme, List.of(new ResourceItemMetadata(marker)), null));
         when(resources.deleteResource(eq(marker), any())).thenThrow(new IllegalStateException("blob store down"));
         RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         assertThrows(IllegalStateException.class, () -> service.delete(List.of("public", "Acme"), false));
 
@@ -472,7 +475,7 @@ class OrgUnitServiceTest {
         ResourceService resources = writableResources("{\"units\": {}}", written);
         RuleService rules = mock(RuleService.class);
         doThrow(new IllegalStateException("redis down")).when(rules).removeRulesUnder(any());
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         assertEquals("public/Acme", service.create(List.of("public"), "Acme", null, "admin").path());
         assertTrue(written.get().contains("public/Acme/"));
@@ -483,7 +486,7 @@ class OrgUnitServiceTest {
         ResourceService resources = writableResources("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", new AtomicReference<>());
         RuleService rules = mock(RuleService.class);
         doThrow(new IllegalStateException("redis down")).when(rules).removeRulesUnder(any());
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         assertEquals(List.of("public/Acme"), service.delete(List.of("public", "Acme"), false));
     }
@@ -495,7 +498,7 @@ class OrgUnitServiceTest {
         AtomicReference<String> written = new AtomicReference<>();
         ResourceService resources = writableResources(tree, written);
         RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         assertEquals(List.of("public/Acme/Risk", "public/Acme"), service.delete(List.of("public", "Acme"), true));
 
@@ -763,13 +766,20 @@ class OrgUnitServiceTest {
         assertEquals("public/Acme/", OrgUnitService.ownerOf(service.getUnitList().units(), resource(ResourceTypes.FILE, "Acme/a.pdf")));
     }
 
+    private static OrgUnitService newService(ResourceService resources, RuleService rules, LockService locks, OrgUnitSettings settings,
+                                             Supplier<String> ids, LongSupplier clock) {
+        ComplexResourceService complexResources = new ComplexResourceService(resources, locks, mock(BlobStorage.class),
+                new ComplexResourceService.Settings());
+        return new OrgUnitService(new OrgUnitLookup(resources, settings), resources, complexResources, rules, locks, ids, clock);
+    }
+
     private static ResourceDescriptor resource(ResourceTypes type, String path) {
         return ResourceDescriptorFactory.fromDecoded(type, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path);
     }
 
     private static OrgUnitService writable(String stored, AtomicReference<String> written) {
         RuleService rules = mock(RuleService.class);
-        return new OrgUnitService(writableResources(stored, written), rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        return newService(writableResources(stored, written), rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
     }
 
     private static ResourceService writableResources(String stored, AtomicReference<String> written) {
@@ -801,7 +811,7 @@ class OrgUnitServiceTest {
     }
 
     private static OrgUnitService service(FakeOrgUnitStorage storage) {
-        return new OrgUnitService(storage.resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        return newService(storage.resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
     }
 
     private static OrgUnitService service(String document) {
@@ -810,7 +820,7 @@ class OrgUnitServiceTest {
             ResourceItemMetadata metadata = metadata("\"1\"");
             when(resources.getResourceWithMetadata(any(), any())).thenReturn(Pair.of(metadata, document));
         }
-        return new OrgUnitService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        return newService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
     }
 
     /**

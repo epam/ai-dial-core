@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.data.Publication;
 import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
+import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -191,8 +192,8 @@ class OrgUnitApprovalsTest {
 
     private OrgUnitApprovals approvals(boolean enabled) {
         when(encryption.encrypt(anyString())).thenAnswer(invocation -> "enc-" + invocation.<String>getArgument(0).replace("/", "_"));
-        OrgUnitService units = new OrgUnitService(resources, mock(RuleService.class), mock(LockService.class),
-                new OrgUnitSettings(enabled), () -> "id", () -> 0L);
+        OrgUnitService units = new OrgUnitService(new OrgUnitLookup(resources, new OrgUnitSettings(enabled)), resources,
+                mock(ComplexResourceService.class), mock(RuleService.class), mock(LockService.class), () -> "id", () -> 0L);
         return new OrgUnitApprovals(units, encryption, resources);
     }
 
