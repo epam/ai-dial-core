@@ -3,6 +3,7 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -202,6 +203,11 @@ public class MessagesApiTest extends ResourceBaseTest {
             Thread.sleep(1000); // wait for core to save usage
             Response second = post(client, MESSAGES_PATH, requestBody("claude-limited", false), "api-key", "proxyKey1");
             assertEquals(429, second.status());
+            // the daily window has the longest wait, so it decides: a calendar window asks the client not to retry
+            assertEquals("false", second.headers().get("x-should-retry"));
+            JsonNode error = ProxyUtil.MAPPER.readTree(second.body()).get("error");
+            assertEquals("rate_limit_error", error.get("type").asText());
+            assertTrue(error.get("message").asText().contains("daily token limit for claude-limited"), second.body());
         }
     }
 
