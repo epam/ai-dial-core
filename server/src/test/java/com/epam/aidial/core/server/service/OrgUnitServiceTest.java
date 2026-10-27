@@ -612,6 +612,44 @@ class OrgUnitServiceTest {
     }
 
     @Test
+    void testOtherNodesSeeAssignmentChanges() {
+        FakeOrgUnitStorage storage = new FakeOrgUnitStorage(Map.of("units", "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}"));
+        OrgUnitService writer = service(storage);
+        OrgUnitService reader = service(storage);
+        List<String> acme = List.of("public", "Acme");
+        Subject bob = new Subject.ClaimsPredicate("email", Rule.Function.EQUAL, List.of("bob@acme.com"));
+
+        assertEquals(List.of(), reader.listRoleAssignments(acme));
+        writer.addRoleAssignment(acme, "admin", bob, ROLES);
+        assertEquals(List.of("admin"), reader.listRoleAssignments(acme).stream().map(RoleAssignment::roleName).toList());
+        writer.removeRoleAssignment(acme, "id", roleName -> true);
+        assertEquals(List.of(), reader.listRoleAssignments(acme));
+    }
+
+    @Test
+    void testPoliciesNoUnitNamesAreNeverRead() {
+        String orphan = "{\"roleAssignments\": [{\"id\": \"r1\", \"roleName\": \"admin\", "
+                + "\"subject\": {\"type\": \"claimsPredicate\", \"source\": \"email\", \"function\": \"EQUAL\", \"targets\": [\"bob@acme.com\"]}}]}";
+        FakeOrgUnitStorage storage = new FakeOrgUnitStorage(Map.of("units", "{\"units\": {}}", "old", orphan));
+        OrgUnitService service = service(storage);
+
+        service.create(List.of("public"), "Acme", null, "admin");
+
+        assertEquals(List.of(), service.listRoleAssignments(List.of("public", "Acme")));
+        assertEquals(List.of(), service.roleAssignmentsAt(List.of("public", "Acme")));
+    }
+
+    @Test
+    void testEmptyUnitWithAnUnreadablePolicyCanBeDeleted() {
+        FakeOrgUnitStorage storage = new FakeOrgUnitStorage(Map.of("units", "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", "a", "{not json"));
+        OrgUnitService service = service(storage);
+
+        assertThrows(IllegalStateException.class, () -> service.listRoleAssignments(List.of("public", "Acme")));
+        assertEquals(List.of("public/Acme"), service.delete(List.of("public", "Acme"), false));
+        assertEquals(Set.of("units"), storage.documents.keySet());
+    }
+
+    @Test
     void testCorruptPolicyGrantsNothingInItsUnitOnly() {
         String tree = "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}, \"public/Beta/\": {\"id\": \"b\"}}}";
         String good = "{\"roleAssignments\": [{\"id\": \"r1\", \"roleName\": \"admin\", "
