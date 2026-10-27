@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiOperations;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
@@ -31,6 +32,9 @@ import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequest
 import com.epam.aidial.core.server.function.enhancement.ResolveEncryptedContentAffinityFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
+import com.epam.aidial.core.server.limiter.SpendCap;
+import com.epam.aidial.core.server.limiter.SpendCaps;
+import com.epam.aidial.core.server.limiter.SpendReadException;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
@@ -61,6 +65,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
+import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_CACHE_POLICY;
 
@@ -68,6 +73,12 @@ import static com.epam.aidial.core.server.Proxy.HEADER_CACHE_POLICY;
 public class ResponsesController extends BaseDeploymentPostController {
 
     private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
+
+    /**
+     * The caller's caps as read by {@link #verifyLimit()}; null when no caps were read.
+     */
+    @Nullable
+    private SpendCaps spendCaps;
 
     public ResponsesController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
@@ -101,12 +112,28 @@ public class ResponsesController extends BaseDeploymentPostController {
                                     allowableValues = {"availability-priority", "cache-priority"})
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success"),
+                            @ApiResponse(code = 200, description = "Success",
+                                    headers = {
+                                            @ApiHeader(name = "x-codex-primary-used-percent",
+                                                    description = "Spent share of the caller's reported DIAL day/week/month spend cap before this request, "
+                                                            + "a whole percent rounded down. Sent only when the caller has such a cost limit; "
+                                                            + "the upstream's own `x-codex-*` headers are removed"),
+                                            @ApiHeader(name = "x-codex-primary-window-minutes", description = "`1440`, `10080` or `43200`: the reported cap's day, week or month"),
+                                            @ApiHeader(name = "x-codex-primary-reset-at", description = "When the reported cap resets, Unix seconds"),
+                                            @ApiHeader(name = "x-codex-secondary-used-percent",
+                                                    description = "Same as `x-codex-primary-used-percent` for the fullest of the other capped windows; absent when there is none"),
+                                            @ApiHeader(name = "x-codex-secondary-window-minutes", description = "Window of the secondary cap, as `x-codex-primary-window-minutes`"),
+                                            @ApiHeader(name = "x-codex-secondary-reset-at", description = "When the secondary cap resets, Unix seconds")
+                                    }),
                             @ApiResponse(code = 400),
                             @ApiResponse(code = 403),
                             @ApiResponse(code = 404),
                             @ApiResponse(code = 415),
-                            @ApiResponse(code = 429, description = "Rate limit exceeded", body = @ApiSchema(implementation = ErrorData.class)),
+                            @ApiResponse(code = 429, description = "DIAL limit reached. A reached day/week/month spend cap gives an error of type "
+                                    + "`usage_limit_reached` with `resets_at` (Unix seconds) and `limit_window_minutes`, `retry-after` and the "
+                                    + "`x-codex-primary-*` headers at 100; an unreadable spend counter of a caller with a cost limit gives an error "
+                                    + "without `retry-after`; a token, request or per-minute cost limit gives an error with `retry-after`",
+                                    body = @ApiSchema(implementation = ErrorData.class)),
                             @ApiResponse(code = 500),
                             @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
                             @ApiResponse(code = 503)
@@ -126,12 +153,28 @@ public class ResponsesController extends BaseDeploymentPostController {
                                     allowableValues = {"availability-priority", "cache-priority"})
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success"),
+                            @ApiResponse(code = 200, description = "Success",
+                                    headers = {
+                                            @ApiHeader(name = "x-codex-primary-used-percent",
+                                                    description = "Spent share of the caller's reported DIAL day/week/month spend cap before this request, "
+                                                            + "a whole percent rounded down. Sent only when the caller has such a cost limit; "
+                                                            + "the upstream's own `x-codex-*` headers are removed"),
+                                            @ApiHeader(name = "x-codex-primary-window-minutes", description = "`1440`, `10080` or `43200`: the reported cap's day, week or month"),
+                                            @ApiHeader(name = "x-codex-primary-reset-at", description = "When the reported cap resets, Unix seconds"),
+                                            @ApiHeader(name = "x-codex-secondary-used-percent",
+                                                    description = "Same as `x-codex-primary-used-percent` for the fullest of the other capped windows; absent when there is none"),
+                                            @ApiHeader(name = "x-codex-secondary-window-minutes", description = "Window of the secondary cap, as `x-codex-primary-window-minutes`"),
+                                            @ApiHeader(name = "x-codex-secondary-reset-at", description = "When the secondary cap resets, Unix seconds")
+                                    }),
                             @ApiResponse(code = 400),
                             @ApiResponse(code = 403),
                             @ApiResponse(code = 404),
                             @ApiResponse(code = 415),
-                            @ApiResponse(code = 429, description = "Rate limit exceeded", body = @ApiSchema(implementation = ErrorData.class)),
+                            @ApiResponse(code = 429, description = "DIAL limit reached. A reached day/week/month spend cap gives an error of type "
+                                    + "`usage_limit_reached` with `resets_at` (Unix seconds) and `limit_window_minutes`, `retry-after` and the "
+                                    + "`x-codex-primary-*` headers at 100; an unreadable spend counter of a caller with a cost limit gives an error "
+                                    + "without `retry-after`; a token, request or per-minute cost limit gives an error with `retry-after`",
+                                    body = @ApiSchema(implementation = ErrorData.class)),
                             @ApiResponse(code = 500),
                             @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
                             @ApiResponse(code = 503)
@@ -221,11 +264,62 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private Future<Void> verifyLimit() {
-        return checkLimits(context.getDeployment())
+        if (!isSubjectToLimits(context.getDeployment())) {
+            return readTranslatedSpendCaps();
+        }
+        return proxy.getRateLimiter().limitWithSpendCaps(context, context.getDeployment())
+                .recover(error -> {
+                    // fail closed only when the spend itself is unknown to a caller it would cap; any other failure stays a 500
+                    if (error instanceof SpendReadException && proxy.getRateLimiter().hasCostLimit(context)) {
+                        log.warn("Failed to read spend, rejecting the request. Deployment: {}", context.getDeployment().getName(), error);
+                        return Future.failedFuture(CodexLimitResponses.spendUnavailable());
+                    }
+                    return Future.failedFuture(error);
+                })
                 .map(rateLimit -> {
+                    rejectIfSpendCapReached(rateLimit.spendCaps());
                     rateLimit.throwIfError();
+                    spendCaps = rateLimit.spendCaps();
                     return null;
                 });
+    }
+
+    /**
+     * A translated request is checked and charged by the call the translator makes back to Core, so this one only
+     * reads the spend caps for the headers. It still rejects a cap that is already reached, and it fails open when the
+     * record is unreadable: the inner call enforces either way.
+     */
+    private Future<Void> readTranslatedSpendCaps() {
+        return proxy.getRateLimiter().readSpendCaps(context)
+                .recover(error -> {
+                    log.warn("Failed to read spend caps, sending no limit headers. Deployment: {}", context.getDeployment().getName(), error);
+                    return Future.succeededFuture(SpendCaps.EMPTY);
+                })
+                .map(caps -> {
+                    rejectIfSpendCapReached(caps);
+                    spendCaps = caps;
+                    return null;
+                });
+    }
+
+    /**
+     * A reached spend cap takes precedence over any other limit, so it is checked first wherever the caps are read.
+     */
+    private static void rejectIfSpendCapReached(@Nullable SpendCaps caps) {
+        SpendCap reported = caps == null ? null : caps.reported();
+        if (reported != null && reported.isExceeded()) {
+            throw CodexLimitResponses.spendCapReached(reported, System.currentTimeMillis());
+        }
+    }
+
+    /**
+     * Must run before the first body write. Spend headers go on a 200 only and carry the state read before the request.
+     */
+    private void putLimitHeaders(HttpServerResponse response, HttpClientResponse proxyResponse) {
+        CodexLimitResponses.stripUpstreamCodexHeaders(response.headers());
+        if (proxyResponse.statusCode() == 200 && spendCaps != null) {
+            CodexLimitResponses.putSpendHeaders(response.headers(), spendCaps);
+        }
     }
 
     private ResponsesApiRequest parseBody(Buffer body) {
@@ -370,6 +464,7 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
+        putLimitHeaders(response, proxyResponse);
         putUpstreamAttempts(response, upstreamRoute.getAttemptCount());
 
         responseStream.pipe()
@@ -389,6 +484,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                     context.setResponseBodyTimestamp(System.currentTimeMillis());
                     HttpServerResponse response = context.getResponse();
                     ProxyUtil.copyResponse(response, proxyResponse);
+                    putLimitHeaders(response, proxyResponse);
                     response.setChunked(false);
                     response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
                     putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());

@@ -41,6 +41,17 @@ public record SpendCaps(List<SpendCap> windows, @Nullable SpendCap reported) {
     }
 
     /**
+     * The fullest capped window other than the reported one, ties going to the longer period; null when there is none.
+     */
+    @Nullable
+    public SpendCap findSecondary() {
+        return windows.stream()
+                .filter(window -> !window.equals(reported))
+                .max(Comparator.comparing(SpendCap::ratio).thenComparing(SpendCap::period))
+                .orElse(null);
+    }
+
+    /**
      * Whether a cost window of this total is enforced at all; at or above 2^53 it counts as unlimited, as the client
      * could not represent it exactly anyway.
      */
