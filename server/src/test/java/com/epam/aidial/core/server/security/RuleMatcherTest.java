@@ -185,6 +185,17 @@ class RuleMatcherTest {
                 List.of("admin"), false);
     }
 
+    @Test
+    void testMatchOnRolesAndClaims() {
+        ObjectNode claims = ProxyUtil.MAPPER.valueToTree(Map.of("email", "a@example.com"));
+
+        Assertions.assertTrue(RuleMatcher.match(List.of("dial"), claims, List.of()));
+        Assertions.assertTrue(RuleMatcher.match(List.of("dial"), claims, List.of(rule("roles", Rule.Function.EQUAL, "dial"))));
+        Assertions.assertTrue(RuleMatcher.match(List.of(), claims, List.of(rule("email", Rule.Function.CONTAIN, "@example.com"))));
+        Assertions.assertFalse(RuleMatcher.match(List.of("dial"), null, List.of(rule("email", Rule.Function.TRUE))));
+        Assertions.assertFalse(RuleMatcher.match(List.of("dial"), claims, List.of(rule("roles", Rule.Function.EQUAL, "admin"))));
+    }
+
     void verifyOnAccessToken(List<Rule> rules, List<String> userRoles, Map<String, Object> userClaims, boolean expected) {
         ProxyContext context = Mockito.mock(ProxyContext.class);
         Mockito.when(context.getUserRoles()).thenReturn(userRoles);
