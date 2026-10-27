@@ -281,8 +281,8 @@ invitation for resources in the caller's own bucket SHALL be answered `400` `Res
 - **THEN** Core answers `400` with body `Resource conversations/<b1>/folder/conversation already belong to you`
 
 ### Requirement: Invitation expiry
-Core SHALL set an invitation's `expireAt` to its creation plus the smallest `roles.<role>.share.<TYPE>.invitation_ttl`
-(hours) over the shared types, falling back to `invitations.ttlInSeconds` (default `259200`) rounded up to whole hours.
+Core SHALL set an invitation's `expireAt` to its creation plus the smallest, over the shared types, of the largest
+`roles.<role>.share.<TYPE>.invitation_ttl` (hours) over the sharer's roles, falling back to `invitations.ttlInSeconds` (default `259200`) rounded up to whole hours.
 After `expireAt`, read and accept SHALL be answered `404` and the invitation removed.
 
 #### Scenario: Expired invitation

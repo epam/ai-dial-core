@@ -98,7 +98,9 @@ bucket `response_mappings` at `<deploymentName>/<uuid>` holding `{"upstreamRespo
 
 ### Requirement: Unstored responses
 When the create body has `store: false`, Core SHALL still replace the origin's id with a fresh dial id but SHALL NOT
-write a mapping, so every later item operation on that id answers `404`.
+write a mapping, so every later item operation on that id answers `404`. With `background: true` as well, the job is
+never finished and Core records no usage for it: a non-streaming create still writes the job record, which polling
+and expiry skip for want of a mapping, so it is never deleted; a streaming create writes no record.
 
 #### Scenario: store false
 - **WHEN** a client creates a response with `{"model":"test","store":false}` and then sends
@@ -129,7 +131,8 @@ schedule it for polling. The per-request key's longer TTL is app-to-model-accoun
 
 #### Scenario: Job record write fails
 - **WHEN** writing the background job record fails
-- **THEN** the client still receives the rewritten answer and no job is scheduled
+- **THEN** the client still receives the rewritten answer, no job is scheduled, Core invalidates the per-request key
+  and records no usage
 
 ### Requirement: Background create with streaming (stream true, background true)
 When `background` and `stream` are both true, Core SHALL write the background job record when it writes the mapping
@@ -254,7 +257,8 @@ token stats; every finish SHALL invalidate the per-request key and write one ana
 Core SHALL serve `GET /openai/v1/responses/{id}`, `POST /openai/v1/responses/{id}/cancel` and
 `DELETE /openai/v1/responses/{id}`, where `{id}` is a dial id. An id with no mapping SHALL get `404` with body
 `{"error":{"message":"Response with id '<id>' not found.","display_message":"Response with id '<id>' not found.",
-"type":"invalid_request_error"}}`; an id not starting with `dial_` SHALL get `500`.
+"type":"invalid_request_error"}}`; an id not of the form `dial_<deploymentName>_<uuid>` (no `dial_` prefix, or no `_`
+after it) SHALL get `500`.
 
 #### Scenario: Unknown id
 - **WHEN** a client sends `GET /openai/v1/responses/dial_test-deployment_unknown` and no mapping exists for it
@@ -367,6 +371,15 @@ the period is not configurable. After deletion, item operations on the id SHALL 
 - **WHEN** the housekeeping pass finds `response_mappings/m/abc` created 31 days ago
 - **THEN** Core deletes it and `GET /openai/v1/responses/dial_m_abc` answers `404`
 
+### Requirement: Nested mappings never expire
+The housekeeping pass SHALL delete only items directly inside a top-level folder, `response_mappings/<deployment>/<uuid>`,
+so the mapping of a deployment whose name contains `/` (a custom application, `applications/<bucket>/<path>`) is
+never deleted.
+
+#### Scenario: Custom application mapping
+- **WHEN** the housekeeping pass finds `response_mappings/applications/<bucket>/app/abc` created 31 days ago
+- **THEN** Core does not delete it
+
 ### Requirement: Background job settings
 Core SHALL read the `backgroundJob` block of the static settings with these code defaults: `initialPollIntervalMs`
 `10000`, `maxPollIntervalMs` `300000`, `pollBackoffFactor` `2.0`, `maxSequentialPollFailures` `10`, `jobTtlMs`
@@ -401,5 +414,5 @@ next interceptor, and from the last one to the origin.
 #### Scenario: Interceptor override paths
 - **WHEN** interceptor `guard` declares `interfaces.openaiResponses` base url `http://adapter/root/` with
   `overridePaths` `getOpenaiResponsesById: /get/{id}` and a client sends
-  `GET /openai/v1/responses/dial_123?stream=true&starting_after=42`
-- **THEN** the interceptor receives `GET http://adapter/root/get/dial_123?stream=true&starting_after=42`
+  `GET /openai/v1/responses/dial_m_123?stream=true&starting_after=42`, the mapping's deployment `m` listing `guard`
+- **THEN** the interceptor receives `GET http://adapter/root/get/dial_m_123?stream=true&starting_after=42`

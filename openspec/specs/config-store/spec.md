@@ -357,9 +357,10 @@ missing folder `404`.
 - **THEN** Core answers `400`
 
 ### Requirement: Metadata listing is GET only
-On a metadata URL with a bound `(type, bucket)` pair, a method other than `GET` or `HEAD` SHALL answer `405` with body
+On a metadata URL with a bound `(type, bucket)` pair, `POST`, `PUT` and `DELETE` SHALL answer `405` with body
 `Not implemented` and `Allow: GET` before authorization, and type `settings` SHALL answer the same `405` to an
-authorized `GET`.
+authorized `GET`. `HEAD` and `PATCH` are not routed to the metadata API and fall through to the config routes
+(request-routing).
 
 #### Scenario: PUT on model metadata
 - **WHEN** a caller without the admin role sends `PUT /v1/metadata/models/platform/`
@@ -466,12 +467,16 @@ failure is an unresolved interceptor reference SHALL be written as `APPLIED_INVA
 Core SHALL serve `GET /v1/admin/config/file/{type}[/{name}]` from the file config alone, to admins:
 `{"items": [{"name": ...}]}` for a type, the entity with `name` and `status: "valid"` for a name, `404` for a missing
 name. Type `keys` SHALL answer `403` with body `Access to file-sourced keys via this surface is disabled` for every
-caller. A method other than `GET` or `HEAD` SHALL answer `405` with body `Not implemented` and `Allow: GET` before
-any authorization check.
+caller.
 
 #### Scenario: Keys hidden
 - **WHEN** an admin sends `GET /v1/admin/config/file/keys/proxyKey1`
 - **THEN** Core answers `403`
+
+### Requirement: File config inspection is GET only
+On `/v1/admin/config/file/{type}[/{name}]`, `POST`, `PUT` and `DELETE` SHALL answer `405` with body `Not implemented`
+and `Allow: GET` before any authorization check; `HEAD` and `PATCH` fall through to the config routes
+(request-routing).
 
 #### Scenario: DELETE on file config
 - **WHEN** a caller without the admin role sends `DELETE /v1/admin/config/file/models/test-model-v1`

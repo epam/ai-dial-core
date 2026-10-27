@@ -40,7 +40,7 @@ Core SHALL answer `405` with an empty body and no `Allow` header to a request wh
 Core SHALL answer `413` with body `Request body is too large`, before the health, version and metadata checks and
 without credentials, to a request whose `Content-Length` exceeds `storage.maxUploadedFileSize` (default 536870912)
 when its `Content-Type` starts with `multipart/form-data`, or exceeds `resources.maxSize` (default 67108864)
-otherwise. A request without a parsable `Content-Length` SHALL pass this check.
+otherwise. A request without a parsable `Content-Length` SHALL be checked as 1024 bytes long.
 
 #### Scenario: Oversized JSON body
 - **WHEN** `resources.maxSize` is `1024` and a client sends `PUT /v1/conversations/<bucket>/c` with
@@ -48,8 +48,9 @@ otherwise. A request without a parsable `Content-Length` SHALL pass this check.
 - **THEN** Core answers `413` with body `Request body is too large`
 
 ### Requirement: Health check
-Core SHALL answer `GET /health` without credentials: `200` with an empty body when the Redis ping completes,
-`500` with an empty body when it fails. The path is compared after percent-decoding.
+Core SHALL answer `GET /health` without credentials: `200` with an empty body when the Redis ping call returns,
+whether or not every node answered, and `500` with an empty body when the call throws. The path is compared after
+percent-decoding.
 
 #### Scenario: Healthy
 - **WHEN** a client sends `GET /health` with no `API-KEY` or `Authorization` header and Redis is up
@@ -102,8 +103,9 @@ the protected resource metadata is enabled, the `401` SHALL carry
 
 ### Requirement: Project key as a bearer token
 When a request carries only `Authorization: Bearer <token>`, `<token>` does not decode as a JWT, and no identity
-provider's user-info endpoint accepts it, Core SHALL authenticate `<token>` as a project API key (OpenAI clients send
-their key this way); a token that is no project key either SHALL get `401`.
+provider declares a user-info endpoint, Core SHALL authenticate `<token>` as a project API key (OpenAI clients send
+their key this way); a token that is no project key either SHALL get `401`. When a provider declares one, its
+user-info answer decides and a token it rejects SHALL get `401` without the project key lookup.
 
 #### Scenario: OpenAI client sends the project key
 - **WHEN** no identity provider declares a user-info endpoint and a client sends `GET /openai/models` with
@@ -273,11 +275,19 @@ the resource routes.
 Core SHALL route `GET`, `POST`, `PUT` and `DELETE` on `/v1/{type}/{bucket}/{path}` and `/v1/metadata/{type}/{bucket}/{path}`,
 `{type}` one of `models`, `interceptors`, `translators`, `roles`, `keys`, `routes`, `schemas`, `catalog_schemas`,
 `settings`, `policies`, `policy_assignments` and `{bucket}` `[a-zA-Z0-9_-]+`, to the config entity API, methods it does
-not serve included, so they never fall through to the config routes; the `405` answers are config-store's.
+not serve included, so these four never fall through to the config routes; the `405` answers are config-store's.
 
 #### Scenario: Model entity
 - **WHEN** an authenticated client sends `PUT /v1/models/platform/new%20model`
 - **THEN** the config entity API receives type `models`, bucket `platform`, path `new model`
+
+### Requirement: HEAD and PATCH on config entity URLs
+Core SHALL NOT route `HEAD` or `PATCH` on the config entity URLs to the config entity API: no built-in route serves
+these methods, so the request falls through to the config routes.
+
+#### Scenario: PATCH on a model entity
+- **WHEN** an authenticated client sends `PATCH /v1/models/platform/m` and no config route matches it
+- **THEN** Core answers `404` with body `Route is not found`
 
 ### Requirement: V2 resource routes
 Core SHALL route, for `{group}` `skills` or `projects`, `GET`/`PUT`/`DELETE /v2/{group}/{bucket}/{path}` (no empty
@@ -410,8 +420,8 @@ no built-in route and no config route.
 - **THEN** Core answers `404` with body `Route is not found`
 
 ### Requirement: Wrong method on a built-in path
-Core SHALL NOT answer `405` for a method a built-in path does not serve, outside the config entity and admin file
-config URLs (config-store): the request falls to the next matching route or to the config routes, and with no match gets `404` with
+Core SHALL NOT answer `405` for a method a built-in path does not serve, outside `POST`, `PUT` and `DELETE` on the
+config entity and admin file config URLs (config-store): the request falls to the next matching route or to the config routes, and with no match gets `404` with
 body `Route is not found`.
 
 #### Scenario: DELETE on a listing
