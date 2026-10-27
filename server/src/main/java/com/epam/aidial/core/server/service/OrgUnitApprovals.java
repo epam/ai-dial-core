@@ -13,11 +13,14 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.RequiredArgsConstructor;
+import org.apache.commons.lang3.tuple.Pair;
 
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import javax.annotation.Nullable;
 
 /**
@@ -48,9 +51,7 @@ public class OrgUnitApprovals {
         if (!isEnabled() || !isPerson(context) || publication.getRules() != null || isRequester(context, publication)) {
             return false;
         }
-        Map<String, OrgUnit> units = orgUnits.getUnitList().units();
-        return grantedInEveryUnit(context, publication, units, OrgUnitRoles.READ)
-                && grantedInEveryUnit(context, publication, units, OrgUnitRoles.WRITE);
+        return grantedInEveryUnit(context, publication, orgUnits.getUnitList().units(), OrgUnitRoles.READ, OrgUnitRoles.WRITE);
     }
 
     /**
@@ -61,22 +62,35 @@ public class OrgUnitApprovals {
         return isEnabled() && isPerson(context) && grantedInEveryUnit(context, publication, orgUnits.getUnitList().units(), OrgUnitRoles.READ);
     }
 
-    private boolean grantedInEveryUnit(ProxyContext context, Publication publication, Map<String, OrgUnit> units, String action) {
+    /**
+     * Reads each touched unit's policy once, whatever the number of actions.
+     */
+    private boolean grantedInEveryUnit(ProxyContext context, Publication publication, Map<String, OrgUnit> units, String... actions) {
         Set<String> touched = unitsOf(units, publication);
-        return touched != null && touched.stream().allMatch(key -> grants(context, orgUnits.roleAssignmentsOf(key, units.get(key)), action));
+        return touched != null && touched.stream().allMatch(key -> {
+            List<RoleAssignment> assignments = orgUnits.roleAssignmentsOf(key, units.get(key));
+            return Arrays.stream(actions).allMatch(action -> grants(context, assignments, action));
+        });
     }
 
     /**
-     * Whether a pending request with this target folder belongs in the caller's list.
+     * Which pending requests, by target folder, belong in the caller's list, from one read of the tree and the
+     * policies; null when the caller approves no unit.
      */
-    public boolean approvesUnitOf(ProxyContext context, String targetFolder) {
+    @Nullable
+    public Predicate<String> approvedTargetFolders(ProxyContext context) {
         if (!isEnabled() || !isPerson(context)) {
-            return false;
+            return null;
         }
 
         Map<String, OrgUnit> units = orgUnits.getUnitList().units();
-        String key = ownerOfFolder(units, targetFolder);
-        return key != null && grants(context, orgUnits.roleAssignmentsOf(key, units.get(key)), OrgUnitRoles.READ);
+        Set<String> approved = new HashSet<>();
+        orgUnits.roleAssignmentsOfAll(units).forEach((key, assignments) -> {
+            if (grants(context, assignments, OrgUnitRoles.READ)) {
+                approved.add(key);
+            }
+        });
+        return approved.isEmpty() ? null : targetFolder -> approved.contains(ownerOfFolder(units, targetFolder));
     }
 
     public boolean approvesAnyUnit(ProxyContext context) {
@@ -100,11 +114,8 @@ public class OrgUnitApprovals {
             return false;
         }
 
-        String location = resource.getBucketLocation();
-        String suffix = PUBLICATIONS + ResourceDescriptor.PATH_SEPARATOR;
-        int idStart = location.lastIndexOf(ResourceDescriptor.PATH_SEPARATOR, location.length() - 2) + 1;
-        if (!location.endsWith(ResourceDescriptor.PATH_SEPARATOR) || idStart <= suffix.length()
-                || !location.substring(0, idStart).endsWith(suffix)) {
+        Pair<String, String> request = PublicationService.decodeReviewBucket(resource.getBucketLocation());
+        if (request == null) {
             return false;
         }
 
@@ -113,8 +124,8 @@ public class OrgUnitApprovals {
             return false;
         }
 
-        String requesterLocation = location.substring(0, idStart - suffix.length());
-        String id = location.substring(idStart, location.length() - 1);
+        String requesterLocation = request.getLeft();
+        String id = request.getRight();
         String requesterBucket = encryption.encrypt(requesterLocation);
         ResourceDescriptor requests = ResourceDescriptorFactory.fromDecoded(ResourceTypes.PUBLICATION,
                 requesterBucket, requesterLocation, PUBLICATIONS);

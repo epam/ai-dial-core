@@ -24,10 +24,13 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.clearInvocations;
@@ -95,7 +98,7 @@ class OrgUnitApprovalsTest {
         config.setOrgUnitRoles(Map.of("reviewer", new OrgUnitRole("Reviews requests",
                 List.of(new OrgUnitPermission(List.of(OrgUnitRoles.READ), "publications/**")))));
         assertTrue(approvals.mayReview(person("rita@acme.com"), publication));
-        assertTrue(approvals.approvesUnitOf(person("rita@acme.com"), "public/Acme/"));
+        assertTrue(approvals.approvedTargetFolders(person("rita@acme.com")).test("public/Acme/"));
         assertFalse(approvals.mayDecide(person("rita@acme.com"), publication));
         config.setOrgUnitRoles(Map.of("reviewer", new OrgUnitRole("Decides without reading",
                 List.of(new OrgUnitPermission(List.of(OrgUnitRoles.WRITE), "publications/**")))));
@@ -131,9 +134,11 @@ class OrgUnitApprovalsTest {
         assertFalse(approvals.mayDecide(bob, publication("public/", "files/public/a.txt")));
         assertFalse(approvals.mayDecide(bob, publication("public/Acme/", "files/public/Acme/a.txt", "files/public/b.txt")));
         assertFalse(approvals.mayDecide(bob, publication("public/Acme/", "not a url")));
-        assertTrue(approvals.approvesUnitOf(bob, "public/Acme/"));
-        assertFalse(approvals.approvesUnitOf(bob, "public/"));
-        assertFalse(approvals.approvesUnitOf(bob, "public/Acme/Risk/"));
+        Predicate<String> approved = approvals.approvedTargetFolders(bob);
+        assertTrue(approved.test("public/Acme/"));
+        assertFalse(approved.test("public/"));
+        assertFalse(approved.test("public/Acme/Risk/"));
+        assertNull(approvals.approvedTargetFolders(person("nobody@acme.com")));
     }
 
     @Test
@@ -189,6 +194,40 @@ class OrgUnitApprovalsTest {
         assertFalse(approvals.mayReadReviewCopy(person("nobody@acme.com"), review("Users/alice/publications/7/", "a.txt")));
         verify(resources, never()).getResource(any());
         verify(encryption, never()).encrypt(anyString());
+    }
+
+    @Test
+    void testOnePolicyReadPerDecision() {
+        OrgUnitApprovals approvals = approvals(true);
+
+        clearInvocations(resources);
+        assertTrue(approvals.mayDecide(person("bob@acme.com"), publication("public/Acme/", "files/public/Acme/a.txt")));
+        verify(resources, times(1)).getResourceWithMetadata(argThat(descriptor -> descriptor.getName().equals("a")), any());
+    }
+
+    @Test
+    void testApprovalsListReadsThePoliciesOnce() {
+        OrgUnitApprovals approvals = approvals(true);
+
+        clearInvocations(resources);
+        Predicate<String> approved = approvals.approvedTargetFolders(person("bob@acme.com"));
+        for (int i = 0; i < 3; i++) {
+            assertTrue(approved.test("public/Acme/"));
+        }
+        verify(resources, times(1)).load(anyList(), anyList());
+        verify(resources, times(1)).getResourceWithMetadata(any(), any());
+    }
+
+    @Test
+    void testUnreadablePolicyApprovesNothing() {
+        storage.documents.put("a", "[]");
+        OrgUnitApprovals approvals = approvals(true);
+        ProxyContext bob = person("bob@acme.com");
+        Publication publication = publication("public/Acme/", "files/public/Acme/a.txt");
+
+        assertFalse(approvals.approvesAnyUnit(bob));
+        assertFalse(approvals.mayDecide(bob, publication));
+        assertFalse(approvals.mayReview(bob, publication));
     }
 
     private OrgUnitApprovals approvals(boolean enabled) {
