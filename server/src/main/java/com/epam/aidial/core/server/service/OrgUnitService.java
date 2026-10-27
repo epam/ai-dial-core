@@ -25,7 +25,6 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -35,7 +34,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
@@ -59,8 +57,7 @@ import javax.annotation.Nullable;
  * unit without files gets the clients' hidden empty-folder marker, {@link #FOLDER_MARKER}; that is where Chat and the admin panel look
  * for folders.
  *
- * <p>The tree is read through the shared resource cache and decoded again only when its etag changes. An unreadable
- * tree fails the request.
+ * <p>The tree is read through {@link OrgUnitLookup}.
  */
 @Slf4j
 public class OrgUnitService {
@@ -85,84 +82,38 @@ public class OrgUnitService {
     private static final Set<String> RESERVED_NAMES = Set.of("roles", "role-assignments", "rate");
     private static final int MAX_DISPLAY_NAME = 128;
     private static final int LIST_PAGE = 1000;
-    private static final ResourceDescriptor UNITS = ResourceDescriptorFactory.fromDecoded(
+    static final ResourceDescriptor UNITS = ResourceDescriptorFactory.fromDecoded(
             ResourceTypes.ORG_UNITS, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, "units");
 
+    private final OrgUnitLookup lookup;
     private final ResourceService resources;
+    private final ComplexResourceService complexResources;
     private final RuleService ruleService;
     private final LockService locks;
-    private final OrgUnitSettings settings;
     private final Supplier<String> ids;
     private final LongSupplier clock;
 
-    /**
-     * Key is the document's etag, which changes with every write; two writes can share an update time.
-     * Value is the decoded list, read-only.
-     */
-    private final AtomicReference<Pair<String, OrgUnitList>> cached = new AtomicReference<>();
-
-    public OrgUnitService(ResourceService resources, RuleService ruleService, LockService locks, OrgUnitSettings settings,
-                          Supplier<String> ids, LongSupplier clock) {
+    public OrgUnitService(OrgUnitLookup lookup, ResourceService resources, ComplexResourceService complexResources,
+                          RuleService ruleService, LockService locks, Supplier<String> ids, LongSupplier clock) {
+        this.lookup = lookup;
         this.resources = resources;
+        this.complexResources = complexResources;
         this.ruleService = ruleService;
         this.locks = locks;
-        this.settings = settings;
         this.ids = ids;
         this.clock = clock;
     }
 
     public boolean isEnabled() {
-        return settings.enabled();
+        return lookup.isEnabled();
     }
 
-    /**
-     * Whether the folder of this name, the resource's own folder for an item, is a unit's: a complex resource keeps
-     * its files there. Names compare ignoring case, as on create, since folders that differ only in case are one on
-     * some storages.
-     */
-    private boolean isUnitFolder(ResourceDescriptor resource) {
-        if (!isEnabled() || !resource.isPublic()) {
-            return false;
-        }
-        String path = keyOf(resource);
-        String key = resource.isFolder() ? path : path + ResourceDescriptor.PATH_SEPARATOR;
-        return getUnitList().units().keySet().stream().anyMatch(key::equalsIgnoreCase);
-    }
-
-    /**
-     * Refuses a skill or project whose own folder is a unit's, since it keeps its files there.
-     */
     public void requireNoUnitFolder(ResourceDescriptor resource) {
-        if (isUnitFolder(resource)) {
-            throw new HttpException(HttpStatus.CONFLICT, "An org unit holds this path: " + resource.getUrl());
-        }
+        lookup.requireNoUnitFolder(resource);
     }
 
-    /**
-     * Reads the list once, so a node that cannot read it refuses to start.
-     */
-    public void checkOnStartup() {
-        if (settings.enabled()) {
-            getUnitList();
-        }
-    }
-
-    /**
-     * The unit list as stored now, read-only.
-     */
     OrgUnitList getUnitList() {
-        Pair<ResourceItemMetadata, String> resource = resources.getResourceWithMetadata(UNITS, EtagHeader.ANY);
-        String key = (resource == null) ? "" : resource.getKey().getEtag();
-        Pair<String, OrgUnitList> current = cached.get();
-
-        if (current == null || !current.getKey().equals(key)) {
-            OrgUnitList decoded = decode(units(parse(resource == null ? null : resource.getValue()))).readOnly();
-            Pair<String, OrgUnitList> next = Pair.of(key, decoded);
-            cached.compareAndSet(current, next);
-            current = next;
-        }
-
-        return current.getValue();
+        return lookup.getUnitList();
     }
 
     /**
@@ -185,7 +136,7 @@ public class OrgUnitService {
      * the move itself, which refuses them.
      */
     public void requireSameUnit(ResourceDescriptor source, ResourceDescriptor destination) {
-        if (!settings.enabled() || !source.isPublic() || !destination.isPublic() || source.isFolder() || destination.isFolder()) {
+        if (!isEnabled() || !source.isPublic() || !destination.isPublic() || source.isFolder() || destination.isFolder()) {
             return;
         }
         if (keyOf(source.getParent()).equals(keyOf(destination.getParent()))) {
@@ -342,6 +293,11 @@ public class OrgUnitService {
         for (ResourceDescriptor marker : markers) {
             resources.deleteResource(marker, EtagHeader.ANY);
         }
+        for (ResourceTypes type : CONTENT_TYPES) {
+            if (type.isComplex()) {
+                complexResources.deleteFoldersLocked(folder(type, key));
+            }
+        }
         update(list -> removed.forEach(list.units()::remove));
         return removed;
     }
@@ -366,9 +322,10 @@ public class OrgUnitService {
     }
 
     /**
-     * Refuses a unit whose subtree holds anything but empty-folder markers in the files tree, naming up to three items.
+     * Refuses a unit whose subtree holds anything but empty-folder markers in the files tree and grouping folders in
+     * the skills and projects trees, naming up to three items.
      *
-     * @return the markers to remove with it
+     * @return the files tree's markers to remove with it
      */
     private List<ResourceDescriptor> requireEmpty(String key, List<String> below) {
         Subtree subtree = listSubtree(key);
@@ -382,8 +339,9 @@ public class OrgUnitService {
     }
 
     /**
-     * The subtree's empty-folder markers, in the files tree and the grouping folders of the skills and projects trees,
-     * and its other items in every type tree. Stops listing once more than three items are found: enough to name them.
+     * The subtree's empty-folder markers in the files tree, and its other items in every type tree. The skills and
+     * projects trees are listed by {@link ComplexResourceService}, so a deleted resource there that the sweep hasn't
+     * reclaimed yet isn't content. Stops listing once more than three items are found: enough to name them.
      */
     private Subtree listSubtree(String key) {
         List<ResourceDescriptor> markers = new ArrayList<>();
@@ -394,12 +352,17 @@ public class OrgUnitService {
             }
             String token = null;
             do {
-                ResourceFolderMetadata page = resources.getFolderMetadata(folder(type, key), token, LIST_PAGE, true);
+                ResourceFolderMetadata page = type.isComplex()
+                        ? complexResources.listChildren(folder(type, key), token, LIST_PAGE, true)
+                        : resources.getFolderMetadata(folder(type, key), token, LIST_PAGE, true);
                 if (page == null) {
                     break;
                 }
                 for (MetadataBase item : page.getItems()) {
-                    if (isMarker(type, item.getName())) {
+                    if (type.isComplex() && item.getNodeType() == NodeType.FOLDER) {
+                        continue;
+                    }
+                    if (type == ResourceTypes.FILE && FOLDER_MARKER.equals(item.getName())) {
                         markers.add(((ResourceItemMetadata) item).getDescriptor());
                     } else {
                         content.add(item.getUrl());
@@ -412,10 +375,6 @@ public class OrgUnitService {
     }
 
     private record Subtree(List<ResourceDescriptor> markers, List<String> content) {
-    }
-
-    private static boolean isMarker(ResourceTypes type, String name) {
-        return type == ResourceTypes.FILE ? FOLDER_MARKER.equals(name) : type.isComplex() && ComplexResourceService.FOLDER_MARKER_NAME.equals(name);
     }
 
     private void requireCreatable(OrgUnitList list, String parentKey, String name) {
@@ -498,7 +457,7 @@ public class OrgUnitService {
      * Refuses a document that isn't a JSON object rather than reading it as empty: an empty list would hand every
      * unit's content to the shared space.
      */
-    private static ObjectNode parse(@Nullable String body) {
+    static ObjectNode parse(@Nullable String body) {
         if (body == null || body.isBlank()) {
             return ProxyUtil.MAPPER.createObjectNode();
         }
@@ -515,7 +474,7 @@ public class OrgUnitService {
         throw new IllegalStateException("The org unit list can't be read: it is not a JSON object");
     }
 
-    private static ObjectNode units(ObjectNode document) {
+    static ObjectNode units(ObjectNode document) {
         JsonNode units = document.get("units");
         if (units == null || units.isNull()) {
             return document.putObject("units");
@@ -526,7 +485,7 @@ public class OrgUnitService {
         throw new IllegalStateException("The org unit list can't be read: units is not an object");
     }
 
-    private static OrgUnitList decode(ObjectNode raw) {
+    static OrgUnitList decode(ObjectNode raw) {
         Map<String, OrgUnit> units = new TreeMap<>();
         raw.fields().forEachRemaining(field -> units.put(field.getKey(), decodeUnit(field.getValue())));
         return new OrgUnitList(units);
@@ -691,7 +650,7 @@ public class OrgUnitService {
                 key.substring(SHARED_SPACE_KEY.length()));
     }
 
-    private static String keyOf(@Nullable ResourceDescriptor folder) {
+    static String keyOf(@Nullable ResourceDescriptor folder) {
         if (folder == null) {
             return SHARED_SPACE_KEY;
         }

@@ -63,6 +63,7 @@ import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.NotificationService;
+import com.epam.aidial.core.server.service.OrgUnitLookup;
 import com.epam.aidial.core.server.service.OrgUnitService;
 import com.epam.aidial.core.server.service.OrgUnitSettings;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
@@ -292,11 +293,12 @@ public class AiDial {
             ComplexResourceService.Settings complexResourceSettings = Json.decodeValue(
                     settings("complexResource").toBuffer(), ComplexResourceService.Settings.class);
             RuleService ruleService = new RuleService(resourceService);
-            OrgUnitService orgUnitService = new OrgUnitService(resourceService, ruleService, lockService,
-                    OrgUnitSettings.from(settings("orgUnits")), generator, clock);
-            orgUnitService.checkOnStartup();
+            OrgUnitLookup orgUnitLookup = new OrgUnitLookup(resourceService, OrgUnitSettings.from(settings("orgUnits")));
+            orgUnitLookup.checkOnStartup();
             ComplexResourceService complexResourceService = new ComplexResourceService(
-                    resourceService, lockService, storage, complexResourceSettings, orgUnitService::requireNoUnitFolder);
+                    resourceService, lockService, storage, complexResourceSettings, orgUnitLookup::requireNoUnitFolder);
+            OrgUnitService orgUnitService = new OrgUnitService(orgUnitLookup, resourceService, complexResourceService,
+                    ruleService, lockService, generator, clock);
 
             ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(
                     resourceService, mergedConfigStore, complexResourceService, encryptionService, httpProxySelector);
