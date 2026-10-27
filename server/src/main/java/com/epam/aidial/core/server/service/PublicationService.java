@@ -523,8 +523,8 @@ public class PublicationService {
     /**
      * DIAL admins decide every request; anyone else only what {@link OrgUnitApprovals#mayDecide} allows, and is refused
      * the same way whether the request is outside their units or missing. A finalized request in their units answers
-     * as it does for an admin. Runs on the request being decided, so a change made after the check fails approve's
-     * comparison instead of widening it.
+     * as it does for an admin. Runs on the request being decided, so a change made after the check fails the
+     * comparison approve and reject make under the lock instead of widening it.
      */
     private void requireDecider(ProxyContext context, ResourceDescriptor resource, Publication publication, boolean admin) {
         if (!admin && !orgUnitApprovals.mayDecide(context, publication)) {
