@@ -132,7 +132,7 @@ by role assignments, below.
 | `viewer` | `read` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills` and `projects`; `read` on `org-units` |
 | `member` | `read` on `org-units` |
 
-`write publications/**` decides publication requests into the unit; `write role-assignments/**` manages its
+`read` and `write publications/**` decide publication requests into the unit; `write role-assignments/**` manages its
 assignments. `read org-units/**` shows the units directly below in the unit list and in the unit folder's listing,
 by name only: `member` lets someone find a unit deeper down without reading anything on the way. `org-units` takes
 only `read`, as only DIAL admins change units. A role body uses the DIAL 2.0 design's grammar; core evaluates `actions` of `read` and `write` on
@@ -235,7 +235,7 @@ through them.
 
 ## Approvers
 
-A holder of `write publications/**` at a unit — by default its `admin` — approves and rejects publication requests
+A holder of `read` and `write publications/**` at a unit — by default its `admin` — approves and rejects publication requests
 into it through the usual `/v1/ops/publication/approve` and `/reject`, without being a DIAL admin. A request touches
 the unit of its `targetFolder` and of every resource's `targetUrl`, unpublish (`DELETE`) items included; the approver
 must hold the grant in every one of those units, and none of them may be the shared space. The approver's own request
