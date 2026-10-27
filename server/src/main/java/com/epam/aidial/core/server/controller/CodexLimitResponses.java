@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
+import javax.annotation.Nullable;
 
 /**
  * DIAL spend caps in the shapes Codex CLI reads from a Responses answer: the {@code x-codex-*} headers and the
@@ -51,16 +52,22 @@ class CodexLimitResponses {
         }
     }
 
-    HttpException spendCapReached(SpendCap cap, long nowMillis) {
+    /**
+     * @param displayMessage the limiter's user-facing message, kept for DIAL clients that show {@code display_message};
+     *                       null builds one for this cap alone
+     */
+    HttpException spendCapReached(SpendCap cap, @Nullable String displayMessage, long nowMillis) {
         long resetAt = cap.resetsAtMillis() / 1000;
         int windowMinutes = windowMinutes(cap.period());
-        String message = "DIAL " + LimitBreach.Window.of(cap.period()).label() + " spend limit reached (resets "
+        String label = LimitBreach.Window.of(cap.period()).label();
+        String message = "DIAL " + label + " spend limit reached (resets "
                 + MESSAGE_RESET_FORMAT.format(Instant.ofEpochMilli(cap.resetsAtMillis())) + ")";
         ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
         body.putObject("error")
                 .put("type", "usage_limit_reached")
                 .put("code", STATUS_CODE)
                 .put("message", message)
+                .put("display_message", displayMessage == null ? "You've exceeded your " + label + " cost limit" : displayMessage)
                 .put("resets_at", resetAt)
                 .put("limit_window_minutes", windowMinutes);
         long retryAfter = Math.max(0, Math.ceilDiv(cap.resetsAtMillis() - nowMillis, 1000));

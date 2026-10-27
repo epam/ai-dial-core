@@ -394,6 +394,7 @@ class ResponsesSpendLimitApiTest extends ResourceBaseTest {
         assertEquals("usage_limit_reached", error.get("type").asText(), response.body());
         assertEquals("429", error.get("code").asText());
         assertEquals("DIAL daily spend limit reached (resets " + formattedReset + ")", error.get("message").asText());
+        assertEquals("You've exceeded your daily cost limit", error.get("display_message").asText());
         assertEquals(reset, error.get("resets_at").asLong());
         assertEquals(1440, error.get("limit_window_minutes").asInt());
         assertEquals("100", header(response, PRIMARY + "used-percent"));

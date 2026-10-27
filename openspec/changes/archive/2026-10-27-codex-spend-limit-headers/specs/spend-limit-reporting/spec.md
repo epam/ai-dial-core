@@ -62,14 +62,14 @@ Core SHALL remove every response header whose name starts with `x-codex-` (case-
 - **THEN** the answer carries `x-codex-primary-used-percent: 82` once
 
 ### Requirement: Reached spend cap rejected in the Codex format
-When a caller's spend cap is reached, Core SHALL reject a Responses request before contacting the upstream with 429, `retry-after` (seconds until the cap resets), the `x-codex-primary-*` headers for that cap with `used-percent` 100, and the body `{"error":{"type":"usage_limit_reached","code":"429","message":…,"resets_at":…,"limit_window_minutes":…}}`.
+When a caller's spend cap is reached, Core SHALL reject a Responses request before contacting the upstream with 429, `retry-after` (seconds until the cap resets), the `x-codex-primary-*` headers for that cap with `used-percent` 100, and the body `{"error":{"type":"usage_limit_reached","code":"429","message":…,"display_message":…,"resets_at":…,"limit_window_minutes":…}}`.
 
 #### Scenario: Day cap reached
 - **WHEN** a caller who has spent $10 of a $10 day cap sends a Responses request
 - **THEN** Core answers 429 without calling the upstream, with `error.type` `usage_limit_reached`, `error.resets_at`
   equal to the next day reset in Unix seconds, `error.limit_window_minutes` `1440`, an `error.message` that names
-  the day limit and its reset time, `x-codex-primary-used-percent: 100` and a `retry-after` that counts down to that
-  reset
+  the day limit and its reset time, an `error.display_message` of `You've exceeded your daily cost limit`,
+  `x-codex-primary-used-percent: 100` and a `retry-after` that counts down to that reset
 
 #### Scenario: Reached spend cap wins over a token limit
 - **WHEN** a caller has reached both a day spend cap and the model's per-minute token limit

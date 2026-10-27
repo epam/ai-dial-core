@@ -93,7 +93,8 @@ class CodexLimitResponsesTest {
 
     @Test
     void spendCapReached_exactShape() throws Exception {
-        HttpException exception = CodexLimitResponses.spendCapReached(cap(CalendarPeriod.DAY, "10", "10", TOMORROW), NOW);
+        HttpException exception = CodexLimitResponses.spendCapReached(cap(CalendarPeriod.DAY, "10", "10", TOMORROW),
+                "You've exceeded your monthly and daily cost limits", NOW);
 
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, exception.getStatus());
         var headers = exception.getHeaders();
@@ -106,18 +107,20 @@ class CodexLimitResponsesTest {
         JsonNode expected = ProxyUtil.MAPPER.readTree(
                 "{\"error\":{\"type\":\"usage_limit_reached\",\"code\":\"429\","
                         + "\"message\":\"DIAL daily spend limit reached (resets 2026-10-24 00:00 UTC)\","
+                        + "\"display_message\":\"You've exceeded your monthly and daily cost limits\","
                         + "\"resets_at\":" + seconds(TOMORROW) + ",\"limit_window_minutes\":1440}}");
         assertEquals(expected, ProxyUtil.MAPPER.readTree(exception.getMessage()));
     }
 
     @Test
     void spendCapReached_monthWindow() throws Exception {
-        HttpException exception = CodexLimitResponses.spendCapReached(cap(CalendarPeriod.MONTH, "120", "100", NEXT_MONTH), NOW);
+        HttpException exception = CodexLimitResponses.spendCapReached(cap(CalendarPeriod.MONTH, "120", "100", NEXT_MONTH), null, NOW);
 
         assertEquals("100", exception.getHeaders().get("x-codex-primary-used-percent"));
         JsonNode body = ProxyUtil.MAPPER.readTree(exception.getMessage());
         assertEquals(43200, body.at("/error/limit_window_minutes").asInt());
         assertEquals("DIAL monthly spend limit reached (resets 2026-11-01 00:00 UTC)", body.at("/error/message").asText());
+        assertEquals("You've exceeded your monthly cost limit", body.at("/error/display_message").asText());
     }
 
     @Test

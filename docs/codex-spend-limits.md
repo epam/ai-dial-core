@@ -65,8 +65,8 @@ Errors returned by the upstream carry no `x-codex-*` headers.
 
 ### Spend cap reached
 
-The request is rejected before it goes upstream. The body keeps DIAL's `code` and `message` and adds the fields Codex
-reads:
+The request is rejected before it goes upstream. The body keeps DIAL's `code`, `message` and `display_message` (the
+user-facing text DIAL clients show, as before this change) and adds the fields Codex reads:
 
 ```
 HTTP/1.1 429
@@ -75,7 +75,7 @@ x-codex-primary-used-percent: 100
 x-codex-primary-window-minutes: 1440|10080|43200
 x-codex-primary-reset-at: <unix seconds>
 
-{"error":{"type":"usage_limit_reached","code":"429","message":"DIAL daily spend limit reached (resets 2026-10-24 00:00 UTC)","resets_at":<unix seconds>,"limit_window_minutes":1440}}
+{"error":{"type":"usage_limit_reached","code":"429","message":"DIAL daily spend limit reached (resets 2026-10-24 00:00 UTC)","display_message":"You've exceeded your daily cost limit","resets_at":<unix seconds>,"limit_window_minutes":1440}}
 ```
 
 A reached spend cap takes precedence over every other limit. A caller over both a token limit and a spend cap gets

@@ -22,6 +22,8 @@
 - The merged `docs/open_api_core.yaml` keeps the existing 429 description ("Rate limit exceeded"). The spec merge
   keeps manually maintained response descriptions, and the 429 description added for `/anthropic` in #2166 did not
   reach the YAML either. The new headers did reach it.
+- After the PR review, the reached-cap 429 also carries `display_message`. The first version dropped it, and DIAL
+  clients that show it would have lost the text.
 - `ResponsesControllerTest` mocked `RateLimiter.limit`. Its 8 stubs now mock `limitWithSpendCaps`, and 4 tests also
   stub `response.headers()`, which the header code reads.
 

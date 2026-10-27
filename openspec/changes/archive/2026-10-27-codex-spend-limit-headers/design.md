@@ -62,7 +62,10 @@ How Codex reads all this (openai/codex, `codex-rs/codex-api`):
    every reported window is below 100%, because a reached cap would have rejected the request.
 
 4. **The reached-cap 429 body extends DIAL's error body.** It keeps `error.message` and `error.code: "429"`, and adds
-   `type`, `resets_at` and `limit_window_minutes`, so DIAL clients that read `message` still work. The message
+   `type`, `resets_at` and `limit_window_minutes`, so DIAL clients that read `message` still work. It also keeps
+   `display_message`, the user-facing text the limiter wrote before this change ("You've exceeded your daily cost
+   limit", naming every exceeded window). A translated deployment has no limiter result, so its message is built for
+   the reported cap alone. This was added after the PR review. The message
    follows `AnthropicLimitResponses.java:spendCapReached`: "DIAL day spend limit reached (resets 2026-10-28 00:00 UTC)".
    Codex does not show this message (it shows its own text with the reset time), but logs and other clients do. The
    body is a small Jackson object or `ObjectNode`, because `ErrorDetailsData` has no `resets_at` and should not get

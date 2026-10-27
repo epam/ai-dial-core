@@ -277,7 +277,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                     return Future.failedFuture(error);
                 })
                 .map(rateLimit -> {
-                    rejectIfSpendCapReached(rateLimit.spendCaps());
+                    rejectIfSpendCapReached(rateLimit.spendCaps(), rateLimit.displayErrorMessage());
                     rateLimit.throwIfError();
                     spendCaps = rateLimit.spendCaps();
                     return null;
@@ -296,7 +296,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                     return Future.succeededFuture(SpendCaps.EMPTY);
                 })
                 .map(caps -> {
-                    rejectIfSpendCapReached(caps);
+                    rejectIfSpendCapReached(caps, null);
                     spendCaps = caps;
                     return null;
                 });
@@ -305,10 +305,10 @@ public class ResponsesController extends BaseDeploymentPostController {
     /**
      * A reached spend cap takes precedence over any other limit, so it is checked first wherever the caps are read.
      */
-    private static void rejectIfSpendCapReached(@Nullable SpendCaps caps) {
+    private static void rejectIfSpendCapReached(@Nullable SpendCaps caps, @Nullable String displayMessage) {
         SpendCap reported = caps == null ? null : caps.reported();
         if (reported != null && reported.isExceeded()) {
-            throw CodexLimitResponses.spendCapReached(reported, System.currentTimeMillis());
+            throw CodexLimitResponses.spendCapReached(reported, displayMessage, System.currentTimeMillis());
         }
     }
 

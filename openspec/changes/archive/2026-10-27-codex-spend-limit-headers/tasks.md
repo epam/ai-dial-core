@@ -73,8 +73,8 @@ JDK 21 `JAVA_HOME`.
 - [x] 3.2 Add the `usage_limit_reached` 429 to `docs/error_codes.md`. Verify it sits next to the Anthropic
   `billing_error` entry.
 - [x] 3.3 Measure: in `ResponsesSpendLimitApiTest` or a `RateLimiter` unit test, count the cost-record reads for one
-  capped Responses request, and show that they match the count before this change (one read for a model, one for a
-  translated deployment). Record the numbers in `review.md`.
+  capped Responses request, and show that they match the count before this change (the same reads for a model; a translated
+  deployment goes from none to one cost-record read). Record the numbers in `review.md`.
 - [ ] 3.4 Manual check on Codex CLI against a local Core with a capped user: a warning at 75%, the indicator above
   the input, and the usage-limit message at 100%. (deferred: needs a Codex CLI install and a local Core with Redis)
 
