@@ -488,7 +488,6 @@ public class AccessService {
 
     private Map<ResourceDescriptor, Set<ResourceAccessType>> getReviewAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-
         // admins already hold every review copy, so asking the unit approvers would only cost storage reads
         boolean admin = hasAdminAccess(context);
         return resources.stream()
