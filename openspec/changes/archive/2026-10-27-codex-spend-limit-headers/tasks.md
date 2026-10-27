@@ -75,8 +75,9 @@ JDK 21 `JAVA_HOME`.
 - [x] 3.3 Measure: in `ResponsesSpendLimitApiTest` or a `RateLimiter` unit test, count the cost-record reads for one
   capped Responses request, and show that they match the count before this change (the same reads for a model; a translated
   deployment goes from none to one cost-record read). Record the numbers in `review.md`.
-- [ ] 3.4 Manual check on Codex CLI against a local Core with a capped user: a warning at 75%, the indicator above
-  the input, and the usage-limit message at 100%. (deferred: needs a Codex CLI install and a local Core with Redis)
+- [x] 3.4 Manual check on Codex CLI against a local Core with a capped user: a warning at 75%, the indicator above
+  the input, and the usage-limit message at 100%. Done on 2026-10-27, see review.md: the warning and the indicator
+  showed; the usage-limit answer reached Codex as a 429, but its message was not seen on screen.
 
 ## Workflow follow-up
 

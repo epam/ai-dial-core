@@ -59,7 +59,18 @@ No body copies or parses were added. The headers are set before the body is pipe
   (`!(handle->flags & UV_HANDLE_CLOSING)`). Running redocly directly reports only pre-existing errors on paths this
   change does not touch (`no-path-trailing-slash` ×2, `no-empty-servers` on the skeleton). CI runs the full
   validation.
-- Deferred: the manual Codex CLI check (task 3.4) needs a Codex CLI install and a local Core with Redis.
+- Manual Codex CLI check (task 3.4), 2026-10-27, Codex CLI 0.163.0 on Windows. Setup: Core from this branch, a mock
+  Responses upstream at $1 per request, and a $5 daily / $50 monthly cap. Results:
+  - Codex sent 2 requests for most prompts: the turn, then a non-streaming background request.
+  - After the third prompt (spend at 80% before that request), Codex showed "Heads up, you have less than 25% of your
+    daily limit left. Run /status for a breakdown." and the indicator "daily limit: … left · resets at 2:00 AM on
+    28 Oct". The reset time is midnight UTC in local time.
+  - The background request that followed got the `usage_limit_reached` 429 (Core log), and the indicator switched to
+    "only <1% left", which is how Codex shows 100% used.
+  - The "You've hit your usage limit" message itself was not seen, because no prompt was sent after the cap. Its body
+    shape is pinned against Codex's parser (`api_bridge.rs`) in `CodexLimitResponsesTest` and
+    `ResponsesSpendLimitApiTest`.
+  - `/status` stayed empty, as expected (openai/codex#45052).
 
 ## Spec-to-test map
 
