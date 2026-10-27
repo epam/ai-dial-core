@@ -7,6 +7,11 @@ clash and per field, who may read and write it, and what the CRUD, validate, app
 accept and answer. The meaning of each deployment field is `deployment-interfaces-config`; access to user and
 `public` resources outside the config types is `resource-access-control`.
 
+Requirements run in four parts that share one write path, admin role and validation: config files, merge, reload and
+the invalid entity policy (Config files to Config health endpoint); the per-entity Configuration API (Config
+resource URLs to External services on write); the batch validate and apply endpoints (Manifest batch request to
+Apply partial failure); and file config inspection and migration.
+
 ## Requirements
 
 ### Requirement: Config files
@@ -209,12 +214,20 @@ entities) or `name` is empty. An `If-None-Match` matching the blob's ETag SHALL 
 ### Requirement: Secrets masked on read
 No Configuration API read SHALL return a secret: key `key`, upstream and interface `key` and `secretExtraData` are
 omitted; for applications and toolsets `auth_settings.client_secret` and `code_verifier` are removed and an admin
-gets `client_secret_hint` instead. Secrets SHALL be stored in the blob as `ENC[...]`, never as plaintext.
+gets `client_secret_hint` instead.
+
+#### Scenario: Route secret not returned
+- **WHEN** a route with `upstreams: [{"endpoint": "...", "key": "route-secret-1"}]` is applied
+- **THEN** `GET /v1/routes/platform/<name>` has no upstream `key`
+
+### Requirement: Secrets encrypted at rest
+Secrets SHALL be stored in the blob encrypted, never as plaintext: key `key` and upstream and interface `key` and
+`secretExtraData` as `ENC[...]`; application and toolset `auth_settings.client_secret` and `code_verifier` as bare
+base64 ciphertext, without the `ENC[` prefix.
 
 #### Scenario: Route secret at rest
 - **WHEN** a route with `upstreams: [{"endpoint": "...", "key": "route-secret-1"}]` is applied
-- **THEN** the stored blob contains `ENC[` and not `route-secret-1`, the merged route holds `route-secret-1`, and
-  `GET /v1/routes/platform/<name>` has no upstream `key`
+- **THEN** the stored blob contains `ENC[` and not `route-secret-1`, and the merged route holds `route-secret-1`
 
 ### Requirement: PUT upsert and conditional headers
 `PUT /v1/{type}/platform/{name}` SHALL create or replace the entity and answer `200` `{"name": "<name>"}` with an
@@ -236,7 +249,7 @@ JSON (`Invalid JSON at line <l>, column <c>`, never echoing the body), is not a 
 entity type, and a `PUT` or `DELETE` SHALL answer `400` when `name` is empty, ends with `/` or does not match
 `^[A-Za-z0-9._%:@\[\]()-]+$` (toolsets: `^[A-Za-z0-9-_]+$`).
 
-#### Scenario: Empty body keeps the entity
+#### Scenario: Empty body rejected
 - **WHEN** an admin sends `PUT /v1/interceptors/platform/test-interceptor-keep` with an empty body
 - **THEN** Core answers `400` and the stored interceptor is unchanged
 
@@ -300,7 +313,9 @@ invalid, whatever the mode.
 ### Requirement: Soft validation
 With `config.write.softValidation: true` (default `false`), a model write whose only failure is an unresolved
 interceptor reference SHALL be written and answer `200`; with `onInvalidEntity: skip` its GET SHALL then answer
-`status: "invalid"`. Rebuild invariants SHALL still answer `422`.
+`status: "invalid"`. With `abort` the rebuild does not check the reference: the model enters the merged config, its
+GET answers `status: "valid"`, and a call to it answers `404` `Interceptor is not found`. Rebuild invariants SHALL
+still answer `422`.
 
 #### Scenario: Soft mode commits a dangling reference
 - **WHEN** soft mode and `skip` are on and an admin sends `PUT /v1/models/platform/soft-cr-invalid` with
@@ -433,12 +448,13 @@ accepted entries.
 
 ### Requirement: Validate endpoint
 `/v1/admin/validate` SHALL write nothing and answer `{"valid": <n>, "failed": <n>, "results": [{"entityId", "status",
-"error"}]}` with status `VALID` or `FAILED`. With `precheck` true and any failure it SHALL answer `422` with every
-`VALID` entry turned `SKIPPED`; otherwise `200`.
+"error"}]}` with status `VALID` or `FAILED`, predicting the answer of `/v1/admin/apply` to the same body. With
+`precheck` true and any failure it SHALL answer `422` with every `VALID` entry turned `SKIPPED`, as apply with
+`precheck` does; otherwise `200`. `valid` counts `VALID` entries only, so a `SKIPPED` entry counts in neither.
 
 #### Scenario: Dangling reference with precheck
 - **WHEN** an admin validates one `Model` referencing a missing interceptor
-- **THEN** Core answers `422` with that result `FAILED`, and the model is not written
+- **THEN** Core answers `422` with `valid: 0`, `failed: 1`, that result `FAILED`, and the model is not written
 
 #### Scenario: Dangling reference without precheck
 - **WHEN** the same body carries `"precheck": false`
@@ -518,3 +534,20 @@ when another secret holds that name, and never report the secret: key results ca
 - **WHEN** an admin migrates `{"types": ["keys"]}` with file key `proxyKey1` of project `EPM-RTC-GPT`
 - **THEN** the result is `migrated` with `resourceUrl: "keys/platform/epm-rtc-gpt-<hash>"` and no `key` field, the
   blob GET answers `project: "EPM-RTC-GPT"`, and `Api-key: proxyKey1` still authenticates
+
+### Requirement: Schema migration naming
+Core SHALL migrate a file schema (`schemas` or `catalog_schemas`) to the blob name taken from the last path segment of
+its `$id` (the host when the path is empty), skip it when a blob already holds that `$id`, and fail it, with no
+`resourceUrl`, when that name does not match the entity-name pattern or equals, ignoring case, another file schema's
+or another blob's name. Core SHALL NOT rename a schema to avoid a collision.
+
+#### Scenario: Schema named by its $id
+- **WHEN** an admin migrates `{"types": ["schemas"]}` with a file schema whose `$id` is
+  `https://mydial.somewhere.com/custom_application_schemas/schema_endpoint`
+- **THEN** the result is `migrated` with `resourceUrl: "schemas/platform/schema_endpoint"` and the `$id` as `key`,
+  `GET /v1/schemas/platform/schema_endpoint` answers `200`, and a second run reports `skipped` with the same
+  `resourceUrl`
+
+#### Scenario: Unusable schema name
+- **WHEN** the file schema's `$id` ends in `bad~schema~name`
+- **THEN** the result is `failed` with the `$id` as `key` and no `resourceUrl`
