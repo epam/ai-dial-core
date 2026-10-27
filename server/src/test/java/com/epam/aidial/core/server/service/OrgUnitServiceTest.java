@@ -614,6 +614,19 @@ class OrgUnitServiceTest {
     }
 
     @Test
+    void testUnitsSharingOnePolicyIdBothKeepItsAssignments() {
+        String tree = "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}, \"public/Beta/\": {\"id\": \"a\"}}}";
+        String policy = "{\"roleAssignments\": [{\"id\": \"r1\", \"roleName\": \"admin\", "
+                + "\"subject\": {\"type\": \"claimsPredicate\", \"source\": \"email\", \"function\": \"EQUAL\", \"targets\": [\"bob@acme.com\"]}}]}";
+        OrgUnitService service = service(new FakeOrgUnitStorage(Map.of("units", tree, "a", policy)));
+
+        Map<String, List<RoleAssignment>> all = service.roleAssignmentsOfAll(service.getUnitList().units());
+
+        assertEquals(Set.of("public/Acme/", "public/Beta/"), all.keySet());
+        assertEquals(all.get("public/Acme/"), all.get("public/Beta/"));
+    }
+
+    @Test
     void testCorruptPolicyGrantsNothingInItsUnitOnly() {
         String tree = "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}, \"public/Beta/\": {\"id\": \"b\"}}}";
         String good = "{\"roleAssignments\": [{\"id\": \"r1\", \"roleName\": \"admin\", "
