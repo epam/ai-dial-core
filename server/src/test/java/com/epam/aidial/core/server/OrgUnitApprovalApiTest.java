@@ -167,6 +167,34 @@ public class OrgUnitApprovalApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testRulesOutsideUnitsListAsBefore() {
+        JsonObject rules = new JsonObject().put("targetFolder", "public/Handbook/").put("resources", new JsonArray())
+                .put("rules", new JsonArray("[{\"source\": \"roles\", \"function\": \"EQUAL\", \"targets\": [\"user\"]}]"));
+        Response created = send(HttpMethod.POST, "/v1/ops/publication/create", null, rules.encode(), "authorization", "admin");
+        assertEquals(200, created.status(), created.body());
+        assertEquals(200, decide("approve", new JsonObject(created.body()).getString("url"), "admin").status());
+
+        Response listed = send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Handbook/\"}", "authorization", "user");
+        assertEquals(200, listed.status(), listed.body());
+        assertEquals(403, send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Handbook/\"}",
+                "authorization", OTHER).status());
+    }
+
+    @Test
+    void testApproverNeverStoresRules() {
+        String rules = "[{\"source\": \"roles\", \"function\": \"TRUE\"}]";
+        // the shared space is the only folder above a unit that isn't one, and it can't take rules
+        String above = request("public/", "Acme/above.txt", null);
+        String outside = request("public/Handbook/", "Handbook/outside.txt", rules);
+
+        for (String url : List.of(above, outside)) {
+            assertEquals(403, decide("approve", url, APPROVER).status(), url);
+        }
+        assertEquals("{\"rules\":{}}", send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Handbook/\"}",
+                "authorization", "admin").body());
+    }
+
+    @Test
     void testNoSelfApproval() {
         assign("public/Acme", "{\"type\": \"claimsPredicate\", \"source\": \"roles\", \"function\": \"EQUAL\", \"targets\": [\"user\"]}");
         String own = request("public/Acme/", "Acme/a.txt", null);
