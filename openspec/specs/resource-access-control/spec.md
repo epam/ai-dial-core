@@ -28,6 +28,15 @@ each `/`-separated segment of `<sourceDeployment>` percent-encoded.
 - **WHEN** application `app`, called by user `u1`, sends `GET /v1/bucket` with its key
 - **THEN** the answer is `{"bucket": <enc(Keys/app/)>, "appdata": "<enc(Users/u1/)>/appdata/app"}`
 
+### Requirement: Sharing and publications use the initiator bucket
+Sharing, invitations and publications SHALL act on the initiator's bucket: the caller bucket for a JWT or a project
+key, and for a per-request key the bucket of the request's initiator, not `Keys/<sourceDeployment>/`. "The caller's
+bucket" in those requirements means this bucket.
+
+#### Scenario: Application lists the user's invitations
+- **WHEN** application `app`, called by user `u1`, sends `GET /v1/invitations` with its per-request key
+- **THEN** Core answers `200` with `u1`'s invitations
+
 ### Requirement: Encrypted bucket names in resource URLs
 Core SHALL address a private resource as `<type>/<bucket>/<path>` where `<bucket>` is the AES-encrypted, Base58-encoded
 bucket location, and SHALL treat `public` as the public bucket. A bucket segment that does not decrypt SHALL be

@@ -176,12 +176,15 @@ authorization.
 ### Requirement: Admin role for config
 Core SHALL require the admin role for every method on the `platform` bucket of the Configuration API, the metadata
 listing, `/v1/admin/*` and the file migration: the caller is admin as resource-access-control defines it (matches
-`access.admin.rules`, not a per-request key), and, failing closed where the resource rule would match everyone, an
-empty or absent `access.admin.rules` SHALL deny all. A denial SHALL answer `403` `Forbidden`.
+`access.admin.rules`, not a per-request key). A denial SHALL answer `403` `Forbidden`.
 
 #### Scenario: Non-admin write
 - **WHEN** a caller without the `admin` role sends `PUT /v1/interceptors/platform/x` with a valid body
 - **THEN** Core answers `403` and writes nothing
+
+### Requirement: Empty admin rules deny all
+Failing closed where the resource rule would match everyone, an empty `access.admin.rules` SHALL deny everyone the
+admin surfaces above; leaving the field out keeps the built-in default (resource-access-control).
 
 #### Scenario: Fail closed on empty rules
 - **WHEN** `access.admin.rules` is `[]` and a caller with role `admin` sends `GET /v1/models/platform/m` or

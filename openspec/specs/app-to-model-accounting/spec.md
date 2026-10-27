@@ -154,20 +154,23 @@ token and cost usage.
 ### Requirement: Which requests are limit-checked
 On deployments-POST Core SHALL limit-check only a `Model`; `POST /openai/v1/chat/completions`,
 `/openai/v1/responses` and `/anthropic/v1/messages` SHALL check the limits of the deployment they call whatever its
-kind. A request for an interface the deployment serves in `translator` mode SHALL be neither checked nor charged:
-the translator's call back to Core is. `/anthropic/v1/messages` alone still refuses it `429` when the initiator's
-day, week or month cost limit is already reached.
+kind.
+
+#### Scenario: Application not checked on deployments-POST
+- **WHEN** user `u1`'s role declares `limits.app.requestHour: 1` and `u1` has already sent one request to `app` this hour, and `u1` sends
+  `POST /openai/deployments/app/chat/completions`
+- **THEN** Core forwards the request to `app`
+
+### Requirement: Translated interface not limit-checked
+A request for an interface the deployment serves in `translator` mode SHALL be neither checked nor charged (bar a
+background Responses job's finish, responses-api): the translator's call back to Core is. `/anthropic/v1/messages`
+alone still refuses it `429` when the initiator's day, week or month cost limit is already reached.
 
 #### Scenario: Translated interface not charged
 - **WHEN** user `u1` has used the `m` per-minute token limit of its role, and `m` serves `anthropicMessages` in
   `translator` mode, and `u1` sends `POST /anthropic/v1/messages` for `m`
 - **THEN** Core forwards the request to the translator rather than answering `429`, and answers the translator's
   call back to `POST /openai/deployments/m/chat/completions` `429`
-
-#### Scenario: Application not checked on deployments-POST
-- **WHEN** user `u1`'s role declares `limits.app.requestHour: 1` and `u1` has already sent one request to `app` this hour, and `u1` sends
-  `POST /openai/deployments/app/chat/completions`
-- **THEN** Core forwards the request to `app`
 
 ### Requirement: Deployment closed to per-request keys
 Core SHALL answer `403` `Deployment <id> is not accessible by <sourceDeployment>` to a deployments-POST,

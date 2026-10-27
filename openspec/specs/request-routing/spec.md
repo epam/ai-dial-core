@@ -47,6 +47,14 @@ otherwise. A request without a parsable `Content-Length` SHALL be checked as 102
   `Content-Length: 2048` and `Content-Type: application/json`
 - **THEN** Core answers `413` with body `Request body is too large`
 
+### Requirement: Malformed percent-escape
+Core SHALL answer `500` with an empty body, after the size check and before authentication, to a request whose path
+has an incomplete or invalid percent-escape.
+
+#### Scenario: Invalid escape without credentials
+- **WHEN** a client sends `GET /v1/files/x/%zz` with no credentials
+- **THEN** Core answers `500` with an empty body, not `401`
+
 ### Requirement: Health check
 Core SHALL answer `GET /health` without credentials: `200` with an empty body when the Redis ping call returns,
 whether or not every node answered, and `500` with an empty body when the call throws. The path is compared after
@@ -142,6 +150,7 @@ and `/v1/deployments/{id}/route/...` patterns, and exactly one on every other bu
 Core SHALL percent-decode (`+` stays `+`) the identifier variables it extracts: deployment, model, application,
 toolset, response, consent, invitation and external-service ids, config entity `{path}`, admin file `{name}` and the
 v2 `{filePath}`. File, resource and v2 resource paths and the app-route `{routePath}` SHALL be passed on still encoded.
+An identifier that is not a valid URI path (an unencoded `[`, say) SHALL get `500` with an empty body.
 
 #### Scenario: Encoded deployment id
 - **WHEN** an authenticated client sends `GET /openai/deployments/deployment_x-y%2B%2F`
@@ -384,7 +393,8 @@ earlier route matches the same path.
 - **THEN** the rate feature handler receives deployment id `deployments/app/route/v1`, not the application routes
 
 ### Requirement: Application route selection
-Core SHALL try the application's `routes` in ascending `order` (default `2147483647`) and take the first whose
+Core SHALL try the routes the application's type schema declares, else the application's own `routes`, in ascending
+`order` (default `2147483647`) and take the first whose
 `methods` is empty or holds the request method and whose `paths` is empty or has a pattern fully matching `{routePath}`;
 with no match it SHALL answer `404` with body `Route is not found`.
 
@@ -421,7 +431,7 @@ no built-in route and no config route.
 
 ### Requirement: Wrong method on a built-in path
 Core SHALL NOT answer `405` for a method a built-in path does not serve, outside `POST`, `PUT` and `DELETE` on the
-config entity and admin file config URLs (config-store): the request falls to the next matching route or to the config routes, and with no match gets `404` with
+config entity and admin file config URLs and `GET` on settings metadata (config-store): the request falls to the next matching route or to the config routes, and with no match gets `404` with
 body `Route is not found`.
 
 #### Scenario: DELETE on a listing

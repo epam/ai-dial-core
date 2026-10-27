@@ -11,7 +11,9 @@ key is app-to-model-accounting, and URL / override-path resolution is deployment
 
 ### Requirement: Create routes
 Core SHALL handle a Responses create request at either create route request-routing maps (`POST /openai/v1/responses`,
-`POST /openai/responses`) the same way, and SHALL select the deployment by the body's `model` field.
+`POST /openai/responses`) the same way, and SHALL select the deployment by the body's `model` field. Under an
+`interfaces` base url with no override path the origin URL keeps the ingress path, so the two routes reach different
+origin paths (deployment-interfaces-config).
 
 #### Scenario: Versioned path
 - **WHEN** a client sends `POST /openai/v1/responses` with `Content-Type: application/json` and body
@@ -19,8 +21,14 @@ Core SHALL handle a Responses create request at either create route request-rout
 - **THEN** Core forwards the request to the Responses origin of deployment `gpt-3-turbo`
 
 #### Scenario: Unversioned path
-- **WHEN** a client sends the same request to `POST /openai/responses`
+- **WHEN** deployment `gpt-3-turbo` has a legacy `responsesEndpoint` and a client sends the same request to
+  `POST /openai/responses`
 - **THEN** Core answers exactly as for `POST /openai/v1/responses`
+
+#### Scenario: Unversioned path under a base url
+- **WHEN** deployment `m` declares `interfaces.openaiResponses` base url `http://adapter` with no override path and a
+  client sends `POST /openai/responses` with `{"model":"m"}`
+- **THEN** Core forwards the request to `http://adapter/openai/responses`
 
 ### Requirement: Content type required
 Core SHALL answer `415` with body `Only application/json is supported` when the create request's `Content-Type` does
@@ -112,14 +120,32 @@ and expiry skip for want of a mapping, so it is never deleted; a streaming creat
 ### Requirement: Streaming create (stream true, background false)
 When `stream` is true, Core SHALL relay the origin's SSE stream as it arrives and, in every event whose data has a
 `response` object whose `id` equals the first such event's id, replace that id with one dial id (other ids pass
-unchanged), writing the mapping when the first such event
-arrives. The stream SHALL end after a `response.completed` or `response.incomplete` event.
+unchanged), writing the mapping when the first such event arrives.
 
 #### Scenario: Ids rewritten in every event
 - **WHEN** the origin streams `event: response.created` and `event: response.completed`, each with data
   `{"response":{"id":"upstream-resp-stream"}}`
 - **THEN** the client receives both events with `"id":"dial_test_<uuid>"`, the same id in both, and no event carries
   `upstream-resp-stream`
+
+### Requirement: Terminal stream event
+Core SHALL hold back an event whose SSE `event:` name is `response.completed` or `response.incomplete`, drop every
+event after it, and send it when the origin closes its stream. An event that names the terminal type only in its
+data `type` field SHALL be relayed as an ordinary event.
+
+#### Scenario: Events after the terminal one
+- **WHEN** the origin streams `event: response.completed`, then `event: response.output_text.delta`, then closes
+- **THEN** the client receives `response.completed` last, after the origin closed, and no `response.output_text.delta`
+  that followed it
+
+### Requirement: Streaming request answered without SSE
+When `stream` is true and the origin answers without `Content-Type: text/event-stream`, Core SHALL relay the body
+unchanged: the origin's id reaches the client and Core writes no mapping or background job record.
+
+#### Scenario: Origin ignores stream
+- **WHEN** a client sends `{"model":"m","stream":true}` and the origin answers `200` `application/json`
+  `{"id":"resp_up"}`
+- **THEN** the client receives `{"id":"resp_up"}` and no `response_mappings/m/...` blob is written
 
 ### Requirement: Background create without streaming (stream false, background true)
 When `background` is true and `stream` is not, Core SHALL relay the origin's answer with its id replaced as for a
@@ -223,8 +249,8 @@ score to now + `leaseTimeoutMs`, so another instance picks it up if the claimer 
 
 ### Requirement: Instance next check time
 An instance SHALL read the schedule only when its own next check time is due. The time is unset at startup, lowered
-when the instance itself adds a job to the schedule (a create, or a scan that finds an unscheduled record), and after
-each read set to the earliest score in the schedule, unset when the schedule is empty.
+when the instance itself adds or reschedules a job (a create, a scan that finds an unscheduled record, its own poll),
+and after each read set to the earliest score in the schedule, unset when the schedule is empty.
 
 #### Scenario: All instances restarted
 - **WHEN** every instance restarts while jobs are in the schedule and no new background job is created
@@ -285,6 +311,15 @@ token stats; every finish SHALL invalidate the per-request key and write one ana
 #### Scenario: Record already gone
 - **WHEN** a poll returns a terminal body but the record was deleted concurrently
 - **THEN** Core records no usage, does not invalidate the key and writes no analytics log row
+
+### Requirement: Translated job charged at finish
+A finish other than at the end of a background stream SHALL charge a `Model`'s limits even when the model serves the
+Responses interface in `translator` mode, which app-to-model-accounting otherwise exempts.
+
+#### Scenario: Translated model job polled to the end
+- **WHEN** model `m` serves `openaiResponses` in `translator` mode and a poll of its non-streaming background job
+  returns `{"status":"completed","usage":{"total_tokens":15}}`
+- **THEN** the initiator's `m/tokens` limit record grows by 15
 
 ### Requirement: Item routes
 Core SHALL serve `GET /openai/v1/responses/{id}`, `POST /openai/v1/responses/{id}/cancel` and
