@@ -6,7 +6,8 @@ Core sent it as `API-KEY`: what the key carries, how long it lives, how the chil
 initiator's identity, trace and limits, and how the usage of every Core pass in the call tree is recorded and rolled
 up to its ancestors. The origin request itself is the deployment-origin capability; this one covers the key's
 lifecycle, the limits charged, the accounting records and the `statistics.usage_per_model` Core writes into a chat
-completion answer.
+completion answer. The buckets a per-request key sees (`GET /v1/bucket`) and the access its grants carry are the
+resource-access-control capability; the background job that holds a Responses key is the responses-api capability.
 
 ## Requirements
 
@@ -166,15 +167,6 @@ day, week or month cost limit is already reached.
 - **WHEN** user `u1`'s role declares `limits.app.requestHour: 1` and `u1` has already sent one request to `app` this hour, and `u1` sends
   `POST /openai/deployments/app/chat/completions`
 - **THEN** Core forwards the request to `app`
-
-### Requirement: Buckets seen with a per-request key
-`GET /v1/bucket` with a per-request key SHALL answer `bucket` as the encrypted `Keys/<sourceDeployment>/` and
-`appdata` as the encrypted initiator bucket plus `/appdata/<url-encoded sourceDeployment>`; without a per-request
-key `bucket` is the encrypted initiator bucket and `appdata` is absent.
-
-#### Scenario: Application bucket and appdata
-- **WHEN** `app`, called by user `u1`, sends `GET /v1/bucket` with its key
-- **THEN** the answer is `{"bucket": <enc(Keys/app/)>, "appdata": "<enc(Users/u1/)>/appdata/app"}`
 
 ### Requirement: Deployment closed to per-request keys
 Core SHALL answer `403` `Deployment <id> is not accessible by <sourceDeployment>` to a deployments-POST,

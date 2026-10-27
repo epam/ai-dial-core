@@ -73,6 +73,57 @@ that resolves to nothing); the validation in ConfigPostProcessor (translators, i
 names); the documented shapes in docs/dynamic-settings.`,
     files: `config/src/main/java/com/epam/aidial/core/config/Deployment.java, DeploymentInterface.java, InterfaceMode.java, Translator.java, TranslatorRef.java; ${S}/config/ConfigPostProcessor.java; ${S}/util/DeploymentEndpointUtil.java; ${S}/controller/ModelController.java, anthropic/AnthropicModelController.java; docs/dynamic-settings/*.md; the *Test classes beside them`,
   },
+  {
+    id: 'responses-api',
+    focus: `The OpenAI Responses interface as Core serves it, apart from the origin request (deployment-origin) and the
+per-request key (app-to-model-accounting): the create request and the stream / background combinations (stream only,
+background only, both, neither) and what the client gets for each; the response id Core hands out and how it maps back
+to the deployment (ResponseIdUtil, ResponseMappingService, ReplaceResponseIdFn); the background-job lifecycle
+(BackgroundJobRecord states, who runs the job, scheduling and pickup by BackgroundJobScheduler, completion, failure,
+cancel) and polling (GET by id, the statuses and bodies while queued / in progress / done / failed / cancelled, resuming a
+stream with starting_after or the equivalent); item storage and retrieval (ResponseItemController: input items, list,
+pagination, who may read them); TTL and expiry of jobs and stored results (the backgroundJob settings and their code
+defaults) and the answer after expiry; the Responses interceptor path (ResponsesInterceptorController).`,
+    files: `${S}/controller/ResponsesController.java, ResponseItemController.java, ResponsesInterceptorController.java, ResponsesSseListener.java; ${S}/service/BackgroundJobService.java, BackgroundJobScheduler.java, ResponseMappingService.java, ResponsesApiClient.java; ${S}/data/BackgroundJobRecord.java, ResponseMapping.java; ${S}/util/ResponseIdUtil.java; ${S}/function/ReplaceResponseIdFn.java, ExtractTerminalResponseFn.java, request/ResponsesApiRequest.java; the backgroundJob block in server/src/main/resources/aidial.settings.json; ResponsesApiTest, ResponsesControllerTest, ResponseItemControllerTest, BackgroundJobServiceTest, BackgroundJobSchedulerTest and the other *Test classes beside them`,
+  },
+  {
+    id: 'config-store',
+    focus: `The dynamic config as a store that is read, written and applied, not the meaning of each entity (that is
+deployment-interfaces-config for deployments): how the config file(s) (FileConfigStore, hot reload) and the entities
+written through the API (ConfigResourceController, blob-backed) are merged by MergedConfigStore, which one wins on a
+name clash and per field (admin-managed fields, AdminManagedFieldsWriteMode, ExternalServicesWriteMode); the config
+resource CRUD API (URLs, ETag / If-Match / If-None-Match, metadata listing, secret fields masked on read); who may read
+and write config (ConfigAuthorizationService, the admin role); the validate and apply endpoints (AdminValidateController,
+AdminApplyController: manifest shape, per-entity result and status, dry run, partial failure); when a write is rejected
+with 422 or 400 and the body (ConfigValidationService, cross-reference validation, soft mode, InvalidEntityRecord and its
+API); what a reload does when the new file or an entity is rejected (keep the last good config, warnings); config file
+migration (ConfigFileMigrateController).`,
+    files: `${S}/config/MergedConfigStore.java, FileConfigStore.java, ConfigStore.java, EntityChange.java, EntityLocationStrategy.java, PlatformEntityLocationStrategy.java, BlobEntityValidator.java, InvalidEntityRecord.java, SecretFieldProcessor.java, ValidationWarning.java; ${S}/controller/ConfigResourceController.java, ConfigResourceMetadataController.java, ConfigController.java, FileConfigController.java, AdminApplyController.java, AdminValidateController.java, ConfigFileMigrateController.java; ${S}/service/config/*.java, AdminManagedFieldsWriteMode.java, ExternalServicesWriteMode.java; ${S}/security/ConfigAuthorizationService.java; ${S}/data/config/**; MergedConfigStore*Test, ConfigEntityWriteApiTest, ConfigAdmin*Test, AdminApplyApiTest, AdminValidateApiTest, InvalidEntityApiTest, ModelCrossRefValidation*ApiTest, ConfigResourceConditionalHeaderTest, FileConfigStoreTest and the other *Test classes beside them`,
+  },
+  {
+    id: 'request-routing',
+    focus: `Which controller answers which request, before any controller logic runs: the table of URL patterns and
+HTTP methods ControllerSelector maps (deployments and their interfaces, models / applications / toolsets listings,
+files and other resource types, metadata, bucket, share, invitations, publications, ops, config and admin, well-known,
+health, MCP), URL decoding and the path variables extracted, the order in which patterns are tried where two could
+match, the answer for an unknown path (404) and for a known path with the wrong method (405, Allow header if any), and
+what config routes add on top (route/GlobalRouteController, ApplicationRouteController). Specify the mapping and the status for a miss, not what each
+controller then does: refer to the owning capability by name.`,
+    files: `${S}/controller/ControllerSelector.java, route/*.java; Proxy.java (dispatch, the 404 / 405 path); ControllerSelectorTest, RouteApiTest, ApplicationRouteApiTest and the other *Test classes beside them`,
+  },
+  {
+    id: 'resource-access-control',
+    focus: `Who may read, write and share user resources (files, conversations, prompts, applications, toolsets, skills,
+projects) and how that is decided, not the config store (config-store owns config authorization): bucket ownership
+(Bucket, BucketController, the user and app buckets, encrypted bucket names), AccessService and its permissions (READ /
+WRITE / SHARE ...), the rules (Rules, RuleMatcher, RuleService) for public paths, admin access; per-request permissions
+(PerRequestPermissionController) at the HTTP level, referring to app-to-model-accounting for the key itself; sharing
+(ShareController: share, list shared with me / by me, revoke, discard, copy) and invitations (InvitationController:
+create, accept, expiry, who may accept); publications (PublicationController: create, approve, reject, delete, list,
+the public bucket, rules applied on approval); move / copy and what access survives (ResourceOperationController); the
+statuses and bodies for a denied request (403 vs 404).`,
+    files: `${S}/security/AccessService.java, RuleMatcher.java, EntityBucketBinding.java; ${S}/service/ShareService.java, InvitationService.java, PublicationService.java, PublicationUtil.java, RuleService.java, PerRequestPermissionService.java, ResourceOperationService.java, SecuredResourceService.java; ${S}/controller/AccessControlBaseController.java, ResourceController.java, BucketController.java, ShareController.java, InvitationController.java, PublicationController.java, PerRequestPermissionController.java, ResourceOperationController.java; ${S}/data/Rule*.java, Publication*.java, Invitation*.java, Share*.java, Shared*.java; AccessServiceTest, ShareApiTest, InvitationApiTest, PublicationApiTest, ResourceApiTest, PerRequestPermissionsApiTest, RuleMatcherTest and the other *Test classes beside them`,
+  },
 ]
 
 const wanted = Array.isArray(args) ? args : (args && Array.isArray(args.caps) ? args.caps : (typeof args === 'string' ? [args] : null))
