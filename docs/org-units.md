@@ -168,7 +168,7 @@ the power. To anyone else the calls answer 403, also for a path that names no un
 | Call | Who | What |
 |---|---|---|
 | `GET /v1/org-units/public/{unit}…/role-assignments` | admins, `read role-assignments/**` | The unit's assignments in `items`, in the order they were added. |
-| `POST /v1/org-units/public/{unit}…/role-assignments` `{"roleName": "editor", "subject": {…}}` | admins, `write role-assignments/**` | Gives the role to the subject at the unit and answers 200 with the assignment: `id`, `roleName`, `subject`. The same role for the same subject again answers the stored assignment and writes nothing. |
+| `POST /v1/org-units/public/{unit}…/role-assignments` `{"roleName": "editor", "subject": {…}}` | admins, `write role-assignments/**` | Gives the role to the subject at the unit and answers 200 with the assignment: `id`, `roleName`, `subject`. The same role for a subject that matches the same callers again (the same claim and function, and the same values ignoring case and order) answers the stored assignment and writes nothing. |
 | `DELETE /v1/org-units/public/{unit}…/role-assignments/{id}` | admins, `write role-assignments/**` | Removes the assignment and answers `{"removed": "<id>"}`; an unknown id is 404. |
 
 `roleName` is one of the roles `GET …/roles` lists; any other is refused with 400. An assignment stored with a

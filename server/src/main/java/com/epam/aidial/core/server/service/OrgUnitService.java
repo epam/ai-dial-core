@@ -42,6 +42,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
@@ -275,10 +276,14 @@ public class OrgUnitService {
     }
 
     /**
-     * Gives the role to the subject at this unit only; units below don't inherit it. The same role for the same
-     * subject again answers the stored assignment and writes nothing.
+     * Gives the role to the subject at this unit only; units below don't inherit it. The same role for a subject that
+     * matches the same callers again answers the stored assignment and writes nothing.
+     *
+     * @param mayChange decides on the unit's readable assignments and the role name in the same write as the change,
+     *                  so a caller whose own roles change meanwhile is held to the new ones
      */
-    public RoleAssignment addRoleAssignment(List<String> path, @Nullable String roleName, @Nullable Subject subject, OrgUnitRoles roles) {
+    public RoleAssignment addRoleAssignment(List<String> path, @Nullable String roleName, @Nullable Subject subject, OrgUnitRoles roles,
+                                            BiPredicate<List<RoleAssignment>, String> mayChange) {
         String key = unitKey(path);
         if (roleName == null || !roles.exists(roleName)) {
             throw new IllegalArgumentException("roleName is one of " + String.join(", ", roles.roles().keySet()));
@@ -288,9 +293,12 @@ public class OrgUnitService {
         AtomicReference<RoleAssignment> result = new AtomicReference<>();
         updateRoleAssignments(path, key, assignments -> {
             result.set(null);
-            for (JsonNode stored : assignments) {
-                RoleAssignment existing = readRoleAssignment(key, stored);
-                if (existing != null && existing.roleName().equals(roleName) && existing.subject().equals(subject)) {
+            List<RoleAssignment> readable = readable(key, assignments);
+            if (!mayChange.test(readable, roleName)) {
+                throw new HttpException(HttpStatus.FORBIDDEN, "You can give only roles whose permissions you hold in this unit");
+            }
+            for (RoleAssignment existing : readable) {
+                if (existing.roleName().equals(roleName) && sameCallers(existing.subject(), subject)) {
                     result.set(existing);
                     return false;
                 }
@@ -319,16 +327,18 @@ public class OrgUnitService {
     /**
      * Removes the assignment with the id, even one this node can't read: revoking must not depend on its format.
      *
-     * @param mayRemove decides on the stored role name, null when it can't be read, in the same write as the removal
+     * @param mayChange decides on the unit's readable assignments and the stored role name, null when it can't be
+     *                  read, in the same write as the removal
      */
-    public void removeRoleAssignment(List<String> path, String id, Predicate<String> mayRemove) {
+    public void removeRoleAssignment(List<String> path, String id, BiPredicate<List<RoleAssignment>, String> mayChange) {
         String key = unitKey(path);
         updateRoleAssignments(path, key, assignments -> {
+            List<RoleAssignment> readable = readable(key, assignments);
             for (int i = 0; i < assignments.size(); i++) {
                 JsonNode storedId = assignments.get(i).get("id");
                 if (storedId != null && storedId.isTextual() && storedId.textValue().equals(id)) {
                     JsonNode roleName = assignments.get(i).get("roleName");
-                    if (!mayRemove.test(roleName != null && roleName.isTextual() ? roleName.textValue() : null)) {
+                    if (!mayChange.test(readable, roleName != null && roleName.isTextual() ? roleName.textValue() : null)) {
                         throw new HttpException(HttpStatus.FORBIDDEN, "You can remove only assignments of roles whose permissions you hold in "
                                 + describe(key));
                     }
@@ -345,6 +355,32 @@ public class OrgUnitService {
      * fields stay as stored, including those this node can't read. The change returns false to write nothing. A unit
      * removed meanwhile leaves at most an orphan policy, which nothing reads.
      */
+    private List<RoleAssignment> readable(String key, ArrayNode assignments) {
+        List<RoleAssignment> readable = new ArrayList<>();
+        for (JsonNode stored : assignments) {
+            RoleAssignment assignment = readRoleAssignment(key, stored);
+            if (assignment != null) {
+                readable.add(assignment);
+            }
+        }
+        return readable;
+    }
+
+    /**
+     * Whether two subjects match the same callers: a claims predicate's values compare ignoring case and order, as
+     * matching does.
+     */
+    private static boolean sameCallers(Subject stored, Subject subject) {
+        if (stored instanceof Subject.ClaimsPredicate a && subject instanceof Subject.ClaimsPredicate b) {
+            return a.source().equals(b.source()) && a.function() == b.function() && lowerCase(a.targets()).equals(lowerCase(b.targets()));
+        }
+        return stored.equals(subject);
+    }
+
+    private static Set<String> lowerCase(@Nullable List<String> values) {
+        return values == null ? Set.of() : values.stream().map(value -> value.toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
+    }
+
     private void updateRoleAssignments(List<String> path, String key, Predicate<ArrayNode> change) {
         OrgUnit unit = getUnitList().units().get(key);
         if (unit == null) {
