@@ -649,6 +649,11 @@ class OrgUnitServiceTest {
         service.addRoleAssignment(acme, "admin", new Subject.ClaimsPredicate("roles", Rule.Function.EQUAL, List.of("leads", "ops")), ROLES, ANYONE);
         service.addRoleAssignment(acme, "admin", new Subject.ClaimsPredicate("groups", Rule.Function.EQUAL, List.of("leads")), ROLES, ANYONE);
         assertEquals(3, service.listRoleAssignments(acme).size(), "another claim or another set of values is another subject");
+
+        // String.toLowerCase turns the dotted capital I into two characters; matching compares character by character
+        service.addRoleAssignment(acme, "editor", new Subject.ClaimsPredicate("email", Rule.Function.EQUAL, List.of(Character.toString(0x130) + "x")), ROLES, ANYONE);
+        service.addRoleAssignment(acme, "editor", new Subject.ClaimsPredicate("email", Rule.Function.EQUAL, List.of("i" + Character.toString(0x307) + "x")), ROLES, ANYONE);
+        assertEquals(5, service.listRoleAssignments(acme).size(), "values that match different callers stay apart");
     }
 
     @Test
