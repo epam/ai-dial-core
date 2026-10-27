@@ -153,6 +153,39 @@ credentials and config modules. It is not a proof.
   (cAdvisor), client latency minus simulator latency (p50 / p95), `netty_eventexecutor_tasks_pending` by `name`,
   `vertx_http_client_active_connections`, `dial_async_task_start_delay_seconds`.
 
+### Measured (perf env, 2026-10-27)
+
+Setup: 2 Core pods (7.5 CPU, 16 GiB, heap 11.2 GiB), 2,000 users, the router path (client → Core → router → Core →
+adapter → simulator), request bodies 665 KB on average, image of commit `40e73b21` with `aidial.server.instances=4`.
+Baseline: the same load on an earlier `development` build with one server, so not the same image. There was no run
+with one server on this image.
+
+| | One server, bodies logged | N = 4, bodies logged | N = 4, bodies not logged |
+|---|---|---|---|
+| Failed requests | 0 | 2,923 of 220,715; one pod `OutOfMemoryError` | 0 of 47,859 |
+| User requests per second | 101 | 124-128 | 128.7 |
+| Overhead over the simulator, p50 / p95 | +3.89 / +4.12 s | about +0.2 s, mean | +0.171 / +0.152 s |
+| Reading the client's body / the router's body | 1,024 / 655 ms | - | 26 / 33 ms |
+| Core CPU per user request | 74 ms | about 98 ms | 82.5 ms |
+| CPU throttled (CFS periods) | about 5% | 22-49% | about 7% |
+| Share of time in GC | at most 3.5% | 7-15% | 3-5% |
+| Live heap after GC | flat, about 7 GiB | 7.5 → 10.6 GiB in 4 min | flat, 4.0-6.8 GiB |
+
+- The one-loop cap is gone. With N = 4 the backlog (`netty_eventexecutor_tasks_pending`) sits on loops 2-5 only (max
+  over the steady 5 min: 152 / 38 / 124 / 45 on one pod, 390 / 437 / 377 / 385 on the other), and thread-1 and
+  loops 6-15 are at 0. Reading bodies in 26-33 ms says the loops do not queue for long.
+- "Bodies not logged" means every API key marked `secured`, so the analytics row carries no request or response body.
+  The per-request key Core gives the router copies that flag, so the second pass is covered too.
+- With bodies logged, N = 4 crashed for a reason outside this change. `GfLogStore` writes analytics rows on one thread
+  behind an unbounded queue, and each queued row keeps its request and response bodies. That thread writes about
+  100-120 MB/s per pod, about 70 user requests per second on the router path, which logs 2 bodies per user request. One
+  server held the pods near 50, under that ceiling. N = 4 brought them to 63-70 while the pods were CPU-throttled,
+  the queue grew about 14 MB/s, and the heap filled.
+- Not yet split: 82.5 vs 74 ms CPU per user request. It mixes N = 4, bodies not logged (which should lower it) and JIT
+  warm-up. The pods were 3-4 min old, and earlier captures put the C2 compiler at 0.4-0.75 cores per pod in the first
+  minutes of load, about 6-12 ms per user request at this rate. The 2-5 ms hand-off estimate is not checked yet. A
+  profiled repeat with per-thread CPU is to split it.
+
 ## Risks / Trade-offs
 
 - [The sweep missed shared state that only one loop kept safe] → The concurrent streaming integration test, the
@@ -161,6 +194,9 @@ credentials and config modules. It is not a proof.
   follow-up change gives each loop its own client (D7's rejected option).
 - [Port 0 with N > 1 binds N ports] → Only tests use port 0. The N > 1 test uses -1 (D5).
 - [N above the event-loop count] → Loops are shared and nothing fails (D4).
+- [With bodies logged, N > 1 lifts a pod past what the analytics writer can keep up with] → In the 2026-10-27 run
+  this filled the heap (see "Measured"). Keep the default 1. Enable N > 1 under load only with `secured` keys, or once
+  `GfLogStore` bounds what it holds; that is a separate change.
 
 ## Migration Plan
 

@@ -55,6 +55,11 @@
   client latency minus simulator latency (p50 / p95), Core CPU per user request, `netty_eventexecutor_tasks_pending`
   by `name`, `vertx_http_client_active_connections` and failures. Record the numbers and the estimate in design.md
   "Effect per request" next to each other (deferred: needs the perf env, run by the perf team).
+  Seen, recorded in design.md "Measured": the runs used N = 4 against a one-server run on an earlier build, not
+  N = 8 against unset on this image. With bodies logged, one pod hit `OutOfMemoryError` in the analytics writer
+  (outside this change). With bodies not logged: 0 failures, overhead p50 +0.171 s (from +3.89 s), and 82.5 ms CPU
+  per user request (from 74). Open: the per-thread CPU split that separates the hand-offs from JIT warm-up and from
+  bodies not being logged.
 
 ## Workflow follow-up
 
@@ -62,3 +67,5 @@
   then `validate --specs --strict`.
 - Commit to the branch of draft PR #2184 (against `development`), then send the perf team the PR, the image
   reference, the env var (`aidial.server.instances=8`) and the risks from design.md.
+- Separate change, before N > 1 is recommended where bodies are logged: bound what the analytics writer
+  (`GfLogStore`) holds.
