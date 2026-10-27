@@ -94,6 +94,19 @@ class OrgUnitRolesTest {
     }
 
     @Test
+    void testAdminRedefinedWithoutRoleAssignmentsLosesThem() {
+        Map<String, OrgUnitRole> configured = Map.of(ADMIN, role(new OrgUnitPermission(List.of(READ, WRITE), "files/**")));
+        assertDoesNotThrow(() -> OrgUnitRoles.validate(configured));
+        Config config = new Config();
+        config.setOrgUnitRoles(configured);
+
+        OrgUnitRoles roles = OrgUnitRoles.of(config);
+
+        assertFalse(roles.allows(List.of(ADMIN), WRITE, OrgUnitRoles.ROLE_ASSIGNMENTS));
+        assertFalse(roles.covers(List.of(ADMIN), EDITOR));
+    }
+
+    @Test
     void testCovers() {
         Config config = new Config();
         config.setOrgUnitRoles(Map.of("manager", role(new OrgUnitPermission(List.of(READ, WRITE), "role-assignments/**"),
