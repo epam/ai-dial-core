@@ -34,6 +34,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -397,6 +398,21 @@ public class OrgUnitService {
      * fields stay as stored, including those this node can't read. The change returns false to write nothing. A unit
      * removed meanwhile leaves at most an orphan policy, which nothing reads.
      */
+    private void updateRoleAssignments(List<String> path, String key, Predicate<ArrayNode> change) {
+        OrgUnit unit = getUnitList().units().get(key);
+        if (unit == null) {
+            throw new ResourceNotFoundException("No org unit: " + String.join("/", path));
+        }
+        ResourceDescriptor policy = policy(requirePolicyId(key, unit));
+
+        resources.computeResource(policy, body -> {
+            ObjectNode document = parsePolicy(key, body);
+            JsonNode stored = document.get(ROLE_ASSIGNMENTS);
+            ArrayNode assignments = stored == null || stored.isNull() ? document.putArray(ROLE_ASSIGNMENTS) : (ArrayNode) stored;
+            return change.test(assignments) ? document.toString() : body;
+        });
+    }
+
     private List<RoleAssignment> readable(String key, ArrayNode assignments) {
         List<RoleAssignment> readable = new ArrayList<>();
         for (JsonNode stored : assignments) {
@@ -414,28 +430,23 @@ public class OrgUnitService {
      */
     private static boolean sameCallers(Subject stored, Subject subject) {
         if (stored instanceof Subject.ClaimsPredicate a && subject instanceof Subject.ClaimsPredicate b) {
-            return a.source().equals(b.source()) && a.function() == b.function() && lowerCase(a.targets()).equals(lowerCase(b.targets()));
+            return a.source().equals(b.source()) && a.function() == b.function() && foldCase(a.targets()).equals(foldCase(b.targets()));
         }
         return stored.equals(subject);
     }
 
-    private static Set<String> lowerCase(@Nullable List<String> values) {
-        return values == null ? Set.of() : values.stream().map(value -> value.toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
-    }
-
-    private void updateRoleAssignments(List<String> path, String key, Predicate<ArrayNode> change) {
-        OrgUnit unit = getUnitList().units().get(key);
-        if (unit == null) {
-            throw new ResourceNotFoundException("No org unit: " + String.join("/", path));
+    /**
+     * Each value folded per code point the way {@link String#equalsIgnoreCase} compares it, so two values fold alike
+     * exactly when matching takes them for the same.
+     */
+    private static Set<String> foldCase(@Nullable List<String> values) {
+        Set<String> folded = new HashSet<>();
+        for (String value : values == null ? List.<String>of() : values) {
+            StringBuilder chars = new StringBuilder(value.length());
+            value.codePoints().forEach(codePoint -> chars.appendCodePoint(Character.toLowerCase(Character.toUpperCase(codePoint))));
+            folded.add(chars.toString());
         }
-        ResourceDescriptor policy = policy(requirePolicyId(key, unit));
-
-        resources.computeResource(policy, body -> {
-            ObjectNode document = parsePolicy(key, body);
-            JsonNode stored = document.get(ROLE_ASSIGNMENTS);
-            ArrayNode assignments = stored == null || stored.isNull() ? document.putArray(ROLE_ASSIGNMENTS) : (ArrayNode) stored;
-            return change.test(assignments) ? document.toString() : body;
-        });
+        return folded;
     }
 
     private List<RoleAssignment> readPolicy(String key, OrgUnit unit) {
