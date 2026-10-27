@@ -111,7 +111,8 @@ the key rather than the JWT, and SHALL NOT apply the original key's `allowedIpAd
 ### Requirement: Key invalidated when its pass ends
 Core SHALL delete the key it minted when the pass that minted it ends, whether the answer completed or an error was
 answered; for a background Responses request whose origin accepted the job, the key SHALL be deleted when the job
-ends instead, except as Client gone from an application states. A request with a deleted or expired key in
+ends instead, except as Client gone from an application and responses-api's Client gone from a model's background
+stream state. A request with a deleted or expired key in
 `API-KEY` SHALL be answered `401` with body `Unknown api key`.
 
 #### Scenario: Key rejected after the answer
@@ -203,11 +204,9 @@ called deployment marked `consentRequired`.
   of that key's `executionPath` is `i1`
 
 ### Requirement: Token-stats span per pass
-Core SHALL add each forwarding pass, other than a deployment feature call or a Responses item operation, as a span
-`{tokenUsage, parentSpanId, deploymentName, usagePerModel: []}` keyed by its span id to the Redis string
-`deployment_cost_stats_tmp:[<prefix>/]<traceId>`, refreshing its TTL
-`deploymentStats.ttlMs` (default 3600000, must be positive) on every write; a trace whose root is a background
-Responses job uses max(ttlMs, `backgroundJob.jobTtlMs` + `backgroundJob.scanIntervalMs`).
+Core SHALL add each forwarding pass but a deployment feature call or a Responses item operation's pass to the origin
+(its interceptor hops are added) as a span `{tokenUsage, parentSpanId, deploymentName, usagePerModel: []}` keyed by
+its span id to the Redis string `deployment_cost_stats_tmp:[<prefix>/]<traceId>`.
 
 #### Scenario: Child span recorded under the root
 - **WHEN** root `app` (span `s1`, trace `t1`) calls `gpt-4` (span `s2`)
@@ -218,6 +217,11 @@ Responses job uses max(ttlMs, `backgroundJob.jobTtlMs` + `backgroundJob.scanInte
 - **WHEN** a client sends `POST /v1/deployments/app/tokenize` and `app` calls `gpt-4` with the key it received
 - **THEN** `deployment_cost_stats_tmp:<traceId>` holds the `gpt-4` span and no span for the `tokenize` pass
 
+### Requirement: Token-stats record TTL
+Core SHALL refresh the token-stats record's TTL to `deploymentStats.ttlMs` (default 3600000, must be positive) on every
+write; a trace whose root is a background Responses job uses max(ttlMs, `backgroundJob.jobTtlMs` +
+`backgroundJob.scanIntervalMs`).
+
 #### Scenario: Invalid TTL refused
 - **WHEN** settings set `deploymentStats.ttlMs: 0`
 - **THEN** Core fails to start with `deploymentStats.ttlMs must be positive, but got: 0`
@@ -225,8 +229,8 @@ Responses job uses max(ttlMs, `backgroundJob.jobTtlMs` + `backgroundJob.scanInte
 ### Requirement: Trace record deleted when the root ends
 Core SHALL delete the trace's token-stats record when the root pass ends (or, for a background root, when its job
 ends) and SHALL leave it when a child pass ends, except as Client gone from an application states. A trace rooted
-in a deployment feature call or a Responses item operation, which add no span, is never deleted and expires with
-`deploymentStats.ttlMs`.
+in a deployment feature call or in a Responses item operation on a deployment without interceptors, which add no span,
+is never deleted and expires with `deploymentStats.ttlMs`.
 
 #### Scenario: Root ends
 - **WHEN** root `app` answers its client

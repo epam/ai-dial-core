@@ -62,7 +62,9 @@ deployment-interfaces-config), Core SHALL answer that `503` with body
 
 ### Requirement: Response id format
 Core SHALL hand out response ids of the form `dial_<deploymentName>_<uuid>`, where `<uuid>` is 32 lowercase hex
-characters and `<deploymentName>` is the name of the deployment that served the create request (it may contain `_`).
+characters and `<deploymentName>` is the name of the deployment that served the create request (it may contain `_`,
+and `/` for a custom application `applications/<bucket>/<path>`, whose id the item routes take only percent-encoded,
+`%2F`, since `{id}` is one path segment).
 
 #### Scenario: Id built from the deployment name
 - **WHEN** deployment `gpt-5.4-2026-03-05` serves a create request
@@ -109,7 +111,8 @@ and expiry skip for want of a mapping, so it is never deleted; a streaming creat
 
 ### Requirement: Streaming create (stream true, background false)
 When `stream` is true, Core SHALL relay the origin's SSE stream as it arrives and, in every event whose data has a
-`response` object with a string `id`, replace that id with one dial id, writing the mapping when the first such event
+`response` object whose `id` equals the first such event's id, replace that id with one dial id (other ids pass
+unchanged), writing the mapping when the first such event
 arrives. The stream SHALL end after a `response.completed` or `response.incomplete` event.
 
 #### Scenario: Ids rewritten in every event
@@ -137,8 +140,9 @@ schedule it for polling. The per-request key's longer TTL is app-to-model-accoun
 ### Requirement: Background create with streaming (stream true, background true)
 When `background` and `stream` are both true, Core SHALL write the background job record when it writes the mapping
 for the first event, and when the stream ends SHALL delete that record and cancel its schedule; usage is accounted at
-stream end only if this deletion removed the record. If the client disconnects mid-stream, the record SHALL stay and
-the job is finished by polling.
+stream end only if this deletion removed the record. If the client disconnects mid-stream, the record SHALL stay and,
+for a deployment that is not a `Model`, the job is finished by polling (for a `Model`, see Client gone from a model's
+background stream).
 
 #### Scenario: Stream completes
 - **WHEN** a client sends `{"model":"test","stream":true,"background":true}` and the origin streams
@@ -147,8 +151,18 @@ the job is finished by polling.
   removes the job from the poll schedule
 
 #### Scenario: Client disconnects
-- **WHEN** the client closes the connection after `response.created`
-- **THEN** `background_jobs/dial_test_<uuid>` remains and the scheduler polls the job until it is terminal
+- **WHEN** the client of application `app` closes the connection after `response.created`
+- **THEN** `background_jobs/dial_app_<uuid>` remains and the scheduler polls the job until it is terminal
+
+### Requirement: Client gone from a model's background stream
+When the client of a streamed background request to a `Model` disconnects, Core SHALL read the origin stream to its
+end, record its usage, write the pass's analytics row and delete the per-request key, leaving the job record and its
+schedule entry; the first poll of the job then answers `401` and the job is given up.
+
+#### Scenario: Model client disconnects
+- **WHEN** the client of model `test` closes the connection after `response.created` and the origin stream completes
+- **THEN** Core records the stream's usage, `background_jobs/dial_test_<uuid>` remains, and the first poll answers
+  `401` and gives the job up
 
 ### Requirement: Background job record
 Core SHALL store a background job as a blob resource in bucket `background_jobs` named by the dial id, holding the
@@ -204,18 +218,29 @@ score to now + `leaseTimeoutMs`, so another instance picks it up if the claimer 
 
 #### Scenario: Lease expires
 - **WHEN** an instance claims a job and stops before rescheduling it
-- **THEN** after `leaseTimeoutMs` the job is due again and any instance claims and polls it
+- **THEN** after `leaseTimeoutMs` the job is due again and an instance whose own next check time is due claims and
+  polls it
+
+### Requirement: Instance next check time
+An instance SHALL read the schedule only when its own next check time is due. The time is unset at startup, lowered
+when the instance itself adds a job to the schedule (a create, or a scan that finds an unscheduled record), and after
+each read set to the earliest score in the schedule, unset when the schedule is empty.
+
+#### Scenario: All instances restarted
+- **WHEN** every instance restarts while jobs are in the schedule and no new background job is created
+- **THEN** no instance polls those jobs (the scan finds them already scheduled), and the scan expires them after
+  `jobTtlMs`
 
 ### Requirement: Scheduler pacing
-Each instance SHALL check for due jobs every `backgroundJob.schedulerTickIntervalMs` and poll at most
-`backgroundJob.maxParallelJobs` jobs at once, leaving the rest due for a later tick.
+Each instance SHALL check for due jobs every `backgroundJob.schedulerTickIntervalMs` while its next check time is due
+and poll at most `backgroundJob.maxParallelJobs` jobs at once, leaving the rest due for a later tick.
 
 #### Scenario: Parallel limit reached
 - **WHEN** `maxParallelJobs` is `100` and 100 polls of this instance are in flight
 - **THEN** the instance claims no further job until one of them finishes
 
 ### Requirement: Scan of stored jobs
-At startup and every `backgroundJob.scanIntervalMs`, Core SHALL list every blob in `background_jobs` and schedule each
+At startup and every `backgroundJob.scanIntervalMs`, Core SHALL list the blobs directly in `background_jobs` and schedule each
 one for an immediate poll unless it is already scheduled, so jobs survive a Redis restart; a job whose blob is at least
 `backgroundJob.jobTtlMs` old SHALL instead be expired.
 
@@ -226,6 +251,14 @@ one for an immediate poll unless it is already scheduled, so jobs survive a Redi
 #### Scenario: Existing schedule kept
 - **WHEN** a scan finds a job already in the schedule with a future score
 - **THEN** the score is not changed
+
+### Requirement: Nested job records skipped by the scan
+The scan SHALL NOT see a job whose dial id contains `/` (a custom application's), whose record sits in a sub-folder of
+`background_jobs`: such a job is never re-scheduled after Redis loses the schedule and never expired.
+
+#### Scenario: Custom application job
+- **WHEN** `background_jobs/dial_applications/<bucket>/app_<uuid>` exists, is older than `jobTtlMs`, and a scan runs
+- **THEN** Core does not expire it
 
 ### Requirement: Job expiry
 Core SHALL expire a job found by the scan with age at least `backgroundJob.jobTtlMs` by deleting its record and
@@ -320,7 +353,7 @@ SHALL be sent unchanged.
 
 ### Requirement: Retrieve as a stream
 When the origin answers a `GET` by id with `Content-Type: text/event-stream`, Core SHALL relay the SSE stream with the
-`response.id` in each event replaced by the dial id. Core SHALL pass the query (e.g. `stream=true&starting_after=42`)
+`response.id` equal to the mapping's upstream id replaced by the dial id in each event. Core SHALL pass the query (e.g. `stream=true&starting_after=42`)
 to the origin unchanged and SHALL NOT interpret it, so resuming a stream is the origin's behaviour.
 
 #### Scenario: Resumed stream
@@ -407,7 +440,7 @@ last one to the initial deployment whatever the body's `model`.
 
 ### Requirement: Item operations through interceptors
 When the mapping's deployment has interceptors, Core SHALL send the item operation to the first interceptor with the
-client's method and query, with the dial id (not the origin's id) in the URI, e.g. `<base>/openai/v1/responses/<dialId>`
+client's method and query, with the dial id (not the origin's id, and not percent-encoded) in the URI, e.g. `<base>/openai/v1/responses/<dialId>`
 or the interceptor's override path with `{id}` rendered as the dial id; the interceptor's call back by id SHALL go to the
 next interceptor, and from the last one to the origin.
 
