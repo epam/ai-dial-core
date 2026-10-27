@@ -27,6 +27,10 @@ public enum RouteTemplate {
             "^/+anthropic/v1/models$",
             "/anthropic/v1/models"
     ),
+    ANTHROPIC_OAUTH_USAGE(
+            "^/+anthropic/api/oauth/usage$",
+            "/anthropic/api/oauth/usage"
+    ),
 
     // OpenAI API routes
     LLM_CHAT_COMPLETIONS_API(
@@ -146,12 +150,14 @@ public enum RouteTemplate {
     ),
 
     CONFIG_RESOURCE(
-            "^/v1/(models|interceptors|translators|roles|keys|routes|schemas|catalog_schemas|settings)/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
+            "^/v1/(models|interceptors|translators|roles|keys|routes|schemas|catalog_schemas|settings|policies|policy_assignments)"
+                    + "/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
             "/v1/{resourceType}/{bucket}/{path}"
     ),
 
     CONFIG_RESOURCE_METADATA(
-            "^/v1/metadata/(models|interceptors|translators|roles|keys|routes|schemas|catalog_schemas|settings)/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
+            "^/v1/metadata/(models|interceptors|translators|roles|keys|routes|schemas|catalog_schemas|settings|policies|policy_assignments)"
+                    + "/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
             "/v1/metadata/{resourceType}/{bucket}/{path}"
     ),
 
@@ -178,6 +184,11 @@ public enum RouteTemplate {
     CONFIG_APPLY(
             "^/v1/admin/apply$",
             "/v1/admin/apply"
+    ),
+
+    ADMIN_EXPORT(
+            "^/v1/admin/export$",
+            "/v1/admin/export"
     ),
 
     BUCKET(

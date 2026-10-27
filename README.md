@@ -158,7 +158,7 @@ Priority order:
 | analytics.headersAllowlist               |     _(disabled)_     | No | Optional JSON array of case-insensitive regex patterns (full-match). When present, only request headers whose name matches at least one pattern are collected (`analytics.headersBlacklist` still wins over the allowlist). Omit the key to disable the allowlist and collect all non-blocked headers. Example — keep just OTel and useful client headers: `["traceparent", "tracestate", "user-agent", "x-forwarded-.*"]`.                                                                                                                                                                           |
 | tracing.genAiSpanAttributes              |       true        |    No    | If `true`, adds [OTel GenAI semantic-convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) `gen_ai.*` and `dial.*` attributes to the request span and to OTel log records. Prompts, completions and tool payloads are never published. Refer to [Tracing](/docs/tracing.md) to learn more. |
 | tracing.responseTraceHeaders             |       true        |    No    | If `true`, every response carries the W3C `traceparent` of Core's own root span, plus `X-DIAL-TRACE-ID` and `X-DIAL-SPAN-ID`, all exposed via CORS. Omitted when no OpenTelemetry SDK is attached and the span context is invalid.                                                                   |
-| tracing.conversationIdHeaders            | ["x-claude-code-session-id", "thread-id", "x-session-id", "x-dial-client-channel-id", "X-CONVERSATION-ID"] | No | JSON array of request headers, in priority order, that may carry a conversation or session id; the first usable one present is published as `gen_ai.conversation.id` when `tracing.genAiSpanAttributes` is enabled. Matching is case-insensitive, and a value over 256 characters is skipped in favour of the next header. The known credential header names are rejected with a warning. The defaults cover Claude Code, OpenAI Codex CLI, OpenCode and DIAL Chat; an operator-supplied array replaces them outright. |
+| tracing.conversationIdHeaders            | ["x-claude-code-session-id", "thread-id", "x-session-id", "x-dial-client-channel-id", "X-CONVERSATION-ID"] | No | JSON array of request headers, in priority order, that may carry a conversation or session id; the first usable one present is published as `gen_ai.conversation.id` when `tracing.genAiSpanAttributes` is enabled, and is always written to each analytics log entry as `session.id` (omitted when no header matches). Matching is case-insensitive, and a value over 256 characters is skipped in favour of the next header. The known credential header names are rejected with a warning. The defaults cover Claude Code, OpenAI Codex CLI, OpenCode and DIAL Chat; an operator-supplied array replaces them outright. |
 | proxy.additionalHopByHopHeaders          |     _(empty)_       |    No    | JSON array of extra header names to strip from requests/responses forwarded through the proxy, on top of the built-in hop-by-hop headers (`Connection`, `Keep-Alive`, `Host`, etc.). Names are matched case-insensitively; blank entries are ignored.                                                          |
 
 #### Collecting claims
@@ -340,6 +340,18 @@ the client subscribed with no events ever reaching it.
 </details>
 
 <details> 
+<summary><b>Admin Export Configurations</b></summary>
+
+Settings of `POST /v1/admin/export`, which streams the `public` and `platform` buckets as a ZIP archive.
+Refer to [Admin export](docs/admin-export.md) to learn more.
+
+| Setting                    | Default | Required | Description                                                                                                                                              |
+|----------------------------|:-------:|:--------:|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| adminExport.stallTimeout   | 60000   |    No    | Time in milliseconds the export waits for a slow client to take the buffered data before it fails and the connection is reset. Raise it if clients with slow connections fail. It must be positive and below the 5 minute lock period (300000), otherwise Core does not start. |
+
+</details>
+
+<details> 
 <summary><b>Redis Configurations</b></summary>
 
 | Setting                                  | Default | Required | Description                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -436,6 +448,19 @@ The workflow is split across three commands so each invocation maps to a single 
 
 > [!NOTE]
 > To add a new command, drop a Markdown file into [`.claude/commands/`](.claude/commands) and append a row to the table above.
+
+## Spec-driven process (OpenSpec)
+
+Behaviour specs and change proposals live under [`openspec/`](openspec) and follow [OpenSpec](https://github.com/Fission-AI/OpenSpec):
+`openspec/specs/<capability>/spec.md` describes current behaviour, `openspec/changes/<id>/` holds a proposal with its spec deltas, design and tasks, and `openspec/config.yaml` holds the project rules. See the "Process" section of [`CLAUDE.md`](CLAUDE.md) for the propose / apply / archive steps.
+
+Prerequisites: [Node.js](https://nodejs.org/) 20.19 or newer. The OpenSpec CLI is pinned and run through `npx`, so no global install is required:
+
+```bash
+npx -y @fission-ai/openspec@1.14.3 validate --all --strict
+```
+
+Claude Code entry points: the `/opsx:*` commands under [`.claude/commands/opsx/`](.claude/commands/opsx) (`explore`, `propose`, `apply`, `update`, `sync`, `archive`) and the `sdd-*` workflows under [`.claude/workflows/`](.claude/workflows).
 
 ## License
 

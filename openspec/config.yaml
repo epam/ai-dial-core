@@ -1,0 +1,71 @@
+schema: spec-driven
+
+context: |
+  Service: AI DIAL Core, an HTTP reverse proxy and API gateway for LLMs (Java 21, Eclipse Vert.x 4.5, Gradle 8;
+  modules config / storage / credentials / server, see CLAUDE.md). It serves the OpenAI chat completions,
+  embeddings and Responses interfaces and the Anthropic Messages interface, and routes to models (upstreams behind
+  adapters), applications, interceptors and translators.
+
+  Source of truth for behaviour: the code on `development` and its tests. Where a change ports behaviour from
+  another service, that service's code and tests are the reference, cited as File.java:method.
+
+  Boundaries a spec may describe, and nothing else: (1) the HTTP API Core serves, and the HTTP request Core sends to
+  an origin (a deployment endpoint, adapter, interceptor or translator); (2) the records Core writes: analytics log
+  rows, token-stats spans, per-request keys and limit counters in Redis, blob operations. Java internals belong in
+  design.md, not in a spec.
+
+  Artifacts: a change's proposal.md and design.md are its design document and review brief; openspec/specs is the
+  behaviour reference; docs/ is the operator documentation. One change per PR.
+
+  Style: docs/CODE_STYLE.md (naming, Vert.x event-loop rules, scope discipline, error handling, tests, docs) and
+  checkstyle (Google style, 180 columns). Blocking work runs on AsyncTaskExecutor virtual threads, never on the event
+  loop. Every setting needs a code default: the test-resources aidial.settings.json shadows the built-in one.
+
+  Writing: plain words and short sentences, for a developer who knows Core. Explain a technical term the first time
+  it appears, or use a simpler one. Concrete over abstract: "Core skips the second Redis call", not "the cache path is
+  inert". Keep what the code or a measurement shows apart from what is expected or assumed.
+
+  Checks: the commands in CLAUDE.md "Checks" (checkstyle and the touched test classes locally; the full suite in CI).
+
+rules:
+  proposal:
+    - State what is out of scope, and name the existing capability in openspec/specs each delta touches.
+    - Impact links the issue or document that motivated the change and says which of its points this change covers
+      and which it leaves out.
+    - Work that ships as separate PRs is separate changes; name the dependency between them.
+  specs:
+    - Requirements describe observable behaviour at one of the two boundaries in the context, not Java internals.
+    - Every scenario must be testable by a JUnit 5 / Vert.x JUnit 5 test. A scenario at the HTTP boundary gets an
+      integration test in the server module (the full stack with embedded Redis and MockWebServer, as
+      ResourceApiTest and the other *ApiTest classes do).
+    - Reuse the existing capabilities in openspec/specs; add a capability only for a new concern, named for a durable
+      behaviour area (a kebab-case noun such as rate-limits or deployment-listing), never for a feature, a change or a
+      config field.
+    - A MODIFIED requirement repeats the whole existing requirement block with its exact header.
+  design:
+    - Cite the Core source of every behaviour the change touches or relies on, and the classes and helpers to reuse, as
+      File.java:method on `development`.
+    - Record each decision with the rejected alternative and why; record every deliberate difference from today's
+      behaviour and from the reference where one exists.
+    - State the effect per request on Core passes, body copies and parses of a body Core only forwards, and Redis /
+      blob round trips, and how it is measured.
+    - Migration Plan is always present; write "none" when there is nothing.
+  tasks:
+    - Tests are written before or with the code they cover; each spec scenario names its test.
+    - Every task group ends with ./gradlew checkstyleMain checkstyleTest and the touched test classes with --tests.
+    - Include tasks for docs/dynamic-settings/*.md, docs/*.md and CLAUDE.md where the change affects them, and a
+      measurement task wherever the change claims a cost effect.
+    - 'Mark checks that need an environment or credentials this machine lacks "(deferred: needs <what>)"; they stay unchecked.'
+
+operations:
+  apply:
+    guidance:
+      - Before coding, compare design.md with the current code; record any drift in design.md, never diverge silently.
+      - Do not commit and do not run git commands that change the working tree or history (checkout, restore, reset,
+        stash, clean); the orchestrator commits, staging files by name.
+      - Run checkstyle and the targeted test classes locally; the full suite runs in CI.
+  archive:
+    guidance:
+      - Archive only after all non-deferred tasks are checked and review.md exists in the change folder.
+      - Confirm the merged spec matches the shipped behaviour (review.md and the tests) before archiving; the spec,
+        not the change, is what the next change reads.

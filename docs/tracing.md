@@ -24,7 +24,10 @@ These are static settings, so they are read once at startup: changing them needs
   them. Nothing is emitted when Core has no valid span context — with no OpenTelemetry SDK attached
   the ids are all zeros, and a `traceparent` built from those is malformed.
 * `conversationIdHeaders`: Request headers, in priority order, that may carry a conversation or
-  session id. The first usable one present is published as `gen_ai.conversation.id`. Matching is
+  session id. The first usable one present is published as `gen_ai.conversation.id`. The same value
+  is written to each analytics log entry as `"session":{"id":"..."}`, right after `chat`, regardless
+  of `genAiSpanAttributes` and even for secured API keys; the member is omitted when no header
+  matches. A Responses API background job resolves it when the job is created. Matching is
   case-insensitive and values are trimmed; a value longer than 256 characters is skipped rather than
   truncated — truncating one would correlate unrelated requests — and the next header on the list
   still gets its turn. Blank entries and the known credential headers (`authorization`,
@@ -94,6 +97,21 @@ Which request attributes apply depends on the API surface: `stop_sequences`, `ch
 `frequency_penalty`, `presence_penalty` and `seed` come from Chat Completions,
 `previous_response.id` from Responses, `encoding_formats` from Embeddings.
 
+## Route on log lines and analytics
+
+A request served by a global route or by an application route records which route handled it:
+
+| Where                                           | Fields                                      |
+|-------------------------------------------------|---------------------------------------------|
+| Request span and console JSON log lines         | `dial.route.name`, `dial.route.type`        |
+| Analytics log entry (flat fields)               | `route_name`, `route_type`                  |
+
+`dial.route.type` and `route_type` are `global` (a route from `routes`) or `application` (a route from
+`applications.<name>.routes`). The fields are omitted when no route served the request.
+
+The route is published regardless of `genAiSpanAttributes`. Metric labels, `http.route` and trace/span ids
+are unchanged.
+
 ## Storage and rate-limit spans
 
 Core adds child spans for the storage, Redis, identity and key-management work a request does. They are emitted
@@ -107,6 +125,7 @@ executor) start no traces of their own. They do not depend on `genAiSpanAttribut
 | `auth.jwks.fetch`                                        | Fetching an identity provider's signing key; once per key id while it is cached |                                             |
 | `deployment.resolve`                                     | Finding the requested deployment and checking access and user consent         |                                               |
 | `rate_limit.check`                                       | The token, request and cost limit checks before a request is forwarded        | `dial.deployment`, `dial.rate_limit.status`   |
+| `rate_limit.read_spend`                                  | Reading the caller's spend caps, unchecked, for a translated Anthropic request |                                              |
 | `oauth.request`                                          | A call to an authorization server: token exchange, metadata discovery, registration | `http.request.method`, `server.address`, `http.response.status_code` |
 | `kms.encrypt`, `kms.decrypt`                             | A call to the configured AWS, Azure or GCP key management service             |                                               |
 | `resource.get`, `resource.compute`, `resource.put`, `resource.delete` | A `ResourceService` operation, including Redis access and lock waits | `dial.resource.type`; `resource.get` also has `dial.cache.hit` (`false` when the value was read from blob storage) |

@@ -31,6 +31,8 @@ public enum ResourceTypes implements ResourceType {
     TRANSLATOR("translators", true, TimeUnit.DAYS.toMillis(30)),
     ROLE("roles", true, TimeUnit.DAYS.toMillis(30)),
     PROJECT_KEY("project_keys", "keys", true, TimeUnit.DAYS.toMillis(30)),
+    POLICY("policies", true, TimeUnit.DAYS.toMillis(30)),
+    POLICY_ASSIGNMENT("policy_assignments", true, TimeUnit.DAYS.toMillis(30)),
     ROUTE("routes", true, TimeUnit.DAYS.toMillis(30)),
     GLOBAL_SETTINGS("settings", true, TimeUnit.DAYS.toMillis(30)),
     RESPONSE_MAPPING("response_mappings", true, TimeUnit.MINUTES.toMillis(5)),
@@ -45,7 +47,8 @@ public enum ResourceTypes implements ResourceType {
      */
     public static final Set<ResourceType> EVENT_TYPES = Set.of(
             FILE, CONVERSATION, PROMPT, APPLICATION, TOOL_SET,
-            MODEL, APP_TYPE_SCHEMA, CATALOG_SCHEMA, INTERCEPTOR, TRANSLATOR, ROLE, PROJECT_KEY, ROUTE, GLOBAL_SETTINGS);
+            MODEL, APP_TYPE_SCHEMA, CATALOG_SCHEMA, INTERCEPTOR, TRANSLATOR, ROLE, PROJECT_KEY, ROUTE, GLOBAL_SETTINGS,
+            POLICY, POLICY_ASSIGNMENT);
 
     private final String group;
     private final String urlSegment;
@@ -82,6 +85,8 @@ public enum ResourceTypes implements ResourceType {
             case "translators" -> TRANSLATOR;
             case "roles" -> ROLE;
             case "project_keys", "keys" -> PROJECT_KEY;
+            case "policies" -> POLICY;
+            case "policy_assignments" -> POLICY_ASSIGNMENT;
             case "routes" -> ROUTE;
             case "settings" -> GLOBAL_SETTINGS;
             case "response_mappings" -> RESPONSE_MAPPING;

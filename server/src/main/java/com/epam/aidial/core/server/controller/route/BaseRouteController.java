@@ -3,12 +3,14 @@ package com.epam.aidial.core.server.controller.route;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.config.UpstreamAuthConfig;
 import com.epam.aidial.core.config.UpstreamAuthType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.Controller;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
+import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
@@ -59,6 +61,7 @@ abstract class BaseRouteController implements Controller {
             return Future.succeededFuture();
         }
         context.setRoute(route);
+        context.setRouteType(getRouteType());
 
         if (!hasAccessByUserRoles(route)) {
             respond(HttpStatus.FORBIDDEN, "Forbidden route");
@@ -133,6 +136,8 @@ abstract class BaseRouteController implements Controller {
         return Strings.CI.contains(upgradeHeader, "websocket");
     }
 
+    protected abstract RouteType getRouteType();
+
     protected abstract Future<Boolean> hasRequiredPermissions(Set<ResourceAccessType> permissions);
 
     protected boolean hasAccessByUserRoles(Route route) {
@@ -162,13 +167,20 @@ abstract class BaseRouteController implements Controller {
 
     void copyHeaders(MultiMap from, MultiMap to) {
         Upstream upstream = context.getUpstreamRoute().get();
-        boolean bearer = supportsUpstreamAuthType() && upstream != null && upstream.getKey() != null
-                && upstream.getAuthType() == UpstreamAuthType.BEARER;
+        UpstreamAuthConfig authConfig = supportsUpstreamAuthType() && upstream != null && upstream.getKey() != null
+                ? upstream.getAuthType() : null;
+        UpstreamAuthType authType = authConfig == null ? null : authConfig.type();
+        boolean bearer = authType == UpstreamAuthType.BEARER;
         MultiMap excludeHeaders = excludeHeaders(bearer);
+        if (authType == UpstreamAuthType.CUSTOM_HEADER) {
+            excludeHeaders.add(authConfig.headerName(), "whatever");
+        }
         ProxyUtil.copyHeaders(from, to, excludeHeaders);
         if (upstream != null && upstream.getKey() != null) {
             if (bearer) {
                 to.set(HttpHeaders.AUTHORIZATION, "Bearer " + upstream.getKey());
+            } else if (authType == UpstreamAuthType.CUSTOM_HEADER) {
+                to.set(authConfig.headerName(), upstream.getKey());
             } else {
                 to.add(Proxy.HEADER_API_KEY, upstream.getKey());
             }
