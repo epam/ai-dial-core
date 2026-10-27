@@ -38,8 +38,9 @@ Codex desktop app receives the headers but shows nothing.
 
 A user can have several cost caps (day, week, month). Codex shows two windows, primary and secondary:
 
-- **Primary** is the cap Claude Code is told about. While all caps are allowed, it is the fullest one (highest
-  used/total). Once any cap is exceeded, it is the exceeded cap that resets last.
+- **Primary** is the cap closest to blocking the user. While all caps are allowed, it is the fullest one (highest
+  used/total). Once any cap is exceeded, it is the exceeded cap that resets last. Claude Code on `/anthropic`
+  reports the same cap.
 - **Secondary** is the fullest of the remaining caps. Ties go to the longer period. It is absent when the user has
   only one cap.
 
