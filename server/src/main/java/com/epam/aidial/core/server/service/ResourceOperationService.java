@@ -36,6 +36,8 @@ import static com.epam.aidial.core.storage.resource.ResourceTypes.TOOL_SET;
 public class ResourceOperationService {
     private static final Set<ResourceTypes> ALLOWED_RESOURCES = Set.of(FILE, CONVERSATION,
             PROMPT, APPLICATION, TOOL_SET, SKILL, PROJECT);
+    private static final Consumer<Deployment> NO_CHECK = deployment -> {
+    };
 
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
@@ -52,8 +54,7 @@ public class ResourceOperationService {
 
     public void moveResource(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
                              boolean overwriteIfExists) {
-        moveResource(context, source, destination, overwriteIfExists, deployment -> {
-        }, false);
+        move(context, source, destination, overwriteIfExists, NO_CHECK, false);
     }
 
     /**
@@ -61,13 +62,13 @@ public class ResourceOperationService {
      *
      * @param check runs on the application or toolset being moved, in the copy itself, before anything is written
      */
-    public void moveResource(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
-                             boolean overwriteIfExists, Consumer<Deployment> check) {
-        moveResource(context, source, destination, overwriteIfExists, check, true);
+    public void moveResourceLocked(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
+                                   boolean overwriteIfExists, Consumer<Deployment> check) {
+        move(context, source, destination, overwriteIfExists, check, true);
     }
 
-    private void moveResource(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
-                              boolean overwriteIfExists, Consumer<Deployment> check, boolean bucketsLocked) {
+    private void move(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
+                      boolean overwriteIfExists, Consumer<Deployment> check, boolean bucketsLocked) {
         if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Moving folders is not supported");
         }
@@ -143,8 +144,7 @@ public class ResourceOperationService {
 
     public void copyResource(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
                              boolean overwriteIfExists) {
-        copyResource(context, source, destination, overwriteIfExists, deployment -> {
-        });
+        copyResource(context, source, destination, overwriteIfExists, NO_CHECK);
     }
 
     /**

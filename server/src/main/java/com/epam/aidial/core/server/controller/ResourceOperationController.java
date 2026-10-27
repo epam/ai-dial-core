@@ -137,7 +137,7 @@ public class ResourceOperationController {
                     List<String> buckets = List.of(source.getBucketLocation(), destination.getBucketLocation());
                     return taskExecutor.submit(() -> lockService.underBucketLocks(buckets, () -> {
                         orgUnitService.requireSameUnit(source, destination);
-                        resourceOperationService.moveResource(context, source, destination, request.isOverwrite(),
+                        resourceOperationService.moveResourceLocked(context, source, destination, request.isOverwrite(),
                                 deployment -> checkSharedCopy(deployment, source, destination));
                         return null;
                     }));
