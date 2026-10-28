@@ -135,33 +135,6 @@ public class ResponsesController extends BaseDeploymentPostController {
                             @ApiParameter(name = HEADER_CACHE_POLICY, in = ParameterIn.HEADER,
                                     description = OpenApiDescriptions.CACHE_POLICY,
                                     allowableValues = {"availability-priority", "cache-priority"})
-                    },
-                    responses = {
-                            @ApiResponse(code = 200, description = "Success",
-                                    headers = {
-                                            @ApiHeader(name = "x-codex-primary-used-percent",
-                                                    description = "Spent share of the caller's reported DIAL day/week/month spend cap before this request, "
-                                                            + "a whole percent rounded down. Sent only when the caller has such a cost limit; "
-                                                            + "the upstream's own `x-codex-*` headers are removed"),
-                                            @ApiHeader(name = "x-codex-primary-window-minutes", description = "`1440`, `10080` or `43200`: the reported cap's day, week or month"),
-                                            @ApiHeader(name = "x-codex-primary-reset-at", description = "When the reported cap resets, Unix seconds"),
-                                            @ApiHeader(name = "x-codex-secondary-used-percent",
-                                                    description = "Same as `x-codex-primary-used-percent` for the fullest of the other capped windows; absent when there is none"),
-                                            @ApiHeader(name = "x-codex-secondary-window-minutes", description = "Window of the secondary cap, as `x-codex-primary-window-minutes`"),
-                                            @ApiHeader(name = "x-codex-secondary-reset-at", description = "When the secondary cap resets, Unix seconds")
-                                    }),
-                            @ApiResponse(code = 400),
-                            @ApiResponse(code = 403),
-                            @ApiResponse(code = 404),
-                            @ApiResponse(code = 415),
-                            @ApiResponse(code = 429, description = "DIAL limit reached. A reached day/week/month spend cap gives an error of type "
-                                    + "`usage_limit_reached` with `resets_at` (Unix seconds) and `limit_window_minutes`, `retry-after` and the "
-                                    + "`x-codex-primary-*` headers at 100; an unreadable spend counter of a caller with a cost limit gives an error "
-                                    + "without `retry-after`; a token, request or per-minute cost limit gives an error with `retry-after`",
-                                    body = @ApiSchema(implementation = ErrorData.class)),
-                            @ApiResponse(code = 500),
-                            @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
-                            @ApiResponse(code = 503)
                     }
             ),
             @ApiOperation(
@@ -176,36 +149,34 @@ public class ResponsesController extends BaseDeploymentPostController {
                             @ApiParameter(name = HEADER_CACHE_POLICY, in = ParameterIn.HEADER,
                                     description = OpenApiDescriptions.CACHE_POLICY,
                                     allowableValues = {"availability-priority", "cache-priority"})
-                    },
-                    responses = {
-                            @ApiResponse(code = 200, description = "Success",
-                                    headers = {
-                                            @ApiHeader(name = "x-codex-primary-used-percent",
-                                                    description = "Spent share of the caller's reported DIAL day/week/month spend cap before this request, "
-                                                            + "a whole percent rounded down. Sent only when the caller has such a cost limit; "
-                                                            + "the upstream's own `x-codex-*` headers are removed"),
-                                            @ApiHeader(name = "x-codex-primary-window-minutes", description = "`1440`, `10080` or `43200`: the reported cap's day, week or month"),
-                                            @ApiHeader(name = "x-codex-primary-reset-at", description = "When the reported cap resets, Unix seconds"),
-                                            @ApiHeader(name = "x-codex-secondary-used-percent",
-                                                    description = "Same as `x-codex-primary-used-percent` for the fullest of the other capped windows; absent when there is none"),
-                                            @ApiHeader(name = "x-codex-secondary-window-minutes", description = "Window of the secondary cap, as `x-codex-primary-window-minutes`"),
-                                            @ApiHeader(name = "x-codex-secondary-reset-at", description = "When the secondary cap resets, Unix seconds")
-                                    }),
-                            @ApiResponse(code = 400),
-                            @ApiResponse(code = 403),
-                            @ApiResponse(code = 404),
-                            @ApiResponse(code = 415),
-                            @ApiResponse(code = 429, description = "DIAL limit reached. A reached day/week/month spend cap gives an error of type "
-                                    + "`usage_limit_reached` with `resets_at` (Unix seconds) and `limit_window_minutes`, `retry-after` and the "
-                                    + "`x-codex-primary-*` headers at 100; an unreadable spend counter of a caller with a cost limit gives an error "
-                                    + "without `retry-after`; a token, request or per-minute cost limit gives an error with `retry-after`",
-                                    body = @ApiSchema(implementation = ErrorData.class)),
-                            @ApiResponse(code = 500),
-                            @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
-                            @ApiResponse(code = 503)
                     }
             )
     })
+    @ApiResponse(code = 200, description = "Success",
+            headers = {
+                    @ApiHeader(name = "x-codex-primary-used-percent",
+                            description = "Spent share of the caller's reported DIAL day/week/month spend cap before this request, "
+                                    + "a whole percent rounded down. Sent only when the caller has such a cost limit; "
+                                    + "the upstream's own `x-codex-*` headers are removed"),
+                    @ApiHeader(name = "x-codex-primary-window-minutes", description = "`1440`, `10080` or `43200`: the reported cap's day, week or month"),
+                    @ApiHeader(name = "x-codex-primary-reset-at", description = "When the reported cap resets, Unix seconds"),
+                    @ApiHeader(name = "x-codex-secondary-used-percent",
+                            description = "Same as `x-codex-primary-used-percent` for the fullest of the other capped windows; absent when there is none"),
+                    @ApiHeader(name = "x-codex-secondary-window-minutes", description = "Window of the secondary cap, as `x-codex-primary-window-minutes`"),
+                    @ApiHeader(name = "x-codex-secondary-reset-at", description = "When the secondary cap resets, Unix seconds")
+            })
+    @ApiResponse(code = 400)
+    @ApiResponse(code = 403)
+    @ApiResponse(code = 404)
+    @ApiResponse(code = 415)
+    @ApiResponse(code = 429, description = "DIAL limit reached. A reached day/week/month spend cap gives an error of type "
+            + "`usage_limit_reached` with `resets_at` (Unix seconds) and `limit_window_minutes`, `retry-after` and the "
+            + "`x-codex-primary-*` headers at 100; an unreadable spend counter of a caller with a cost limit gives an error "
+            + "without `retry-after`; a token, request or per-minute cost limit gives an error with `retry-after`",
+            body = @ApiSchema(implementation = ErrorData.class))
+    @ApiResponse(code = 500)
+    @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class))
+    @ApiResponse(code = 503)
     public Future<?> handle() {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
         if (!Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {

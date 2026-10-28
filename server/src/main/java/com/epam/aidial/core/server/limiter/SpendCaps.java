@@ -18,6 +18,11 @@ public record SpendCaps(List<SpendCap> windows, @Nullable SpendCap reported) {
     private static final BigDecimal UNLIMITED_THRESHOLD = BigDecimal.valueOf(1L << 53);
 
     /**
+     * Orders windows by how full they are, the longer period first on a tie.
+     */
+    private static final Comparator<SpendCap> FULLNESS = Comparator.comparing(SpendCap::ratio).thenComparing(SpendCap::period);
+
+    /**
      * Keeps the capped windows of {@code candidates}, in their order, and picks the one to report.
      */
     public static SpendCaps of(List<SpendCap> candidates) {
@@ -37,7 +42,7 @@ public record SpendCaps(List<SpendCap> windows, @Nullable SpendCap reported) {
         if (!exceeded.isEmpty()) {
             return exceeded.stream().max(Comparator.comparingLong(SpendCap::resetsAtMillis).thenComparing(SpendCap::period)).orElse(null);
         }
-        return windows.stream().max(Comparator.comparing(SpendCap::ratio).thenComparing(SpendCap::period)).orElse(null);
+        return windows.stream().max(FULLNESS).orElse(null);
     }
 
     /**
@@ -45,9 +50,12 @@ public record SpendCaps(List<SpendCap> windows, @Nullable SpendCap reported) {
      */
     @Nullable
     public SpendCap findSecondary() {
+        if (reported == null) {
+            return null;
+        }
         return windows.stream()
-                .filter(window -> !window.equals(reported))
-                .max(Comparator.comparing(SpendCap::ratio).thenComparing(SpendCap::period))
+                .filter(window -> window.period() != reported.period())
+                .max(FULLNESS)
                 .orElse(null);
     }
 

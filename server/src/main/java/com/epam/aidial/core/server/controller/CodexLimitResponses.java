@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.controller;
 
-import com.epam.aidial.core.server.limiter.CalendarPeriod;
 import com.epam.aidial.core.server.limiter.LimitBreach;
 import com.epam.aidial.core.server.limiter.SpendCap;
 import com.epam.aidial.core.server.limiter.SpendCaps;
@@ -14,6 +13,8 @@ import lombok.experimental.UtilityClass;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import javax.annotation.Nullable;
 
@@ -33,10 +34,18 @@ class CodexLimitResponses {
     private static final DateTimeFormatter MESSAGE_RESET_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneOffset.UTC);
 
     void stripUpstreamCodexHeaders(MultiMap headers) {
-        headers.names().stream()
-                .filter(name -> name.regionMatches(true, 0, CODEX_PREFIX, 0, CODEX_PREFIX.length()))
-                .toList()
-                .forEach(headers::remove);
+        List<String> upstreamNames = null;
+        for (String name : headers.names()) {
+            if (name.regionMatches(true, 0, CODEX_PREFIX, 0, CODEX_PREFIX.length())) {
+                if (upstreamNames == null) {
+                    upstreamNames = new ArrayList<>();
+                }
+                upstreamNames.add(name);
+            }
+        }
+        if (upstreamNames != null) {
+            upstreamNames.forEach(headers::remove);
+        }
     }
 
     void putSpendHeaders(MultiMap headers, SpendCaps caps) {
@@ -57,7 +66,7 @@ class CodexLimitResponses {
      */
     HttpException spendCapReached(SpendCap cap, @Nullable String displayMessage, long nowMillis) {
         long resetAt = cap.resetsAtMillis() / 1000;
-        int windowMinutes = windowMinutes(cap.period());
+        int windowMinutes = cap.period().nominalMinutes();
         String label = LimitBreach.Window.of(cap.period()).label();
         String message = "DIAL " + label + " spend limit reached (resets "
                 + MESSAGE_RESET_FORMAT.format(Instant.ofEpochMilli(cap.resetsAtMillis())) + ")";
@@ -87,15 +96,7 @@ class CodexLimitResponses {
 
     private void putWindow(MultiMap headers, String prefix, SpendCap cap) {
         headers.set(prefix + "used-percent", String.valueOf(cap.percent()));
-        headers.set(prefix + "window-minutes", String.valueOf(windowMinutes(cap.period())));
+        headers.set(prefix + "window-minutes", String.valueOf(cap.period().nominalMinutes()));
         headers.set(prefix + "reset-at", String.valueOf(cap.resetsAtMillis() / 1000));
-    }
-
-    private int windowMinutes(CalendarPeriod period) {
-        return switch (period) {
-            case DAY -> 1440;
-            case WEEK -> 10080;
-            case MONTH -> 43200;
-        };
     }
 }
