@@ -316,7 +316,7 @@ Core SHALL route `GET /v1/admin/health/config`, `POST /v1/admin/validate`, `POST
 `POST /v1/admin/config/file/migrate`, `POST /v1/ops/config/reload` and `GET`, `POST`, `PUT` and `DELETE` on
 `/v1/admin/config/file/{type}[/{name}]` (`{type}` a config entity type other than `policies` and
 `policy_assignments`, or `applications`, `toolsets`) to the admin config API (config-store), and
-`POST /v1/admin/export` to the admin export handler.
+`POST /v1/admin/system-export` to the admin system export handler.
 
 #### Scenario: File config entry
 - **WHEN** an admin sends `GET /v1/admin/config/file/models/test-model-v1`
