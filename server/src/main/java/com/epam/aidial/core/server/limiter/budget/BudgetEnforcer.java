@@ -19,7 +19,6 @@ import lombok.extern.slf4j.Slf4j;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import javax.annotation.Nullable;
 
 /**
@@ -86,7 +85,8 @@ public class BudgetEnforcer {
                         context.setBudgetPayer(outcome.payer);
                         return RateLimitResult.SUCCESS;
                     }
-                    long retryAfter = Math.max(1, TimeUnit.MILLISECONDS.toSeconds(outcome.earliestResetAt - timestamp + 999));
+                    // whole seconds rounded up, so a client never retries before the window has reset
+                    long retryAfter = Math.max(1, Math.ceilDiv(outcome.earliestResetAt - timestamp, 1000L));
                     return reject(settings, BUDGET_EXHAUSTED, costObject, model, new RateLimitResult(
                             HttpStatus.TOO_MANY_REQUESTS, "Budget exhausted for cost object " + costObject,
                             "You've exceeded your budget", retryAfter));
