@@ -16,6 +16,8 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * A skill keeps its files in the folder of its own name, so it never takes a unit's folder.
@@ -79,6 +81,21 @@ public class OrgUnitSkillApiTest extends ResourceBaseTest {
         assertEquals(409, approved.status(), approved.body());
         Response stored = send(HttpMethod.POST, "/v1/ops/publication/get", null, new JsonObject().put("url", url).encode(), "authorization", "admin");
         assertEquals("PENDING", new JsonObject(stored.body()).getString("status"));
+    }
+
+    @Test
+    void testDeletedSkillsDontKeepUnitsFromBeingRemoved() {
+        assertEquals(200, uploadSkill("public/Acme/Risk/Team/risk-skill").status());
+        Response refused = send(HttpMethod.DELETE, "/v1/org-units/public/Acme/Risk", null, null, "authorization", "admin");
+        assertEquals(409, refused.status(), refused.body());
+        assertTrue(refused.body().contains("skills/public/Acme/Risk/Team/risk-skill"), refused.body());
+
+        assertEquals(200, send(HttpMethod.DELETE, "/v2/skills/public/Acme/Risk/Team/risk-skill", null, null, "authorization", "admin").status());
+        Response removed = send(HttpMethod.DELETE, "/v1/org-units/public/Acme/Risk", null, null, "authorization", "admin");
+        assertEquals(200, removed.status(), removed.body());
+        Response left = send(HttpMethod.GET, "/v2/metadata/skills/public/Acme/", "recursive=true", null, "authorization", "admin");
+        assertEquals(200, left.status(), left.body());
+        assertFalse(left.body().contains("Risk"), "the unit's grouping folders go with it: " + left.body());
     }
 
     private Response publish(String targetUrl) {

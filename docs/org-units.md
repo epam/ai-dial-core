@@ -45,9 +45,16 @@ still decide who reads it. Org units also assume storage that tells letter case 
 storage that doesn't, such as the filesystem provider on macOS or Windows, a path that differs from a unit's folder
 only in letter case can reach the same content without the unit's checks.
 
+A move inside the shared space that would change which unit owns a resource is refused with 409, for every caller of
+the move API: into another unit, out of its unit into the part of the shared space no unit owns, and from that part into
+a unit. Content enters a unit by a copy or a publication instead.
+Clients move folders item by item, so this stops a unit's folder from being renamed or moved away from its entry;
+folder moves themselves are refused by the move API as before;
+moves inside one unit work as before. To rename a unit, change its display name with `PATCH`.
+
 A node refuses to start when it cannot read the tree, and a tree that isn't a JSON object of units is never read as
 empty: that would hand every unit's content to the shared space. A `public/` entry in the tree is ignored and dropped
-on the next write: the shared space is never a unit.
+on the next create or delete: the shared space is never a unit.
 
 ## API
 
@@ -58,13 +65,23 @@ configured, nobody creates units.
 |---|---|---|
 | `GET /v1/org-units/public[/{unit}…][?recursive=true]` | anyone | The shared space or a unit with the units directly below it in `items`; with `recursive`, `items` holds every unit below, parents before children. Admins see every unit; others see the units whose folder the read rules let them see. Like publications, a unit carries its `author`'s display name and `createdAt` in epoch milliseconds. |
 | `POST /v1/org-units/public[/{unit}…]` `{"name": "US Risk", "displayName": "…"}` | admins | Creates a unit under the shared space or a unit. The body takes only `name` and `displayName`; any other field is refused with 400 naming it. A name follows core's folder-name rule (no control characters or `/ { } "`) and can't start with "." or end with a space or "."; it is unique among sibling units ignoring case; `roles`, `role-assignments` and `rate` are reserved (`rate` would clash with `/v1/{deployment}/rate`). `displayName` has at most 128 characters and no control characters; without one, the unit shows its name. The unit's folder path, with the marker, must fit core's path-size limit in every type tree (400 otherwise), and the parent must be the shared space or an existing unit (404 otherwise). Answers 200 with the unit. Units go at most 4 levels deep: organization, pillar, department, business unit. |
+| `PATCH /v1/org-units/public/{unit}…` `{"displayName": "US Risk Department"}` | admins | Changes what clients show for the unit and answers 200 with the unit, as `GET` does. `displayName` is the only field it takes, with the same limits as on create; a blank one falls back to the unit's name. The name and folder never change, so `name` and any other field are refused with 400 naming the field. |
+| `DELETE /v1/org-units/public/{unit}…[?recursive=true]` | admins | Removes an empty unit; with `recursive`, every unit below it too, deepest first, and they must all be empty. A unit is empty when its folder holds nothing but `.dial_folder` markers in the files tree, empty grouping folders in the skills and projects trees and nothing at all in the other type trees (a deleted skill or project no longer counts); otherwise 409 names up to three items it holds. Without `recursive`, a unit that has units below it is refused with 409. Answers 200 with `{"removed": [<paths, deepest first>]}`. The tree entries and the markers go; read rules are left as they are. To remove a unit that holds content, delete or move the content first. |
 
 Each path segment is url-decoded on its own; a segment that decodes to a `/` is refused with 400, so an encoded
 separator never reaches another unit.
 
-What the calls change in storage: `POST` adds the unit's entry to the unit tree and puts the `.dial_folder` marker
-into `files/public/<unit>/` when that folder is empty, nothing else. `GET` only reads. Neither moves, copies or
-deletes resources, and neither changes rules.
+What the calls change in storage, and nothing else:
+
+- `GET` only reads.
+- `POST` adds the unit's entry to the unit tree and puts the `.dial_folder` marker into `files/public/<unit>/` when
+  that folder is empty.
+- `PATCH` changes only the unit's `displayName` in its tree entry.
+- `DELETE`, on an empty unit only, removes the markers of its subtree, then its tree entries. A removal that fails
+  before the tree entries go leaves the unit in place, so it can be repeated. Content that lands in the subtree while it
+  is removed, through a write that doesn't wait for the removal, ends up under no unit, where the read rules decide.
+
+No call moves, copies or deletes content.
 
 A unit is named two ways. `path` is its address in this API, decoded, without a trailing slash: `public/Acme/Risk/US Risk`.
 `folder` is its folder url-encoded, the form publications take as `targetFolder` and the rules list uses as keys:

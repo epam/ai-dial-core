@@ -1,11 +1,15 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.server.data.orgunit.OrgUnit;
 import com.epam.aidial.core.server.data.orgunit.OrgUnitData;
 import com.epam.aidial.core.server.data.orgunit.OrgUnitList;
+import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -16,10 +20,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -35,6 +42,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class OrgUnitServiceTest {
@@ -55,7 +63,7 @@ class OrgUnitServiceTest {
         ResourceItemMetadata second = metadata("\"2\"");
         String withoutBasel = UNITS.replace("public/Risk/US Risk/Basel/", "public/Risk/Other/");
         when(resources.getResourceWithMetadata(any(), any())).thenReturn(Pair.of(first, withoutBasel), Pair.of(second, UNITS));
-        OrgUnitService service = new OrgUnitService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         assertFalse(service.getUnitList().units().containsKey("public/Risk/US Risk/Basel/"));
         assertTrue(service.getUnitList().units().containsKey("public/Risk/US Risk/Basel/"));
@@ -85,7 +93,7 @@ class OrgUnitServiceTest {
             return null;
         });
         RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         OrgUnitData root = service.read(List.of("public"), false, null, true);
         assertEquals("public", root.displayName());
@@ -104,7 +112,7 @@ class OrgUnitServiceTest {
         when(resources.getResourceWithMetadata(any(), any())).thenReturn(Pair.of(metadata, "{\"units\": {}}"));
         RuleService rules = mock(RuleService.class);
         LockService locks = locks();
-        OrgUnitService service = new OrgUnitService(resources, rules, locks, new OrgUnitSettings(true), () -> "new-id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks, new OrgUnitSettings(true), () -> "new-id", () -> 0L);
 
         OrgUnitData created = service.create(List.of("public"), "Acme", null, "admin");
 
@@ -149,7 +157,7 @@ class OrgUnitServiceTest {
         when(resources.computeResource(any(), any(Function.class)))
                 .thenAnswer(invocation -> ((Function<String, String>) invocation.getArgument(1)).apply("{not json"));
         RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         assertThrows(IllegalStateException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
     }
@@ -174,7 +182,7 @@ class OrgUnitServiceTest {
             markerUnderLock.set(locked.get());
             return null;
         });
-        OrgUnitService service = new OrgUnitService(resources, rules, locks, new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks, new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         service.create(List.of("public"), "Acme", null, "admin");
 
@@ -187,7 +195,7 @@ class OrgUnitServiceTest {
         ResourceService resources = writableResources("{\"units\": {}}", written);
         when(resources.putFile(any(), any(), any(), any(), any())).thenThrow(new IllegalStateException("blob store down"));
         RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         assertEquals("public/Acme", service.create(List.of("public"), "Acme", null, "admin").path());
 
@@ -208,7 +216,7 @@ class OrgUnitServiceTest {
         when(resources.getFolderMetadata(argThat(folder -> folder != null && folder.getType() == ResourceTypes.FILE), eq("page-2"), anyInt(), anyBoolean()))
                 .thenReturn(new ResourceFolderMetadata(taken, List.of(new ResourceFolderMetadata(taken)), null));
         RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         HttpException refused = assertThrows(HttpException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
 
@@ -227,7 +235,7 @@ class OrgUnitServiceTest {
         when(resources.getFolderMetadata(argThat(folder -> folder != null && folder.getType() == ResourceTypes.PROJECT), any(), anyInt(), anyBoolean()))
                 .thenReturn(new ResourceFolderMetadata(project, List.of(new ResourceFolderMetadata(project)), null));
         RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         HttpException refused = assertThrows(HttpException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
 
@@ -248,7 +256,7 @@ class OrgUnitServiceTest {
         when(resources.getFolderMetadata(eq(folder), any(), anyInt(), anyBoolean()))
                 .thenReturn(null, new ResourceFolderMetadata(folder, List.of(new ResourceItemMetadata(published)), null));
         RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         service.create(List.of("public"), "Acme", null, "admin");
 
@@ -284,7 +292,7 @@ class OrgUnitServiceTest {
             return false;
         });
         RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks, new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks, new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         service.create(List.of("public"), "Acme", null, "admin");
 
@@ -300,7 +308,7 @@ class OrgUnitServiceTest {
         ResourceItemMetadata after = metadata("\"2\"");
         when(resources.getResourceWithMetadata(any(), any()))
                 .thenReturn(Pair.of(before, "{\"units\": {}}"), Pair.of(after, "{\"units\": {\"public/acme/\": {\"id\": \"a\"}}}"));
-        OrgUnitService service = new OrgUnitService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         HttpException refused = assertThrows(HttpException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
 
@@ -319,7 +327,7 @@ class OrgUnitServiceTest {
         when(resources.getFolderMetadata(eq(folder), any(), anyInt(), anyBoolean()))
                 .thenReturn(new ResourceFolderMetadata(folder, List.of(new ResourceItemMetadata(memo)), null));
         RuleService rules = mock(RuleService.class);
-        OrgUnitService service = new OrgUnitService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         HttpException refused = assertThrows(HttpException.class, () -> service.create(List.of("public"), "Acme", null, "admin"));
         assertTrue(refused.getMessage().contains("already has a folder named Acme"), refused.getMessage());
@@ -328,7 +336,7 @@ class OrgUnitServiceTest {
         ResourceDescriptor app = ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION, ResourceDescriptor.PUBLIC_BUCKET,
                 ResourceDescriptor.PUBLIC_LOCATION, "Acme");
         when(items.hasResource(app)).thenReturn(true);
-        OrgUnitService other = new OrgUnitService(items, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        OrgUnitService other = newService(items, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
 
         refused = assertThrows(HttpException.class, () -> other.create(List.of("public"), "Acme", null, "admin"));
         assertTrue(refused.getMessage().contains("already has an item named Acme"), refused.getMessage());
@@ -346,9 +354,171 @@ class OrgUnitServiceTest {
         assertNull(acme.createdAt());
     }
 
+    @Test
+    void testNearestUnitOwnsItemOfAnyType() {
+        Map<String, OrgUnit> units = service(UNITS).getUnitList().units();
+
+        assertEquals("public/Risk/US Risk/", OrgUnitService.ownerOf(units, resource(ResourceTypes.FILE, "Risk/US Risk/Reports/Q3/var.xlsx")));
+        assertEquals("public/Risk/US Risk/", OrgUnitService.ownerOf(units, resource(ResourceTypes.PROMPT, "Risk/US Risk/Templates/memo")));
+        assertEquals("public/Risk/US Risk/Basel/", OrgUnitService.ownerOf(units, resource(ResourceTypes.APPLICATION, "Risk/US Risk/Basel/checkers/app")));
+        assertEquals("public/Risk/", OrgUnitService.ownerOf(units, resource(ResourceTypes.FILE, "Risk/Policies/2026/limits.pdf")));
+        assertEquals(OrgUnitService.SHARED_SPACE_KEY, OrgUnitService.ownerOf(units, resource(ResourceTypes.FILE, "Handbook/welcome.pdf")));
+        assertEquals(OrgUnitService.SHARED_SPACE_KEY, OrgUnitService.ownerOf(units, resource(ResourceTypes.FILE, "welcome.pdf")));
+        assertEquals(OrgUnitService.SHARED_SPACE_KEY, OrgUnitService.ownerOf(units, resource(ResourceTypes.FILE, "Risky/a.pdf")));
+    }
+
+    @Test
+    void testMoveGuardChecksOnlyItemMovesInsideTheSharedSpace() {
+        OrgUnitService service = service(UNITS);
+        ResourceDescriptor inRisk = resource(ResourceTypes.FILE, "Risk/a.pdf");
+        ResourceDescriptor inBasel = resource(ResourceTypes.FILE, "Risk/US Risk/Basel/a.pdf");
+        ResourceDescriptor own = ResourceDescriptorFactory.fromDecoded(ResourceTypes.FILE, "bucket", "Users/alice/", "a.pdf");
+
+        HttpException refused = assertThrows(HttpException.class, () -> service.requireSameUnit(inRisk, inBasel));
+        assertEquals(HttpStatus.CONFLICT, refused.getStatus());
+        service.requireSameUnit(inRisk, resource(ResourceTypes.FILE, "Risk/Policies/a.pdf"));
+        service.requireSameUnit(inRisk, own);
+        service.requireSameUnit(own, inBasel);
+        service.requireSameUnit(resource(ResourceTypes.FILE, "Risk/Policies/"), resource(ResourceTypes.FILE, "Risk/US Risk/Basel/Policies/"));
+        service.requireSameUnit(inRisk, resource(ResourceTypes.FILE, "Risk/US Risk/Basel/Policies/"));
+
+        ResourceService resources = mock(ResourceService.class);
+        newService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(false), () -> "id", () -> 0L)
+                .requireSameUnit(inRisk, inBasel);
+        newService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L)
+                .requireSameUnit(inRisk, resource(ResourceTypes.FILE, "Risk/b.pdf"));
+        verify(resources, never()).getResourceWithMetadata(any(), any());
+    }
+
+    @Test
+    void testDeleteNamesUpToThreeItemsAndStopsListing() {
+        ResourceService resources = writableResources("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", new AtomicReference<>());
+        ResourceDescriptor acme = resource(ResourceTypes.FILE, "Acme/");
+        when(resources.getFolderMetadata(eq(acme), eq(null), anyInt(), eq(true))).thenReturn(new ResourceFolderMetadata(acme, List.of(
+                new ResourceItemMetadata(resource(ResourceTypes.FILE, "Acme/.dial_folder")),
+                new ResourceItemMetadata(resource(ResourceTypes.FILE, "Acme/a.txt")),
+                new ResourceItemMetadata(resource(ResourceTypes.FILE, "Acme/b.txt"))), "page-2"));
+        when(resources.getFolderMetadata(eq(acme), eq("page-2"), anyInt(), eq(true))).thenReturn(new ResourceFolderMetadata(acme, List.of(
+                new ResourceItemMetadata(resource(ResourceTypes.FILE, "Acme/c.txt")),
+                new ResourceItemMetadata(resource(ResourceTypes.FILE, "Acme/d.txt"))), "page-3"));
+        OrgUnitService service = newService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        HttpException refused = assertThrows(HttpException.class, () -> service.delete(List.of("public", "Acme"), false));
+
+        assertEquals(HttpStatus.CONFLICT, refused.getStatus());
+        assertTrue(refused.getMessage().contains("Acme still holds content: files/public/Acme/a.txt, files/public/Acme/b.txt, "
+                + "files/public/Acme/c.txt, …"), refused.getMessage());
+        verify(resources, never()).getFolderMetadata(any(), eq("page-3"), anyInt(), anyBoolean());
+        verify(resources, never()).getFolderMetadata(argThat(folder -> folder != null && folder.getType() != ResourceTypes.FILE),
+                any(), anyInt(), anyBoolean());
+    }
+
+    @Test
+    void testMarkerOutsideTheFilesTreeIsContent() {
+        ResourceService resources = writableResources("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", new AtomicReference<>());
+        ResourceDescriptor prompts = resource(ResourceTypes.PROMPT, "Acme/");
+        when(resources.getFolderMetadata(eq(prompts), any(), anyInt(), eq(true))).thenReturn(new ResourceFolderMetadata(prompts,
+                List.of(new ResourceItemMetadata(resource(ResourceTypes.PROMPT, "Acme/.dial_folder"))), null));
+        OrgUnitService service = newService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        HttpException refused = assertThrows(HttpException.class, () -> service.delete(List.of("public", "Acme"), false));
+
+        assertTrue(refused.getMessage().contains("prompts/public/Acme/.dial_folder"), refused.getMessage());
+    }
+
+    @Test
+    void testDeleteFailingOnMarkerLeavesTheUnitToRepeat() {
+        AtomicReference<String> written = new AtomicReference<>();
+        ResourceService resources = writableResources("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", written);
+        ResourceDescriptor acme = resource(ResourceTypes.FILE, "Acme/");
+        ResourceDescriptor marker = resource(ResourceTypes.FILE, "Acme/.dial_folder");
+        when(resources.getFolderMetadata(eq(acme), any(), anyInt(), eq(true)))
+                .thenReturn(new ResourceFolderMetadata(acme, List.of(new ResourceItemMetadata(marker)), null));
+        when(resources.deleteResource(eq(marker), any())).thenThrow(new IllegalStateException("blob store down"));
+        RuleService rules = mock(RuleService.class);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        assertThrows(IllegalStateException.class, () -> service.delete(List.of("public", "Acme"), false));
+
+        assertNull(written.get());
+    }
+
+    @Test
+    void testDeleteRemovesTheSubtreeFromTheTreeOnly() throws Exception {
+        String tree = "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}, \"public/Acme/Risk/\": {\"id\": \"r\"}, "
+                + "\"public/Beta/\": {\"id\": \"b\"}}}";
+        AtomicReference<String> written = new AtomicReference<>();
+        ResourceService resources = writableResources(tree, written);
+        RuleService rules = mock(RuleService.class);
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        assertEquals(List.of("public/Acme/Risk", "public/Acme"), service.delete(List.of("public", "Acme"), true));
+
+        List<String> left = new ArrayList<>();
+        ProxyUtil.MAPPER.readTree(written.get()).get("units").fieldNames().forEachRemaining(left::add);
+        assertEquals(List.of("public/Beta/"), left);
+        verifyNoInteractions(rules);
+    }
+
+    @Test
+    void testDisplayNameUpdateKeepsWhatThisNodeDoesNotKnow() throws Exception {
+        String stored = "{\"units\": {\"public/Acme/\": {\"id\": \"a\", \"displayName\": \"Acme\", \"future\": {\"x\": 1}},"
+                + " \"public/Beta/\": {\"id\": \"b\", \"later\": true}}, \"version\": 3}";
+        AtomicReference<String> written = new AtomicReference<>();
+        OrgUnitService service = writable(stored, written);
+
+        service.updateDisplayName(List.of("public", "Acme"), "Acme Corp");
+
+        JsonNode document = ProxyUtil.MAPPER.readTree(written.get());
+        assertEquals("Acme Corp", document.at("/units/public~1Acme~1/displayName").textValue());
+        assertEquals(1, document.at("/units/public~1Acme~1/future/x").intValue());
+        assertEquals("a", document.at("/units/public~1Acme~1/id").textValue());
+        assertTrue(document.at("/units/public~1Beta~1/later").booleanValue());
+        assertEquals(3, document.get("version").intValue());
+
+        service.updateDisplayName(List.of("public", "Acme"), " ");
+        assertEquals("Acme", ProxyUtil.MAPPER.readTree(written.get()).at("/units/public~1Acme~1/displayName").textValue());
+    }
+
+    @Test
+    void testDisplayNameUpdateRepairsAnUnreadableEntry() throws Exception {
+        AtomicReference<String> written = new AtomicReference<>();
+        OrgUnitService service = writable("{\"units\": {\"public/Acme/\": \"x\"}}", written);
+
+        service.updateDisplayName(List.of("public", "Acme"), "Acme Corp");
+
+        assertEquals("Acme Corp", ProxyUtil.MAPPER.readTree(written.get()).at("/units/public~1Acme~1/displayName").textValue());
+    }
+
+    @Test
+    void testDisplayNameUpdateRefusals() {
+        AtomicReference<String> written = new AtomicReference<>();
+        OrgUnitService service = writable("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", written);
+
+        assertThrows(IllegalArgumentException.class, () -> service.updateDisplayName(List.of("public"), "Shared"));
+        assertEquals("displayName is required",
+                assertThrows(IllegalArgumentException.class, () -> service.updateDisplayName(List.of("public", "Acme"), null)).getMessage());
+        assertThrows(IllegalArgumentException.class, () -> service.updateDisplayName(List.of("public", "Acme"), "x".repeat(129)));
+        assertThrows(IllegalArgumentException.class, () -> service.updateDisplayName(List.of("public", "Acme"), "line\nbreak"));
+        assertThrows(ResourceNotFoundException.class, () -> service.updateDisplayName(List.of("public", "Beta"), "Beta"));
+        assertNull(written.get());
+    }
+
+    private static OrgUnitService newService(ResourceService resources, RuleService rules, LockService locks, OrgUnitSettings settings,
+                                             Supplier<String> ids, LongSupplier clock) {
+        ComplexResourceService complexResources = new ComplexResourceService(resources, locks, mock(BlobStorage.class),
+                new ComplexResourceService.Settings());
+        return new OrgUnitService(new OrgUnitLookup(resources, settings), resources, complexResources, rules, locks, ids, clock);
+    }
+
+    private static ResourceDescriptor resource(ResourceTypes type, String path) {
+        return ResourceDescriptorFactory.fromDecoded(type, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path);
+    }
+
+
     private static OrgUnitService writable(String stored, AtomicReference<String> written) {
         RuleService rules = mock(RuleService.class);
-        return new OrgUnitService(writableResources(stored, written), rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        return newService(writableResources(stored, written), rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
     }
 
     private static ResourceService writableResources(String stored, AtomicReference<String> written) {
@@ -385,7 +555,7 @@ class OrgUnitServiceTest {
             ResourceItemMetadata metadata = metadata("\"1\"");
             when(resources.getResourceWithMetadata(any(), any())).thenReturn(Pair.of(metadata, document));
         }
-        return new OrgUnitService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+        return newService(resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
     }
 
     /**
