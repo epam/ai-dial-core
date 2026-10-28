@@ -241,7 +241,7 @@ public class BaseDeploymentPostController {
         return trackDeploymentStats(context.getDeployment().getName(), ownUsage, true);
     }
 
-    private boolean subjectToLimits(Deployment deployment) {
+    protected boolean isSubjectToLimits(Deployment deployment) {
         return DeploymentEndpointUtil.resolveMode(deployment, interfaceType()).isSubjectToLimits();
     }
 
@@ -251,7 +251,7 @@ public class BaseDeploymentPostController {
      * is rejected on that one rather than on this.
      */
     protected Future<RateLimitResult> checkLimits(Deployment deployment) {
-        if (!subjectToLimits(deployment)) {
+        if (!isSubjectToLimits(deployment)) {
             return Future.succeededFuture(RateLimitResult.SUCCESS);
         }
         return proxy.getRateLimiter().limit(context, deployment);
@@ -263,12 +263,13 @@ public class BaseDeploymentPostController {
      */
     private Future<Void> increaseLimits(TokenUsage usage) {
         Deployment deployment = context.getDeployment();
-        if (!subjectToLimits(deployment)) {
+        if (!isSubjectToLimits(deployment)) {
             return Future.succeededFuture();
         }
         return proxy.getRateLimiter().increase(
                 deployment, BucketBuilder.buildInitiatorBucket(context), usage,
-                context.getRequestBody(), context.getResponseBody(), interfaceType(), context.getPricingUsageNode()
+                context.getRequestBody(), context.getResponseBody(), interfaceType(), context.getPricingUsageNode(),
+                context.getBudgetPayer()
         );
     }
 
