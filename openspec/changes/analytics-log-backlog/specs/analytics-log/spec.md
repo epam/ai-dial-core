@@ -10,7 +10,7 @@ Core leaves the bodies out. Which passes write a row, and the usage and trace fi
 
 ### Requirement: Bodies in the analytics row
 For a key that is not `secured`, Core SHALL write the request body as `request.body` and the response body as
-`response.body`, each cut at 4 MiB and then ending in `>>`, and, for a streamed response that Core assembled, the
+`response.body`, a body over 4 MiB cut there and ending in `>>`, and, for a streamed response that Core assembled, the
 assembled response as `assembled_response`, except while the log writer is behind (see "Rows without bodies while the
 log writer is behind"). For a `secured` key, Core SHALL write none of these three fields.
 
@@ -23,7 +23,8 @@ log writer is behind"). For a `secured` key, Core SHALL write none of these thre
 - **THEN** the row has no `request.body`, `response.body` or `assembled_response`, and has every other field
 
 ### Requirement: No limit on bodies waiting to be logged by default
-Core SHALL keep the bodies of every row whatever the backlog when `analytics.maxPendingBodyHeapPercent` (env
+Core SHALL keep the bodies of every row of a key that is not `secured`, whatever the backlog, when
+`analytics.maxPendingBodyHeapPercent` (env
 `aidial.analytics.maxPendingBodyHeapPercent`) is absent, which means `-1`, or is 0 or below.
 
 #### Scenario: Setting absent

@@ -52,9 +52,9 @@ missing parts counting 0. That is what the row keeps alive while it waits, and a
 though only 4 MiB is written.
 
 The check compares the bytes already waiting, before this row is added. So with nothing waiting a row always keeps its
-bodies, even one larger than the limit, and the overshoot is at most the rows admitted at the same moment by
-different threads. Rejected: comparing "waiting + this row" with the limit. A single large body would then lose its
-body on an idle writer.
+bodies, even one larger than the limit, and the overshoot is at most the whole bodies of the last row admitted under
+the limit, one such row per thread admitting at the same moment. Rejected: comparing "waiting + this row" with the
+limit. A single large body would then lose its body on an idle writer.
 
 Rejected: a bounded executor queue that rejects or blocks when full. Rejecting drops the whole row, usage and cost
 included. Blocking stalls the event loop that calls `save`.
@@ -152,8 +152,9 @@ store per process. The counter is not bound to a store, so it needs no such step
 - [Rows lose bodies under load, with a limit set] → The metric and the warning say so. An operator who needs every
   body raises the limit and the heap, or reduces load per pod. The ceiling is the writer's speed, which is out of
   scope here.
-- [Overshoot when many threads admit at once] → Bounded by the rows admitted at the same instant, a few times 1-4 MiB.
-  It is small against a limit near a tenth of the heap.
+- [Overshoot past the limit] → Bounded by one row's whole bodies per thread admitting at the same moment. Bodies are
+  held whole, not cut at 4 MiB, so a large request makes this tens of MiB per thread. That is small against a limit near
+  a tenth of a multi-GiB heap, and a reason not to set the percent near 100.
 - [An operator sets a percent above 100] → The limit is then above the heap and never applies, as with no limit. The
   README row gives 10 as the starting point.
 - [The count is the bodies' length, not the memory behind them] → A `Buffer` that grew while it was filled may hold up

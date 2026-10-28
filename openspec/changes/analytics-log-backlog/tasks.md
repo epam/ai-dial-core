@@ -49,7 +49,7 @@
   `maxPendingBodyHeapPercent` `-1`, and again with 0, `admit` of rows A and B (2,000-byte request bodies each) returns
   both with their bodies. The counter stays 0 and the gauge reads 4,000 with both waiting. Keep
   `GfLogStoreTest#testSecuredRowQueuedWithoutBodies`: with no limit, `admit` of a secured row returns a copy without
-  bodies and adds 0 pending bytes (design D4).
+  bodies and adds 0 pending bytes (design D4); with a limit and the writer behind, it is not counted as skipped.
 - [x] 2.4 Add `@Builder(toBuilder = true)`, the `bodiesOmitted` field and `withoutBodies()` to `AnalyticsLogContext`
   (design D3).
 - [x] 2.5 In `GfLogStore`: the `pendingBodyBytes` counter, `admit` and `release` (D1, D4), `save` queuing

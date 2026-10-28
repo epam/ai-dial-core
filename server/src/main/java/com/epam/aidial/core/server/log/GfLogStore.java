@@ -128,7 +128,7 @@ public class GfLogStore implements LogStore {
             }
             return logContext.withoutBodies();
         }
-        if (behind.get() && pending < maxPendingBodyBytes / 2 && behind.compareAndSet(true, false)) {
+        if (behind.get() && pending * 2 < maxPendingBodyBytes && behind.compareAndSet(true, false)) {
             log.info("Analytics log writer caught up: {} bytes of bodies wait to be written. Rows carry bodies again", pending);
         }
         pendingBodyBytes.addAndGet(countBodyBytes(logContext));

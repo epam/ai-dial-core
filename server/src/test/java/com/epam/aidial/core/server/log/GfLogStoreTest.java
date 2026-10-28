@@ -757,7 +757,10 @@ public class GfLogStoreTest {
                 .responseBody(Buffer.buffer("{}"))
                 .assembledStreamingResponse("{}")
                 .build();
-        AnalyticsLogContext c = row("c", "z".repeat(10)).build();
+        AnalyticsLogContext c = row("c", "z".repeat(10))
+                .responseBody(Buffer.buffer("{\"a\":1}"))
+                .assembledStreamingResponse("{}")
+                .build();
 
         // nothing waiting: the row keeps its body although it is over the limit
         assertSame(a, store.admit(a));
@@ -783,6 +786,8 @@ public class GfLogStoreTest {
         assertEquals(0, pendingBodyBytes());
         assertSame(c, store.admit(c));
         assertEquals("z".repeat(10), logOf(c).get("request").get("body").asText());
+        // the request, response and assembled bodies all count
+        assertEquals(10 + 7 + 2, pendingBodyBytes());
         assertEquals(1, bodiesSkipped());
     }
 
@@ -872,6 +877,13 @@ public class GfLogStoreTest {
         assertNull(queued.getAssembledStreamingResponse());
         assertEquals("a", logOf(queued).get("deployment").asText());
         assertEquals(0, pendingBodyBytes());
+        assertEquals(0, bodiesSkipped());
+
+        // with the writer behind, a secured row is not counted as skipped
+        store = store(percentOfHeap(10));
+        store.admit(row("b", "y".repeat(2000)).build());
+        assertNull(store.admit(secured).getRequestBody());
+        assertEquals(2000, pendingBodyBytes());
         assertEquals(0, bodiesSkipped());
     }
 
