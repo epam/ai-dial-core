@@ -13,6 +13,7 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.ResponsesController;
+import com.epam.aidial.core.server.controller.SpendCapCheck;
 import com.epam.aidial.core.server.data.AnthropicErrorData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
@@ -20,15 +21,16 @@ import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectMessagesTokenUsageFn;
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
+import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.SpendCap;
 import com.epam.aidial.core.server.limiter.SpendCaps;
-import com.epam.aidial.core.server.limiter.SpendReadException;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -139,60 +141,35 @@ public class MessagesController extends MessagesBaseController {
 
     @Override
     protected Future<Void> verifyLimit() {
-        if (!isSubjectToLimits(context.getDeployment())) {
-            return readTranslatedSpendCaps();
-        }
-        return proxy.getRateLimiter().limitWithSpendCaps(context, context.getDeployment())
-                .recover(error -> {
-                    // fail closed only when the spend itself is unknown to a caller it would cap; any other failure is retried
-                    if (error instanceof SpendReadException && proxy.getRateLimiter().hasCostLimit(context)) {
-                        log.warn("Failed to read spend, rejecting the request. Deployment: {}", context.getDeployment().getName(), error);
-                        return Future.failedFuture(AnthropicLimitResponses.spendUnavailable());
-                    }
-                    log.warn("Failed to check limits. Deployment: {}", context.getDeployment().getName(), error);
-                    return Future.failedFuture(AnthropicLimitResponses.limitCheckFailed());
-                })
-                .map(rateLimit -> {
-                    SpendCaps caps = rateLimit.spendCaps();
-                    if (rateLimit.status() == HttpStatus.TOO_MANY_REQUESTS) {
-                        rejectIfSpendCapReached(caps);
-                        if (rateLimit.breach() != null) {
-                            throw AnthropicLimitResponses.limitReached(rateLimit.breach(), context.getDeployment().getName(), System.currentTimeMillis());
-                        }
-                    }
-                    rateLimit.throwIfError();
-                    spendCaps = caps;
-                    return null;
-                });
-    }
+        String deploymentName = context.getDeployment().getName();
+        return SpendCapCheck.verify(proxy, context, isSubjectToLimits(context.getDeployment()), new SpendCapCheck.Answers() {
+            @Override
+            public HttpException spendCapReached(SpendCap cap, @Nullable String displayMessage, long nowMillis) {
+                return AnthropicLimitResponses.spendCapReached(cap, nowMillis);
+            }
 
-    /**
-     * A translated request is checked and charged by the call the translator makes back to Core, so this one only
-     * reads the spend caps for the headers. It still rejects a cap that is already reached, so the caller gets the
-     * Anthropic-shaped answer rather than the inner call's, and it fails open when the record is unreadable: the
-     * inner call enforces either way.
-     */
-    private Future<Void> readTranslatedSpendCaps() {
-        return proxy.getRateLimiter().readSpendCaps(context)
-                .recover(error -> {
-                    log.warn("Failed to read spend caps, sending no limit headers. Deployment: {}", context.getDeployment().getName(), error);
-                    return Future.succeededFuture(SpendCaps.EMPTY);
-                })
-                .map(caps -> {
-                    rejectIfSpendCapReached(caps);
-                    spendCaps = caps;
-                    return null;
-                });
-    }
+            @Override
+            public HttpException spendUnavailable() {
+                return AnthropicLimitResponses.spendUnavailable();
+            }
 
-    /**
-     * A reached spend cap takes precedence over any other limit, so it is checked first wherever the caps are read.
-     */
-    private static void rejectIfSpendCapReached(@Nullable SpendCaps caps) {
-        SpendCap reported = caps == null ? null : caps.reported();
-        if (reported != null && reported.isExceeded()) {
-            throw AnthropicLimitResponses.spendCapReached(reported, System.currentTimeMillis());
-        }
+            @Override
+            public Throwable limitCheckFailed(Throwable error) {
+                // any failure other than an unreadable spend record is a server error Claude Code retries
+                return AnthropicLimitResponses.limitCheckFailed();
+            }
+
+            @Override
+            public void rejectOtherLimit(RateLimitResult result) {
+                if (result.status() == HttpStatus.TOO_MANY_REQUESTS && result.breach() != null) {
+                    throw AnthropicLimitResponses.limitReached(result.breach(), deploymentName, System.currentTimeMillis());
+                }
+                result.throwIfError();
+            }
+        }).map(caps -> {
+            spendCaps = caps;
+            return null;
+        });
     }
 
     /**

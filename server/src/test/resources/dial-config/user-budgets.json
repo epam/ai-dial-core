@@ -1,0 +1,29 @@
+{
+  "spendingLimits": {
+    "mode": "shadow"
+  },
+  "models": {
+    "budget-model": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/chat/completions"
+    }
+  },
+  "roles": {
+    "user": {
+      "limits": {
+        "budget-model": {}
+      }
+    },
+    "default": {
+      "limits": {
+        "budget-model": {}
+      }
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "budget-project",
+      "role": "default"
+    }
+  }
+}
