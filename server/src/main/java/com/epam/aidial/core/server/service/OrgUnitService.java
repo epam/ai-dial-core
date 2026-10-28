@@ -4,6 +4,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.orgunit.OrgUnit;
 import com.epam.aidial.core.server.data.orgunit.OrgUnitData;
 import com.epam.aidial.core.server.data.orgunit.OrgUnitList;
+import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
@@ -23,16 +24,15 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
@@ -44,6 +44,11 @@ import javax.annotation.Nullable;
  * Org units as folders of the shared space, recorded in a unit tree next to the rules document. One tree key covers
  * the unit's folder in every content type tree.
  *
+ * <p>A resource belongs to the nearest unit above it, whatever its type: the type folder is dropped and the
+ * longest matching key wins, so {@code files/public/Risk/US Risk/a.pdf} and {@code applications/public/Risk/US Risk/x}
+ * both belong to {@code public/Risk/US Risk/}. Two invariants keep that unambiguous: a unit's parent is a unit or the
+ * shared space, and a new unit never takes the name of an existing folder or item in any type tree.
+ *
  * <p>The shared space itself is not a unit: what lies under no unit stays with the DIAL admins. The customer's
  * organization is the first unit below it, such as {@code public/Acme/}.
  *
@@ -51,8 +56,7 @@ import javax.annotation.Nullable;
  * unit without files gets the clients' hidden empty-folder marker, {@link #FOLDER_MARKER}; that is where Chat and the admin panel look
  * for folders.
  *
- * <p>The tree is read through the shared resource cache and decoded again only when its etag changes. An unreadable
- * tree fails the request.
+ * <p>The tree is read through {@link OrgUnitLookup}.
  */
 @Slf4j
 public class OrgUnitService {
@@ -77,84 +81,79 @@ public class OrgUnitService {
     private static final Set<String> RESERVED_NAMES = Set.of("roles", "role-assignments", "rate");
     private static final int MAX_DISPLAY_NAME = 128;
     private static final int LIST_PAGE = 1000;
-    private static final ResourceDescriptor UNITS = ResourceDescriptorFactory.fromDecoded(
+    static final ResourceDescriptor UNITS = ResourceDescriptorFactory.fromDecoded(
             ResourceTypes.ORG_UNITS, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, "units");
 
+    private final OrgUnitLookup lookup;
     private final ResourceService resources;
+    private final ComplexResourceService complexResources;
     private final RuleService ruleService;
     private final LockService locks;
-    private final OrgUnitSettings settings;
     private final Supplier<String> ids;
     private final LongSupplier clock;
 
-    /**
-     * Key is the document's etag, which changes with every write; two writes can share an update time.
-     * Value is the decoded list, read-only.
-     */
-    private final AtomicReference<Pair<String, OrgUnitList>> cached = new AtomicReference<>();
-
-    public OrgUnitService(ResourceService resources, RuleService ruleService, LockService locks, OrgUnitSettings settings,
-                          Supplier<String> ids, LongSupplier clock) {
+    public OrgUnitService(OrgUnitLookup lookup, ResourceService resources, ComplexResourceService complexResources,
+                          RuleService ruleService, LockService locks, Supplier<String> ids, LongSupplier clock) {
+        this.lookup = lookup;
         this.resources = resources;
+        this.complexResources = complexResources;
         this.ruleService = ruleService;
         this.locks = locks;
-        this.settings = settings;
         this.ids = ids;
         this.clock = clock;
     }
 
     public boolean isEnabled() {
-        return settings.enabled();
+        return lookup.isEnabled();
     }
 
-    /**
-     * Whether the folder of this name, the resource's own folder for an item, is a unit's: a complex resource keeps
-     * its files there. Names compare ignoring case, as on create, since folders that differ only in case are one on
-     * some storages.
-     */
-    private boolean isUnitFolder(ResourceDescriptor resource) {
-        if (!isEnabled() || !resource.isPublic()) {
-            return false;
-        }
-        String path = resource.getDecodedUrl().substring(resource.getType().urlSegment().length() + 1);
-        String key = resource.isFolder() ? path : path + ResourceDescriptor.PATH_SEPARATOR;
-        return getUnitList().units().keySet().stream().anyMatch(key::equalsIgnoreCase);
-    }
-
-    /**
-     * Refuses a skill or project whose own folder is a unit's, since it keeps its files there.
-     */
     public void requireNoUnitFolder(ResourceDescriptor resource) {
-        if (isUnitFolder(resource)) {
-            throw new HttpException(HttpStatus.CONFLICT, "An org unit holds this path: " + resource.getUrl());
-        }
+        lookup.requireNoUnitFolder(resource);
     }
 
-    /**
-     * Reads the list once, so a node that cannot read it refuses to start.
-     */
-    public void checkOnStartup() {
-        if (settings.enabled()) {
-            getUnitList();
-        }
-    }
-
-    /**
-     * The unit list as stored now, read-only.
-     */
     OrgUnitList getUnitList() {
-        Pair<ResourceItemMetadata, String> resource = resources.getResourceWithMetadata(UNITS, EtagHeader.ANY);
-        String key = (resource == null) ? "" : resource.getKey().getEtag();
-        Pair<String, OrgUnitList> current = cached.get();
+        return lookup.getUnitList();
+    }
 
-        if (current == null || !current.getKey().equals(key)) {
-            OrgUnitList decoded = decode(units(parse(resource == null ? null : resource.getValue()))).readOnly();
-            Pair<String, OrgUnitList> next = Pair.of(key, decoded);
-            cached.compareAndSet(current, next);
-            current = next;
+    /**
+     * The key of the unit that owns the shared-space item, or {@link #SHARED_SPACE_KEY} when no unit is above it.
+     */
+    static String ownerOf(Map<String, OrgUnit> units, ResourceDescriptor item) {
+        String key = keyOf(item.getParent());
+        while (!key.equals(SHARED_SPACE_KEY)) {
+            if (units.containsKey(key)) {
+                return key;
+            }
+            key = parentKey(key);
+        }
+        return SHARED_SPACE_KEY;
+    }
+
+    /**
+     * Refuses a move inside the shared space that would hand an item to another unit. Folders are moved item by item,
+     * so this is what stops a unit's folder from being renamed or moved away from its entry. Folder moves are left to
+     * the move itself, which refuses them.
+     */
+    public void requireSameUnit(ResourceDescriptor source, ResourceDescriptor destination) {
+        if (!isEnabled() || !source.isPublic() || !destination.isPublic() || source.isFolder() || destination.isFolder()) {
+            return;
+        }
+        if (keyOf(source.getParent()).equals(keyOf(destination.getParent()))) {
+            return;
         }
 
-        return current.getValue();
+        Map<String, OrgUnit> units = getUnitList().units();
+        String from = ownerOf(units, source);
+        String to = ownerOf(units, destination);
+        if (!from.equals(to)) {
+            throw new HttpException(HttpStatus.CONFLICT, "A move can't change which org unit owns a resource: %s belongs to %s, %s to %s. "
+                    .formatted(source.getDecodedUrl(), owner(from), destination.getDecodedUrl(), owner(to))
+                    + "Copy or publish it instead.");
+        }
+    }
+
+    private static String owner(String key) {
+        return key.equals(SHARED_SPACE_KEY) ? "no unit" : describe(key);
     }
 
     /**
@@ -208,6 +207,156 @@ public class OrgUnitService {
 
         return new OrgUnitData(unit.id(), name, unit.displayName(), path(key), encodedFolder(key), unit.author(), unit.createdAt(),
                 List.of());
+    }
+
+    /**
+     * Changes what clients show for a unit; a blank display name falls back to the name, as on create. Only the
+     * stored entry's {@code displayName} changes, so fields this node doesn't know stay as stored. The unit's name and
+     * folder never change.
+     */
+    public OrgUnitData updateDisplayName(List<String> path, @Nullable String displayName) {
+        String key = keyOf(requireSharedSpace(path));
+        if (key.equals(SHARED_SPACE_KEY)) {
+            throw new IllegalArgumentException("The shared space is not a unit");
+        }
+        if (displayName == null) {
+            throw new IllegalArgumentException("displayName is required");
+        }
+        requireDisplayName(displayName);
+
+        String value = displayName.isBlank() ? lastSegment(key) : displayName;
+        resources.computeResource(UNITS, body -> {
+            ObjectNode document = parse(body);
+            ObjectNode units = units(document);
+            JsonNode stored = units.get(key);
+            if (stored == null) {
+                throw new ResourceNotFoundException("No org unit: " + String.join("/", path));
+            }
+            // an unreadable entry still counts as a unit, so the update repairs it
+            ObjectNode entry = stored instanceof ObjectNode object ? object : units.putObject(key);
+            entry.put("displayName", value);
+            return document.toString();
+        });
+        return read(path, false, null, true);
+    }
+
+    /**
+     * Removes an empty unit; with {@code recursive}, every unit below it too. A unit is empty when its folder holds
+     * nothing but empty-folder markers in the files tree and nothing at all in any other type tree, the subtree of its
+     * child units included. Its tree entries and the markers in its subtree go; read rules are left as they are.
+     *
+     * @return the paths of the removed units, deepest first
+     */
+    public List<String> delete(List<String> path, boolean recursive) {
+        String key = keyOf(requireSharedSpace(path));
+        if (key.equals(SHARED_SPACE_KEY)) {
+            throw new IllegalArgumentException("The shared space is not a unit");
+        }
+
+        List<String> removed = locks.underBucketLock(SHARED_SPACE_KEY, () -> deleteLocked(path, key, recursive));
+        return removed.stream().map(OrgUnitService::path).toList();
+    }
+
+    /**
+     * Runs under the shared space's bucket lock, which create, moves and publication approvals into the shared space
+     * also take, so none of them puts anything into the unit between the emptiness check and the removal. A direct
+     * write doesn't take that lock: content it lands meanwhile ends up under no unit, where the read rules decide.
+     *
+     * <p>The markers go before the tree entries: until the entries are gone the unit still exists, so a removal that
+     * fails part way can be repeated, and once they are gone no marker is left to keep the name taken.
+     *
+     * @return the keys of the removed units, deepest first
+     */
+    private List<String> deleteLocked(List<String> path, String key, boolean recursive) {
+        List<String> removed = new ArrayList<>(unitsBelow(getUnitList(), key, path, recursive));
+        List<ResourceDescriptor> markers = requireEmpty(key, removed);
+        removed.add(key);
+
+        for (ResourceDescriptor marker : markers) {
+            resources.deleteResource(marker, EtagHeader.ANY);
+        }
+        for (ResourceTypes type : CONTENT_TYPES) {
+            if (type.isComplex()) {
+                complexResources.deleteFoldersLocked(folder(type, key));
+            }
+        }
+        update(list -> removed.forEach(list.units()::remove));
+        return removed;
+    }
+
+    /**
+     * The units below the key, deepest first; refuses them unless {@code recursive}.
+     */
+    private static List<String> unitsBelow(OrgUnitList list, String key, List<String> path, boolean recursive) {
+        if (!list.units().containsKey(key)) {
+            throw new ResourceNotFoundException("No org unit: " + String.join("/", path));
+        }
+
+        List<String> below = list.units().keySet().stream()
+                .filter(unit -> unit.startsWith(key) && !unit.equals(key))
+                .sorted(Comparator.comparingInt(OrgUnitService::depth).reversed().thenComparing(Comparator.naturalOrder()))
+                .toList();
+        if (!below.isEmpty() && !recursive) {
+            throw new HttpException(HttpStatus.CONFLICT, "%s has units below it: %s. Remove them first, or remove all with recursive=true"
+                    .formatted(describe(key), String.join(", ", below.stream().map(OrgUnitService::describe).toList())));
+        }
+        return below;
+    }
+
+    /**
+     * Refuses a unit whose subtree holds anything but empty-folder markers in the files tree and grouping folders in
+     * the skills and projects trees, naming up to three items.
+     *
+     * @return the files tree's markers to remove with it
+     */
+    private List<ResourceDescriptor> requireEmpty(String key, List<String> below) {
+        Subtree subtree = listSubtree(key);
+        List<String> content = subtree.content();
+        if (!content.isEmpty()) {
+            String units = below.isEmpty() ? describe(key) + " still holds" : describe(key) + " and the units below it still hold";
+            String shown = String.join(", ", content.subList(0, Math.min(3, content.size()))) + (content.size() > 3 ? ", …" : "");
+            throw new HttpException(HttpStatus.CONFLICT, "%s content: %s. Delete or move it first.".formatted(units, shown));
+        }
+        return subtree.markers();
+    }
+
+    /**
+     * The subtree's empty-folder markers in the files tree, and its other items in every type tree. The skills and
+     * projects trees are listed by {@link ComplexResourceService}, so a deleted resource there that the sweep hasn't
+     * reclaimed yet isn't content. Stops listing once more than three items are found: enough to name them.
+     */
+    private Subtree listSubtree(String key) {
+        List<ResourceDescriptor> markers = new ArrayList<>();
+        List<String> content = new ArrayList<>();
+        for (ResourceTypes type : CONTENT_TYPES) {
+            if (content.size() > 3) {
+                break;
+            }
+            String token = null;
+            do {
+                ResourceFolderMetadata page = type.isComplex()
+                        ? complexResources.listChildren(folder(type, key), token, LIST_PAGE, true)
+                        : resources.getFolderMetadata(folder(type, key), token, LIST_PAGE, true);
+                if (page == null) {
+                    break;
+                }
+                for (MetadataBase item : page.getItems()) {
+                    if (type.isComplex() && item.getNodeType() == NodeType.FOLDER) {
+                        continue;
+                    }
+                    if (type == ResourceTypes.FILE && FOLDER_MARKER.equals(item.getName())) {
+                        markers.add(((ResourceItemMetadata) item).getDescriptor());
+                    } else {
+                        content.add(item.getUrl());
+                    }
+                }
+                token = content.size() > 3 ? null : page.getNextToken();
+            } while (token != null);
+        }
+        return new Subtree(markers, content);
+    }
+
+    private record Subtree(List<ResourceDescriptor> markers, List<String> content) {
     }
 
     private void requireCreatable(OrgUnitList list, String parentKey, String name) {
@@ -290,7 +439,7 @@ public class OrgUnitService {
      * Refuses a document that isn't a JSON object rather than reading it as empty: an empty list would hand every
      * unit's content to the shared space.
      */
-    private static ObjectNode parse(@Nullable String body) {
+    static ObjectNode parse(@Nullable String body) {
         if (body == null || body.isBlank()) {
             return ProxyUtil.MAPPER.createObjectNode();
         }
@@ -307,7 +456,7 @@ public class OrgUnitService {
         throw new IllegalStateException("The org unit list can't be read: it is not a JSON object");
     }
 
-    private static ObjectNode units(ObjectNode document) {
+    static ObjectNode units(ObjectNode document) {
         JsonNode units = document.get("units");
         if (units == null || units.isNull()) {
             return document.putObject("units");
@@ -318,7 +467,7 @@ public class OrgUnitService {
         throw new IllegalStateException("The org unit list can't be read: units is not an object");
     }
 
-    private static OrgUnitList decode(ObjectNode raw) {
+    static OrgUnitList decode(ObjectNode raw) {
         Map<String, OrgUnit> units = new TreeMap<>();
         raw.fields().forEachRemaining(field -> units.put(field.getKey(), decodeUnit(field.getValue())));
         return new OrgUnitList(units);
@@ -481,6 +630,15 @@ public class OrgUnitService {
     private static ResourceDescriptor folder(ResourceTypes type, String key) {
         return ResourceDescriptorFactory.fromDecoded(type, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION,
                 key.substring(SHARED_SPACE_KEY.length()));
+    }
+
+    static String keyOf(@Nullable ResourceDescriptor folder) {
+        if (folder == null) {
+            return SHARED_SPACE_KEY;
+        }
+
+        String url = folder.getDecodedUrl();
+        return url.substring(folder.getType().urlSegment().length() + 1);
     }
 
     private static String keyOf(List<String> unitPath) {
