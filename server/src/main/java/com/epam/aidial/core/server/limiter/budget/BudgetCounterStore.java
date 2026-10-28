@@ -39,18 +39,28 @@ public class BudgetCounterStore {
      */
     public Future<BudgetUsage> load(String costObject, BudgetInstance instance, String userId, long timestamp, RateLimitSchedule schedule) {
         ResourceDescriptor userFolder = describe(costObject, instance, userId, null);
-        return taskExecutor.submit(() -> {
-            BigDecimal day = BigDecimal.ZERO;
-            BigDecimal month = BigDecimal.ZERO;
-            for (var row : resourceService.listResources(userFolder, page -> { })) {
-                BudgetCounter counter = ProxyUtil.convertToObject(row.getValue(), BudgetCounter.class);
-                day = day.add(counter.getDay().reconcile(timestamp, CalendarPeriod.DAY, schedule));
-                month = month.add(counter.getMonth().reconcile(timestamp, CalendarPeriod.MONTH, schedule));
-            }
-            return new BudgetUsage(day, month,
-                    CalendarWindowCalculator.nextPeriodStart(CalendarPeriod.DAY, timestamp, schedule),
-                    CalendarWindowCalculator.nextPeriodStart(CalendarPeriod.MONTH, timestamp, schedule));
-        });
+        return taskExecutor.submit(() -> read(userFolder, timestamp, schedule));
+    }
+
+    /**
+     * The same as {@link #load}, on the calling thread, for a caller that is already on the task executor and
+     * must not queue behind it.
+     */
+    public BudgetUsage loadBlocking(String costObject, BudgetInstance instance, String userId, long timestamp, RateLimitSchedule schedule) {
+        return read(describe(costObject, instance, userId, null), timestamp, schedule);
+    }
+
+    private BudgetUsage read(ResourceDescriptor userFolder, long timestamp, RateLimitSchedule schedule) {
+        BigDecimal day = BigDecimal.ZERO;
+        BigDecimal month = BigDecimal.ZERO;
+        for (var row : resourceService.listResources(userFolder, page -> { })) {
+            BudgetCounter counter = ProxyUtil.convertToObject(row.getValue(), BudgetCounter.class);
+            day = day.add(counter.getDay().reconcile(timestamp, CalendarPeriod.DAY, schedule));
+            month = month.add(counter.getMonth().reconcile(timestamp, CalendarPeriod.MONTH, schedule));
+        }
+        return new BudgetUsage(day, month,
+                CalendarWindowCalculator.nextPeriodStart(CalendarPeriod.DAY, timestamp, schedule),
+                CalendarWindowCalculator.nextPeriodStart(CalendarPeriod.MONTH, timestamp, schedule));
     }
 
     /**
