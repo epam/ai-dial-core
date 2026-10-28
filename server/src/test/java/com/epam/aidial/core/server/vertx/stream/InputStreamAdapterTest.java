@@ -13,7 +13,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 
 class InputStreamAdapterTest {
@@ -109,6 +111,61 @@ class InputStreamAdapterTest {
         source.error(new IllegalAccessError("NotAccess"));
 
         Assertions.assertThrows(IOException.class, stream::read);
+    }
+
+    @Test
+    void testReadFailsWhenNoDataArrivesInTime() {
+        TestReadStream source = new TestReadStream();
+        InputStreamAdapter stream = new InputStreamAdapter(source, Duration.ofMillis(100));
+
+        long start = System.nanoTime();
+        InputStreamAdapter.StallTimeoutException e =
+                Assertions.assertThrows(InputStreamAdapter.StallTimeoutException.class, stream::read);
+        long elapsedMillis = Duration.ofNanos(System.nanoTime() - start).toMillis();
+
+        Assertions.assertTrue(elapsedMillis >= 90, "must wait roughly the full timeout, waited " + elapsedMillis + "ms");
+        Assertions.assertTrue(e.getMessage().contains("100"), e.getMessage());
+        // the adapter is now failed for good
+        Assertions.assertThrows(IOException.class, stream::read);
+    }
+
+    @Test
+    void testSlowButSteadyDataIsNotStalled() throws Exception {
+        TestReadStream source = new TestReadStream();
+        InputStreamAdapter stream = new InputStreamAdapter(source, Duration.ofMillis(300));
+
+        CompletableFuture<byte[]> result = CompletableFuture.supplyAsync(() -> {
+            try {
+                return stream.readAllBytes();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        for (String chunk : TEXT.split("\n")) {
+            Thread.sleep(100);
+            source.append(chunk).append("\n");
+        }
+        Thread.sleep(100);
+        source.end();
+
+        Assertions.assertEquals(TEXT, new String(result.get(5, TimeUnit.SECONDS), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void testTimeIsNotCountedWhileTheReaderIsBusy() throws Exception {
+        TestReadStream source = new TestReadStream();
+        InputStreamAdapter stream = new InputStreamAdapter(source, Duration.ofMillis(200));
+        source.append("first").end();
+
+        // the reader is busy for longer than readTimeout between these two calls; no bytes are pending either time
+        byte[] firstChunk = new byte[5];
+        Assertions.assertEquals(5, stream.read(firstChunk, 0, 5));
+        Thread.sleep(400);
+
+        // the stream already ended, so this does not wait on the timeout at all; it proves the prior sleep did not
+        // leave the adapter in a failed state
+        Assertions.assertEquals(-1, stream.read());
     }
 
     private static class TestReadStream implements ReadStream<Buffer> {

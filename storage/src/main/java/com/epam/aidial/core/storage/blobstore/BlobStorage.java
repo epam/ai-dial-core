@@ -36,7 +36,11 @@ import org.jclouds.logging.slf4j.config.SLF4JLoggingModule;
 import org.jclouds.s3.domain.ObjectMetadataBuilder;
 
 import java.io.Closeable;
+import java.io.IOException;
+import java.io.InputStream;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -50,6 +54,12 @@ public class BlobStorage implements Closeable {
     // To avoid additional request for each blob in the listing we try to recognize blob content type by its extension.
     // Default value is binary/octet-stream, see org.jclouds.s3.domain.ObjectMetadataBuilder
     private static final String DEFAULT_CONTENT_TYPE = ObjectMetadataBuilder.create().build().getContentMetadata().getContentType();
+
+    /**
+     * The part size {@link #upload} switches to a multipart upload above. 5 MiB, the same value as
+     * {@code BlobWriteStream.MIN_PART_SIZE_BYTES} in the {@code server} module, which cannot be referenced here.
+     */
+    static final int UPLOAD_PART_SIZE_BYTES = 5 * 1024 * 1024;
 
     private static final Duration[] OPERATION_LATENCY_BUCKETS = {
         Duration.ofMillis(5), Duration.ofMillis(10), Duration.ofMillis(25), Duration.ofMillis(50), Duration.ofMillis(100),
@@ -106,6 +116,19 @@ public class BlobStorage implements Closeable {
     public MultipartUpload initMultipartUpload(String absoluteFilePath, String contentType, Map<String, String> userMetadata) {
         String storageLocation = getStorageLocation(absoluteFilePath);
         BlobMetadata metadata = buildBlobMetadata(storageLocation, contentType, bucketName, userMetadata);
+        return measure("init_multipart_upload", () -> blobStore.initiateMultipartUpload(bucketName, metadata, PutOptions.NONE));
+    }
+
+    /**
+     * Initializes a multipart upload with the full content metadata and user metadata of {@code attributes},
+     * unlike the {@code contentType}-only overload above.
+     *
+     * @param absoluteFilePath absolute path according to the bucket
+     */
+    @SuppressWarnings("UnstableApiUsage") // multipart upload uses beta API
+    public MultipartUpload initMultipartUpload(String absoluteFilePath, BlobAttributes attributes) {
+        String storageLocation = getStorageLocation(absoluteFilePath);
+        BlobMetadata metadata = buildBlobMetadata(storageLocation, attributes, bucketName);
         return measure("init_multipart_upload", () -> blobStore.initiateMultipartUpload(bucketName, metadata, PutOptions.NONE));
     }
 
@@ -169,6 +192,90 @@ public class BlobStorage implements Closeable {
             BlockingCallTracer.currentSpan().setAttribute("dial.blob.size", data.length);
             return blobStore.putBlob(bucketName, blob);
         });
+    }
+
+    /**
+     * Stores a blob with the full content metadata and user metadata of {@code attributes}, reading {@code data}
+     * to completion. A stream that ends within {@link #UPLOAD_PART_SIZE_BYTES} is stored with one {@code putBlob};
+     * a longer one with a multipart upload, aborted if anything after {@link #initMultipartUpload(String, BlobAttributes)}
+     * fails.
+     *
+     * @param absoluteFilePath absolute path according to the bucket, for example: public/models/m1
+     */
+    public void upload(String absoluteFilePath, BlobAttributes attributes, InputStream data) throws IOException {
+        byte[] first = data.readNBytes(UPLOAD_PART_SIZE_BYTES);
+        if (first.length < UPLOAD_PART_SIZE_BYTES) {
+            storeAttributes(absoluteFilePath, attributes, first);
+            return;
+        }
+
+        int probe = data.read();
+        if (probe < 0) {
+            storeAttributes(absoluteFilePath, attributes, first);
+            return;
+        }
+
+        uploadMultipart(absoluteFilePath, attributes, data, first, probe);
+    }
+
+    private void storeAttributes(String absoluteFilePath, BlobAttributes attributes, byte[] data) {
+        String storageLocation = getStorageLocation(absoluteFilePath);
+        Blob blob = blobStore.blobBuilder(storageLocation)
+                .payload(new ByteArrayPayload(data))
+                .contentLength(data.length)
+                .contentType(attributes.contentType())
+                .contentEncoding(attributes.contentEncoding())
+                .contentDisposition(attributes.contentDisposition())
+                .contentLanguage(attributes.contentLanguage())
+                .cacheControl(attributes.cacheControl())
+                .userMetadata(attributes.userMetadata())
+                .build();
+
+        measure("upload", () -> {
+            BlockingCallTracer.currentSpan().setAttribute("dial.blob.size", data.length);
+            return blobStore.putBlob(bucketName, blob);
+        });
+    }
+
+    @SuppressWarnings("UnstableApiUsage") // multipart upload uses beta API
+    private void uploadMultipart(String absoluteFilePath, BlobAttributes attributes, InputStream data, byte[] first, int probe)
+            throws IOException {
+        MultipartUpload multipart = initMultipartUpload(absoluteFilePath, attributes);
+        List<MultipartPart> parts = new ArrayList<>();
+        try {
+            parts.add(storeMultipartPart(multipart, 1, payloadOf(first)));
+            byte[] chunk = readNextPart(data, probe);
+            int partNumber = 2;
+            while (chunk.length > 0) {
+                parts.add(storeMultipartPart(multipart, partNumber++, payloadOf(chunk)));
+                chunk = readNextPart(data, -1);
+            }
+            completeMultipartUpload(multipart, parts);
+        } catch (Throwable e) {
+            abortMultipartUpload(multipart);
+            throw e;
+        }
+    }
+
+    private static Payload payloadOf(byte[] chunk) {
+        Payload payload = new ByteArrayPayload(chunk);
+        payload.getContentMetadata().setContentLength((long) chunk.length);
+        return payload;
+    }
+
+    /**
+     * Reads the next upload part. {@code pushedBack} is a byte already read from {@code data} (non-negative) that
+     * belongs at the start of this part, or {@code -1} when there is none.
+     */
+    private static byte[] readNextPart(InputStream data, int pushedBack) throws IOException {
+        if (pushedBack < 0) {
+            return data.readNBytes(UPLOAD_PART_SIZE_BYTES);
+        }
+
+        byte[] buffer = new byte[UPLOAD_PART_SIZE_BYTES];
+        buffer[0] = (byte) pushedBack;
+        int read = data.readNBytes(buffer, 1, UPLOAD_PART_SIZE_BYTES - 1);
+        return (read == UPLOAD_PART_SIZE_BYTES - 1) ? buffer : Arrays.copyOf(buffer, read + 1);
     }
 
     /**
@@ -306,9 +413,26 @@ public class BlobStorage implements Closeable {
                 null, userMetadata, null, bucketName, contentMetadata, null, Tier.STANDARD);
     }
 
+    private static BlobMetadata buildBlobMetadata(String absoluteFilePath, BlobAttributes attributes, String bucketName) {
+        ContentMetadata contentMetadata = buildContentMetadata(attributes);
+        return new BlobMetadataImpl(null, absoluteFilePath, null, null, null, null,
+                null, attributes.userMetadata(), null, bucketName, contentMetadata, null, Tier.STANDARD);
+    }
+
     private static ContentMetadata buildContentMetadata(String contentType) {
         ContentMetadata contentMetadata = ContentMetadataBuilder.create()
                 .contentType(contentType)
+                .build();
+        return BaseMutableContentMetadata.fromContentMetadata(contentMetadata);
+    }
+
+    private static ContentMetadata buildContentMetadata(BlobAttributes attributes) {
+        ContentMetadata contentMetadata = ContentMetadataBuilder.create()
+                .contentType(attributes.contentType())
+                .contentEncoding(attributes.contentEncoding())
+                .contentDisposition(attributes.contentDisposition())
+                .contentLanguage(attributes.contentLanguage())
+                .cacheControl(attributes.cacheControl())
                 .build();
         return BaseMutableContentMetadata.fromContentMetadata(contentMetadata);
     }

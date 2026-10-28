@@ -39,6 +39,7 @@ import org.jclouds.blobstore.domain.StorageType;
 import org.jclouds.io.Payload;
 import org.redisson.api.BatchResult;
 import org.redisson.api.RBatch;
+import org.redisson.api.RKeys;
 import org.redisson.api.RMap;
 import org.redisson.api.RMapAsync;
 import org.redisson.api.RScoredSortedSet;
@@ -57,7 +58,6 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -159,6 +159,7 @@ public class ResourceService implements AutoCloseable {
     private final Map<String, Long> resourceTypeExpiration;
     private final Supplier<String> senderPodIdSupplier;
     private final BlockingCallTracer blockingCallTracer;
+    private final TempFolderCleaner tempFolderCleaner;
 
     public ResourceService(TimerService timerService,
                            RedissonClient redis,
@@ -202,6 +203,7 @@ public class ResourceService implements AutoCloseable {
         this.resourceQueue = "resource:" + BlobStorageUtil.toStoragePath(prefix, "queue");
         this.resourceTypeExpiration = Objects.requireNonNullElseGet(settings.resourceTypesExpiration, Map::of);
         this.senderPodIdSupplier = senderPodIdSupplier;
+        this.tempFolderCleaner = new TempFolderCleaner(blobStore, TEMP_FOLDER, TEMP_FILE_TTL);
         this.syncTimer = timerService.scheduleWithFixedDelay(settings.syncPeriod, settings.syncPeriod, this::sync);
         this.tempCleanupTimer = timerService.scheduleWithFixedDelay(TEMP_CLEANUP_PERIOD, TEMP_CLEANUP_PERIOD, this::cleanupTempFolder);
     }
@@ -789,63 +791,8 @@ public class ResourceService implements AutoCloseable {
      */
     @VisibleForTesting
     Void cleanupTempFolder() {
-        log.debug("Cleaning up temp folder");
-        try {
-            LocalDateTime now = LocalDateTime.now();
-            String token = null;
-            exit: do {
-                PageSet<? extends StorageMetadata> set = blobStore.list(TEMP_FOLDER, token, PAGE_SIZE, true);
-                for (StorageMetadata meta : set) {
-                    if (meta.getType() != StorageType.BLOB) {
-                        continue;
-                    }
-                    String path = meta.getName();
-                    if (isExpiredTempFile(path, now)) {
-                        try {
-                            blobStore.delete(path);
-                        } catch (Throwable e) {
-                            log.warn("Failed to delete expired temp file: {}", path, e);
-                        }
-                    } else {
-                        break exit;
-                    }
-
-                }
-                token = set.getNextMarker();
-            } while (token != null);
-        } catch (Throwable e) {
-            log.warn("Failed to clean up temp folder", e);
-        }
-
+        tempFolderCleaner.cleanup();
         return null;
-    }
-
-    private static boolean isExpiredTempFile(String path, LocalDateTime now) {
-        String prefix = TEMP_FOLDER + ResourceDescriptor.PATH_SEPARATOR;
-        if (!path.startsWith(prefix)) {
-            throw invalidTempPathException(path);
-        }
-
-        int folderStart = prefix.length();
-        int folderEnd = path.indexOf(ResourceDescriptor.PATH_SEPARATOR, folderStart);
-        if (folderEnd < 0) {
-            throw invalidTempPathException(path);
-        }
-
-        String folder = path.substring(folderStart, folderEnd);
-        LocalDateTime uploadTs;
-        try {
-            uploadTs = LocalDateTime.parse(folder, TEMP_FOLDER_FORMATTER);
-        } catch (DateTimeParseException e) {
-            log.warn("Unexpected folder name in temp folder: {}", folder);
-            throw invalidTempPathException(path);
-        }
-
-        return uploadTs.plus(TEMP_FILE_TTL).isBefore(now);
-    }
-
-    private static IllegalArgumentException invalidTempPathException(String path) {
-        return new IllegalArgumentException("Invalid path to temp file: " + path);
     }
 
     public FileMetadata finishFileUpload(ResourceDescriptor descriptor, ResourceUpload resourceUpload, EtagHeader etagHeader) {
@@ -1069,7 +1016,8 @@ public class ResourceService implements AutoCloseable {
         return a.compareTo(b) > 0 ? Pair.of(a, b) : Pair.of(b, a);
     }
 
-    private Void sync() {
+    @VisibleForTesting
+    Void sync() {
         log.debug("Syncing");
         try {
             RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
@@ -1307,6 +1255,75 @@ public class ResourceService implements AutoCloseable {
     private void flushToBlobStore(String redisKey) {
         RMap<String, byte[]> map = sync(redisKey);
         map.delete();
+    }
+
+    /**
+     * Drops the queued and cached Redis entries of the given bucket locations (e.g. {@code public/}, {@code
+     * platform/}), with no blob I/O: every member of the sync queue whose blob key starts with one of them, and
+     * every cache map whose key is {@code <type>:<storage path>} for a {@link ResourceTypes} name and a storage
+     * path under one of them. It does not take per-key locks, so a writer holding only a per-resource lock can
+     * race with it; callers that need exclusion take the bucket locks around this call. Used by a system import
+     * after promoting its blobs, so that neither a cached copy nor a queued write masks the import.
+     */
+    public void invalidate(Collection<String> bucketLocations) {
+        removeQueuedEntries(bucketLocations);
+        removeCachedEntries(bucketLocations);
+    }
+
+    private void removeQueuedEntries(Collection<String> bucketLocations) {
+        RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
+        List<String> toRemove = new ArrayList<>();
+        for (String redisKey : set) {
+            if (startsWithAny(blobKeyFromRedisKey(redisKey), bucketLocations)) {
+                toRemove.add(redisKey);
+            }
+        }
+        if (!toRemove.isEmpty()) {
+            set.removeAll(toRemove);
+        }
+    }
+
+    private void removeCachedEntries(Collection<String> bucketLocations) {
+        RKeys keys = redis.getKeys();
+        for (String bucketLocation : bucketLocations) {
+            String pattern = "*:" + BlobStorageUtil.toStoragePath(prefix, bucketLocation) + "*";
+            List<String> batch = new ArrayList<>(BATCH_SIZE);
+            for (String key : keys.getKeysByPattern(pattern)) {
+                if (isResourceTypeKey(key)) {
+                    batch.add(key);
+                    if (batch.size() == BATCH_SIZE) {
+                        keys.delete(batch.toArray(new String[0]));
+                        batch.clear();
+                    }
+                }
+            }
+            if (!batch.isEmpty()) {
+                keys.delete(batch.toArray(new String[0]));
+            }
+        }
+    }
+
+    /**
+     * {@code getKeysByPattern} also matches lock keys ({@code lock:public/...}) and other non-cache keys sharing
+     * the prefix, so every match is filtered on the client: only a key whose text before the first {@code ':'} is
+     * a {@link ResourceTypes} name is deleted.
+     */
+    private static boolean isResourceTypeKey(String redisKey) {
+        try {
+            ResourceTypes.valueOf(RedisUtil.getResourceType(redisKey));
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    private static boolean startsWithAny(String value, Collection<String> prefixes) {
+        for (String candidate : prefixes) {
+            if (value.startsWith(candidate)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public String getEtag(ResourceDescriptor descriptor) {

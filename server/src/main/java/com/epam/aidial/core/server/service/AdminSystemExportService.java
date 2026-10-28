@@ -51,7 +51,11 @@ public class AdminSystemExportService {
 
     private static final String IDENTITY_ENCODING = "identity";
     private static final int PAGE_SIZE = 1000;
-    private static final List<String> EXCLUDED_GROUPS = List.of(
+    /**
+     * Resource-type groups export leaves out. Package-private so {@code AdminSystemImportService} rejects the
+     * same groups at the same position and the two cannot drift apart.
+     */
+    static final List<String> EXCLUDED_GROUPS = List.of(
             ResourceTypes.ENCRYPTION_KEYS.group() + "/",
             ResourceTypes.CREDENTIALS.group() + "/");
 

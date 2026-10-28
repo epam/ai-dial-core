@@ -1,7 +1,8 @@
 # Admin system export
 
 `POST /v1/admin/system-export` streams the `public` and `platform` buckets as one ZIP archive. It is an admin-only preview
-endpoint (`x-preview`), and it is meant for backups and migrations.
+endpoint (`x-preview`), and it is meant for backups and migrations. To bring an archive back, see
+[Admin system import](admin-system-import.md).
 
 ```bash
 curl -X POST -H "Authorization: Bearer <admin token>" -o dial-system-export.zip https://<core>/v1/admin/system-export
@@ -49,5 +50,7 @@ central directory, so it is not a valid ZIP. Always check that the download comp
   may not be in it yet.
 - Memory per export is bounded to a few MiB regardless of the archive size: a slow client slows the export down instead.
 - Blobs are exported exactly as stored, so secret fields stay encrypted as they are in storage. The encryption keys are not
-  exported (`encryption_keys/` is excluded), so keep the key material separately if the archive has to be restored.
-  The archive still holds the full content of both buckets, so treat it as confidential.
+  exported (`encryption_keys/` is excluded): before importing this archive into another environment, copy
+  `public/encryption_keys/cek` and `platform/encryption_keys/cek` (the ones that exist) there too, as
+  [Admin system import](admin-system-import.md) describes. The archive still holds the full content of both buckets, so
+  treat it as confidential.

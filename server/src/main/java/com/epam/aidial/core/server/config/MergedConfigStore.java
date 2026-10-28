@@ -648,15 +648,23 @@ public final class MergedConfigStore implements ConfigStore {
     public Config rebuildNow() {
         // Distributed bucket lock: same partial-state hazard as reload/timer — a full blob scan on
         // this pod must not interleave with a peer pod's in-flight multi-blob apply (design 02 §4.4).
-        return lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
-            rebuildLock.lock();
-            try {
-                cancelPendingRebuild();
-                return rebuild();
-            } finally {
-                rebuildLock.unlock();
-            }
-        });
+        return lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, this::rebuildNowUnderBucketLocks);
+    }
+
+    /**
+     * The body of {@link #rebuildNow()}, for a caller that already holds {@link #ADMIN_BUCKET_LOCATIONS} (a
+     * system import's replace phase). Calling this without holding them lets the blob scan interleave with a
+     * peer pod's in-flight multi-blob apply (design 02 §4.4); every other caller must go through
+     * {@link #rebuildNow()} instead.
+     */
+    public Config rebuildNowUnderBucketLocks() {
+        rebuildLock.lock();
+        try {
+            cancelPendingRebuild();
+            return rebuild();
+        } finally {
+            rebuildLock.unlock();
+        }
     }
 
     private void cancelPendingRebuild() {

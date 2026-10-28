@@ -354,6 +354,19 @@ Refer to [Admin system export](docs/admin-system-export.md) to learn more.
 </details>
 
 <details> 
+<summary><b>Admin System Import Configurations</b></summary>
+
+Settings of `POST /v1/admin/system-import`, which replaces the `public` and `platform` buckets with the archive
+`POST /v1/admin/system-export` produces. Refer to [Admin system import](docs/admin-system-import.md) to learn more.
+
+| Setting                            | Default | Required | Description                                                                                                                                              |
+|-------------------------------------|:-------:|:--------:|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| adminSystemImport.stallTimeout     | 60000   |    No    | Time in milliseconds the stage phase waits for the next chunk of the upload before failing it with `408` and releasing the guard. Must be positive, otherwise Core does not start. |
+| adminSystemImport.progressInterval | 15000   |    No    | Time in milliseconds between progress lines on the response while the replace phase runs. Must be positive, otherwise Core does not start.              |
+
+</details>
+
+<details> 
 <summary><b>Redis Configurations</b></summary>
 
 | Setting                                  | Default | Required | Description                                                                                                                                                                                                                                                                                                                                                                                    |
