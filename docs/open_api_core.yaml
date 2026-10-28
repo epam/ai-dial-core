@@ -81,6 +81,7 @@ tags:
 - name: MCP
 - name: Models
 - name: Notifications
+- name: Org units
 - name: Policies
 - name: Policy Assignments
 - name: Projects
@@ -9679,6 +9680,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: A skill or project target is an org unit's folder
         "500":
           description: The server had an error while processing your request.
           content:
@@ -9767,6 +9770,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: A skill or project target is an org unit's folder
         "500":
           description: The server had an error while processing your request.
           content:
@@ -10275,6 +10280,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: The copy would put a skill or project on an org unit's folder
         "500":
           description: The server had an error while processing your request.
           content:
@@ -10334,6 +10341,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: The move would put a skill or project on an org unit's folder
         "500":
           description: The server had an error while processing your request.
           content:
@@ -11048,6 +11057,103 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /v1/org-units/{path}:
+    get:
+      tags:
+      - Org units
+      summary: "/v1/org-units/{path}"
+      operationId: getOrgUnit
+      parameters:
+      - name: path
+        in: path
+        description: "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk"
+        required: true
+        schema:
+          type: string
+      - name: recursive
+        in: query
+        description: "If true, items lists every unit below, parents before children; otherwise only the units directly below."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgUnitData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    post:
+      tags:
+      - Org units
+      summary: "/v1/org-units/{path}"
+      operationId: createOrgUnit
+      parameters:
+      - name: path
+        in: path
+        description: "The parent: public, then each unit's name, separated by '/'"
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrgUnitRequest"
+        required: true
+      responses:
+        "200":
+          description: The unit is created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgUnitData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: The name is taken or the depth limit is reached
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/policies/{bucket}/{path}:
     get:
       tags:
@@ -15124,6 +15230,8 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "405":
           description: Method Not Allowed
+        "409":
+          description: An org unit holds this path
         "412":
           description: Precondition failed - ETag mismatch
         "422":
@@ -17472,6 +17580,13 @@ components:
         statistics:
           $ref: "#/components/schemas/ChatCompletionResponseStatistics"
       description: "Represents a streamed chunk of a chat completion response returned by model, based on the provided input."
+    CreateOrgUnitRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+        name:
+          type: string
     CredentialsLevel:
       type: string
       enum:
@@ -18636,6 +18751,44 @@ components:
       - <
       - '>='
       - <=
+    OrgUnitData:
+      type: object
+      properties:
+        author:
+          type: string
+        createdAt:
+          type: integer
+        displayName:
+          type: string
+        folder:
+          type: string
+        id:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrgUnitDataSummary"
+        name:
+          type: string
+        path:
+          type: string
+    OrgUnitDataSummary:
+      type: object
+      properties:
+        author:
+          type: string
+        createdAt:
+          type: integer
+        displayName:
+          type: string
+        folder:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        path:
+          type: string
     ParallelToolCalls:
       type: boolean
       description: Whether to enable parallel `function` calling during the `tool` use.
@@ -19189,6 +19342,7 @@ components:
       - INVITATION
       - PUBLICATION
       - RULES
+      - ORG_UNITS
       - API_KEY_DATA
       - NOTIFICATION
       - APPLICATION

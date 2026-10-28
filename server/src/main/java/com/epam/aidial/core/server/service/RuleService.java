@@ -82,7 +82,6 @@ public class RuleService {
         return result;
     }
 
-
     public Set<ResourceDescriptor> getAllowedPublicResources(
             ProxyContext context, Set<ResourceDescriptor> resources) {
         resources = resources.stream()
@@ -171,7 +170,7 @@ public class RuleService {
         return evaluated;
     }
 
-    private static String ruleUrl(ResourceDescriptor resource) {
+    public static String ruleUrl(ResourceDescriptor resource) {
         String prefix = resource.getType().group();
         return resource.getUrl().substring(prefix.length() + 1);
     }

@@ -63,6 +63,8 @@ import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.NotificationService;
+import com.epam.aidial.core.server.service.OrgUnitService;
+import com.epam.aidial.core.server.service.OrgUnitSettings;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.PublicationUtil;
@@ -115,12 +117,14 @@ import io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppen
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SpanProcessor;
 import io.vertx.config.spi.utils.JsonObjectHelper;
+import io.vertx.core.AbstractVerticle;
+import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
-import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.WebSocketClient;
 import io.vertx.core.http.WebSocketClientOptions;
@@ -164,7 +168,9 @@ public class AiDial {
     private static final Set<String> NON_PRINTABLE_SETTINGS = Set.of("secret", "password", "key", "credential", "identity");
     private JsonObject settings;
     private Vertx vertx;
-    private HttpServer server;
+    private String serverDeploymentId;
+    // written by every instance from its own event loop (the same value: the port is fixed or shared), read after open() returns
+    private volatile int serverPort;
     private HttpClient client;
     private WebSocketClient webSocketClient;
 
@@ -192,8 +198,21 @@ public class AiDial {
         try {
             settings = (settings == null) ? settings() : settings;
             printSettings(settings);
+            JsonObject serverSettings = settings("server");
+            int serverInstances = serverSettings.getInteger("instances", 1);
+            if (serverInstances < 1) {
+                throw new IllegalArgumentException("server.instances must be positive, but got: " + serverInstances);
+            }
+            if (serverInstances > 1 && serverSettings.getInteger("port", HttpServerOptions.DEFAULT_PORT) == 0) {
+                throw new IllegalArgumentException("server.port 0 gives each of the " + serverInstances
+                        + " server instances its own random port; use a fixed port, or -1 for one random port shared by all instances");
+            }
             ProxyUtil.init(ProxySettings.from(settings("proxy")));
             VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
+            if (serverInstances > vertxOptions.getEventLoopPoolSize()) {
+                log.warn("server.instances {} exceeds vertx.eventLoopPoolSize {}: instances share event loops",
+                        serverInstances, vertxOptions.getEventLoopPoolSize());
+            }
             setupMetrics(vertxOptions);
             BlockingCallTracer blockingCallTracer = new BlockingCallTracer(setupTracing(vertxOptions));
 
@@ -289,8 +308,12 @@ public class AiDial {
             // lockService are already available above, so hoisting this construction earlier is safe.
             ComplexResourceService.Settings complexResourceSettings = Json.decodeValue(
                     settings("complexResource").toBuffer(), ComplexResourceService.Settings.class);
+            RuleService ruleService = new RuleService(resourceService);
+            OrgUnitService orgUnitService = new OrgUnitService(resourceService, ruleService, lockService,
+                    OrgUnitSettings.from(settings("orgUnits")), generator, clock);
+            orgUnitService.checkOnStartup();
             ComplexResourceService complexResourceService = new ComplexResourceService(
-                    resourceService, lockService, storage, complexResourceSettings);
+                    resourceService, lockService, storage, complexResourceSettings, orgUnitService::requireNoUnitFolder);
 
             ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(
                     resourceService, mergedConfigStore, complexResourceService, encryptionService, httpProxySelector);
@@ -316,7 +339,6 @@ public class AiDial {
                     catalogSchemaService, mergedConfigStore, generator, settings("applications"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService,
                     lockService, applicationSchemaService, clock, resourceCredentialsService);
-            RuleService ruleService = new RuleService(resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
             RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService, mergedConfigStore, blockingCallTracer);
@@ -352,7 +374,7 @@ public class AiDial {
                     toolSetService, resourceService, invitationService, shareService, lockService, complexResourceService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
                     ruleService, notificationService, applicationService, toolSetService, resourceOperationService,
-                    complexResourceService, generator, clock);
+                    complexResourceService, orgUnitService, generator, clock);
 
             DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
                     toolSetService, resourceService, applicationSchemaService);
@@ -406,14 +428,23 @@ public class AiDial {
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,
                     TracingSettings.from(settings("tracing")), blockingCallTracer,
-                    adminExportService, adminExportSettings);
+                    adminExportService, adminExportSettings, orgUnitService);
 
-            server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
-            open(server, HttpServer::listen);
+            HttpServerOptions serverOptions = new HttpServerOptions(serverSettings);
+            // each instance listens on the same port from its own event loop; Vert.x hands new connections to them in turn
+            serverDeploymentId = open(vertx, v -> v.deployVerticle(() -> new AbstractVerticle() {
+                @Override
+                public void start(Promise<Void> startPromise) {
+                    vertx.createHttpServer(serverOptions).requestHandler(proxy).listen()
+                            .onSuccess(server -> serverPort = server.actualPort())
+                            .<Void>mapEmpty()
+                            .onComplete(startPromise);
+                }
+            }, new DeploymentOptions().setInstances(serverInstances)));
             String localBaseUrl = backgroundJobSettings.getLocalBaseUrl();
-            backgroundJobService.setLocalBaseUrl(localBaseUrl != null ? localBaseUrl : "http://localhost:" + server.actualPort());
+            backgroundJobService.setLocalBaseUrl(localBaseUrl != null ? localBaseUrl : "http://localhost:" + serverPort);
             backgroundJobService.init();
-            log.info("Proxy started on {}", server.actualPort());
+            log.info("Proxy started on {} with {} server instance(s)", serverPort, serverInstances);
         } catch (Throwable e) {
             log.error("Proxy failed to start:", e);
             stop();
@@ -501,7 +532,10 @@ public class AiDial {
     @VisibleForTesting
     void stop() throws Exception {
         try {
-            close(server, HttpServer::close);
+            if (serverDeploymentId != null) {
+                // closes the server of every instance
+                close(vertx, v -> v.undeploy(serverDeploymentId));
+            }
             close(client, HttpClient::close);
             close(resourceService);
             close(complexResourceSweepService);
@@ -614,10 +648,10 @@ public class AiDial {
         return JsonObjectHelper.from(properties, false, true);
     }
 
-    private static <R> void open(R resource, AsyncOpener<R> opener) throws Exception {
-        CompletableFuture<R> startup = new CompletableFuture<>();
+    private static <R, T> T open(R resource, AsyncOpener<R, T> opener) throws Exception {
+        CompletableFuture<T> startup = new CompletableFuture<>();
         opener.open(resource).onSuccess(startup::complete).onFailure(startup::completeExceptionally);
-        startup.get(15, TimeUnit.SECONDS);
+        return startup.get(15, TimeUnit.SECONDS);
     }
 
     private static <R> void close(R resource, AsyncCloser<R> closer) throws Exception {
@@ -640,8 +674,8 @@ public class AiDial {
         }
     }
 
-    private interface AsyncOpener<R> {
-        Future<R> open(R resource);
+    private interface AsyncOpener<R, T> {
+        Future<T> open(R resource);
     }
 
     private interface AsyncCloser<R> {
