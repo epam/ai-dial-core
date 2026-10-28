@@ -50,7 +50,7 @@ import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.service.AdminExportService;
+import com.epam.aidial.core.server.service.AdminSystemExportService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -410,9 +410,9 @@ public class AiDial {
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
                     client, logStore, credentialEncryptionService, backgroundJobSettings, backgroundTracer);
 
-            AdminExportService adminExportService = new AdminExportService(storage, lockService, clock, version());
-            AdminExportService.Settings adminExportSettings = Json.decodeValue(settings("adminExport").toBuffer(), AdminExportService.Settings.class);
-            adminExportSettings.validate();
+            AdminSystemExportService adminSystemExportService = new AdminSystemExportService(storage, lockService, clock, version());
+            AdminSystemExportService.Settings adminSystemExportSettings = Json.decodeValue(settings("adminSystemExport").toBuffer(), AdminSystemExportService.Settings.class);
+            adminSystemExportSettings.validate();
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, mergedConfigStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
@@ -428,7 +428,7 @@ public class AiDial {
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,
                     TracingSettings.from(settings("tracing")), blockingCallTracer,
-                    adminExportService, adminExportSettings, orgUnitService);
+                    adminSystemExportService, adminSystemExportSettings, orgUnitService);
 
             HttpServerOptions serverOptions = new HttpServerOptions(serverSettings);
             // each instance listens on the same port from its own event loop; Vert.x hands new connections to them in turn
