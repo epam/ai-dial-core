@@ -138,7 +138,8 @@ store per process. The counter is not bound to a store, so it needs no such step
 - With a limit and the writer behind, skipped rows save the writer its two body copies and the escaping, about 1.3 MB
   of work per user request on the router path. So the writer catches up faster. Without a limit, the writer does the
   same work as today.
-- Measured by repeating the 2,000-user router-path perf run with bodies logged, `server.instances=4` and
+- Not measured yet (task 3.1, deferred to a `development` image after the merge). To be measured by repeating the
+  2,000-user router-path perf run with bodies logged, `server.instances=4` and
   `analytics.maxPendingBodyHeapPercent=10` (about 1.2 GB on the 11.2 GiB pods): the setup that ran out of memory,
   plus the limit. Expected: no `OutOfMemoryError`, live heap after GC flat,
   `dial_analytics_log_pending_body_bytes` at or under about the limit, and `dial_analytics_log_bodies_skipped_total`

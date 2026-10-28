@@ -73,11 +73,11 @@
   `analytics.maxPendingBodyHeapPercent=10` (about 1.2 GB on the 11.2 GiB heap) on an image with this change.
   Compare against the run that ran out of memory: failures, the live heap after GC over the steady phase,
   `dial_analytics_log_pending_body_bytes`, `dial_analytics_log_bodies_skipped_total` and Core CPU per user request.
-  Record the numbers in design.md "Effect per request" (deferred: needs the perf env, run by the perf team).
+  Record the numbers in design.md "Effect per request" (deferred: needs the perf env; run on a `development` image
+  after this change merges, so not part of its PR).
 
 ## Workflow follow-up
 
 - Write review.md in the change folder, archive with `npx -y @fission-ai/openspec@1.14.3 archive analytics-log-backlog -y`,
   then `validate --specs --strict`.
-- The measurement needs an image that has both this change and `server.instances` (#2184): build it from a branch
-  that merges both, or wait until one of them is in `development`.
+- `server.instances` (#2184) is in `development`, so a `development` image after the merge has both changes.
