@@ -45,11 +45,13 @@ public enum ResourceTypes implements ResourceType {
      * Types published on the resource topic: those the resource subscribe API or the config replicas consume.
      * A new consumer of another type must add it here one release before it starts consuming:
      * pods of a release that does not list the type do not publish it.
+     * For {@link #isComplex() complex} types (SKILL, PROJECT) the events are published by the complex resource engine
+     * for the logical resource and file URLs, never for its internal marker and version files.
      */
     public static final Set<ResourceType> EVENT_TYPES = Set.of(
             FILE, CONVERSATION, PROMPT, APPLICATION, TOOL_SET,
             MODEL, APP_TYPE_SCHEMA, CATALOG_SCHEMA, INTERCEPTOR, TRANSLATOR, ROLE, PROJECT_KEY, ROUTE, GLOBAL_SETTINGS,
-            POLICY, POLICY_ASSIGNMENT);
+            POLICY, POLICY_ASSIGNMENT, SKILL, PROJECT);
 
     private final String group;
     private final String urlSegment;

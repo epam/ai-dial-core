@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.PricingRate;
+import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.server.FileUtil;
 import com.epam.aidial.core.server.Proxy;
@@ -62,9 +63,11 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -1223,6 +1226,279 @@ public class RateLimiterTest {
         UserLimitStats stats = rateLimiter.getUserStats(proxyContext, List.of(application), true).result();
         assertNotNull(stats);
         assertEquals(7, stats.getDeployments().get("applications/buck/my%20app").getMinuteTokenStats().getUsed());
+    }
+
+    @Test
+    public void testLimit_CostRecordAtEightyTwoPercent_CarriesSpendCaps() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "8.2");
+
+        RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.OK, result.status());
+        SpendCap reported = result.spendCaps().reported();
+        assertEquals(CalendarPeriod.DAY, reported.period());
+        assertEquals(0, new BigDecimal("0.82").compareTo(reported.ratio()));
+    }
+
+    /**
+     * The Responses route switched from limit() to limitWithSpendCaps(), and a translated deployment from no check to
+     * readSpendCaps(): the switch must not add a record read to a request.
+     */
+    @Test
+    public void testLimitWithSpendCaps_ReadsNoMoreRecordsThanLimit() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "8.2");
+        ResourceService countingService = Mockito.spy(resourceService);
+        ConfigStore configStore = mock(ConfigStore.class);
+        lenient().when(configStore.get()).thenReturn(new Config());
+        RateLimiter countingLimiter = new RateLimiter(taskExecutor, countingService, configStore, BlockingCallTracer.NOOP);
+
+        assertEquals(HttpStatus.OK, countingLimiter.limit(proxyContext, model("model")).result().status());
+        long limitReads = countRecordReads(countingService);
+        Mockito.clearInvocations(countingService);
+        assertEquals(HttpStatus.OK, countingLimiter.limitWithSpendCaps(proxyContext, model("model")).result().status());
+        long limitWithSpendCapsReads = countRecordReads(countingService);
+        Mockito.clearInvocations(countingService);
+        assertNotNull(countingLimiter.readSpendCaps(proxyContext).result().reported());
+        long readSpendCapsReads = countRecordReads(countingService);
+
+        // the token and the cost record; the role sets no request limit
+        assertEquals(2, limitReads);
+        assertEquals(limitReads, limitWithSpendCapsReads);
+        assertEquals(1, readSpendCapsReads);
+    }
+
+    private static long countRecordReads(ResourceService service) {
+        return Mockito.mockingDetails(service).getInvocations().stream()
+                .filter(invocation -> invocation.getMethod().getName().equals("getResource") && invocation.getArguments().length == 1)
+                .count();
+    }
+
+    @Test
+    public void testLimit_CostRecordMissing_CarriesZeroSpendCaps() {
+        ProxyContext proxyContext = spendCapContext("10");
+
+        RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.OK, result.status());
+        assertEquals(0, BigDecimal.ZERO.compareTo(result.spendCaps().reported().used()));
+    }
+
+    @Test
+    public void testLimit_CostExceeded_CarriesExceededSpendCaps() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "10");
+
+        RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertTrue(result.spendCaps().reported().isExceeded());
+    }
+
+    @Test
+    public void testLimit_WithoutSpendCapsCarriesNone() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "8.2");
+
+        RateLimitResult result = rateLimiter.limit(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.OK, result.status());
+        assertNull(result.spendCaps());
+    }
+
+    @Test
+    public void testLimit_ReachedSpendCapWinsWithoutTouchingTokenOrRequestRecords() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "10");
+        seedRecord(proxyContext, "model/tokens", tokensOver(1000));
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        ResourceDescriptor requests = ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "model/requests");
+
+        RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(LimitBreach.Kind.COST, result.breach().kind());
+        assertTrue(result.spendCaps().reported().isExceeded());
+        assertNull(resourceService.getResource(requests));
+    }
+
+    @Test
+    public void testLimit_TokenLimitRejectionStillCarriesSpendCaps() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "8.2");
+        seedRecord(proxyContext, "model/tokens", tokensOver(1000));
+
+        RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(LimitBreach.Kind.TOKENS, result.breach().kind());
+        assertEquals(CalendarPeriod.DAY, result.spendCaps().reported().period());
+    }
+
+    @Test
+    public void testLimit_UnreadableSpendRecordLeavesTokenRejectionAsIs() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedRecord(proxyContext, "costs", "not json");
+        seedRecord(proxyContext, "model/tokens", tokensOver(1000));
+
+        RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(LimitBreach.Kind.TOKENS, result.breach().kind());
+        assertNull(result.spendCaps());
+    }
+
+    @Test
+    public void testLimit_UnreadableSpendRecordFailsWithSpendReadException() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedRecord(proxyContext, "costs", "not json");
+
+        Future<RateLimitResult> result = rateLimiter.limitWithSpendCaps(proxyContext, model("model"));
+
+        assertTrue(result.failed());
+        assertInstanceOf(SpendReadException.class, result.cause());
+    }
+
+    @Test
+    public void testLimit_UnreadableTokenRecordIsNoSpendReadFailure() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedRecord(proxyContext, "model/tokens", "not json");
+
+        Future<RateLimitResult> result = rateLimiter.limitWithSpendCaps(proxyContext, model("model"));
+
+        assertTrue(result.failed());
+        assertFalse(result.cause() instanceof SpendReadException, String.valueOf(result.cause()));
+    }
+
+    @Test
+    public void testLimit_UnreadableSpendRecordWithoutSpendCapsIsNoSpendReadFailure() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedRecord(proxyContext, "costs", "not json");
+
+        Future<RateLimitResult> result = rateLimiter.limit(proxyContext, model("model"));
+
+        assertTrue(result.failed());
+        assertFalse(result.cause() instanceof SpendReadException, String.valueOf(result.cause()));
+    }
+
+    @Test
+    public void testReadSpendCaps_MatchesCheckPathWithoutWriting() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "8.2");
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        ResourceDescriptor costs = ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "costs");
+        String storedBefore = resourceService.getResource(costs);
+
+        SpendCap fromRead = rateLimiter.readSpendCaps(proxyContext).result().reported();
+        assertEquals(storedBefore, resourceService.getResource(costs));
+
+        SpendCap fromLimit = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result().spendCaps().reported();
+        assertEquals(fromLimit.period(), fromRead.period());
+        assertEquals(0, fromLimit.used().compareTo(fromRead.used()));
+        assertEquals(0, fromLimit.total().compareTo(fromRead.total()));
+        assertEquals(fromLimit.resetsAtMillis(), fromRead.resetsAtMillis());
+    }
+
+    @Test
+    public void testReadSpendCaps_NoRecordReportsZeroSpend() {
+        SpendCaps spendCaps = rateLimiter.readSpendCaps(spendCapContext("10")).result();
+
+        assertEquals(CalendarPeriod.DAY, spendCaps.reported().period());
+        assertEquals(0, spendCaps.reported().used().signum());
+    }
+
+    @Test
+    public void testReadSpendCaps_NoCap_IsEmpty() {
+        Config config = new Config();
+        Role role = new Role();
+        role.setLimits(Map.of());
+        config.setRoles(Map.of("role", role));
+        stubInlineExecutor();
+
+        SpendCaps spendCaps = rateLimiter.readSpendCaps(userContext(config, List.of("role"))).result();
+
+        assertEquals(SpendCaps.EMPTY, spendCaps);
+    }
+
+    @Test
+    public void testReadSpendCaps_ResetIsTheNextPeriodStart() {
+        ProxyContext proxyContext = spendCapContext("10");
+        RateLimitSchedule schedule = new RateLimitSchedule();
+        long before = CalendarWindowCalculator.nextPeriodStart(CalendarPeriod.DAY, System.currentTimeMillis(), schedule);
+
+        long resetsAt = rateLimiter.readSpendCaps(proxyContext).result().reported().resetsAtMillis();
+
+        long after = CalendarWindowCalculator.nextPeriodStart(CalendarPeriod.DAY, System.currentTimeMillis(), schedule);
+        assertTrue(resetsAt == before || resetsAt == after, String.valueOf(resetsAt));
+    }
+
+    @Test
+    public void testHasCostLimit() {
+        Role capped = new Role();
+        capped.setLimits(Map.of());
+        capped.setCostLimit(costLimit("10"));
+        Role uncapped = new Role();
+        uncapped.setLimits(Map.of());
+        Config config = new Config();
+        config.setRoles(Map.of("capped", capped, "uncapped", uncapped));
+
+        assertTrue(rateLimiter.hasCostLimit(userContext(config, List.of("capped"))));
+        assertFalse(rateLimiter.hasCostLimit(userContext(config, List.of("uncapped"))));
+    }
+
+    @Test
+    public void testHasCostLimit_SharesTheUnlimitedThresholdOfSpendCaps() {
+        Role huge = new Role();
+        huge.setLimits(Map.of());
+        huge.setCostLimit(costLimit("1e16"));
+        Role zero = new Role();
+        zero.setLimits(Map.of());
+        zero.setCostLimit(costLimit("0"));
+        Config config = new Config();
+        config.setRoles(Map.of("huge", huge, "zero", zero));
+
+        // too large to report, so not a limit to fail closed on either
+        assertFalse(rateLimiter.hasCostLimit(userContext(config, List.of("huge"))));
+        // never reported, but enforced: it blocks every request
+        assertTrue(rateLimiter.hasCostLimit(userContext(config, List.of("zero"))));
+    }
+
+    private ProxyContext spendCapContext(String dayCap) {
+        Config config = new Config();
+        Role role = new Role();
+        Limit limit = new Limit();
+        limit.setMinute(1000);
+        limit.setDay(1000);
+        limit.setWeek(1000);
+        limit.setMonth(1000);
+        role.setLimits(Map.of("model", limit));
+        CostLimit costLimit = new CostLimit();
+        costLimit.setDay(new BigDecimal(dayCap));
+        role.setCostLimit(costLimit);
+        config.setRoles(Map.of("role", role));
+        stubInlineExecutor();
+        return userContext(config, List.of("role"));
+    }
+
+    private void seedCost(ProxyContext proxyContext, String cost) {
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        CostRateLimit costs = new CostRateLimit();
+        costs.add(System.currentTimeMillis(), new RateLimitSchedule(), new BigDecimal(cost));
+        resourceService.computeResource(
+                ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "costs"),
+                json -> ProxyUtil.convertToString(costs));
+    }
+
+    private void seedRecord(ProxyContext proxyContext, String path, String json) {
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        resourceService.computeResource(ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, path), ignore -> json);
+    }
+
+    private static String tokensOver(long tokens) {
+        TokenRateLimit limit = new TokenRateLimit();
+        limit.add(System.currentTimeMillis(), new RateLimitSchedule(), tokens);
+        return ProxyUtil.convertToString(limit);
     }
 
     private ProxyContext userContext(Config config, List<String> roles) {

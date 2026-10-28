@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.PricingRate;
+import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -489,5 +490,57 @@ public class CostRateLimitTest {
             assertNotNull(checkLimitFuture2.result());
             assertEquals(HttpStatus.OK, checkLimitFuture2.result().status());
         }
+    }
+
+    private static final long MID_DAY_MILLIS = java.time.Instant.parse("2026-01-14T12:00:00Z").toEpochMilli();
+
+    @Test
+    public void check_minuteOnly_breachIsMinuteCost() {
+        long now = MID_DAY_MILLIS;
+        RateLimitSchedule schedule = new RateLimitSchedule();
+        CostRateLimit rateLimit = new CostRateLimit();
+        rateLimit.add(now, schedule, new BigDecimal("1"));
+        CostLimit costLimit = new CostLimit();
+        costLimit.setMinute(new BigDecimal("1"));
+
+        RateLimitResult result = rateLimit.check(now, schedule, costLimit);
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(LimitBreach.Kind.COST, result.breach().kind());
+        assertEquals(LimitBreach.Window.MINUTE, result.breach().window());
+        assertEquals(-1, result.breach().resetsAtMillis());
+    }
+
+    @Test
+    public void check_dayAndMinute_breachIsDay() {
+        long now = MID_DAY_MILLIS;
+        RateLimitSchedule schedule = new RateLimitSchedule();
+        CostRateLimit rateLimit = new CostRateLimit();
+        rateLimit.add(now, schedule, new BigDecimal("1"));
+        CostLimit costLimit = new CostLimit();
+        costLimit.setMinute(new BigDecimal("1"));
+        costLimit.setDay(new BigDecimal("1"));
+
+        RateLimitResult result = rateLimit.check(now, schedule, costLimit);
+
+        assertEquals(LimitBreach.Window.DAY, result.breach().window());
+        assertEquals(CalendarWindowCalculator.nextPeriodStart(CalendarPeriod.DAY, now, schedule), result.breach().resetsAtMillis());
+        assertEquals(result.replyAfterSeconds(), result.breach().retryAfterSeconds());
+    }
+
+    @Test
+    public void check_dayAndWeek_breachIsWeekWithItsReset() {
+        long now = MID_DAY_MILLIS;
+        RateLimitSchedule schedule = new RateLimitSchedule();
+        CostRateLimit rateLimit = new CostRateLimit();
+        rateLimit.add(now, schedule, new BigDecimal("1"));
+        CostLimit costLimit = new CostLimit();
+        costLimit.setDay(new BigDecimal("1"));
+        costLimit.setWeek(new BigDecimal("1"));
+
+        RateLimitResult result = rateLimit.check(now, schedule, costLimit);
+
+        assertEquals(LimitBreach.Window.WEEK, result.breach().window());
+        assertEquals(CalendarWindowCalculator.nextPeriodStart(CalendarPeriod.WEEK, now, schedule), result.breach().resetsAtMillis());
     }
 }

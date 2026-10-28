@@ -146,7 +146,12 @@ class ResourceServiceSenderPodIdTest {
             // events arrive in publish order, so by the time the sentinel arrives every other event is already in urls
             Assertions.assertTrue(latch.await(5, TimeUnit.SECONDS));
             Set<ResourceTypes> published = urls.stream().map(typesByUrl::get).collect(Collectors.toSet());
-            Assertions.assertEquals(ResourceTypes.EVENT_TYPES, published);
+            // complex types publish through publishLogicalEvent only: their generic writes are internal
+            Set<ResourceTypes> expected = ResourceTypes.EVENT_TYPES.stream()
+                    .map(ResourceTypes.class::cast)
+                    .filter(type -> !type.isComplex())
+                    .collect(Collectors.toSet());
+            Assertions.assertEquals(expected, published);
             // the per-request counters this filter keeps off the topic
             Assertions.assertFalse(published.contains(ResourceTypes.LIMIT));
         }
