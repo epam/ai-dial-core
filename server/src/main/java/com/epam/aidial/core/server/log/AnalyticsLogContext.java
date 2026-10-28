@@ -81,7 +81,7 @@ public class AnalyticsLogContext {
     /**
      * A copy that no longer references the body buffers, so they can be collected while the row waits to be written.
      */
-    public AnalyticsLogContext withoutBodies() {
+    AnalyticsLogContext withoutBodies() {
         return toBuilder().requestBody(null).responseBody(null).assembledStreamingResponse(null).bodiesOmitted(true).build();
     }
 

@@ -62,7 +62,8 @@ public class GfLogStore implements LogStore {
     private final AnalyticsSettings settings;
     // bytes of bodies held by the rows that wait in the executor queue
     private final AtomicLong pendingBodyBytes = new AtomicLong();
-    // true from the first row queued without bodies until the next row queued with them, when a limit is set
+    // true from the first row queued without bodies until a row is queued with them while under half the limit, so a
+    // writer that hovers at the limit logs one episode, not two lines per row it writes
     private final AtomicBoolean behind = new AtomicBoolean();
     private final Counter bodiesSkipped;
     // the limit on pendingBodyBytes; 0 or below means no limit
@@ -127,25 +128,25 @@ public class GfLogStore implements LogStore {
             }
             return logContext.withoutBodies();
         }
-        if (behind.get() && behind.compareAndSet(true, false)) {
+        if (behind.get() && pending < maxPendingBodyBytes / 2 && behind.compareAndSet(true, false)) {
             log.info("Analytics log writer caught up: {} bytes of bodies wait to be written. Rows carry bodies again", pending);
         }
-        pendingBodyBytes.addAndGet(bodyBytes(logContext));
+        pendingBodyBytes.addAndGet(countBodyBytes(logContext));
         return logContext;
     }
 
     @VisibleForTesting
     void release(AnalyticsLogContext logContext) {
-        pendingBodyBytes.addAndGet(-bodyBytes(logContext));
+        pendingBodyBytes.addAndGet(-countBodyBytes(logContext));
     }
 
-    private static long bodyBytes(AnalyticsLogContext logContext) {
+    private static long countBodyBytes(AnalyticsLogContext logContext) {
         String assembled = logContext.getAssembledStreamingResponse();
-        return length(logContext.getRequestBody()) + length(logContext.getResponseBody())
+        return countBytes(logContext.getRequestBody()) + countBytes(logContext.getResponseBody())
                 + (assembled == null ? 0 : assembled.length());
     }
 
-    private static int length(Buffer body) {
+    private static long countBytes(Buffer body) {
         return body == null ? 0 : body.length();
     }
 

@@ -147,7 +147,9 @@ also records calls made outside a request.
 
 These metrics show where Core waits rather than works. The timers have buckets from 100 µs to 30 s.
 Locks and async tasks each have queue-size gauges and timers for the wait and the work; the event loops have a
-queue-size gauge only. The event-loop gauges are only registered when a Prometheus or OTLP registry is enabled.
+queue-size gauge only. The event-loop gauges are only registered when a Prometheus or OTLP registry is enabled. The
+analytics log writer has a gauge of the bodies its queue holds and a counter of rows written without them; the counter
+stays at 0 unless `analytics.maxPendingBodyHeapPercent` is set.
 
 | Metric                                | Type  | Measures                                                                                                       |
 |---------------------------------------|-------|----------------------------------------------------------------------------------------------------------------|

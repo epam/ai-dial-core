@@ -11,7 +11,8 @@ Core leaves the bodies out. Which passes write a row, and the usage and trace fi
 ### Requirement: Bodies in the analytics row
 For a key that is not `secured`, Core SHALL write the request body as `request.body` and the response body as
 `response.body`, each cut at 4 MiB and then ending in `>>`, and, for a streamed response that Core assembled, the
-assembled response as `assembled_response`. For a `secured` key, Core SHALL write none of these three fields.
+assembled response as `assembled_response`, except while the log writer is behind (see "Rows without bodies while the
+log writer is behind"). For a `secured` key, Core SHALL write none of these three fields.
 
 #### Scenario: Key not secured
 - **WHEN** a pass with a key that is not `secured` writes its row

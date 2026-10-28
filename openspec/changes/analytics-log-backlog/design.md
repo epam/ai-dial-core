@@ -66,7 +66,8 @@ included. Blocking stalls the event loop that calls `save`.
 limit once, `(long) (maxHeapBytes * percent / 100)`, where `maxHeapBytes` is `Runtime.getRuntime().maxMemory()`, which
 does not change while the process runs. The arithmetic is in `double` because `maxMemory()` returns `Long.MAX_VALUE`
 when the JVM has no heap limit, and a `long` product would overflow. `admit` leaves bodies out only when the byte limit
-is positive, so `-1`, 0 and any other value below 1 mean no limit, and no value fails startup. A value above 100 gives
+is positive, so `-1`, 0, any value below 0, and a percent so small that the limit rounds down to 0 bytes mean no limit,
+and no number fails startup. A value above 100 gives
 a limit above the heap, so it never applies. `-1` for "no limit" follows the Vert.x options Core already exposes, such
 as `client.maxWaitQueueSize`. 0 also means no limit rather than "never log a body", because a `secured` key already
 does that.
@@ -107,7 +108,9 @@ holds with or without a limit.
 - `dial_analytics_log_bodies_skipped_total`: a counter of rows queued without bodies because the limit was reached.
   Secured rows are not counted. Without a limit it stays at 0.
 - With a limit, an `AtomicBoolean behind`. The first skipped row of an episode logs a warning with the pending bytes
-  and the limit. The first row admitted with bodies afterwards logs one line saying bodies are logged again. Operators
+  and the limit. The first row admitted with bodies once the waiting bodies are under half the limit logs one line
+  saying bodies are logged again. A writer at steady overload keeps the waiting bodies near the limit, and each row it
+  writes takes them just under it, so without that gap the pair of lines would repeat for every row written. Operators
   without Prometheus thus still see it, and a busy pod does not log once per row. Without a limit there is no line to
   cross, so nothing is logged; the gauge is the signal.
 
@@ -153,6 +156,9 @@ store per process. The counter is not bound to a store, so it needs no such step
   It is small against a limit near a tenth of the heap.
 - [An operator sets a percent above 100] → The limit is then above the heap and never applies, as with no limit. The
   README row gives 10 as the starting point.
+- [The count is the bodies' length, not the memory behind them] → A `Buffer` that grew while it was filled may hold up
+  to twice its length, so the bodies waiting can fill up to about twice the configured share of the heap. The operator
+  sets the percent with that margin.
 - [String length counts characters, not bytes] → `assembledStreamingResponse` may be UTF-16 in memory, so it can
   hold up to twice its counted size. It is small next to the request body.
 

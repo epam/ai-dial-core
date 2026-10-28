@@ -41,6 +41,10 @@
   Add `GfLogStoreTest#testLimitFollowsTheHeap`, for the scenario "Larger heap": with `maxPendingBodyHeapPercent` 10 and
   a 40,000-byte heap, `admit` of row A (2,000 bytes) and then row B returns B with its bodies; with 2.5 on the same
   heap (a limit of 1,000 bytes), `admit` of B returns a copy without bodies.
+
+  Add `GfLogStoreTest#testOneWarningWhileWriterHoversAtLimit` (D5): with the waiting bodies going over the limit,
+  under it but over half of it, over it again and then to 0, Core logs one warning and then one line, not a pair per
+  crossing.
 - [x] 2.3 Change `GfLogStoreTest#testRowsKeepBodiesWithoutLimit`, for the scenarios "Setting absent" and "Value 0": with
   `maxPendingBodyHeapPercent` `-1`, and again with 0, `admit` of rows A and B (2,000-byte request bodies each) returns
   both with their bodies. The counter stays 0 and the gauge reads 4,000 with both waiting. Keep

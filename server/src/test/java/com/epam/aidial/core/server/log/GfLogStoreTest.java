@@ -1,5 +1,9 @@
 package com.epam.aidial.core.server.log;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
@@ -18,6 +22,7 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -779,6 +784,40 @@ public class GfLogStoreTest {
         assertSame(c, store.admit(c));
         assertEquals("z".repeat(10), logOf(c).get("request").get("body").asText());
         assertEquals(1, bodiesSkipped());
+    }
+
+    @Test
+    public void testOneWarningWhileWriterHoversAtLimit() {
+        GfLogStore store = store(percentOfHeap(10));
+        AnalyticsLogContext a = row("a", "x".repeat(700)).build();
+        AnalyticsLogContext b = row("b", "x".repeat(700)).build();
+        AnalyticsLogContext d = row("d", "x".repeat(700)).build();
+        Logger logger = (Logger) LoggerFactory.getLogger(GfLogStore.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        Level previous = logger.getLevel();
+        logger.setLevel(Level.INFO);
+        try {
+            store.admit(a);
+            store.admit(b);
+            // 1,400 bytes wait, over the limit of 1,000
+            store.admit(row("c", "x").build());
+            // the writer wrote A: 700 bytes wait, under the limit but over half of it
+            store.release(a);
+            assertSame(d, store.admit(d));
+            assertNull(store.admit(row("e", "x").build()).getRequestBody());
+            // the writer wrote the rest
+            store.release(b);
+            store.release(d);
+            store.admit(row("f", "x").build());
+
+            assertEquals(2, bodiesSkipped());
+            assertEquals(List.of(Level.WARN, Level.INFO), appender.list.stream().map(ILoggingEvent::getLevel).toList(), appender.list::toString);
+        } finally {
+            logger.setLevel(previous);
+            logger.detachAppender(appender);
+        }
     }
 
     @Test
