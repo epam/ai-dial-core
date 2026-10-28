@@ -125,6 +125,7 @@ executor) start no traces of their own. They do not depend on `genAiSpanAttribut
 | `auth.jwks.fetch`                                        | Fetching an identity provider's signing key; once per key id while it is cached |                                             |
 | `deployment.resolve`                                     | Finding the requested deployment and checking access and user consent         |                                               |
 | `rate_limit.check`                                       | The token, request and cost limit checks before a request is forwarded        | `dial.deployment`, `dial.rate_limit.status`   |
+| `rate_limit.read_spend`                                  | Reading the caller's spend caps, unchecked, for a translated Anthropic request |                                              |
 | `oauth.request`                                          | A call to an authorization server: token exchange, metadata discovery, registration | `http.request.method`, `server.address`, `http.response.status_code` |
 | `kms.encrypt`, `kms.decrypt`                             | A call to the configured AWS, Azure or GCP key management service             |                                               |
 | `resource.get`, `resource.compute`, `resource.put`, `resource.delete` | A `ResourceService` operation, including Redis access and lock waits | `dial.resource.type`; `resource.get` also has `dial.cache.hit` (`false` when the value was read from blob storage) |

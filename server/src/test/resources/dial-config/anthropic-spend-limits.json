@@ -1,0 +1,46 @@
+{
+  "models": {
+    "claude-spend": {
+      "type": "chat",
+      "interfaces": {"anthropicMessages": {"base_url": "http://localhost:4848"}}
+    },
+    "claude-burst": {
+      "type": "chat",
+      "interfaces": {"anthropicMessages": {"base_url": "http://localhost:4848"}}
+    },
+    "gpt-spend": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/gpt-spend/chat/completions"
+    },
+    "claude-translated": {
+      "type": "chat",
+      "interfaces": {
+        "openaiChatCompletions": {"base_url": "http://localhost:4848"},
+        "anthropicMessages": {
+          "mode": "translator",
+          "translator": {"out": "openaiChatCompletions", "baseUrl": "http://localhost:4848"}
+        }
+      }
+    }
+  },
+  "keys": {
+    "proxyKey1": {"project": "spend", "role": "capped"},
+    "proxyKey2": {"project": "free", "role": "uncapped"}
+  },
+  "roles": {
+    "capped": {
+      "limits": {
+        "claude-spend": {},
+        "claude-burst": {"minute": "10"},
+        "gpt-spend": {},
+        "claude-translated": {"minute": "10"}
+      },
+      "costLimit": {"day": "10", "week": "100", "month": "1000"}
+    },
+    "uncapped": {
+      "limits": {
+        "claude-spend": {}
+      }
+    }
+  }
+}

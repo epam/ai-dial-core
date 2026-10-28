@@ -27,6 +27,10 @@ public enum RouteTemplate {
             "^/+anthropic/v1/models$",
             "/anthropic/v1/models"
     ),
+    ANTHROPIC_OAUTH_USAGE(
+            "^/+anthropic/api/oauth/usage$",
+            "/anthropic/api/oauth/usage"
+    ),
 
     // OpenAI API routes
     LLM_CHAT_COMPLETIONS_API(
