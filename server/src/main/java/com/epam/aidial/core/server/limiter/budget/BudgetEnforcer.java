@@ -8,6 +8,8 @@ import com.epam.aidial.core.config.SpendingLimits;
 import com.epam.aidial.core.config.policy.BudgetInstance;
 import com.epam.aidial.core.config.policy.PolicyQuantity;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.BudgetStats;
+import com.epam.aidial.core.server.data.CostItemLimitStats;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -18,6 +20,9 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import javax.annotation.Nullable;
 
@@ -91,6 +96,40 @@ public class BudgetEnforcer {
                             HttpStatus.TOO_MANY_REQUESTS, "Budget exhausted for cost object " + costObject,
                             "You've exceeded your budget", retryAfter));
                 });
+    }
+
+    /**
+     * The budgets to report to the caller, every matching one, with the spend so far. Blocks, so it is for a
+     * caller that is already on the task executor.
+     */
+    public List<BudgetStats> collectStats(ProxyContext context, long timestamp, RateLimitSchedule schedule) {
+        ExtractedClaims claims = context.getExtractedClaims();
+        if (context.getConfig().getSpendingLimits().getMode() == SpendingLimitMode.OFF || claims == null) {
+            return List.of();
+        }
+        List<BudgetStats> stats = new ArrayList<>();
+        for (BudgetInstance instance : EffectiveBudgets
+                .resolveAll(context.getConfig().getCostObjectIndex(), claims, Instant.ofEpochMilli(timestamp))) {
+            String costObject = instance.id().substring(0, instance.id().indexOf('/'));
+            BudgetUsage usage = store.loadBlocking(costObject, instance, claims.userId(), timestamp, schedule);
+            BudgetStats budget = new BudgetStats();
+            budget.setCostObject(costObject);
+            budget.setPolicy(instance.policyPath());
+            budget.setPriority(instance.policy().getPriority());
+            budget.setDay(toStats(instance.policy().getCost().getDay(), usage.day(), usage.dayResetsAt(), schedule));
+            budget.setMonth(toStats(instance.policy().getCost().getMonth(), usage.month(), usage.monthResetsAt(), schedule));
+            stats.add(budget);
+        }
+        return stats;
+    }
+
+    private static CostItemLimitStats toStats(@Nullable BigDecimal limit, BigDecimal used, long resetsAt, RateLimitSchedule schedule) {
+        CostItemLimitStats stats = new CostItemLimitStats();
+        stats.setTotal(limit != null ? limit : BigDecimal.valueOf(Long.MAX_VALUE));
+        stats.setUsed(used);
+        stats.setResetsAt(DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(
+                Instant.ofEpochMilli(resetsAt).atZone(ZoneId.of(schedule.getTimezone()))));
+        return stats;
     }
 
     /**
