@@ -26,9 +26,10 @@ See proposal.md (Why) for the measurement. What the code does today (`developmen
 ## Goals / Non-Goals
 
 **Goals:**
-- Bound the memory the analytics queue holds for bodies, so that a writer slower than the ingest rate costs bodies in
-  some rows, not the pod.
+- Let an operator bound the memory the analytics queue holds for bodies, so that a writer slower than the ingest rate
+  costs bodies in some rows, not the pod. It is opt-in (D7): by default rows are written as today.
 - Keep every row, and keep the row's shape the one the analytics consumer already reads for secured keys.
+- Show the backlog whether or not the operator has opted in.
 
 **Non-Goals:**
 - Making the writer faster, or giving it more threads.
@@ -41,8 +42,10 @@ See proposal.md (Why) for the measurement. What the code does today (`developmen
 `admit(logContext)`:
 
 - `secured` key: queue a copy without bodies. It holds 0 bytes, and the written row is unchanged (D3).
-- `pendingBodyBytes` at or above the limit: queue a copy without bodies and count it (D5).
-- otherwise: add the row's body bytes to `pendingBodyBytes` and queue the row as it is.
+- `analytics.skipBodiesWhenBehind` is true and `pendingBodyBytes` is at or above the limit: queue a copy without
+  bodies and count it (D5, D7).
+- otherwise: add the row's body bytes to `pendingBodyBytes` and queue the row as it is. With the flag false (the
+  default), every row that is not secured takes this branch, as today; only the count and the gauge are new.
 
 The task then runs `doSave(queued)` and, in a `finally`, `release(queued)`, which subtracts the queued row's body
 bytes. A row's body bytes are `requestBody.length()` + `responseBody.length()` + `assembledStreamingResponse.length()`,
@@ -82,15 +85,19 @@ secured keys.
 
 ### D4. Secured rows drop their bodies when queued
 A `secured` key's row never writes its bodies, but today the queued context still holds them. `admit` queues
-`withoutBodies()` for it as well, so those buffers can be collected at once. The written row does not change.
+`withoutBodies()` for it as well, so those buffers can be collected at once. The written row does not change, so this
+is not behind the flag (D7).
 
 ### D5. Metrics and one log line per episode
-- `dial_analytics_log_pending_body_bytes`: a gauge on `pendingBodyBytes`.
+- `dial_analytics_log_pending_body_bytes`: a gauge on `pendingBodyBytes`. It is there whatever the flag says.
 - `dial_analytics_log_bodies_skipped_total`: a counter of rows queued without bodies because the limit was reached.
-  Secured rows are not counted.
-- An `AtomicBoolean behind`. The first skipped row of an episode logs a warning with the pending bytes and the limit.
-  The first row admitted with bodies afterwards logs one line saying bodies are logged again. Operators without
-  Prometheus thus still see it, and a busy pod does not log once per row.
+  Secured rows are not counted. With the flag false it stays at 0.
+- An `AtomicBoolean behind`. The first row of an episode that finds `pendingBodyBytes` at or above the limit logs a
+  warning with the pending bytes and the limit. With the flag true the warning says rows are written without bodies.
+  With the flag false it says rows keep their bodies and names `analytics.skipBodiesWhenBehind`. The first row that
+  finds the count under the limit again logs one line saying the writer has caught up. Operators without Prometheus
+  thus still see the backlog, an operator who has the flag off learns of it before the heap fills, and a busy pod
+  does not log once per row.
 
 Rejected: a field in the row marking bodies that were left out. It changes the schema the analytics consumer reads.
 
@@ -100,20 +107,36 @@ drive them with `AnalyticsLogContext.builder()` rows and read the JSON through `
 `capturingEntry`. Rejected: a constructor that takes the executor, so a test could hold the writer. Tests would then
 have to read rows from the gflog logger, which they do not do today.
 
+### D7. Opt-in: `analytics.skipBodiesWhenBehind`, default false
+Leaving bodies out at the limit is behind a boolean flag, `analytics.skipBodiesWhenBehind` (env
+`aidial.analytics.skipBodiesWhenBehind`), read in `AnalyticsSettings.java:from` with the code default `false`. With
+the default, rows carry their bodies whatever the backlog, as today. The counting, the gauge and the warning still run,
+so an operator sees the backlog before turning the flag on.
+
+Rejected: on by default. Rows of every deployment under load would start losing their bodies on upgrade, and that is
+a change to what analytics rows carry, which is for each operator to choose. Rejected: a missing
+`analytics.maxPendingBodyBytes` meaning off. One setting would then carry two meanings, and the warning with the flag
+off would have no limit to compare against.
+
 ## Effect per request
 
 - Core passes, body copies and parses of a forwarded body, Redis and blob round trips: unchanged.
 - Per POST pass with analytics at INFO: an `AtomicLong` read and add on save, and a subtract after the write. A secured
   or skipped row costs one builder copy of about 30 fields, with no body copy.
-- When the writer is behind, skipped rows save the writer its two body copies and the escaping, about 1.3 MB of work
-  per user request on the router path. So the writer catches up faster.
-- Measured by repeating the 2,000-user router-path perf run with bodies logged and `server.instances=4`, the setup that
-  ran out of memory. Expected: no `OutOfMemoryError`, live heap after GC flat, `dial_analytics_log_pending_body_bytes`
-  at or under about the limit, and `dial_analytics_log_bodies_skipped_total` above 0 only while the writer is behind.
+- With the flag true and the writer behind, skipped rows save the writer its two body copies and the escaping, about
+  1.3 MB of work per user request on the router path. So the writer catches up faster. With the flag false, the
+  writer does the same work as today.
+- Measured by repeating the 2,000-user router-path perf run with bodies logged, `server.instances=4` and
+  `analytics.skipBodiesWhenBehind=true`, the setup that ran out of memory plus the flag. Expected: no
+  `OutOfMemoryError`, live heap after GC flat, `dial_analytics_log_pending_body_bytes` at or under about the limit, and
+  `dial_analytics_log_bodies_skipped_total` above 0 only while the writer is behind.
 
 ## Risks / Trade-offs
 
-- [Rows lose bodies under load] → The metric and the warning say so. An operator who needs every body raises the limit
+- [The flag is off by default, so the queue stays unbounded unless an operator turns it on] → The gauge and the
+  warning show the backlog in either mode. The README row says to set the flag where bodies are logged under high load,
+  or where `server.instances` is above 1.
+- [Rows lose bodies under load, with the flag on] → The metric and the warning say so. An operator who needs every body raises the limit
   and the heap, or reduces load per pod. The ceiling is the writer's speed, which is out of scope here.
 - [Overshoot when many threads admit at once] → Bounded by the rows admitted at the same instant, a few times 1-4 MiB.
   It is small against a tenth of the heap.
@@ -124,5 +147,6 @@ have to read rows from the gflog logger, which they do not do today.
 
 ## Migration Plan
 
-none. With the default limit, a pod that keeps up behaves as today. Operators can raise or lower the limit with
-`aidial.analytics.maxPendingBodyBytes`. Rollback is removing the change. No stored data changes.
+none. With the flag at its default `false`, every row is written as today. Operators opt in with
+`aidial.analytics.skipBodiesWhenBehind=true`, and can set the limit with `aidial.analytics.maxPendingBodyBytes`.
+Rollback is setting the flag back to `false`. No stored data changes.

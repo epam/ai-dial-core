@@ -35,21 +35,28 @@ maximum heap when the setting is absent. Core SHALL refuse to start when the val
 - **THEN** Core does not start, and the startup error names `analytics.maxPendingBodyBytes`
 
 ### Requirement: Rows without bodies while the log writer is behind
-While the bodies held by rows waiting to be written reach `analytics.maxPendingBodyBytes`, Core SHALL write each new
-row without `request.body`, `response.body` and `assembled_response`, with every other field, and SHALL NOT drop the
-row. Once the held bodies fall below the limit, new rows SHALL carry their bodies again.
+When `analytics.skipBodiesWhenBehind` (env `aidial.analytics.skipBodiesWhenBehind`) is true, and while the bodies held
+by rows waiting to be written reach `analytics.maxPendingBodyBytes`, Core SHALL write each new row without
+`request.body`, `response.body` and `assembled_response`, with every other field, and SHALL NOT drop the row. Once the
+held bodies fall below the limit, new rows SHALL carry their bodies again. The flag SHALL default to false.
 
 #### Scenario: Writer behind
-- **WHEN** `analytics.maxPendingBodyBytes` is 1,000, a row with a 2,000-byte request body is waiting to be written,
-  and another pass writes its row
+- **WHEN** `analytics.skipBodiesWhenBehind` is true, `analytics.maxPendingBodyBytes` is 1,000, a row with a
+  2,000-byte request body is waiting to be written, and another pass writes its row
 - **THEN** that row has no `request.body`, `response.body` or `assembled_response`, and has its `deployment`,
   `token_usage`, `trace` and `response.status`
 
 #### Scenario: Nothing waiting
-- **WHEN** `analytics.maxPendingBodyBytes` is 1,000, no row is waiting, and a pass with a 2,000-byte request body
-  writes its row
+- **WHEN** `analytics.skipBodiesWhenBehind` is true, `analytics.maxPendingBodyBytes` is 1,000, no row is waiting, and
+  a pass with a 2,000-byte request body writes its row
 - **THEN** the row has `request.body` with that body
 
 #### Scenario: Writer caught up
-- **WHEN** rows were written without bodies, and the rows waiting since then have been written
+- **WHEN** `analytics.skipBodiesWhenBehind` is true, rows were written without bodies, and the rows waiting since then
+  have been written
 - **THEN** the next row has its `request.body` and `response.body` again
+
+#### Scenario: Flag absent
+- **WHEN** Core runs without `analytics.skipBodiesWhenBehind`, `analytics.maxPendingBodyBytes` is 1,000, a row with a
+  2,000-byte request body is waiting to be written, and another pass writes its row
+- **THEN** that row has its `request.body` and `response.body`

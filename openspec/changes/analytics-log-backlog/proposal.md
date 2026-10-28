@@ -12,17 +12,19 @@ writer's rate with bodies logged reaches the same end. More server instances (#2
 
 ## What Changes
 
-- Core counts the bytes of the bodies held by rows waiting to be written. While that count is at or above
-  `analytics.maxPendingBodyBytes`, Core queues new rows without their bodies, as it does for a `secured` key. Every
-  other field of the row is still written, and no row is dropped. Once the writer has caught up, rows carry their
-  bodies again.
+- Core counts the bytes of the bodies held by rows waiting to be written.
+- New flag `analytics.skipBodiesWhenBehind` (env `aidial.analytics.skipBodiesWhenBehind`), default `false`. When it is
+  true and the count is at or above `analytics.maxPendingBodyBytes`, Core queues new rows without their bodies, as it
+  does for a `secured` key. Every other field of the row is still written, and no row is dropped. Once the writer has
+  caught up, rows carry their bodies again. With the default `false`, rows keep their bodies as today.
 - New setting `analytics.maxPendingBodyBytes` (env `aidial.analytics.maxPendingBodyBytes`): default one tenth of the
   JVM's maximum heap. A value below 1 stops Core at startup with an error naming the setting.
-- A row for a `secured` key is queued without its bodies too. Core never writes them, so holding them while the row
-  waits only costs memory. The row written is unchanged.
-- Two metrics: `dial_analytics_log_pending_body_bytes` (the bytes held now) and
-  `dial_analytics_log_bodies_skipped_total` (rows written without bodies because the writer was behind). Core also
-  logs one warning when it starts leaving bodies out and one line when it stops.
+- A row for a `secured` key is queued without its bodies too, whatever the flag says. Core never writes them, so
+  holding them while the row waits only costs memory. The row written is unchanged.
+- Two metrics: `dial_analytics_log_pending_body_bytes` (the bytes held now, in both modes) and
+  `dial_analytics_log_bodies_skipped_total` (rows written without bodies because the writer was behind). Core also logs
+  one warning when the count reaches the limit and one line when it falls under it. With the flag off, the warning
+  names the flag.
 
 ## Capabilities
 
@@ -53,7 +55,8 @@ not what the row carries.
   unbounded queue those runs exposed. It leaves the writer's speed alone.
 - Code: `GfLogStore` (accounting, queueing, metrics), `AnalyticsLogContext` (a copy without bodies),
   `AnalyticsSettings` (the new setting). Docs: the settings table in `README.md`.
-- Operators: no change while the writer keeps up. When it falls behind, some rows lack `request.body`,
-  `response.body` and `assembled_response`; the metric counts them.
+- Operators: no change to the rows unless they set `analytics.skipBodiesWhenBehind=true`; they gain the gauge and the
+  warning either way. With the flag on, some rows lack `request.body`, `response.body` and `assembled_response` while
+  the writer is behind, and the metric counts them.
 - Dependencies: none. #2184 and this change can merge in either order. Raising `server.instances` with bodies logged
-  is safe only once this change is in.
+  is safe only with this change in and the flag on.
