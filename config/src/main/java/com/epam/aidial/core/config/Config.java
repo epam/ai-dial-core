@@ -83,6 +83,8 @@ public class Config {
     // deployment-wide anchor for the DAY/WEEK/MONTH fixed calendar rate-limit windows
     private RateLimitSchedule rateLimitSchedule = new RateLimitSchedule();
 
+    private SpendingLimits spendingLimits = new SpendingLimits();
+
     @JsonIgnore
     public Deployment selectDeployment(String deploymentId) {
         Application application = applications.get(deploymentId);
