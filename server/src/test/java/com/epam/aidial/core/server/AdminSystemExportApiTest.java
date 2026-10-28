@@ -5,7 +5,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.server.config.MergedConfigStore;
-import com.epam.aidial.core.server.service.AdminExportService;
+import com.epam.aidial.core.server.service.AdminSystemExportService;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.service.LockService;
 import io.vertx.core.Future;
@@ -44,10 +44,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Integration tests for {@code POST /v1/admin/export}. The stall timeout is short, so that a client
+ * Integration tests for {@code POST /v1/admin/system-export}. The stall timeout is short, so that a client
  * that stops reading fails the export within the test.
  */
-public class AdminExportApiTest extends ResourceBaseTest {
+public class AdminSystemExportApiTest extends ResourceBaseTest {
 
     private static final DateTimeFormatter FILE_NAME_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC);
     private static final int LARGE_BLOBS = 32;
@@ -55,13 +55,13 @@ public class AdminExportApiTest extends ResourceBaseTest {
 
     @Override
     protected JsonObject additionalSettingsOverrides() {
-        return new JsonObject().put("adminExport", new JsonObject().put("stallTimeout", 2000));
+        return new JsonObject().put("adminSystemExport", new JsonObject().put("stallTimeout", 2000));
     }
 
     @Test
     void testExportIsForbiddenForNonAdmin() {
-        verify(send(HttpMethod.POST, "/v1/admin/export", null, "", "authorization", "user"), 403);
-        verify(send(HttpMethod.POST, "/v1/admin/export", null, "", "Api-key", "proxyKey1"), 403);
+        verify(send(HttpMethod.POST, "/v1/admin/system-export", null, "", "authorization", "user"), 403);
+        verify(send(HttpMethod.POST, "/v1/admin/system-export", null, "", "Api-key", "proxyKey1"), 403);
     }
 
     @Test
@@ -78,13 +78,13 @@ public class AdminExportApiTest extends ResourceBaseTest {
         assertEquals("application/zip", download.contentType());
 
         Map<String, byte[]> entries = unzip(download.body());
-        assertTrue(entries.containsKey(".dial-export/manifest.json"));
-        String manifest = new String(entries.get(".dial-export/manifest.json"), StandardCharsets.UTF_8);
+        assertTrue(entries.containsKey(".dial-system-export/manifest.json"));
+        String manifest = new String(entries.get(".dial-system-export/manifest.json"), StandardCharsets.UTF_8);
         Instant createdAt = Instant.parse(new JsonObject(manifest).getString("createdAt"));
-        assertEquals("attachment; filename=\"dial-export-" + FILE_NAME_TIMESTAMP.format(createdAt) + ".zip\"", download.contentDisposition());
+        assertEquals("attachment; filename=\"dial-system-export-" + FILE_NAME_TIMESTAMP.format(createdAt) + ".zip\"", download.contentDisposition());
         assertArrayEquals("alpha".getBytes(StandardCharsets.UTF_8), entries.get("public/files/user1/a.txt"));
         assertArrayEquals("{}".getBytes(StandardCharsets.UTF_8), entries.get("platform/models/m1"));
-        String metadata = new String(entries.get(".dial-export/metadata/public/files/user1/a.txt"), StandardCharsets.UTF_8);
+        String metadata = new String(entries.get(".dial-system-export/metadata/public/files/user1/a.txt"), StandardCharsets.UTF_8);
         assertTrue(metadata.contains("text/plain"), metadata);
         assertTrue(metadata.contains("\"k\""), metadata);
         assertFalse(entries.keySet().stream().anyMatch(name -> name.contains("encryption_keys") || name.contains("credentials")), entries.keySet().toString());
@@ -136,7 +136,7 @@ public class AdminExportApiTest extends ResourceBaseTest {
     @Test
     void testExportRunningLongerThanTheLockPeriodFailsInsteadOfEnding() throws Exception {
         storeLargeBlobs();
-        Logger logger = (Logger) LoggerFactory.getLogger(AdminExportService.class);
+        Logger logger = (Logger) LoggerFactory.getLogger(AdminSystemExportService.class);
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
         appender.start();
         logger.addAppender(appender);
@@ -184,7 +184,7 @@ public class AdminExportApiTest extends ResourceBaseTest {
     }
 
     private Download export(String authorization) throws Exception {
-        HttpUriRequest request = new HttpUriRequestBase("POST", URI.create("http://127.0.0.1:" + serverPort + "/v1/admin/export"));
+        HttpUriRequest request = new HttpUriRequestBase("POST", URI.create("http://127.0.0.1:" + serverPort + "/v1/admin/system-export"));
         request.setHeader("authorization", authorization);
         return client.execute(request, response -> new Download(
                 response.getCode(),
@@ -198,7 +198,7 @@ public class AdminExportApiTest extends ResourceBaseTest {
      */
     private Stream connect() throws Exception {
         RequestOptions options = new RequestOptions()
-                .setAbsoluteURI("http://127.0.0.1:" + serverPort + "/v1/admin/export")
+                .setAbsoluteURI("http://127.0.0.1:" + serverPort + "/v1/admin/system-export")
                 .setMethod(HttpMethod.POST)
                 .putHeader("authorization", "admin");
 

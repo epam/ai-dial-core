@@ -186,9 +186,9 @@ public enum RouteTemplate {
             "/v1/admin/apply"
     ),
 
-    ADMIN_EXPORT(
-            "^/v1/admin/export$",
-            "/v1/admin/export"
+    ADMIN_SYSTEM_EXPORT(
+            "^/v1/admin/system-export$",
+            "/v1/admin/system-export"
     ),
 
     BUCKET(
@@ -257,6 +257,10 @@ public enum RouteTemplate {
     PUBLISHED_RESOURCES(
             "^/v1/ops/publication/resource/list$",
             "/v1/ops/publication/resource/list"
+    ),
+    ORG_UNIT(
+            "^/v1/org-units/(?<path>[^/].*?)/?$",
+            "/v1/org-units/{path}"
     ),
     PUBLICATION_RULES(
             "^/v1/ops/publication/rule/list$",
