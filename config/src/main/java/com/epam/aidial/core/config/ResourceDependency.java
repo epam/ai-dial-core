@@ -57,6 +57,6 @@ public class ResourceDependency {
          * Write-time validation enforces the two-form grammar; the resolver enforces it again at
          * request start for config-file apps that bypass write-time validation.
          */
-        private String url;
+        private String path;
     }
 }

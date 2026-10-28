@@ -18959,7 +18959,7 @@ components:
     ResourceDependencyTarget:
       type: object
       properties:
-        url:
+        path:
           description: |
             A DIAL resource URL in one of two forms: a concrete global-view path (e.g. "files/public/policies/") or a current-user placeholder path (e.g. "files/{current-user}/skills/"). Write-time validation enforces the grammar.
           type: string
