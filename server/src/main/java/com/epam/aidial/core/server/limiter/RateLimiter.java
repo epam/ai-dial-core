@@ -376,6 +376,9 @@ public class RateLimiter {
         userLimitStats.setWeekCostStats(costStats.getWeekCostStats());
         userLimitStats.setMonthCostStats(costStats.getMonthCostStats());
 
+        // additive: the legacy cost stats above are not touched by budgets
+        userLimitStats.setBudgets(budgetEnforcer.collectStats(context, timestamp, schedule));
+
         if (dropEmpty) {
             statsByDeployment.values().removeIf(stats -> !hasUsage(stats));
         }

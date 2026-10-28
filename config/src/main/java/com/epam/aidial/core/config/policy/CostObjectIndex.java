@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The budget instances of every cost object, derived from the policies and assignments of a
@@ -42,6 +43,10 @@ public final class CostObjectIndex {
         });
         instancesByCostObject.replaceAll((costObject, instances) -> List.copyOf(instances));
         return new CostObjectIndex(Map.copyOf(instancesByCostObject));
+    }
+
+    public Set<String> getCostObjects() {
+        return instancesByCostObject.keySet();
     }
 
     public List<BudgetInstance> getInstances(String costObject) {
