@@ -3,7 +3,8 @@
 ## Purpose
 
 What Core writes to the analytics log for a pass: which parts of the request and response a row carries, and when
-Core leaves the bodies out. Which passes write a row belongs to the capabilities that own those passes.
+Core leaves the bodies out. Which passes write a row, and the usage and trace fields in it, belong to
+`app-to-model-accounting` and the capabilities that own those passes.
 
 ## ADDED Requirements
 

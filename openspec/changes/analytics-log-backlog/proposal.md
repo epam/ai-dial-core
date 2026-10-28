@@ -32,8 +32,9 @@ writer's rate with bodies logged reaches the same end. More server instances (#2
 
 ### Modified Capabilities
 
-None. `deployment-origin`, the only capability in `openspec/specs` on `development`, says when a pass writes a row,
-not what the row carries.
+None. `deployment-origin`, `app-to-model-accounting` and `responses-api` say when a pass writes a row, and
+`app-to-model-accounting` says which usage and trace fields it carries. None says when the row carries the request and
+response bodies.
 
 ## Out of scope
 
