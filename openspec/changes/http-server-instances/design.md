@@ -58,6 +58,19 @@ loop N times. `development` never ran Core itself as a verticle (no `AbstractVer
 Only the server runs in one here; every service is still built in `start()` on the main thread, and `open` waits
 for the deployment, so no request reaches a server before its instance has started.
 
+Also considered in review: `HttpServerOptions.setReusePort(true)` with a native transport, so that the kernel spreads
+connections over listening sockets. In Vert.x 4.5.35 only `EpollTransport` and `KQueueTransport` read the option, to
+set `SO_REUSEPORT` on the socket they bind; `TCPServerBase` does not read it, so one Vert.x still binds one socket per
+host and port and the N instances still join that socket's round-robin balancer. The option matters with several
+listening sockets, that is several processes on one port, which is not how Core is deployed (one JVM per pod behind
+a Service). It also needs a native transport, which Core does not have: no `vertx.preferNativeTransport` anywhere,
+`netty-transport-native-epoll` excluded from every module since #1524 (Netty CVE fixes), an Alpine image without the
+glibc that Netty's epoll library links against, and perf-env thread dumps that show the JDK selector
+(`sun.nio.ch.EPollSelectorImpl`). io_uring is not in vertx-core 4.5 either (a separate incubator module). For
+long-lived connections the kernel picks the socket by a hash of the connection's addresses and ports, so the count
+per loop varies around the mean, while the balancer gives an equal count (8/8/8/8 in `HttpServerInstancesApiTest`);
+neither balances by load.
+
 ### D2. `server.instances` inside the `server` block
 The setting sits with the other server settings. `new HttpServerOptions(json)` ignores keys it does not know
 (`HttpServerOptionsConverter.fromJson` switches on the known names, with no default branch). The env var
