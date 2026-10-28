@@ -36,6 +36,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -646,6 +647,40 @@ public class ComplexResourceService {
             resourceService.deleteResource(marker, EtagHeader.ANY);
             return null;
         });
+    }
+
+    /**
+     * Deletes the grouping folder and every grouping folder below it, deepest first, for a caller that already
+     * holds the folder's bucket lock. A resource in the {@code deleting} state doesn't count, as in
+     * {@link #deleteFolder}; the sweep still reclaims it. Folders that don't exist are skipped.
+     *
+     * @throws HttpException CONFLICT if any folder below holds an active resource
+     */
+    public void deleteFoldersLocked(ResourceDescriptor folder) {
+        List<ResourceDescriptor> folders = new ArrayList<>();
+        String token = null;
+        do {
+            ResourceFolderMetadata page = listChildren(folder, token, PAGE_SIZE, true);
+            if (page == null) {
+                break;
+            }
+            for (MetadataBase item : page.getItems()) {
+                if (item.getNodeType() != NodeType.FOLDER) {
+                    throw new HttpException(HttpStatus.CONFLICT, "Folder is not empty: " + folder.getUrl());
+                }
+                folders.add(item.getDescriptor());
+            }
+            token = page.getNextToken();
+        } while (token != null);
+
+        folders.sort(Comparator.comparingInt((ResourceDescriptor child) -> child.getParentFolders().size()).reversed());
+        folders.add(folder);
+        for (ResourceDescriptor child : folders) {
+            ResourceDescriptor marker = folderMarkerDescriptor(child);
+            if (isActive(readMarker(marker, false))) {
+                resourceService.deleteResource(marker, EtagHeader.ANY);
+            }
+        }
     }
 
     /**

@@ -426,6 +426,16 @@ public class ControllerSelector {
             String path = pathMatcher.group("path");
             return () -> controller.createOrgUnit(path);
         });
+        patch(RouteTemplate.ORG_UNIT, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.updateOrgUnit(path);
+        });
+        delete(RouteTemplate.ORG_UNIT, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.deleteOrgUnit(path);
+        });
         post(RouteTemplate.PUBLICATION_RULES, (proxy, context, pathMatcher) -> {
             PublicationController controller = new PublicationController(proxy, context);
             return controller::listRules;
@@ -516,7 +526,7 @@ public class ControllerSelector {
             };
         });
         post(RouteTemplate.CONFIG_VALIDATE, (proxy, context, pathMatcher) -> new AdminValidateController(proxy, context));
-        post(RouteTemplate.ADMIN_EXPORT, (proxy, context, pathMatcher) -> new AdminExportController(proxy, context));
+        post(RouteTemplate.ADMIN_SYSTEM_EXPORT, (proxy, context, pathMatcher) -> new AdminSystemExportController(proxy, context));
         post(RouteTemplate.CONFIG_APPLY, (proxy, context, pathMatcher) -> {
             AdminApplyController controller = new AdminApplyController(proxy, context);
             return controller::handle;
@@ -682,6 +692,10 @@ public class ControllerSelector {
 
     private static void put(RouteTemplate template, ControllerRoute.Initializer controllerTemplate) {
         ROUTES.add(new ControllerRoute(HttpMethod.PUT, template.getPattern(), controllerTemplate));
+    }
+
+    private static void patch(RouteTemplate template, ControllerRoute.Initializer controllerTemplate) {
+        ROUTES.add(new ControllerRoute(HttpMethod.PATCH, template.getPattern(), controllerTemplate));
     }
 
     private static void delete(RouteTemplate template, ControllerRoute.Initializer controllerTemplate) {

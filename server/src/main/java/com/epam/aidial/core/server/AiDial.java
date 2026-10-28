@@ -50,7 +50,7 @@ import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.service.AdminExportService;
+import com.epam.aidial.core.server.service.AdminSystemExportService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -63,6 +63,7 @@ import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.NotificationService;
+import com.epam.aidial.core.server.service.OrgUnitLookup;
 import com.epam.aidial.core.server.service.OrgUnitService;
 import com.epam.aidial.core.server.service.OrgUnitSettings;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
@@ -309,11 +310,12 @@ public class AiDial {
             ComplexResourceService.Settings complexResourceSettings = Json.decodeValue(
                     settings("complexResource").toBuffer(), ComplexResourceService.Settings.class);
             RuleService ruleService = new RuleService(resourceService);
-            OrgUnitService orgUnitService = new OrgUnitService(resourceService, ruleService, lockService,
-                    OrgUnitSettings.from(settings("orgUnits")), generator, clock);
-            orgUnitService.checkOnStartup();
+            OrgUnitLookup orgUnitLookup = new OrgUnitLookup(resourceService, OrgUnitSettings.from(settings("orgUnits")));
+            orgUnitLookup.checkOnStartup();
             ComplexResourceService complexResourceService = new ComplexResourceService(
-                    resourceService, lockService, storage, complexResourceSettings, orgUnitService::requireNoUnitFolder);
+                    resourceService, lockService, storage, complexResourceSettings, orgUnitLookup::requireNoUnitFolder);
+            OrgUnitService orgUnitService = new OrgUnitService(orgUnitLookup, resourceService, complexResourceService,
+                    ruleService, lockService, generator, clock);
 
             ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(
                     resourceService, mergedConfigStore, complexResourceService, encryptionService, httpProxySelector);
@@ -410,9 +412,9 @@ public class AiDial {
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
                     client, logStore, credentialEncryptionService, backgroundJobSettings, backgroundTracer);
 
-            AdminExportService adminExportService = new AdminExportService(storage, lockService, clock, version());
-            AdminExportService.Settings adminExportSettings = Json.decodeValue(settings("adminExport").toBuffer(), AdminExportService.Settings.class);
-            adminExportSettings.validate();
+            AdminSystemExportService adminSystemExportService = new AdminSystemExportService(storage, lockService, clock, version());
+            AdminSystemExportService.Settings adminSystemExportSettings = Json.decodeValue(settings("adminSystemExport").toBuffer(), AdminSystemExportService.Settings.class);
+            adminSystemExportSettings.validate();
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, mergedConfigStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
@@ -428,7 +430,7 @@ public class AiDial {
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,
                     TracingSettings.from(settings("tracing")), blockingCallTracer,
-                    adminExportService, adminExportSettings, orgUnitService);
+                    adminSystemExportService, adminSystemExportSettings, orgUnitService);
 
             HttpServerOptions serverOptions = new HttpServerOptions(serverSettings);
             // each instance listens on the same port from its own event loop; Vert.x hands new connections to them in turn

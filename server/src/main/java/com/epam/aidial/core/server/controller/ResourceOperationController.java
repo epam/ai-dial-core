@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.data.SubscribeResourcesRequest;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.HeartbeatService;
+import com.epam.aidial.core.server.service.OrgUnitService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -52,6 +53,7 @@ public class ResourceOperationController {
     private final LockService lockService;
     private final AccessService accessService;
     private final HeartbeatService heartbeatService;
+    private final OrgUnitService orgUnitService;
 
     public ResourceOperationController(Proxy proxy, ProxyContext context) {
         this.context = context;
@@ -61,6 +63,7 @@ public class ResourceOperationController {
         this.lockService = proxy.getLockService();
         this.accessService = proxy.getAccessService();
         this.heartbeatService = proxy.getHeartbeatService();
+        this.orgUnitService = proxy.getOrgUnitService();
     }
 
     @ApiOperation(
@@ -73,7 +76,8 @@ public class ResourceOperationController {
                     @ApiResponse(code = 200, description = "Success"),
                     @ApiResponse(code = 400),
                     @ApiResponse(code = 403),
-                    @ApiResponse(code = 409, description = "The move would put a skill or project on an org unit's folder"),
+                    @ApiResponse(code = 409, description = "A move inside the shared space would change which org unit owns the resource (into, out of or between units), "
+                            + "or put a skill or project on an org unit's folder"),
                     @ApiResponse(code = 500)
             }
     )
@@ -124,6 +128,7 @@ public class ResourceOperationController {
 
                     List<String> buckets = List.of(source.getBucketLocation(), destination.getBucketLocation());
                     return taskExecutor.submit(() -> lockService.underBucketLocks(buckets, () -> {
+                        orgUnitService.requireSameUnit(source, destination);
                         resourceOperationService.moveResource(context, source, destination, request.isOverwrite());
                         return null;
                     }));
