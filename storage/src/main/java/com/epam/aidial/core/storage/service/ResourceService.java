@@ -1032,6 +1032,24 @@ public class ResourceService implements AutoCloseable {
 
     private void publishEvent(ResourceDescriptor descriptor, ResourceEvent.Action action, long timestamp, String etag,
             @Nullable Map<String, String> metadata) {
+        if (descriptor.getType().isComplex()) {
+            // Writes of a complex resource are internal (marker, version files): the complex resource engine
+            // publishes events for the logical resource and file URLs via publishLogicalEvent.
+            return;
+        }
+        publishTopicEvent(descriptor, action, timestamp, etag, metadata);
+    }
+
+    /**
+     * Publishes an event for a logical URL of a complex resource (the resource itself or a file inside it).
+     */
+    public void publishLogicalEvent(ResourceDescriptor descriptor, ResourceEvent.Action action, long timestamp,
+                                    @Nullable String etag) {
+        publishTopicEvent(descriptor, action, timestamp, etag, null);
+    }
+
+    private void publishTopicEvent(ResourceDescriptor descriptor, ResourceEvent.Action action, long timestamp, String etag,
+            @Nullable Map<String, String> metadata) {
         if (!ResourceTypes.EVENT_TYPES.contains(descriptor.getType())) {
             return;
         }
