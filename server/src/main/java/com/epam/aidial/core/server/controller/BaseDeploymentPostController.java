@@ -268,7 +268,8 @@ public class BaseDeploymentPostController {
         }
         return proxy.getRateLimiter().increase(
                 deployment, BucketBuilder.buildInitiatorBucket(context), usage,
-                context.getRequestBody(), context.getResponseBody(), interfaceType(), context.getPricingUsageNode()
+                context.getRequestBody(), context.getResponseBody(), interfaceType(), context.getPricingUsageNode(),
+                context.getBudgetPayer()
         );
     }
 

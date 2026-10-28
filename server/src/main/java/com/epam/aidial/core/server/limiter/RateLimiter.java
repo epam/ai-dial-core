@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.CostLimit;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Limit;
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.RoleBasedEntity;
@@ -13,6 +14,9 @@ import com.epam.aidial.core.server.data.CostItemLimitStats;
 import com.epam.aidial.core.server.data.ItemLimitStats;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.data.UserLimitStats;
+import com.epam.aidial.core.server.limiter.budget.BudgetCounterStore;
+import com.epam.aidial.core.server.limiter.budget.BudgetEnforcer;
+import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ModelCostCalculator;
@@ -28,7 +32,6 @@ import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -46,7 +49,6 @@ import java.util.stream.Stream;
 import javax.annotation.Nullable;
 
 @Slf4j
-@RequiredArgsConstructor
 public class RateLimiter {
 
     private static final Limit DEFAULT_LIMIT = new Limit();
@@ -65,9 +67,29 @@ public class RateLimiter {
 
     private final BlockingCallTracer blockingCallTracer;
 
+    private final BudgetEnforcer budgetEnforcer;
+
+    public RateLimiter(AsyncTaskExecutor taskExecutor, ResourceService resourceService, ConfigStore configStore,
+                       BlockingCallTracer blockingCallTracer) {
+        this.taskExecutor = taskExecutor;
+        this.resourceService = resourceService;
+        this.configStore = configStore;
+        this.blockingCallTracer = blockingCallTracer;
+        this.budgetEnforcer = new BudgetEnforcer(new BudgetCounterStore(taskExecutor, resourceService));
+    }
+
     public Future<Void> increase(
             RoleBasedEntity roleBasedEntity, String bucket, TokenUsage usage, Buffer requestBody, Buffer responseBody,
             InterfaceType interfaceType, JsonNode liveUsageNode) {
+        return increase(roleBasedEntity, bucket, usage, requestBody, responseBody, interfaceType, liveUsageNode, null);
+    }
+
+    /**
+     * @param budgetPayer the budget picked by the pre-call check, charged with the call's cost besides the legacy records
+     */
+    public Future<Void> increase(
+            RoleBasedEntity roleBasedEntity, String bucket, TokenUsage usage, Buffer requestBody, Buffer responseBody,
+            InterfaceType interfaceType, JsonNode liveUsageNode, @Nullable BudgetPayer budgetPayer) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {
@@ -85,6 +107,10 @@ public class RateLimiter {
                 }
 
                 costFuture = updateCostLimits(roleBasedEntity, bucket, cost, schedule);
+                if (budgetPayer != null) {
+                    costFuture = Future.all(costFuture, budgetEnforcer.charge(
+                            budgetPayer, roleBasedEntity.getName(), cost, System.currentTimeMillis(), schedule)).mapEmpty();
+                }
             } else {
                 costFuture = Future.succeededFuture();
             }
@@ -153,12 +179,27 @@ public class RateLimiter {
                 return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied", "Access denied", -1));
             }
 
-            return taskExecutor.submit(() -> blockingCallTracer.trace("rate_limit.check", () -> {
+            // budgets only apply to the plain check: the spend caps are reported from the legacy cost record
+            boolean isBudgetCheck = !withSpendCaps && BudgetEnforcer.isApplicable(context, roleBasedEntity);
+            boolean isLegacyCostSkipped = isBudgetCheck && BudgetEnforcer.isEnforced(context, roleBasedEntity);
+            Future<RateLimitResult> legacyResult = taskExecutor.submit(() -> blockingCallTracer.trace("rate_limit.check", () -> {
                 BlockingCallTracer.currentSpan().setAttribute("dial.deployment", name);
-                RateLimitResult result = checkLimit(context, limit, roleBasedEntity, withSpendCaps);
+                RateLimitResult result = checkLimit(context, limit, roleBasedEntity, withSpendCaps, isLegacyCostSkipped);
                 BlockingCallTracer.currentSpan().setAttribute("dial.rate_limit.status", result.status().getCode());
                 return result;
             }));
+            if (!isBudgetCheck) {
+                return legacyResult;
+            }
+            return legacyResult.compose(result -> {
+                if (result.status() != HttpStatus.OK) {
+                    return Future.succeededFuture(result);
+                }
+                RateLimitSchedule schedule = context.getConfig().getRateLimitSchedule();
+                return budgetEnforcer.check(context, (Model) roleBasedEntity, System.currentTimeMillis(), schedule)
+                        // in shadow the budget never rejects, so the legacy result decides
+                        .map(budgetResult -> budgetResult.status() != HttpStatus.OK ? budgetResult : result);
+            });
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
@@ -550,7 +591,8 @@ public class RateLimiter {
         return ResourceDescriptorFactory.fromEntityPath(ResourceTypes.LIMIT, bucketLocation, bucketLocation, path);
     }
 
-    private RateLimitResult checkLimit(ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity, boolean withSpendCaps) {
+    private RateLimitResult checkLimit(ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity, boolean withSpendCaps,
+                                       boolean isCostCheckSkipped) {
         long timestamp = System.currentTimeMillis();
         RateLimitSchedule schedule = context.getConfig().getRateLimitSchedule();
         CostLimit costLimit = getCostLimitByUser(context);
@@ -568,6 +610,11 @@ public class RateLimiter {
         RateLimitResult requestResult = checkRequestLimit(context, limit, timestamp, schedule, roleBasedEntity);
         if (requestResult.status() != HttpStatus.OK) {
             return requestResult;
+        }
+
+        // the legacy cost limit is ignored when budgets enforce
+        if (isCostCheckSkipped) {
+            return RateLimitResult.SUCCESS;
         }
 
         // Check cost limits
