@@ -16100,6 +16100,19 @@ components:
           type: string
         bucket:
           type: string
+    BudgetStats:
+      type: object
+      properties:
+        costObject:
+          type: string
+        day:
+          $ref: "#/components/schemas/CostItemLimitStats"
+        month:
+          $ref: "#/components/schemas/CostItemLimitStats"
+        policy:
+          type: string
+        priority:
+          type: integer
     CacheBreakpoint:
       type: object
       properties:
@@ -19926,6 +19939,10 @@ components:
           $ref: "#/components/schemas/CostItemLimitStats"
         weekCostStats:
           $ref: "#/components/schemas/CostItemLimitStats"
+        budgets:
+          type: array
+          items:
+            $ref: "#/components/schemas/BudgetStats"
     ValidationResult:
       type: object
       properties:
