@@ -64,7 +64,7 @@ class AnthropicLimitResponses {
         String period = periodName(cap.period());
         String message = "DIAL spend limit reached (" + period + "; resets " + formatReset(cap.resetsAtMillis()) + ")";
         return new HttpException(HttpStatus.TOO_MANY_REQUESTS, errorBody("billing_error", message), Map.ofEntries(
-                Map.entry("retry-after", String.valueOf(secondsUntil(cap.resetsAtMillis(), nowMillis))),
+                Map.entry("retry-after", String.valueOf(cap.secondsUntilReset(nowMillis))),
                 Map.entry(SHOULD_RETRY, "false"),
                 Map.entry(UNIFIED_PREFIX + "status", "rejected"),
                 Map.entry(UNIFIED_PREFIX + "reset", reset),
@@ -124,7 +124,7 @@ class AnthropicLimitResponses {
             extra.setEnabled(true);
             extra.setMonthlyLimit(toCents(reported.total()));
             extra.setUsedCredits(toCents(reported.used()));
-            extra.setUtilization(percent(reported));
+            extra.setUtilization(reported.percent());
             extra.setCurrency("USD");
             usage.setExtraUsage(extra);
         }
@@ -132,7 +132,7 @@ class AnthropicLimitResponses {
     }
 
     private AnthropicUsageData.UsageLimit buildLimit(SpendCap cap, boolean active) {
-        long percent = percent(cap);
+        long percent = cap.percent();
         AnthropicUsageData.UsageLimit limit = new AnthropicUsageData.UsageLimit();
         limit.setKind("spend");
         limit.setGroup(periodName(cap.period()));
@@ -141,10 +141,6 @@ class AnthropicLimitResponses {
         limit.setSeverity(percent >= 95 ? "critical" : percent >= 75 ? "warning" : "normal");
         limit.setActive(active);
         return limit;
-    }
-
-    private long percent(SpendCap cap) {
-        return cap.ratio().movePointRight(2).setScale(0, RoundingMode.DOWN).longValue();
     }
 
     private long toCents(BigDecimal dollars) {

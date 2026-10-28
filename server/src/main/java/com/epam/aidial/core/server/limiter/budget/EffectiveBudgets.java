@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.limiter.budget;
 import com.epam.aidial.core.config.policy.BudgetInstance;
 import com.epam.aidial.core.config.policy.CostObjectIndex;
 import com.epam.aidial.core.config.policy.PolicyKind;
+import com.epam.aidial.core.config.policy.PolicyQuantity;
 import com.epam.aidial.core.config.policy.PolicySubjectRule;
 import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.security.ExtractedClaims;
@@ -54,6 +55,28 @@ public class EffectiveBudgets {
                 .toList();
         meterAmbiguousPriority(candidates, costObject);
         return candidates;
+    }
+
+    /**
+     * Every cost budget that matches the caller whatever the model, for reporting. Not metered, as it is read
+     * for reporting rather than for a call.
+     *
+     * @param claims claims of the root initiator, {@code null} for an API key caller, which no budget reaches
+     * @return the budgets by cost object name and then in the order of {@link #resolve}
+     */
+    public List<BudgetInstance> resolveAll(CostObjectIndex index, ExtractedClaims claims, Instant now) {
+        if (claims == null) {
+            return List.of();
+        }
+        return index.getCostObjects().stream()
+                .sorted()
+                .flatMap(costObject -> index.getInstances(costObject).stream()
+                        .filter(instance -> instance.policy().getKind() == PolicyKind.BUDGET)
+                        .filter(instance -> instance.policy().getQuantity() == PolicyQuantity.COST)
+                        .filter(instance -> !isExpired(instance, now))
+                        .filter(instance -> isSubjectMatched(instance, claims))
+                        .sorted(ORDER))
+                .toList();
     }
 
     private boolean isExpired(BudgetInstance instance, Instant now) {
