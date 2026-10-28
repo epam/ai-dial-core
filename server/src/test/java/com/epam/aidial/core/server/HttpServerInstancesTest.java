@@ -22,4 +22,18 @@ class HttpServerInstancesTest {
         // the check runs before Vert.x starts, so nothing is left listening
         assertNull(dial.getVertx());
     }
+
+    @Test
+    void testStartFailsWithPortZeroAndSeveralInstances() throws Exception {
+        JsonObject settings = AiDial.settings();
+        // port 0 would give each instance its own random port
+        settings.getJsonObject("server").put("instances", 2).put("port", 0);
+        AiDial dial = new AiDial();
+        dial.setSettings(settings);
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, dial::start);
+
+        assertTrue(error.getMessage().contains("server.port"), error.getMessage());
+        assertNull(dial.getVertx());
+    }
 }

@@ -13,6 +13,8 @@ import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.net.URI;
 import java.util.List;
 import java.util.Set;
@@ -87,6 +89,18 @@ public class HttpServerInstancesApiTest extends ResourceBaseTest {
         // design-level check: Vert.x handed the connections to more than one instance's event loop
         assertTrue(threads.size() > 1, threads::toString);
         assertTrue(threads.stream().allMatch(name -> name.startsWith("vert.x-eventloop-thread-")), threads::toString);
+    }
+
+    @Test
+    public void testStopReleasesTheSharedPort() throws Exception {
+        dial.stop();
+        // stopped here; the teardown must not stop it again, a closed Vert.x rejects a second close
+        dial = null;
+
+        // undeploy closed the server of every instance, so the shared port binds again
+        try (ServerSocket socket = new ServerSocket()) {
+            socket.bind(new InetSocketAddress("127.0.0.1", serverPort));
+        }
     }
 
     @SneakyThrows

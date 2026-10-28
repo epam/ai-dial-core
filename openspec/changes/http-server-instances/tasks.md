@@ -39,18 +39,21 @@
 - [x] 2.5 Add a `server.instances` row to the settings table in `README.md`: default 1, number of HTTP servers
   sharing `server.port`, one event loop each, env `aidial.server.instances`. Check the row renders with the table's
   column count.
-- [ ] 2.6 Run `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests
+- [x] 2.6 Run `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests
   "com.epam.aidial.core.server.HttpServerInstancesApiTest" --tests "com.epam.aidial.core.server.HttpServerInstancesTest"
   --tests "com.epam.aidial.core.server.ResourceApiTest" --tests "com.epam.aidial.core.server.DeploymentPostApiTest"
   --tests "com.epam.aidial.core.server.AiDialMetricsLifecycleTest"`; all pass. Seen: checkstyle clean; 33/34, the one
   failure being the Windows-only `ResourceApiTest.testWorkflow` from 2.4. `HttpServerInstancesApiTest` logged 8
-  requests on each of `vert.x-eventloop-thread-2` to `-5`.
+  requests on each of `vert.x-eventloop-thread-2` to `-5`. CI (Linux) run 40683644747 of 2026-10-28: `code_checks`
+  and `style_checks` pass, so `testWorkflow` passes there.
 
 ## 3. Measurement
 
-- [ ] 3.1 Local sanity: run Core (`./gradlew :server:run`) with `aidial.server.instances=4`, send 50 concurrent
+- [x] 3.1 Local sanity: run Core (`./gradlew :server:run`) with `aidial.server.instances=4`, send 50 concurrent
   requests on separate connections, and confirm in the log that they ran on several `vert.x-eventloop-thread-*`.
-  Record the thread names in review.md.
+  Record the thread names in review.md. Not run as a separate local Core: `HttpServerInstancesApiTest` is this
+  check at 32 connections (8 requests on each of `vert.x-eventloop-thread-2` to `-5`, task 2.6), and the perf-env
+  run in design.md "Measured" shows the same on real pods (the backlog on loops 2-5 only, with N = 4).
 - [ ] 3.2 Perf env A/B on one image, `aidial.server.instances` unset vs `8`, 2,000 users on 2 Core pods: compare
   client latency minus simulator latency (p50 / p95), Core CPU per user request, `netty_eventexecutor_tasks_pending`
   by `name`, `vertx_http_client_active_connections` and failures. Record the numbers and the estimate in design.md
@@ -60,6 +63,21 @@
   (outside this change). With bodies not logged: 0 failures, overhead p50 +0.171 s (from +3.89 s), and 82.5 ms CPU
   per user request (from 74). Open: the per-thread CPU split that separates the hand-offs from JIT warm-up and from
   bodies not being logged.
+
+## 4. Review round of 2026-10-28 (PR #2184)
+
+- [x] 4.1 Reject `server.port` 0 with `server.instances` above 1 at startup, naming `server.port` (scenario "Port 0
+  with several instances", `HttpServerInstancesTest.testStartFailsWithPortZeroAndSeveralInstances`); warn when
+  `server.instances` exceeds `vertx.eventLoopPoolSize`. Design D4.
+- [x] 4.2 Build the `HttpServerOptions` once in `start()`; make the port field `volatile`. Design D1, D5.
+- [x] 4.3 Add `HttpServerInstancesApiTest.testStopReleasesTheSharedPort` (scenario "Stop with four instances"). Seen:
+  a second `stop()` fails at the first close on the closed Vert.x (`RejectedExecutionException: event executor
+  terminated` at `HttpClient::close`), unchanged code, so the test nulls `dial` after its own `stop()`. Design D6.
+- [x] 4.4 README row: the analytics-writer risk of N > 1 where bodies are logged (design "Risks").
+- [x] 4.5 design.md: the sticky-context reason for the verticle, the read-only shared state, the measured cost of a
+  digest per validation.
+- [x] 4.6 Run `./gradlew checkstyleMain checkstyleTest` and the test classes of 2.6 minus `ResourceApiTest`
+  (Windows-only failure, CI covers it); all pass.
 
 ## Workflow follow-up
 

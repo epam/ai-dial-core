@@ -167,7 +167,8 @@ public class AiDial {
     private JsonObject settings;
     private Vertx vertx;
     private String serverDeploymentId;
-    private int serverPort;
+    // written by every instance from its own event loop (the same value: the port is fixed or shared), read after open() returns
+    private volatile int serverPort;
     private HttpClient client;
     private WebSocketClient webSocketClient;
 
@@ -195,12 +196,21 @@ public class AiDial {
         try {
             settings = (settings == null) ? settings() : settings;
             printSettings(settings);
-            int serverInstances = settings("server").getInteger("instances", 1);
+            JsonObject serverSettings = settings("server");
+            int serverInstances = serverSettings.getInteger("instances", 1);
             if (serverInstances < 1) {
                 throw new IllegalArgumentException("server.instances must be positive, but got: " + serverInstances);
             }
+            if (serverInstances > 1 && serverSettings.getInteger("port", HttpServerOptions.DEFAULT_PORT) == 0) {
+                throw new IllegalArgumentException("server.port 0 gives each of the " + serverInstances
+                        + " server instances its own random port; use a fixed port, or -1 for one random port shared by all instances");
+            }
             ProxyUtil.init(ProxySettings.from(settings("proxy")));
             VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
+            if (serverInstances > vertxOptions.getEventLoopPoolSize()) {
+                log.warn("server.instances {} exceeds vertx.eventLoopPoolSize {}: instances share event loops",
+                        serverInstances, vertxOptions.getEventLoopPoolSize());
+            }
             setupMetrics(vertxOptions);
             BlockingCallTracer blockingCallTracer = new BlockingCallTracer(setupTracing(vertxOptions));
 
@@ -415,11 +425,12 @@ public class AiDial {
                     TracingSettings.from(settings("tracing")), blockingCallTracer,
                     adminExportService, adminExportSettings);
 
+            HttpServerOptions serverOptions = new HttpServerOptions(serverSettings);
             // each instance listens on the same port from its own event loop; Vert.x hands new connections to them in turn
             serverDeploymentId = open(vertx, v -> v.deployVerticle(() -> new AbstractVerticle() {
                 @Override
                 public void start(Promise<Void> startPromise) {
-                    vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy).listen()
+                    vertx.createHttpServer(serverOptions).requestHandler(proxy).listen()
                             .onSuccess(server -> serverPort = server.actualPort())
                             .<Void>mapEmpty()
                             .onComplete(startPromise);

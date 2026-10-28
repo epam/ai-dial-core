@@ -10,7 +10,9 @@ and what stays the same whatever that number is. What each request then gets bel
 ### Requirement: Server instances
 Core SHALL start the number of HTTP server instances set by `server.instances` (env `aidial.server.instances`), all
 listening on `server.port`, and SHALL start one when the setting is absent. Core SHALL refuse to start when the value
-is below 1, with an error that names `server.instances`.
+is below 1, with an error that names `server.instances`, and when the value is above 1 and `server.port` is 0, with
+an error that names `server.port` (port 0 would give each instance its own random port; a negative port is one random
+port shared by all instances).
 
 #### Scenario: Setting absent
 - **WHEN** Core starts with settings that have no `server.instances`
@@ -19,6 +21,17 @@ is below 1, with an error that names `server.instances`.
 #### Scenario: Value below 1
 - **WHEN** Core starts with `server.instances: 0`
 - **THEN** Core does not start, and the startup error names `server.instances`
+
+#### Scenario: Port 0 with several instances
+- **WHEN** Core starts with `server.instances: 2` and `server.port: 0`
+- **THEN** Core does not start, and the startup error names `server.port`
+
+### Requirement: Stopping closes every instance
+When Core stops, it SHALL close the server of every instance, so that `server.port` can be bound again.
+
+#### Scenario: Stop with four instances
+- **WHEN** Core runs with `server.instances: 4` on a shared random port and stops
+- **THEN** that port can be bound again
 
 ### Requirement: Answers do not depend on the instance count
 With any number of server instances, Core SHALL answer each request, and send each origin request, as it does with one

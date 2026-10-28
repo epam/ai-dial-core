@@ -46,7 +46,17 @@ same thing through an internal API.
 
 As built: the verticle is an anonymous `AbstractVerticle` inside `AiDial.java:start`. `AiDial.java:open` now returns the
 future's result (`AsyncOpener<R, T>`), because its only caller, which used to listen on one server, now needs the
-deployment id for `stop()`.
+deployment id for `stop()`. The `HttpServerOptions` are built once in `start()` and shared by the instances; the
+verticle captures them and `proxy`. A named verticle class was considered in review and rejected: it would need a
+callback for the port, for one use.
+
+Why a verticle and not N `listen()` calls from `start()`: Vert.x 4.5.35 gives a thread that is not a Vert.x thread one
+sticky event-loop context (`VertxImpl.getOrCreateContext` → `getStickyContext`, else `createContext`, which stores the
+new context in the `stickyContext` thread-local), and `TCPServerBase.listen` takes `eventLoop = context.nettyEventLoop()`
+from that context for the connection balancer. N `listen()` calls from the main thread therefore register the same
+loop N times. `development` never ran Core itself as a verticle (no `AbstractVerticle` in its history before this change).
+Only the server runs in one here; every service is still built in `start()` on the main thread, and `open` waits
+for the deployment, so no request reaches a server before its instance has started.
 
 ### D2. `server.instances` inside the `server` block
 The setting sits with the other server settings. `new HttpServerOptions(json)` ignores keys it does not know
@@ -72,7 +82,12 @@ specify < 1 instances to deploy"), but without naming the setting. No upper boun
 share loops, because Vert.x assigns verticle contexts in turn, and nothing fails.
 
 As built: the check runs first in `start()`, right after the settings are printed and before Vert.x, Redis or storage
-are created, so a bad value fails at once and leaves nothing to close.
+are created, so a bad value fails at once and leaves nothing to close. From review: `server.port` 0 with
+`server.instances` above 1 is rejected in the same place, with a message naming `server.port`, because port 0 binds
+a port per instance (D5) and the port Core keeps would name one of them. When `server.instances` exceeds
+`vertx.eventLoopPoolSize`, Core logs a warning once `VertxOptions` are built and starts; the instances share loops.
+A non-integer value fails as every other numeric setting read in `start()` does (`JsonObject.getInteger`,
+`ClassCastException`); a settings-wide type check is not this change.
 
 ### D5. Keep the port, not the server
 `AiDial` keeps the `actualPort()` of the started servers in an `int` field (they share it). The field feeds
@@ -80,13 +95,23 @@ are created, so a bad value fails at once and leaves nothing to close.
 `server` field. Its Lombok getter replaces `getServer()`, whose only user is `ResourceBaseTest.java:setUp`.
 
 A test with more than one instance sets `server.port: -1`, the shared random port. With port 0 each instance would
-bind its own port and `actualPort()` would name one of them.
+bind its own port and `actualPort()` would name one of them; D4 rejects that combination at startup.
 
-Rejected: mapping port 0 to -1 in `AiDial` when N > 1. Only tests use port 0.
+The field is `volatile`: every instance writes it from its own event loop, with the same value since the port is
+fixed or shared, and the main thread reads it after `open` returns (the deployment future completes after every
+instance's `start`, and `CompletableFuture.get` orders the read after it).
+
+Rejected: mapping port 0 to -1 in `AiDial` when N > 1. Only tests use port 0, and a silent remap hides the setting.
 
 ### D6. Stop undeploys the verticle
 `AiDial.java:stop` undeploys the verticle where it closed the one server today. Undeploying closes every instance's
 server. The order is unchanged: servers first, then the HTTP client and the rest.
+
+From review: `HttpServerInstancesApiTest.testStopReleasesTheSharedPort` stops Core with 4 instances and binds the
+shared port again, which passes only if the undeploy closed every instance's server. `stop()` is not repeatable once
+its Vert.x is closed, before or after this change: a second call fails at the first close it attempts on the closed
+Vert.x (`RejectedExecutionException: event executor terminated`, seen at `HttpClient::close`), so the test hands the
+stopped instance back as null and the teardown skips it.
 
 ### D7. One shared upstream client
 `HttpClient` and `WebSocketClient` stay one per pod, created in `AiDial.java:start` as today. The 4,096 cap stays a
@@ -118,6 +143,10 @@ credentials and config modules. It is not a proof.
   `ApiKeyStore` (volatile `ConcurrentHashMap keys`, `mutationLock`); `UpstreamRouteProvider.java:get`
   (`balancers.compute`) and `TieredBalancer` (synchronized methods); `AccessTokenValidator.userInfoCache` and
   `IdentityProvider.cache` (`ConcurrentHashMap`); `GfLogStore` (writes on its own executor).
+- Read-only after construction: `IdentityProvider.rolePaths`, `AccessTokenValidator.providers` (`setProviders` is
+  test-only), `GetUserRoleFunctionFactory.roleFnMapping`, and the other plain lists and maps that constructors fill.
+  They are built on the main thread before the verticle deploys, and the deployment hands `proxy` to the loops through
+  Vert.x's task queues, which publishes them; concurrent reads of an unchanged `ArrayList` or `HashMap` are safe.
 - One per request: controllers (`ControllerSelector` builds one per request), request functions,
   `BufferingReadStream`, `SseParser`, `CacheKeyBuilder` (new in `ChatCompletionRequest`, `MessagesApiRequest`,
   `ResponsesApiRequest`). Config objects are changed only in scratch copies (`ConfigManifestSupport`).
@@ -145,7 +174,11 @@ credentials and config modules. It is not a proof.
   `ackBytes` → `eventLoop.execute` moves the flow-control ack back. LIFO reuse ignores the loop, so at N = 8 about 7
   in 8 reused connections cross. Estimate, chunk count not measured: a few hundred chunks per response over 2 passes
   is 2-5 ms CPU per user request, against about 74 ms per user request in the 2026-10-27 run.
-- JWT path: one `MessageDigest.getInstance` per validation (microseconds).
+- JWT path: one `MessageDigest.getInstance` per validation. Measured on JDK 21 (2 M iterations, a 25-byte input):
+  `getInstance` + digest 230-240 ns, a cloned prototype + digest 160-190 ns, a `ThreadLocal` digest 150 ns. The
+  difference is under 0.1 µs per validated request. SHA-256 is one of the algorithms every Java platform must provide
+  (`MessageDigest` javadoc), so the `NoSuchAlgorithmException` branch, now an `IllegalStateException` at validation
+  time instead of a constructor failure, is unreachable on a compliant JVM.
 - Expected, not measured: the 86-108 tasks queued on one loop spread over N loops, and the 3.9 s median overhead
   falls toward the 0.2 s of the 45-pod run, where each loop carried 330 sessions. At N = 8 a 1,000-user pod gives each
   loop about 125.
