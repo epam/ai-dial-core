@@ -258,6 +258,10 @@ public enum RouteTemplate {
             "^/v1/ops/publication/resource/list$",
             "/v1/ops/publication/resource/list"
     ),
+    ORG_UNIT(
+            "^/v1/org-units/(?<path>[^/].*?)/?$",
+            "/v1/org-units/{path}"
+    ),
     PUBLICATION_RULES(
             "^/v1/ops/publication/rule/list$",
             "/v1/ops/publication/rule/list"

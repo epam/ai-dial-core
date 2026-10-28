@@ -63,6 +63,8 @@ import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.NotificationService;
+import com.epam.aidial.core.server.service.OrgUnitService;
+import com.epam.aidial.core.server.service.OrgUnitSettings;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.PublicationUtil;
@@ -306,8 +308,12 @@ public class AiDial {
             // lockService are already available above, so hoisting this construction earlier is safe.
             ComplexResourceService.Settings complexResourceSettings = Json.decodeValue(
                     settings("complexResource").toBuffer(), ComplexResourceService.Settings.class);
+            RuleService ruleService = new RuleService(resourceService);
+            OrgUnitService orgUnitService = new OrgUnitService(resourceService, ruleService, lockService,
+                    OrgUnitSettings.from(settings("orgUnits")), generator, clock);
+            orgUnitService.checkOnStartup();
             ComplexResourceService complexResourceService = new ComplexResourceService(
-                    resourceService, lockService, storage, complexResourceSettings);
+                    resourceService, lockService, storage, complexResourceSettings, orgUnitService::requireNoUnitFolder);
 
             ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(
                     resourceService, mergedConfigStore, complexResourceService, encryptionService, httpProxySelector);
@@ -333,7 +339,6 @@ public class AiDial {
                     catalogSchemaService, mergedConfigStore, generator, settings("applications"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService,
                     lockService, applicationSchemaService, clock, resourceCredentialsService);
-            RuleService ruleService = new RuleService(resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
             RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService, mergedConfigStore, blockingCallTracer);
@@ -369,7 +374,7 @@ public class AiDial {
                     toolSetService, resourceService, invitationService, shareService, lockService, complexResourceService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
                     ruleService, notificationService, applicationService, toolSetService, resourceOperationService,
-                    complexResourceService, generator, clock);
+                    complexResourceService, orgUnitService, generator, clock);
 
             DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
                     toolSetService, resourceService, applicationSchemaService);
@@ -423,7 +428,7 @@ public class AiDial {
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,
                     TracingSettings.from(settings("tracing")), blockingCallTracer,
-                    adminExportService, adminExportSettings);
+                    adminExportService, adminExportSettings, orgUnitService);
 
             HttpServerOptions serverOptions = new HttpServerOptions(serverSettings);
             // each instance listens on the same port from its own event loop; Vert.x hands new connections to them in turn

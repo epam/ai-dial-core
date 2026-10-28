@@ -34,6 +34,7 @@ import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.NotificationService;
+import com.epam.aidial.core.server.service.OrgUnitService;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.ResourceOperationService;
@@ -210,6 +211,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final BlockingCallTracer blockingCallTracer;
     private final AdminExportService adminExportService;
     private final AdminExportService.Settings adminExportSettings;
+    private final OrgUnitService orgUnitService;
 
     @Override
     public void handle(HttpServerRequest request) {
