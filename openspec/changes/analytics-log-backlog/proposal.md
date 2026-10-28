@@ -13,11 +13,12 @@ writer's rate with bodies logged reaches the same end. More server instances (#2
 ## What Changes
 
 - Core counts the bytes of the bodies held by rows waiting to be written.
-- New setting `analytics.maxPendingBodyBytes` (env `aidial.analytics.maxPendingBodyBytes`), default `-1`, meaning no
-  limit. A value of 0 or below also means no limit, and rows keep their bodies as today. With a positive value, while
-  the count is at or above it, Core queues new rows without their bodies, as it does for a `secured` key. Every other
-  field of the row is still written, and no row is dropped. Once the writer has caught up, rows carry their bodies
-  again.
+- New setting `analytics.maxPendingBodyHeapPercent` (env `aidial.analytics.maxPendingBodyHeapPercent`), a number,
+  default `-1`, meaning no limit. A value of 0 or below also means no limit, and rows keep their bodies as today. With
+  a positive value the limit is that percent of the JVM's maximum heap, so one value suits pods of any size. While the
+  count is at or above the limit, Core queues new rows without their bodies, as it does for a `secured` key. Every
+  other field of the row is still written, and no row is dropped. Once the writer has caught up, rows carry their
+  bodies again.
 - A row for a `secured` key is queued without its bodies too, with or without a limit. Core never writes them, so
   holding them while the row waits only costs memory. The row written is unchanged.
 - Two metrics: `dial_analytics_log_pending_body_bytes` (the bytes held now, with or without a limit) and
@@ -54,7 +55,7 @@ response bodies.
   unbounded queue those runs exposed. It leaves the writer's speed alone.
 - Code: `GfLogStore` (accounting, queueing, metrics), `AnalyticsLogContext` (a copy without bodies),
   `AnalyticsSettings` (the new setting). Docs: the settings table in `README.md`.
-- Operators: no change to the rows unless they set a positive `analytics.maxPendingBodyBytes`; they gain the gauge
+- Operators: no change to the rows unless they set a positive `analytics.maxPendingBodyHeapPercent`; they gain the gauge
   either way. With a limit, some rows lack `request.body`, `response.body` and `assembled_response` while the writer
   is behind, and the metric counts them.
 - Dependencies: none. #2184 and this change can merge in either order. Raising `server.instances` with bodies logged

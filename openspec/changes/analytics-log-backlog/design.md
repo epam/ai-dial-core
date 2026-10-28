@@ -59,19 +59,28 @@ body on an idle writer.
 Rejected: a bounded executor queue that rejects or blocks when full. Rejecting drops the whole row, usage and cost
 included. Blocking stalls the event loop that calls `save`.
 
-### D2. One setting, `analytics.maxPendingBodyBytes`, default `-1` (no limit)
-`AnalyticsSettings` gets a `maxPendingBodyBytes` component. `AnalyticsSettings.java:from` reads
-`settings.getLong("maxPendingBodyBytes", -1L)`. The default is in code, because the test-resources
-`aidial.settings.json` shadows the built-in one. `admit` leaves bodies out only when the value is positive, so `-1`,
-0 and any other value below 1 mean no limit, and no value fails startup. `-1` for "no limit" follows the Vert.x
-options Core already exposes, such as `client.maxWaitQueueSize`. 0 also means no limit rather than "never log a
-body", because a `secured` key already does that.
+### D2. One setting, `analytics.maxPendingBodyHeapPercent`, default `-1` (no limit)
+`AnalyticsSettings` gets a `maxPendingBodyHeapPercent` component, a `double`. `AnalyticsSettings.java:from` reads
+`settings.getDouble("maxPendingBodyHeapPercent", -1.0)`. The default is in code, because the test-resources
+`aidial.settings.json` shadows the built-in one. The `GfLogStore` constructor turns a positive percent into a byte
+limit once, `(long) (maxHeapBytes * percent / 100)`, where `maxHeapBytes` is `Runtime.getRuntime().maxMemory()`, which
+does not change while the process runs. The arithmetic is in `double` because `maxMemory()` returns `Long.MAX_VALUE`
+when the JVM has no heap limit, and a `long` product would overflow. `admit` leaves bodies out only when the byte limit
+is positive, so `-1`, 0 and any other value below 1 mean no limit, and no value fails startup. A value above 100 gives
+a limit above the heap, so it never applies. `-1` for "no limit" follows the Vert.x options Core already exposes, such
+as `client.maxWaitQueueSize`. 0 also means no limit rather than "never log a body", because a `secured` key already
+does that.
 
-The operator picks the size. The README row suggests about a tenth of the heap: about 1.1 GiB on the 11.2 GiB perf
-pods, which is over 800 waiting rows of 1.3 MB of bodies, and about 200 MB on a 2 GiB heap.
+A percent of the heap, not bytes, because the bodies fill the heap. The operator does not need to know `-Xmx` or
+recompute the value when the pod size changes, and one value in a shared Helm chart suits every pod. The README row
+suggests 10: about 1.1 GiB on the 11.2 GiB perf pods, which is over 800 waiting rows of 1.3 MB of bodies, and about
+200 MB on a 2 GiB heap. The warning in D5 prints the resulting limit in bytes.
 
-Rejected: a separate boolean flag, default false, next to a limit with a heap-relative default. That is two settings for
-one switch, and the limit means nothing while the flag is off. Rejected: limiting by default (a tenth of the heap).
+Rejected: a limit in bytes, `analytics.maxPendingBodyBytes`, which this change had first. It needs the heap size to
+choose a value, and a value right for one pod size is wrong for another. Rejected: both settings, which is two knobs
+for one limit. Rejected: a separate boolean flag, default false, next to a limit with a heap-relative default. That is
+two settings for one switch, and the limit means nothing while the flag is off. Rejected: limiting by default (a tenth
+of the heap).
 Rows of every deployment under load would start losing their bodies on upgrade, and what analytics rows carry is for
 each operator to choose.
 
@@ -107,8 +116,16 @@ Rejected: a field in the row marking bodies that were left out. It changes the s
 ### D6. Test seam
 `admit` and `release` are package-private and `@VisibleForTesting`, like `append` and `appendClaims` today. The tests
 drive them with `AnalyticsLogContext.builder()` rows and read the JSON through `GfLogStoreTest`'s existing
-`capturingEntry`. Rejected: a constructor that takes the executor, so a test could hold the writer. Tests would then
-have to read rows from the gflog logger, which they do not do today.
+`capturingEntry`. The public constructor passes `Runtime.getRuntime().maxMemory()` to a package-private one that takes
+the heap size, so a test can use a 10,000-byte heap and a 10 percent setting to get a limit of 1,000 bytes. Rejected: a
+constructor that takes the executor, so a test could hold the writer. Tests would then have to read rows from the
+gflog logger, which they do not do today.
+
+The metrics register on `Metrics.globalRegistry`, which ignores a second registration of the same gauge (Micrometer
+logs "This Gauge has been already registered"). A later `GfLogStore` would then have no gauge on a test's
+`SimpleMeterRegistry`, because the first store in the JVM owns it. `GfLogStoreTest` therefore removes any
+`dial_analytics_log_pending_body_bytes` gauge before it creates a store. This touches tests only: Core creates one
+store per process. The counter is not bound to a store, so it needs no such step.
 
 ## Effect per request
 
@@ -119,8 +136,8 @@ have to read rows from the gflog logger, which they do not do today.
   of work per user request on the router path. So the writer catches up faster. Without a limit, the writer does the
   same work as today.
 - Measured by repeating the 2,000-user router-path perf run with bodies logged, `server.instances=4` and
-  `analytics.maxPendingBodyBytes` at about a tenth of the heap (1,200,000,000 on the 11.2 GiB pods): the setup that
-  ran out of memory, plus the limit. Expected: no `OutOfMemoryError`, live heap after GC flat,
+  `analytics.maxPendingBodyHeapPercent=10` (about 1.2 GB on the 11.2 GiB pods): the setup that ran out of memory,
+  plus the limit. Expected: no `OutOfMemoryError`, live heap after GC flat,
   `dial_analytics_log_pending_body_bytes` at or under about the limit, and `dial_analytics_log_bodies_skipped_total`
   above 0 only while the writer is behind.
 
@@ -134,12 +151,12 @@ have to read rows from the gflog logger, which they do not do today.
   scope here.
 - [Overshoot when many threads admit at once] → Bounded by the rows admitted at the same instant, a few times 1-4 MiB.
   It is small against a limit near a tenth of the heap.
-- [An operator sets a limit far above the heap] → It then never applies, as with no limit. The README row gives the
-  tenth-of-the-heap guide.
+- [An operator sets a percent above 100] → The limit is then above the heap and never applies, as with no limit. The
+  README row gives 10 as the starting point.
 - [String length counts characters, not bytes] → `assembledStreamingResponse` may be UTF-16 in memory, so it can
   hold up to twice its counted size. It is small next to the request body.
 
 ## Migration Plan
 
 none. With the default `-1`, every row is written as today. Operators opt in by setting a positive
-`aidial.analytics.maxPendingBodyBytes`, and roll back by removing it. No stored data changes.
+`aidial.analytics.maxPendingBodyHeapPercent`, and roll back by removing it. No stored data changes.

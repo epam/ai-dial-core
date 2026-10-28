@@ -161,6 +161,8 @@ queue-size gauge only. The event-loop gauges are only registered when a Promethe
 | `dial_async_task_duration`            | timer | Time an `AsyncTaskExecutor` task runs, from its start until it returns or throws                               |
 | `netty_eventexecutor_tasks_pending`   | gauge | Tasks queued on each event loop, tagged with the loop thread `name` (Micrometer `NettyEventExecutorMetrics`)   |
 | `netty_eventexecutor_workers`         | gauge | Number of event loops (Micrometer `NettyEventExecutorMetrics`)                                                 |
+| `dial_analytics_log_pending_body_bytes` | gauge | Bytes of request and response bodies held by analytics log rows that wait to be written, with or without `analytics.maxPendingBodyHeapPercent` |
+| `dial_analytics_log_bodies_skipped_total` | counter | Analytics log rows written without bodies because the waiting bodies reached `analytics.maxPendingBodyHeapPercent` |
 
 Locks:
 

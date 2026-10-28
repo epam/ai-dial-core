@@ -31,7 +31,7 @@ import javax.annotation.Nullable;
 
 @Slf4j
 @Getter
-@Builder
+@Builder(toBuilder = true)
 public class AnalyticsLogContext {
 
     private final String traceId;
@@ -70,11 +70,20 @@ public class AnalyticsLogContext {
     private final int responseStatusCode;
     private final Buffer responseBody;
     private final String assembledStreamingResponse;
+    // true for a copy made by withoutBodies(); the row is then written like one for a secured key
+    private final boolean bodiesOmitted;
 
     private final TokenUsage tokenUsage;
     private final List<UsagePerModel> usagePerModel;
 
     private final long operationDurationMs;
+
+    /**
+     * A copy that no longer references the body buffers, so they can be collected while the row waits to be written.
+     */
+    public AnalyticsLogContext withoutBodies() {
+        return toBuilder().requestBody(null).responseBody(null).assembledStreamingResponse(null).bodiesOmitted(true).build();
+    }
 
     public static AnalyticsLogContext from(ProxyContext context, String assembledStreamingResponse) {
         Buffer responseBody = context.getResponseBody();
