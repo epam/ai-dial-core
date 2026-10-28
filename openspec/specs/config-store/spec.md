@@ -22,7 +22,7 @@ from the classpath.
 
 #### Scenario: Arrays concatenate by default
 - **WHEN** `config.files` lists two files that both declare `roles.<r>.userRoles` arrays, and
-  `jsonMergeStrategy.overwriteArrays` is unset
+  `config.jsonMergeStrategy.overwriteArrays` is unset
 - **THEN** the loaded role carries the elements of both arrays
 
 #### Scenario: Arrays overwrite on request
@@ -58,7 +58,7 @@ Core SHALL fail to start when the initial file load fails, or when `config.onInv
 initial merged rebuild finds a semantic violation.
 
 #### Scenario: Duplicate deployment id at startup
-- **WHEN** the file config declares a model and an application both named `x` and `onInvalidEntity` is `abort`
+- **WHEN** the file config declares a model and an application both named `x` and `config.onInvalidEntity` is `abort`
 - **THEN** Core does not start
 
 ### Requirement: Admin reload endpoint
@@ -90,8 +90,8 @@ SHALL NOT enter the merged config.
 ### Requirement: Blob wins on a name clash
 A blob entity SHALL replace, as a whole, the file entity of the same type with the same short name (models,
 interceptors, translators, roles, applications, toolsets) or, for schemas, the same `$id`; no field of the file entity
-SHALL survive. Keys and routes SHALL be keyed by canonical id `<type>/platform/<name>`, so a blob never shadows a
-file entry of those types.
+SHALL survive. Requests and references resolve those types by that name, so the rebuild puts the blob entity at the
+file entity's map key and replaces it there.
 
 #### Scenario: Blob model shadows the file model
 - **WHEN** the file defines model `test-model-v1` and a blob `models/platform/test-model-v1` declares
@@ -102,6 +102,15 @@ file entry of those types.
 #### Scenario: Blob schema shadows the file schema by $id
 - **WHEN** a blob `schemas/platform/blob-schema-1` declares the `$id` of a file-defined application type schema
 - **THEN** the merged schema for that `$id` is the blob's, and no key `schemas/platform/blob-schema-1` exists
+
+### Requirement: Keys and routes never shadowed
+Keys and routes are not resolved by name (a key by its secret `key` value, a route by its `paths`), so a file entry of
+those types SHALL keep its file key (the key secret, the route name) and a blob one SHALL be keyed by canonical id
+`<type>/platform/<name>`: both SHALL stay in force side by side, and a blob never shadows a file entry.
+
+#### Scenario: Blob route next to the file route of the same name
+- **WHEN** the file declares route `plain` and an admin sends `PUT /v1/routes/platform/plain` with a valid route
+- **THEN** the merged config holds both routes, under keys `plain` and `routes/platform/plain`
 
 ### Requirement: Settings overlay
 When the blob `settings/platform/global` exists and parses, Core SHALL take `globalInterceptors`,
@@ -130,23 +139,50 @@ the next full rebuild.
 
 ### Requirement: Invalid entity policy
 On a rebuild, Core SHALL skip a blob that fails to parse or decrypt and record it as an invalid entity, in every
-mode. A semantic violation (duplicate deployment id, rebuild invariant) SHALL, under `config.onInvalidEntity: abort`
-(default), fail the rebuild and keep the previous config; under `skip` it SHALL drop that entity alone and record it,
-and a model interceptor reference that does not resolve SHALL count as a violation only under `skip`.
+mode: `config.onInvalidEntity` does not apply to it. A semantic violation (duplicate deployment id, rebuild invariant,
+and under `skip` a dangling reference) SHALL, under `config.onInvalidEntity: abort` (default), fail the rebuild and keep
+the previous config; under `skip` it SHALL drop that entity alone and record it.
 
-#### Scenario: Malformed blob under abort
+#### Scenario: Malformed blob skipped under abort
 - **WHEN** the blob `models/platform/broken-blob-model` holds `{ this is not json ` and the config reloads with
-  `onInvalidEntity` unset
+  `config.onInvalidEntity` unset
 - **THEN** the reload answers `200`, the other entities load, and the broken model is recorded as invalid
 
-#### Scenario: Dangling reference under skip
-- **WHEN** `onInvalidEntity: skip` and a blob model references interceptor `unknown-interceptor`
+### Requirement: Dangling interceptor reference
+A model interceptor that does not resolve (a dangling reference) SHALL be checked on every write, and on a rebuild
+only under `config.onInvalidEntity: skip`, where it is a semantic violation. Under `abort` the rebuild SHALL NOT check
+it, so that an inconsistency already in the file config cannot fail the whole config. The scenarios give the outcome
+for each operation, `config.write.softValidation` and `config.onInvalidEntity`.
+
+#### Scenario: Strict write
+- **WHEN** `config.write.softValidation` is `false`, whatever `config.onInvalidEntity`, and an admin sends
+  `PUT /v1/models/platform/m` with `interceptors: ["unknown-interceptor"]`
+- **THEN** Core answers `422` with warning `interceptors[0]` and writes nothing
+
+#### Scenario: Soft write under skip
+- **WHEN** soft mode and `config.onInvalidEntity: skip` are on and an admin sends
+  `PUT /v1/models/platform/soft-cr-invalid` with `interceptors: ["unknown-interceptor"]`
+- **THEN** Core answers `200` with an `ETag`, the model is not a deployment, and its GET answers `status: "invalid"`
+  with warning `interceptors[0]`
+
+#### Scenario: Soft write under abort
+- **WHEN** soft mode is on, `config.onInvalidEntity` is unset, and the same `PUT` is sent
+- **THEN** Core answers `200`, the model is a deployment, its GET answers `status: "valid"`, and
+  `POST /openai/deployments/soft-cr-invalid/chat/completions` answers `404` `Interceptor is not found`
+
+#### Scenario: Rebuild under skip
+- **WHEN** `config.onInvalidEntity: skip` and a blob model references interceptor `unknown-interceptor`
 - **THEN** after the rebuild the model is not a deployment and is recorded as invalid with warning field
   `interceptors[0]`
 
+#### Scenario: Rebuild under abort
+- **WHEN** `config.onInvalidEntity` is unset and a blob model references interceptor `unknown-interceptor`
+- **THEN** after the rebuild the model is a deployment, its GET answers `status: "valid"`, the health endpoint
+  answers `status: "ok"`, and a deployment request to it answers `404` `Interceptor is not found`
+
 ### Requirement: Invalid entity on read
 For a recorded invalid entity, per-entity GET SHALL answer `200` with the stored payload's fields minus every
-encrypted field, `name` (the simple name) and `status: "invalid"`, plus, for an admin, `validationWarnings` as
+encrypted field, `name` (the simple name), `status: "invalid"` and `validationWarnings` as
 `[{"field": ..., "message": ...}]`. A record SHALL clear on the first rebuild that accepts the entity.
 
 #### Scenario: Malformed blob read
@@ -161,7 +197,8 @@ encrypted field, `name` (the simple name) and `status: "invalid"`, plus, for an 
 ### Requirement: Config health endpoint
 Core SHALL serve `GET /v1/admin/health/config` to admins only, answering `200`
 `{"status": "ok"|"degraded", "skipped": [{"id": "<canonical id>", "reason": "<reason>"}]}`, `degraded` whenever an
-invalid entity is recorded; a non-admin SHALL get `403`.
+invalid entity is recorded; a non-admin SHALL get `403`. `id` SHALL always be the canonical id
+`<type>/platform/<name>`, also for a file entity, which has no blob at that id.
 
 #### Scenario: Degraded on a parse failure
 - **WHEN** the blob `models/platform/broken-health-model` holds `garbage` and the config reloads
@@ -311,17 +348,9 @@ invalid, whatever the mode.
 - **THEN** the warnings are `interceptors[0]` and `interceptors[1]`
 
 ### Requirement: Soft validation
-With `config.write.softValidation: true` (default `false`), a model write whose only failure is an unresolved
-interceptor reference SHALL be written and answer `200`; with `onInvalidEntity: skip` its GET SHALL then answer
-`status: "invalid"`. With `abort` the rebuild does not check the reference: the model enters the merged config, its
-GET answers `status: "valid"`, and a call to it answers `404` `Interceptor is not found`. Rebuild invariants SHALL
-still answer `422`.
-
-#### Scenario: Soft mode commits a dangling reference
-- **WHEN** soft mode and `skip` are on and an admin sends `PUT /v1/models/platform/soft-cr-invalid` with
-  `interceptors: ["unknown-interceptor"]`
-- **THEN** Core answers `200` with an `ETag`, and the GET answers `status: "invalid"` with warning
-  `interceptors[0]`
+With `config.write.softValidation: true` (default `false`), a model write whose only failure is a dangling reference
+SHALL be written and answer `200`; whether the model is then a deployment follows Dangling interceptor reference.
+Rebuild invariants SHALL still answer `422`.
 
 #### Scenario: Soft mode still rejects invariants
 - **WHEN** soft mode is on and a model declares `interfaces: {"openaiChatCompletions": {}}` with no `base_url`
@@ -458,7 +487,7 @@ accepted entries.
 
 #### Scenario: Dangling reference without precheck
 - **WHEN** the same body carries `"precheck": false`
-- **THEN** Core answers `200` with `valid: 0`, `failed: 1`, status `FAILED`
+- **THEN** Core answers `200` with `valid: 0`, `failed: 1`, status `FAILED`, and the model is not written
 
 ### Requirement: Apply with precheck
 `/v1/admin/apply` with `precheck` true SHALL validate the whole batch first; on any failure it SHALL write nothing and
