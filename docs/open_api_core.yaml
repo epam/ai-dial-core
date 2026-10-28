@@ -81,6 +81,7 @@ tags:
 - name: MCP
 - name: Models
 - name: Notifications
+- name: Org units
 - name: Policies
 - name: Policy Assignments
 - name: Projects
@@ -1511,6 +1512,37 @@ paths:
       responses:
         "200":
           description: Success
+          headers:
+            x-codex-primary-used-percent:
+              description: "Spent share of the caller's reported DIAL day/week/month spend cap before this request, a whole percent rounded down. Sent only when the caller has such a cost limit; the upstream's own `x-codex-*` headers are removed"
+              required: false
+              schema:
+                type: string
+            x-codex-primary-window-minutes:
+              description: "`1440`, `10080` or `43200`: the reported cap's day, week or month"
+              required: false
+              schema:
+                type: string
+            x-codex-primary-reset-at:
+              description: "When the reported cap resets, Unix seconds"
+              required: false
+              schema:
+                type: string
+            x-codex-secondary-used-percent:
+              description: Same as `x-codex-primary-used-percent` for the fullest of the other capped windows; absent when there is none
+              required: false
+              schema:
+                type: string
+            x-codex-secondary-window-minutes:
+              description: "Window of the secondary cap, as `x-codex-primary-window-minutes`"
+              required: false
+              schema:
+                type: string
+            x-codex-secondary-reset-at:
+              description: "When the secondary cap resets, Unix seconds"
+              required: false
+              schema:
+                type: string
         "400":
           description: Bad request
           content:
@@ -1851,6 +1883,37 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/CreateChatCompletionStreamResponse"
+          headers:
+            x-codex-primary-used-percent:
+              description: "Spent share of the caller's reported DIAL day/week/month spend cap before this request, a whole percent rounded down. Sent only when the caller has such a cost limit; the upstream's own `x-codex-*` headers are removed"
+              required: false
+              schema:
+                type: string
+            x-codex-primary-window-minutes:
+              description: "`1440`, `10080` or `43200`: the reported cap's day, week or month"
+              required: false
+              schema:
+                type: string
+            x-codex-primary-reset-at:
+              description: "When the reported cap resets, Unix seconds"
+              required: false
+              schema:
+                type: string
+            x-codex-secondary-used-percent:
+              description: Same as `x-codex-primary-used-percent` for the fullest of the other capped windows; absent when there is none
+              required: false
+              schema:
+                type: string
+            x-codex-secondary-window-minutes:
+              description: "Window of the secondary cap, as `x-codex-primary-window-minutes`"
+              required: false
+              schema:
+                type: string
+            x-codex-secondary-reset-at:
+              description: "When the secondary cap resets, Unix seconds"
+              required: false
+              schema:
+                type: string
         "400":
           description: Bad request
           content:
@@ -3000,35 +3063,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
-  /v1/admin/export:
-    post:
-      tags:
-      - Admin
-      summary: /v1/admin/export
-      operationId: exportAdminBuckets
-      responses:
-        "200":
-          description: ZIP archive of the public and platform buckets
-          content:
-            application/zip:
-              schema:
-                type: string
-                format: binary
-        "403":
-          description: Forbidden
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorData"
-        "409":
-          description: "Another export or a write holds a bucket lock, retry later"
-        "500":
-          description: The server had an error while processing your request.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorData"
-      x-preview: true
   /v1/admin/health/config:
     get:
       tags:
@@ -3056,6 +3090,35 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "405":
           description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/system-export:
+    post:
+      tags:
+      - Admin
+      summary: /v1/admin/system-export
+      operationId: systemExport
+      responses:
+        "200":
+          description: ZIP archive of the public and platform buckets
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: "Another system export or a write holds a bucket lock, retry later"
         "500":
           description: The server had an error while processing your request.
           content:
@@ -9617,6 +9680,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: A skill or project target is an org unit's folder
         "500":
           description: The server had an error while processing your request.
           content:
@@ -9705,6 +9770,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: A skill or project target is an org unit's folder
         "500":
           description: The server had an error while processing your request.
           content:
@@ -10213,6 +10280,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: The copy would put a skill or project on an org unit's folder
         "500":
           description: The server had an error while processing your request.
           content:
@@ -10272,6 +10341,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: "A move inside the shared space would change which org unit owns the resource (into, out of or between units), or put a skill or project on an org unit's folder"
         "500":
           description: The server had an error while processing your request.
           content:
@@ -10986,6 +11057,205 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /v1/org-units/{path}:
+    get:
+      tags:
+      - Org units
+      summary: "/v1/org-units/{path}"
+      operationId: getOrgUnit
+      parameters:
+      - name: path
+        in: path
+        description: "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk"
+        required: true
+        schema:
+          type: string
+      - name: recursive
+        in: query
+        description: "If true, items lists every unit below, parents before children; otherwise only the units directly below."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgUnitData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    post:
+      tags:
+      - Org units
+      summary: "/v1/org-units/{path}"
+      operationId: createOrgUnit
+      parameters:
+      - name: path
+        in: path
+        description: "The parent: public, then each unit's name, separated by '/'"
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrgUnitRequest"
+        required: true
+      responses:
+        "200":
+          description: The unit is created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgUnitData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: The name is taken or the depth limit is reached
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Org units
+      summary: "/v1/org-units/{path}"
+      operationId: deleteOrgUnit
+      parameters:
+      - name: path
+        in: path
+        description: "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk"
+        required: true
+        schema:
+          type: string
+      - name: recursive
+        in: query
+        description: Also remove every unit below it
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: "The units are removed, with their folder markers"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteOrgUnitResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: "The unit holds content, or has units below it and recursive is not set"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    patch:
+      tags:
+      - Org units
+      summary: "/v1/org-units/{path}"
+      operationId: updateOrgUnit
+      parameters:
+      - name: path
+        in: path
+        description: "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk"
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrgUnitRequest"
+        required: true
+      responses:
+        "200":
+          description: The display name is changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgUnitData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/policies/{bucket}/{path}:
     get:
       tags:
@@ -15062,6 +15332,8 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "405":
           description: Method Not Allowed
+        "409":
+          description: An org unit holds this path
         "412":
           description: Precondition failed - ETag mismatch
         "422":
@@ -16043,6 +16315,19 @@ components:
           type: string
         bucket:
           type: string
+    BudgetStats:
+      type: object
+      properties:
+        costObject:
+          type: string
+        day:
+          $ref: "#/components/schemas/CostItemLimitStats"
+        month:
+          $ref: "#/components/schemas/CostItemLimitStats"
+        policy:
+          type: string
+        priority:
+          type: integer
     CacheBreakpoint:
       type: object
       properties:
@@ -17402,6 +17687,13 @@ components:
         statistics:
           $ref: "#/components/schemas/ChatCompletionResponseStatistics"
       description: "Represents a streamed chunk of a chat completion response returned by model, based on the provided input."
+    CreateOrgUnitRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+        name:
+          type: string
     CredentialsLevel:
       type: string
       enum:
@@ -17412,6 +17704,13 @@ components:
       type: object
       properties:
         ids:
+          type: array
+          items:
+            type: string
+    DeleteOrgUnitResult:
+      type: object
+      properties:
+        removed:
           type: array
           items:
             type: string
@@ -18566,6 +18865,44 @@ components:
       - <
       - '>='
       - <=
+    OrgUnitData:
+      type: object
+      properties:
+        author:
+          type: string
+        createdAt:
+          type: integer
+        displayName:
+          type: string
+        folder:
+          type: string
+        id:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrgUnitDataSummary"
+        name:
+          type: string
+        path:
+          type: string
+    OrgUnitDataSummary:
+      type: object
+      properties:
+        author:
+          type: string
+        createdAt:
+          type: integer
+        displayName:
+          type: string
+        folder:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        path:
+          type: string
     ParallelToolCalls:
       type: boolean
       description: Whether to enable parallel `function` calling during the `tool` use.
@@ -18959,7 +19296,7 @@ components:
     ResourceDependencyTarget:
       type: object
       properties:
-        url:
+        path:
           description: |
             A DIAL resource URL in one of two forms: a concrete global-view path (e.g. "files/public/policies/") or a current-user placeholder path (e.g. "files/{current-user}/skills/"). Write-time validation enforces the grammar.
           type: string
@@ -19148,6 +19485,7 @@ components:
       - INVITATION
       - PUBLICATION
       - RULES
+      - ORG_UNITS
       - API_KEY_DATA
       - NOTIFICATION
       - APPLICATION
@@ -19806,6 +20144,11 @@ components:
           type: array
           items:
             type: integer
+    UpdateOrgUnitRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
     Upstream:
       type: object
       properties:
@@ -19898,6 +20241,10 @@ components:
           $ref: "#/components/schemas/CostItemLimitStats"
         weekCostStats:
           $ref: "#/components/schemas/CostItemLimitStats"
+        budgets:
+          type: array
+          items:
+            $ref: "#/components/schemas/BudgetStats"
     ValidationResult:
       type: object
       properties:

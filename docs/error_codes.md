@@ -77,6 +77,8 @@ That usually happens on chat completion or router requests indicating that user 
 
 On the Anthropic-compatible routes (`/anthropic/*`) the response body has the Anthropic error shape and a reached spend cap carries `anthropic-ratelimit-unified-*` headers; see [Claude Code spend limits](anthropic-spend-limits.md).
 
+On the Responses routes (`/openai/v1/responses`, `/openai/responses`) a reached day, week or month spend cap gives an error of type `usage_limit_reached` with `resets_at` and `limit_window_minutes` and `x-codex-primary-*` headers, which Codex CLI shows as a usage-limit message; see [Codex spend limits](codex-spend-limits.md).
+
 #### 500 INTERNAL SERVER ERROR
 
 The status code indicates that the server encountered an unexpected condition that prevented it from fulfilling the request. This error is a generic "catch-all" response to server issues, indicating that the server cannot find a more appropriate 5XX error to respond with.

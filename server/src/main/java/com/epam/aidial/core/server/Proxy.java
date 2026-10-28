@@ -23,7 +23,7 @@ import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.security.IdpNotFoundException;
-import com.epam.aidial.core.server.service.AdminExportService;
+import com.epam.aidial.core.server.service.AdminSystemExportService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.BackgroundJobService;
@@ -34,6 +34,7 @@ import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.NotificationService;
+import com.epam.aidial.core.server.service.OrgUnitService;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.ResourceDependencyValidator;
@@ -210,8 +211,9 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ConfigValidationService configValidationService;
     private final TracingSettings tracingSettings;
     private final BlockingCallTracer blockingCallTracer;
-    private final AdminExportService adminExportService;
-    private final AdminExportService.Settings adminExportSettings;
+    private final AdminSystemExportService adminSystemExportService;
+    private final AdminSystemExportService.Settings adminSystemExportSettings;
+    private final OrgUnitService orgUnitService;
 
     @Override
     public void handle(HttpServerRequest request) {

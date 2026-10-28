@@ -99,6 +99,42 @@ class SpendCapsTest {
     }
 
     @Test
+    void findSecondary_picksFullestOfTheRest() {
+        SpendCaps caps = SpendCaps.of(List.of(
+                day(10, "8.2", TOMORROW), week(100, "20", IN_5_DAYS), month(1000, "400", IN_20_DAYS)));
+
+        assertEquals(CalendarPeriod.DAY, caps.reported().period());
+        assertEquals(CalendarPeriod.MONTH, caps.findSecondary().period());
+    }
+
+    @Test
+    void findSecondary_exceededReportedLeavesFullerWindow() {
+        SpendCaps caps = SpendCaps.of(List.of(
+                day(10, "10", TOMORROW), week(100, "10", IN_5_DAYS), month(1000, "990", IN_20_DAYS)));
+
+        assertEquals(CalendarPeriod.DAY, caps.reported().period());
+        assertEquals(CalendarPeriod.MONTH, caps.findSecondary().period());
+    }
+
+    @Test
+    void findSecondary_tieOnRatioPrefersLongerPeriod() {
+        SpendCaps caps = SpendCaps.of(List.of(
+                day(10, "9", TOMORROW), week(100, "50", IN_5_DAYS), month(1000, "500", IN_20_DAYS)));
+
+        assertEquals(CalendarPeriod.MONTH, caps.findSecondary().period());
+    }
+
+    @Test
+    void findSecondary_oneWindow_isNull() {
+        assertNull(SpendCaps.of(List.of(week(100, "30", IN_5_DAYS))).findSecondary());
+    }
+
+    @Test
+    void findSecondary_noWindows_isNull() {
+        assertNull(SpendCaps.EMPTY.findSecondary());
+    }
+
+    @Test
     void of_noCap_isEmpty() {
         assertEquals(SpendCaps.EMPTY, SpendCaps.of(List.of()));
     }

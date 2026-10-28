@@ -14,6 +14,7 @@ public enum ResourceTypes implements ResourceType {
     INVITATION("invitations", true, TimeUnit.MINUTES.toMillis(5)),
     PUBLICATION("publications", true, TimeUnit.MINUTES.toMillis(5)),
     RULES("rules", true, TimeUnit.DAYS.toMillis(30)),
+    ORG_UNITS("org_units", true, TimeUnit.DAYS.toMillis(30)),
     API_KEY_DATA("api_key_data", true, TimeUnit.MINUTES.toMillis(5)),
     NOTIFICATION("notifications", true, TimeUnit.MINUTES.toMillis(5)),
     APPLICATION("applications", true, TimeUnit.DAYS.toMillis(30)),

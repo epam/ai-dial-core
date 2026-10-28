@@ -66,6 +66,9 @@
     "compressionMinSize": 256,
     "heartbeatPeriod": 60000
   },
+  "orgUnits": {
+    "enabled": false
+  },
   "complexResource": {
     "maxFiles": 100,
     "maxTotalBytes": 16777216,
@@ -77,7 +80,7 @@
     "activeBatches": 5,
     "gracePeriod": 3600000
   },
-  "adminExport": {
+  "adminSystemExport": {
     "stallTimeout": 60000
   },
   "clientChannel": {
