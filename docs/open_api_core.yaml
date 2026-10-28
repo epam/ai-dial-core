@@ -17186,6 +17186,8 @@ components:
           $ref: "#/components/schemas/MapStringTranslator"
         rateLimitSchedule:
           $ref: "#/components/schemas/RateLimitSchedule"
+        spendingLimits:
+          $ref: "#/components/schemas/SpendingLimits"
     ConfigFileMigrateRequest:
       type: object
       properties:
@@ -19439,6 +19441,19 @@ components:
           type: string
         reason:
           type: string
+    SpendingLimitMode:
+      type: string
+      enum:
+      - "off"
+      - shadow
+      - enforce
+    SpendingLimits:
+      type: object
+      properties:
+        defaultCostObject:
+          type: string
+        mode:
+          $ref: "#/components/schemas/SpendingLimitMode"
     SubscribeResourcesRequest:
       type: object
       properties:

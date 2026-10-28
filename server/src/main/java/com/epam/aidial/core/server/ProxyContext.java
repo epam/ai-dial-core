@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
+import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -79,6 +80,8 @@ public class ProxyContext {
     private String userId;
     private List<String> userRoles;
     private String userProject;
+    // the budget that pays for this call, set by the pre-call check and charged after the call
+    private BudgetPayer budgetPayer;
     private String userHash;
     private TokenUsage tokenUsage;
     private List<UsagePerModel> usagePerModel;
