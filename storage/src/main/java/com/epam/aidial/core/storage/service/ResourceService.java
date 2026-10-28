@@ -11,6 +11,7 @@ import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.data.ResourceUpload;
 import com.epam.aidial.core.storage.data.UserMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.epam.aidial.core.storage.util.Base58;
 import com.epam.aidial.core.storage.util.Compression;
@@ -212,11 +213,17 @@ public class ResourceService implements AutoCloseable {
         tempCleanupTimer.close();
     }
 
+    /**
+     * Events are published only for {@link ResourceTypes#EVENT_TYPES}.
+     */
     public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescriptor> resources,
                                                          Consumer<ResourceEvent> subscriber) {
         return topic.subscribe(resources, subscriber);
     }
 
+    /**
+     * Events are published only for {@link ResourceTypes#EVENT_TYPES}.
+     */
     public ResourceTopic.Subscription subscribeAllResources(Consumer<ResourceEvent> subscriber) {
         return topic.subscribeAll(subscriber);
     }
@@ -1025,6 +1032,28 @@ public class ResourceService implements AutoCloseable {
 
     private void publishEvent(ResourceDescriptor descriptor, ResourceEvent.Action action, long timestamp, String etag,
             @Nullable Map<String, String> metadata) {
+        if (descriptor.getType().isComplex()) {
+            // Writes of a complex resource are internal (marker, version files): the complex resource engine
+            // publishes events for the logical resource and file URLs via publishLogicalEvent.
+            return;
+        }
+        publishTopicEvent(descriptor, action, timestamp, etag, metadata);
+    }
+
+    /**
+     * Publishes an event for a logical URL of a complex resource (the resource itself or a file inside it).
+     */
+    public void publishLogicalEvent(ResourceDescriptor descriptor, ResourceEvent.Action action, long timestamp,
+                                    @Nullable String etag) {
+        publishTopicEvent(descriptor, action, timestamp, etag, null);
+    }
+
+    private void publishTopicEvent(ResourceDescriptor descriptor, ResourceEvent.Action action, long timestamp, String etag,
+            @Nullable Map<String, String> metadata) {
+        if (!ResourceTypes.EVENT_TYPES.contains(descriptor.getType())) {
+            return;
+        }
+
         ResourceEvent event = new ResourceEvent()
                 .setUrl(descriptor.getUrl())
                 .setAction(action)

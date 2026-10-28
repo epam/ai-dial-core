@@ -24,7 +24,10 @@ These are static settings, so they are read once at startup: changing them needs
   them. Nothing is emitted when Core has no valid span context — with no OpenTelemetry SDK attached
   the ids are all zeros, and a `traceparent` built from those is malformed.
 * `conversationIdHeaders`: Request headers, in priority order, that may carry a conversation or
-  session id. The first usable one present is published as `gen_ai.conversation.id`. Matching is
+  session id. The first usable one present is published as `gen_ai.conversation.id`. The same value
+  is written to each analytics log entry as `"session":{"id":"..."}`, right after `chat`, regardless
+  of `genAiSpanAttributes` and even for secured API keys; the member is omitted when no header
+  matches. A Responses API background job resolves it when the job is created. Matching is
   case-insensitive and values are trimmed; a value longer than 256 characters is skipped rather than
   truncated — truncating one would correlate unrelated requests — and the next header on the list
   still gets its turn. Blank entries and the known credential headers (`authorization`,
@@ -94,6 +97,21 @@ Which request attributes apply depends on the API surface: `stop_sequences`, `ch
 `frequency_penalty`, `presence_penalty` and `seed` come from Chat Completions,
 `previous_response.id` from Responses, `encoding_formats` from Embeddings.
 
+## Route on log lines and analytics
+
+A request served by a global route or by an application route records which route handled it:
+
+| Where                                           | Fields                                      |
+|-------------------------------------------------|---------------------------------------------|
+| Request span and console JSON log lines         | `dial.route.name`, `dial.route.type`        |
+| Analytics log entry (flat fields)               | `route_name`, `route_type`                  |
+
+`dial.route.type` and `route_type` are `global` (a route from `routes`) or `application` (a route from
+`applications.<name>.routes`). The fields are omitted when no route served the request.
+
+The route is published regardless of `genAiSpanAttributes`. Metric labels, `http.route` and trace/span ids
+are unchanged.
+
 ## Storage and rate-limit spans
 
 Core adds child spans for the storage, Redis, identity and key-management work a request does. They are emitted
@@ -107,15 +125,18 @@ executor) start no traces of their own. They do not depend on `genAiSpanAttribut
 | `auth.jwks.fetch`                                        | Fetching an identity provider's signing key; once per key id while it is cached |                                             |
 | `deployment.resolve`                                     | Finding the requested deployment and checking access and user consent         |                                               |
 | `rate_limit.check`                                       | The token, request and cost limit checks before a request is forwarded        | `dial.deployment`, `dial.rate_limit.status`   |
+| `rate_limit.read_spend`                                  | Reading the caller's spend caps, unchecked, for a translated Anthropic request |                                              |
 | `oauth.request`                                          | A call to an authorization server: token exchange, metadata discovery, registration | `http.request.method`, `server.address`, `http.response.status_code` |
 | `kms.encrypt`, `kms.decrypt`                             | A call to the configured AWS, Azure or GCP key management service             |                                               |
 | `resource.get`, `resource.compute`, `resource.put`, `resource.delete` | A `ResourceService` operation, including Redis access and lock waits | `dial.resource.type`; `resource.get` also has `dial.cache.hit` (`false` when the value was read from blob storage) |
+| `cost_stats.get`, `cost_stats.update`, `cost_stats.delete` | Reading, creating or updating, or deleting the per-trace usage record kept in Redis only; `update` and `delete` include the lock wait |  |
 | `blob.<operation>`                                       | One blob storage call: `load`, `store`, `meta`, `exists`, `delete`, `copy`, `list`, and the multipart upload calls | `blob.load`: `dial.blob.found`; `blob.store`: `dial.blob.size` |
 
 `blob.load` ends when the blob storage returns the blob, so it does not include reading the payload
 stream. The per-trace usage record (cost and token counts, created before every upstream call, updated
-with each deployment's usage and deleted when the trace ends) shows up as `resource.*` spans with
-`dial.resource.type=DEPLOYMENT_COST_STATS`. Redis calls get no spans of their own: the time a `resource.*` span spends outside its
+with each deployment's usage and deleted when the trace's root ends, or, if no root deletes it, `deploymentStats.ttlMs` after its last write;
+at least `backgroundJob.jobTtlMs` + `backgroundJob.scanIntervalMs` for a trace whose root is a background Responses job) is kept in Redis only
+and shows up as `cost_stats.*` spans. The Redis access inside a `resource.*` span gets no spans of its own: the time it spends outside its
 `blob.*` children is Redis access and lock waits.
 
 The same blob storage calls are measured by the `dial_blob_operation` timer, tagged by `operation`
@@ -190,3 +211,27 @@ after the response has ended was rejected because a worker thread of the same re
 root context in between. The scratch copy's empty locals lose nothing: every server-span start in
 Vert.x 4.5.30 already hands in a freshly duplicated context, so the incoming `traceparent` is the
 only parent source either way.
+
+## Background operations
+
+Periodic work that no request started has no trace of its own, so its log lines would carry no trace id. Core
+gives every run of the background job poll and scan, the complex resource sweep, the code interpreter session
+check and the merged config rebuild a trace id of its own, so the log lines of one run, in the console JSON and
+in the OTel log records, can be found and grouped by it.
+
+These runs record no spans of their own. The trace context of a run is not sampled, so with the default parent-based
+sampler nothing is exported as a trace and the storage calls a run makes export no `blob.*` or `resource.*` spans.
+With a sampler that ignores the parent decision, such as `always_on`, the storage calls and the HTTP calls a run makes
+(a job poll) do export spans under the run's trace id. Their parent is the run, which is never exported, so a trace
+viewer shows them without a root; use a parent-based sampler (the OpenTelemetry default, `parentbased_always_on`) to
+avoid this. Tracing a run as a span would be a separate change.
+
+`BackgroundOperationTracer` keeps each run's trace context on a duplicate of the timer's Vert.x context that only
+that run uses, the same way a request keeps its own. The context a timer fires on is shared by every run and by
+anything else created from it, so writing the trace context there and restoring it later would let overlapping
+runs, or callbacks on other threads, read each other's trace id. Work the run submits (`AsyncTaskExecutor`) and the
+callbacks of the future `traceFuture` returns capture the duplicate, so they log with the run's trace id.
+The console JSON layout reads the run's trace id, span id and trace flags from that duplicate, but only when the span
+stored there is the run's own `BackgroundSpan`: it never takes them from the span of a request, and a log line without
+a request and outside a run keeps empty identifiers.
+`pollJobs` starts the poll of each claimed job from inside the run; the poll and its failure handling keep the run's trace id.

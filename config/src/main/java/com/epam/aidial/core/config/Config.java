@@ -2,6 +2,9 @@ package com.epam.aidial.core.config;
 
 import com.epam.aidial.core.config.databind.JsonArrayToSchemaMapDeserializer;
 import com.epam.aidial.core.config.databind.MapToJsonArraySerializer;
+import com.epam.aidial.core.config.policy.CostObjectIndex;
+import com.epam.aidial.core.config.policy.Policy;
+import com.epam.aidial.core.config.policy.PolicyAssignment;
 import com.epam.aidial.core.config.validation.CatalogPropertiesConformToSchemas;
 import com.epam.aidial.core.config.validation.ConformToCatalogMetaSchema;
 import com.epam.aidial.core.config.validation.ConformToMetaSchema;
@@ -46,6 +49,16 @@ public class Config {
     // key: translator name, as referenced by interfaces.<type>.translator
     private Map<String, Translator> translators = Map.of();
 
+    // key: path relative to the policies folder, "<costObject>/<name>" or "<name>" for a global policy
+    @JsonIgnore
+    private Map<String, Policy> policies = Map.of();
+    // key: path relative to the assignments folder, "<costObject>/<id>"
+    @JsonIgnore
+    private Map<String, PolicyAssignment> policyAssignments = Map.of();
+    // derived from the two maps above; replaced together with them
+    @JsonIgnore
+    private CostObjectIndex costObjectIndex = CostObjectIndex.EMPTY;
+
     // key: schema $id (URI string)
     @JsonDeserialize(using = JsonArrayToSchemaMapDeserializer.class)
     @JsonSerialize(using = MapToJsonArraySerializer.class)
@@ -69,6 +82,8 @@ public class Config {
 
     // deployment-wide anchor for the DAY/WEEK/MONTH fixed calendar rate-limit windows
     private RateLimitSchedule rateLimitSchedule = new RateLimitSchedule();
+
+    private SpendingLimits spendingLimits = new SpendingLimits();
 
     @JsonIgnore
     public Deployment selectDeployment(String deploymentId) {
