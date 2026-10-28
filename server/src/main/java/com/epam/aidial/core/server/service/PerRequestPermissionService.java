@@ -51,8 +51,7 @@ public class PerRequestPermissionService {
             Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.lookupPermissions(Set.of(resource), context);
             Set<ResourceAccessType> actual = result.get(resource);
             Set<ResourceAccessType> expected = resourcePermission.getPermissions();
-            // a folder hands the receiver everything below it, child units included
-            if (!actual.containsAll(expected) || resource.isFolder() && !accessService.hasReadAccessToEverythingUnder(resource, context)) {
+            if (!actual.containsAll(expected) || resource.isFolder() && !accessService.mayPassOnFolder(resource, context)) {
                 throw new PermissionDeniedException("Access to resource is forbidden: " + resourcePermission.getUrl());
             }
         }

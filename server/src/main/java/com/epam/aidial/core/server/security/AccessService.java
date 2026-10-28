@@ -135,6 +135,21 @@ public class AccessService {
     }
 
     /**
+     * Whether a unit owns the resource, so roles rather than the read rules decide who reads it.
+     */
+    public boolean isInUnit(ResourceDescriptor resource) {
+        return orgUnitGrants.outsideUnits(Set.of(resource)).isEmpty();
+    }
+
+    /**
+     * Whether the caller may pass a folder on: one that spans units needs read in each of them, as it hands over
+     * everything below it.
+     */
+    public boolean mayPassOnFolder(ResourceDescriptor folder, ProxyContext context) {
+        return !orgUnitGrants.spansUnit(folder) || hasReadAccessToEverythingUnder(folder, context);
+    }
+
+    /**
      * Read on a folder and everything below it, as attaching a folder hands it all to an application. A folder the
      * caller already received attached was checked when it was attached; otherwise a public folder needs its part under
      * no unit read through the rules and its part in units read through roles at each of them.

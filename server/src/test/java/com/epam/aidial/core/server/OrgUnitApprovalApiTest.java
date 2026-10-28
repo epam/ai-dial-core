@@ -1,5 +1,8 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.AutoSharedData;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -8,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -178,6 +182,12 @@ public class OrgUnitApprovalApiTest extends ResourceBaseTest {
         assertEquals(200, listed.status(), listed.body());
         assertEquals(403, send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Handbook/\"}",
                 "authorization", OTHER).status());
+
+        ApiKeyData app = createAppKey("other", Map.of());
+        app.setAttachedFolders(Map.of("files/public/Handbook/", new AutoSharedData(ResourceAccessType.READ_ONLY)));
+        apiKeyStore.assignPerRequestApiKey(app);
+        assertEquals(403, send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Handbook/\"}",
+                "api-key", app.getPerRequestKey()).status(), "an attached folder reads the files, not the rules");
     }
 
     @Test

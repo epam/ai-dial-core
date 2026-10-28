@@ -91,11 +91,7 @@ public class OrgUnitGrants {
         }
 
         Map<String, OrgUnit> units = orgUnits.getUnitList().units();
-        String owner = OrgUnitService.ownerOf(units, folder);
-        String folderKey = OrgUnitService.keyOf(folder);
-        List<String> spanned = units.keySet().stream()
-                .filter(key -> !key.equals(OrgUnitService.SHARED_SPACE_KEY) && (key.equals(owner) || key.startsWith(folderKey)))
-                .toList();
+        List<String> spanned = spanned(units, folder);
         if (spanned.isEmpty()) {
             return true;
         }
@@ -103,6 +99,21 @@ public class OrgUnitGrants {
         OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
         Map<String, Set<String>> heldByUnit = new HashMap<>();
         return spanned.stream().allMatch(key -> granted(roles, held(context, units, heldByUnit, key), folder).contains(ResourceAccessType.READ));
+    }
+
+    /**
+     * Whether a unit owns the folder or any folder below it; never while org units are off.
+     */
+    public boolean spansUnit(ResourceDescriptor folder) {
+        return isEnabled() && folder.isPublic() && !spanned(orgUnits.getUnitList().units(), folder).isEmpty();
+    }
+
+    private static List<String> spanned(Map<String, OrgUnit> units, ResourceDescriptor folder) {
+        String owner = OrgUnitService.ownerOf(units, folder);
+        String folderKey = OrgUnitService.keyOf(folder);
+        return units.keySet().stream()
+                .filter(key -> !key.equals(OrgUnitService.SHARED_SPACE_KEY) && (key.equals(owner) || key.startsWith(folderKey)))
+                .toList();
     }
 
     /**

@@ -436,14 +436,14 @@ public class PublicationController {
     }
 
     /**
-     * Whoever may read the rules, or the folder they cover, may list them. Outside every unit both answers come from
-     * the read rules, as before; inside a unit rules grant nothing, so readers there through roles list them through
-     * the folder: Chat loads them when a folder is picked to publish into.
+     * Whoever may read the rules may list them. Inside a unit rules grant nothing, so readers of the folder there list
+     * them too: Chat loads them when a folder is picked to publish into.
      */
     private void checkRuleAccess(ResourceDescriptor rule) {
         ResourceDescriptor folder = ResourceDescriptorFactory.fromPublicUrl(
                 ResourceTypes.FILE.urlSegment() + rule.getUrl().substring(ResourceTypes.RULES.urlSegment().length()));
-        if (!accessService.hasReadAccess(rule, context) && !accessService.hasReadAccess(folder, context)) {
+        if (!accessService.hasReadAccess(rule, context)
+                && !(accessService.isInUnit(folder) && accessService.hasReadAccess(folder, context))) {
             throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden resource: " + rule.getUrl());
         }
     }

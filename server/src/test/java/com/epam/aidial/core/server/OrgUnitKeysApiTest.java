@@ -1,11 +1,16 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -85,10 +90,30 @@ public class OrgUnitKeysApiTest extends ResourceBaseTest {
         assertEquals(403, grant(perRequestKeyFor("bob"), "files/public/Acme/").status(), "member reads no content");
     }
 
+    @Test
+    void testWriteOnlyFoldersPassOnOutsideUnitsAsBefore() {
+        ApiKeyData key = new ApiKeyData();
+        key.setExtractedClaims(createWorkloadClaims("alice"));
+        key.setSourceDeployment("testapp");
+        key.setTraceId("trace-id");
+        Set<ResourceAccessType> write = Set.of(ResourceAccessType.WRITE);
+        key.setPerRequestSharedResources(Map.of("files/%s/out/".formatted(bucket), new PerRequestSharedData(write),
+                "files/public/Handbook/", new PerRequestSharedData(write), "files/public/Acme/Docs/", new PerRequestSharedData(write)));
+        apiKeyStore.assignPerRequestApiKey(key);
+
+        assertEquals(200, grant(key.getPerRequestKey(), "files/%s/out/".formatted(bucket), "WRITE").status());
+        assertEquals(200, grant(key.getPerRequestKey(), "files/public/Handbook/", "WRITE").status());
+        assertEquals(403, grant(key.getPerRequestKey(), "files/public/Acme/Docs/", "WRITE").status(), "Acme reads only through roles");
+    }
+
     private Response grant(String key, String url) {
+        return grant(key, url, "READ");
+    }
+
+    private Response grant(String key, String url, String permission) {
         return send(HttpMethod.POST, "/v1/ops/resource/per-request-permissions/grant", null,
                 new JsonObject().put("receiver", "app2").put("resourcePermissions", new JsonArray()
-                        .add(new JsonObject().put("url", url).put("permissions", new JsonArray().add("READ")))).encode(),
+                        .add(new JsonObject().put("url", url).put("permissions", new JsonArray().add(permission)))).encode(),
                 "api-key", key);
     }
 
