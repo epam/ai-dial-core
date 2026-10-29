@@ -30,6 +30,7 @@
     comparison is `pending * 2 < limit` since round 2, `3d966d4d`).
   - D1 and Risks now bound the overshoot by one row's whole bodies per thread admitting at the same moment, since
     bodies are held whole, not cut at 4 MiB. Risks also notes that a `Buffer` may hold up to twice its length.
+  - D5: a row with no bodies is not counted as skipped (review round 4, `331cde20`).
 - The spec delta: "Bodies in the analytics row" names the writer-behind exception, only a body over 4 MiB is cut and
   ends in `>>`, and "No limit ... by default" covers keys that are not `secured`. The scenarios are as proposed.
 - Task 3.1 is not done (see "Open").
@@ -54,6 +55,22 @@ writer is behind. Rejected, with the reason:
 - `append` checks both `isSecuredApiKey()` and `isBodiesOmitted()`: D3.
 - A secured row costs a builder copy per pass: "Effect per request".
 
+Round 4, 2026-10-29: the maintainer's automated review, eight findings, answered in the PR threads. Fixed in
+`331cde20`:
+
+- A row with no bodies, queued while the writer is behind, was counted as skipped and could start the warning
+  episode, although it lost nothing. It is still queued without bodies, so it has the fields of such a row, but it is
+  no longer counted (D5; `testRowsWithoutBodiesWhileWriterBehind`).
+- The comment on `behind` now says it only gates the two log lines; `admit` leaves bodies out by the limit alone.
+
+Rejected, with the reason:
+
+- `assembledStreamingResponse` is counted in chars, not bytes: the count is what the row holds in memory, exact for
+  Latin-1 text and at most 2x low for other text (Risks). The `Buffer` copy at write time is one row at a time.
+- A CAS loop to make the limit exact, the count leaking if `submit` throws, the gauge on `Metrics.globalRegistry`,
+  default `-1`, and rows without bodies still waiting in an unbounded queue: as in rounds 1-3 above. In the perf runs
+  with the limit the backlog peaked at the limit, 1.12 GiB per pod.
+
 ## Checks run
 
 - `./gradlew checkstyleMain checkstyleTest`: clean.
@@ -64,6 +81,9 @@ writer is behind. Rejected, with the reason:
 - `npx -y @fission-ai/openspec@1.14.3 validate --all --strict`: 12 passed.
 - CI on `56bc59f5`: build, style checks, docker build and ORT pass; `code_checks` (the full suite) was pending when
   this was written.
+- Round 4 (`331cde20`, local): checkstyle clean; `GfLogStoreTest` (50) and `AnalyticsSettingsTest` (9) pass.
+  `validate --all --strict`: `analytics-log` passes; `resource-subscription` and `user-limits` fail on placeholder
+  Purpose sections that came from `development` (`f92b9449`).
 
 ## Spec-to-test map
 
@@ -81,8 +101,9 @@ writer is behind. Rejected, with the reason:
 ## Open
 
 - Task 3.1, the 2,000-user router-path perf run with bodies logged, `server.instances=4` and
-  `analytics.maxPendingBodyHeapPercent=10`, is deferred to a `development` image after the merge. design.md "Effect
-  per request" holds the expectation with no measured value beside it yet.
+  `analytics.maxPendingBodyHeapPercent=10`, was first deferred to a `development` image after the merge, then run on
+  the PR image (`73fed50`) on 2026-10-28: three runs with the limit, two without. The results are in two PR comments.
+  They are not yet in design.md "Effect per request", and 3.1 is not ticked.
 - Follow-up idea, not in this change: the controllers assemble a streamed response on the event loop
   (`BaseChatCompletionController`) only for `admit` to drop it for secured rows and for rows skipped while the writer
   is behind. Asking the store first would save that work when the pod is overloaded.
