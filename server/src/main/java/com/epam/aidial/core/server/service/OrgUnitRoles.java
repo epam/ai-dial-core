@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 
@@ -145,6 +146,27 @@ public final class OrgUnitRoles {
             }
         }
         return false;
+    }
+
+    /**
+     * What the roles together grant, by namespace, with each namespace's actions sorted.
+     */
+    public Map<String, Set<String>> resolvePermissions(Collection<String> roleNames) {
+        Map<String, Set<String>> permissions = new TreeMap<>();
+        for (String roleName : roleNames) {
+            grants.getOrDefault(roleName, Map.of())
+                    .forEach((namespace, actions) -> permissions.computeIfAbsent(namespace, key -> new TreeSet<>()).addAll(actions));
+        }
+        return permissions;
+    }
+
+    /**
+     * Both actions on every namespace: what a DIAL admin may do in any unit.
+     */
+    public static Map<String, Set<String>> resolveAllPermissions() {
+        Map<String, Set<String>> permissions = new TreeMap<>();
+        NAMESPACES.forEach(namespace -> permissions.put(namespace, new TreeSet<>(ACTIONS)));
+        return permissions;
     }
 
     /**

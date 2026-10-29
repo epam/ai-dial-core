@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static com.epam.aidial.core.server.service.OrgUnitRoles.ADMIN;
 import static com.epam.aidial.core.server.service.OrgUnitRoles.EDITOR;
@@ -91,6 +92,35 @@ class OrgUnitRolesTest {
         assertFalse(roles.allows(List.of("auditor"), WRITE, "prompts"));
         assertTrue(roles.allows(List.of("auditor", EDITOR), WRITE, "files"));
         assertTrue(roles.allows(List.of(ADMIN), WRITE, PUBLICATIONS));
+    }
+
+    @Test
+    void testPermissionsResolveRolesTogether() {
+        Config config = new Config();
+        config.setOrgUnitRoles(Map.of("auditor", role(new OrgUnitPermission(List.of(READ), "files/**"),
+                new OrgUnitPermission(List.of(WRITE, READ), "prompts/**"))));
+        OrgUnitRoles roles = OrgUnitRoles.of(config);
+
+        assertEquals(Map.of("files", Set.of(READ), "prompts", Set.of(READ, WRITE)), roles.resolvePermissions(List.of("auditor")));
+        assertEquals(List.of("files", "prompts"), List.copyOf(roles.resolvePermissions(List.of("auditor")).keySet()));
+        assertEquals(List.of(READ, WRITE), List.copyOf(roles.resolvePermissions(List.of("auditor")).get("prompts")));
+        assertEquals(Map.of(ORG_UNITS, Set.of(READ)), roles.resolvePermissions(List.of(MEMBER)));
+        assertEquals(Set.of(READ, WRITE), roles.resolvePermissions(List.of(MEMBER, "auditor", VIEWER)).get("prompts"));
+        assertEquals(Set.of(READ), roles.resolvePermissions(List.of(MEMBER, "auditor", VIEWER)).get("files"));
+        assertEquals(Set.of(READ, WRITE), roles.resolvePermissions(List.of(ADMIN)).get(ROLE_ASSIGNMENTS));
+        assertEquals(Map.of(), roles.resolvePermissions(List.of("approver")));
+        assertEquals(Map.of(), roles.resolvePermissions(List.of()));
+    }
+
+    @Test
+    void testAllPermissionsAreBothActionsOnEveryNamespace() {
+        Map<String, Set<String>> all = OrgUnitRoles.resolveAllPermissions();
+
+        assertTrue(all.keySet().containsAll(OrgUnitRoles.CONTENT_NAMESPACES));
+        assertTrue(all.keySet().containsAll(List.of(PUBLICATIONS, ROLE_ASSIGNMENTS, ORG_UNITS)));
+        assertEquals(OrgUnitRoles.CONTENT_NAMESPACES.size() + 3, all.size());
+        all.values().forEach(actions -> assertEquals(List.of(READ, WRITE), List.copyOf(actions)));
+        assertEquals(all.keySet().stream().sorted().toList(), List.copyOf(all.keySet()));
     }
 
     @Test

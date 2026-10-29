@@ -239,6 +239,7 @@ public class ControllerSelector {
             return () -> controller.handle(deploymentId, getter, false);
         });
         get(RouteTemplate.USER_INFO, (proxy, context, pathMatcher) -> new UserInfoController(context));
+        get(RouteTemplate.USER_ORG_UNITS, (proxy, context, pathMatcher) -> new UserOrgUnitsController(proxy, context));
         get(RouteTemplate.USER_LIMITS, (proxy, context, pathMatcher) -> {
             LimitController controller = new LimitController(proxy, context);
             return controller::getUserLimits;

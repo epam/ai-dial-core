@@ -14419,6 +14419,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /v1/user/org-units:
+    get:
+      tags:
+      - Org units
+      summary: /v1/user/org-units
+      operationId: getUserOrgUnits
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserOrgUnits"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/user/usage:
     get:
       tags:
@@ -18760,6 +18788,12 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/Route"
+    MapStringSet:
+      type: object
+      additionalProperties:
+        type: array
+        items:
+          type: string
     MapStringShareResourceLimit:
       type: object
       additionalProperties:
@@ -20515,6 +20549,39 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/BudgetStats"
+    UserOrgUnits:
+      type: object
+      properties:
+        adminAccess:
+          $ref: "#/components/schemas/UserOrgUnitsAdminAccess"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserOrgUnitsUnit"
+    UserOrgUnitsAdminAccess:
+      type: string
+      enum:
+      - FULL
+      - NONE
+    UserOrgUnitsUnit:
+      type: object
+      properties:
+        displayName:
+          type: string
+        folder:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        path:
+          type: string
+        permissions:
+          $ref: "#/components/schemas/MapStringSet"
+        roles:
+          type: array
+          items:
+            type: string
     ValidationResult:
       type: object
       properties:

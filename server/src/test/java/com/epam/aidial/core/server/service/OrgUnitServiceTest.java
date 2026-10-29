@@ -1,12 +1,16 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.data.orgunit.OrgUnit;
 import com.epam.aidial.core.server.data.orgunit.OrgUnitData;
 import com.epam.aidial.core.server.data.orgunit.OrgUnitList;
 import com.epam.aidial.core.server.data.orgunit.RoleAssignment;
 import com.epam.aidial.core.server.data.orgunit.Subject;
+import com.epam.aidial.core.server.data.orgunit.UserOrgUnits;
+import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -21,6 +25,7 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -764,6 +769,66 @@ class OrgUnitServiceTest {
             Map<String, List<RoleAssignment>> all = service.roleAssignmentsOfAll(list.units());
             assertEquals(Set.of("public/Beta/"), all.keySet(), corrupt);
         }
+    }
+
+    @Test
+    void testUnitsOfThePersonWithTheirRolesAndPermissions() {
+        OrgUnitService service = service(unitsOfStorage());
+
+        List<UserOrgUnits.Unit> units = service.unitsOf(caller(null), false);
+
+        assertEquals(List.of("public/Acme", "public/Acme/Risk", "public/Acme/Risk/Basel", "public/Beta/Deep"),
+                units.stream().map(UserOrgUnits.Unit::path).toList());
+        assertEquals(new UserOrgUnits.Unit("a", "Acme", "Acme Corp", "public/Acme", "public/Acme/", List.of("member"),
+                Map.of("org-units", Set.of("read"))), units.get(0));
+        assertEquals(List.of("editor"), units.get(1).roles());
+        assertEquals(ROLES.resolvePermissions(List.of("editor")), units.get(1).permissions());
+        assertEquals(List.of(), units.get(2).roles());
+        assertEquals(Map.of(), units.get(2).permissions());
+        assertEquals(List.of("viewer"), units.get(3).roles());
+    }
+
+    @Test
+    void testAdminsGetEveryUnitWithEveryPermission() {
+        List<UserOrgUnits.Unit> units = service(unitsOfStorage()).unitsOf(caller(null), true);
+
+        assertEquals(List.of("public/Acme", "public/Acme/Risk", "public/Acme/Risk/Basel", "public/Beta", "public/Beta/Deep", "public/Gamma"),
+                units.stream().map(UserOrgUnits.Unit::path).toList());
+        assertEquals(List.of("member"), units.get(0).roles());
+        units.forEach(unit -> assertEquals(OrgUnitRoles.resolveAllPermissions(), unit.permissions(), unit.path()));
+    }
+
+    @Test
+    void testCallersWhoAreNotPersonsHaveNoUnits() {
+        FakeOrgUnitStorage storage = unitsOfStorage();
+        OrgUnitService service = service(storage);
+        clearInvocations(storage.resources);
+
+        assertEquals(List.of(), service.unitsOf(caller("per-request-key"), false));
+        verify(storage.resources, never()).load(anyList(), anyList());
+    }
+
+    private static FakeOrgUnitStorage unitsOfStorage() {
+        String tree = "{\"units\": {\"public/Acme/\": {\"id\": \"a\", \"displayName\": \"Acme Corp\"}, \"public/Acme/Risk/\": {\"id\": \"r\"}, "
+                + "\"public/Acme/Risk/Basel/\": {\"id\": \"b\"}, \"public/Beta/\": {\"id\": \"be\"}, \"public/Beta/Deep/\": {\"id\": \"d\"}, "
+                + "\"public/Gamma/\": {\"id\": \"g\"}}}";
+        String bobAs = "{\"id\": \"%s\", \"roleName\": \"%s\", "
+                + "\"subject\": {\"type\": \"claimsPredicate\", \"source\": \"email\", \"function\": \"EQUAL\", \"targets\": [\"bob@acme.com\"]}}";
+        return new FakeOrgUnitStorage(Map.of("units", tree,
+                "a", "{\"roleAssignments\": [" + bobAs.formatted("1", "member") + "]}",
+                "r", "{\"roleAssignments\": [" + bobAs.formatted("2", "editor") + ", " + bobAs.formatted("3", "approver") + "]}",
+                "d", "{\"roleAssignments\": [" + bobAs.formatted("4", "viewer") + "]}"));
+    }
+
+    private static ProxyContext caller(String perRequestKey) {
+        ProxyContext bob = mock(ProxyContext.class);
+        ObjectNode claims = ProxyUtil.MAPPER.createObjectNode().put("email", "bob@acme.com");
+        when(bob.getExtractedClaims()).thenReturn(new ExtractedClaims("bob", List.of(), "bob", claims, null, "Bob"));
+        ApiKeyData key = new ApiKeyData();
+        key.setPerRequestKey(perRequestKey);
+        when(bob.getApiKeyData()).thenReturn(key);
+        when(bob.getConfig()).thenReturn(new Config());
+        return bob;
     }
 
     @Test
