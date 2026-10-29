@@ -80,8 +80,6 @@ public class IdentityProvider {
     // random salt is used to digest user email
     private final String loggingSalt;
 
-    private final MessageDigest sha256Digest;
-
     // the flag determines if user email should be obfuscated
     private final boolean obfuscateUserEmail;
 
@@ -201,11 +199,6 @@ public class IdentityProvider {
             loggingSalt = null;
         }
 
-        try {
-            sha256Digest = MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalArgumentException(e);
-        }
         obfuscateUserEmail = settings.getBoolean("obfuscateUserEmail", true);
 
         audience = settings.getString("audience", null);
@@ -390,7 +383,13 @@ public class IdentityProvider {
     private String extractUserHash(String keyClaim) {
         if (keyClaim != null && obfuscateUserEmail) {
             String keyClaimWithSalt = loggingSalt + keyClaim;
-            byte[] hash = sha256Digest.digest(keyClaimWithSalt.getBytes(StandardCharsets.UTF_8));
+            byte[] hash;
+            try {
+                // a digest per call: MessageDigest is not thread-safe, and requests are validated on several event loops at once
+                hash = MessageDigest.getInstance("SHA-256").digest(keyClaimWithSalt.getBytes(StandardCharsets.UTF_8));
+            } catch (NoSuchAlgorithmException e) {
+                throw new IllegalStateException(e);
+            }
 
             StringBuilder hashString = new StringBuilder();
             for (byte b : hash) {
