@@ -1,5 +1,8 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.AutoSharedData;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -8,9 +11,10 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
  * Unit approvers deciding publication requests: "user" requests, "azp:approver1" approves Acme, "azp:other" approves nothing.
@@ -19,6 +23,7 @@ public class OrgUnitApprovalApiTest extends ResourceBaseTest {
 
     private static final String APPROVER = "azp:approver1";
     private static final String OTHER = "azp:other";
+    private static final String USERS = "{\"type\": \"claimsPredicate\", \"source\": \"roles\", \"function\": \"EQUAL\", \"targets\": [\"user\"]}";
 
     private String userBucket;
 
@@ -29,11 +34,12 @@ public class OrgUnitApprovalApiTest extends ResourceBaseTest {
 
     @BeforeEach
     void units() {
-        addReadRule("public/Acme/");
-        addReadRule("public/Acme/Risk/");
         assertEquals(200, send(HttpMethod.POST, "/v1/org-units/public", null, "{\"name\": \"Acme\"}", "authorization", "admin").status());
         assertEquals(200, send(HttpMethod.POST, "/v1/org-units/public/Acme", null, "{\"name\": \"Risk\"}", "authorization", "admin").status());
         assign("public/Acme", "{\"type\": \"claimsPredicate\", \"source\": \"azp\", \"function\": \"EQUAL\", \"targets\": [\"APPROVER1\"]}");
+        // inside a unit only roles read, so the requester reads where they publish through a viewer role
+        assign("public/Acme", "viewer", USERS);
+        assign("public/Acme/Risk", "viewer", USERS);
         userBucket = new JsonObject(send(HttpMethod.GET, "/v1/bucket", null, null, "authorization", "user").body()).getString("bucket");
     }
 
@@ -118,14 +124,84 @@ public class OrgUnitApprovalApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testRuleChangesStayWithAdmins() {
+    void testRequestsIntoUnitsCarryNoRules() {
+        // Chat sends an empty list with every request: it means none, so the unit's approver decides it
         String emptyRules = request("public/Acme/", "Acme/a.txt", "[]");
-        String newRules = request("public/Acme/", "Acme/b.txt", "[{\"source\": \"roles\", \"function\": \"TRUE\"}]");
+        assertFalse(new JsonObject(decide("get", emptyRules, "admin").body()).containsKey("rules"));
+        assertEquals(200, decide("approve", emptyRules, APPROVER).status());
+        assertEquals(200, send(HttpMethod.GET, "/v1/files/public/Acme/a.txt", null, null, "authorization", "user").status());
 
-        assertEquals(200, decide("get", emptyRules, APPROVER).status());
-        assertEquals(403, decide("approve", emptyRules, APPROVER).status());
-        assertEquals(403, decide("approve", newRules, APPROVER).status());
-        assertEquals(403, send(HttpMethod.GET, "/v1/files/public/Acme/a.txt", null, null).status());
+        // the admin panel copies a moved folder's rules first: dropped, the request approves to nothing
+        JsonObject withRules = new JsonObject().put("targetFolder", "public/Acme/").put("resources", new JsonArray())
+                .put("rules", new JsonArray("[{\"source\": \"roles\", \"function\": \"TRUE\"}]"));
+        Response created = send(HttpMethod.POST, "/v1/ops/publication/create", null, withRules.encode(), "authorization", "admin");
+        assertEquals(200, created.status(), created.body());
+        String rulesOnly = new JsonObject(created.body()).getString("url");
+        assertFalse(new JsonObject(decide("get", rulesOnly, "admin").body()).containsKey("rules"));
+        assertEquals(200, decide("approve", rulesOnly, "admin").status());
+
+        Response rules = send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Acme/\"}", "authorization", "admin");
+        assertEquals("{\"rules\":{}}", rules.body());
+    }
+
+    @Test
+    void testRequestFiledBeforeItsUnitIsDecidedThereAndStoresNoRules() {
+        String url = request("public/Later/", "Later/l.txt", "[{\"source\": \"roles\", \"function\": \"TRUE\"}]");
+        assertEquals(200, send(HttpMethod.POST, "/v1/org-units/public", null, "{\"name\": \"Later\"}", "authorization", "admin").status());
+        assign("public/Later", "{\"type\": \"claimsPredicate\", \"source\": \"azp\", \"function\": \"EQUAL\", \"targets\": [\"APPROVER1\"]}");
+
+        Response approved = decide("approve", url, APPROVER);
+        assertEquals(200, approved.status(), approved.body());
+        Response rules = send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Later/\"}", "authorization", "admin");
+        assertEquals("{\"rules\":{}}", rules.body());
+        assertEquals(403, send(HttpMethod.GET, "/v1/files/public/Later/l.txt", null, null, "authorization", "user").status());
+    }
+
+    @Test
+    void testRoleHoldersListTheRulesOfTheirUnitsFolders() {
+        for (String caller : List.of("user", APPROVER)) {
+            Response rules = send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Acme/\"}", "authorization", caller);
+            assertEquals(200, rules.status(), caller + " " + rules.body());
+            assertEquals("{\"rules\":{}}", rules.body());
+        }
+        assertEquals(403, send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Acme/Risk/\"}",
+                "authorization", APPROVER).status(), "the approver holds no role at Risk");
+        assertEquals(403, send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Acme/\"}",
+                "authorization", OTHER).status());
+    }
+
+    @Test
+    void testRulesOutsideUnitsListAsBefore() {
+        JsonObject rules = new JsonObject().put("targetFolder", "public/Handbook/").put("resources", new JsonArray())
+                .put("rules", new JsonArray("[{\"source\": \"roles\", \"function\": \"EQUAL\", \"targets\": [\"user\"]}]"));
+        Response created = send(HttpMethod.POST, "/v1/ops/publication/create", null, rules.encode(), "authorization", "admin");
+        assertEquals(200, created.status(), created.body());
+        assertEquals(200, decide("approve", new JsonObject(created.body()).getString("url"), "admin").status());
+
+        Response listed = send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Handbook/\"}", "authorization", "user");
+        assertEquals(200, listed.status(), listed.body());
+        assertEquals(403, send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Handbook/\"}",
+                "authorization", OTHER).status());
+
+        ApiKeyData app = createAppKey("other", Map.of());
+        app.setAttachedFolders(Map.of("files/public/Handbook/", new AutoSharedData(ResourceAccessType.READ_ONLY)));
+        apiKeyStore.assignPerRequestApiKey(app);
+        assertEquals(403, send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Handbook/\"}",
+                "api-key", app.getPerRequestKey()).status(), "an attached folder reads the files, not the rules");
+    }
+
+    @Test
+    void testApproverNeverStoresRules() {
+        String rules = "[{\"source\": \"roles\", \"function\": \"TRUE\"}]";
+        // the shared space is the only folder above a unit that isn't one, and it can't take rules
+        String above = request("public/", "Acme/above.txt", null);
+        String outside = request("public/Handbook/", "Handbook/outside.txt", rules);
+
+        for (String url : List.of(above, outside)) {
+            assertEquals(403, decide("approve", url, APPROVER).status(), url);
+        }
+        assertEquals("{\"rules\":{}}", send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Handbook/\"}",
+                "authorization", "admin").body());
     }
 
     @Test
@@ -199,8 +275,12 @@ public class OrgUnitApprovalApiTest extends ResourceBaseTest {
     }
 
     private void assign(String unit, String subject) {
+        assign(unit, "admin", subject);
+    }
+
+    private void assign(String unit, String roleName, String subject) {
         Response response = send(HttpMethod.POST, "/v1/org-units/" + unit + "/role-assignments", null,
-                "{\"roleName\": \"admin\", \"subject\": %s}".formatted(subject), "authorization", "admin");
+                "{\"roleName\": \"%s\", \"subject\": %s}".formatted(roleName, subject), "authorization", "admin");
         assertEquals(200, response.status(), response.body());
     }
 
@@ -214,12 +294,4 @@ public class OrgUnitApprovalApiTest extends ResourceBaseTest {
         return ids;
     }
 
-    private void addReadRule(String folder) {
-        Response created = send(HttpMethod.POST, "/v1/ops/publication/create", null, """
-                {"targetFolder": "%s", "resources": [], "rules": [{"source": "title", "function": "EQUAL", "targets": ["Manager"]}]}
-                """.formatted(folder), "authorization", "admin");
-        assertEquals(200, created.status(), created.body());
-        Response approved = decide("approve", new JsonObject(created.body()).getString("url"), "admin");
-        assertTrue(approved.status() == 200, approved.body());
-    }
 }

@@ -64,6 +64,7 @@ import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.service.OrgUnitApprovals;
+import com.epam.aidial.core.server.service.OrgUnitGrants;
 import com.epam.aidial.core.server.service.OrgUnitLookup;
 import com.epam.aidial.core.server.service.OrgUnitService;
 import com.epam.aidial.core.server.service.OrgUnitSettings;
@@ -343,7 +344,7 @@ public class AiDial {
                     lockService, applicationSchemaService, clock, resourceCredentialsService);
             OrgUnitApprovals orgUnitApprovals = new OrgUnitApprovals(orgUnitService, encryptionService, resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals,
-                    applicationSchemaService, settings("access"));
+                    new OrgUnitGrants(orgUnitService), applicationSchemaService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
             RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService, mergedConfigStore, blockingCallTracer);
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,

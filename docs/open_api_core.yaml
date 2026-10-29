@@ -11174,7 +11174,7 @@ paths:
           type: boolean
       responses:
         "200":
-          description: "The units are removed, with their role assignments and folder markers"
+          description: "The units are removed, with their assignments, markers and the read rules of their subtree"
           content:
             application/json:
               schema:
@@ -14981,6 +14981,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: An org unit holds this path
         "412":
           description: Precondition failed - ETag mismatch
         "500":

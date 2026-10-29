@@ -1,5 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
@@ -12,6 +14,8 @@ import com.epam.aidial.core.server.data.MoveResourcesRequest;
 import com.epam.aidial.core.server.data.SubscribeResourcesRequest;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
+import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.OrgUnitService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
@@ -33,6 +37,7 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -54,6 +59,8 @@ public class ResourceOperationController {
     private final AccessService accessService;
     private final HeartbeatService heartbeatService;
     private final OrgUnitService orgUnitService;
+    private final ApplicationSchemaService applicationSchemaService;
+    private final CatalogSchemaService catalogSchemaService;
 
     public ResourceOperationController(Proxy proxy, ProxyContext context) {
         this.context = context;
@@ -64,6 +71,8 @@ public class ResourceOperationController {
         this.accessService = proxy.getAccessService();
         this.heartbeatService = proxy.getHeartbeatService();
         this.orgUnitService = proxy.getOrgUnitService();
+        this.applicationSchemaService = proxy.getApplicationSchemaService();
+        this.catalogSchemaService = proxy.getCatalogSchemaService();
     }
 
     @ApiOperation(
@@ -129,7 +138,8 @@ public class ResourceOperationController {
                     List<String> buckets = List.of(source.getBucketLocation(), destination.getBucketLocation());
                     return taskExecutor.submit(() -> lockService.underBucketLocks(buckets, () -> {
                         orgUnitService.requireSameUnit(source, destination);
-                        resourceOperationService.moveResource(context, source, destination, request.isOverwrite());
+                        resourceOperationService.moveResourceLocked(context, source, destination, request.isOverwrite(),
+                                deployment -> checkSharedCopy(deployment, source, destination));
                         return null;
                     }));
                 })
@@ -204,7 +214,8 @@ public class ResourceOperationController {
                     }
 
                     return taskExecutor.submit(() -> {
-                        resourceOperationService.copyResource(context, source, destination, request.isOverwrite());
+                        resourceOperationService.copyResource(context, source, destination, request.isOverwrite(),
+                                deployment -> checkSharedCopy(deployment, source, destination));
                         return null;
                     });
                 })
@@ -258,6 +269,36 @@ public class ResourceOperationController {
                 .onFailure(this::handleServiceError);
 
         return Future.succeededFuture();
+    }
+
+    /**
+     * A copy into the shared space duplicates the files an application's or toolset's schemas point to. Only DIAL admins
+     * could copy there before org units; anyone else must be able to read every such file. A folder is copied with
+     * everything below it, which rules or child units may close to the caller even when the folder is readable, so
+     * they can't refer to one. A copy into or out of the shared space doesn't keep forwarding callers' tokens either.
+     */
+    private void checkSharedCopy(Deployment deployment, ResourceDescriptor source, ResourceDescriptor destination) {
+        if (!orgUnitService.isEnabled() || accessService.hasAdminAccess(context)) {
+            return;
+        }
+        if (source.isPublic() || destination.isPublic()) {
+            // only DIAL admins may let a resource receive callers' tokens, as on a write through a unit role
+            deployment.setForwardAuthToken(false);
+        }
+        if (!destination.isPublic()) {
+            return;
+        }
+
+        Set<ResourceDescriptor> files = new HashSet<>(catalogSchemaService.getFiles(deployment));
+        if (deployment instanceof Application application) {
+            files.addAll(applicationSchemaService.getFiles(application));
+        }
+        Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = accessService.lookupPermissions(files, context);
+        for (ResourceDescriptor file : files) {
+            if (file.isFolder() || !permissions.get(file).contains(ResourceAccessType.READ)) {
+                throw new PermissionDeniedException("No read access to %s, which the resource refers to".formatted(file.getUrl()));
+            }
+        }
     }
 
     private Set<ResourceDescriptor> parseAndVerifySubscriptionRequest(Buffer buffer) {

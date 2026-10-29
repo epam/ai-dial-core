@@ -34,6 +34,8 @@ public class ComplexResourceMetadataController extends AccessControlBaseControll
     private final boolean filesMode;
     // Optional subfolder inside the version, for files mode.
     private final String subPath;
+    // The folder shape of a children-mode path, which a grouping level's listing is filtered by.
+    private ResourceDescriptor folderShape;
 
     public ComplexResourceMetadataController(Proxy proxy, ProxyContext context, boolean filesMode, String subPath) {
         super(proxy, context, false);
@@ -181,7 +183,9 @@ public class ComplexResourceMetadataController extends AccessControlBaseControll
                     if (result == null) {
                         context.respond(HttpStatus.NOT_FOUND);
                     } else {
-                        proxy.getAccessService().filterForbidden(context, resource, result);
+                        // a path without the trailing slash names a grouping level as an item, which filters nothing
+                        boolean grouping = result instanceof ResourceFolderMetadata && !resource.isFolder() && folderShape != null;
+                        proxy.getAccessService().filterForbidden(context, grouping ? folderShape : resource, result);
                         context.respond(HttpStatus.OK, getContentType(), result);
                     }
                 })
@@ -214,6 +218,7 @@ public class ComplexResourceMetadataController extends AccessControlBaseControll
 
         ResourceDescriptor finalItemResource = itemResource;
         ResourceDescriptor finalFolderResource = folderResource;
+        folderShape = folderResource.isFolder() ? folderResource : null;
         Set<ResourceDescriptor> resourcesToCheck = itemResource.equals(folderResource)
                 ? Set.of(itemResource)
                 : Set.of(itemResource, folderResource);

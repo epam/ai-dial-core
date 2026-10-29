@@ -25,6 +25,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -48,12 +50,12 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class OrgUnitServiceTest {
@@ -382,6 +384,17 @@ class OrgUnitServiceTest {
     }
 
     @Test
+    void testNoUnitOwnsPrivateResources() {
+        Map<String, OrgUnit> units = service(UNITS).getUnitList().units();
+
+        for (String path : List.of("a.pdf", "Risk/a.pdf", "Risk/US Risk/a.pdf", "Risk/")) {
+            ResourceDescriptor resource = ResourceDescriptorFactory.fromDecoded(ResourceTypes.FILE, "bucket", "Users/alice/", path);
+            assertEquals(OrgUnitService.SHARED_SPACE_KEY,
+                    assertTimeoutPreemptively(Duration.ofSeconds(5), () -> OrgUnitService.ownerOf(units, resource)), path);
+        }
+    }
+
+    @Test
     void testMoveGuardChecksOnlyItemMovesInsideTheSharedSpace() {
         OrgUnitService service = service(UNITS);
         ResourceDescriptor inRisk = resource(ResourceTypes.FILE, "Risk/a.pdf");
@@ -455,10 +468,33 @@ class OrgUnitServiceTest {
         assertThrows(IllegalStateException.class, () -> service.delete(List.of("public", "Acme"), false));
 
         assertNull(written.get());
+        verify(rules, never()).removeRulesUnder(any());
     }
 
     @Test
-    void testDeleteRemovesTheSubtreeFromTheTreeOnly() throws Exception {
+    void testCreateAnswersWhenTheReadRulesCantBeRemoved() {
+        AtomicReference<String> written = new AtomicReference<>();
+        ResourceService resources = writableResources("{\"units\": {}}", written);
+        RuleService rules = mock(RuleService.class);
+        doThrow(new IllegalStateException("redis down")).when(rules).removeRulesUnder(any());
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        assertEquals("public/Acme", service.create(List.of("public"), "Acme", null, "admin").path());
+        assertTrue(written.get().contains("public/Acme/"));
+    }
+
+    @Test
+    void testDeleteAnswersWhenTheReadRulesCantBeRemoved() {
+        ResourceService resources = writableResources("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", new AtomicReference<>());
+        RuleService rules = mock(RuleService.class);
+        doThrow(new IllegalStateException("redis down")).when(rules).removeRulesUnder(any());
+        OrgUnitService service = newService(resources, rules, locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
+
+        assertEquals(List.of("public/Acme"), service.delete(List.of("public", "Acme"), false));
+    }
+
+    @Test
+    void testDeleteRemovesTheSubtreeFromTheTreeAndItsRules() throws Exception {
         String tree = "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}, \"public/Acme/Risk/\": {\"id\": \"r\"}, "
                 + "\"public/Beta/\": {\"id\": \"b\"}}}";
         AtomicReference<String> written = new AtomicReference<>();
@@ -471,7 +507,7 @@ class OrgUnitServiceTest {
         List<String> left = new ArrayList<>();
         ProxyUtil.MAPPER.readTree(written.get()).get("units").fieldNames().forEachRemaining(left::add);
         assertEquals(List.of("public/Beta/"), left);
-        verifyNoInteractions(rules);
+        verify(rules).removeRulesUnder(argThat(folder -> folder.getUrl().equals("files/public/Acme/")));
     }
 
     @Test
@@ -836,7 +872,6 @@ class OrgUnitServiceTest {
     private static ResourceDescriptor resource(ResourceTypes type, String path) {
         return ResourceDescriptorFactory.fromDecoded(type, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path);
     }
-
 
     private static OrgUnitService writable(String stored, AtomicReference<String> written) {
         RuleService rules = mock(RuleService.class);
