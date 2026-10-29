@@ -34,19 +34,6 @@ public interface ResourceRegistrationStrategy {
                 : Optional.of(CodeChallengeMethod.PLAIN.getValue());
     }
 
-    /**
-     * The canonical URI identifying the protected resource, sent as the {@code resource} indicator
-     * (RFC 8707) so the authorization server can mint a token audience-bound to this MCP server.
-     * The server's own metadata is authoritative; the configured endpoint is the fallback when the
-     * server publishes none.
-     */
-    default String canonicalResource(AuthorizationServerProtectedResourceMetadata protectedResourceMetadata,
-                                     String resourceEndpoint) {
-        return Optional.ofNullable(protectedResourceMetadata)
-                .map(AuthorizationServerProtectedResourceMetadata::getResource)
-                .orElse(resourceEndpoint);
-    }
-
     default List<String> collectSupportedScopes(AuthorizationServerProtectedResourceMetadata protectedResourceMetadata,
                                                 AuthorizationServerMetadata metadata) {
         Set<String> supportedScopes = new HashSet<>();

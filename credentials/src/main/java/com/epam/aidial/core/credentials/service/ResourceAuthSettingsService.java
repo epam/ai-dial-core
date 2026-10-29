@@ -19,6 +19,7 @@ import com.nimbusds.oauth2.sdk.pkce.CodeChallengeMethod;
 import com.nimbusds.oauth2.sdk.pkce.CodeVerifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
 import java.util.Optional;
@@ -91,6 +92,13 @@ public class ResourceAuthSettingsService {
             // preserve tokenEndpointAuthMethod on updates that omit it
             if (resourceAuthSettings.getTokenEndpointAuthMethod() == null) {
                 resourceAuthSettings.setTokenEndpointAuthMethod(existingResourceAuthSettings.getTokenEndpointAuthMethod());
+            }
+
+            // Clients that predate the field omit it, so null keeps the stored indicator; a blank value clears it.
+            if (resourceAuthSettings.getResource() == null) {
+                resourceAuthSettings.setResource(existingResourceAuthSettings.getResource());
+            } else if (StringUtils.isBlank(resourceAuthSettings.getResource())) {
+                resourceAuthSettings.setResource(null);
             }
 
             resolveCodeChallengeSettings(resourceAuthSettings, existingResourceAuthSettings);

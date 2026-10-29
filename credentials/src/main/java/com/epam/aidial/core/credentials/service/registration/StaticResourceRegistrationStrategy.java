@@ -8,6 +8,7 @@ import com.epam.aidial.core.credentials.service.metadata.AuthorizationServerMeta
 import com.epam.aidial.core.credentials.service.metadata.ProtectedResourceMetadataService;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
 import java.util.Optional;
@@ -56,7 +57,8 @@ public class StaticResourceRegistrationStrategy implements ResourceRegistrationS
     public ClientRegistration register(String resourceId, String resourceEndpoint, ResourceAuthSettings resourceAuthSettings) {
         log.info("Start static registration for Resource: {}", resourceId);
 
-        AuthorizationServerProtectedResourceMetadata discoveredResourceMetadata = null;
+        AuthorizationServerProtectedResourceMetadata protectedResourceMetadata = null;
+        String resource = StringUtils.trimToNull(resourceAuthSettings.getResource());
         String authorizationEndpoint = resourceAuthSettings.getAuthorizationEndpoint();
         String tokenEndpoint = resourceAuthSettings.getTokenEndpoint();
         String codeChallengeMethod = resourceAuthSettings.getCodeChallengeMethod();
@@ -68,9 +70,7 @@ public class StaticResourceRegistrationStrategy implements ResourceRegistrationS
                             + "Trying to retrieve AS Metadata.",
                     authorizationEndpoint, tokenEndpoint, codeChallengeMethod, supportedScopes);
 
-            AuthorizationServerProtectedResourceMetadata protectedResourceMetadata =
-                    protectedResourceMetadataService.getProtectedResourceMetadata(resourceId, resourceEndpoint);
-            discoveredResourceMetadata = protectedResourceMetadata;
+            protectedResourceMetadata = protectedResourceMetadataService.getProtectedResourceMetadata(resourceId, resourceEndpoint);
 
             AuthorizationServerMetadata authServerMetadata = authorizationServerMetadataService.getAuthorizationServerMetadata(
                     resourceId, resourceEndpoint, protectedResourceMetadata, false);
@@ -87,6 +87,12 @@ public class StaticResourceRegistrationStrategy implements ResourceRegistrationS
                 codeChallengeMethod = Optional.ofNullable(codeChallengeMethod)
                         .orElse(getCodeChallengeMethod(authServerMetadata).orElse(null));
             }
+        } else if (resource == null) {
+            protectedResourceMetadata = fetchProtectedResourceMetadataQuietly(resourceId, resourceEndpoint);
+        }
+
+        if (resource == null && protectedResourceMetadata != null) {
+            resource = protectedResourceMetadata.getResource();
         }
 
         if (authorizationEndpoint == null || tokenEndpoint == null) {
@@ -100,7 +106,7 @@ public class StaticResourceRegistrationStrategy implements ResourceRegistrationS
                 .redirectUri(resourceAuthSettings.getRedirectUri())
                 .authorizationEndpoint(authorizationEndpoint)
                 .tokenEndpoint(tokenEndpoint)
-                .resource(canonicalResource(discoveredResourceMetadata, resourceEndpoint))
+                .resource(resource)
                 .codeChallengeMethod(codeChallengeMethod)
                 .scopesSupported(supportedScopes)
                 .tokenEndpointAuthMethod(resourceAuthSettings.getTokenEndpointAuthMethod())
@@ -108,5 +114,21 @@ public class StaticResourceRegistrationStrategy implements ResourceRegistrationS
 
         log.info("Finished static registration for Resource: {}", resourceId);
         return clientRegistration;
+    }
+
+    /**
+     * Static clients often sit behind authorization servers outside the MCP spec, so the endpoint is never guessed
+     * as the resource indicator: an unpublished one is left unset and the token requests stay as they were. For the
+     * same reason a failed lookup must not fail a registration that never needed it.
+     */
+    private AuthorizationServerProtectedResourceMetadata fetchProtectedResourceMetadataQuietly(String resourceId,
+                                                                                              String resourceEndpoint) {
+        try {
+            return protectedResourceMetadataService.getProtectedResourceMetadata(resourceId, resourceEndpoint);
+        } catch (RuntimeException e) {
+            log.info("No protected resource metadata for Resource: {}, registering without a resource indicator: {}",
+                    resourceId, e.getMessage());
+            return null;
+        }
     }
 }
