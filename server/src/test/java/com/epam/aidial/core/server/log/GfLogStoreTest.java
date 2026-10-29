@@ -1,5 +1,9 @@
 package com.epam.aidial.core.server.log;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
@@ -9,11 +13,16 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.deltix.gflog.api.LogEntry;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -24,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyChar;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -32,6 +42,22 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 public class GfLogStoreTest {
+
+    private static final String PENDING_BODY_BYTES = "dial_analytics_log_pending_body_bytes";
+    private static final String BODIES_SKIPPED = "dial_analytics_log_bodies_skipped_total";
+    private static final long HEAP_BYTES = 10_000;
+
+    private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
+
+    @BeforeEach
+    public void addMeterRegistry() {
+        Metrics.addRegistry(meters);
+    }
+
+    @AfterEach
+    public void removeMeterRegistry() {
+        Metrics.removeRegistry(meters);
+    }
 
     @Test
     public void testGetParentDeployment_NoInterceptors() {
@@ -697,6 +723,176 @@ public class GfLogStoreTest {
     }
 
     @Test
+    public void testBodiesWrittenForKeyNotSecured() {
+        JsonNode log = logOf(row("model", "{\"q\":1}")
+                .responseBody(Buffer.buffer("{\"a\":2}"))
+                .assembledStreamingResponse("{\"assembled\":3}")
+                .build());
+
+        assertEquals("{\"q\":1}", log.get("request").get("body").asText());
+        assertEquals("{\"a\":2}", log.get("response").get("body").asText());
+        assertEquals("{\"assembled\":3}", log.get("assembled_response").asText());
+    }
+
+    @Test
+    public void testSecuredKeyRowHasNoBodies() {
+        JsonNode log = logOf(row("model", "{\"q\":1}")
+                .responseBody(Buffer.buffer("{\"a\":2}"))
+                .assembledStreamingResponse("{\"assembled\":3}")
+                .securedApiKey(true)
+                .build());
+
+        assertFalse(log.get("request").has("body"));
+        assertFalse(log.get("response").has("body"));
+        assertFalse(log.has("assembled_response"));
+        assertEquals("model", log.get("deployment").asText());
+        assertEquals("200", log.get("response").get("status").asText());
+    }
+
+    @Test
+    public void testRowsWithoutBodiesWhileWriterBehind() {
+        GfLogStore store = store(percentOfHeap(10));
+        AnalyticsLogContext a = row("a", "x".repeat(2000)).build();
+        AnalyticsLogContext b = row("b", "y".repeat(2000))
+                .responseBody(Buffer.buffer("{}"))
+                .assembledStreamingResponse("{}")
+                .build();
+        AnalyticsLogContext c = row("c", "z".repeat(10))
+                .responseBody(Buffer.buffer("{\"a\":1}"))
+                .assembledStreamingResponse("{}")
+                .build();
+
+        // nothing waiting: the row keeps its body although it is over the limit
+        assertSame(a, store.admit(a));
+        assertEquals("x".repeat(2000), logOf(a).get("request").get("body").asText());
+        assertEquals(2000, pendingBodyBytes());
+
+        // the bodies waiting reach the limit: every other field is still written
+        AnalyticsLogContext queuedB = store.admit(b);
+        JsonNode log = logOf(queuedB);
+        assertFalse(log.get("request").has("body"));
+        assertFalse(log.get("response").has("body"));
+        assertFalse(log.has("assembled_response"));
+        assertEquals("b", log.get("deployment").asText());
+        assertEquals(7, log.get("token_usage").get("total_tokens").asLong());
+        assertEquals("trace-b", log.get("trace").get("trace_id").asText());
+        assertEquals("200", log.get("response").get("status").asText());
+        assertEquals(1, bodiesSkipped());
+        assertEquals(2000, pendingBodyBytes());
+
+        // a row with no bodies has the same fields, but lost nothing, so it is not counted
+        JsonNode empty = logOf(store.admit(row("e", "").build()));
+        assertFalse(empty.get("request").has("body"));
+        assertEquals(1, bodiesSkipped());
+
+        // the writer caught up
+        store.release(a);
+        store.release(queuedB);
+        assertEquals(0, pendingBodyBytes());
+        assertSame(c, store.admit(c));
+        assertEquals("z".repeat(10), logOf(c).get("request").get("body").asText());
+        // the request, response and assembled bodies all count
+        assertEquals(10 + 7 + 2, pendingBodyBytes());
+        assertEquals(1, bodiesSkipped());
+    }
+
+    @Test
+    public void testOneWarningWhileWriterHoversAtLimit() {
+        GfLogStore store = store(percentOfHeap(10));
+        AnalyticsLogContext a = row("a", "x".repeat(700)).build();
+        AnalyticsLogContext b = row("b", "x".repeat(700)).build();
+        AnalyticsLogContext d = row("d", "x".repeat(700)).build();
+        Logger logger = (Logger) LoggerFactory.getLogger(GfLogStore.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        Level previous = logger.getLevel();
+        logger.setLevel(Level.INFO);
+        try {
+            store.admit(a);
+            store.admit(b);
+            // 1,400 bytes wait, over the limit of 1,000
+            store.admit(row("c", "x").build());
+            // the writer wrote A: 700 bytes wait, under the limit but over half of it
+            store.release(a);
+            assertSame(d, store.admit(d));
+            assertNull(store.admit(row("e", "x").build()).getRequestBody());
+            // the writer wrote the rest
+            store.release(b);
+            store.release(d);
+            store.admit(row("f", "x").build());
+
+            assertEquals(2, bodiesSkipped());
+            assertEquals(List.of(Level.WARN, Level.INFO), appender.list.stream().map(ILoggingEvent::getLevel).toList(), appender.list::toString);
+        } finally {
+            logger.setLevel(previous);
+            logger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    public void testLimitFollowsTheHeap() {
+        long largerHeap = 4 * HEAP_BYTES;
+        AnalyticsLogContext a = row("a", "x".repeat(2000)).build();
+        AnalyticsLogContext b = row("b", "y".repeat(2000)).build();
+
+        // 10 percent of the larger heap is 4,000 bytes, and 2,000 are waiting
+        GfLogStore store = store(percentOfHeap(10), largerHeap);
+        store.admit(a);
+        assertSame(b, store.admit(b));
+        assertEquals(0, bodiesSkipped());
+
+        // 2.5 percent of the larger heap is 1,000 bytes
+        store = store(percentOfHeap(2.5), largerHeap);
+        store.admit(a);
+        assertNull(store.admit(b).getRequestBody());
+        assertEquals(1, bodiesSkipped());
+    }
+
+    @Test
+    public void testRowsKeepBodiesWithoutLimit() {
+        // no setting reads as -1; 0 means no limit as well
+        for (AnalyticsSettings settings : List.of(AnalyticsSettings.from(new JsonObject()), percentOfHeap(0))) {
+            GfLogStore store = store(settings);
+            AnalyticsLogContext a = row("a", "x".repeat(2000)).build();
+            AnalyticsLogContext b = row("b", "y".repeat(2000)).build();
+
+            assertSame(a, store.admit(a));
+            assertSame(b, store.admit(b));
+
+            assertEquals("y".repeat(2000), logOf(b).get("request").get("body").asText());
+            assertEquals(4000, pendingBodyBytes());
+            assertEquals(0, bodiesSkipped());
+        }
+    }
+
+    @Test
+    public void testSecuredRowQueuedWithoutBodies() {
+        GfLogStore store = store(AnalyticsSettings.from(new JsonObject()));
+        AnalyticsLogContext secured = row("a", "x".repeat(2000))
+                .responseBody(Buffer.buffer("{}"))
+                .assembledStreamingResponse("{}")
+                .securedApiKey(true)
+                .build();
+
+        AnalyticsLogContext queued = store.admit(secured);
+
+        assertNull(queued.getRequestBody());
+        assertNull(queued.getResponseBody());
+        assertNull(queued.getAssembledStreamingResponse());
+        assertEquals("a", logOf(queued).get("deployment").asText());
+        assertEquals(0, pendingBodyBytes());
+        assertEquals(0, bodiesSkipped());
+
+        // with the writer behind, a secured row is not counted as skipped
+        store = store(percentOfHeap(10));
+        store.admit(row("b", "y".repeat(2000)).build());
+        assertNull(store.admit(secured).getRequestBody());
+        assertEquals(2000, pendingBodyBytes());
+        assertEquals(0, bodiesSkipped());
+    }
+
+    @Test
     public void testSessionFromBackgroundJobRecord() {
         BackgroundJobRecord record = BackgroundJobRecord.builder()
                 .sessionId("session-1")
@@ -754,6 +950,42 @@ public class GfLogStoreTest {
         new GfLogStore(settings(false)).append(context, capturingEntry(buffer));
 
         return ProxyUtil.MAPPER.readTree(buffer.toString()).get("token_usage").toString();
+    }
+
+    private static AnalyticsLogContext.AnalyticsLogContextBuilder row(String deployment, String requestBody) {
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setTotalTokens(7);
+        return AnalyticsLogContext.builder()
+                .deploymentName(deployment)
+                .traceId("trace-" + deployment)
+                .tokenUsage(tokenUsage)
+                .requestBody(Buffer.buffer(requestBody))
+                .responseStatusCode(200);
+    }
+
+    private static AnalyticsSettings percentOfHeap(double maxPendingBodyHeapPercent) {
+        return AnalyticsSettings.from(new JsonObject().put("maxPendingBodyHeapPercent", maxPendingBodyHeapPercent));
+    }
+
+    /**
+     * On a heap of {@value #HEAP_BYTES} bytes, so that 10 percent is a limit of 1,000 bytes.
+     */
+    private static GfLogStore store(AnalyticsSettings settings) {
+        return store(settings, HEAP_BYTES);
+    }
+
+    private static GfLogStore store(AnalyticsSettings settings, long maxHeapBytes) {
+        // the global registry keeps the first gauge registered under a name, which stays bound to an earlier store
+        Metrics.globalRegistry.find(PENDING_BODY_BYTES).meters().forEach(Metrics.globalRegistry::remove);
+        return new GfLogStore(settings, maxHeapBytes);
+    }
+
+    private long pendingBodyBytes() {
+        return (long) meters.get(PENDING_BODY_BYTES).gauge().value();
+    }
+
+    private long bodiesSkipped() {
+        return (long) meters.get(BODIES_SKIPPED).counter().count();
     }
 
     private static AnalyticsLogContext mockHeaders(Map<String, List<String>> headers) {
