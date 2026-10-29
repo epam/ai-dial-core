@@ -551,6 +551,197 @@ public class OrgUnitApiTest extends ResourceBaseTest {
         JsonObject editor = roles.getJsonObject(1);
         assertEquals("Changes files only", editor.getString("description"));
         assertEquals(1, editor.getJsonArray("permissions").size(), editor.encode());
+        Response auditor = assign(ORG + "/Acme",
+                "{\"roleName\": \"auditor\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"email\", \"function\": \"EQUAL\", \"targets\": [\"jane@acme.example\"]}}");
+        assertEquals(200, auditor.status(), auditor.body());
+    }
+
+    @Test
+    void testRoleAssignments() {
+        addReadRule("public/Acme/", "Manager");
+        assertEquals(200, create(ORG, "Acme").status());
+        assertEquals(200, create(ORG + "/Acme", "Risk").status());
+
+        String editors = "{\"roleName\": \"editor\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"groups\", \"function\": \"EQUAL\", \"targets\": [\"risk-leads\"]}}";
+        Response added = assign(ORG + "/Acme/Risk", editors);
+        assertEquals(200, added.status(), added.body());
+        JsonObject editor = new JsonObject(added.body());
+        assertEquals("editor", editor.getString("roleName"));
+        assertEquals(new JsonObject().put("type", "claimsPredicate").put("source", "groups").put("function", "EQUAL")
+                        .put("targets", new JsonArray().add("risk-leads")),
+                editor.getJsonObject("subject"));
+        Response again = assign(ORG + "/Acme/Risk", editors);
+        assertEquals(200, again.status(), again.body());
+        assertEquals(editor.getString("id"), new JsonObject(again.body()).getString("id"));
+        Response dotted = assign(ORG + "/Acme/Risk", editors.replace("\"groups\"", "\"realm_access.roles\""));
+        assertEquals(200, dotted.status(), dotted.body());
+        assertEquals(200, send(HttpMethod.DELETE, "/v1/org-units/" + ORG + "/Acme/Risk/role-assignments/" + new JsonObject(dotted.body()).getString("id"),
+                null, null, "authorization", "admin").status());
+
+        Response admin = assign(ORG + "/Acme/Risk",
+                "{\"roleName\": \"admin\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"email\", \"function\": \"EQUAL\", \"targets\": [\"jane@acme.example\"]}}");
+        assertEquals(200, admin.status(), admin.body());
+
+        JsonArray items = assignments(ORG + "/Acme/Risk");
+        assertEquals(List.of("editor", "admin"), List.of(items.getJsonObject(0).getString("roleName"), items.getJsonObject(1).getString("roleName")));
+        assertTrue(assignments(ORG + "/Acme").isEmpty());
+
+        String editorUrl = "/v1/org-units/" + ORG + "/Acme/Risk/role-assignments/" + editor.getString("id");
+        Response removed = send(HttpMethod.DELETE, editorUrl, null, null, "authorization", "admin");
+        assertEquals(200, removed.status(), removed.body());
+        assertEquals(editor.getString("id"), new JsonObject(removed.body()).getString("removed"));
+        assertEquals("admin", assignments(ORG + "/Acme/Risk").getJsonObject(0).getString("roleName"));
+        assertEquals(1, assignments(ORG + "/Acme/Risk").size());
+        assertEquals(404, send(HttpMethod.DELETE, editorUrl, null, null, "authorization", "admin").status());
+
+        assertEquals(200, remove(ORG + "/Acme/Risk", false).status());
+        assertEquals(404, send(HttpMethod.GET, "/v1/org-units/" + ORG + "/Acme/Risk/role-assignments", null, null, "authorization", "admin").status());
+        assertEquals(200, create(ORG + "/Acme", "Risk").status());
+        assertTrue(assignments(ORG + "/Acme/Risk").isEmpty());
+    }
+
+    @Test
+    void testUnitDocumentsAreNeverVisibleAsFiles() {
+        addReadRule("public/Acme/", "Manager");
+        assertEquals(200, create(ORG, "Acme").status());
+        assertEquals(200, assign(ORG + "/Acme",
+                "{\"roleName\": \"admin\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"email\", \"function\": \"EQUAL\", "
+                        + "\"targets\": [\"jane@acme.example\"]}}").status());
+        String id = read(ORG + "/Acme", false).getString("id");
+        ResourceDescriptor policy = ResourceDescriptorFactory.fromDecoded(ResourceTypes.ORG_UNITS, ResourceDescriptor.PUBLIC_BUCKET,
+                ResourceDescriptor.PUBLIC_LOCATION, id);
+        assertTrue(dial.getProxy().getResourceService().getResource(policy).contains("jane@acme.example"));
+
+        for (String document : List.of("org_units/public/" + id, "org_units/public/units")) {
+            for (String caller : List.of("admin", "user")) {
+                assertEquals(404, send(HttpMethod.GET, "/v1/" + document, null, null, "authorization", caller).status(), document);
+                assertEquals(404, send(HttpMethod.GET, "/v1/metadata/" + document, null, null, "authorization", caller).status(), document);
+                assertEquals(404, send(HttpMethod.DELETE, "/v1/" + document, null, null, "authorization", caller).status(), document);
+                assertEquals(400, move(document, "files/public/Acme/stolen.json").status(), document);
+            }
+        }
+        assertEquals(List.of(".dial_folder"), itemNames("files/public/Acme/"));
+        assertTrue(!itemNames("files/public/").contains("org_units"));
+        assertTrue(dial.getProxy().getResourceService().getResource(policy).contains("jane@acme.example"));
+    }
+
+    @Test
+    void testRoleAssignmentRefusals() {
+        addReadRule("public/Acme/", "Manager");
+        assertEquals(200, create(ORG, "Acme").status());
+        String valid = "{\"roleName\": \"admin\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"email\", \"function\": \"EQUAL\", "
+                + "\"targets\": [\"jane@acme.example\"]}}";
+
+        assertEquals(400, assign(ORG + "/Acme", valid.replace("\"admin\"", "\"owner\"")).status());
+        Response approver = assign(ORG + "/Acme", valid.replace("\"admin\"", "\"approver\""));
+        assertEquals(400, approver.status());
+        assertEquals("roleName is one of admin, editor, viewer, member", approver.body());
+        assertEquals(400, assign(ORG + "/Acme", "{\"roleName\": \"admin\", \"subject\": {\"type\": \"user\", \"id\": \"jane\"}}").status());
+        assertEquals(400, assign(ORG + "/Acme", "{\"roleName\": \"admin\", \"subject\": {\"type\": \"any\"}}").status());
+        assertEquals(400, assign(ORG + "/Acme", "{\"roleName\": \"admin\"}").status());
+        assertEquals(400, assign(ORG + "/Acme", valid.replace("jane@acme.example", " ")).status());
+        assertEquals(400, assign(ORG + "/Acme", valid.replace("[\"jane@acme.example\"]", "[]")).status());
+        assertEquals(400, assign(ORG + "/Acme", valid.replace(", \"targets\": [\"jane@acme.example\"]", "")).status());
+        for (String function : List.of("CONTAIN", "REGEX", "TRUE", "FALSE", "LIKE")) {
+            assertEquals(400, assign(ORG + "/Acme", valid.replace("\"EQUAL\"", "\"" + function + "\"")).status(), function);
+        }
+        assertEquals(400, assign(ORG + "/Acme", valid.replace("\"function\": \"EQUAL\", ", "")).status());
+        assertEquals(400, assign(ORG + "/Acme", valid.replace("\"source\": \"email\", ", "")).status());
+        for (String source : List.of("$.email", "$[?(@.email =~ /^((.+)+)+X$/)]", "email[0]", "a b", ".email", "email.", "x".repeat(65))) {
+            assertEquals(400, assign(ORG + "/Acme", valid.replace("\"email\"", "\"" + source + "\"")).status(), source);
+        }
+        assertEquals(400, assign(ORG + "/Acme", valid.replace("\"source\"", "\"issuer\": \"https://idp\", \"source\"")).status());
+        assertEquals(400, assign(ORG + "/Acme", "not json").status());
+        assertEquals(400, assign(ORG, valid).status());
+        assertEquals(404, assign(ORG + "/Missing", valid).status());
+        assertEquals(400, send(HttpMethod.GET, "/v1/org-units/public/Acme%2FRisk/role-assignments", null, null, "authorization", "admin").status());
+
+        assertEquals(403, send(HttpMethod.POST, "/v1/org-units/" + ORG + "/Acme/role-assignments", null, valid, "authorization", "user").status());
+        assertEquals(403, send(HttpMethod.GET, "/v1/org-units/" + ORG + "/Acme/role-assignments", null, null, "authorization", "user").status());
+        assertEquals(403, send(HttpMethod.DELETE, "/v1/org-units/" + ORG + "/Acme/role-assignments/x", null, null, "authorization", "user").status());
+        assertTrue(assignments(ORG + "/Acme").isEmpty());
+    }
+
+    @Test
+    void testUnitAdminsManageTheirOwnUnitOnly() {
+        addReadRule("public/Acme/", "Manager");
+        assertEquals(200, create(ORG, "Acme").status());
+        assertEquals(200, create(ORG + "/Acme", "Risk").status());
+        assertEquals(200, assign(ORG + "/Acme", roleFor("admin", "boss")).status());
+        assertEquals(200, assign(ORG + "/Acme", roleFor("editor", "ed")).status());
+
+        String acme = "/v1/org-units/" + ORG + "/Acme";
+        assertEquals(200, send(HttpMethod.GET, acme + "/roles", null, null, "authorization", "azp:boss").status());
+        assertEquals(200, send(HttpMethod.GET, acme + "/role-assignments", null, null, "authorization", "azp:boss").status());
+        Response added = send(HttpMethod.POST, acme + "/role-assignments", null, roleFor("admin", "new"), "authorization", "azp:boss");
+        assertEquals(200, added.status(), added.body());
+        String id = new JsonObject(added.body()).getString("id");
+        assertEquals(400, send(HttpMethod.POST, acme + "/role-assignments", null, roleFor("owner", "new"), "authorization", "azp:boss").status());
+        for (String body : List.of("{}", roleFor("editor", "new").replace("\"editor\"", "null"), "{\"roleName\": \"editor\"}")) {
+            Response invalid = send(HttpMethod.POST, acme + "/role-assignments", null, body, "authorization", "azp:boss");
+            assertEquals(400, invalid.status(), body + " " + invalid.body());
+        }
+        assertEquals(200, send(HttpMethod.DELETE, acme + "/role-assignments/" + id, null, null, "authorization", "azp:boss").status());
+        assertEquals(404, send(HttpMethod.DELETE, acme + "/role-assignments/" + id, null, null, "authorization", "azp:boss").status());
+
+        String risk = acme + "/Risk";
+        assertEquals(403, send(HttpMethod.GET, risk + "/role-assignments", null, null, "authorization", "azp:boss").status());
+        assertEquals(403, send(HttpMethod.POST, risk + "/role-assignments", null, roleFor("editor", "new"), "authorization", "azp:boss").status());
+        assertEquals(403, send(HttpMethod.GET, risk + "/roles", null, null, "authorization", "azp:boss").status());
+        assertEquals(403, send(HttpMethod.GET, acme + "/Missing/role-assignments", null, null, "authorization", "azp:boss").status());
+        assertEquals(403, send(HttpMethod.GET, "/v1/org-units/elsewhere/Acme/role-assignments", null, null, "authorization", "azp:boss").status());
+
+        for (String caller : List.of("azp:ed", "azp:other", "user")) {
+            assertEquals(403, send(HttpMethod.GET, acme + "/role-assignments", null, null, "authorization", caller).status(), caller);
+            assertEquals(403, send(HttpMethod.GET, acme + "/roles", null, null, "authorization", caller).status(), caller);
+            assertEquals(403, send(HttpMethod.POST, acme + "/role-assignments", null, "not json", "authorization", caller).status(), caller);
+            assertEquals(403, send(HttpMethod.DELETE, acme + "/role-assignments/" + assignments(ORG + "/Acme").getJsonObject(0).getString("id"),
+                    null, null, "authorization", caller).status(), caller);
+        }
+        assertEquals(2, assignments(ORG + "/Acme").size());
+
+        String own = assignments(ORG + "/Acme").getJsonObject(0).getString("id");
+        assertEquals(200, send(HttpMethod.DELETE, acme + "/role-assignments/" + own, null, null, "authorization", "azp:boss").status());
+        assertEquals(403, send(HttpMethod.GET, acme + "/role-assignments", null, null, "authorization", "azp:boss").status());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/org-unit-roles.json")
+    void testUnitManagersGiveAndTakeOnlyWhatTheyHold() {
+        addReadRule("public/Acme/", "Manager");
+        assertEquals(200, create(ORG, "Acme").status());
+        assertEquals(200, assign(ORG + "/Acme", roleFor("manager", "lead")).status());
+        assertEquals(200, assign(ORG + "/Acme", roleFor("admin", "boss")).status());
+        String bossId = assignments(ORG + "/Acme").getJsonObject(1).getString("id");
+
+        String url = "/v1/org-units/" + ORG + "/Acme/role-assignments";
+        assertEquals(200, send(HttpMethod.POST, url, null, roleFor("editor", "ed"), "authorization", "azp:lead").status());
+        assertEquals(200, send(HttpMethod.POST, url, null, roleFor("manager", "lead2"), "authorization", "azp:lead").status());
+        for (String role : List.of("admin", "auditor")) {
+            Response refused = send(HttpMethod.POST, url, null, roleFor(role, "x"), "authorization", "azp:lead");
+            assertEquals(403, refused.status(), role);
+            assertEquals("You can give only roles whose permissions you hold in this unit", refused.body());
+        }
+        Response kept = send(HttpMethod.DELETE, url + "/" + bossId, null, null, "authorization", "azp:lead");
+        assertEquals(403, kept.status(), kept.body());
+        assertEquals(4, assignments(ORG + "/Acme").size());
+        assertEquals(200, send(HttpMethod.POST, url, null, roleFor("auditor", "x"), "authorization", "azp:boss").status());
+    }
+
+    private Response assign(String path, String body) {
+        return send(HttpMethod.POST, "/v1/org-units/" + path.replace(" ", "%20") + "/role-assignments", null, body, "authorization", "admin");
+    }
+
+    private static String roleFor(String roleName, String azp) {
+        return "{\"roleName\": \"%s\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"azp\", \"function\": \"EQUAL\", \"targets\": [\"%s\"]}}"
+                .formatted(roleName, azp);
+    }
+
+    private JsonArray assignments(String path) {
+        Response response = send(HttpMethod.GET, "/v1/org-units/" + path.replace(" ", "%20") + "/role-assignments", null, null,
+                "authorization", "admin");
+        assertEquals(200, response.status(), response.body());
+        return new JsonObject(response.body()).getJsonArray("items");
     }
 
     private JsonArray roles(String path) {

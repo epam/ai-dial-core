@@ -1,8 +1,12 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.data.orgunit.OrgUnit;
 import com.epam.aidial.core.server.data.orgunit.OrgUnitData;
 import com.epam.aidial.core.server.data.orgunit.OrgUnitList;
+import com.epam.aidial.core.server.data.orgunit.RoleAssignment;
+import com.epam.aidial.core.server.data.orgunit.Subject;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -19,12 +23,15 @@ import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -37,15 +44,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class OrgUnitServiceTest {
+
+    private static final OrgUnitRoles ROLES = OrgUnitRoles.of(new Config());
+    private static final BiPredicate<List<RoleAssignment>, String> ANYONE = (assignments, roleName) -> true;
 
     private static final String UNITS = """
             {"units": {
@@ -504,6 +518,314 @@ class OrgUnitServiceTest {
         assertNull(written.get());
     }
 
+    @Test
+    void testAssignmentsComeFromTheUnitsPolicy() {
+        FakeOrgUnitStorage storage = new FakeOrgUnitStorage(Map.of("units", UNITS, "b", """
+                {"roleAssignments": [{"id": "a1", "roleName": "approver",
+                  "subject": {"type": "claimsPredicate", "source": "groups", "function": "EQUAL", "targets": ["basel-leads"]}}]}
+                """));
+        OrgUnitService service = service(storage);
+        List<String> basel = List.of("public", "Risk", "US Risk", "Basel");
+
+        assertEquals(List.of(new RoleAssignment("a1", "approver", new Subject.ClaimsPredicate("groups", Rule.Function.EQUAL, List.of("basel-leads")))),
+                service.listRoleAssignments(basel));
+        assertEquals(List.of(), service.listRoleAssignments(List.of("public", "Risk")));
+    }
+
+    @Test
+    void testLegacyAssignmentsInTheTreeAreIgnored() {
+        String tree = """
+                {"units": {"public/Acme/": {"id": "a", "roleAssignments": [{"id": "r1", "roleName": "admin",
+                  "subject": {"type": "claimsPredicate", "source": "email", "function": "EQUAL", "targets": ["bob@acme.com"]}}]}}}
+                """;
+        OrgUnitService service = service(new FakeOrgUnitStorage(Map.of("units", tree)));
+        assertEquals(List.of(), service.listRoleAssignments(List.of("public", "Acme")));
+    }
+
+    @Test
+    void testRoleAssignmentWritesTouchOnlyTheUnitsPolicy() throws Exception {
+        String tree = "{\"units\": {\"public/Acme/\": {\"id\": \"a\", \"displayName\": \"Acme\"}, \"public/Beta/\": {\"id\": \"b\"}}}";
+        String policy = """
+                {"version": 3, "roleAssignments": [
+                  {"id": "r1", "roleName": "approver", "subject": {"type": "group", "name": "leads"}},
+                  {"id": "r2", "roleName": "admin", "subject": {"type": "claimsPredicate", "source": "email", "function": "EQUAL", "targets": ["bob@acme.com"]}}]}
+                """;
+        String beta = "{\"roleAssignments\": []}";
+        FakeOrgUnitStorage storage = new FakeOrgUnitStorage(Map.of("units", tree, "a", policy, "b", beta));
+        OrgUnitService service = service(storage);
+        Subject leads = new Subject.ClaimsPredicate("groups", Rule.Function.EQUAL, List.of("acme-leads"));
+
+        RoleAssignment added = service.addRoleAssignment(List.of("public", "Acme"), "editor", leads, ROLES, ANYONE);
+
+        assertEquals(new RoleAssignment("id", "editor", leads), added);
+        assertEquals(tree, storage.documents.get("units"));
+        assertEquals(beta, storage.documents.get("b"));
+        JsonNode stored = ProxyUtil.MAPPER.readTree(storage.documents.get("a"));
+        JsonNode before = ProxyUtil.MAPPER.readTree(policy);
+        assertEquals(3, stored.get("version").intValue());
+        assertEquals(before.get("roleAssignments").get(0), stored.get("roleAssignments").get(0));
+        assertEquals(before.get("roleAssignments").get(1), stored.get("roleAssignments").get(1));
+        assertEquals(ProxyUtil.MAPPER.valueToTree(added), stored.get("roleAssignments").get(2));
+
+        List<String> asked = new ArrayList<>();
+        HttpException refused = assertThrows(HttpException.class, () -> service.removeRoleAssignment(List.of("public", "Acme"), "r2", (assignments, roleName) -> {
+            asked.add(roleName);
+            return false;
+        }));
+        assertEquals(HttpStatus.FORBIDDEN, refused.getStatus());
+        assertEquals(List.of("admin"), asked);
+        assertEquals(3, ProxyUtil.MAPPER.readTree(storage.documents.get("a")).get("roleAssignments").size());
+
+        service.removeRoleAssignment(List.of("public", "Acme"), "r1", (assignments, roleName) -> true);
+        stored = ProxyUtil.MAPPER.readTree(storage.documents.get("a"));
+        assertEquals(List.of("r2", "id"), List.of(stored.get("roleAssignments").get(0).get("id").textValue(),
+                stored.get("roleAssignments").get(1).get("id").textValue()));
+        assertThrows(ResourceNotFoundException.class, () -> service.removeRoleAssignment(List.of("public", "Acme"), "r9", (assignments, roleName) -> true));
+
+        service.addRoleAssignment(List.of("public", "Beta"), "admin", leads, ROLES, ANYONE);
+        assertEquals(1, ProxyUtil.MAPPER.readTree(storage.documents.get("b")).get("roleAssignments").size());
+        assertEquals(tree, storage.documents.get("units"));
+    }
+
+    @Test
+    void testFirstAssignmentCreatesThePolicy() {
+        FakeOrgUnitStorage storage = new FakeOrgUnitStorage(Map.of("units", "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}"));
+        OrgUnitService service = service(storage);
+        Subject bob = new Subject.ClaimsPredicate("email", Rule.Function.EQUAL, List.of("bob@acme.com"));
+
+        assertEquals(List.of(), service.listRoleAssignments(List.of("public", "Acme")));
+        service.addRoleAssignment(List.of("public", "Acme"), "admin", bob, ROLES, ANYONE);
+        assertEquals(List.of("admin"), service.listRoleAssignments(List.of("public", "Acme")).stream().map(RoleAssignment::roleName).toList());
+    }
+
+    @Test
+    void testSameRoleTwiceWritesNothing() throws Exception {
+        String policy = """
+                {"roleAssignments": [
+                  {"id": "r2", "roleName": "admin", "subject": {"type": "claimsPredicate", "source": "email", "function": "EQUAL", "targets": ["bob@acme.com"]}}]}
+                """;
+        FakeOrgUnitStorage storage = new FakeOrgUnitStorage(Map.of("units", "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", "a", policy));
+        OrgUnitService service = service(storage);
+        Subject bob = new Subject.ClaimsPredicate("email", Rule.Function.EQUAL, List.of("bob@acme.com"));
+
+        assertEquals("r2", service.addRoleAssignment(List.of("public", "Acme"), "admin", bob, ROLES, ANYONE).id());
+        assertEquals(policy, storage.documents.get("a"));
+
+        assertEquals("id", service.addRoleAssignment(List.of("public", "Acme"), "editor", bob, ROLES, ANYONE).id());
+        assertEquals(2, ProxyUtil.MAPPER.readTree(storage.documents.get("a")).get("roleAssignments").size());
+    }
+
+    @Test
+    void testUnitsSharingOnePolicyIdBothKeepItsAssignments() {
+        String tree = "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}, \"public/Beta/\": {\"id\": \"a\"}}}";
+        String policy = "{\"roleAssignments\": [{\"id\": \"r1\", \"roleName\": \"admin\", "
+                + "\"subject\": {\"type\": \"claimsPredicate\", \"source\": \"email\", \"function\": \"EQUAL\", \"targets\": [\"bob@acme.com\"]}}]}";
+        OrgUnitService service = service(new FakeOrgUnitStorage(Map.of("units", tree, "a", policy)));
+
+        Map<String, List<RoleAssignment>> all = service.roleAssignmentsOfAll(service.getUnitList().units());
+
+        assertEquals(Set.of("public/Acme/", "public/Beta/"), all.keySet());
+        assertEquals(all.get("public/Acme/"), all.get("public/Beta/"));
+    }
+
+    @Test
+    void testChangesAreDecidedOnTheAssignmentsAsWritten() {
+        String policy = """
+                {"roleAssignments": [
+                  {"id": "r1", "roleName": "admin", "subject": {"type": "claimsPredicate", "source": "email", "function": "EQUAL", "targets": ["bob@acme.com"]}},
+                  {"id": "r2", "roleName": "editor", "subject": {"type": "claimsPredicate", "source": "email", "function": "EQUAL", "targets": ["eve@acme.com"]}}]}
+                """;
+        String demoted = policy.replace("\"admin\"", "\"viewer\"");
+        FakeOrgUnitStorage storage = new FakeOrgUnitStorage(Map.of("units", "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", "a", policy));
+        OrgUnitService service = service(storage);
+        List<String> acme = List.of("public", "Acme");
+        Subject bob = new Subject.ClaimsPredicate("email", Rule.Function.EQUAL, List.of("bob@acme.com"));
+        BiPredicate<List<RoleAssignment>, String> bobIsAdmin = (assignments, roleName) ->
+                assignments.stream().anyMatch(assignment -> assignment.roleName().equals("admin") && assignment.subject().equals(bob));
+        storage.beforeWrite = () -> storage.documents.put("a", demoted);
+
+        assertThrows(HttpException.class, () -> service.addRoleAssignment(acme, "admin", bob, ROLES, bobIsAdmin));
+        assertThrows(HttpException.class, () -> service.removeRoleAssignment(acme, "r2", bobIsAdmin));
+        assertEquals(demoted, storage.documents.get("a"));
+    }
+
+    @Test
+    void testSubjectsMatchingTheSameCallersAreOneAssignment() {
+        FakeOrgUnitStorage storage = new FakeOrgUnitStorage(Map.of("units", "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}"));
+        OrgUnitService service = service(storage);
+        List<String> acme = List.of("public", "Acme");
+
+        RoleAssignment first = service.addRoleAssignment(acme, "admin",
+                new Subject.ClaimsPredicate("groups", Rule.Function.EQUAL, List.of("Leads", "ops")), ROLES, ANYONE);
+        assertEquals(first, service.addRoleAssignment(acme, "admin",
+                new Subject.ClaimsPredicate("groups", Rule.Function.EQUAL, List.of("OPS", "leads")), ROLES, ANYONE));
+        assertEquals(1, service.listRoleAssignments(acme).size());
+
+        service.addRoleAssignment(acme, "admin", new Subject.ClaimsPredicate("roles", Rule.Function.EQUAL, List.of("leads", "ops")), ROLES, ANYONE);
+        service.addRoleAssignment(acme, "admin", new Subject.ClaimsPredicate("groups", Rule.Function.EQUAL, List.of("leads")), ROLES, ANYONE);
+        assertEquals(3, service.listRoleAssignments(acme).size(), "another claim or another set of values is another subject");
+
+        // String.toLowerCase turns the dotted capital I into two characters; matching compares character by character
+        service.addRoleAssignment(acme, "editor", new Subject.ClaimsPredicate("email", Rule.Function.EQUAL, List.of(Character.toString(0x130) + "x")), ROLES, ANYONE);
+        service.addRoleAssignment(acme, "editor", new Subject.ClaimsPredicate("email", Rule.Function.EQUAL, List.of("i" + Character.toString(0x307) + "x")), ROLES, ANYONE);
+        assertEquals(5, service.listRoleAssignments(acme).size(), "values that match different callers stay apart");
+    }
+
+    @Test
+    void testOtherNodesSeeAssignmentChanges() {
+        FakeOrgUnitStorage storage = new FakeOrgUnitStorage(Map.of("units", "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}"));
+        OrgUnitService writer = service(storage);
+        OrgUnitService reader = service(storage);
+        List<String> acme = List.of("public", "Acme");
+        Subject bob = new Subject.ClaimsPredicate("email", Rule.Function.EQUAL, List.of("bob@acme.com"));
+
+        assertEquals(List.of(), reader.listRoleAssignments(acme));
+        writer.addRoleAssignment(acme, "admin", bob, ROLES, ANYONE);
+        assertEquals(List.of("admin"), reader.listRoleAssignments(acme).stream().map(RoleAssignment::roleName).toList());
+        writer.removeRoleAssignment(acme, "id", (assignments, roleName) -> true);
+        assertEquals(List.of(), reader.listRoleAssignments(acme));
+    }
+
+    @Test
+    void testPoliciesNoUnitNamesAreNeverRead() {
+        String orphan = "{\"roleAssignments\": [{\"id\": \"r1\", \"roleName\": \"admin\", "
+                + "\"subject\": {\"type\": \"claimsPredicate\", \"source\": \"email\", \"function\": \"EQUAL\", \"targets\": [\"bob@acme.com\"]}}]}";
+        FakeOrgUnitStorage storage = new FakeOrgUnitStorage(Map.of("units", "{\"units\": {}}", "old", orphan));
+        OrgUnitService service = service(storage);
+
+        service.create(List.of("public"), "Acme", null, "admin");
+
+        assertEquals(List.of(), service.listRoleAssignments(List.of("public", "Acme")));
+        assertEquals(List.of(), service.roleAssignmentsAt(List.of("public", "Acme")));
+    }
+
+    @Test
+    void testEmptyUnitWithAnUnreadablePolicyCanBeDeleted() {
+        FakeOrgUnitStorage storage = new FakeOrgUnitStorage(Map.of("units", "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", "a", "{not json"));
+        OrgUnitService service = service(storage);
+
+        assertThrows(IllegalStateException.class, () -> service.listRoleAssignments(List.of("public", "Acme")));
+        assertEquals(List.of("public/Acme"), service.delete(List.of("public", "Acme"), false));
+        assertEquals(Set.of("units"), storage.documents.keySet());
+    }
+
+    @Test
+    void testCorruptPolicyGrantsNothingInItsUnitOnly() {
+        String tree = "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}, \"public/Beta/\": {\"id\": \"b\"}}}";
+        String good = "{\"roleAssignments\": [{\"id\": \"r1\", \"roleName\": \"admin\", "
+                + "\"subject\": {\"type\": \"claimsPredicate\", \"source\": \"email\", \"function\": \"EQUAL\", \"targets\": [\"bob@acme.com\"]}}]}";
+        Subject bob = new Subject.ClaimsPredicate("email", Rule.Function.EQUAL, List.of("bob@acme.com"));
+        for (String corrupt : List.of("{not json", "[]", "\"text\"", "{\"roleAssignments\": {}}", "{}{}")) {
+            FakeOrgUnitStorage storage = new FakeOrgUnitStorage(Map.of("units", tree, "a", corrupt, "b", good));
+            OrgUnitService service = service(storage);
+            OrgUnitList list = service.getUnitList();
+
+            assertThrows(IllegalStateException.class, () -> service.listRoleAssignments(List.of("public", "Acme")), corrupt);
+            assertThrows(IllegalStateException.class, () -> service.addRoleAssignment(List.of("public", "Acme"), "admin", bob, ROLES, ANYONE), corrupt);
+            assertEquals(corrupt, storage.documents.get("a"));
+            assertEquals(List.of(), service.roleAssignmentsOf("public/Acme/", list.units().get("public/Acme/")), corrupt);
+            assertEquals(1, service.roleAssignmentsOf("public/Beta/", list.units().get("public/Beta/")).size(), corrupt);
+            Map<String, List<RoleAssignment>> all = service.roleAssignmentsOfAll(list.units());
+            assertEquals(Set.of("public/Beta/"), all.keySet(), corrupt);
+        }
+    }
+
+    @Test
+    void testAllPoliciesAreReadInOneBatch() {
+        String tree = "{\"units\": {\"public/\": {\"id\": \"legacy\"}, \"public/Acme/\": {\"id\": \"a\"}, "
+                + "\"public/Beta/\": {\"id\": \"b\"}, \"public/Gamma/\": {\"id\": \"g\"}}}";
+        FakeOrgUnitStorage storage = new FakeOrgUnitStorage(Map.of("units", tree, "legacy", "{\"roleAssignments\": []}",
+                "a", "{\"roleAssignments\": []}", "b", "{\"roleAssignments\": []}"));
+        OrgUnitService service = service(storage);
+        OrgUnitList list = service.getUnitList();
+        clearInvocations(storage.resources);
+
+        assertEquals(Set.of("public/Acme/", "public/Beta/"), service.roleAssignmentsOfAll(list.units()).keySet());
+        verify(storage.resources, times(1)).load(anyList(), anyList());
+        verify(storage.resources, never()).getResourceWithMetadata(any(), any());
+    }
+
+    @Test
+    void testDeleteRemovesTreeEntriesThenPolicies() {
+        String tree = "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}, \"public/Acme/Risk/\": {\"id\": \"r\"}, "
+                + "\"public/Beta/\": {\"id\": \"b\"}}}";
+        FakeOrgUnitStorage storage = new FakeOrgUnitStorage(Map.of("units", tree, "a", "{}", "r", "{}", "b", "{}"));
+        OrgUnitService service = service(storage);
+
+        service.delete(List.of("public", "Acme"), true);
+
+        assertEquals(Set.of("units", "b"), storage.documents.keySet());
+        InOrder order = inOrder(storage.resources);
+        order.verify(storage.resources).computeResource(argThat(descriptor -> descriptor.getName().equals("units")), any(Function.class));
+        order.verify(storage.resources, times(2)).deleteResource(any(), any());
+    }
+
+    @Test
+    void testUnusableIdsHoldNoAssignments() {
+        String tree = "{\"units\": {\"public/Acme/\": {\"id\": \"units\"}, \"public/Beta/\": {\"id\": \"../x\"}, "
+                + "\"public/Gamma/\": {\"displayName\": \"no id\"}}}";
+        FakeOrgUnitStorage storage = new FakeOrgUnitStorage(Map.of("units", tree));
+        OrgUnitService service = service(storage);
+        Subject bob = new Subject.ClaimsPredicate("email", Rule.Function.EQUAL, List.of("bob@acme.com"));
+        OrgUnitList list = service.getUnitList();
+
+        for (String unit : List.of("Acme", "Beta", "Gamma")) {
+            assertThrows(IllegalStateException.class, () -> service.listRoleAssignments(List.of("public", unit)), unit);
+            assertThrows(IllegalStateException.class, () -> service.addRoleAssignment(List.of("public", unit), "admin", bob, ROLES, ANYONE), unit);
+            assertEquals(List.of(), service.roleAssignmentsOf("public/" + unit + "/", list.units().get("public/" + unit + "/")), unit);
+        }
+        assertEquals(Set.of("units"), storage.documents.keySet());
+        assertEquals(tree, storage.documents.get("units"));
+        verify(storage.resources, never()).computeResource(any(), any(Function.class));
+    }
+
+    @Test
+    void testRoleAssignmentServiceRefusals() {
+        AtomicReference<String> written = new AtomicReference<>();
+        OrgUnitService service = writable("{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", written);
+        List<String> acme = List.of("public", "Acme");
+        Subject jane = new Subject.ClaimsPredicate("email", Rule.Function.EQUAL, List.of("jane@acme.com"));
+
+        assertThrows(IllegalArgumentException.class, () -> service.addRoleAssignment(acme, "owner", jane, ROLES, ANYONE));
+        assertThrows(IllegalArgumentException.class, () -> service.addRoleAssignment(acme, null, jane, ROLES, ANYONE));
+        assertThrows(IllegalArgumentException.class, () -> service.addRoleAssignment(acme, "admin", null, ROLES, ANYONE));
+        assertThrows(IllegalArgumentException.class, () -> service.addRoleAssignment(acme, "admin", new Subject.User("jane"), ROLES, ANYONE));
+        assertThrows(IllegalArgumentException.class, () -> service.addRoleAssignment(acme, "admin", new Subject.Any(), ROLES, ANYONE));
+        assertThrows(IllegalArgumentException.class, () -> service.addRoleAssignment(acme, "admin",
+                new Subject.ClaimsPredicate("groups", Rule.Function.EQUAL, List.of()), ROLES, ANYONE));
+        assertThrows(IllegalArgumentException.class, () -> service.addRoleAssignment(acme, "admin",
+                new Subject.ClaimsPredicate("groups", Rule.Function.EQUAL, null), ROLES, ANYONE));
+        assertThrows(IllegalArgumentException.class, () -> service.addRoleAssignment(acme, "admin",
+                new Subject.ClaimsPredicate("$[?(@.email =~ /^((.+)+)+X$/)]", Rule.Function.EQUAL, List.of("x")), ROLES, ANYONE));
+        assertThrows(IllegalArgumentException.class, () -> service.addRoleAssignment(acme, "admin",
+                new Subject.ClaimsPredicate("a b", Rule.Function.EQUAL, List.of("jane@acme.com")), ROLES, ANYONE));
+        assertThrows(IllegalArgumentException.class, () -> service.addRoleAssignment(acme, "admin",
+                new Subject.ClaimsPredicate("groups", Rule.Function.EQUAL, List.of("ok", "x".repeat(257))), ROLES, ANYONE));
+        assertThrows(IllegalArgumentException.class, () -> service.addRoleAssignment(acme, "admin",
+                new Subject.ClaimsPredicate("email", Rule.Function.EQUAL, List.of("jane\n@acme.com")), ROLES, ANYONE));
+        assertThrows(IllegalArgumentException.class, () -> service.addRoleAssignment(List.of("public"), "admin", jane, ROLES, ANYONE));
+        assertThrows(IllegalArgumentException.class, () -> service.listRoleAssignments(List.of("public")));
+        assertThrows(ResourceNotFoundException.class, () -> service.addRoleAssignment(List.of("public", "Risk"), "admin", jane, ROLES, ANYONE));
+        assertThrows(ResourceNotFoundException.class, () -> service.listRoleAssignments(List.of("public", "Risk")));
+        assertEquals(null, written.get());
+    }
+
+    @Test
+    void testUnreadableAssignmentGrantsNothingButTheUnitStays() {
+        FakeOrgUnitStorage storage = new FakeOrgUnitStorage(Map.of("units", "{\"units\": {\"public/Acme/\": {\"id\": \"a\"}}}", "a", """
+                {"roleAssignments": [
+                  {"id": "r1", "roleName": "approver", "subject": {"type": "group", "name": "leads"}},
+                  {"id": "r2", "roleName": "admin", "expiresAt": "2027-01-01",
+                    "subject": {"type": "user", "id": "carol@acme.com"}},
+                  null, "text", {}, {"id": "r4", "roleName": "admin"},
+                  {"id": "r3", "roleName": "admin", "subject": {"type": "user", "id": "bob@acme.com"}}]}
+                """));
+        OrgUnitService service = service(storage);
+
+        assertEquals(List.of("r3"), service.listRoleAssignments(List.of("public", "Acme")).stream().map(RoleAssignment::id).toList());
+        assertEquals("public/Acme/", OrgUnitService.ownerOf(service.getUnitList().units(), resource(ResourceTypes.FILE, "Acme/a.pdf")));
+    }
+
     private static OrgUnitService newService(ResourceService resources, RuleService rules, LockService locks, OrgUnitSettings settings,
                                              Supplier<String> ids, LongSupplier clock) {
         ComplexResourceService complexResources = new ComplexResourceService(resources, locks, mock(BlobStorage.class),
@@ -547,6 +869,10 @@ class OrgUnitServiceTest {
         LockService locks = mock(LockService.class);
         when(locks.underBucketLock(any(), any())).thenAnswer(invocation -> ((Supplier<Object>) invocation.getArgument(1)).get());
         return locks;
+    }
+
+    private static OrgUnitService service(FakeOrgUnitStorage storage) {
+        return newService(storage.resources, mock(RuleService.class), locks(), new OrgUnitSettings(true), () -> "id", () -> 0L);
     }
 
     private static OrgUnitService service(String document) {
