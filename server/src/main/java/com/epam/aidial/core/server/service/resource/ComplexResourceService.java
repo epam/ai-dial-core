@@ -10,6 +10,7 @@ import com.epam.aidial.core.storage.data.ComplexResourceItemMetadata;
 import com.epam.aidial.core.storage.data.FileMetadata;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.NodeType;
+import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.data.UserMetadata;
@@ -191,6 +192,7 @@ public class ComplexResourceService {
 
                 try {
                     FolderResourceMarker existing = readMarker(marker, false);
+                    Map<String, FolderResourceMarker.ResourceFileMetadata> before = activeFileMetadata(resource, existing);
                     if (existing == null) {
                         // First creation only: an overwrite of an existing (even `deleting`) marker reuses
                         // its reference, which is keyed by URL, not by version.
@@ -206,8 +208,11 @@ public class ComplexResourceService {
                         fileMetadata.put(relativePath,
                                 new FolderResourceMarker.ResourceFileMetadata(content.length, written.getEtag()));
                     }
-                    return commitMarker(marker, resource, versionId, aggregateEtag(fileMetadata),
+                    String aggregateEtag = commitMarker(marker, resource, versionId, aggregateEtag(fileMetadata),
                             handler.buildMarkerMetadata(files), fileMetadata, existing, author);
+                    publishEvents(resource, isActive(existing) ? ResourceEvent.Action.UPDATE : ResourceEvent.Action.CREATE,
+                            aggregateEtag, before, fileMetadata);
+                    return aggregateEtag;
                 } catch (Exception e) {
                     // Nothing is observable until the marker is committed; drop the orphan version files.
                     deleteVersion(versionFolder(resource, versionId));
@@ -256,6 +261,7 @@ public class ComplexResourceService {
             if (isActive(existing) && !overwrite) {
                 return false;
             }
+            Map<String, FolderResourceMarker.ResourceFileMetadata> before = activeFileMetadata(to, existing);
 
             try {
                 // Mirrors put(): an overwrite of an existing (even `deleting`) marker reuses its
@@ -274,8 +280,10 @@ public class ComplexResourceService {
                                 "Can't copy resource file from: " + sourceFile.getUrl() + " to: " + destFile.getUrl());
                     }
                 }
-                commitMarker(marker, to, versionId, aggregateEtag(fileMetadata), source.getMetadata(),
+                String aggregateEtag = commitMarker(marker, to, versionId, aggregateEtag(fileMetadata), source.getMetadata(),
                         fileMetadata, existing, author);
+                publishEvents(to, isActive(existing) ? ResourceEvent.Action.UPDATE : ResourceEvent.Action.CREATE,
+                        aggregateEtag, before, fileMetadata);
                 return true;
             } catch (Exception e) {
                 // Nothing is observable until the marker is committed; drop the orphan version files.
@@ -420,6 +428,7 @@ public class ComplexResourceService {
 
             Map<String, FolderResourceMarker.ResourceFileMetadata> fileMetadata = currentFileMetadata(resource, current);
             preflight.check(fileMetadata);
+            Map<String, FolderResourceMarker.ResourceFileMetadata> before = new TreeMap<>(fileMetadata);
             try {
                 resourceService.copyFolder(versionFolder(resource, current.getCurrentVersion()),
                         versionFolder(resource, newVersionId), false);
@@ -428,6 +437,7 @@ public class ComplexResourceService {
 
                 String aggregateEtag = commitMarker(marker, resource, newVersionId, aggregateEtag(fileMetadata),
                         metadata, fileMetadata, current, author);
+                publishEvents(resource, ResourceEvent.Action.UPDATE, aggregateEtag, before, fileMetadata);
                 deleteVersion(versionFolder(resource, current.getCurrentVersion()));
                 return aggregateEtag;
             } catch (Exception e) {
@@ -469,6 +479,48 @@ public class ComplexResourceService {
             }
         }
         return fileMetadata;
+    }
+
+    /**
+     * Per-file metadata of the active version of {@code existing}, or an empty map if there is none.
+     */
+    private Map<String, FolderResourceMarker.ResourceFileMetadata> activeFileMetadata(
+            ResourceDescriptor resource, @Nullable FolderResourceMarker existing) {
+        return isActive(existing) ? currentFileMetadata(resource, existing) : Map.of();
+    }
+
+    /**
+     * Publishes events for the logical URLs of a committed change: one for the resource and one for every file
+     * that was created, changed (by etag) or removed. Best effort: the change is already committed.
+     */
+    private void publishEvents(ResourceDescriptor resource, ResourceEvent.Action action, @Nullable String etag,
+                               Map<String, FolderResourceMarker.ResourceFileMetadata> before,
+                               Map<String, FolderResourceMarker.ResourceFileMetadata> after) {
+        long timestamp = System.currentTimeMillis();
+        try {
+            resourceService.publishLogicalEvent(resource, action, timestamp, etag);
+            for (Map.Entry<String, FolderResourceMarker.ResourceFileMetadata> entry : after.entrySet()) {
+                FolderResourceMarker.ResourceFileMetadata old = before.get(entry.getKey());
+                String fileEtag = entry.getValue().getEtag();
+                if (old == null) {
+                    publishFileEvent(resource, entry.getKey(), ResourceEvent.Action.CREATE, timestamp, fileEtag);
+                } else if (!Objects.equals(old.getEtag(), fileEtag)) {
+                    publishFileEvent(resource, entry.getKey(), ResourceEvent.Action.UPDATE, timestamp, fileEtag);
+                }
+            }
+            for (String path : before.keySet()) {
+                if (!after.containsKey(path)) {
+                    publishFileEvent(resource, path, ResourceEvent.Action.DELETE, timestamp, null);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to publish events for resource: {}", resource.getUrl(), e);
+        }
+    }
+
+    private void publishFileEvent(ResourceDescriptor resource, String relativePath, ResourceEvent.Action action,
+                                  long timestamp, @Nullable String etag) {
+        resourceService.publishLogicalEvent(displayFileDescriptor(resource, relativePath, false), action, timestamp, etag);
     }
 
     private String commitMarker(ResourceDescriptor marker, ResourceDescriptor resource, String versionId,
@@ -927,19 +979,23 @@ public class ComplexResourceService {
     public void delete(ResourceDescriptor resource, EtagHeader etag) {
         ResourceDescriptor marker = markerDescriptor(resource);
 
-        resourceService.computeResource(marker, json -> {
-            if (json == null) {
-                throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + resource.getUrl());
-            }
-            FolderResourceMarker current = ProxyUtil.convertToObject(json, FolderResourceMarker.class);
+        // The events are published under the resource lock, like the other commit points, so a concurrent
+        // re-create of the resource cannot publish its CREATE before this DELETE.
+        try (LockService.Lock ignore = resourceService.lockResource(marker)) {
+            FolderResourceMarker current = readMarker(marker, false);
             if (!isActive(current)) {
                 throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + resource.getUrl());
             }
             etag.validate(current.getEtag());
+
+            Map<String, FolderResourceMarker.ResourceFileMetadata> deletedFiles =
+                    current.getFileMetadata() == null ? Map.of() : new TreeMap<>(current.getFileMetadata());
             current.setState(STATE_DELETING);
             current.setDeletedAt(System.currentTimeMillis());
-            return Objects.requireNonNull(ProxyUtil.convertToString(current));
-        });
+            resourceService.putResource(marker, Objects.requireNonNull(ProxyUtil.convertToString(current)),
+                    EtagHeader.ANY, null, false);
+            publishEvents(resource, ResourceEvent.Action.DELETE, null, deletedFiles, Map.of());
+        }
     }
 
     /**

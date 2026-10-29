@@ -5,8 +5,8 @@ import com.epam.aidial.core.openapi.annotations.ApiOperations;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.server.controller.AdminApplyController;
-import com.epam.aidial.core.server.controller.AdminExportController;
 import com.epam.aidial.core.server.controller.AdminHealthConfigController;
+import com.epam.aidial.core.server.controller.AdminSystemExportController;
 import com.epam.aidial.core.server.controller.AdminValidateController;
 import com.epam.aidial.core.server.controller.ApplicationController;
 import com.epam.aidial.core.server.controller.ApplicationMcpProxyController;
@@ -55,6 +55,7 @@ import com.epam.aidial.core.server.controller.ToolSetToolsController;
 import com.epam.aidial.core.server.controller.UploadFileController;
 import com.epam.aidial.core.server.controller.UserInfoController;
 import com.epam.aidial.core.server.controller.anthropic.AnthropicModelController;
+import com.epam.aidial.core.server.controller.anthropic.AnthropicUsageController;
 import com.epam.aidial.core.server.controller.anthropic.MessagesController;
 import com.epam.aidial.core.server.controller.anthropic.MessagesCountTokensController;
 import lombok.extern.slf4j.Slf4j;
@@ -69,10 +70,11 @@ public final class AnnotationEndpointCollector {
 
     private static final List<Class<?>> CONTROLLER_CLASSES = List.of(
             AdminApplyController.class,
-            AdminExportController.class,
+            AdminSystemExportController.class,
             AdminHealthConfigController.class,
             AdminValidateController.class,
             AnthropicModelController.class,
+            AnthropicUsageController.class,
             ApplicationController.class,
             ApplicationMcpProxyController.class,
             McpResourceController.class,

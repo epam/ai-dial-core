@@ -231,7 +231,7 @@ public class ResourceBaseTest {
             dial.setClock(() -> time);
             dial.setAccessTokenValidator(validator);
             dial.start();
-            serverPort = dial.getServer().actualPort();
+            serverPort = dial.getServerPort();
             apiKeyStore = dial.getProxy().getApiKeyStore();
             notificationService = dial.getProxy().getNotificationService();
             encryptionService = dial.getProxy().getEncryptionService();
