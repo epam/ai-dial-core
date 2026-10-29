@@ -79,7 +79,7 @@ public class EffectiveBudgets {
                 .toList();
     }
 
-    private boolean isExpired(BudgetInstance instance, Instant now) {
+    public boolean isExpired(BudgetInstance instance, Instant now) {
         if (instance.assignment() == null || instance.assignment().getExpiresAt() == null) {
             return false;
         }

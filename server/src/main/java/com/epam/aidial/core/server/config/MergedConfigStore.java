@@ -9,14 +9,19 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.SpendingLimitMode;
+import com.epam.aidial.core.config.SpendingLimits;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.policy.CostObjectIndex;
 import com.epam.aidial.core.config.policy.Policy;
 import com.epam.aidial.core.config.policy.PolicyAssignment;
+import com.epam.aidial.core.config.policy.PolicyKind;
+import com.epam.aidial.core.config.policy.PolicyQuantity;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.limiter.budget.EffectiveBudgets;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
@@ -38,6 +43,7 @@ import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -227,6 +233,10 @@ public final class MergedConfigStore implements ConfigStore {
 
         Gauge.builder("dial_policy_assignments", this, store -> store.config == null ? 0 : store.config.getPolicyAssignments().size())
                 .description("Number of policy assignments in the in-memory Config")
+                .register(Metrics.globalRegistry);
+
+        Gauge.builder("dial_budget_personal_missing", this, store -> store.config != null && isPersonalBudgetMissing(store.config) ? 1 : 0)
+                .description("1 when spending limits are on and the personal cost object has no budget")
                 .register(Metrics.globalRegistry);
 
         // GLOBAL_SETTINGS is not in MANAGED_TYPES (it's a singleton overlay, not a union-by-key),
@@ -910,6 +920,29 @@ public final class MergedConfigStore implements ConfigStore {
         }
     }
 
+    static boolean isPersonalBudgetMissing(Config config) {
+        SpendingLimits limits = config.getSpendingLimits();
+        if (limits.getMode() == SpendingLimitMode.OFF) {
+            return false;
+        }
+        Instant now = Instant.now();
+        return config.getCostObjectIndex().getInstances(limits.getDefaultCostObject()).stream()
+                .noneMatch(instance -> instance.policy().getKind() == PolicyKind.BUDGET
+                        && instance.policy().getQuantity() == PolicyQuantity.COST
+                        && !EffectiveBudgets.isExpired(instance, now));
+    }
+
+    private static void warnIfPersonalBudgetMissing(Config config) {
+        try {
+            if (isPersonalBudgetMissing(config)) {
+                log.warn("Spending limits mode is {} but the personal cost object {} has no budget, so its calls have no budget to charge",
+                        config.getSpendingLimits().getMode().toValue(), config.getSpendingLimits().getDefaultCostObject());
+            }
+        } catch (RuntimeException e) {
+            log.warn("Failed to check the personal budget", e);
+        }
+    }
+
     private BiConsumer<ResourceTypes, InvalidEntityException> skipRouter(
             Map<ResourceTypes, Map<String, InvalidEntityRecord>> nextInvalid) {
         if (!MODE_SKIP.equals(onInvalidEntity)) {
@@ -1342,6 +1375,7 @@ public final class MergedConfigStore implements ConfigStore {
         boolean overlayFromApi = applySettingsOverlay(merged, pendingInvalid);
         Map<ResourceTypes, Map<String, InvalidEntityRecord>> finalInvalid =
                 pendingInvalid.isEmpty() ? Map.of() : Collections.unmodifiableMap(pendingInvalid);
+        warnIfPersonalBudgetMissing(merged);
         this.config = merged;
         this.invalidEntities = finalInvalid;
         this.settingsFromApi = overlayFromApi;

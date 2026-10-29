@@ -312,6 +312,19 @@ reclaiming resources tombstoned by DELETE and GCs stale versions left behind by 
 </details>
 
 <details> 
+<summary><b>Budget Counter Sweep Configurations</b></summary>
+
+Periodic job that deletes the spend counters of withdrawn budgets: a row is removed once both its windows have closed
+and no assignment or self-applying policy exists for its budget.
+
+| Setting                                | Default  | Required | Description                                                                                                                                          |
+|-----------------------------------------|:--------:|:--------:|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| budgetCounterSweep.period                |  300000  |    No    | Period in milliseconds between sweeps of the spend counters of withdrawn budgets. A row is deleted once both its windows have closed and no assignment or self-applying policy exists for its budget. |
+| budgetCounterSweep.batch                 |   500    |    No    | Number of counter rows handled per sweep tick.                                                                                                       |
+
+</details>
+
+<details> 
 <summary><b>Background Job Configurations</b></summary>
 
 Background responses are polled through this Core instance's own HTTP endpoint, so polling requests pass
@@ -436,7 +449,7 @@ DIAL Core stores user data in the following storages:
 | retriableErrorCodes    | List of Retriable Error Codes for handling outages at LLM Providers. This list extends the existing error codes (429, 502, 503, 504) but doesn't override them.                                                                                                                 |
 | rateLimitSchedule      | Deployment-wide anchor (timezone, week start day, reset time) for the DAY/WEEK/MONTH fixed calendar rate-limit windows. Refer to [Roles](/docs/dynamic-settings/roles.md#ratelimitschedule) to see dynamic settings.                                                            |
 | orgUnitRoles           | Roles that can be assigned at an org unit, replacing or adding to the built-in `admin`, `editor`, `viewer` and `member`. Refer to [Org units](/docs/org-units.md#roles) to learn more.                                                                                    |
-| spendingLimits         | Budget based spending limits: `mode` (`off`, `shadow` or `enforce`, default `off`) and `defaultCostObject` (default `ORG`), the cost object of a call that carries no project. In `shadow` budgets are checked, metered and charged but never reject, and the legacy `costLimit` decides; in `enforce` a JWT caller is checked against budgets only (`429` when none can pay) and the legacy `costLimit` is ignored. API key callers always use the legacy `costLimit`. |
+| spendingLimits         | Budget based spending limits: `mode` (`off`, `shadow` or `enforce`, default `off`) and `defaultCostObject` (default `ORG`), the cost object of a call that carries no project. In `shadow` budgets are checked, metered and charged but never reject, and the legacy `costLimit` decides; in `enforce` a JWT caller is checked against budgets only (`429` when none can pay) and the legacy `costLimit` is ignored. API key callers always use the legacy `costLimit`. When the mode is `shadow` or `enforce` and `defaultCostObject` has no unexpired cost budget, Core logs a warning on each config rebuild and sets the gauge `dial_budget_personal_missing` to 1. In `shadow`, a call that `enforce` would reject is logged at INFO with its reason, user, cost object and model. |
 | applicationTypeSchemas | Map of application schemas where key - schema ID, value - schema itself in JSON format. All schemas must be conformed to the root schema `https://dial.epam.com/application_type_schemas/schema#`. See [link](config/src/main/resources/custom-application-schemas/schema.json) |
 
 ## Claude Code commands

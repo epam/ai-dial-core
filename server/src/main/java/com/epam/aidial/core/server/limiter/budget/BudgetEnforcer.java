@@ -80,7 +80,7 @@ public class BudgetEnforcer {
                 .filter(instance -> instance.policy().getQuantity() == PolicyQuantity.COST)
                 .toList();
         if (candidates.isEmpty()) {
-            return Future.succeededFuture(reject(settings, NO_BUDGET, costObject, model, new RateLimitResult(
+            return Future.succeededFuture(reject(settings, NO_BUDGET, claims.userId(), costObject, model, new RateLimitResult(
                     HttpStatus.TOO_MANY_REQUESTS, "No budget covers " + model.getName() + " for cost object " + costObject,
                     "You have no budget for this model", -1)));
         }
@@ -92,7 +92,7 @@ public class BudgetEnforcer {
                     }
                     // whole seconds rounded up, so a client never retries before the window has reset
                     long retryAfter = Math.max(1, Math.ceilDiv(outcome.earliestResetAt - timestamp, 1000L));
-                    return reject(settings, BUDGET_EXHAUSTED, costObject, model, new RateLimitResult(
+                    return reject(settings, BUDGET_EXHAUSTED, claims.userId(), costObject, model, new RateLimitResult(
                             HttpStatus.TOO_MANY_REQUESTS, "Budget exhausted for cost object " + costObject,
                             "You've exceeded your budget", retryAfter));
                 });
@@ -161,12 +161,14 @@ public class BudgetEnforcer {
         return limit != null && spent.compareTo(limit) >= 0;
     }
 
-    private static RateLimitResult reject(SpendingLimits settings, String reason, String costObject, Model model, RateLimitResult rejection) {
+    private static RateLimitResult reject(SpendingLimits settings, String reason, String userId, String costObject, Model model,
+                                      RateLimitResult rejection) {
         Metrics.counter("dial_budget_rejections_total", "reason", reason, "mode", settings.getMode().toValue()).increment();
         if (settings.getMode() == SpendingLimitMode.ENFORCE) {
             return rejection;
         }
-        log.info("Shadow budget check would reject: reason={}, costObject={}, model={}", reason, costObject, model.getName());
+        log.info("Shadow budget check would reject: reason={}, user={}, costObject={}, model={}",
+                reason, userId, costObject, model.getName());
         return RateLimitResult.SUCCESS;
     }
 

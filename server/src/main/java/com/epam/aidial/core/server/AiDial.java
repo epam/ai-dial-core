@@ -39,6 +39,7 @@ import com.epam.aidial.core.server.controller.WellKnownResourceMetadataControlle
 import com.epam.aidial.core.server.data.ApiKeyValidation;
 import com.epam.aidial.core.server.http.HttpProxySelector;
 import com.epam.aidial.core.server.limiter.RateLimiter;
+import com.epam.aidial.core.server.limiter.budget.BudgetCounterSweepService;
 import com.epam.aidial.core.server.log.AnalyticsSettings;
 import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
@@ -187,6 +188,7 @@ public class AiDial {
     private BlobStorage storage;
     private ResourceService resourceService;
     private ComplexResourceSweepService complexResourceSweepService;
+    private BudgetCounterSweepService budgetCounterSweepService;
     private McpHttpClientBuilder mcpHttpClientBuilder;
     private McpHttpClientBuilder discoveryMcpHttpClientBuilder;
     private EncryptionService encryptionService;
@@ -409,6 +411,11 @@ public class AiDial {
             complexResourceSweepService = new ComplexResourceSweepService(timerService, storage, redis, lockService,
                     complexResourceService, encryptionService, complexResourceSweepSettings, backgroundTracer);
 
+            BudgetCounterSweepService.Settings budgetCounterSweepSettings = Json.decodeValue(
+                    settings("budgetCounterSweep").toBuffer(), BudgetCounterSweepService.Settings.class);
+            budgetCounterSweepService = new BudgetCounterSweepService(timerService, resourceService, lockService, redis,
+                    mergedConfigStore, budgetCounterSweepSettings, backgroundTracer);
+
             ResponsesApiClient responsesApiClient = new ResponsesApiClient(client, clientOptions);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(),
@@ -544,6 +551,7 @@ public class AiDial {
             close(client, HttpClient::close);
             close(resourceService);
             close(complexResourceSweepService);
+            close(budgetCounterSweepService);
             close(mcpHttpClientBuilder);
             close(discoveryMcpHttpClientBuilder);
             // Unhook from the global composite before vertx.close() so its shutdown metrics
