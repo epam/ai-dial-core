@@ -111,7 +111,6 @@ import io.micrometer.registry.otlp.OtlpMeterRegistry;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender;
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
-import io.opentelemetry.sdk.trace.SpanProcessor;
 import io.vertx.config.spi.utils.JsonObjectHelper;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -685,9 +684,11 @@ public class AiDial {
             System.setProperty("otel.traces.exporter", "none");
         }
 
+        // added to the provider rather than around the exporter's processor: without an exporter there is none, and from
+        // OpenTelemetry 1.67 a provider without a processor hands out no-op tracers, so no request would get a trace id
         OpenTelemetry openTelemetry = AutoConfiguredOpenTelemetrySdk.builder()
-                .addSpanProcessorCustomizer(((spanProcessor, configProperties) ->
-                        SpanProcessor.composite(new PathNormalizerSpanProcessor(), spanProcessor)))
+                .addTracerProviderCustomizer((tracerProvider, configProperties) ->
+                        tracerProvider.addSpanProcessor(new PathNormalizerSpanProcessor()))
                 .build()
                 .getOpenTelemetrySdk();
 
