@@ -11256,6 +11256,51 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/org-units/{path}/roles:
+    get:
+      tags:
+      - Org units
+      summary: "/v1/org-units/{path}/roles"
+      operationId: listOrgUnitRoles
+      parameters:
+      - name: path
+        in: path
+        description: "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk"
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgUnitRoleList"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/policies/{bucket}/{path}:
     get:
       tags:
@@ -17409,6 +17454,8 @@ components:
           $ref: "#/components/schemas/MapStringTranslator"
         rateLimitSchedule:
           $ref: "#/components/schemas/RateLimitSchedule"
+        orgUnitRoles:
+          $ref: "#/components/schemas/MapStringOrgUnitRole"
         spendingLimits:
           $ref: "#/components/schemas/SpendingLimits"
     ConfigFileMigrateRequest:
@@ -18537,6 +18584,10 @@ components:
     MapStringObject:
       type: object
       additionalProperties: {}
+    MapStringOrgUnitRole:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/OrgUnitRole"
     MapStringRole:
       type: object
       additionalProperties:
@@ -18898,6 +18949,44 @@ components:
           type: string
         path:
           type: string
+    OrgUnitPermission:
+      type: object
+      properties:
+        actions:
+          type: array
+          items:
+            type: string
+        pathPattern:
+          type: string
+    OrgUnitRole:
+      type: object
+      properties:
+        description:
+          type: string
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrgUnitPermission"
+    OrgUnitRoleData:
+      type: object
+      properties:
+        description:
+          type: string
+        name:
+          type: string
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrgUnitPermission"
+        system:
+          type: boolean
+    OrgUnitRoleList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrgUnitRoleData"
     ParallelToolCalls:
       type: boolean
       description: Whether to enable parallel `function` calling during the `tool` use.

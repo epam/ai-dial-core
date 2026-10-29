@@ -4,6 +4,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.orgunit.OrgUnit;
 import com.epam.aidial.core.server.data.orgunit.OrgUnitData;
 import com.epam.aidial.core.server.data.orgunit.OrgUnitList;
+import com.epam.aidial.core.server.data.orgunit.OrgUnitRoleData;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -207,6 +208,23 @@ public class OrgUnitService {
 
         return new OrgUnitData(unit.id(), name, unit.displayName(), path(key), encodedFolder(key), unit.author(), unit.createdAt(),
                 List.of());
+    }
+
+    /**
+     * The roles that can be assigned at the unit: the same for every unit.
+     */
+    public List<OrgUnitRoleData> listRoles(List<String> path, OrgUnitRoles roles) {
+        String key = keyOf(requireSharedSpace(path));
+        if (key.equals(SHARED_SPACE_KEY)) {
+            throw new IllegalArgumentException("The shared space is not a unit and holds no roles");
+        }
+        if (!getUnitList().units().containsKey(key)) {
+            throw new ResourceNotFoundException("No org unit: " + String.join("/", path));
+        }
+        return roles.roles().entrySet().stream()
+                .map(entry -> new OrgUnitRoleData(entry.getKey(), entry.getValue().getDescription(), true,
+                        List.copyOf(entry.getValue().getPermissions())))
+                .toList();
     }
 
     /**
