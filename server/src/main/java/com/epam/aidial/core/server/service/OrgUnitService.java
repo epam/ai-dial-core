@@ -142,10 +142,11 @@ public class OrgUnitService {
     }
 
     /**
-     * The key of the unit that owns the shared-space item, or {@link #SHARED_SPACE_KEY} when no unit is above it.
+     * The key of the unit that owns the shared-space item or folder, or {@link #SHARED_SPACE_KEY} when no unit is
+     * above it. A unit's own folder belongs to that unit.
      */
-    static String ownerOf(Map<String, OrgUnit> units, ResourceDescriptor item) {
-        String key = keyOf(item.getParent());
+    static String ownerOf(Map<String, OrgUnit> units, ResourceDescriptor resource) {
+        String key = keyOf(resource.isFolder() ? resource : resource.getParent());
         while (!key.equals(SHARED_SPACE_KEY)) {
             if (units.containsKey(key)) {
                 return key;
@@ -274,6 +275,37 @@ public class OrgUnitService {
             log.warn("The policy of org unit {} grants nothing until fixed: {}", key, e.getMessage());
             return List.of();
         }
+    }
+
+    /**
+     * Every unit's readable assignments, read in one batch. Units whose policy can't be read are left out.
+     */
+    public Map<String, List<RoleAssignment>> roleAssignmentsOfAll(Map<String, OrgUnit> units) {
+        Map<String, List<String>> keysById = new HashMap<>();
+        List<ResourceItemMetadata> items = new ArrayList<>();
+        units.forEach((key, unit) -> {
+            if (!key.equals(SHARED_SPACE_KEY) && unit.id() != null && isPolicyId(unit.id())) {
+                if (!keysById.containsKey(unit.id())) {
+                    items.add(new ResourceItemMetadata(policy(unit.id())));
+                }
+                keysById.computeIfAbsent(unit.id(), id -> new ArrayList<>()).add(key);
+            }
+        });
+        List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
+        resources.load(items, loaded);
+
+        Map<String, List<RoleAssignment>> result = new HashMap<>();
+        for (Pair<ResourceItemMetadata, String> resource : loaded) {
+            String id = resource.getKey().getDescriptor().getName();
+            List<String> keys = keysById.get(id);
+            try {
+                List<RoleAssignment> assignments = decodePolicy(keys.get(0), id, resource.getKey().getEtag(), resource.getValue());
+                keys.forEach(key -> result.put(key, assignments));
+            } catch (IllegalStateException e) {
+                log.warn("The policy of org units {} grants nothing until fixed: {}", keys, e.getMessage());
+            }
+        }
+        return result;
     }
 
     /**

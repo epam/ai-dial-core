@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.OrgUnitApprovals;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
@@ -46,6 +47,7 @@ public class AccessService {
     private final EncryptionService encryptionService;
     private final ShareService shareService;
     private final RuleService ruleService;
+    private final OrgUnitApprovals orgUnitApprovals;
     private final List<Rule> adminRules;
     private final List<Rule> globalReaderRules;
     private final boolean adminRulesConfigured;
@@ -73,11 +75,13 @@ public class AccessService {
     public AccessService(EncryptionService encryptionService,
                          ShareService shareService,
                          RuleService ruleService,
+                         OrgUnitApprovals orgUnitApprovals,
                          ApplicationSchemaService applicationSchemaService,
                          JsonObject settings) {
         this.encryptionService = encryptionService;
         this.shareService = shareService;
         this.ruleService = ruleService;
+        this.orgUnitApprovals = orgUnitApprovals;
         this.applicationSchemaService = applicationSchemaService;
         this.adminRules = adminRules(settings);
         this.globalReaderRules = globalReaderRules(settings);
@@ -413,9 +417,11 @@ public class AccessService {
 
     private Map<ResourceDescriptor, Set<ResourceAccessType>> getReviewAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-
+        // admins already hold every review copy, so asking the unit approvers would only cost storage reads
+        boolean admin = hasAdminAccess(context);
         return resources.stream()
-                .filter(resource -> PublicationService.hasReviewAccess(context, resource))
+                .filter(resource -> PublicationService.hasReviewAccess(context, resource)
+                        || (!admin && orgUnitApprovals.mayReadReviewCopy(context, resource)))
                 .collect(Collectors.toUnmodifiableMap(
                         Function.identity(), resource -> ResourceAccessType.READ_ONLY));
     }
