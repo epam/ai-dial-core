@@ -11,7 +11,9 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Who a role assignment's subject is. Only signed-in users, not acting through an application, hold roles in a unit.
+ * Who a role assignment's subject is. Signed-in users hold roles in a unit. An application acting for a user reads
+ * through that user's roles, and an API key reads through a subject on {@code roles} its configured roles match; neither
+ * writes, approves or manages roles through them.
  */
 public final class OrgUnitSubjects {
 
@@ -27,6 +29,13 @@ public final class OrgUnitSubjects {
      */
     public static Set<String> heldRoles(ProxyContext context, List<RoleAssignment> assignments) {
         return isPerson(context) ? matching(context, assignments) : new HashSet<>();
+    }
+
+    /**
+     * The role names of the assignments whose subject is the caller, a person or not: what the caller reads through.
+     */
+    public static Set<String> rolesToReadWith(ProxyContext context, List<RoleAssignment> assignments) {
+        return matching(context, assignments);
     }
 
     private static Set<String> matching(ProxyContext context, List<RoleAssignment> assignments) {

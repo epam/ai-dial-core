@@ -81,7 +81,7 @@ public class OrgUnitService {
     /**
      * The type trees a unit's folder spans: every type that can be published or moved into the shared space.
      */
-    private static final List<ResourceTypes> CONTENT_TYPES = List.of(ResourceTypes.FILE, ResourceTypes.CONVERSATION,
+    static final List<ResourceTypes> CONTENT_TYPES = List.of(ResourceTypes.FILE, ResourceTypes.CONVERSATION,
             ResourceTypes.PROMPT, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET, ResourceTypes.SKILL, ResourceTypes.PROJECT);
 
     private static final String FOLDER_MARKER = ".dial_folder";
@@ -143,9 +143,12 @@ public class OrgUnitService {
 
     /**
      * The key of the unit that owns the shared-space item or folder, or {@link #SHARED_SPACE_KEY} when no unit is
-     * above it. A unit's own folder belongs to that unit.
+     * above it, as for anything outside the shared space. A unit's own folder belongs to that unit.
      */
     static String ownerOf(Map<String, OrgUnit> units, ResourceDescriptor resource) {
+        if (!resource.isPublic()) {
+            return SHARED_SPACE_KEY;
+        }
         String key = keyOf(resource.isFolder() ? resource : resource.getParent());
         while (!key.equals(SHARED_SPACE_KEY)) {
             if (units.containsKey(key)) {
@@ -185,8 +188,9 @@ public class OrgUnitService {
 
     /**
      * Reads the shared space or a unit with the units directly below it, or every unit below when {@code recursive}.
-     * An admin sees every unit; anyone else sees the units whose folder the read rules let them see, and a unit they
-     * can't see answers as one that doesn't exist.
+     * An admin sees every unit; anyone else sees a unit where they hold a role, and the units directly below one where
+     * they hold {@code read} on {@code org-units}, as long as they see every unit above it too. A unit they can't see
+     * answers as one that doesn't exist.
      *
      * @param path {@code public}, then each unit's name
      */
@@ -231,6 +235,12 @@ public class OrgUnitService {
                 author, clock.getAsLong());
         update(list -> list.units().put(key, unit));
         addFolderMarker(key, author);
+        // inside a unit roles decide who reads, so the folder's old read rules would only mislead
+        try {
+            ruleService.removeRulesUnder(folder(ResourceTypes.FILE, key));
+        } catch (RuntimeException e) {
+            log.warn("The read rules under {} stay, granting nothing inside the unit: {}", describe(key), e.getMessage());
+        }
 
         return new OrgUnitData(unit.id(), name, unit.displayName(), path(key), encodedFolder(key), unit.author(), unit.createdAt(),
                 List.of());
@@ -611,7 +621,8 @@ public class OrgUnitService {
     /**
      * Removes an empty unit; with {@code recursive}, every unit below it too. A unit is empty when its folder holds
      * nothing but empty-folder markers in the files tree and nothing at all in any other type tree, the subtree of its
-     * child units included. Its tree entries and the markers in its subtree go; read rules are left as they are.
+     * child units included. Its tree entries and the markers in its subtree go, and so do any read rules left in its
+     * subtree.
      *
      * @return the paths of the removed units, deepest first
      */
@@ -655,7 +666,19 @@ public class OrgUnitService {
             }
         }
         update(units -> keys.forEach(units.units()::remove));
+        removeRulesUnder(key);
         return removed;
+    }
+
+    /**
+     * The unit is gone by now; rules inside a unit granted nothing, so a failure here only leaves stray rules behind.
+     */
+    private void removeRulesUnder(String key) {
+        try {
+            ruleService.removeRulesUnder(folder(ResourceTypes.FILE, key));
+        } catch (RuntimeException e) {
+            log.warn("The read rules of {} stay after its removal: {}", describe(key), e.getMessage());
+        }
     }
 
     /**
@@ -934,16 +957,14 @@ public class OrgUnitService {
     }
 
     /**
-     * The units whose folder the read rules let the caller see, evaluated once over the list the request reads.
+     * The units the caller sees through their roles, evaluated once over the list the request reads.
      */
     private Predicate<String> visibleTo(ProxyContext context, OrgUnitList list) {
-        Map<ResourceDescriptor, String> keysByFolder = list.units().keySet().stream()
-                .filter(key -> !key.equals(SHARED_SPACE_KEY))
-                .collect(Collectors.toMap(key -> folder(ResourceTypes.FILE, key), key -> key));
-        Set<String> visible = ruleService.getAllowedPublicResources(context, keysByFolder.keySet()).stream()
-                .map(keysByFolder::get)
-                .collect(Collectors.toSet());
-        return visible::contains;
+        OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
+        Map<String, Set<String>> held = new HashMap<>();
+        roleAssignmentsOfAll(list.units()).forEach((key, assignments) -> held.put(key, OrgUnitSubjects.heldRoles(context, assignments)));
+        return key -> list.units().containsKey(key) && OrgUnitGrants.showsUnit(roles,
+                held.getOrDefault(key, Set.of()), held.getOrDefault(parentKey(key), Set.of()));
     }
 
     private static OrgUnitData toData(String key, OrgUnitList list, boolean recursive, Predicate<String> visible) {
@@ -1030,7 +1051,7 @@ public class OrgUnitService {
         return RuleService.ruleUrl(folder(ResourceTypes.FILE, key));
     }
 
-    private static String parentKey(String key) {
+    public static String parentKey(String key) {
         int end = key.lastIndexOf('/', key.length() - 2);
         return key.substring(0, end + 1);
     }

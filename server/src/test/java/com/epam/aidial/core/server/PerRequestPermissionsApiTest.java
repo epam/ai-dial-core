@@ -1,7 +1,9 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -14,6 +16,7 @@ import org.apache.commons.lang3.mutable.MutableObject;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -378,5 +381,25 @@ public class PerRequestPermissionsApiTest extends ResourceBaseTest {
                 }
                 """, "api-key", perRequestKey);
         verify(response, 400);
+    }
+
+    @Test
+    public void testGrant_WriteOnlyFolderPassedOn() {
+        ApiKeyData apiKeyData = createAppKey("guest", Map.of());
+        apiKeyData.setPerRequestSharedResources(Map.of("files/%s/out/".formatted(bucket), new PerRequestSharedData(Set.of(ResourceAccessType.WRITE))));
+        apiKeyStore.assignPerRequestApiKey(apiKeyData);
+
+        var response = send(HttpMethod.POST, "/v1/ops/resource/per-request-permissions/grant", null, """
+                {
+                 "resourcePermissions": [
+                   {
+                     "url": "files/%s/out/",
+                     "permissions": ["WRITE"]
+                   }
+                 ],
+                 "receiver": "applications/public/app2"
+                }
+                """.formatted(bucket), "api-key", apiKeyData.getPerRequestKey());
+        verify(response, 200);
     }
 }

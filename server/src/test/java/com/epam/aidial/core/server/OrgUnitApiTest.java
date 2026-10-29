@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -26,7 +27,6 @@ public class OrgUnitApiTest extends ResourceBaseTest {
 
     @Test
     void testCreateAndReadUnits() {
-        addReadRule("public/Risk/", "Manager");
         Response risk = create(ORG, "Risk");
         assertEquals(200, risk.status(), risk.body());
         JsonObject created = new JsonObject(risk.body());
@@ -36,13 +36,11 @@ public class OrgUnitApiTest extends ResourceBaseTest {
         assertEquals("public/Risk/", created.getString("folder"));
         assertTrue(created.getJsonArray("items").isEmpty());
 
-        addReadRule("public/Risk/US Risk/", "Manager");
         Response usRisk = send(HttpMethod.POST, "/v1/org-units/" + ORG + "/Risk", null,
                 "{\"name\": \"US Risk\", \"displayName\": \"US Risk Department\"}", "authorization", "admin");
         assertEquals(200, usRisk.status(), usRisk.body());
         assertEquals("public/Risk/US%20Risk/", new JsonObject(usRisk.body()).getString("folder"));
 
-        addReadRule("public/Finance/", "Manager");
         assertEquals(200, create(ORG, "Finance").status());
 
         JsonObject org = read(ORG, false);
@@ -66,16 +64,13 @@ public class OrgUnitApiTest extends ResourceBaseTest {
 
     @Test
     void testCreateRefusals() {
-        addReadRule("public/Risk/", "Manager");
         assertEquals(200, create(ORG, "Risk").status());
-        addReadRule("public/risk/", "Manager");
         Response duplicate = create(ORG, "risk");
         assertEquals(409, duplicate.status());
         assertTrue(duplicate.body().contains("already has a unit named Risk"), duplicate.body());
 
         Response file = upload(HttpMethod.PUT, "/v1/files/public/Policies/limits.txt", null, "text", "authorization", "admin");
         assertEquals(200, file.status(), file.body());
-        addReadRule("public/policies/", "Manager");
         Response folderTaken = create(ORG, "policies");
         assertEquals(409, folderTaken.status());
         assertTrue(folderTaken.body().contains("already has a folder named Policies"), folderTaken.body());
@@ -106,7 +101,6 @@ public class OrgUnitApiTest extends ResourceBaseTest {
         String folder = "public/";
         for (String name : List.of("L1", "L2", "L3", "L4")) {
             folder = folder + name + "/";
-            addReadRule(folder, "Manager");
             assertEquals(200, create(parent, name).status(), folder);
             parent = parent + "/" + name;
         }
@@ -117,10 +111,11 @@ public class OrgUnitApiTest extends ResourceBaseTest {
 
     @Test
     void testNonAdmins() {
-        addReadRule("public/Risk/", "Manager");
-        addReadRule("public/Finance/", "Director");
+        // a read rule that lets the user in shows them nothing: only roles do
+        addReadRule("public/Finance/", "Manager");
         assertEquals(200, create(ORG, "Risk").status());
         assertEquals(200, create(ORG, "Finance").status());
+        assertEquals(200, assign(ORG + "/Risk", roleForUsers("viewer")).status());
 
         Response refused = send(HttpMethod.POST, "/v1/org-units/" + ORG, null, "{\"name\": \"Ops\"}", "authorization", "user");
         assertEquals(403, refused.status());
@@ -137,15 +132,30 @@ public class OrgUnitApiTest extends ResourceBaseTest {
         assertEquals(200, create(ORG + "/Finance", "Tax").status());
         Response all = send(HttpMethod.GET, "/v1/org-units/" + ORG, "recursive=true", null, "authorization", "user");
         assertEquals(200, all.status(), all.body());
-        assertEquals(List.of("Risk"), childNames(new JsonObject(all.body())));
-        assertEquals(404, send(HttpMethod.GET, "/v1/org-units/" + ORG + "/Risk/Audit", null, null, "authorization", "user").status());
+        // a role at Risk shows the units directly below it by name
+        assertEquals(List.of("Risk", "Audit"), childNames(new JsonObject(all.body())));
+        assertEquals(200, send(HttpMethod.GET, "/v1/org-units/" + ORG + "/Risk/Audit", null, null, "authorization", "user").status());
         assertEquals(404, send(HttpMethod.GET, "/v1/org-units/" + ORG + "/Finance/Tax", null, null, "authorization", "user").status());
         assertEquals(List.of("Finance", "Tax", "Risk", "Audit"), childNames(read(ORG, true)));
     }
 
     @Test
+    void testRulesGrantNothingInsideUnits() {
+        addRules("public/Open/", "[{\"source\": \"roles\", \"function\": \"TRUE\"}]");
+        assertEquals(200, create(ORG, "Open").status());
+        assertEquals(200, upload(HttpMethod.PUT, "/v1/files/public/Open/a.txt", null, "a", "authorization", "admin").status());
+        assertEquals(200, upload(HttpMethod.PUT, "/v1/files/public/Outside/b.txt", null, "b", "authorization", "admin").status());
+
+        assertEquals(403, send(HttpMethod.GET, "/v1/files/public/Open/a.txt", null, null, "authorization", "user").status());
+        assertEquals(200, send(HttpMethod.GET, "/v1/files/public/Outside/b.txt", null, null, "authorization", "user").status());
+
+        assertEquals(200, assign(ORG + "/Open", roleForUsers("viewer")).status());
+        assertEquals(200, send(HttpMethod.GET, "/v1/files/public/Open/a.txt", null, null, "authorization", "user").status());
+        assertEquals(403, upload(HttpMethod.PUT, "/v1/files/public/Open/c.txt", null, "c", "authorization", "user").status());
+    }
+
+    @Test
     void testDisplayNameIsChecked() {
-        addReadRule("public/Risk/", "Manager");
         for (String displayName : List.of("x".repeat(129), "line\nbreak")) {
             Response response = send(HttpMethod.POST, "/v1/org-units/" + ORG, null,
                     new JsonObject().put("name", "Risk").put("displayName", displayName).encode(), "authorization", "admin");
@@ -158,19 +168,16 @@ public class OrgUnitApiTest extends ResourceBaseTest {
 
     @Test
     void testNewUnitGetsFolderMarker() {
-        addReadRule("public/Acme/", "Manager");
         assertEquals(200, create(ORG, "Acme").status());
         assertEquals(List.of(".dial_folder"), itemNames("files/public/Acme/"));
         assertTrue(itemNames("files/public/").contains("Acme"));
 
-        addReadRule("public/Acme/Risk/", "Manager");
         assertEquals(200, create(ORG + "/Acme", "Risk").status());
         assertEquals(List.of(".dial_folder"), itemNames("files/public/Acme/Risk/"));
     }
 
     @Test
     void testRatePathStaysWithDeployments() {
-        addReadRule("public/Acme/", "Manager");
         assertEquals(200, create(ORG, "Acme").status());
 
         Response rate = send(HttpMethod.POST, "/v1/org-units/public/Acme/rate", null, "{\"rate\": true}", "authorization", "admin");
@@ -182,7 +189,6 @@ public class OrgUnitApiTest extends ResourceBaseTest {
     @Test
     void testReservedAndDottedNamesAreRefused() {
         for (String name : List.of("roles", "Role-Assignments", "rate", "Risk.")) {
-            addReadRule("public/" + name + "/", "Manager");
             Response response = create(ORG, name);
             assertEquals(400, response.status(), name + " " + response.body());
         }
@@ -190,12 +196,12 @@ public class OrgUnitApiTest extends ResourceBaseTest {
 
     @Test
     void testAuthorIsTheCreatorsDisplayName() {
-        addReadRule("public/Risk/", "Manager");
         Response created = create(ORG, "Risk");
         assertEquals(200, created.status());
         assertEquals("admin user", new JsonObject(created.body()).getString("author"));
         assertTrue(new JsonObject(created.body()).getValue("createdAt") instanceof Number, created.body());
 
+        assertEquals(200, assign(ORG + "/Risk", roleForUsers("member")).status());
         Response asUser = send(HttpMethod.GET, "/v1/org-units/" + ORG + "/Risk", null, null, "authorization", "user");
         assertEquals(200, asUser.status(), asUser.body());
         assertEquals("admin user", new JsonObject(asUser.body()).getString("author"));
@@ -208,7 +214,6 @@ public class OrgUnitApiTest extends ResourceBaseTest {
     @Test
     void testNamesFollowCoreFolderRules() {
         for (String name : List.of("R&D", "Ünits 日本", "Q1:2026")) {
-            addReadRule("public/" + UrlUtil.encodePathSegment(name) + "/", "Manager");
             Response response = create(ORG, name);
             assertEquals(200, response.status(), name + " " + response.body());
             assertEquals("public/" + UrlUtil.encodePathSegment(name) + "/", new JsonObject(response.body()).getString("folder"));
@@ -220,16 +225,6 @@ public class OrgUnitApiTest extends ResourceBaseTest {
             Response colon = create(ORG, name);
             assertEquals(200, colon.status(), colon.body());
         }
-    }
-
-    @Test
-    void testUnitsNeedNoReadRule() {
-        assertEquals(200, create(ORG, "Acme").status());
-        assertEquals(200, create(ORG + "/Acme", "Risk").status());
-        assertEquals(200, upload(HttpMethod.PUT, "/v1/files/public/Acme/Risk/a.txt", null, "a", "authorization", "admin").status());
-        assertEquals(200, send(HttpMethod.GET, "/v1/files/public/Acme/Risk/a.txt", null, null).status(), "read rules still decide");
-        addReadRule("public/Acme/", "Manager");
-        assertEquals(403, send(HttpMethod.GET, "/v1/files/public/Acme/Risk/a.txt", null, null).status());
     }
 
     @Test
@@ -317,8 +312,6 @@ public class OrgUnitApiTest extends ResourceBaseTest {
 
     @Test
     void testMovesStayInsideTheirUnit() {
-        addReadRule("public/Acme/", "Manager");
-        addReadRule("public/Acme/Risk/", "Manager");
         assertEquals(200, create(ORG, "Acme").status());
         assertEquals(200, create(ORG + "/Acme", "Risk").status());
         assertEquals(200, upload(HttpMethod.PUT, "/v1/files/public/Acme/Risk/a.txt", null, "a", "authorization", "admin").status());
@@ -343,7 +336,6 @@ public class OrgUnitApiTest extends ResourceBaseTest {
 
     @Test
     void testDeleteRefusesUnitThatHoldsContent() {
-        addReadRule("public/Acme/", "Manager");
         assertEquals(200, create(ORG, "Acme").status());
         assertEquals(200, create(ORG + "/Acme", "Risk").status());
         assertEquals(200, upload(HttpMethod.PUT, "/v1/files/public/Acme/Risk/Templates/memo.txt", null, "m", "authorization", "admin").status());
@@ -369,11 +361,14 @@ public class OrgUnitApiTest extends ResourceBaseTest {
 
     @Test
     void testDeleteLeavesNothingOfAnEmptyUnit() {
-        addReadRule("public/Acme/", "Manager");
-        addReadRule("public/Acme/Risk/", "Manager");
         assertEquals(200, create(ORG, "Acme").status());
         assertEquals(200, create(ORG + "/Acme", "Risk").status());
         assertEquals(List.of(".dial_folder"), itemNames("files/public/Acme/Risk/"));
+        // nothing stores rules inside a unit any more: seed one as a node of an older version would have
+        Rule rule = new Rule();
+        rule.setSource("roles");
+        rule.setFunction(Rule.Function.TRUE);
+        dial.getProxy().getRuleService().storeRules("public/Acme/Risk/", List.of(rule));
 
         Response removed = remove(ORG + "/Acme", true);
         assertEquals(200, removed.status(), removed.body());
@@ -383,12 +378,11 @@ public class OrgUnitApiTest extends ResourceBaseTest {
         Response rules = send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Acme/Risk/\"}",
                 "authorization", "admin");
         assertEquals(200, rules.status(), rules.body());
-        assertTrue(new JsonObject(rules.body()).getJsonObject("rules").containsKey("public/Acme/Risk/"), "read rules aren't the unit's");
+        assertTrue(new JsonObject(rules.body()).getJsonObject("rules").isEmpty(), rules.body());
     }
 
     @Test
-    void testDeleteNeedsRecursiveForUnitsBelowAndKeepsRulesAbove() {
-        addReadRule("public/Acme/", "Manager");
+    void testDeleteNeedsRecursiveForUnitsBelow() {
         assertEquals(200, create(ORG, "Acme").status());
         assertEquals(200, create(ORG + "/Acme", "Risk").status());
 
@@ -397,16 +391,19 @@ public class OrgUnitApiTest extends ResourceBaseTest {
         assertTrue(refused.body().contains("has units below it: Acme › Risk"), refused.body());
 
         assertEquals(200, remove(ORG + "/Acme/Risk", false).status());
-        Response rules = send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Acme/\"}",
-                "authorization", "admin");
-        assertEquals(200, rules.status(), rules.body());
-        assertTrue(new JsonObject(rules.body()).getJsonObject("rules").containsKey("public/Acme/"), rules.body());
         assertEquals(List.of(), childNames(read(ORG + "/Acme", false)));
     }
 
     @Test
+    void testUnitsNeedNoReadRule() {
+        assertEquals(200, create(ORG, "Acme").status());
+        assertEquals(200, create(ORG + "/Acme", "Risk").status());
+        assertEquals(200, upload(HttpMethod.PUT, "/v1/files/public/Acme/Risk/a.txt", null, "a", "authorization", "admin").status());
+        assertEquals(403, send(HttpMethod.GET, "/v1/files/public/Acme/Risk/a.txt", null, null).status());
+    }
+
+    @Test
     void testDeleteUnitRefusals() {
-        addReadRule("public/Acme/", "Manager");
         assertEquals(200, create(ORG, "Acme").status());
 
         assertEquals(400, remove(ORG, false).status());
@@ -445,7 +442,6 @@ public class OrgUnitApiTest extends ResourceBaseTest {
         return send(HttpMethod.DELETE, "/v1/org-units/" + path.replace(" ", "%20"), recursive ? "recursive=true" : null, null,
                 "authorization", "admin");
     }
-
 
     private Response create(String parent, String name) {
         return send(HttpMethod.POST, "/v1/org-units/" + parent.replace(" ", "%20"), null,
@@ -602,7 +598,6 @@ public class OrgUnitApiTest extends ResourceBaseTest {
 
     @Test
     void testUnitDocumentsAreNeverVisibleAsFiles() {
-        addReadRule("public/Acme/", "Manager");
         assertEquals(200, create(ORG, "Acme").status());
         assertEquals(200, assign(ORG + "/Acme",
                 "{\"roleName\": \"admin\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"email\", \"function\": \"EQUAL\", "
@@ -627,7 +622,6 @@ public class OrgUnitApiTest extends ResourceBaseTest {
 
     @Test
     void testRoleAssignmentRefusals() {
-        addReadRule("public/Acme/", "Manager");
         assertEquals(200, create(ORG, "Acme").status());
         String valid = "{\"roleName\": \"admin\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"email\", \"function\": \"EQUAL\", "
                 + "\"targets\": [\"jane@acme.example\"]}}";
@@ -664,7 +658,6 @@ public class OrgUnitApiTest extends ResourceBaseTest {
 
     @Test
     void testUnitAdminsManageTheirOwnUnitOnly() {
-        addReadRule("public/Acme/", "Manager");
         assertEquals(200, create(ORG, "Acme").status());
         assertEquals(200, create(ORG + "/Acme", "Risk").status());
         assertEquals(200, assign(ORG + "/Acme", roleFor("admin", "boss")).status());
@@ -708,7 +701,6 @@ public class OrgUnitApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation("dial-config/org-unit-roles.json")
     void testUnitManagersGiveAndTakeOnlyWhatTheyHold() {
-        addReadRule("public/Acme/", "Manager");
         assertEquals(200, create(ORG, "Acme").status());
         assertEquals(200, assign(ORG + "/Acme", roleFor("manager", "lead")).status());
         assertEquals(200, assign(ORG + "/Acme", roleFor("admin", "boss")).status());
@@ -742,6 +734,27 @@ public class OrgUnitApiTest extends ResourceBaseTest {
                 "authorization", "admin");
         assertEquals(200, response.status(), response.body());
         return new JsonObject(response.body()).getJsonArray("items");
+    }
+
+    @Test
+    void testCreateClearsTheFoldersReadRules() {
+        addReadRule("public/Acme/", "Manager");
+        addReadRule("public/Acme/Old/", "Manager");
+        addReadRule("public/Handbook/", "Manager");
+        assertEquals(200, create(ORG, "Acme").status());
+
+        Response rules = send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Acme/Old/\"}", "authorization", "admin");
+        assertEquals("{\"rules\":{}}", rules.body());
+        Response kept = send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Handbook/\"}", "authorization", "admin");
+        assertTrue(kept.body().contains("public/Handbook/"), kept.body());
+    }
+
+    /**
+     * The role for every caller with the DIAL role "user", which the test token "user" carries.
+     */
+    private static String roleForUsers(String roleName) {
+        return "{\"roleName\": \"%s\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"roles\", \"function\": \"EQUAL\", \"targets\": [\"user\"]}}"
+                .formatted(roleName);
     }
 
     private JsonArray roles(String path) {

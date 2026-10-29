@@ -447,7 +447,9 @@ public class PublicationService {
             return (removed == null) ? body : encodePublications(publications);
         });
 
-        ruleService.storeRules(publication);
+        if (!orgUnitApprovals.isInsideUnit(publication.getTargetFolder())) {
+            ruleService.storeRules(publication);
+        }
 
         copyReviewToTargetResources(context, publication, resourcesToAdd);
         deleteReviewResources(context, resourcesToAdd);
@@ -593,8 +595,15 @@ public class PublicationService {
             throw new IllegalArgumentException("Rules are not allowed for root targetFolder");
         }
 
+        // inside an org unit roles decide who reads, so rules sent there are dropped: Chat sends an empty list, and the
+        // admin panel copies a moved folder's rules and saves cleared ones, which then approve to nothing
+        boolean rulesDropped = publication.getRules() != null && orgUnitApprovals.isInsideUnit(targetFolder);
+        if (rulesDropped) {
+            publication.setRules(null);
+        }
+
         // publication must contain resources or rule or both
-        if (publication.getResources().isEmpty() && publication.getRules() == null) {
+        if (publication.getResources().isEmpty() && publication.getRules() == null && !rulesDropped) {
             throw new IllegalArgumentException("Publication must have at least one resource or rule");
         }
 
