@@ -101,3 +101,43 @@ A unit is named two ways. `path` is its address in this API, decoded, without a 
   "items": []
 }
 ```
+
+## Roles
+
+Every unit offers the same roles. Four are built in; `orgUnitRoles` in the dynamic config files can replace any
+by name or add more, and changes apply on the next config reload. Units can't change them, and the settings API
+doesn't carry them. A role grants only in the unit it
+is assigned at: a resource belongs to the nearest unit above it, so units below are not covered. Roles are given at a unit
+by role assignments, which come next; until then they grant nothing.
+
+| Role | Grants in its unit |
+|---|---|
+| `admin` | `read` and `write` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills`, `projects`, `publications` and `role-assignments`; `read` on `org-units` |
+| `editor` | `read` and `write` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills` and `projects`; `read` on `org-units` |
+| `viewer` | `read` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills` and `projects`; `read` on `org-units` |
+| `member` | `read` on `org-units` |
+
+`write publications/**` decides publication requests into the unit; `write role-assignments/**` manages its
+assignments. `read org-units/**` shows the units directly below in the unit list and in the unit folder's listing,
+by name only: `member` lets someone find a unit deeper down without reading anything on the way. `org-units` takes
+only `read`, as only DIAL admins change units. A role body uses the DIAL 2.0 design's grammar; core evaluates `actions` of `read` and `write` on
+`pathPattern`s of the form `<namespace>/**` with the namespaces above, relative to the unit. A config with anything
+else fails to load, so a reload keeps the previous config. For example:
+
+```json
+{
+  "orgUnitRoles": {
+    "files-reader": {
+      "description": "Reads files and prompts in the unit",
+      "permissions": [
+        { "actions": ["read"], "pathPattern": "files/**" },
+        { "actions": ["read"], "pathPattern": "prompts/**" }
+      ]
+    }
+  }
+}
+```
+
+| Call | Who | What |
+|---|---|---|
+| `GET /v1/org-units/public/{unit}…/roles` | admins | The roles in `items`: built-in ones first, then the config's own by name. Each has `name`, `description`, `system` (true: defined by the platform) and `permissions`. |

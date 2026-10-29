@@ -478,4 +478,91 @@ public class OrgUnitApiTest extends ResourceBaseTest {
         }
         return names;
     }
+
+    @Test
+    @DialConfigLocation("dial-config/org-unit-roles.json")
+    void testConfiguredRolesSurviveManifestWritesAndAreSystemRoles() {
+        addReadRule("public/Acme/", "Manager");
+        assertEquals(200, create(ORG, "Acme").status());
+        List<String> expected = List.of("admin", "editor", "viewer", "member", "auditor", "manager");
+        assertEquals(expected, roleNames(roles(ORG + "/Acme")));
+
+        String manifests = """
+                { "manifests": [ { "kind": "Policy", "name": "policies/platform/roles-survive",
+                  "spec": { "priority": 10, "kind": "budget", "quantity": "cost", "object": ["opus"], "per": ["subject"],
+                            "cost": { "month": 5 } } } ] }
+                """;
+        Response validated = send(HttpMethod.POST, "/v1/admin/validate", null, manifests, "authorization", "admin");
+        assertEquals(200, validated.status(), validated.body());
+        Response applied = send(HttpMethod.POST, "/v1/admin/apply", null, manifests, "authorization", "admin");
+        assertEquals(200, applied.status(), applied.body());
+
+        JsonArray roles = roles(ORG + "/Acme");
+        assertEquals(expected, roleNames(roles));
+        for (int i = 0; i < roles.size(); i++) {
+            assertTrue(roles.getJsonObject(i).getBoolean("system"), roles.getJsonObject(i).encode());
+        }
+    }
+
+    private static List<String> roleNames(JsonArray roles) {
+        List<String> names = new ArrayList<>();
+        for (int i = 0; i < roles.size(); i++) {
+            names.add(roles.getJsonObject(i).getString("name"));
+        }
+        return names;
+    }
+
+    @Test
+    void testRolesAreTheBuiltInOnes() {
+        addReadRule("public/Acme/", "Manager");
+        assertEquals(200, create(ORG, "Acme").status());
+
+        JsonArray roles = roles(ORG + "/Acme");
+        assertEquals(4, roles.size(), roles.encode());
+        JsonObject admin = roles.getJsonObject(0);
+        assertEquals("admin", admin.getString("name"));
+        assertTrue(admin.getBoolean("system"));
+        assertTrue(grants(admin, "publications/**"), admin.encode());
+        JsonObject editor = roles.getJsonObject(1);
+        assertEquals("editor", editor.getString("name"));
+        assertTrue(grants(editor, "files/**"), editor.encode());
+        assertTrue(!grants(editor, "publications/**") && !grants(editor, "role-assignments/**"), editor.encode());
+        JsonObject viewer = roles.getJsonObject(2);
+        assertEquals("viewer", viewer.getString("name"));
+        assertEquals(List.of("read"), viewer.getJsonArray("permissions").getJsonObject(0).getJsonArray("actions").getList());
+        JsonObject member = roles.getJsonObject(3);
+        assertEquals("member", member.getString("name"));
+        assertEquals(1, member.getJsonArray("permissions").size(), member.encode());
+        assertEquals("org-units/**", member.getJsonArray("permissions").getJsonObject(0).getString("pathPattern"), member.encode());
+
+        assertEquals(403, send(HttpMethod.GET, "/v1/org-units/" + ORG + "/Acme/roles", null, null, "authorization", "user").status());
+        assertEquals(404, send(HttpMethod.GET, "/v1/org-units/" + ORG + "/Beta/roles", null, null, "authorization", "admin").status());
+        assertEquals(400, send(HttpMethod.GET, "/v1/org-units/" + ORG + "/roles", null, null, "authorization", "admin").status());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/org-unit-roles.json")
+    void testRolesComeFromTheConfig() {
+        addReadRule("public/Acme/", "Manager");
+        assertEquals(200, create(ORG, "Acme").status());
+
+        JsonArray roles = roles(ORG + "/Acme");
+        assertEquals(List.of("admin", "editor", "viewer", "member", "auditor", "manager"), roles.stream().map(role -> ((JsonObject) role).getString("name")).toList());
+        JsonObject editor = roles.getJsonObject(1);
+        assertEquals("Changes files only", editor.getString("description"));
+        assertEquals(1, editor.getJsonArray("permissions").size(), editor.encode());
+    }
+
+    private JsonArray roles(String path) {
+        Response response = send(HttpMethod.GET, "/v1/org-units/" + path + "/roles", null, null, "authorization", "admin");
+        assertEquals(200, response.status(), response.body());
+        return new JsonObject(response.body()).getJsonArray("items");
+    }
+
+    private static boolean grants(JsonObject role, String pathPattern) {
+        return role.getJsonArray("permissions").stream().map(JsonObject.class::cast)
+                .anyMatch(permission -> permission.getString("pathPattern").equals(pathPattern)
+                        && permission.getJsonArray("actions").getList().equals(List.of("read", "write")));
+    }
+
 }
