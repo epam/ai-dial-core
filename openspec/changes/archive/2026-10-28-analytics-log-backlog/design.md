@@ -106,7 +106,8 @@ holds with or without a limit.
 - `dial_analytics_log_pending_body_bytes`: a gauge on `pendingBodyBytes`, with or without a limit, so an operator
   can see the backlog before setting one.
 - `dial_analytics_log_bodies_skipped_total`: a counter of rows queued without bodies because the limit was reached.
-  Secured rows are not counted. Without a limit it stays at 0.
+  Secured rows are not counted, nor rows that have no bodies, which lose nothing (they are still queued without
+  bodies, so the row has the same fields). Without a limit it stays at 0.
 - With a limit, an `AtomicBoolean behind`. The first skipped row of an episode logs a warning with the pending bytes
   and the limit. The first row admitted with bodies once the waiting bodies are under half the limit logs one line
   saying bodies are logged again. A writer at steady overload keeps the waiting bodies near the limit, and each row it

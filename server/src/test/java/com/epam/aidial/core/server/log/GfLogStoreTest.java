@@ -780,6 +780,11 @@ public class GfLogStoreTest {
         assertEquals(1, bodiesSkipped());
         assertEquals(2000, pendingBodyBytes());
 
+        // a row with no bodies has the same fields, but lost nothing, so it is not counted
+        JsonNode empty = logOf(store.admit(row("e", "").build()));
+        assertFalse(empty.get("request").has("body"));
+        assertEquals(1, bodiesSkipped());
+
         // the writer caught up
         store.release(a);
         store.release(queuedB);

@@ -62,8 +62,9 @@ public class GfLogStore implements LogStore {
     private final AnalyticsSettings settings;
     // bytes of bodies held by the rows that wait in the executor queue
     private final AtomicLong pendingBodyBytes = new AtomicLong();
-    // true from the first row queued without bodies until a row is queued with them while under half the limit, so a
-    // writer that hovers at the limit logs one episode, not two lines per row it writes
+    // true from the first row whose bodies are left out until a row is queued with them while under half the limit, so
+    // a writer that hovers at the limit logs one episode, not two lines per row it writes. It only gates those two log
+    // lines: admit leaves bodies out by the limit alone
     private final AtomicBoolean behind = new AtomicBoolean();
     private final Counter bodiesSkipped;
     // the limit on pendingBodyBytes; 0 or below means no limit
@@ -119,19 +120,23 @@ public class GfLogStore implements LogStore {
         if (logContext.isSecuredApiKey()) {
             return logContext.withoutBodies();
         }
+        long bytes = countBodyBytes(logContext);
         long pending = pendingBodyBytes.get();
         if (maxPendingBodyBytes > 0 && pending >= maxPendingBodyBytes) {
-            bodiesSkipped.increment();
-            if (behind.compareAndSet(false, true)) {
-                log.warn("Analytics log writer is behind: {} bytes of bodies wait to be written, limit is {} bytes. "
-                        + "Rows are written without bodies until it catches up", pending, maxPendingBodyBytes);
+            // a row with no bodies loses nothing, so it is not counted and does not start an episode
+            if (bytes > 0) {
+                bodiesSkipped.increment();
+                if (behind.compareAndSet(false, true)) {
+                    log.warn("Analytics log writer is behind: {} bytes of bodies wait to be written, limit is {} bytes. "
+                            + "Rows are written without bodies until it catches up", pending, maxPendingBodyBytes);
+                }
             }
             return logContext.withoutBodies();
         }
         if (behind.get() && pending * 2 < maxPendingBodyBytes && behind.compareAndSet(true, false)) {
             log.info("Analytics log writer caught up: {} bytes of bodies wait to be written. Rows carry bodies again", pending);
         }
-        pendingBodyBytes.addAndGet(countBodyBytes(logContext));
+        pendingBodyBytes.addAndGet(bytes);
         return logContext;
     }
 
