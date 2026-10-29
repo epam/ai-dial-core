@@ -139,7 +139,9 @@ public class UpstreamRouteProvider {
             }
             if (originalUpstream != null) {
                 context.setOriginalUpstream(originalUpstream);
-            } else {
+            } else if (cachedId != null || cachedEndpoint != null) {
+                // only log when a previously cached upstream reference no longer resolves; a fresh breakpoint
+                // (no prior cache hit) legitimately carries no id/endpoint and is not an anomaly worth a warning
                 log.warn("cached upstream doesn't exist any longer in config: id={}, endpoint={}", cachedId, cachedEndpoint);
             }
         }
