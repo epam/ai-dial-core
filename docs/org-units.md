@@ -25,6 +25,16 @@ prompts, applications, toolsets, skills and projects.
 }
 ```
 
+Each unit's role assignments live in its own policy document, named by the unit's id, `org_units/public/45f3…`:
+
+```json
+{ "roleAssignments": [ { "id": "8031…", "roleName": "admin", "subject": { "type": "claimsPredicate", "source": "email", "function": "EQUAL", "targets": ["jane@acme.example"] } } ] }
+```
+
+The tree is the source of truth: a unit has no policy until its first assignment, removing a unit deletes its policy
+after its tree entry, and a policy the tree doesn't reference is never read. A policy that can't be read grants
+nothing in its own unit; the other units are unaffected.
+
 A unit's `id` never changes. The tree is read through the shared resource cache and decoded again only when it
 changes; like every cached resource, it reaches the blob store at the next sync. Writes change only the entries they touch and keep fields
 this version of core doesn't know, so a node running an older version can't strip a newer one's data.
@@ -66,7 +76,7 @@ configured, nobody creates units.
 | `GET /v1/org-units/public[/{unit}…][?recursive=true]` | anyone | The shared space or a unit with the units directly below it in `items`; with `recursive`, `items` holds every unit below, parents before children. Admins see every unit; others see the units whose folder the read rules let them see. Like publications, a unit carries its `author`'s display name and `createdAt` in epoch milliseconds. |
 | `POST /v1/org-units/public[/{unit}…]` `{"name": "US Risk", "displayName": "…"}` | admins | Creates a unit under the shared space or a unit. The body takes only `name` and `displayName`; any other field is refused with 400 naming it. A name follows core's folder-name rule (no control characters or `/ { } "`) and can't start with "." or end with a space or "."; it is unique among sibling units ignoring case; `roles`, `role-assignments` and `rate` are reserved (`rate` would clash with `/v1/{deployment}/rate`). `displayName` has at most 128 characters and no control characters; without one, the unit shows its name. The unit's folder path, with the marker, must fit core's path-size limit in every type tree (400 otherwise), and the parent must be the shared space or an existing unit (404 otherwise). Answers 200 with the unit. Units go at most 4 levels deep: organization, pillar, department, business unit. |
 | `PATCH /v1/org-units/public/{unit}…` `{"displayName": "US Risk Department"}` | admins | Changes what clients show for the unit and answers 200 with the unit, as `GET` does. `displayName` is the only field it takes, with the same limits as on create; a blank one falls back to the unit's name. The name and folder never change, so `name` and any other field are refused with 400 naming the field. |
-| `DELETE /v1/org-units/public/{unit}…[?recursive=true]` | admins | Removes an empty unit; with `recursive`, every unit below it too, deepest first, and they must all be empty. A unit is empty when its folder holds nothing but `.dial_folder` markers in the files tree, empty grouping folders in the skills and projects trees and nothing at all in the other type trees (a deleted skill or project no longer counts); otherwise 409 names up to three items it holds. Without `recursive`, a unit that has units below it is refused with 409. Answers 200 with `{"removed": [<paths, deepest first>]}`. The tree entries and the markers go; read rules are left as they are. To remove a unit that holds content, delete or move the content first. |
+| `DELETE /v1/org-units/public/{unit}…[?recursive=true]` | admins | Removes an empty unit; with `recursive`, every unit below it too, deepest first, and they must all be empty. A unit is empty when its folder holds nothing but `.dial_folder` markers in the files tree, empty grouping folders in the skills and projects trees and nothing at all in the other type trees (a deleted skill or project no longer counts); otherwise 409 names up to three items it holds. Without `recursive`, a unit that has units below it is refused with 409. Answers 200 with `{"removed": [<paths, deepest first>]}`. The tree entries, their policies and the markers go; read rules are left as they are. To remove a unit that holds content, delete or move the content first. |
 
 Each path segment is url-decoded on its own; a segment that decodes to a `/` is refused with 400, so an encoded
 separator never reaches another unit.
@@ -77,9 +87,11 @@ What the calls change in storage, and nothing else:
 - `POST` adds the unit's entry to the unit tree and puts the `.dial_folder` marker into `files/public/<unit>/` when
   that folder is empty.
 - `PATCH` changes only the unit's `displayName` in its tree entry.
-- `DELETE`, on an empty unit only, removes the markers of its subtree, then its tree entries. A removal that fails
-  before the tree entries go leaves the unit in place, so it can be repeated. Content that lands in the subtree while it
-  is removed, through a write that doesn't wait for the removal, ends up under no unit, where the read rules decide.
+- Adding or removing a role assignment changes only that unit's policy document.
+- `DELETE`, on an empty unit only, removes the markers of its subtree, then its tree entries, then the units' policies.
+  A removal that fails before the tree entries go leaves the unit in place, so it can be repeated. Content that lands in
+  the subtree while it is removed, through a write that doesn't wait for the removal, ends up under no unit, where the
+  read rules decide.
 
 No call moves, copies or deletes content.
 
@@ -108,7 +120,7 @@ Every unit offers the same roles. Four are built in; `orgUnitRoles` in the dynam
 by name or add more, and changes apply on the next config reload. Units can't change them, and the settings API
 doesn't carry them. A role grants only in the unit it
 is assigned at: a resource belongs to the nearest unit above it, so units below are not covered. Roles are given at a unit
-by role assignments, which come next; until then they grant nothing.
+by role assignments, below.
 
 | Role | Grants in its unit |
 |---|---|
@@ -140,4 +152,45 @@ else fails to load, so a reload keeps the previous config. For example:
 
 | Call | Who | What |
 |---|---|---|
-| `GET /v1/org-units/public/{unit}…/roles` | admins | The roles in `items`: built-in ones first, then the config's own by name. Each has `name`, `description`, `system` (true: defined by the platform) and `permissions`. |
+| `GET /v1/org-units/public/{unit}…/roles` | admins, holders of `read role-assignments/**` at the unit | The roles in `items`: built-in ones first, then the config's own by name. Each has `name`, `description`, `system` (true: defined by the platform) and `permissions`. |
+
+## Role assignments
+
+An assignment gives one of the roles above to a subject at one unit; units below it do not inherit it. For now only
+the `role-assignments` permission acts, as described below; content and publication grants follow.
+
+Besides DIAL admins, a holder of `read role-assignments/**` at a unit — by default its `admin` — lists its roles and
+assignments, and a holder of `write role-assignments/**` adds and removes them, in that unit only. They give or remove
+only roles whose permissions their own roles there hold together, so nobody hands out more than they have; an
+assignment of a role that no longer exists can be removed. A unit admin may remove their own assignment, and so lose
+the power. To anyone else the calls answer 403, also for a path that names no unit.
+
+| Call | Who | What |
+|---|---|---|
+| `GET /v1/org-units/public/{unit}…/role-assignments` | admins, `read role-assignments/**` | The unit's assignments in `items`, in the order they were added. |
+| `POST /v1/org-units/public/{unit}…/role-assignments` `{"roleName": "editor", "subject": {…}}` | admins, `write role-assignments/**` | Gives the role to the subject at the unit and answers 200 with the assignment: `id`, `roleName`, `subject`. The same role for a subject that matches the same callers again (the same claim and function, and the same values ignoring case and order) answers the stored assignment and writes nothing. |
+| `DELETE /v1/org-units/public/{unit}…/role-assignments/{id}` | admins, `write role-assignments/**` | Removes the assignment and answers `{"removed": "<id>"}`; an unknown id is 404. |
+
+`roleName` is one of the roles `GET …/roles` lists; any other is refused with 400. An assignment stored with a
+role that no longer exists, such as the earlier `approver`, grants nothing. `subject` is a claims predicate on the
+caller's token, written as a folder's read rule is, inside the DIAL 2.0 design's typed envelope:
+`{"type": "claimsPredicate", "source": "email", "function": "EQUAL", "targets": ["jane@acme.example"]}` for a person, or
+`{"type": "claimsPredicate", "source": "groups", "function": "EQUAL", "targets": ["us-risk-leads"]}` for a group. The
+`source` names the claim to read, since identity providers name the group claim differently, and `roles` is the
+claim every provider's `rolePath` maps into. Unit admins write subjects and every request evaluates them, so a subject is
+narrower than a read rule: `source` is a claim name or a dotted path of up to 8 of them, such as `realm_access.roles`,
+each name letters, digits, `_` and `-` with at most 64 characters. It is not the JSON path expression a rule may use,
+so a claim whose name holds other characters, such as `cognito:groups`, can't be a subject's source. Of the rule
+functions `EQUAL` and `TRUE` are
+accepted; `CONTAIN`, `REGEX` and `FALSE` are refused with 400 until a consumer needs them. With `EQUAL`, `targets`
+has at least one value; values are not blank, have at most 256 characters and no control characters. `TRUE` takes no
+`targets` and matches any caller whose token has the claim, as a `TRUE` read rule does:
+`{"type": "claimsPredicate", "source": "sub", "function": "TRUE"}` is everyone signed in. With `"source": "roles"` it
+is every signed-in caller as well, those without a DIAL role included, as every caller has a `roles` claim. Other subject
+types are refused for now. The shared space holds no assignments (400). Removing a
+unit removes its assignments; a unit recorded again in the same place starts with none.
+
+A caller matches a subject when they are signed in with a token, not acting through an application or an API key,
+and the claim holds one of the targets, ignoring case, read the same way as a read rule reads it (`roles` means the
+caller's DIAL roles). A stored subject with any other function, a source that isn't a plain claim name or path, `EQUAL`
+without targets or `TRUE` with them grants nothing.

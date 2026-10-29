@@ -10,12 +10,17 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.orgunit.CreateOrgUnitRequest;
+import com.epam.aidial.core.server.data.orgunit.CreateRoleAssignmentRequest;
 import com.epam.aidial.core.server.data.orgunit.DeleteOrgUnitResult;
+import com.epam.aidial.core.server.data.orgunit.DeleteRoleAssignmentResult;
 import com.epam.aidial.core.server.data.orgunit.OrgUnitData;
 import com.epam.aidial.core.server.data.orgunit.OrgUnitRoleList;
+import com.epam.aidial.core.server.data.orgunit.RoleAssignment;
+import com.epam.aidial.core.server.data.orgunit.RoleAssignmentList;
 import com.epam.aidial.core.server.data.orgunit.UpdateOrgUnitRequest;
 import com.epam.aidial.core.server.service.OrgUnitRoles;
 import com.epam.aidial.core.server.service.OrgUnitService;
+import com.epam.aidial.core.server.service.OrgUnitSubjects;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -27,6 +32,8 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.function.BiPredicate;
 
 /**
  * Reads, creates, renames and removes org units. Switched off, every route answers as one that does not exist.
@@ -168,7 +175,7 @@ public class OrgUnitController {
                             description = "Also remove every unit below it")
             },
             responses = {
-                    @ApiResponse(code = 200, description = "The units are removed, with their folder markers",
+                    @ApiResponse(code = 200, description = "The units are removed, with their role assignments and folder markers",
                             body = @ApiSchema(implementation = DeleteOrgUnitResult.class)),
                     @ApiResponse(code = 400),
                     @ApiResponse(code = 403),
@@ -215,11 +222,128 @@ public class OrgUnitController {
             }
     )
     public Future<?> listRoles(String rawPath) {
+        boolean admin = proxy.getAccessService().hasExplicitAdminAccess(context);
+        OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
         proxy.getTaskExecutor()
                 .submit(() -> {
                     requireEnabled();
-                    requireAdmin();
-                    return new OrgUnitRoleList(orgUnitService.listRoles(decode(rawPath), OrgUnitRoles.of(context.getConfig())));
+                    List<String> path = decode(rawPath);
+                    requireGrant(admin, path, roles, OrgUnitRoles.READ);
+                    return new OrgUnitRoleList(orgUnitService.listRoles(path, roles));
+                })
+                .onSuccess(result -> context.respond(HttpStatus.OK, result))
+                .onFailure(this::respondError);
+        return Future.succeededFuture();
+    }
+
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/org-units/{path}/role-assignments",
+            operationId = "listOrgUnitRoleAssignments",
+            tags = {"Org units"},
+            parameters = {
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
+                            description = "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = RoleAssignmentList.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
+    public Future<?> listRoleAssignments(String rawPath) {
+        boolean admin = proxy.getAccessService().hasExplicitAdminAccess(context);
+        OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
+        proxy.getTaskExecutor()
+                .submit(() -> {
+                    requireEnabled();
+                    List<String> path = decode(rawPath);
+                    requireGrant(admin, path, roles, OrgUnitRoles.READ);
+                    return new RoleAssignmentList(orgUnitService.listRoleAssignments(path));
+                })
+                .onSuccess(result -> context.respond(HttpStatus.OK, result))
+                .onFailure(this::respondError);
+        return Future.succeededFuture();
+    }
+
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/org-units/{path}/role-assignments",
+            operationId = "addOrgUnitRoleAssignment",
+            requestBody = @ApiSchema(implementation = CreateRoleAssignmentRequest.class),
+            tags = {"Org units"},
+            parameters = {
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
+                            description = "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "The role is given, or was already given to the subject",
+                            body = @ApiSchema(implementation = RoleAssignment.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
+    public Future<?> addRoleAssignment(String rawPath) {
+        boolean admin = proxy.getAccessService().hasExplicitAdminAccess(context);
+        OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
+        context.getRequest().body()
+                .compose(body -> proxy.getTaskExecutor().submit(() -> {
+                    requireEnabled();
+                    List<String> path = decode(rawPath);
+                    requireGrant(admin, path, roles, OrgUnitRoles.WRITE);
+                    CreateRoleAssignmentRequest request = parse(body.toString(), CreateRoleAssignmentRequest.class,
+                            "Request body must be {\"roleName\": \"admin\", \"subject\": {\"type\": \"claimsPredicate\", "
+                                    + "\"source\": \"email\", \"function\": \"EQUAL\", \"targets\": […]}}");
+                    return orgUnitService.addRoleAssignment(path, request.roleName(), request.subject(), roles, mayChange(admin, roles));
+                }))
+                .onSuccess(assignment -> context.respond(HttpStatus.OK, assignment))
+                .onFailure(this::respondError);
+        return Future.succeededFuture();
+    }
+
+    @ApiOperation(
+            method = "DELETE",
+            path = "/v1/org-units/{path}/role-assignments/{id}",
+            operationId = "removeOrgUnitRoleAssignment",
+            tags = {"Org units"},
+            parameters = {
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
+                            description = "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk"),
+                    @ApiParameter(name = "id", in = ParameterIn.PATH, required = true, description = "The assignment's id")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "The assignment is removed",
+                            body = @ApiSchema(implementation = DeleteRoleAssignmentResult.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
+    public Future<?> removeRoleAssignment(String rawPath, String id) {
+        boolean admin = proxy.getAccessService().hasExplicitAdminAccess(context);
+        OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
+        proxy.getTaskExecutor()
+                .submit(() -> {
+                    requireEnabled();
+                    List<String> path = decode(rawPath);
+                    requireGrant(admin, path, roles, OrgUnitRoles.WRITE);
+                    orgUnitService.removeRoleAssignment(path, id, mayChange(admin, roles));
+                    return new DeleteRoleAssignmentResult(id);
                 })
                 .onSuccess(result -> context.respond(HttpStatus.OK, result))
                 .onFailure(this::respondError);
@@ -253,6 +377,38 @@ public class OrgUnitController {
         if (!proxy.getAccessService().hasExplicitAdminAccess(context)) {
             throw new HttpException(HttpStatus.FORBIDDEN, "Only administrators may manage org units");
         }
+    }
+
+    /**
+     * Lets a DIAL admin through; anyone else needs the action on the unit's role assignments. A path that names no unit
+     * refuses them the same way, so it tells them nothing. A change checks again in its own write ({@link #mayChange}).
+     */
+    private void requireGrant(boolean admin, List<String> path, OrgUnitRoles roles, String action) {
+        if (admin) {
+            return;
+        }
+        Set<String> held = OrgUnitSubjects.heldRoles(context, orgUnitService.roleAssignmentsAt(path));
+        if (!roles.allows(held, action, OrgUnitRoles.ROLE_ASSIGNMENTS)) {
+            throw new HttpException(HttpStatus.FORBIDDEN, "Only administrators and the unit's admins may manage its role assignments");
+        }
+    }
+
+    /**
+     * Whether the caller may give or remove the role, decided on the unit's assignments as they are when the change is
+     * written: a DIAL admin any role, anyone else only while they still hold write on the assignments there, and only
+     * roles their own roles there cover.
+     */
+    private BiPredicate<List<RoleAssignment>, String> mayChange(boolean admin, OrgUnitRoles roles) {
+        return (assignments, roleName) -> {
+            if (admin) {
+                return true;
+            }
+            Set<String> held = OrgUnitSubjects.heldRoles(context, assignments);
+            if (!roles.allows(held, OrgUnitRoles.WRITE, OrgUnitRoles.ROLE_ASSIGNMENTS)) {
+                throw new HttpException(HttpStatus.FORBIDDEN, "Only administrators and the unit's admins may manage its role assignments");
+            }
+            return roles.covers(held, roleName);
+        };
     }
 
     private static <T> T parse(String body, Class<T> type, String message) {

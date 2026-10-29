@@ -11174,7 +11174,7 @@ paths:
           type: boolean
       responses:
         "200":
-          description: "The units are removed, with their folder markers"
+          description: "The units are removed, with their role assignments and folder markers"
           content:
             application/json:
               schema:
@@ -11231,6 +11231,152 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrgUnitData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/org-units/{path}/role-assignments:
+    get:
+      tags:
+      - Org units
+      summary: "/v1/org-units/{path}/role-assignments"
+      operationId: listOrgUnitRoleAssignments
+      parameters:
+      - name: path
+        in: path
+        description: "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk"
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleAssignmentList"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    post:
+      tags:
+      - Org units
+      summary: "/v1/org-units/{path}/role-assignments"
+      operationId: addOrgUnitRoleAssignment
+      parameters:
+      - name: path
+        in: path
+        description: "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk"
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoleAssignmentRequest"
+        required: true
+      responses:
+        "200":
+          description: "The role is given, or was already given to the subject"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleAssignment"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/org-units/{path}/role-assignments/{id}:
+    delete:
+      tags:
+      - Org units
+      summary: "/v1/org-units/{path}/role-assignments/{id}"
+      operationId: removeOrgUnitRoleAssignment
+      parameters:
+      - name: path
+        in: path
+        description: "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk"
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        description: The assignment's id
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The assignment is removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteRoleAssignmentResult"
         "400":
           description: Bad request
           content:
@@ -17736,6 +17882,17 @@ components:
           type: string
         name:
           type: string
+    CreateRoleAssignmentRequest:
+      type: object
+      properties:
+        roleName:
+          type: string
+        subject:
+          anyOf:
+          - $ref: "#/components/schemas/SubjectUser-2"
+          - $ref: "#/components/schemas/SubjectApiKey-2"
+          - $ref: "#/components/schemas/SubjectClaimsPredicate-2"
+          - $ref: "#/components/schemas/SubjectAny-2"
     CredentialsLevel:
       type: string
       enum:
@@ -17756,6 +17913,11 @@ components:
           type: array
           items:
             type: string
+    DeleteRoleAssignmentResult:
+      type: object
+      properties:
+        removed:
+          type: string
     DeploymentData:
       required:
       - object
@@ -19643,6 +19805,26 @@ components:
           type: string
         share:
           $ref: "#/components/schemas/MapStringShareResourceLimit"
+    RoleAssignment:
+      type: object
+      properties:
+        id:
+          type: string
+        roleName:
+          type: string
+        subject:
+          anyOf:
+          - $ref: "#/components/schemas/SubjectUser-2"
+          - $ref: "#/components/schemas/SubjectApiKey-2"
+          - $ref: "#/components/schemas/SubjectClaimsPredicate-2"
+          - $ref: "#/components/schemas/SubjectAny-2"
+    RoleAssignmentList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoleAssignment"
     Route:
       type: object
       properties:
@@ -19819,6 +20001,37 @@ components:
           type: string
         mode:
           $ref: "#/components/schemas/SpendingLimitMode"
+    SubjectAny-1:
+      type: object
+    SubjectAny-2:
+      $ref: "#/components/schemas/SubjectAny-1"
+    SubjectApiKey-1:
+      type: object
+      properties:
+        id:
+          type: string
+    SubjectApiKey-2:
+      $ref: "#/components/schemas/SubjectApiKey-1"
+    SubjectClaimsPredicate-1:
+      type: object
+      properties:
+        function:
+          $ref: "#/components/schemas/RuleFunction"
+        source:
+          type: string
+        targets:
+          type: array
+          items:
+            type: string
+    SubjectClaimsPredicate-2:
+      $ref: "#/components/schemas/SubjectClaimsPredicate-1"
+    SubjectUser-1:
+      type: object
+      properties:
+        id:
+          type: string
+    SubjectUser-2:
+      $ref: "#/components/schemas/SubjectUser-1"
     SubscribeResourcesRequest:
       type: object
       properties:

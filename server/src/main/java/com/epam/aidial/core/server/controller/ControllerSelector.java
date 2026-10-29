@@ -421,6 +421,22 @@ public class ControllerSelector {
             String path = pathMatcher.group("path");
             return () -> controller.listRoles(path);
         });
+        get(RouteTemplate.ORG_UNIT_ROLE_ASSIGNMENTS, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.listRoleAssignments(path);
+        });
+        post(RouteTemplate.ORG_UNIT_ROLE_ASSIGNMENTS, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.addRoleAssignment(path);
+        });
+        delete(RouteTemplate.ORG_UNIT_ROLE_ASSIGNMENT, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            String id = pathMatcher.group("id");
+            return () -> controller.removeRoleAssignment(path, id);
+        });
         get(RouteTemplate.ORG_UNIT, (proxy, context, pathMatcher) -> {
             OrgUnitController controller = new OrgUnitController(proxy, context);
             String path = pathMatcher.group("path");
