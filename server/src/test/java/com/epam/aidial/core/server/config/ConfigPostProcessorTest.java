@@ -18,6 +18,7 @@ import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.config.UpstreamAuthConfig;
 import com.epam.aidial.core.config.UpstreamAuthType;
 import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -246,7 +247,7 @@ public class ConfigPostProcessorTest {
         Config config = newMutableConfig();
         Upstream upstream = new Upstream();
         upstream.setEndpoint("https://openrouter.ai/api/v1/chat/completions");
-        upstream.setAuthType(UpstreamAuthType.BEARER);
+        upstream.setAuthType(UpstreamAuthConfig.fromString("BEARER"));
         Route route = new Route();
         route.setUpstreams(List.of(upstream));
         config.getRoutes().put("openrouter", route);
@@ -261,7 +262,7 @@ public class ConfigPostProcessorTest {
         Upstream upstream = new Upstream();
         upstream.setEndpoint("https://openrouter.ai/api/v1/chat/completions");
         upstream.setKey("openrouter-key");
-        upstream.setAuthType(UpstreamAuthType.BEARER);
+        upstream.setAuthType(UpstreamAuthConfig.fromString("BEARER"));
         Route route = new Route();
         route.setUpstreams(List.of(upstream));
         config.getRoutes().put("openrouter", route);
@@ -269,6 +270,36 @@ public class ConfigPostProcessorTest {
         ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
 
         assertTrue(config.getRoutes().containsKey("openrouter"));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnRouteCustomHeaderUpstreamWithoutKey() {
+        Config config = newMutableConfig();
+        Upstream upstream = new Upstream();
+        upstream.setEndpoint("https://example.com/api");
+        upstream.setAuthType(new UpstreamAuthConfig(UpstreamAuthType.CUSTOM_HEADER, "X-Api-Token"));
+        Route route = new Route();
+        route.setUpstreams(List.of(upstream));
+        config.getRoutes().put("custom", route);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAllowsRouteCustomHeaderUpstreamWithKey() {
+        Config config = newMutableConfig();
+        Upstream upstream = new Upstream();
+        upstream.setEndpoint("https://example.com/api");
+        upstream.setKey("secret");
+        upstream.setAuthType(new UpstreamAuthConfig(UpstreamAuthType.CUSTOM_HEADER, "X-Api-Token"));
+        Route route = new Route();
+        route.setUpstreams(List.of(upstream));
+        config.getRoutes().put("custom", route);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getRoutes().containsKey("custom"));
     }
 
     @Test

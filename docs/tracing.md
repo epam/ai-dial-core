@@ -125,6 +125,7 @@ executor) start no traces of their own. They do not depend on `genAiSpanAttribut
 | `auth.jwks.fetch`                                        | Fetching an identity provider's signing key; once per key id while it is cached |                                             |
 | `deployment.resolve`                                     | Finding the requested deployment and checking access and user consent         |                                               |
 | `rate_limit.check`                                       | The token, request and cost limit checks before a request is forwarded        | `dial.deployment`, `dial.rate_limit.status`   |
+| `rate_limit.read_spend`                                  | Reading the caller's spend caps, unchecked, for a translated Anthropic request |                                              |
 | `oauth.request`                                          | A call to an authorization server: token exchange, metadata discovery, registration | `http.request.method`, `server.address`, `http.response.status_code` |
 | `kms.encrypt`, `kms.decrypt`                             | A call to the configured AWS, Azure or GCP key management service             |                                               |
 | `resource.get`, `resource.compute`, `resource.put`, `resource.delete` | A `ResourceService` operation, including Redis access and lock waits | `dial.resource.type`; `resource.get` also has `dial.cache.hit` (`false` when the value was read from blob storage) |
@@ -146,7 +147,9 @@ also records calls made outside a request.
 
 These metrics show where Core waits rather than works. The timers have buckets from 100 µs to 30 s.
 Locks and async tasks each have queue-size gauges and timers for the wait and the work; the event loops have a
-queue-size gauge only. The event-loop gauges are only registered when a Prometheus or OTLP registry is enabled.
+queue-size gauge only. The event-loop gauges are only registered when a Prometheus or OTLP registry is enabled. The
+analytics log writer has a gauge of the bodies its queue holds and a counter of rows written without them; the counter
+stays at 0 unless `analytics.maxPendingBodyHeapPercent` is set.
 
 | Metric                                | Type  | Measures                                                                                                       |
 |---------------------------------------|-------|----------------------------------------------------------------------------------------------------------------|
@@ -160,6 +163,8 @@ queue-size gauge only. The event-loop gauges are only registered when a Promethe
 | `dial_async_task_duration`            | timer | Time an `AsyncTaskExecutor` task runs, from its start until it returns or throws                               |
 | `netty_eventexecutor_tasks_pending`   | gauge | Tasks queued on each event loop, tagged with the loop thread `name` (Micrometer `NettyEventExecutorMetrics`)   |
 | `netty_eventexecutor_workers`         | gauge | Number of event loops (Micrometer `NettyEventExecutorMetrics`)                                                 |
+| `dial_analytics_log_pending_body_bytes` | gauge | Bytes of request and response bodies held by analytics log rows that wait to be written, with or without `analytics.maxPendingBodyHeapPercent` |
+| `dial_analytics_log_bodies_skipped_total` | counter | Analytics log rows written without bodies because the waiting bodies reached `analytics.maxPendingBodyHeapPercent` |
 
 Locks:
 

@@ -50,7 +50,7 @@ import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.service.AdminExportService;
+import com.epam.aidial.core.server.service.AdminSystemExportService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -117,14 +117,15 @@ import io.micrometer.registry.otlp.OtlpMeterRegistry;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender;
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
-import io.opentelemetry.sdk.trace.SpanProcessor;
 import io.vertx.config.spi.utils.JsonObjectHelper;
+import io.vertx.core.AbstractVerticle;
+import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
-import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.WebSocketClient;
 import io.vertx.core.http.WebSocketClientOptions;
@@ -168,7 +169,9 @@ public class AiDial {
     private static final Set<String> NON_PRINTABLE_SETTINGS = Set.of("secret", "password", "key", "credential", "identity");
     private JsonObject settings;
     private Vertx vertx;
-    private HttpServer server;
+    private String serverDeploymentId;
+    // written by every instance from its own event loop (the same value: the port is fixed or shared), read after open() returns
+    private volatile int serverPort;
     private HttpClient client;
     private WebSocketClient webSocketClient;
 
@@ -196,8 +199,21 @@ public class AiDial {
         try {
             settings = (settings == null) ? settings() : settings;
             printSettings(settings);
+            JsonObject serverSettings = settings("server");
+            int serverInstances = serverSettings.getInteger("instances", 1);
+            if (serverInstances < 1) {
+                throw new IllegalArgumentException("server.instances must be positive, but got: " + serverInstances);
+            }
+            if (serverInstances > 1 && serverSettings.getInteger("port", HttpServerOptions.DEFAULT_PORT) == 0) {
+                throw new IllegalArgumentException("server.port 0 gives each of the " + serverInstances
+                        + " server instances its own random port; use a fixed port, or -1 for one random port shared by all instances");
+            }
             ProxyUtil.init(ProxySettings.from(settings("proxy")));
             VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
+            if (serverInstances > vertxOptions.getEventLoopPoolSize()) {
+                log.warn("server.instances {} exceeds vertx.eventLoopPoolSize {}: instances share event loops",
+                        serverInstances, vertxOptions.getEventLoopPoolSize());
+            }
             setupMetrics(vertxOptions);
             BlockingCallTracer blockingCallTracer = new BlockingCallTracer(setupTracing(vertxOptions));
 
@@ -398,9 +414,9 @@ public class AiDial {
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
                     client, logStore, credentialEncryptionService, backgroundJobSettings, backgroundTracer);
 
-            AdminExportService adminExportService = new AdminExportService(storage, lockService, clock, version());
-            AdminExportService.Settings adminExportSettings = Json.decodeValue(settings("adminExport").toBuffer(), AdminExportService.Settings.class);
-            adminExportSettings.validate();
+            AdminSystemExportService adminSystemExportService = new AdminSystemExportService(storage, lockService, clock, version());
+            AdminSystemExportService.Settings adminSystemExportSettings = Json.decodeValue(settings("adminSystemExport").toBuffer(), AdminSystemExportService.Settings.class);
+            adminSystemExportSettings.validate();
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, mergedConfigStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
@@ -416,14 +432,23 @@ public class AiDial {
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,
                     TracingSettings.from(settings("tracing")), blockingCallTracer,
-                    adminExportService, adminExportSettings, orgUnitService);
+                    adminSystemExportService, adminSystemExportSettings, orgUnitService);
 
-            server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
-            open(server, HttpServer::listen);
+            HttpServerOptions serverOptions = new HttpServerOptions(serverSettings);
+            // each instance listens on the same port from its own event loop; Vert.x hands new connections to them in turn
+            serverDeploymentId = open(vertx, v -> v.deployVerticle(() -> new AbstractVerticle() {
+                @Override
+                public void start(Promise<Void> startPromise) {
+                    vertx.createHttpServer(serverOptions).requestHandler(proxy).listen()
+                            .onSuccess(server -> serverPort = server.actualPort())
+                            .<Void>mapEmpty()
+                            .onComplete(startPromise);
+                }
+            }, new DeploymentOptions().setInstances(serverInstances)));
             String localBaseUrl = backgroundJobSettings.getLocalBaseUrl();
-            backgroundJobService.setLocalBaseUrl(localBaseUrl != null ? localBaseUrl : "http://localhost:" + server.actualPort());
+            backgroundJobService.setLocalBaseUrl(localBaseUrl != null ? localBaseUrl : "http://localhost:" + serverPort);
             backgroundJobService.init();
-            log.info("Proxy started on {}", server.actualPort());
+            log.info("Proxy started on {} with {} server instance(s)", serverPort, serverInstances);
         } catch (Throwable e) {
             log.error("Proxy failed to start:", e);
             stop();
@@ -511,7 +536,10 @@ public class AiDial {
     @VisibleForTesting
     void stop() throws Exception {
         try {
-            close(server, HttpServer::close);
+            if (serverDeploymentId != null) {
+                // closes the server of every instance
+                close(vertx, v -> v.undeploy(serverDeploymentId));
+            }
             close(client, HttpClient::close);
             close(resourceService);
             close(complexResourceSweepService);
@@ -624,10 +652,10 @@ public class AiDial {
         return JsonObjectHelper.from(properties, false, true);
     }
 
-    private static <R> void open(R resource, AsyncOpener<R> opener) throws Exception {
-        CompletableFuture<R> startup = new CompletableFuture<>();
+    private static <R, T> T open(R resource, AsyncOpener<R, T> opener) throws Exception {
+        CompletableFuture<T> startup = new CompletableFuture<>();
         opener.open(resource).onSuccess(startup::complete).onFailure(startup::completeExceptionally);
-        startup.get(15, TimeUnit.SECONDS);
+        return startup.get(15, TimeUnit.SECONDS);
     }
 
     private static <R> void close(R resource, AsyncCloser<R> closer) throws Exception {
@@ -650,8 +678,8 @@ public class AiDial {
         }
     }
 
-    private interface AsyncOpener<R> {
-        Future<R> open(R resource);
+    private interface AsyncOpener<R, T> {
+        Future<T> open(R resource);
     }
 
     private interface AsyncCloser<R> {
@@ -719,9 +747,11 @@ public class AiDial {
             System.setProperty("otel.traces.exporter", "none");
         }
 
+        // added to the provider rather than around the exporter's processor: without an exporter there is none, and from
+        // OpenTelemetry 1.67 a provider without a processor hands out no-op tracers, so no request would get a trace id
         OpenTelemetry openTelemetry = AutoConfiguredOpenTelemetrySdk.builder()
-                .addSpanProcessorCustomizer(((spanProcessor, configProperties) ->
-                        SpanProcessor.composite(new PathNormalizerSpanProcessor(), spanProcessor)))
+                .addTracerProviderCustomizer((tracerProvider, configProperties) ->
+                        tracerProvider.addSpanProcessor(new PathNormalizerSpanProcessor()))
                 .build()
                 .getOpenTelemetrySdk();
 

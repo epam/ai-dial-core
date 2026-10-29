@@ -54,7 +54,8 @@ Steps, all from the repository root, with ${OPENSPEC} wherever OpenSpec says "op
 2. ${OPENSPEC} status --change ${it.id} --json, then for each artifact in dependency order
    ${OPENSPEC} instructions <artifact> --change ${it.id} --json and write the artifact as instructed
    (proposal.md; spec deltas under specs/<capability>/spec.md with ADDED / MODIFIED / REMOVED Requirements against the
-   existing capabilities; design.md; tasks.md).
+   existing capabilities; design.md; tasks.md). The schema needs design.md before tasks.md; for a small change it may be
+   a few lines (Context pointing at the proposal, no decisions, Migration Plan "none") rather than a full document.
 3. ${OPENSPEC} validate ${it.id} --strict until it passes.
 Other changes in this run (stay out of their scope; name a dependency on one if you have it):
 ${ALL}
