@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller.route;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.config.UpstreamAuthConfig;
 import com.epam.aidial.core.config.UpstreamAuthType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -166,13 +167,20 @@ abstract class BaseRouteController implements Controller {
 
     void copyHeaders(MultiMap from, MultiMap to) {
         Upstream upstream = context.getUpstreamRoute().get();
-        boolean bearer = supportsUpstreamAuthType() && upstream != null && upstream.getKey() != null
-                && upstream.getAuthType() == UpstreamAuthType.BEARER;
+        UpstreamAuthConfig authConfig = supportsUpstreamAuthType() && upstream != null && upstream.getKey() != null
+                ? upstream.getAuthType() : null;
+        UpstreamAuthType authType = authConfig == null ? null : authConfig.type();
+        boolean bearer = authType == UpstreamAuthType.BEARER;
         MultiMap excludeHeaders = excludeHeaders(bearer);
+        if (authType == UpstreamAuthType.CUSTOM_HEADER) {
+            excludeHeaders.add(authConfig.headerName(), "whatever");
+        }
         ProxyUtil.copyHeaders(from, to, excludeHeaders);
         if (upstream != null && upstream.getKey() != null) {
             if (bearer) {
                 to.set(HttpHeaders.AUTHORIZATION, "Bearer " + upstream.getKey());
+            } else if (authType == UpstreamAuthType.CUSTOM_HEADER) {
+                to.set(authConfig.headerName(), upstream.getKey());
             } else {
                 to.add(Proxy.HEADER_API_KEY, upstream.getKey());
             }

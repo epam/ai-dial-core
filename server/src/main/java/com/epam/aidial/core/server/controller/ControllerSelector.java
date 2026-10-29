@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.controller.anthropic.AnthropicModelController;
+import com.epam.aidial.core.server.controller.anthropic.AnthropicUsageController;
 import com.epam.aidial.core.server.controller.anthropic.MessagesController;
 import com.epam.aidial.core.server.controller.anthropic.MessagesCountTokensController;
 import com.epam.aidial.core.server.controller.route.ApplicationRouteController;
@@ -115,6 +116,10 @@ public class ControllerSelector {
         get(RouteTemplate.LLM_ANTHROPIC_MODELS, (proxy, context, pathMatcher) -> {
             AnthropicModelController controller = new AnthropicModelController(context);
             return controller::getModels;
+        });
+        get(RouteTemplate.ANTHROPIC_OAUTH_USAGE, (proxy, context, pathMatcher) -> {
+            AnthropicUsageController controller = new AnthropicUsageController(proxy, context);
+            return controller::handle;
         });
         get(RouteTemplate.APPLICATION, (proxy, context, pathMatcher) -> {
             ApplicationController controller = new ApplicationController(context);
@@ -542,7 +547,7 @@ public class ControllerSelector {
             };
         });
         post(RouteTemplate.CONFIG_VALIDATE, (proxy, context, pathMatcher) -> new AdminValidateController(proxy, context));
-        post(RouteTemplate.ADMIN_EXPORT, (proxy, context, pathMatcher) -> new AdminExportController(proxy, context));
+        post(RouteTemplate.ADMIN_SYSTEM_EXPORT, (proxy, context, pathMatcher) -> new AdminSystemExportController(proxy, context));
         post(RouteTemplate.CONFIG_APPLY, (proxy, context, pathMatcher) -> {
             AdminApplyController controller = new AdminApplyController(proxy, context);
             return controller::handle;

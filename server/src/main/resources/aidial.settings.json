@@ -79,7 +79,7 @@
     "activeBatches": 5,
     "gracePeriod": 3600000
   },
-  "adminExport": {
+  "adminSystemExport": {
     "stallTimeout": 60000
   },
   "clientChannel": {

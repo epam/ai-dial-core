@@ -20,19 +20,25 @@ public class RuleMatcher {
      * @return true if any of the provided rule matched (OR condition behaviour), otherwise - false
      */
     public boolean match(ProxyContext context, Collection<Rule> rules) {
+        JsonNode userClaims = Optional.ofNullable(context.getExtractedClaims())
+                .map(ExtractedClaims::userClaims).orElse(null);
+        return match(context.getUserRoles(), userClaims, rules);
+    }
+
+    /**
+     * Same as {@link #match(ProxyContext, Collection)}, for callers that hold the roles and claims themselves.
+     */
+    public boolean match(List<String> userRoles, JsonNode userClaims, Collection<Rule> rules) {
         // if no rules provided - resource is available to everybody
         if (rules.isEmpty()) {
             return true;
         }
 
-        JsonNode userClaims = Optional.ofNullable(context.getExtractedClaims())
-                .map(ExtractedClaims::userClaims).orElse(null);
-
         for (Rule rule : rules) {
             String claim = rule.getSource();
             List<String> sources;
             if (claim.equals("roles")) {
-                sources = context.getUserRoles();
+                sources = userRoles;
             } else {
                 sources = userClaims == null ? null : extract(userClaims, claim);
             }
