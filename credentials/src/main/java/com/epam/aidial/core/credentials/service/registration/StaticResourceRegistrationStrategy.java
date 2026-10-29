@@ -125,7 +125,7 @@ public class StaticResourceRegistrationStrategy implements ResourceRegistrationS
                                                                                               String resourceEndpoint) {
         try {
             return protectedResourceMetadataService.getProtectedResourceMetadata(resourceId, resourceEndpoint);
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             log.info("No protected resource metadata for Resource: {}, registering without a resource indicator: {}",
                     resourceId, e.getMessage());
             return null;

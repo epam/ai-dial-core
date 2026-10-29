@@ -12,11 +12,13 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.net.ConnectException;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -108,6 +110,19 @@ class StaticResourceRegistrationStrategyTest {
     void testRegister_completeSettings_failedLookupDoesNotFailRegistration() {
         when(protectedResourceMetadataService.getProtectedResourceMetadata("staticResource", "https://test.endpoint.com"))
                 .thenThrow(new IllegalArgumentException("Protected resource metadata is not the same as Resource endpoint"));
+
+        ClientRegistration result = resourceRegistrationStrategy.register(
+                "staticResource", "https://test.endpoint.com", completeStaticSettings().build());
+
+        assertNull(result.getResource());
+        assertEquals("staticClientId", result.getClientId());
+    }
+
+    @Test
+    void testRegister_completeSettings_unreachableEndpointDoesNotFailRegistration() {
+        doAnswer(invocation -> {
+            throw new ConnectException("Cannot connect to https://test.endpoint.com");
+        }).when(protectedResourceMetadataService).getProtectedResourceMetadata("staticResource", "https://test.endpoint.com");
 
         ClientRegistration result = resourceRegistrationStrategy.register(
                 "staticResource", "https://test.endpoint.com", completeStaticSettings().build());
