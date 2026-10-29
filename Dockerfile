@@ -7,7 +7,11 @@ WORKDIR /home/gradle/src
 RUN --mount=type=secret,id=GPR_USERNAME,env=GPR_USERNAME --mount=type=secret,id=GPR_PASSWORD,env=GPR_PASSWORD gradle --no-daemon build --stacktrace -PdisableCompression=true -x test
 RUN mkdir /build && tar -xf /home/gradle/src/server/build/distributions/server*.tar --strip-components=1 -C /build
 
-FROM eclipse-temurin:21-jdk-alpine
+# Pinned to Temurin 21.0.11_10 (musl 1.2.5) — the last known-good combination for JFR.
+# JDK 21.0.12 + musl 1.2.6 (the next eclipse-temurin:21-jdk-alpine build) silently produces
+# empty .jfr recordings (JFR.stop reports "0 bytes written"). Do not float this tag until
+# that regression is confirmed fixed upstream.
+FROM eclipse-temurin:21-jdk-alpine@sha256:1ff763083f2993d57d0bf374ab10bb3e2cb873af6c13a04458ebbd3e0337dc76
 
 ENV OTEL_TRACES_EXPORTER="none"
 ENV OTEL_METRICS_EXPORTER="none"
