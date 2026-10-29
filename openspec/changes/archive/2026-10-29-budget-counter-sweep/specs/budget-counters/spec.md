@@ -29,7 +29,7 @@ self-applying policy is stored for its budget instance, and SHALL NOT delete any
 - **THEN** it is not touched
 
 ### Requirement: Sweep is paged
-Each sweep tick SHALL handle one page of rows and continue from the previous cursor, and SHALL run on one pod at a time.
+Each sweep tick SHALL claim one page of rows by advancing a shared cursor under a brief cluster lock, so that no two ticks claim the same page in a pass, and SHALL continue from the previous cursor.
 
 #### Scenario: More rows than a page
 - **WHEN** the rows outnumber `budgetCounterSweep.batch`

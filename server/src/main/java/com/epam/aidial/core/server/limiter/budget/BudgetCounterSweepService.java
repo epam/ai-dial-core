@@ -40,8 +40,9 @@ import javax.annotation.Nullable;
  * both its windows have closed and no assignment (or self-applying policy) is stored for its budget instance.
  * A row of a live budget is never removed, and a row with an open window stays readable until it closes.
  *
- * <p>One pod sweeps at a time: a tick holds a cluster lock while it handles one page of rows, and the page cursor is
- * kept in Redis, so the next tick continues where the last one stopped on whichever pod runs it.
+ * <p>A tick claims the next page of rows and advances the shared cursor in Redis under a brief cluster lock, then
+ * releases the lock and handles the page, so another pod can claim the following page meanwhile. The cursor moves
+ * before the rows are handled; a page lost to a crash is reached again by the next pass.
  */
 @Slf4j
 public class BudgetCounterSweepService implements AutoCloseable {
@@ -90,35 +91,45 @@ public class BudgetCounterSweepService implements AutoCloseable {
 
     @VisibleForTesting
     void tick(long now) {
-        try (LockService.Lock lock = lockService.tryLock(stateKey)) {
-            if (lock == null) {
+        try {
+            ResourceFolderMetadata page = claimPage();
+            if (page == null) {
                 return;
             }
-            sweepPage(now);
+            for (MetadataBase meta : page.getItems()) {
+                try {
+                    if (meta instanceof ResourceItemMetadata row) {
+                        sweepRow(row.getDescriptor(), now);
+                    }
+                } catch (Throwable e) {
+                    log.warn("Failed to sweep budget counter: {}", meta.getUrl(), e);
+                }
+            }
         } catch (Throwable e) {
             log.warn("Failed to run budget counter sweep tick", e);
         }
     }
 
-    private void sweepPage(long now) {
-        RBucket<String> cursor = redis.getBucket(stateKey, StringCodec.INSTANCE);
-        ResourceFolderMetadata page = resourceService.getFolderMetadata(limitsFolder, cursor.get(), settings.getBatch(), true);
-        if (page == null) {
-            return;
-        }
-        for (MetadataBase meta : page.getItems()) {
-            try {
-                if (meta instanceof ResourceItemMetadata row) {
-                    sweepRow(row.getDescriptor(), now);
-                }
-            } catch (Throwable e) {
-                log.warn("Failed to sweep budget counter: {}", meta.getUrl(), e);
+    /**
+     * Lists the page after the cursor and moves the cursor past it under a brief lock. Returns {@code null} when
+     * another tick is claiming a page or there is nothing to list. Once a pass completes the cursor is cleared, so the
+     * next tick starts a new pass.
+     */
+    @VisibleForTesting
+    @Nullable
+    ResourceFolderMetadata claimPage() {
+        try (LockService.Lock lock = lockService.tryLock(stateKey)) {
+            if (lock == null) {
+                return null;
             }
-        }
-        if (page.getNextToken() == null) {
-            cursor.delete();
-        } else {
-            cursor.set(page.getNextToken());
+            RBucket<String> cursor = redis.getBucket(stateKey, StringCodec.INSTANCE);
+            ResourceFolderMetadata page = resourceService.getFolderMetadata(limitsFolder, cursor.get(), settings.getBatch(), true);
+            if (page == null || page.getNextToken() == null) {
+                cursor.delete();
+            } else {
+                cursor.set(page.getNextToken());
+            }
+            return page;
         }
     }
 

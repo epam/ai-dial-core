@@ -15,6 +15,7 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
+import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -38,6 +39,8 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.Callable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -249,6 +252,31 @@ class BudgetCounterSweepServiceTest {
             sweeper.tick(NEXT_MONTH);
         }
         assertEquals(0, countRows());
+    }
+
+    @Test
+    void testSweepersClaimDifferentPagesWithoutWaitingForTheRowsToBeHandled() {
+        BudgetCounterSweepService other = newSweeper(new LockService(redissonClient, null), configStore(), 1);
+        sweeper = newSweeper(new LockService(redissonClient, null), configStore(), 1);
+        charge("g1", "alice");
+        charge("g1", "bob");
+        charge("g1", "carol");
+
+        Set<String> claimed = new HashSet<>();
+        int rows = 0;
+        ResourceFolderMetadata page;
+        do {
+            // the pages are claimed one after another, none of them handled, by alternating sweepers
+            page = (claimed.size() % 2 == 0 ? sweeper : other).claimPage();
+            for (MetadataBase meta : page.getItems()) {
+                rows++;
+                claimed.add(meta.getUrl());
+            }
+        } while (page.getNextToken() != null);
+
+        assertEquals(3, rows);
+        assertEquals(3, claimed.size());
+        assertEquals(3, countRows());
     }
 
     private BudgetCounterSweepService newSweeper(LockService lockService, ConfigStore configStore, int batch) {

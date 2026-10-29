@@ -2,8 +2,9 @@
 
 ## What shipped
 
-- `limiter/budget/BudgetCounterSweepService`: a timer on every pod; a tick takes a cluster lock without waiting and handles
-  one page of `platform/limits/` rows, continuing from a Redis cursor. A row is deleted when both its windows have closed
+- `limiter/budget/BudgetCounterSweepService`: a timer on every pod; a tick claims one page of `platform/limits/` rows and
+  advances a Redis cursor under a brief lock (as `ComplexResourceSweepService.claimBatch` does), then handles the page
+  outside the lock. A row is deleted when both its windows have closed
   and no live assignment and no self-applying policy is stored for its instance. Liveness is read from storage. The row is
   re-read and re-checked under `tryLockResource` before the delete.
 - `budgetCounterSweep.period` (5 min) and `budgetCounterSweep.batch` (500) in the static settings, with code defaults;
@@ -32,5 +33,6 @@
 
 ## Review
 
-PR #2206 was approved. The reviewer asked why a tick handles one page; the answer is bounded lock hold time and
-storage load, and looping over pages up to a time budget is the alternative if it is wanted.
+PR #2206 was approved. The reviewer asked why a tick handles one page and why the cursor state did not follow
+`ComplexResourceSweepService.claimBatch`. The first version held the lock for the whole page; it now claims the page
+under a brief lock like `claimBatch`, so pods can handle pages in parallel.
