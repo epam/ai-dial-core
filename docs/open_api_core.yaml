@@ -3126,6 +3126,46 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/admin/system-import:
+    post:
+      tags:
+      - Admin
+      summary: /v1/admin/system-import
+      operationId: systemImport
+      requestBody:
+        content:
+          application/zip:
+            schema:
+              type: string
+              format: binary
+        required: true
+      responses:
+        "200":
+          description: "Newline-delimited JSON: progress lines while the replace runs, then a final status line"
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: "The archive is missing, malformed or not accepted by this version"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "408":
+          description: No bytes were received from the client for adminSystemImport.stallTimeout
+        "409":
+          description: "Another system import already holds the guard, retry later"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/validate:
     post:
       tags:

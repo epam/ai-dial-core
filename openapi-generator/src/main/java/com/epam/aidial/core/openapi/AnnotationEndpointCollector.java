@@ -7,6 +7,7 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.server.controller.AdminApplyController;
 import com.epam.aidial.core.server.controller.AdminHealthConfigController;
 import com.epam.aidial.core.server.controller.AdminSystemExportController;
+import com.epam.aidial.core.server.controller.AdminSystemImportController;
 import com.epam.aidial.core.server.controller.AdminValidateController;
 import com.epam.aidial.core.server.controller.ApplicationController;
 import com.epam.aidial.core.server.controller.ApplicationMcpProxyController;
@@ -71,6 +72,7 @@ public final class AnnotationEndpointCollector {
     private static final List<Class<?>> CONTROLLER_CLASSES = List.of(
             AdminApplyController.class,
             AdminSystemExportController.class,
+            AdminSystemImportController.class,
             AdminHealthConfigController.class,
             AdminValidateController.class,
             AnthropicModelController.class,

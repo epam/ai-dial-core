@@ -52,6 +52,7 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.AdminSystemExportService;
+import com.epam.aidial.core.server.service.AdminSystemImportService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -106,6 +107,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.service.TempFolderCleaner;
 import com.epam.aidial.core.storage.service.TimerService;
 import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -189,6 +191,7 @@ public class AiDial {
     private ResourceService resourceService;
     private ComplexResourceSweepService complexResourceSweepService;
     private BudgetCounterSweepService budgetCounterSweepService;
+    private TimerService.Timer systemImportStagingCleanupTimer;
     private McpHttpClientBuilder mcpHttpClientBuilder;
     private McpHttpClientBuilder discoveryMcpHttpClientBuilder;
     private EncryptionService encryptionService;
@@ -426,6 +429,17 @@ public class AiDial {
             AdminSystemExportService.Settings adminSystemExportSettings = Json.decodeValue(settings("adminSystemExport").toBuffer(), AdminSystemExportService.Settings.class);
             adminSystemExportSettings.validate();
 
+            TempFolderCleaner systemImportStagingCleaner = new TempFolderCleaner(
+                    storage, AdminSystemImportService.STAGING_FOLDER, Duration.ofHours(24));
+            AdminSystemImportService adminSystemImportService = new AdminSystemImportService(storage, lockService, resourceService,
+                    mergedConfigStore, systemImportStagingCleaner, clock, version(), generator);
+            AdminSystemImportService.Settings adminSystemImportSettings = Json.decodeValue(
+                    settings("adminSystemImport").toBuffer(), AdminSystemImportService.Settings.class);
+            adminSystemImportSettings.validate();
+            long systemImportStagingCleanupPeriodMs = Duration.ofHours(24).toMillis();
+            systemImportStagingCleanupTimer = timerService.scheduleWithFixedDelay(
+                    systemImportStagingCleanupPeriodMs, systemImportStagingCleanupPeriodMs, systemImportStagingCleaner::cleanup);
+
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, mergedConfigStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
@@ -440,7 +454,8 @@ public class AiDial {
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,
                     TracingSettings.from(settings("tracing")), blockingCallTracer,
-                    adminSystemExportService, adminSystemExportSettings, orgUnitService);
+                    adminSystemExportService, adminSystemExportSettings, orgUnitService,
+                    adminSystemImportService, adminSystemImportSettings);
 
             HttpServerOptions serverOptions = new HttpServerOptions(serverSettings);
             // each instance listens on the same port from its own event loop; Vert.x hands new connections to them in turn
@@ -552,6 +567,7 @@ public class AiDial {
             close(resourceService);
             close(complexResourceSweepService);
             close(budgetCounterSweepService);
+            close(systemImportStagingCleanupTimer);
             close(mcpHttpClientBuilder);
             close(discoveryMcpHttpClientBuilder);
             // Unhook from the global composite before vertx.close() so its shutdown metrics
