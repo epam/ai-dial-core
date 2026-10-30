@@ -343,7 +343,7 @@ public class AiDial {
                     secretFieldProcessor, externalServiceService, resourceService, lockService, operatorService, applicationSchemaService,
                     catalogSchemaService, mergedConfigStore, generator, settings("applications"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService,
-                    lockService, applicationSchemaService, clock, resourceCredentialsService);
+                    lockService, applicationSchemaService, clock, resourceCredentialsService, complexResourceService);
             OrgUnitApprovals orgUnitApprovals = new OrgUnitApprovals(orgUnitService, encryptionService, resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals,
                     new OrgUnitGrants(orgUnitService), applicationSchemaService, settings("access"));

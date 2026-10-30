@@ -20,7 +20,9 @@ import com.epam.aidial.core.server.data.SharedByMeDto;
 import com.epam.aidial.core.server.data.SharedResource;
 import com.epam.aidial.core.server.data.SharedResources;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
+import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -69,6 +71,7 @@ public class ShareService {
     private final ApplicationSchemaService applicationSchemaService;
     private final LongSupplier clock;
     private final ResourceCredentialsService resourceCredentialsService;
+    private final ComplexResourceService complexResourceService;
 
     private static final Map<ResourceType, Integer> DEFAULT_MAX_ACCEPTED_USERS = Map.of(
             ResourceTypes.APPLICATION, 10,
@@ -755,17 +758,30 @@ public class ShareService {
      * Sets createdAt and updatedAt of the stored resources on the items. It must run before the items are put into a hash set.
      */
     private void populateTimestamps(List<MetadataBase> metadata) {
-        List<ResourceItemMetadata> items = metadata.stream()
+        // Complex resources (SKILL, PROJECT) keep their timestamps in the marker, not at the resource URL
+        Map<Boolean, List<ResourceItemMetadata>> itemsByComplexity = metadata.stream()
                 .filter(ResourceItemMetadata.class::isInstance)
                 .map(ResourceItemMetadata.class::cast)
-                .toList();
-        Map<String, ResourceItemMetadata> stored = resourceService.loadMetadata(items).stream()
+                .collect(Collectors.partitioningBy(item -> item.getDescriptor().getType().isComplex()));
+        List<ResourceItemMetadata> plainItems = itemsByComplexity.get(false);
+        Map<String, ResourceItemMetadata> stored = resourceService.loadMetadata(plainItems).stream()
                 .collect(Collectors.toMap(ResourceItemMetadata::getUrl, Function.identity(), (first, second) -> first));
-        for (ResourceItemMetadata item : items) {
+        for (ResourceItemMetadata item : plainItems) {
             ResourceItemMetadata found = stored.get(item.getUrl());
             if (found != null) {
                 item.setCreatedAt(found.getCreatedAt());
                 item.setUpdatedAt(found.getUpdatedAt());
+            }
+        }
+
+        List<ResourceItemMetadata> complexItems = itemsByComplexity.get(true);
+        Map<String, FolderResourceMarker> markers = complexResourceService.loadMarkers(
+                complexItems.stream().map(MetadataBase::getDescriptor).toList());
+        for (ResourceItemMetadata item : complexItems) {
+            FolderResourceMarker marker = markers.get(item.getUrl());
+            if (marker != null) {
+                item.setCreatedAt(marker.getCreatedAt());
+                item.setUpdatedAt(marker.getUpdatedAt());
             }
         }
     }
