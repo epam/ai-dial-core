@@ -109,6 +109,7 @@ public class ShareService {
                             ? new ResourceFolderMetadata(sharedResourceDescriptor)
                             : new ResourceItemMetadata(sharedResourceDescriptor);
                     metadata.setPermissions(sharedResource.getPermissions());
+                    populateTimestamps(metadata);
                     if (request.isIncludeUserInfo()) {
                         if (metadata instanceof ResourceItemMetadata itemMetadata) {
                             itemMetadata.setAuthor(sharedResource.getAuthor());
@@ -730,6 +731,7 @@ public class ShareService {
                             ? new ResourceFolderMetadata(resource)
                             : new ResourceItemMetadata(resource);
                     metadata.setPermissions(permissions);
+                    populateTimestamps(metadata);
                     if (includeUserInfo) {
                         List<ShareMetadata> perUserPermissions = new ArrayList<>();
                         dto.getUserPermissions(link).forEach((user, access) -> {
@@ -746,6 +748,16 @@ public class ShareService {
                     }
                     return metadata;
                 }).toList();
+    }
+
+    private void populateTimestamps(MetadataBase metadata) {
+        if (metadata instanceof ResourceItemMetadata itemMetadata) {
+            ResourceItemMetadata stored = resourceService.getResourceMetadata(metadata.getDescriptor());
+            if (stored != null) {
+                itemMetadata.setCreatedAt(stored.getCreatedAt());
+                itemMetadata.setUpdatedAt(stored.getUpdatedAt());
+            }
+        }
     }
 
     private ResourceDescriptor getResourceFromLink(String url) {
