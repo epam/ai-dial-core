@@ -795,7 +795,7 @@ class OrgUnitServiceTest {
         assertEquals(List.of("public/Acme", "public/Acme/Risk", "public/Acme/Risk/Basel", "public/Beta", "public/Beta/Deep", "public/Gamma"),
                 units.stream().map(UserOrgUnits.Unit::path).toList());
         assertEquals(List.of("member"), units.get(0).roles());
-        units.forEach(unit -> assertEquals(OrgUnitRoles.resolveAllPermissions(), unit.permissions(), unit.path()));
+        units.forEach(unit -> assertEquals(OrgUnitRoles.ALL_PERMISSIONS, unit.permissions(), unit.path()));
     }
 
     @Test
@@ -806,29 +806,6 @@ class OrgUnitServiceTest {
 
         assertEquals(List.of(), service.unitsOf(caller("per-request-key"), false));
         verify(storage.resources, never()).load(anyList(), anyList());
-    }
-
-    private static FakeOrgUnitStorage unitsOfStorage() {
-        String tree = "{\"units\": {\"public/Acme/\": {\"id\": \"a\", \"displayName\": \"Acme Corp\"}, \"public/Acme/Risk/\": {\"id\": \"r\"}, "
-                + "\"public/Acme/Risk/Basel/\": {\"id\": \"b\"}, \"public/Beta/\": {\"id\": \"be\"}, \"public/Beta/Deep/\": {\"id\": \"d\"}, "
-                + "\"public/Gamma/\": {\"id\": \"g\"}}}";
-        String bobAs = "{\"id\": \"%s\", \"roleName\": \"%s\", "
-                + "\"subject\": {\"type\": \"claimsPredicate\", \"source\": \"email\", \"function\": \"EQUAL\", \"targets\": [\"bob@acme.com\"]}}";
-        return new FakeOrgUnitStorage(Map.of("units", tree,
-                "a", "{\"roleAssignments\": [" + bobAs.formatted("1", "member") + "]}",
-                "r", "{\"roleAssignments\": [" + bobAs.formatted("2", "editor") + ", " + bobAs.formatted("3", "approver") + "]}",
-                "d", "{\"roleAssignments\": [" + bobAs.formatted("4", "viewer") + "]}"));
-    }
-
-    private static ProxyContext caller(String perRequestKey) {
-        ProxyContext bob = mock(ProxyContext.class);
-        ObjectNode claims = ProxyUtil.MAPPER.createObjectNode().put("email", "bob@acme.com");
-        when(bob.getExtractedClaims()).thenReturn(new ExtractedClaims("bob", List.of(), "bob", claims, null, "Bob"));
-        ApiKeyData key = new ApiKeyData();
-        key.setPerRequestKey(perRequestKey);
-        when(bob.getApiKeyData()).thenReturn(key);
-        when(bob.getConfig()).thenReturn(new Config());
-        return bob;
     }
 
     @Test
@@ -994,4 +971,26 @@ class OrgUnitServiceTest {
         return metadata;
     }
 
+    private static FakeOrgUnitStorage unitsOfStorage() {
+        String tree = "{\"units\": {\"public/Acme/\": {\"id\": \"a\", \"displayName\": \"Acme Corp\"}, \"public/Acme/Risk/\": {\"id\": \"r\"}, "
+                + "\"public/Acme/Risk/Basel/\": {\"id\": \"b\"}, \"public/Beta/\": {\"id\": \"be\"}, \"public/Beta/Deep/\": {\"id\": \"d\"}, "
+                + "\"public/Gamma/\": {\"id\": \"g\"}}}";
+        String bobAs = "{\"id\": \"%s\", \"roleName\": \"%s\", "
+                + "\"subject\": {\"type\": \"claimsPredicate\", \"source\": \"email\", \"function\": \"EQUAL\", \"targets\": [\"bob@acme.com\"]}}";
+        return new FakeOrgUnitStorage(Map.of("units", tree,
+                "a", "{\"roleAssignments\": [" + bobAs.formatted("1", "member") + "]}",
+                "r", "{\"roleAssignments\": [" + bobAs.formatted("2", "editor") + ", " + bobAs.formatted("3", "approver") + "]}",
+                "d", "{\"roleAssignments\": [" + bobAs.formatted("4", "viewer") + "]}"));
+    }
+
+    private static ProxyContext caller(String perRequestKey) {
+        ProxyContext bob = mock(ProxyContext.class);
+        ObjectNode claims = ProxyUtil.MAPPER.createObjectNode().put("email", "bob@acme.com");
+        when(bob.getExtractedClaims()).thenReturn(new ExtractedClaims("bob", List.of(), "bob", claims, null, "Bob"));
+        ApiKeyData key = new ApiKeyData();
+        key.setPerRequestKey(perRequestKey);
+        when(bob.getApiKeyData()).thenReturn(key);
+        when(bob.getConfig()).thenReturn(new Config());
+        return bob;
+    }
 }

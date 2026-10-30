@@ -39,6 +39,11 @@ public final class OrgUnitRoles {
     public static final String PUBLICATIONS = "publications";
     public static final String ORG_UNITS = "org-units";
 
+    /**
+     * Both actions on every namespace: what a DIAL admin may do in any unit.
+     */
+    public static final Map<String, Set<String>> ALL_PERMISSIONS;
+
     static final List<String> CONTENT_NAMESPACES = List.of("files", "prompts", "conversations", "applications", "toolsets", "skills",
             "projects");
 
@@ -54,6 +59,10 @@ public final class OrgUnitRoles {
         namespaces.add(PUBLICATIONS);
         namespaces.add(ORG_UNITS);
         NAMESPACES = Set.copyOf(namespaces);
+        Set<String> bothActions = Collections.unmodifiableSortedSet(new TreeSet<>(ACTIONS));
+        TreeMap<String, Set<String>> allPermissions = new TreeMap<>();
+        NAMESPACES.forEach(namespace -> allPermissions.put(namespace, bothActions));
+        ALL_PERMISSIONS = Collections.unmodifiableSortedMap(allPermissions);
 
         List<String> readWrite = List.of(READ, WRITE);
         List<String> read = List.of(READ);
@@ -157,15 +166,6 @@ public final class OrgUnitRoles {
             grants.getOrDefault(roleName, Map.of())
                     .forEach((namespace, actions) -> permissions.computeIfAbsent(namespace, key -> new TreeSet<>()).addAll(actions));
         }
-        return permissions;
-    }
-
-    /**
-     * Both actions on every namespace: what a DIAL admin may do in any unit.
-     */
-    public static Map<String, Set<String>> resolveAllPermissions() {
-        Map<String, Set<String>> permissions = new TreeMap<>();
-        NAMESPACES.forEach(namespace -> permissions.put(namespace, new TreeSet<>(ACTIONS)));
         return permissions;
     }
 

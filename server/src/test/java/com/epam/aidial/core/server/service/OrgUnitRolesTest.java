@@ -114,7 +114,7 @@ class OrgUnitRolesTest {
 
     @Test
     void testAllPermissionsAreBothActionsOnEveryNamespace() {
-        Map<String, Set<String>> all = OrgUnitRoles.resolveAllPermissions();
+        Map<String, Set<String>> all = OrgUnitRoles.ALL_PERMISSIONS;
 
         assertTrue(all.keySet().containsAll(OrgUnitRoles.CONTENT_NAMESPACES));
         assertTrue(all.keySet().containsAll(List.of(PUBLICATIONS, ROLE_ASSIGNMENTS, ORG_UNITS)));

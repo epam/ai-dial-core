@@ -42,7 +42,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiPredicate;
@@ -969,18 +968,19 @@ public class OrgUnitService {
         }
         OrgUnitList list = getUnitList();
         OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
-        Map<String, Set<String>> held = heldRoles(context, list);
+        Map<String, Set<String>> held = heldRolesByUnit(context, list);
         List<UserOrgUnits.Unit> units = new ArrayList<>();
-        for (String key : new TreeSet<>(list.units().keySet())) {
+        for (Map.Entry<String, OrgUnit> entry : list.units().entrySet()) {
+            String key = entry.getKey();
             Set<String> heldThere = held.getOrDefault(key, Set.of());
             if (key.equals(SHARED_SPACE_KEY)
                     || !admin && !OrgUnitGrants.showsUnit(roles, heldThere, held.getOrDefault(parentKey(key), Set.of()))) {
                 continue;
             }
             List<String> roleNames = heldThere.stream().filter(roles::exists).sorted().toList();
-            OrgUnitData.Summary unit = summary(key, list.units().get(key));
+            OrgUnitData.Summary unit = summary(key, entry.getValue());
             units.add(new UserOrgUnits.Unit(unit.id(), unit.name(), unit.displayName(), unit.path(), unit.folder(), roleNames,
-                    admin ? OrgUnitRoles.resolveAllPermissions() : roles.resolvePermissions(roleNames)));
+                    admin ? OrgUnitRoles.ALL_PERMISSIONS : roles.resolvePermissions(roleNames)));
         }
         return units;
     }
@@ -990,12 +990,12 @@ public class OrgUnitService {
      */
     private Predicate<String> visibleTo(ProxyContext context, OrgUnitList list) {
         OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
-        Map<String, Set<String>> held = heldRoles(context, list);
+        Map<String, Set<String>> held = heldRolesByUnit(context, list);
         return key -> list.units().containsKey(key) && OrgUnitGrants.showsUnit(roles,
                 held.getOrDefault(key, Set.of()), held.getOrDefault(parentKey(key), Set.of()));
     }
 
-    private Map<String, Set<String>> heldRoles(ProxyContext context, OrgUnitList list) {
+    private Map<String, Set<String>> heldRolesByUnit(ProxyContext context, OrgUnitList list) {
         Map<String, Set<String>> held = new HashMap<>();
         roleAssignmentsOfAll(list.units()).forEach((key, assignments) -> held.put(key, OrgUnitSubjects.heldRoles(context, assignments)));
         return held;
