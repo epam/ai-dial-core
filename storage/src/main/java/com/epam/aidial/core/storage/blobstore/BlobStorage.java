@@ -16,10 +16,12 @@ import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.blobstore.domain.BlobMetadata;
 import org.jclouds.blobstore.domain.MultipartPart;
 import org.jclouds.blobstore.domain.MultipartUpload;
+import org.jclouds.blobstore.domain.MutableBlobMetadata;
 import org.jclouds.blobstore.domain.MutableStorageMetadata;
 import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.domain.Tier;
+import org.jclouds.blobstore.domain.internal.BlobImpl;
 import org.jclouds.blobstore.domain.internal.BlobMetadataImpl;
 import org.jclouds.blobstore.domain.internal.MutableBlobMetadataImpl;
 import org.jclouds.blobstore.domain.internal.MutableStorageMetadataImpl;
@@ -27,6 +29,11 @@ import org.jclouds.blobstore.domain.internal.PageSetImpl;
 import org.jclouds.blobstore.options.CopyOptions;
 import org.jclouds.blobstore.options.ListContainerOptions;
 import org.jclouds.blobstore.options.PutOptions;
+import org.jclouds.googlecloudstorage.GoogleCloudStorageApi;
+import org.jclouds.googlecloudstorage.blobstore.functions.ObjectToBlobMetadata;
+import org.jclouds.googlecloudstorage.domain.GoogleCloudStorageObject;
+import org.jclouds.googlecloudstorage.features.ObjectApi;
+import org.jclouds.http.options.BaseHttpRequestOptions;
 import org.jclouds.io.ContentMetadata;
 import org.jclouds.io.ContentMetadataBuilder;
 import org.jclouds.io.Payload;
@@ -34,6 +41,7 @@ import org.jclouds.io.payloads.BaseMutableContentMetadata;
 import org.jclouds.io.payloads.ByteArrayPayload;
 import org.jclouds.logging.slf4j.config.SLF4JLoggingModule;
 import org.jclouds.s3.domain.ObjectMetadataBuilder;
+import org.jclouds.util.Strings2;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -69,6 +77,7 @@ public class BlobStorage implements Closeable {
     private final BlobStoreContext storeContext;
     private final BlobStore blobStore;
     private final String bucketName;
+    private final StorageProvider storageProvider;
 
     // defines a root folder for all resources in bucket
     @Getter
@@ -87,6 +96,7 @@ public class BlobStorage implements Closeable {
     public BlobStorage(Storage config, BlockingCallTracer blockingCallTracer) {
         this.blockingCallTracer = blockingCallTracer;
         String provider = config.getProvider();
+        this.storageProvider = StorageProvider.from(provider);
         ContextBuilder builder = ContextBuilder.newBuilder(provider);
         if (config.getEndpoint() != null) {
             builder.endpoint(config.getEndpoint());
@@ -291,6 +301,43 @@ public class BlobStorage implements Closeable {
             BlockingCallTracer.currentSpan().setAttribute("dial.blob.found", blob != null);
             return blob;
         });
+    }
+
+    /**
+     * Loads a blob's content exactly as stored, bypassing provider-side transcoding that would otherwise
+     * silently decode it. On Google Cloud Storage, a plain download of an object whose metadata declares a
+     * {@code Content-Encoding} (e.g. {@code gzip}) is auto-decompressed by GCS unless the request asks for
+     * that encoding explicitly, which would desynchronize the bytes from the encoding a caller records
+     * alongside them (as {@code AdminSystemExportService} does for its archive). Every other provider is
+     * unaffected and behaves exactly like {@link #load(String)}.
+     *
+     * @param filePath absolute file path, for example: Users/user1/files/inputs/data.csv
+     * @return Blob instance if file was found, null - otherwise
+     */
+    public Blob loadWithoutTranscoding(String filePath) {
+        String storageLocation = getStorageLocation(filePath);
+        if (storageProvider != StorageProvider.GOOGLE_CLOUD_STORAGE) {
+            return load(filePath);
+        }
+        return measure("load", () -> {
+            ObjectApi objectApi = storeContext.unwrapApi(GoogleCloudStorageApi.class).getObjectApi();
+            String encodedName = Strings2.urlEncode(storageLocation);
+            GoogleCloudStorageObject object = objectApi.getObject(bucketName, encodedName);
+            BlockingCallTracer.currentSpan().setAttribute("dial.blob.found", object != null);
+            if (object == null) {
+                return null;
+            }
+            MutableBlobMetadata metadata = new ObjectToBlobMetadata().apply(object);
+            Blob blob = new BlobImpl(metadata);
+            blob.setPayload(objectApi.download(bucketName, encodedName, new DisableTranscodingOptions()).getPayload());
+            return blob;
+        });
+    }
+
+    static final class DisableTranscodingOptions extends BaseHttpRequestOptions {
+        DisableTranscodingOptions() {
+            replaceHeader("Accept-Encoding", "gzip, deflate, br");
+        }
     }
 
     public boolean exists(String filePath) {

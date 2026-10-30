@@ -310,7 +310,7 @@ class AdminSystemExportServiceTest {
         BlobStorage storage = mock(BlobStorage.class, withSettings().stubOnly());
         stubList(storage, "public/", count, i -> "public/files/user1/f" + i);
         stubList(storage, "platform/", 0, i -> null);
-        when(storage.load(anyString())).thenAnswer(invocation -> blob(invocation.getArgument(0), "c"));
+        when(storage.loadWithoutTranscoding(anyString())).thenAnswer(invocation -> blob(invocation.getArgument(0), "c"));
         AdminSystemExportService exportService = newService(storage);
 
         Path file = testDir.resolve("export.zip");
@@ -336,8 +336,8 @@ class AdminSystemExportServiceTest {
                 .thenAnswer(invocation -> new PageSetImpl<>(List.of(folder, kept, gone), null));
         when(storage.list(eq("platform/"), any(), anyInt(), eq(true)))
                 .thenAnswer(invocation -> new PageSetImpl<StorageMetadata>(List.of(), null));
-        when(storage.load("public/files/user1/kept.txt")).thenReturn(blob("public/files/user1/kept.txt", "kept"));
-        when(storage.load("public/files/user1/gone.txt")).thenReturn(null);
+        when(storage.loadWithoutTranscoding("public/files/user1/kept.txt")).thenReturn(blob("public/files/user1/kept.txt", "kept"));
+        when(storage.loadWithoutTranscoding("public/files/user1/gone.txt")).thenReturn(null);
 
         Map<String, byte[]> entries = readEntries(export(newService(storage)));
 
@@ -347,7 +347,7 @@ class AdminSystemExportServiceTest {
                         AdminSystemExportService.METADATA_ENTRY_PREFIX + "public/files/user1/kept.txt",
                         "public/files/user1/kept.txt"
                 ), new ArrayList<>(entries.keySet()));
-        verify(storage, never()).load("public/files/user1/dir");
+        verify(storage, never()).loadWithoutTranscoding("public/files/user1/dir");
     }
 
     @Test
@@ -556,7 +556,7 @@ class AdminSystemExportServiceTest {
             List<StorageMetadata> items = location.equals(bucketLocation) ? List.of(storageMetadata(StorageType.BLOB, path)) : List.of();
             when(storage.list(eq(location), any(), anyInt(), eq(true))).thenAnswer(invocation -> new PageSetImpl<>(items, null));
         }
-        when(storage.load(path)).thenReturn(blob);
+        when(storage.loadWithoutTranscoding(path)).thenReturn(blob);
         return storage;
     }
 

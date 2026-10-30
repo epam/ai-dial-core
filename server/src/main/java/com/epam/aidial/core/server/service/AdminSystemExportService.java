@@ -138,7 +138,7 @@ public class AdminSystemExportService {
     }
 
     private void exportBlob(ZipOutputStream zip, String path, ExportStats stats) throws IOException {
-        Blob blob = blobStorage.load(path);
+        Blob blob = blobStorage.loadWithoutTranscoding(path);
         if (blob == null) {
             log.debug("Skipping blob deleted during the system export: {}", path);
             return;

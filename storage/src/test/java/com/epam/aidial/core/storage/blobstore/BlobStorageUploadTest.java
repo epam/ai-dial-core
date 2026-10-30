@@ -18,6 +18,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -136,6 +137,30 @@ class BlobStorageUploadTest {
         assertThrows(IOException.class, () -> storage.upload(path, attributes, failingAfterFirstPart));
 
         assertFalse(storage.exists(path), "a failed multipart upload must not leave a blob behind");
+    }
+
+    @Test
+    void testLoadWithoutTranscodingBehavesLikeLoadOnNonGcsProviders() throws IOException {
+        String path = "public/models/plain";
+        storage.store(path, "application/json", "gzip", Map.of("etag", "abc"), "{}".getBytes(StandardCharsets.UTF_8));
+
+        Blob blob = storage.loadWithoutTranscoding(path);
+
+        assertArrayEquals("{}".getBytes(StandardCharsets.UTF_8), readAll(blob));
+        assertEquals("gzip", blob.getMetadata().getContentMetadata().getContentEncoding());
+        assertEquals("abc", blob.getMetadata().getUserMetadata().get("etag"));
+    }
+
+    @Test
+    void testLoadWithoutTranscodingReturnsNullForMissingBlob() {
+        assertNull(storage.loadWithoutTranscoding("public/models/missing"));
+    }
+
+    @Test
+    void testDisableTranscodingOptionsAsksForEveryEncodingCoreMayStore() {
+        BlobStorage.DisableTranscodingOptions options = new BlobStorage.DisableTranscodingOptions();
+
+        assertEquals("gzip, deflate, br", options.buildRequestHeaders().get("Accept-Encoding").iterator().next());
     }
 
     private static byte[] readAll(Blob blob) throws IOException {
