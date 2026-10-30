@@ -323,6 +323,10 @@ resource, as the resource metadata endpoints report them.
 - **WHEN** `proxyKey1` shared a conversation, and either `proxyKey2` lists `"with":"me"` or `proxyKey1` lists `"with":"others"`
 - **THEN** the item has numeric `createdAt` and `updatedAt`, equal to those of `GET` of the conversation's metadata
 
+#### Scenario: Complex items carry timestamps
+- **WHEN** `proxyKey1` shared a project (or a skill), and either `proxyKey2` lists `"with":"me"` or `proxyKey1` lists `"with":"others"` for `PROJECT` (or `SKILL`)
+- **THEN** the item has numeric `createdAt` and `updatedAt`, equal to those of `GET /v2/metadata/` of the project (or skill)
+
 ### Requirement: Revoke shared access
 On `POST /v1/ops/resource/share/revoke` with `{"resources":[{"url","permissions"}]}` Core SHALL remove the listed
 permissions (all when `permissions` is absent) from every recipient and from pending invitations, and answer `200`.
