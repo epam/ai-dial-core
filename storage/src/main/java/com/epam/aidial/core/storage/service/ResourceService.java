@@ -372,8 +372,22 @@ public class ResourceService implements AutoCloseable {
     /**
      * Loads content of resource metadata into the result.
      */
-    @SneakyThrows
     public void load(List<ResourceItemMetadata> items, List<Pair<ResourceItemMetadata, String>> result) {
+        loadItems(items, true, result);
+    }
+
+    /**
+     * Loads the stored metadata (timestamps, etag, author) of the items without their bodies, in Redis batches.
+     * An item whose resource does not exist is omitted.
+     */
+    public List<ResourceItemMetadata> loadMetadata(List<ResourceItemMetadata> items) {
+        List<Pair<ResourceItemMetadata, String>> result = new ArrayList<>();
+        loadItems(items, false, result);
+        return result.stream().map(Pair::getLeft).toList();
+    }
+
+    @SneakyThrows
+    private void loadItems(List<ResourceItemMetadata> items, boolean withBody, List<Pair<ResourceItemMetadata, String>> result) {
         final int size = items.size();
         int batches = size / BATCH_SIZE;
         int rem = size % BATCH_SIZE;
@@ -384,7 +398,7 @@ public class ResourceService implements AutoCloseable {
             int end = cur + BATCH_SIZE;
             int start = cur;
             Future<List<Pair<ResourceItemMetadata, String>>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
-                    .submit(() -> runReadBatch(start, end, items));
+                    .submit(() -> runReadBatch(start, end, items, withBody));
             futures.add(future);
             cur = end;
         }
@@ -392,7 +406,7 @@ public class ResourceService implements AutoCloseable {
             int end = cur + rem;
             int start = cur;
             Future<List<Pair<ResourceItemMetadata, String>>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
-                    .submit(() -> runReadBatch(start, end, items));
+                    .submit(() -> runReadBatch(start, end, items, withBody));
             futures.add(future);
         }
 
@@ -402,7 +416,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     @SneakyThrows
-    private List<Pair<ResourceItemMetadata, String>> runReadBatch(int start, int end, List<ResourceItemMetadata> items) {
+    private List<Pair<ResourceItemMetadata, String>> runReadBatch(int start, int end, List<ResourceItemMetadata> items, boolean withBody) {
         if (end - start <= 0) {
             return List.of();
         }
@@ -414,7 +428,7 @@ public class ResourceService implements AutoCloseable {
             String redisKey = redisKey(meta.getDescriptor());
             redisKeys.add(redisKey);
             RMapAsync<String, byte[]> map = batch.getMap(redisKey, REDIS_MAP_CODEC);
-            map.getAllAsync(REDIS_FIELDS);
+            map.getAllAsync(withBody ? REDIS_FIELDS : REDIS_FIELDS_NO_BODY);
         }
         log.debug("Start executing Redis batch with start={}, end={}", start, end);
         BatchResult<?> batchResult = batch.execute();
@@ -429,8 +443,9 @@ public class ResourceService implements AutoCloseable {
             if (redisResult == null) {
                 missed.add(metadata);
             } else if (redisResult.exists()) {
-                Pair<ResourceItemMetadata, String> pair = Pair.of(toResourceItemMetadata(metadata.getDescriptor(), redisResult),
-                        new String(redisResult.body, StandardCharsets.UTF_8));
+                Pair<ResourceItemMetadata, String> pair = withBody
+                        ? Pair.of(toResourceItemMetadata(metadata.getDescriptor(), redisResult), new String(redisResult.body, StandardCharsets.UTF_8))
+                        : Pair.of(toMetadata(metadata.getDescriptor(), redisResult), null);
                 result.add(pair);
             }
             // else: cached as absent, so omitted - its blob object can still be listed until the delete
@@ -440,7 +455,9 @@ public class ResourceService implements AutoCloseable {
         List<Future<Pair<ResourceItemMetadata, String>>> futures = new ArrayList<>();
         for (ResourceItemMetadata metadata : missed) {
             Future<Pair<ResourceItemMetadata, String>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
-                    .submit(() -> getResourceWithMetadata(metadata.getDescriptor(), EtagHeader.ANY, false));
+                    .submit(() -> withBody
+                            ? getResourceWithMetadata(metadata.getDescriptor(), EtagHeader.ANY, false)
+                            : getBlobMetadata(metadata.getDescriptor()));
             futures.add(future);
         }
         log.debug("Start loading missing resources from blob storage: {}", missed.size());
@@ -509,6 +526,16 @@ public class ResourceService implements AutoCloseable {
             return null;
         }
 
+        return toMetadata(descriptor, result);
+    }
+
+    @Nullable
+    private Pair<ResourceItemMetadata, String> getBlobMetadata(ResourceDescriptor descriptor) {
+        Result result = blobGet(blobKey(descriptor), false);
+        return result.exists() ? Pair.of(toMetadata(descriptor, result), null) : null;
+    }
+
+    private static ResourceItemMetadata toMetadata(ResourceDescriptor descriptor, Result result) {
         return descriptor.getType().requireCompression()
                 ? toResourceItemMetadata(descriptor, result)
                 : toFileMetadata(descriptor, result);

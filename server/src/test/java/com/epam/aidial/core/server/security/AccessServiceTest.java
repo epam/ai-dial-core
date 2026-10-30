@@ -6,6 +6,8 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
+import com.epam.aidial.core.server.service.OrgUnitApprovals;
+import com.epam.aidial.core.server.service.OrgUnitGrants;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.util.BucketBuilder;
@@ -26,8 +28,10 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -38,6 +42,12 @@ public class AccessServiceTest {
 
     @Mock
     private RuleService ruleService;
+
+    @Mock
+    private OrgUnitApprovals orgUnitApprovals;
+
+    @Mock
+    private OrgUnitGrants orgUnitGrants;
 
     @Mock
     private ShareService shareService;
@@ -142,7 +152,7 @@ public class AccessServiceTest {
     public void testCanCreateCodeApps_WhenCreateCodeAppRolesUndefined() {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        AccessService service = new AccessService(encryptionService, shareService, ruleService,
+        AccessService service = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
                 {
@@ -159,7 +169,7 @@ public class AccessServiceTest {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getUserRoles()).thenReturn(List.of("role1"));
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        AccessService service = new AccessService(encryptionService, shareService, ruleService,
+        AccessService service = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
                 {
@@ -177,7 +187,7 @@ public class AccessServiceTest {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getUserRoles()).thenReturn(List.of("role1"));
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        AccessService service = new AccessService(encryptionService, shareService, ruleService,
+        AccessService service = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
                 {
@@ -195,7 +205,7 @@ public class AccessServiceTest {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getUserRoles()).thenReturn(List.of("role1", "admin"));
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        AccessService service = new AccessService(encryptionService, shareService, ruleService,
+        AccessService service = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
                 {
@@ -214,7 +224,7 @@ public class AccessServiceTest {
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        AccessService service = new AccessService(encryptionService, shareService, ruleService,
+        AccessService service = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
                 {
@@ -246,7 +256,7 @@ public class AccessServiceTest {
             bucketBuilderMock.when(() -> BucketBuilder.buildInitiatorBucket(context))
                     .thenReturn(initiatorBucket);
 
-            AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+            AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                     applicationSchemaService,
                     new JsonObject("""
                             {
@@ -272,7 +282,7 @@ public class AccessServiceTest {
         when(context.getDeployment()).thenReturn(application);
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
                 {
@@ -293,7 +303,7 @@ public class AccessServiceTest {
         when(context.getDeployment()).thenReturn(application);
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
                 {
@@ -472,7 +482,7 @@ public class AccessServiceTest {
     }
 
     private AccessService accessService(ApplicationSchemaService applicationSchemaService) {
-        return new AccessService(encryptionService, shareService, ruleService, applicationSchemaService,
+        return new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants, applicationSchemaService,
                 new JsonObject("""
                         {
                          "admin": {
@@ -484,12 +494,24 @@ public class AccessServiceTest {
     }
 
     @Test
+    public void testAdminReadingReviewCopyDoesNotAskOrgUnitApprovers() {
+        ResourceDescriptor review = new ResourceDescriptor(ResourceTypes.FILE, "a.txt", List.of(), "bucket",
+                "Users/alice/publications/7/", false);
+        lenient().when(context.getUserRoles()).thenReturn(List.of("admin"));
+        lenient().when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.getUserId()).thenReturn("admin");
+
+        assertTrue(accessService(mock(ApplicationSchemaService.class)).hasReadAccess(review, context));
+        verifyNoInteractions(orgUnitApprovals);
+    }
+
+    @Test
     public void testGetAdminAccess_WhenPublicResource() {
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "public/", false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         when(context.getUserRoles()).thenReturn(List.of("admin"));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
-        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
                 {
@@ -512,7 +534,7 @@ public class AccessServiceTest {
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         when(context.getUserRoles()).thenReturn(List.of("admin"));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
-        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
                 {
@@ -536,7 +558,7 @@ public class AccessServiceTest {
                 ProxyUtil.MAPPER.createObjectNode(), null, "userName");
         when(context.getExtractedClaims()).thenReturn(extractedClaims);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
-        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
                 {
@@ -557,7 +579,7 @@ public class AccessServiceTest {
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         when(context.getUserRoles()).thenReturn(List.of("admin"));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
-        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
                 {
@@ -576,7 +598,7 @@ public class AccessServiceTest {
     @Test
     public void testHasExplicitAdminAccess_EmptyRulesDenies() {
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
                 {
@@ -592,7 +614,7 @@ public class AccessServiceTest {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getUserRoles()).thenReturn(List.of("admin"));
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
                 {
@@ -608,7 +630,7 @@ public class AccessServiceTest {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getUserRoles()).thenReturn(List.of("user"));
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
                 {
@@ -622,9 +644,9 @@ public class AccessServiceTest {
     @Test
     public void testHasExplicitAdminAccess_MissingAdminBlockDoesNotThrow() {
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        AccessService missingAdmin = new AccessService(encryptionService, shareService, ruleService,
+        AccessService missingAdmin = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService, new JsonObject("{}"));
-        AccessService missingRules = new AccessService(encryptionService, shareService, ruleService,
+        AccessService missingRules = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService, new JsonObject("{\"admin\": {}}"));
 
         assertFalse(missingAdmin.hasExplicitAdminAccess(context));
@@ -637,7 +659,7 @@ public class AccessServiceTest {
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         when(context.getUserRoles()).thenReturn(List.of("global-reader"));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
-        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
                 {
@@ -662,7 +684,7 @@ public class AccessServiceTest {
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         when(context.getUserRoles()).thenReturn(List.of("regular-user"));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
-        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
                 {
@@ -687,7 +709,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("per-request-key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
-        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
                 {
@@ -709,7 +731,7 @@ public class AccessServiceTest {
     public void testGetGlobalReaderAccess_MissingConfigReturnsEmpty() {
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
                 {

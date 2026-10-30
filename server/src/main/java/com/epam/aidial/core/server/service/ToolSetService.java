@@ -163,6 +163,19 @@ public class ToolSetService {
 
     public Pair<ResourceItemMetadata, ToolSet> putToolSet(ResourceDescriptor resource, EtagHeader etag, String author, ToolSet toolSet,
                                                           boolean preserveForwardAuthToken) {
+        return writeToolSet(resource, etag, author, toolSet, preserveForwardAuthToken, false);
+    }
+
+    /**
+     * A write allowed by roles in an org unit: {@code forward_auth_token} keeps its stored value rather than being cleared.
+     */
+    public Pair<ResourceItemMetadata, ToolSet> putToolSetByUnitRole(ResourceDescriptor resource, EtagHeader etag, String author,
+                                                                    ToolSet toolSet) {
+        return writeToolSet(resource, etag, author, toolSet, true, true);
+    }
+
+    private Pair<ResourceItemMetadata, ToolSet> writeToolSet(ResourceDescriptor resource, EtagHeader etag, String author, ToolSet toolSet,
+                                                             boolean preserveForwardAuthToken, boolean inheritForwardAuthToken) {
         validateCatalogProperties(toolSet);
         if (!preserveForwardAuthToken) {
             toolSet.setForwardAuthToken(false);
@@ -173,6 +186,9 @@ public class ToolSetService {
         }
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             ToolSet existing = ProxyUtil.convertToObject(json, ToolSet.class);
+            if (inheritForwardAuthToken) {
+                toolSet.setForwardAuthToken(existing != null && existing.isForwardAuthToken());
+            }
             if (existing != null) {
                 resourceAuthSettingsEncryptionService.decrypt(resource.getUrl(),
                         new BucketInfo(resource.getBucketName(), resource.getBucketLocation()),

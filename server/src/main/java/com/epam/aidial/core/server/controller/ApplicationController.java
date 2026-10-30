@@ -293,8 +293,11 @@ public class ApplicationController {
         return resource;
     }
 
+    /**
+     * Deploy, undeploy, redeploy and logs: roles in an org unit don't count, so these stay with whoever had them before.
+     */
     private void checkAccess(ResourceDescriptor resource) {
-        boolean hasAccess = accessService.hasWriteAccess(resource, context);
+        boolean hasAccess = accessService.hasWriteAccessBesidesUnitRoles(resource, context);
 
         if (hasAccess) {
             Application application = applicationService.getApplication(resource).getValue();
@@ -302,7 +305,7 @@ public class ApplicationController {
 
             if (function != null) {
                 ResourceDescriptor sources = ResourceDescriptorFactory.fromAnyUrl(function.getSourceFolder(), encryptionService);
-                hasAccess = accessService.hasWriteAccess(sources, context);
+                hasAccess = accessService.hasWriteAccessBesidesUnitRoles(sources, context);
             }
         }
 

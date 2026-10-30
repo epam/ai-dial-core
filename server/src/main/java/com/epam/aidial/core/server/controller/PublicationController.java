@@ -15,6 +15,7 @@ import com.epam.aidial.core.server.data.ResourceLink;
 import com.epam.aidial.core.server.data.Rules;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.OrgUnitService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.RuleService;
@@ -46,6 +47,7 @@ public class PublicationController {
     private final EncryptionService encryptService;
     private final PublicationService publicationService;
     private final RuleService ruleService;
+    private final OrgUnitService orgUnitService;
     private final ProxyContext context;
 
     public PublicationController(Proxy proxy, ProxyContext context) {
@@ -55,6 +57,7 @@ public class PublicationController {
         this.encryptService = proxy.getEncryptionService();
         this.publicationService = proxy.getPublicationService();
         this.ruleService = proxy.getRuleService();
+        this.orgUnitService = proxy.getOrgUnitService();
         this.context = context;
     }
 
@@ -78,6 +81,9 @@ public class PublicationController {
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescriptor resource = decodePublication(url, true);
+                    if (resource.isPublic() && orgUnitService.isEnabled() && !isAdmin()) {
+                        return taskExecutor.submit(() -> publicationService.listPublicationsToApprove(context, resource));
+                    }
                     checkAccess(resource, resource.isPrivate());
                     return taskExecutor.submit(() -> publicationService.listPublications(resource));
                 })
@@ -107,6 +113,9 @@ public class PublicationController {
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescriptor resource = decodePublication(url, false);
+                    if (orgUnitService.isEnabled() && !hasAccess(resource, true)) {
+                        return taskExecutor.submit(() -> publicationService.getPublicationToReview(context, resource));
+                    }
                     checkAccess(resource, true);
                     return taskExecutor.submit(() -> publicationService.getPublication(resource));
                 })
@@ -224,10 +233,14 @@ public class PublicationController {
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescriptor resource = decodePublication(url, false);
-                    checkAccess(resource, false);
-                    return taskExecutor.submit(() ->
-                            lockService.underBucketLock(ResourceDescriptor.PUBLIC_LOCATION,
-                                    () -> publicationService.approvePublication(context, resource)));
+                    if (!orgUnitService.isEnabled()) {
+                        checkAccess(resource, false);
+                    }
+                    return taskExecutor.submit(() -> {
+                        publicationService.requireAdminOrApprover(context, resource);
+                        return lockService.underBucketLock(ResourceDescriptor.PUBLIC_LOCATION,
+                                () -> publicationService.approvePublication(context, resource));
+                    });
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
                 .onFailure(error -> respondError("Can't approve publication", error));
@@ -256,7 +269,9 @@ public class PublicationController {
                     RejectPublicationRequest request = ProxyUtil.convertToObject(body, RejectPublicationRequest.class);
                     String url = request.url();
                     ResourceDescriptor resource = decodePublication(url, false);
-                    checkAccess(resource, false);
+                    if (!orgUnitService.isEnabled()) {
+                        checkAccess(resource, false);
+                    }
                     return taskExecutor.submit(() -> publicationService.rejectPublication(context, resource, request));
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
@@ -400,6 +415,12 @@ public class PublicationController {
     }
 
     private void checkAccess(ResourceDescriptor resource, boolean allowUser) {
+        if (!hasAccess(resource, allowUser)) {
+            throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden resource: " + resource.getUrl());
+        }
+    }
+
+    private boolean hasAccess(ResourceDescriptor resource, boolean allowUser) {
         boolean hasAccess = isAdmin();
 
         if (!hasAccess && allowUser) {
@@ -407,17 +428,22 @@ public class PublicationController {
             hasAccess = resource.getBucketLocation().equals(bucket);
         }
 
-        if (!hasAccess) {
-            throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden resource: " + resource.getUrl());
-        }
+        return hasAccess;
     }
 
     private boolean isAdmin() {
         return accessService.hasAdminAccess(context);
     }
 
+    /**
+     * Whoever may read the rules may list them. Inside a unit rules grant nothing, so readers of the folder there list
+     * them too: Chat loads them when a folder is picked to publish into.
+     */
     private void checkRuleAccess(ResourceDescriptor rule) {
-        if (!accessService.hasReadAccess(rule, context)) {
+        ResourceDescriptor folder = ResourceDescriptorFactory.fromPublicUrl(
+                ResourceTypes.FILE.urlSegment() + rule.getUrl().substring(ResourceTypes.RULES.urlSegment().length()));
+        if (!accessService.hasReadAccess(rule, context)
+                && !(accessService.isInUnit(folder) && accessService.hasReadAccess(folder, context))) {
             throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden resource: " + rule.getUrl());
         }
     }

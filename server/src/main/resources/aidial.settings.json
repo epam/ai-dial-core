@@ -79,6 +79,10 @@
     "activeBatches": 5,
     "gracePeriod": 3600000
   },
+  "budgetCounterSweep": {
+    "period": 300000,
+    "batch": 500
+  },
   "adminSystemExport": {
     "stallTimeout": 60000
   },

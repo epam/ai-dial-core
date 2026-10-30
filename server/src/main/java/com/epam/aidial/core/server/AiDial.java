@@ -39,6 +39,7 @@ import com.epam.aidial.core.server.controller.WellKnownResourceMetadataControlle
 import com.epam.aidial.core.server.data.ApiKeyValidation;
 import com.epam.aidial.core.server.http.HttpProxySelector;
 import com.epam.aidial.core.server.limiter.RateLimiter;
+import com.epam.aidial.core.server.limiter.budget.BudgetCounterSweepService;
 import com.epam.aidial.core.server.log.AnalyticsSettings;
 import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
@@ -64,6 +65,8 @@ import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.NotificationService;
+import com.epam.aidial.core.server.service.OrgUnitApprovals;
+import com.epam.aidial.core.server.service.OrgUnitGrants;
 import com.epam.aidial.core.server.service.OrgUnitLookup;
 import com.epam.aidial.core.server.service.OrgUnitService;
 import com.epam.aidial.core.server.service.OrgUnitSettings;
@@ -118,7 +121,6 @@ import io.micrometer.registry.otlp.OtlpMeterRegistry;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender;
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
-import io.opentelemetry.sdk.trace.SpanProcessor;
 import io.vertx.config.spi.utils.JsonObjectHelper;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.DeploymentOptions;
@@ -188,6 +190,7 @@ public class AiDial {
     private BlobStorage storage;
     private ResourceService resourceService;
     private ComplexResourceSweepService complexResourceSweepService;
+    private BudgetCounterSweepService budgetCounterSweepService;
     private TimerService.Timer systemImportStagingCleanupTimer;
     private McpHttpClientBuilder mcpHttpClientBuilder;
     private McpHttpClientBuilder discoveryMcpHttpClientBuilder;
@@ -344,7 +347,9 @@ public class AiDial {
                     catalogSchemaService, mergedConfigStore, generator, settings("applications"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService,
                     lockService, applicationSchemaService, clock, resourceCredentialsService);
-            AccessService accessService = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings("access"));
+            OrgUnitApprovals orgUnitApprovals = new OrgUnitApprovals(orgUnitService, encryptionService, resourceService);
+            AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals,
+                    new OrgUnitGrants(orgUnitService), applicationSchemaService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
             RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService, mergedConfigStore, blockingCallTracer);
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,
@@ -379,7 +384,7 @@ public class AiDial {
                     toolSetService, resourceService, invitationService, shareService, lockService, complexResourceService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
                     ruleService, notificationService, applicationService, toolSetService, resourceOperationService,
-                    complexResourceService, orgUnitService, generator, clock);
+                    complexResourceService, orgUnitService, orgUnitApprovals, generator, clock);
 
             DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
                     toolSetService, resourceService, applicationSchemaService);
@@ -408,6 +413,11 @@ public class AiDial {
                     settings("complexResourceSweep").toBuffer(), ComplexResourceSweepService.Settings.class);
             complexResourceSweepService = new ComplexResourceSweepService(timerService, storage, redis, lockService,
                     complexResourceService, encryptionService, complexResourceSweepSettings, backgroundTracer);
+
+            BudgetCounterSweepService.Settings budgetCounterSweepSettings = Json.decodeValue(
+                    settings("budgetCounterSweep").toBuffer(), BudgetCounterSweepService.Settings.class);
+            budgetCounterSweepService = new BudgetCounterSweepService(timerService, resourceService, lockService, redis,
+                    mergedConfigStore, budgetCounterSweepSettings, backgroundTracer);
 
             ResponsesApiClient responsesApiClient = new ResponsesApiClient(client, clientOptions);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
@@ -556,6 +566,7 @@ public class AiDial {
             close(client, HttpClient::close);
             close(resourceService);
             close(complexResourceSweepService);
+            close(budgetCounterSweepService);
             close(systemImportStagingCleanupTimer);
             close(mcpHttpClientBuilder);
             close(discoveryMcpHttpClientBuilder);
@@ -761,9 +772,11 @@ public class AiDial {
             System.setProperty("otel.traces.exporter", "none");
         }
 
+        // added to the provider rather than around the exporter's processor: without an exporter there is none, and from
+        // OpenTelemetry 1.67 a provider without a processor hands out no-op tracers, so no request would get a trace id
         OpenTelemetry openTelemetry = AutoConfiguredOpenTelemetrySdk.builder()
-                .addSpanProcessorCustomizer(((spanProcessor, configProperties) ->
-                        SpanProcessor.composite(new PathNormalizerSpanProcessor(), spanProcessor)))
+                .addTracerProviderCustomizer((tracerProvider, configProperties) ->
+                        tracerProvider.addSpanProcessor(new PathNormalizerSpanProcessor()))
                 .build()
                 .getOpenTelemetrySdk();
 

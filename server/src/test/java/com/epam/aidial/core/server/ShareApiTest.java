@@ -3,6 +3,7 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Assertions;
@@ -13,6 +14,47 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class ShareApiTest extends ResourceBaseTest {
+
+    @Test
+    public void testSharedItemsCarryTimestamps() throws Exception {
+        String url = "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201%40";
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation%201%40", CONVERSATION_BODY_1);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [ { "url": "%s" } ]
+                }
+                """.formatted(url));
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        response = send(HttpMethod.GET, "/v1/metadata/" + url, null, null);
+        verify(response, 200);
+        JsonNode metadata = ProxyUtil.MAPPER.readTree(response.body());
+
+        String listRequest = """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "%s"
+                }
+                """;
+        JsonNode withMe = ProxyUtil.MAPPER.readTree(operationRequest("/v1/ops/resource/share/list", listRequest.formatted("me"), "Api-key", "proxyKey2").body())
+                .get("resources").get(0);
+        JsonNode byMe = ProxyUtil.MAPPER.readTree(operationRequest("/v1/ops/resource/share/list", listRequest.formatted("others")).body())
+                .get("resources").get(0);
+
+        for (JsonNode item : List.of(withMe, byMe)) {
+            Assertions.assertTrue(item.get("createdAt").isNumber());
+            Assertions.assertTrue(item.get("updatedAt").isNumber());
+            Assertions.assertEquals(metadata.get("createdAt"), item.get("createdAt"));
+            Assertions.assertEquals(metadata.get("updatedAt"), item.get("updatedAt"));
+        }
+    }
 
     @Test
     public void testShareWorkflow() {
@@ -103,7 +145,7 @@ public class ShareApiTest extends ResourceBaseTest {
                   "with": "me"
                 }
                 """, "Api-key", "proxyKey2");
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                   "resources" : [ {
                     "name" : "conversation 1@",
@@ -111,6 +153,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
+                    "createdAt" : "@ignore",
+                    "updatedAt" : "@ignore",
                     "resourceType" : "CONVERSATION",
                     "permissions" : [ "READ" ]
                     } ]
@@ -124,7 +168,7 @@ public class ShareApiTest extends ResourceBaseTest {
                   "with": "others"
                 }
                 """);
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                   "resources" : [ {
                     "name" : "conversation 1@",
@@ -132,6 +176,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
+                    "createdAt" : "@ignore",
+                    "updatedAt" : "@ignore",
                     "resourceType" : "CONVERSATION",
                     "permissions" : [ "READ" ]
                     } ]
@@ -184,7 +230,7 @@ public class ShareApiTest extends ResourceBaseTest {
                   "includeUserInfo": true
                 }
                 """, "Api-key", "proxyKey2");
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                   "resources" : [ {
                     "name" : "conversation 1@",
@@ -192,6 +238,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
+                    "createdAt" : "@ignore",
+                    "updatedAt" : "@ignore",
                     "resourceType" : "CONVERSATION",
                     "permissions" : [ "READ" ],
                     "sharedBy" : [ {
@@ -212,7 +260,7 @@ public class ShareApiTest extends ResourceBaseTest {
                   "includeUserInfo": true
                 }
                 """);
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                   "resources" : [ {
                     "name" : "conversation 1@",
@@ -220,6 +268,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
+                    "createdAt" : "@ignore",
+                    "updatedAt" : "@ignore",
                     "resourceType" : "CONVERSATION",
                     "permissions" : [ "READ" ],
                     "sharedWith" : [ {
@@ -319,7 +369,7 @@ public class ShareApiTest extends ResourceBaseTest {
                   "with": "me"
                 }
                 """, "Api-key", "proxyKey2");
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                   "resources" : [ {
                     "name" : "conversation 1@",
@@ -327,6 +377,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
+                    "createdAt" : "@ignore",
+                    "updatedAt" : "@ignore",
                     "resourceType" : "CONVERSATION",
                     "permissions" : [ "WRITE" ]
                     } ]
@@ -340,7 +392,7 @@ public class ShareApiTest extends ResourceBaseTest {
                   "with": "others"
                 }
                 """);
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                   "resources" : [ {
                     "name" : "conversation 1@",
@@ -348,6 +400,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
+                    "createdAt" : "@ignore",
+                    "updatedAt" : "@ignore",
                     "resourceType" : "CONVERSATION",
                     "permissions" : [ "WRITE" ]
                     } ]
@@ -822,7 +876,7 @@ public class ShareApiTest extends ResourceBaseTest {
                   "with": "me"
                 }
                 """, "Api-key", "proxyKey2");
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                   "resources": [
                     {
@@ -831,6 +885,8 @@ public class ShareApiTest extends ResourceBaseTest {
                       "bucket": "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                       "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@",
                       "nodeType": "ITEM",
+                      "createdAt" : "@ignore",
+                      "updatedAt" : "@ignore",
                       "resourceType": "CONVERSATION",
                       "permissions": [ "READ" ]
                     }
@@ -845,7 +901,7 @@ public class ShareApiTest extends ResourceBaseTest {
                   "with": "others"
                 }
                 """);
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                   "resources": [
                     {
@@ -854,6 +910,8 @@ public class ShareApiTest extends ResourceBaseTest {
                       "bucket": "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                       "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@",
                       "nodeType": "ITEM",
+                      "createdAt" : "@ignore",
+                      "updatedAt" : "@ignore",
                       "resourceType": "CONVERSATION",
                       "permissions": [ "READ" ]
                     }
@@ -970,7 +1028,7 @@ public class ShareApiTest extends ResourceBaseTest {
                   "with": "me"
                 }
                 """, "Api-key", "proxyKey2");
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                   "resources": [
                     {
@@ -979,6 +1037,8 @@ public class ShareApiTest extends ResourceBaseTest {
                       "bucket": "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                       "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2@",
                       "nodeType": "ITEM",
+                      "createdAt" : "@ignore",
+                      "updatedAt" : "@ignore",
                       "resourceType": "CONVERSATION",
                       "permissions": [ "READ" ]
                     }
@@ -993,7 +1053,7 @@ public class ShareApiTest extends ResourceBaseTest {
                   "with": "others"
                 }
                 """);
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                   "resources": [
                     {
@@ -1002,6 +1062,8 @@ public class ShareApiTest extends ResourceBaseTest {
                       "bucket": "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                       "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2@",
                       "nodeType": "ITEM",
+                      "createdAt" : "@ignore",
+                      "updatedAt" : "@ignore",
                       "resourceType": "CONVERSATION",
                       "permissions": [ "READ" ]
                     }
@@ -1646,6 +1708,8 @@ public class ShareApiTest extends ResourceBaseTest {
                       "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                       "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2",
                       "nodeType" : "ITEM",
+                      "createdAt" : "@ignore",
+                      "updatedAt" : "@ignore",
                       "resourceType" : "CONVERSATION",
                       "permissions" : [ "READ" ],
                       "sharedBy" : [ {
@@ -1661,6 +1725,8 @@ public class ShareApiTest extends ResourceBaseTest {
                       "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                       "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                       "nodeType" : "ITEM",
+                      "createdAt" : "@ignore",
+                      "updatedAt" : "@ignore",
                       "resourceType" : "CONVERSATION",
                       "permissions" : [ "READ" ],
                       "sharedBy" : [ {
@@ -1690,6 +1756,8 @@ public class ShareApiTest extends ResourceBaseTest {
                       "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                       "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2",
                       "nodeType" : "ITEM",
+                      "createdAt" : "@ignore",
+                      "updatedAt" : "@ignore",
                       "resourceType" : "CONVERSATION",
                       "permissions" : [ "READ" ],
                       "sharedWith" : [ {
@@ -1703,6 +1771,8 @@ public class ShareApiTest extends ResourceBaseTest {
                       "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                       "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                       "nodeType" : "ITEM",
+                      "createdAt" : "@ignore",
+                      "updatedAt" : "@ignore",
                       "resourceType" : "CONVERSATION",
                       "permissions" : [ "READ" ],
                       "sharedWith" : [ {
@@ -1811,6 +1881,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "prompts/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/prompt",
                     "nodeType" : "ITEM",
+                    "createdAt" : "@ignore",
+                    "updatedAt" : "@ignore",
                     "resourceType" : "PROMPT",
                     "permissions" : [ "READ" ]
                     },
@@ -1820,6 +1892,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                     "nodeType" : "ITEM",
+                    "createdAt" : "@ignore",
+                    "updatedAt" : "@ignore",
                     "resourceType" : "CONVERSATION",
                     "permissions" : [ "READ" ]
                     }
@@ -1842,6 +1916,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "prompts/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/prompt",
                     "nodeType" : "ITEM",
+                    "createdAt" : "@ignore",
+                    "updatedAt" : "@ignore",
                     "resourceType" : "PROMPT",
                     "permissions" : [ "READ" ]
                     },
@@ -1851,6 +1927,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                     "nodeType" : "ITEM",
+                    "createdAt" : "@ignore",
+                    "updatedAt" : "@ignore",
                     "resourceType" : "CONVERSATION",
                     "permissions" : [ "READ" ]
                     }
@@ -2033,6 +2111,8 @@ public class ShareApiTest extends ResourceBaseTest {
                       "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                       "url" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app",
                       "nodeType" : "ITEM",
+                      "createdAt" : "@ignore",
+                      "updatedAt" : "@ignore",
                       "resourceType" : "APPLICATION",
                       "permissions" : [ "READ" ]
                     }, {
@@ -2041,6 +2121,8 @@ public class ShareApiTest extends ResourceBaseTest {
                       "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                       "url" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file2.txt",
                       "nodeType" : "ITEM",
+                      "createdAt" : "@ignore",
+                      "updatedAt" : "@ignore",
                       "resourceType" : "FILE",
                       "permissions" : [ "READ" ]
                     }, {
@@ -2049,6 +2131,8 @@ public class ShareApiTest extends ResourceBaseTest {
                       "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                       "url" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file1.txt",
                       "nodeType" : "ITEM",
+                      "createdAt" : "@ignore",
+                      "updatedAt" : "@ignore",
                       "resourceType" : "FILE",
                       "permissions" : [ "READ" ]
                     } ]
@@ -2276,6 +2360,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
+                    "createdAt" : "@ignore",
+                    "updatedAt" : "@ignore",
                     "resourceType" : "CONVERSATION",
                     "permissions" : [ "READ", "SHARE" ],
                     "sharedBy" : [ {
@@ -2338,6 +2424,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
+                    "createdAt" : "@ignore",
+                    "updatedAt" : "@ignore",
                     "resourceType" : "CONVERSATION",
                     "permissions" : [ "READ" ],
                     "sharedBy" : [ {
@@ -2464,6 +2552,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
+                    "createdAt" : "@ignore",
+                    "updatedAt" : "@ignore",
                     "resourceType" : "CONVERSATION",
                     "permissions" : [ "WRITE", "READ" ],
                     "sharedBy" : [ {
@@ -2509,6 +2599,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
+                    "createdAt" : "@ignore",
+                    "updatedAt" : "@ignore",
                     "resourceType" : "CONVERSATION",
                     "permissions" : [ "READ" ],
                     "sharedBy" : [ {
