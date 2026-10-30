@@ -206,6 +206,32 @@ public class OrgUnitService {
     }
 
     /**
+     * The units the caller works in, parents before children: the ones the tree shows them, and the ones they hold a
+     * role in but reach only by path, without the units above. A DIAL admin gets every unit, with every permission;
+     * a caller who is not a person gets none.
+     */
+    public List<UserOrgUnits.Unit> unitsOf(ProxyContext context, boolean admin) {
+        if (!admin && !OrgUnitSubjects.isPerson(context)) {
+            return List.of();
+        }
+        OrgUnitList list = getUnitList();
+        OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
+        Map<String, Set<String>> held = heldRolesByUnit(context, list);
+        List<UserOrgUnits.Unit> units = new ArrayList<>();
+        for (Map.Entry<String, OrgUnit> entry : list.units().entrySet()) {
+            String key = entry.getKey();
+            if (key.equals(SHARED_SPACE_KEY) || !admin && !isShown(roles, held, key)) {
+                continue;
+            }
+            List<String> roleNames = held.getOrDefault(key, Set.of()).stream().filter(roles::exists).sorted().toList();
+            OrgUnitData.Summary unit = summary(key, entry.getValue());
+            units.add(new UserOrgUnits.Unit(unit.id(), unit.name(), unit.displayName(), unit.path(), unit.folder(), roleNames,
+                    admin ? OrgUnitRoles.ALL_PERMISSIONS : roles.resolvePermissions(roleNames)));
+        }
+        return units;
+    }
+
+    /**
      * @param author the display name of who creates it
      */
     public OrgUnitData create(List<String> parentPath, @Nullable String name, @Nullable String displayName, String author) {
@@ -958,41 +984,16 @@ public class OrgUnitService {
     }
 
     /**
-     * The units the caller works in, parents before children: those the tree shows them on their own, and those they
-     * reach only by path through a role there, without the units above; every unit for a DIAL admin, who may do
-     * everything in each. None for a caller who is not a person.
-     */
-    public List<UserOrgUnits.Unit> unitsOf(ProxyContext context, boolean admin) {
-        if (!admin && !OrgUnitSubjects.isPerson(context)) {
-            return List.of();
-        }
-        OrgUnitList list = getUnitList();
-        OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
-        Map<String, Set<String>> held = heldRolesByUnit(context, list);
-        List<UserOrgUnits.Unit> units = new ArrayList<>();
-        for (Map.Entry<String, OrgUnit> entry : list.units().entrySet()) {
-            String key = entry.getKey();
-            Set<String> heldThere = held.getOrDefault(key, Set.of());
-            if (key.equals(SHARED_SPACE_KEY)
-                    || !admin && !OrgUnitGrants.showsUnit(roles, heldThere, held.getOrDefault(parentKey(key), Set.of()))) {
-                continue;
-            }
-            List<String> roleNames = heldThere.stream().filter(roles::exists).sorted().toList();
-            OrgUnitData.Summary unit = summary(key, entry.getValue());
-            units.add(new UserOrgUnits.Unit(unit.id(), unit.name(), unit.displayName(), unit.path(), unit.folder(), roleNames,
-                    admin ? OrgUnitRoles.ALL_PERMISSIONS : roles.resolvePermissions(roleNames)));
-        }
-        return units;
-    }
-
-    /**
      * The units the caller sees through their roles, evaluated once over the list the request reads.
      */
     private Predicate<String> visibleTo(ProxyContext context, OrgUnitList list) {
         OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
         Map<String, Set<String>> held = heldRolesByUnit(context, list);
-        return key -> list.units().containsKey(key) && OrgUnitGrants.showsUnit(roles,
-                held.getOrDefault(key, Set.of()), held.getOrDefault(parentKey(key), Set.of()));
+        return key -> list.units().containsKey(key) && isShown(roles, held, key);
+    }
+
+    private static boolean isShown(OrgUnitRoles roles, Map<String, Set<String>> held, String key) {
+        return OrgUnitGrants.showsUnit(roles, held.getOrDefault(key, Set.of()), held.getOrDefault(parentKey(key), Set.of()));
     }
 
     private Map<String, Set<String>> heldRolesByUnit(ProxyContext context, OrgUnitList list) {
