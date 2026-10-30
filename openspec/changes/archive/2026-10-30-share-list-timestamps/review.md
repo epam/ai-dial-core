@@ -2,9 +2,9 @@
 
 ## What shipped
 
-- `ShareService.populateTimestamps`: for each ITEM in `listSharedWithMe` and `toMetadata` (the "others" listing), reads
-  `ResourceService.getResourceMetadata` and copies `createdAt` and `updatedAt` onto the item. A null lookup leaves the
-  item without them.
+- `ShareService.populateTimestamps`: one `ResourceService.loadMetadata` call per listing (`listSharedWithMe` and
+  `listSharedByMe`) copies `createdAt` and `updatedAt` onto the ITEMs. `loadMetadata` reuses `ResourceService.load`'s
+  Redis batching through a `withBody` flag, so no body is read.
 - Tests: `ShareApiTest.testSharedItemsCarryTimestamps` (both directions, equal to the metadata endpoint's values);
   the existing share-list expectations in `ShareApiTest` and `ResourceOperationApiTest` now ignore the two fields
   (`"@ignore"` with `verifyJsonNotExact`).
@@ -22,7 +22,7 @@
 
 ## Known limits
 
-- One Redis read per listed item, plus a blob head request when Redis has no entry.
+- One Redis round trip per 50 items, plus a blob head request for each Redis miss.
 - `etag` is not added to share-list items.
 
 ## Review

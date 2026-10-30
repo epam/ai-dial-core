@@ -50,6 +50,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 
@@ -98,7 +99,7 @@ public class ShareService {
             shareResources.add(sharedResource);
         }
 
-        Set<MetadataBase> resultMetadata = new HashSet<>();
+        List<MetadataBase> resultMetadata = new ArrayList<>();
         for (ResourceDescriptor resource : shareResources) {
             String state = resourceService.getResource(resource);
             SharedResources sharedResources = ProxyUtil.convertToObject(state, SharedResources.class);
@@ -109,7 +110,6 @@ public class ShareService {
                             ? new ResourceFolderMetadata(sharedResourceDescriptor)
                             : new ResourceItemMetadata(sharedResourceDescriptor);
                     metadata.setPermissions(sharedResource.getPermissions());
-                    populateTimestamps(metadata);
                     if (request.isIncludeUserInfo()) {
                         if (metadata instanceof ResourceItemMetadata itemMetadata) {
                             itemMetadata.setAuthor(sharedResource.getAuthor());
@@ -121,7 +121,8 @@ public class ShareService {
             }
         }
 
-        return new SharedResourcesResponse(resultMetadata);
+        populateTimestamps(resultMetadata);
+        return new SharedResourcesResponse(new HashSet<>(resultMetadata));
     }
 
     /**
@@ -141,7 +142,7 @@ public class ShareService {
             shareResources.add(shareResource);
         }
 
-        Set<MetadataBase> resultMetadata = new HashSet<>();
+        List<MetadataBase> resultMetadata = new ArrayList<>();
         for (ResourceDescriptor resource : shareResources) {
             String sharedResource = resourceService.getResource(resource);
             SharedByMeDto resourceToUsers = ProxyUtil.convertToObject(sharedResource, SharedByMeDto.class);
@@ -150,7 +151,8 @@ public class ShareService {
             }
         }
 
-        return new SharedResourcesResponse(resultMetadata);
+        populateTimestamps(resultMetadata);
+        return new SharedResourcesResponse(new HashSet<>(resultMetadata));
     }
 
 
@@ -731,7 +733,6 @@ public class ShareService {
                             ? new ResourceFolderMetadata(resource)
                             : new ResourceItemMetadata(resource);
                     metadata.setPermissions(permissions);
-                    populateTimestamps(metadata);
                     if (includeUserInfo) {
                         List<ShareMetadata> perUserPermissions = new ArrayList<>();
                         dto.getUserPermissions(link).forEach((user, access) -> {
@@ -750,12 +751,21 @@ public class ShareService {
                 }).toList();
     }
 
-    private void populateTimestamps(MetadataBase metadata) {
-        if (metadata instanceof ResourceItemMetadata itemMetadata) {
-            ResourceItemMetadata stored = resourceService.getResourceMetadata(metadata.getDescriptor());
-            if (stored != null) {
-                itemMetadata.setCreatedAt(stored.getCreatedAt());
-                itemMetadata.setUpdatedAt(stored.getUpdatedAt());
+    /**
+     * Sets createdAt and updatedAt of the stored resources on the items. It must run before the items are put into a hash set.
+     */
+    private void populateTimestamps(List<MetadataBase> metadata) {
+        List<ResourceItemMetadata> items = metadata.stream()
+                .filter(ResourceItemMetadata.class::isInstance)
+                .map(ResourceItemMetadata.class::cast)
+                .toList();
+        Map<String, ResourceItemMetadata> stored = resourceService.loadMetadata(items).stream()
+                .collect(Collectors.toMap(ResourceItemMetadata::getUrl, Function.identity(), (first, second) -> first));
+        for (ResourceItemMetadata item : items) {
+            ResourceItemMetadata found = stored.get(item.getUrl());
+            if (found != null) {
+                item.setCreatedAt(found.getCreatedAt());
+                item.setUpdatedAt(found.getUpdatedAt());
             }
         }
     }
