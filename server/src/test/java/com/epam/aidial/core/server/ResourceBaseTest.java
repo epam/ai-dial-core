@@ -2,6 +2,9 @@ package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.log.AnalyticsSettings;
+import com.epam.aidial.core.server.log.GfLogStore;
+import com.epam.aidial.core.server.log.RecordingLogStore;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -23,6 +26,7 @@ import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
+import okhttp3.mockwebserver.MockResponse;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
 import org.apache.hc.client5.http.entity.mime.HttpMultipartMode;
@@ -123,6 +127,7 @@ public class ResourceBaseTest {
     ApiKeyStore apiKeyStore;
     NotificationService notificationService;
     EncryptionService encryptionService;
+    RecordingLogStore logStore;
 
     AccessTokenValidator validator = Mockito.mock(AccessTokenValidator.class);
 
@@ -230,6 +235,8 @@ public class ResourceBaseTest {
             dial.setGenerator(this::generate);
             dial.setClock(() -> time);
             dial.setAccessTokenValidator(validator);
+            logStore = new RecordingLogStore(new GfLogStore(AnalyticsSettings.from(settings.getJsonObject("analytics", new JsonObject()))));
+            dial.setLogStore(logStore);
             dial.start();
             serverPort = dial.getServerPort();
             apiKeyStore = dial.getProxy().getApiKeyStore();
@@ -422,6 +429,51 @@ public class ResourceBaseTest {
         }
 
         return new Response(status, answer, responseHeaders);
+    }
+
+    /**
+     * The value of the header {@code name}, matched ignoring case, or null.
+     */
+    protected static String header(Response response, String name) {
+        return response.headers().entrySet().stream()
+                .filter(entry -> entry.getKey().equalsIgnoreCase(name))
+                .map(Map.Entry::getValue)
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
+     * An SSE body holding {@code events}, each a JSON object whose {@code type} is also its {@code event:} name.
+     */
+    @SneakyThrows
+    protected static String sseEvents(String... events) {
+        StringBuilder sse = new StringBuilder();
+        for (String event : events) {
+            String type = ProxyUtil.MAPPER.readTree(event).path("type").asText();
+            sse.append("event: ").append(type).append("\ndata: ").append(event).append("\n\n");
+        }
+        return sse.toString();
+    }
+
+    /**
+     * A 200 {@code text/event-stream} mock answer of {@code sse}, sent in chunks of 200 bytes.
+     */
+    protected static MockResponse eventStream(String sse) {
+        MockResponse response = new MockResponse();
+        response.setResponseCode(200);
+        response.setHeader("Content-Type", "text/event-stream");
+        response.setChunkedBody(sse, 200);
+        return response;
+    }
+
+    /**
+     * The {@code event:} names of an SSE body, in order.
+     */
+    protected static List<String> eventNames(String sse) {
+        return sse.lines()
+                .filter(line -> line.startsWith("event: "))
+                .map(line -> line.substring("event: ".length()))
+                .toList();
     }
 
     @SneakyThrows

@@ -48,7 +48,8 @@ for the same answer. Core SHALL count the tokens from the Anthropic usage the cl
 Core SHALL check the caller's spend caps on a builtin-translated request itself, as for a pass-through Messages
 model: a 200 answer SHALL carry the `anthropic-ratelimit-unified-*` headers of the reported cap, and an unreadable
 spend record of a caller with a cost limit SHALL get Core's spend-cap 429 before anything is sent upstream. A reached
-cap gets the 429 of builtin-translator-non-streaming-errors' scenario "Reached spend cap unchanged".
+cap gets the 429 of the scenario "Reached spend cap unchanged" of "Anthropic error body for Core errors on the builtin
+path".
 
 #### Scenario: At 82% of a day cap
 - **WHEN** a caller who has spent $8.20 of a $10 day cap streams a Messages request to a builtin-translated model and

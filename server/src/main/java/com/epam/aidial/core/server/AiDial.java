@@ -184,6 +184,7 @@ public class AiDial {
     private OtlpMeterRegistry otlpRegistry;
 
     private AccessTokenValidator accessTokenValidator;
+    private LogStore logStore;
 
     private BlobStorage storage;
     private ResourceService resourceService;
@@ -240,7 +241,9 @@ public class AiDial {
 
             AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx, settings("asyncTaskExecutor"));
 
-            LogStore logStore = new GfLogStore(AnalyticsSettings.from(settings("analytics")));
+            if (logStore == null) {
+                logStore = new GfLogStore(AnalyticsSettings.from(settings("analytics")));
+            }
 
             if (accessTokenValidator == null) {
                 String claimsLogLevel = settings.getString("claimsLogLevel", "DEBUG");

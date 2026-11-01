@@ -255,3 +255,34 @@ Each finding was checked against the code before it was applied.
 14. simplicity, low: "none for the Responses request it sends upstream" cannot fail. **Accepted.** The translated
     request goes to the adapter, and every row Core writes carries the client's URI. The clause and task 2.2's
     assertion are removed. "Exactly one row" covers a second row.
+
+## Implementation notes
+
+Compared with the code as changes 1-4 left it (commit `167bf86b`):
+
+- Every scenario passed on the first run against that code, so the only runtime change is the `logStore` field on
+  `AiDial` (D8). `MessagesController`, `ResponsesToMessagesReadStream` and the translator module are unchanged.
+- Task 6.3 was already done: builtin-translator-non-streaming-errors split the old
+  `testFlowControlAndFailuresReachTheUpstream` into `ResponsesToMessagesReadStreamTest#testFlowControlReachesTheUpstream`
+  and `#testUpstreamFailureEndsWithAnErrorEvent`. Nothing was added for it.
+- Change 1 had already narrowed the rule "A translated request touches the caller's limits not at all" and the first
+  paragraph of "Limits and a translated request" in `docs/dynamic-settings/translators.md` to a translator service.
+  Task 3.4 adds the builtin paragraph with the four differences of D3 instead. The section's table said the client
+  call of a translator service does not read `costLimit`, but `SpendCapCheck.java:verify` reads the spend caps on that
+  pass (spend headers, a reached cap rejects). Since the section was being rewritten, the table cell, the rule
+  bullet and the quota paragraph now say so. `docs/dynamic-settings/roles.md` said the limits are still checked on
+  the translated call; for a translator service `SpendCapCheck.java:verify` reads only the spend caps. That
+  paragraph now says so and adds the builtin translator, which `models.md` already covered.
+- builtin-translator-non-streaming-errors is archived, so the spec delta names the requirement that holds
+  "Reached spend cap unchanged" in `openspec/specs/anthropic-messages-translation` instead of the change.
+- `RecordingLogStore.await` waits 300 ms past the expected count, so a second row for the same request would show.
+  A row is saved only after the charge completes (`MessagesController.java:handleResponse` and
+  `completeProxyResponse`, `ResponsesController.java:handleStreamingResponse`,
+  `BaseDeploymentPostController.java:handleResponseError`), so the tests read the limit records once the row is there
+  instead of sleeping. The cache tests still sleep 1 s before turn 2: `UpstreamRoute.java:updateUpstreamCache` writes
+  the entry on the task executor after the answer.
+- The client-gone test sends its request over a raw socket: the Apache client reads the rest of the body to reuse the
+  connection, so it never leaves mid-stream.
+- Seen, not changed: on a cache miss `UpstreamRouteProvider` logs "cached upstream doesn't exist any longer in config:
+  id=null, endpoint=null" for every auto-caching model, because the miss entry of
+  `UpstreamCacheService.java:getCacheEntry` carries only the breakpoint path.

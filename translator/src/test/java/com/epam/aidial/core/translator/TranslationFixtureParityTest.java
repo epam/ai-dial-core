@@ -13,22 +13,18 @@ import org.junit.jupiter.params.provider.MethodSource;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Replays each fixture the Python translator recorded (input and expected output of one translation function)
  * against the Java port, and compares the output as JSON trees. The fixtures are copied verbatim from the
- * recorder; {@code translation-fixtures-known-gaps.txt} lists the in-scope ones the port does not match yet.
+ * recorder, and every in-scope one must match.
  */
 class TranslationFixtureParityTest {
 
@@ -48,8 +44,6 @@ class TranslationFixtureParityTest {
     private static final String MESSAGE_ID = "msg_placeholder";
 
     private static final Path FIXTURES = resource("translation-fixtures");
-
-    private static final Map<String, String> OWNERS_BY_KNOWN_GAP = readKnownGaps();
 
     @SneakyThrows
     static Stream<String> fixtures() {
@@ -73,15 +67,6 @@ class TranslationFixtureParityTest {
         }
     }
 
-    @Test
-    void testKnownGapsNameInScopeFixtures() {
-        for (String fixture : OWNERS_BY_KNOWN_GAP.keySet()) {
-            Path file = FIXTURES.resolve(fixture);
-            assertTrue(Files.isRegularFile(file), fixture + " is listed as a known gap but does not exist");
-            assertNull(outOfScopeFeature(read(file)), fixture + " is listed as a known gap but is out of scope");
-        }
-    }
-
     @ParameterizedTest(name = "{0}")
     @MethodSource("fixtures")
     void testFixture(String fixture) {
@@ -96,16 +81,11 @@ class TranslationFixtureParityTest {
         try {
             actual = normalise(kind, roundTrip(replay(recorded)));
         } catch (RuntimeException e) {
-            // a known gap may fail by throwing, an unsupported kind or call always does
+            // a throw is reported as a mismatch; an unsupported kind or call always throws
             actual = MAPPER.getNodeFactory().textNode(e.toString());
         }
         boolean matches = expected.equals(actual);
 
-        String owner = OWNERS_BY_KNOWN_GAP.get(fixture);
-        if (owner != null) {
-            assertFalse(matches, fixture + " passes now: delete its line from translation-fixtures-known-gaps.txt");
-            Assumptions.abort("known gap, owned by " + owner);
-        }
         JsonNode reported = actual;
         assertTrue(matches, () -> fixture + " does not match " + recorded.path("tests")
                 + "\nexpected: " + pretty(expected) + "\nactual:   " + pretty(reported));
@@ -221,22 +201,6 @@ class TranslationFixtureParityTest {
             }
         }
         return null;
-    }
-
-    @SneakyThrows
-    private static Map<String, String> readKnownGaps() {
-        Map<String, String> ownersByFixture = new LinkedHashMap<>();
-        for (String line : Files.readAllLines(resource("translation-fixtures-known-gaps.txt"))) {
-            String entry = line.strip();
-            if (entry.isEmpty() || entry.startsWith("#")) {
-                continue;
-            }
-            String[] fields = entry.split("\\s+");
-            if (fields.length != 2 || ownersByFixture.put(fields[0], fields[1]) != null) {
-                throw new IllegalStateException("Malformed or repeated known-gaps line: " + line);
-            }
-        }
-        return ownersByFixture;
     }
 
     @SneakyThrows

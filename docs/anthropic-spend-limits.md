@@ -55,6 +55,11 @@ for such a model are enforced only by the inner call. When the inner call reject
 per-minute cost limit, or a cap crossed after the outer read), the client gets whatever error the translator
 returns, without `anthropic-ratelimit-unified-*` headers.
 
+A model whose `anthropicMessages` interface uses a builtin translator (`builtin` instead of `baseUrl` in its translator
+entry, see [Builtin translators](dynamic-settings/translators.md#builtin-translators)) makes no call back to Core,
+so its request is checked like a pass-through model's: it gets the spend headers, the spend-cap 429, DIAL's own 429
+for a token or request limit, and the `fetch_error` 429 when the spend record can't be read.
+
 ## Headers on `POST /anthropic/v1/messages`
 
 The upstream's own `anthropic-ratelimit-*` response headers are always removed. For a capped user a 200 response

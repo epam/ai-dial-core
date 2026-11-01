@@ -31,7 +31,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -977,14 +976,6 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
         return body.path("error").path("message").asText();
     }
 
-    private static String header(Response response, String name) {
-        return response.headers().entrySet().stream()
-                .filter(entry -> entry.getKey().equalsIgnoreCase(name))
-                .map(Map.Entry::getValue)
-                .findFirst()
-                .orElse(null);
-    }
-
     /**
      * The client's last event is an {@code error} of {@code type} and {@code message}.
      */
@@ -1088,14 +1079,6 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
 
     private TestWebServer refusingOrigin() {
         return origin(request -> TestWebServer.createResponse(500, "unexpected"));
-    }
-
-    private static MockResponse eventStream(String sse) {
-        MockResponse response = new MockResponse();
-        response.setResponseCode(200);
-        response.setHeader("Content-Type", "text/event-stream");
-        response.setChunkedBody(sse, 200);
-        return response;
     }
 
     @SneakyThrows
@@ -1204,19 +1187,6 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
         return eventData(sse).stream().map(data -> data.path("delta").path("text").asText("")).collect(Collectors.joining());
     }
 
-    /**
-     * An upstream Responses event stream holding {@code events}, one data object each.
-     */
-    @SneakyThrows
-    private static String sseEvents(String... events) {
-        StringBuilder sse = new StringBuilder();
-        for (String event : events) {
-            String type = ProxyUtil.MAPPER.readTree(event).path("type").asText();
-            sse.append("event: ").append(type).append("\ndata: ").append(event).append("\n\n");
-        }
-        return sse.toString();
-    }
-
     @SneakyThrows
     private static List<JsonNode> eventData(String sse) {
         List<JsonNode> events = new ArrayList<>();
@@ -1224,13 +1194,6 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
             events.add(ProxyUtil.MAPPER.readTree(line.substring("data: ".length())));
         }
         return events;
-    }
-
-    private static List<String> eventNames(String sse) {
-        return sse.lines()
-                .filter(line -> line.startsWith("event: "))
-                .map(line -> line.substring("event: ".length()))
-                .toList();
     }
 
     private void assertUsed(String deployment, long expected) {

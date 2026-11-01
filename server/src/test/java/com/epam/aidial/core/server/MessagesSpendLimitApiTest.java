@@ -180,6 +180,29 @@ class MessagesSpendLimitApiTest extends ResourceBaseTest {
         }
     }
 
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testBuiltinTranslatedModelGetsSpendHeaders() throws IOException {
+        seedSpend("spend", "8.2");
+        String sse = readFixture("responses-sse.txt");
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/v1/responses", request -> {
+                MockResponse response = new MockResponse();
+                response.setResponseCode(200);
+                response.setHeader("Content-Type", "text/event-stream");
+                response.setHeader("anthropic-ratelimit-tokens-remaining", "5");
+                response.setChunkedBody(sse, 200);
+                return response;
+            });
+
+            Response response = postMessages(requestBody("claude-builtin", true), "proxyKey1");
+
+            assertEquals(200, response.status(), response.body());
+            assertTrue(response.body().contains("message_stop"), response.body());
+            assertWarningHeaders(response, expectedDailyReset());
+        }
+    }
+
     /**
      * The answer to a request of a caller whose day cost limit is used up.
      */
@@ -478,14 +501,6 @@ class MessagesSpendLimitApiTest extends ResourceBaseTest {
     private static String requestBody(String model, boolean stream) {
         return "{\"model\":\"" + model + "\",\"max_tokens\":100,\"stream\":" + stream
                 + ",\"messages\":[{\"role\":\"user\",\"content\":\"Knock, knock\"}]}";
-    }
-
-    private static String header(Response response, String name) {
-        return response.headers().entrySet().stream()
-                .filter(entry -> entry.getKey().equalsIgnoreCase(name))
-                .map(entry -> entry.getValue())
-                .findFirst()
-                .orElse(null);
     }
 
     private static boolean hasHeaderWithPrefix(Response response, String prefix) {

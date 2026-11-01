@@ -439,14 +439,6 @@ class ResponsesSpendLimitApiTest extends ResourceBaseTest {
         return "{\"model\":\"" + model + "\",\"stream\":" + stream + ",\"store\":false,\"input\":\"hi\"}";
     }
 
-    private static String header(Response response, String name) {
-        return response.headers().entrySet().stream()
-                .filter(entry -> entry.getKey().equalsIgnoreCase(name))
-                .map(entry -> entry.getValue())
-                .findFirst()
-                .orElse(null);
-    }
-
     private static boolean hasHeaderWithPrefix(Response response, String prefix) {
         return response.headers().keySet().stream().anyMatch(name -> name.regionMatches(true, 0, prefix, 0, prefix.length()));
     }
