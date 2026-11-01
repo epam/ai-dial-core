@@ -19,8 +19,9 @@ import java.util.List;
 /**
  * An upstream Responses event stream read as the Anthropic Messages event stream it translates to. Each event
  * is stamped by {@link EncryptedContentWrapFn} first, exactly as the Responses pass stamps it, then translated.
- * Flow control and failures pass straight through to the upstream, so a client that stops reading stops the
- * upstream too, and a reset of the upstream reaches whoever reads this.
+ * Flow control passes straight through to the upstream, so a client that stops reading stops the upstream too. An
+ * upstream failure ends the translated stream with an {@code error} event, as the translator service ends it, so
+ * this stream itself never fails.
  */
 @Slf4j
 class ResponsesToMessagesReadStream implements ReadStream<Buffer>, SseEventListener {
@@ -32,6 +33,7 @@ class ResponsesToMessagesReadStream implements ReadStream<Buffer>, SseEventListe
 
     private Handler<Buffer> handler;
     private Handler<Void> endHandler;
+    private boolean ended;
 
     ResponsesToMessagesReadStream(ReadStream<Buffer> upstream, ResponsesToMessagesStream translator, EncryptedContentWrapFn wrapFn) {
         this.upstream = upstream;
@@ -39,14 +41,32 @@ class ResponsesToMessagesReadStream implements ReadStream<Buffer>, SseEventListe
         this.wrapFn = wrapFn;
         this.parser = new SseParser(512, this);
         upstream.handler(parser::parse);
+        // each at most once, and not after the other: an upstream may still report its end after a failure
         upstream.endHandler(ignored -> {
+            if (ended) {
+                return;
+            }
             parser.finish();
             parser.close();
             emit(translator.finish());
-            if (endHandler != null) {
-                endHandler.handle(null);
-            }
+            end();
         });
+        upstream.exceptionHandler(error -> {
+            if (ended) {
+                return;
+            }
+            log.warn("The upstream Responses stream failed: {}", error.getMessage());
+            parser.close();
+            emit(translator.emitError("api_error", "The upstream connection failed before the response completed"));
+            end();
+        });
+    }
+
+    private void end() {
+        ended = true;
+        if (endHandler != null) {
+            endHandler.handle(null);
+        }
     }
 
     @Override
@@ -89,12 +109,7 @@ class ResponsesToMessagesReadStream implements ReadStream<Buffer>, SseEventListe
 
     @Override
     public ReadStream<Buffer> exceptionHandler(Handler<Throwable> exceptionHandler) {
-        upstream.exceptionHandler(error -> {
-            parser.close();
-            if (exceptionHandler != null) {
-                exceptionHandler.handle(error);
-            }
-        });
+        // never called: an upstream failure becomes an error event and an end
         return this;
     }
 

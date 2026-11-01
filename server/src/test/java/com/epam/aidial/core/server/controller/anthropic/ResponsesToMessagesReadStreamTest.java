@@ -18,8 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -36,6 +35,7 @@ class ResponsesToMessagesReadStreamTest {
     private ResponsesToMessagesReadStream stream;
     private Handler<Buffer> upstreamChunks;
     private Handler<Void> upstreamEnd;
+    private Handler<Throwable> upstreamExceptions;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
@@ -44,10 +44,13 @@ class ResponsesToMessagesReadStreamTest {
         stream = new ResponsesToMessagesReadStream(upstream, new ResponsesToMessagesStream("model", "msg_dial", new ToolNames(), false), wrapFn);
         ArgumentCaptor<Handler<Buffer>> chunks = ArgumentCaptor.forClass(Handler.class);
         ArgumentCaptor<Handler<Void>> end = ArgumentCaptor.forClass(Handler.class);
+        ArgumentCaptor<Handler<Throwable>> exceptions = ArgumentCaptor.forClass(Handler.class);
         verify(upstream).handler(chunks.capture());
         verify(upstream).endHandler(end.capture());
+        verify(upstream).exceptionHandler(exceptions.capture());
         upstreamChunks = chunks.getValue();
         upstreamEnd = end.getValue();
+        upstreamExceptions = exceptions.getValue();
         stream.handler(chunk -> received.add(chunk.toString()));
         stream.endHandler(ignored -> ended.set(true));
     }
@@ -86,27 +89,31 @@ class ResponsesToMessagesReadStreamTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void testFlowControlAndFailuresReachTheUpstream() {
-        AtomicReference<Throwable> failure = new AtomicReference<>();
-        stream.exceptionHandler(failure::set);
-        ArgumentCaptor<Handler<Throwable>> exceptions = ArgumentCaptor.forClass(Handler.class);
-        verify(upstream).exceptionHandler(exceptions.capture());
-        upstreamChunks.handle(Buffer.buffer("data: {\"type\":\"response.output_text.delta\",\"delta\":\"a\"}\n\n"));
-        int framesBeforeFailure = received.size();
-        RuntimeException reset = new RuntimeException("reset");
-        exceptions.getValue().handle(reset);
-
+    void testFlowControlReachesTheUpstream() {
         stream.pause();
         stream.fetch(3);
         stream.resume();
 
-        assertSame(reset, failure.get());
-        // a reset is passed on as it is: no error frame, no end
-        assertEquals(framesBeforeFailure, received.size(), received.toString());
-        assertFalse(ended.get());
         verify(upstream).pause();
         verify(upstream).fetch(3);
         verify(upstream).resume();
+    }
+
+    @Test
+    void testUpstreamFailureEndsWithAnErrorEvent() {
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        stream.exceptionHandler(failure::set);
+        upstreamChunks.handle(Buffer.buffer("data: {\"type\":\"response.output_text.delta\",\"delta\":\"a\"}\n\n"));
+        int framesBeforeFailure = received.size();
+
+        upstreamExceptions.handle(new RuntimeException("reset"));
+        // an end the upstream may still report changes nothing
+        upstreamEnd.handle(null);
+
+        assertEquals(framesBeforeFailure + 1, received.size(), received.toString());
+        assertEquals("event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"api_error\","
+                + "\"message\":\"The upstream connection failed before the response completed\"}}\n\n", received.get(received.size() - 1));
+        assertTrue(ended.get());
+        assertNull(failure.get());
     }
 }

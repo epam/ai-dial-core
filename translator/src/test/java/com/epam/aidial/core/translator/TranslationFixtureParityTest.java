@@ -115,8 +115,9 @@ class TranslationFixtureParityTest {
         JsonNode input = recorded.path("input");
         return switch (recorded.path("kind").asText()) {
             case "request" -> replayRequest(input);
+            case "response" -> replayResponse(input);
             case "stream" -> replayStream(input);
-            default -> throw new UnsupportedOperationException("no non-streaming translation yet");
+            default -> throw new UnsupportedOperationException("unknown fixture kind");
         };
     }
 
@@ -135,12 +136,19 @@ class TranslationFixtureParityTest {
         return output;
     }
 
+    private static JsonNode replayResponse(JsonNode input) {
+        ObjectNode output = MAPPER.createObjectNode();
+        try {
+            output.set("message", ResponsesToMessages.translateResponse(input.path("response"), input.path("requested_model").asText(), MESSAGE_ID,
+                    seededToolNames(input), input.path("omit_thinking").asBoolean()));
+        } catch (UpstreamFailureException e) {
+            output.putObject("error").put("status", e.getStatus()).put("type", e.getType()).put("message", e.getMessage());
+        }
+        return output;
+    }
+
     private static JsonNode replayStream(JsonNode input) {
-        // seeded the way a request translation fills it, so the recorded aliases are checked too
-        ToolNames toolNames = new ToolNames();
-        input.path("tool_names").properties().forEach(entry ->
-                assertEquals(entry.getValue().asText(), toolNames.alias(entry.getKey(), Set.of()), entry.getKey()));
-        ResponsesToMessagesStream stream = new ResponsesToMessagesStream(input.path("requested_model").asText(), MESSAGE_ID, toolNames,
+        ResponsesToMessagesStream stream = new ResponsesToMessagesStream(input.path("requested_model").asText(), MESSAGE_ID, seededToolNames(input),
                 input.path("omit_thinking").asBoolean());
         ArrayNode output = MAPPER.createArrayNode();
         for (JsonNode call : input.path("calls")) {
@@ -155,6 +163,9 @@ class TranslationFixtureParityTest {
                 frames = stream.handle(data);
             } else if (call.has("finalize")) {
                 frames = stream.finish();
+            } else if (call.has("emit_error")) {
+                JsonNode error = call.path("emit_error");
+                frames = stream.emitError(error.path("type").asText(), error.path("message").asText());
             } else {
                 throw new UnsupportedOperationException("no counterpart of " + call.fieldNames().next());
             }
@@ -164,6 +175,16 @@ class TranslationFixtureParityTest {
             }
         }
         return output;
+    }
+
+    /**
+     * Seeded the way a request translation fills it, so the recorded aliases are checked too.
+     */
+    private static ToolNames seededToolNames(JsonNode input) {
+        ToolNames toolNames = new ToolNames();
+        input.path("tool_names").properties().forEach(entry ->
+                assertEquals(entry.getValue().asText(), toolNames.alias(entry.getKey(), Set.of()), entry.getKey()));
+        return toolNames;
     }
 
     @SneakyThrows

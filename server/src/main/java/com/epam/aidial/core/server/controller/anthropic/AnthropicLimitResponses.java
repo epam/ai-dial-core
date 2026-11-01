@@ -5,9 +5,11 @@ import com.epam.aidial.core.server.limiter.CalendarPeriod;
 import com.epam.aidial.core.server.limiter.LimitBreach;
 import com.epam.aidial.core.server.limiter.SpendCap;
 import com.epam.aidial.core.server.limiter.SpendCaps;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.MultiMap;
 import lombok.experimental.UtilityClass;
@@ -18,6 +20,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
+import javax.annotation.Nullable;
 
 @UtilityClass
 class AnthropicLimitResponses {
@@ -159,10 +162,55 @@ class AnthropicLimitResponses {
         return MESSAGE_RESET_FORMAT.format(Instant.ofEpochMilli(epochMillis));
     }
 
-    private String errorBody(String type, String message) {
+    String errorBody(String type, String message) {
         ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
         body.put("type", "error");
         body.putObject("error").put("type", type).put("message", message);
         return body.toString();
+    }
+
+    /**
+     * The Anthropic body of an error answer of {@code status} whose body {@code text} carries no Anthropic type: Core's
+     * own errors and an upstream's error answers both get it.
+     */
+    String errorBody(int status, @Nullable String text) {
+        return errorBody(typeForStatus(status), extractMessage(text, status));
+    }
+
+    /**
+     * The Anthropic error type of an error answer that carries no type of its own, as the Python translator's
+     * {@code errors.status_to_anthropic_type} maps it.
+     */
+    String typeForStatus(int status) {
+        return switch (status) {
+            case 400, 422 -> "invalid_request_error";
+            case 401 -> "authentication_error";
+            case 403 -> "permission_error";
+            case 404 -> "not_found_error";
+            case 413 -> "request_too_large";
+            case 429 -> "rate_limit_error";
+            case 503, 529 -> "overloaded_error";
+            default -> "api_error";
+        };
+    }
+
+    /**
+     * The message of an error body that may be DIAL or OpenAI JSON or plain text: {@code error.message}, a string
+     * {@code error}, a top-level {@code message}, else the text itself. Ported from {@code errors._extract_error_message}.
+     */
+    String extractMessage(@Nullable String text, int status) {
+        String body = text == null ? "" : text.strip();
+        JsonNode json = JsonUtil.tryParse(body);
+        JsonNode error = json.path("error");
+        if (error.path("message").isTextual()) {
+            return error.path("message").textValue();
+        }
+        if (error.isTextual() && !error.textValue().isEmpty()) {
+            return error.textValue();
+        }
+        if (json.path("message").isTextual()) {
+            return json.path("message").textValue();
+        }
+        return body.isEmpty() ? "Error code: " + status : body;
     }
 }

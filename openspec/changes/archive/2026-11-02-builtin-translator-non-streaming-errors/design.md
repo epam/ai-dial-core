@@ -342,3 +342,50 @@ None. The spend-cap overlap with builtin-translator-routing-accounting is settle
     `testFailureTable`. Tasks 1.1 to 1.3 follow.
 18. simplicity, low: the proposal's Impact line undercounted the changes to `AnthropicLimitResponses`. **Accepted.**
     It now reads "`errorBody` made package-private; `typeForStatus` and `extractMessage` added".
+
+## Implementation notes
+
+Compared with the code as builtin-translator-fixture-parity, builtin-translator-tools and builtin-translator-reasoning
+left it (all three archived on 2026-11-01):
+
+- **Spec delta rebased.** The three MODIFIED requirements now start from their text in `openspec/specs` after those
+  archives; only the clauses this change alters differ (`stream` as the client sent it, the upstream connection
+  failure, the charge of a failed or unfinished answer). The REMOVED requirement still exists there.
+- **Test names.** builtin-translator-reasoning named the gone-upstream test `testCarrierOfGoneUpstreamIsRefused`, not
+  `testCarrierOfAGoneUpstreamIsRefused`; task 3.1 extends it under its real name.
+  `testEveryUpstreamBusyKeepsRetryAfter` and `testConnectFailureIsAnAnthropicError` did not exist and are added.
+- **The stream's error builder.** `ResponsesToMessagesStream` already had a private `emitError(JsonNode, frames)` (the
+  `response.failed` / `error` handler) beside the private builder `error(type, message, frames)`. The handler is
+  renamed `onFailure`, so the builder can become the public `emitError(type, message)` of D7. Like
+  `streaming.py:emit_error`, it returns nothing once the stream has ended.
+- **`UpstreamFailureException` accessors.** An exception cannot be a record, so D3's `e.type()` and `e.message()` are
+  `getType()` and `getMessage()`, beside `getStatus()`.
+- **`ResponsesToMessagesReadStream.exceptionHandler`.** The upstream's exception handler is now set in the constructor,
+  as its chunk and end handlers are, and `exceptionHandler(...)` keeps no handler: an upstream failure ends the stream
+  with an `error` frame and an end, so this stream never fails. The end handler runs at most once, should the upstream
+  also report its end after a failure. The existing `testFlowControlAndFailuresReachTheUpstream` asserted the reset
+  that D7 removes; it becomes `testFlowControlReachesTheUpstream`, and the failure moves to
+  `testUpstreamFailureEndsWithAnErrorEvent`.
+- **Pricing of a failed non-streaming answer.** The client's body is the error, which carries no `usage`, so D3 also
+  sets the pricing usage node to the `{"usage": ...}` it charges, as `CollectMessagesTokenUsageFn` does on the stream;
+  without it a price that reads `$.usage` would see nothing.
+- **The span status of an answer that is not the upstream's.** `collectTokenUsage` also writes
+  `gen_ai.response.status` from the response status, which D3 leaves at the upstream's `200` for the charge. When the
+  status to answer differs from the upstream's (a failed or unfinished `200`, a `200` that is not a Responses object),
+  `handleNonStreamingResponse` writes the response attributes again after it sets that status, so the span reads
+  `failed` as a translator service's Messages pass would. `MessagesControllerTracingTest` covers it.
+- **Arguments that are not a JSON object.** `from_responses.py:_parse_arguments` uses `json.loads`, which rejects
+  text after the value; the port reads `arguments` with Jackson's `FAIL_ON_TRAILING_TOKENS` for the same result.
+- **`stream` upstream.** D3 reads `request.isStreaming()`; the code sets `stream` from `context.isStreamingRequest()`,
+  which `MessagesBaseController.handleRequestBody` sets from the same request just before. They differ only when a
+  deployment's `anthropicMessages` defaults set `stream`, and then the upstream answer is read as the client asked:
+  an event stream sent to a client that asked for one message would fail as "not a Responses object".
+- **`failedUsage()`** is `getFailedUsage()`, a plain getter named as the code style asks.
+- **`Content-Length` in the test.** The test client asks for `Accept-Encoding: identity` in
+  `testNonStreamingIsTranslatedInOnePass`: with compression Vert.x sends the compressed length, and the client hands
+  the test the inflated body.
+- **A test name.** Checkstyle refuses `testUpstream400ToAStreamingRequestIsJson` (two capitals in a row); it is
+  `testUpstream400ToStreamingRequestIsJson`, in tasks.md too.
+- **The DIAL id in the test.** `ResourceBaseTest` stubs the id generator with a counter, so
+  `testNonStreamingIsTranslatedInOnePass` checks `dial_gpt-builtin_` and hex digits; the 32 of the scenario come from
+  `AiDial`'s default generator, which the stream already uses.

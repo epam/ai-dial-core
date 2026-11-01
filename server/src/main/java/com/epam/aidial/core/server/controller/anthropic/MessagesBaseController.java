@@ -147,16 +147,17 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
 
     protected Void setupDeployment(String model) {
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, model);
+        Map<String, Translator> translators = context.getConfig().getTranslators();
+        // resolved before any check can refuse the request, so every refusal of a builtin-translated one is in its shape
+        builtinTranslator = isBuiltinTranslationSupported()
+                ? DeploymentEndpointUtil.resolveBuiltinTranslator(deployment, InterfaceType.ANTHROPIC_MESSAGES, translators)
+                : null;
         verifyAccess(deployment, model, InterfaceType.ANTHROPIC_MESSAGES);
 
         if (deployment instanceof Application application) {
             deployment = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
         }
 
-        Map<String, Translator> translators = context.getConfig().getTranslators();
-        builtinTranslator = isBuiltinTranslationSupported()
-                ? DeploymentEndpointUtil.resolveBuiltinTranslator(deployment, InterfaceType.ANTHROPIC_MESSAGES, translators)
-                : null;
         // a builtin translator is served by the deployment's own interface for what it translates to
         InterfaceType servedType = builtinTranslator == null ? InterfaceType.ANTHROPIC_MESSAGES : builtinTranslator.getOut();
         if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, servedType, translators) == null) {

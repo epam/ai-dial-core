@@ -47,6 +47,11 @@ public class ResponsesToMessagesStream {
     private boolean sawFunctionCall;
 
     /**
+     * The converted usage of a {@code response.failed}, which the client never sees but the request is charged.
+     */
+    private ObjectNode failedUsage;
+
+    /**
      * Whether the open block's function call arguments have reached the client.
      */
     private boolean openArgumentsSent;
@@ -87,6 +92,13 @@ public class ResponsesToMessagesStream {
         if (terminated) {
             return frames;
         }
+        // a DIAL error chunk: checked before the type, as the OpenAI SDK checks it
+        JsonNode error = event.path("error");
+        if (error.isObject() && !error.isEmpty()) {
+            JsonNode message = error.path("message");
+            return emitError(ResponsesToMessages.failure(error).getType(),
+                    message.isTextual() && !message.textValue().isEmpty() ? message.textValue() : "An error occurred during streaming");
+        }
         String type = event.path("type").asText();
         switch (type) {
             case "response.created", "response.in_progress" -> onCreated(event, frames);
@@ -111,8 +123,12 @@ public class ResponsesToMessagesStream {
             case "response.output_item.done" -> onOutputItemDone(event, frames);
             case "response.reasoning_summary_text.delta", "response.reasoning_text.delta" -> onReasoningDelta(event, frames);
             case "response.completed", "response.incomplete" -> onFinal(event.path("response"), frames);
-            case "response.failed" -> emitError(event.path("response").path("error"), frames);
-            case "error" -> emitError(event.has("error") ? event.path("error") : event, frames);
+            case "response.failed" -> {
+                failedUsage = ResponsesToMessages.convertUsage(event.path("response").path("usage"));
+                onFailure(event.path("response").path("error"), frames);
+            }
+            // a non-empty error object returned above; the flat shape remains, as Python's `data.get("error") or data`
+            case "error" -> onFailure(event, frames);
             default -> log.debug("Ignoring Responses event: {}", type);
         }
         return frames;
@@ -124,12 +140,33 @@ public class ResponsesToMessagesStream {
      * it off as complete.
      */
     public List<String> finish() {
-        List<String> frames = new ArrayList<>();
-        if (!terminated) {
-            log.warn("Responses stream ended without a terminal event");
-            error("api_error", "The upstream stream ended before the response completed", frames);
+        if (terminated) {
+            return List.of();
         }
-        return frames;
+        log.warn("Responses stream ended without a terminal event");
+        return emitError("api_error", "The upstream stream ended before the response completed");
+    }
+
+    /**
+     * The {@code error} frame that ends the stream, or nothing when it has ended already. Also for a failure from
+     * outside the stream, such as a lost upstream connection.
+     */
+    public List<String> emitError(String type, String message) {
+        if (terminated) {
+            return List.of();
+        }
+        terminated = true;
+        ObjectNode data = JsonNodeFactory.instance.objectNode();
+        data.put("type", "error");
+        data.putObject("error").put("type", type).put("message", message);
+        return List.of(frame("error", data));
+    }
+
+    /**
+     * The usage a {@code response.failed} reported, converted; null when the stream ended any other way.
+     */
+    public ObjectNode getFailedUsage() {
+        return failedUsage;
     }
 
     private void onCreated(JsonNode event, List<String> frames) {
@@ -313,16 +350,9 @@ public class ResponsesToMessagesStream {
         terminated = true;
     }
 
-    private void emitError(JsonNode error, List<String> frames) {
-        error(ResponsesToMessages.errorType(error), error.path("message").asText("The upstream request failed"), frames);
-    }
-
-    private void error(String type, String message, List<String> frames) {
-        terminated = true;
-        ObjectNode data = JsonNodeFactory.instance.objectNode();
-        data.put("type", "error");
-        data.putObject("error").put("type", type).put("message", message);
-        frames.add(frame("error", data));
+    private void onFailure(JsonNode error, List<String> frames) {
+        UpstreamFailureException failure = ResponsesToMessages.failure(error);
+        frames.addAll(emitError(failure.getType(), failure.getMessage()));
     }
 
     /**

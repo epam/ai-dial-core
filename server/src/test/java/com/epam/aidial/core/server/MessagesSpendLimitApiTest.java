@@ -138,25 +138,69 @@ class MessagesSpendLimitApiTest extends ResourceBaseTest {
             long reset = expectedDailyReset();
             Response response = postMessages(requestBody("claude-spend", false), "proxyKey1");
 
-            assertEquals(429, response.status(), response.body());
             assertEquals(0, upstreamCalls.get());
-            String formattedReset = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneOffset.UTC)
-                    .format(Instant.ofEpochSecond(reset));
-            assertEquals("{\"type\":\"error\",\"error\":{\"type\":\"billing_error\",\"message\":\"DIAL spend limit reached (daily; resets "
-                    + formattedReset + ")\"}}", response.body());
-            long retryAfter = Long.parseLong(header(response, "retry-after"));
-            assertTrue(retryAfter > 0 && retryAfter <= 86_400, String.valueOf(retryAfter));
-            assertEquals("false", header(response, "x-should-retry"));
-            assertEquals("rejected", header(response, UNIFIED + "status"));
-            assertEquals(String.valueOf(reset), header(response, UNIFIED + "reset"));
-            assertEquals(String.valueOf(reset), header(response, OVERAGE + "reset"));
-            assertEquals("1", header(response, OVERAGE + "utilization"));
-            assertEquals("1", header(response, OVERAGE + "surpassed-threshold"));
-            assertEquals("daily", header(response, OVERAGE + "period"));
-            assertEquals("org_spend_cap_reached", header(response, OVERAGE + "disabled-reason"));
-            assertNull(header(response, UNIFIED + "representative-claim"));
-            assertNull(header(response, OVERAGE + "status"));
+            assertSpendCapReached(response, reset);
         }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testBuiltinTranslatorKeepsTheSpendCapAnswer() {
+        seedSpend("spend", "10");
+        AtomicInteger upstreamCalls = new AtomicInteger();
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            upstreamCalls.incrementAndGet();
+            return TestWebServer.createResponse(500, "unexpected");
+        })) {
+            long reset = expectedDailyReset();
+            Response response = postMessages(requestBody("claude-builtin", true), "proxyKey1");
+
+            // already in the Anthropic shape, so the builtin path passes it on: billing_error, not rate_limit_error
+            assertEquals(0, upstreamCalls.get());
+            assertSpendCapReached(response, reset);
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testBuiltinNonStreamingAtEightyTwoPercent() {
+        seedSpend("spend", "8.2");
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/v1/responses", request -> TestWebServer.createResponse(200,
+                    "{\"id\":\"resp_1\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"hi\"}]}],"
+                            + "\"usage\":{\"input_tokens\":10,\"output_tokens\":8}}",
+                    "Content-Type", "application/json",
+                    "anthropic-ratelimit-tokens-remaining", "5"));
+
+            Response response = postMessages(requestBody("claude-builtin", false), "proxyKey1");
+
+            assertEquals(200, response.status(), response.body());
+            assertEquals("message", parse(response.body()).path("type").asText(), response.body());
+            assertWarningHeaders(response, expectedDailyReset());
+        }
+    }
+
+    /**
+     * The answer to a request of a caller whose day cost limit is used up.
+     */
+    private static void assertSpendCapReached(Response response, long reset) {
+        assertEquals(429, response.status(), response.body());
+        String formattedReset = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneOffset.UTC)
+                .format(Instant.ofEpochSecond(reset));
+        assertEquals("{\"type\":\"error\",\"error\":{\"type\":\"billing_error\",\"message\":\"DIAL spend limit reached (daily; resets "
+                + formattedReset + ")\"}}", response.body());
+        long retryAfter = Long.parseLong(header(response, "retry-after"));
+        assertTrue(retryAfter > 0 && retryAfter <= 86_400, String.valueOf(retryAfter));
+        assertEquals("false", header(response, "x-should-retry"));
+        assertEquals("rejected", header(response, UNIFIED + "status"));
+        assertEquals(String.valueOf(reset), header(response, UNIFIED + "reset"));
+        assertEquals(String.valueOf(reset), header(response, OVERAGE + "reset"));
+        assertEquals("1", header(response, OVERAGE + "utilization"));
+        assertEquals("1", header(response, OVERAGE + "surpassed-threshold"));
+        assertEquals("daily", header(response, OVERAGE + "period"));
+        assertEquals("org_spend_cap_reached", header(response, OVERAGE + "disabled-reason"));
+        assertNull(header(response, UNIFIED + "representative-claim"));
+        assertNull(header(response, OVERAGE + "status"));
     }
 
     @Test

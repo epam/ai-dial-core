@@ -14,6 +14,7 @@ import io.vertx.core.http.HttpMethod;
 import lombok.SneakyThrows;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.RecordedRequest;
+import okhttp3.mockwebserver.SocketPolicy;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
@@ -30,6 +31,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -317,8 +319,7 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
             String unknownRole = "{\"model\":\"gpt-builtin\",\"max_tokens\":100,\"stream\":true,\"messages\":[{\"role\":\"tool\",\"content\":\"x\"}]}";
             Response response = post(client, MESSAGES_PATH, unknownRole, "api-key", "proxyKey1");
 
-            assertEquals(400, response.status());
-            assertEquals("Unknown message role: 'tool'", response.body());
+            assertEquals("Unknown message role: 'tool'", assertAnthropicError(response, 400, "invalid_request_error"));
 
             String notAnArray = "{\"model\":\"gpt-builtin\",\"max_tokens\":100,\"stream\":true,\"messages\":\"hi\"}";
             response = post(client, MESSAGES_PATH, notAnArray, "api-key", "proxyKey1");
@@ -570,7 +571,7 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
         try (TestWebServer server = refusingOrigin(); CloseableHttpClient client = newClient()) {
             Response response = post(client, MESSAGES_PATH, replayBody(carrier(TWO_UPSTREAMS, "up-gone", "cipher-xyz")), "api-key", "proxyKey1");
 
-            assertEquals(409, response.status(), response.body());
+            assertEquals("Upstream 'up-gone' referenced by encrypted content is no longer available.", assertAnthropicError(response, 409, "api_error"));
             assertEquals(0, originRequests.get());
         }
     }
@@ -582,7 +583,7 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
 
             Response response = post(client, MESSAGES_PATH, body, "api-key", "proxyKey1");
 
-            assertEquals(400, response.status(), response.body());
+            assertEquals("Conflicting encrypted content affinity across input items.", assertAnthropicError(response, 400, "invalid_request_error"));
             assertEquals(0, originRequests.get());
         }
     }
@@ -645,9 +646,8 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
 
             Response response = post(client, MESSAGES_PATH, body, "api-key", "proxyKey1");
 
-            assertEquals(400, response.status());
             assertEquals("Unsupported 'output_config.effort': '" + effort.replace("\"", "")
-                    + "'. Expected one of: none, minimal, low, medium, high, xhigh, max", response.body());
+                    + "'. Expected one of: none, minimal, low, medium, high, xhigh, max", assertAnthropicError(response, 400, "invalid_request_error"));
             assertEquals(0, originRequests.get());
         }
     }
@@ -727,15 +727,178 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
     }
 
     @Test
-    public void testNonStreamingIsRefused() throws IOException {
-        try (TestWebServer server = refusingOrigin(); CloseableHttpClient client = newClient()) {
+    public void testNonStreamingIsTranslatedInOnePass() throws IOException, InterruptedException {
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = origin(request -> {
+            captured.set(request);
+            return json(200, responsesObject("completed", "{\"type\":\"message\",\"role\":\"assistant\","
+                    + "\"content\":[{\"type\":\"output_text\",\"text\":\"Who’s there?\",\"annotations\":[]}]}", "10", "8"));
+        }); CloseableHttpClient client = newClient()) {
 
+            // uncompressed, so Content-Length is the length of the body read
+            Response response = post(client, MESSAGES_PATH, requestBody(false), "api-key", "proxyKey1", "anthropic-version", "2023-06-01",
+                    "Accept-Encoding", "identity");
+
+            assertEquals(200, response.status(), response.body());
+            // the measurement of the one-pass claim: one upstream request, one charge
+            assertEquals(1, originRequests.get());
+            assertEquals(RESPONSES_PATH, captured.get().getPath());
+            JsonNode upstream = ProxyUtil.MAPPER.readTree(captured.get().getBody().readUtf8());
+            assertFalse(upstream.path("stream").asBoolean(true), upstream.toString());
+            assertTrue(upstream.path("stream").isBoolean(), upstream.toString());
+            assertFalse(upstream.path("store").asBoolean(true), upstream.toString());
+
+            // Answer headers
+            assertEquals("application/json", header(response, "Content-Type"));
+            assertEquals("1", header(response, Proxy.HEADER_UPSTREAM_ATTEMPTS));
+            assertEquals(String.valueOf(response.body().getBytes(StandardCharsets.UTF_8).length), header(response, "Content-Length"));
+
+            JsonNode message = ProxyUtil.MAPPER.readTree(response.body());
+            assertEquals("message", message.path("type").asText());
+            assertEquals("assistant", message.path("role").asText());
+            assertEquals(ProxyUtil.MAPPER.readTree("[{\"type\":\"text\",\"text\":\"Who’s there?\",\"citations\":null}]"), message.path("content"));
+            assertEquals("end_turn", message.path("stop_reason").asText());
+            // DIAL id and upstream model; the test harness stubs the 32-hex generator with a counter
+            assertTrue(message.path("id").asText().matches("dial_gpt-builtin_[0-9a-f]+"), message.path("id").asText());
+            assertFalse(response.body().contains("resp_075fcfcf"), response.body());
+            assertEquals("gpt-5-upstream", message.path("model").asText());
+            // Null-valued fields
+            for (String field : List.of("container", "stop_details", "stop_sequence")) {
+                assertTrue(message.has(field) && message.get(field).isNull(), field);
+            }
+            for (String field : List.of("cache_creation", "inference_geo", "server_tool_use", "service_tier")) {
+                assertTrue(message.path("usage").has(field) && message.path("usage").get(field).isNull(), field);
+            }
+
+            Thread.sleep(1000); // wait for core to save usage
+            assertUsed("gpt-builtin", 18);
+        }
+    }
+
+    @Test
+    public void testRequestWithoutStreamFieldIsNonStreaming() throws IOException {
+        List<JsonNode> upstreamBodies = new CopyOnWriteArrayList<>();
+        try (TestWebServer server = origin(request -> {
+            upstreamBodies.add(UpstreamCall.of(request).body());
+            return json(200, responsesObject("completed", "{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"hi\"}]}", "1", "1"));
+        }); CloseableHttpClient client = newClient()) {
+            Response explicit = post(client, MESSAGES_PATH, requestBody(false), "api-key", "proxyKey1");
+            Response absent = post(client, MESSAGES_PATH, requestBody(false).replace("\"stream\":false,", ""), "api-key", "proxyKey1");
+
+            assertEquals(200, explicit.status(), explicit.body());
+            assertEquals(200, absent.status(), absent.body());
+            assertEquals(2, upstreamBodies.size());
+            for (JsonNode body : upstreamBodies) {
+                assertTrue(body.path("stream").isBoolean() && !body.path("stream").booleanValue(), body.toString());
+                assertEquals("Knock, knock", body.path("input").path(0).path("content").path(0).path("text").asText());
+            }
+        }
+    }
+
+    @Test
+    public void testNonStreamingReasoningIsStampedForAffinity() throws IOException {
+        String output = reasoningItem("cipher-xyz", null) + ",{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"hi\"}]}";
+        MockResponse answer = json(200, responsesObject("completed", output, "1", "1"));
+        try (TestWebServer server = origin(request -> answer); CloseableHttpClient client = newClient()) {
             Response response = post(client, MESSAGES_PATH, requestBody(false), "api-key", "proxyKey1");
 
-            assertEquals(400, response.status());
-            assertTrue(response.body().contains("non-streaming"), response.body());
-            assertEquals(0, originRequests.get());
+            assertEquals(200, response.status(), response.body());
+            JsonNode block = ProxyUtil.MAPPER.readTree(response.body()).path("content").path(0);
+            assertEquals("redacted_thinking", block.path("type").asText(), response.body());
+            // the values a POST /openai/v1/responses to the same model answers for the item from its one upstream
+            assertEquals(ProxyUtil.MAPPER.readTree(carrier("gpt-builtin", "responses-upstream", "cipher-xyz")),
+                    ProxyUtil.MAPPER.readTree(block.path("data").asText()));
         }
+    }
+
+    @Test
+    public void testFailedNonStreamingAnswerIsAnAnthropicError() throws IOException, InterruptedException {
+        String failed = "{\"id\":\"resp_1\",\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"upstream exploded\"},\"output\":[],"
+                + "\"usage\":{\"input_tokens\":12,\"output_tokens\":7}}";
+        try (TestWebServer server = origin(request -> json(200, failed)); CloseableHttpClient client = newClient()) {
+            Response response = post(client, MESSAGES_PATH, requestBody(false), "api-key", "proxyKey1");
+
+            assertEquals(502, response.status());
+            assertEquals("application/json", header(response, "Content-Type"));
+            assertEquals("{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"upstream exploded\"}}", response.body());
+
+            Thread.sleep(1000); // wait for core to save usage
+            // charged the usage the failed answer reports, as the Responses pass of a translator service charges it
+            assertUsed("gpt-builtin", 19);
+        }
+    }
+
+    @Test
+    public void testFailureInsideTwoHundredKeepsItsStatusAndType() throws IOException {
+        // 504 timeout_error tells the failure's own status and type apart from a fixed 502 and from typeForStatus (api_error)
+        String failed = "{\"id\":\"resp_1\",\"status\":\"failed\",\"error\":{\"code\":\"vector_store_timeout\",\"message\":\"late\"},\"output\":[]}";
+        try (TestWebServer server = origin(request -> json(200, failed)); CloseableHttpClient client = newClient()) {
+            Response response = post(client, MESSAGES_PATH, requestBody(false), "api-key", "proxyKey1");
+
+            assertEquals("late", assertAnthropicError(response, 504, "timeout_error"));
+        }
+    }
+
+    @Test
+    public void testNonJsonAnswerIsAnApiError() throws IOException, InterruptedException {
+        try (TestWebServer server = origin(request -> json(200, "not a Responses object")); CloseableHttpClient client = newClient()) {
+            Response response = post(client, MESSAGES_PATH, requestBody(false), "api-key", "proxyKey1");
+
+            assertEquals("The upstream answer is not a Responses object", assertAnthropicError(response, 502, "api_error"));
+
+            Thread.sleep(1000); // wait for core to save usage
+            assertUsed("gpt-builtin", 0);
+        }
+    }
+
+    @Test
+    public void testUpstream500IsAnAnthropicError() throws IOException, InterruptedException {
+        MockResponse answer = json(500, "{\"error\":{\"message\":\"boom\",\"type\":\"server_error\"}}");
+        try (TestWebServer server = origin(request -> answer); CloseableHttpClient client = newClient()) {
+            Response response = post(client, MESSAGES_PATH, requestBody(false), "api-key", "proxyKey1");
+
+            assertEquals(500, response.status());
+            assertEquals("{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"boom\"}}", response.body());
+            assertEquals("1", header(response, Proxy.HEADER_UPSTREAM_ATTEMPTS));
+
+            Thread.sleep(1000); // wait for core to save usage
+            assertUsed("gpt-builtin", 0);
+        }
+    }
+
+    @Test
+    public void testUpstream400ToStreamingRequestIsJson() throws IOException {
+        MockResponse answer = json(400, "{\"error\":{\"message\":\"Invalid value\",\"code\":\"invalid_value\"}}");
+        try (TestWebServer server = origin(request -> answer); CloseableHttpClient client = newClient()) {
+            Response response = post(client, MESSAGES_PATH, requestBody(true), "api-key", "proxyKey1");
+
+            assertEquals(400, response.status());
+            assertEquals("application/json", header(response, "Content-Type"));
+            assertNull(header(response, "Transfer-Encoding"));
+            assertEquals("{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Invalid value\"}}", response.body());
+        }
+    }
+
+    @Test
+    public void testPlainTextUpstreamErrorBody() throws IOException {
+        MockResponse answer = TestWebServer.createResponse(404, "Not Found", "Content-Type", "text/plain");
+        try (TestWebServer server = origin(request -> answer); CloseableHttpClient client = newClient()) {
+            Response response = post(client, MESSAGES_PATH, requestBody(false), "api-key", "proxyKey1");
+
+            assertEquals("Not Found", assertAnthropicError(response, 404, "not_found_error"));
+        }
+    }
+
+    private static MockResponse json(int status, String body) {
+        return TestWebServer.createResponse(status, body, "Content-Type", "application/json");
+    }
+
+    /**
+     * A non-streaming Responses object of {@code status} holding {@code output} (items, comma-separated).
+     */
+    private static String responsesObject(String status, String output, String inputTokens, String outputTokens) {
+        return "{\"id\":\"resp_075fcfcf\",\"object\":\"response\",\"model\":\"gpt-5-upstream\",\"status\":\"" + status + "\",\"output\":[" + output + "],"
+                + "\"usage\":{\"input_tokens\":" + inputTokens + ",\"output_tokens\":" + outputTokens + "}}";
     }
 
     @Test
@@ -746,8 +909,7 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
 
             Response response = post(client, MESSAGES_PATH, body, "api-key", "proxyKey1");
 
-            assertEquals(400, response.status());
-            assertTrue(response.body().contains("'image'"), response.body());
+            assertTrue(assertAnthropicError(response, 400, "invalid_request_error").contains("'image'"), response.body());
             assertEquals(0, originRequests.get());
         }
     }
@@ -763,7 +925,75 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
             List<String> events = eventNames(response.body());
             assertEquals("error", events.get(events.size() - 1), response.body());
             assertFalse(events.contains("message_stop"), response.body());
+            assertErrorEvent(response.body(), "api_error", "The upstream stream ended before the response completed");
         }
+    }
+
+    @Test
+    public void testMidStreamFailureBecomesAnErrorEvent() throws IOException, InterruptedException {
+        String sse = sseEvents(CREATED, textAdded(0), textDelta(0, "Who"),
+                "{\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"upstream exploded\"},"
+                        + "\"usage\":{\"input_tokens\":10,\"output_tokens\":8}}}");
+        try (TestWebServer server = origin(request -> eventStream(sse)); CloseableHttpClient client = newClient()) {
+            Response response = post(client, MESSAGES_PATH, requestBody(true), "api-key", "proxyKey1");
+
+            assertEquals(200, response.status());
+            assertEquals("Who", deltaText(response.body()));
+            assertFalse(eventNames(response.body()).contains("message_stop"), response.body());
+            assertErrorEvent(response.body(), "api_error", "upstream exploded");
+
+            Thread.sleep(1000); // wait for core to save usage
+            // charged the usage the failed response reports, as the Responses pass of a translator service charges it
+            assertUsed("gpt-builtin", 18);
+        }
+    }
+
+    @Test
+    public void testUpstreamDisconnectMidStreamEndsWithErrorEvent() throws IOException {
+        // the mock writes the first half of the body and drops the connection; the padding keeps the text delta in that half
+        String sse = sseEvents(CREATED, textAdded(0), textDelta(0, "Who"),
+                "{\"type\":\"response.output_text.annotation.added\",\"padding\":\"" + "x".repeat(4000) + "\"}", COMPLETED);
+        MockResponse dropped = eventStream(sse).setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY);
+        try (TestWebServer server = origin(request -> dropped); CloseableHttpClient client = newClient()) {
+            Response response = post(client, MESSAGES_PATH, requestBody(true), "api-key", "proxyKey1");
+
+            assertEquals(200, response.status());
+            assertEquals("Who", deltaText(response.body()));
+            assertFalse(eventNames(response.body()).contains("message_stop"), response.body());
+            assertErrorEvent(response.body(), "api_error", "The upstream connection failed before the response completed");
+        }
+    }
+
+    /**
+     * Asserts an Anthropic error answer of {@code status} and {@code type}, and returns its message.
+     */
+    private static String assertAnthropicError(Response response, int status, String type) throws IOException {
+        assertEquals(status, response.status(), response.body());
+        assertEquals("application/json", header(response, "Content-Type"), response.headers().toString());
+        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals("error", body.path("type").asText(), response.body());
+        assertEquals(type, body.path("error").path("type").asText(), response.body());
+        assertEquals(2, body.size(), response.body());
+        return body.path("error").path("message").asText();
+    }
+
+    private static String header(Response response, String name) {
+        return response.headers().entrySet().stream()
+                .filter(entry -> entry.getKey().equalsIgnoreCase(name))
+                .map(Map.Entry::getValue)
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
+     * The client's last event is an {@code error} of {@code type} and {@code message}.
+     */
+    private static void assertErrorEvent(String sse, String type, String message) {
+        List<String> names = eventNames(sse);
+        assertEquals("error", names.get(names.size() - 1), sse);
+        JsonNode error = eventData(sse).get(names.size() - 1).path("error");
+        assertEquals(type, error.path("type").asText(), sse);
+        assertEquals(message, error.path("message").asText(), sse);
     }
 
     @Test
@@ -773,8 +1003,7 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
 
             Response response = post(client, MESSAGES_PATH, body, "api-key", "proxyKey1");
 
-            assertEquals(503, response.status());
-            assertTrue(response.body().contains("interceptors"), response.body());
+            assertTrue(assertAnthropicError(response, 503, "overloaded_error").contains("interceptors"), response.body());
             assertEquals(0, originRequests.get());
         }
     }
@@ -787,8 +1016,43 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
 
             Response response = post(client, MESSAGES_PATH, body, "Authorization", "user");
 
-            assertEquals(403, response.status(), response.body());
+            assertAnthropicError(response, 403, "permission_error");
             assertEquals(0, originRequests.get());
+        }
+    }
+
+    @Test
+    public void testConsentOfTheMessagesInterfaceIsAnAnthropicError() throws IOException {
+        try (TestWebServer server = refusingOrigin(); CloseableHttpClient client = newClient()) {
+            String body = requestBody(true).replace("gpt-builtin", "gpt-builtin-messages-consent");
+
+            Response response = post(client, MESSAGES_PATH, body, "Authorization", "user");
+
+            assertAnthropicError(response, 403, "permission_error");
+            assertEquals(0, originRequests.get());
+        }
+    }
+
+    @Test
+    public void testConnectFailureIsAnAnthropicError() throws IOException {
+        // nothing listens on the model's openaiResponses endpoint
+        try (CloseableHttpClient client = newClient()) {
+            Response response = post(client, MESSAGES_PATH, requestBody(true), "api-key", "proxyKey1");
+
+            assertEquals("Failed to connect to upstream server", assertAnthropicError(response, 502, "api_error"));
+        }
+    }
+
+    @Test
+    public void testEveryUpstreamBusyKeepsRetryAfter() throws IOException {
+        // the model's one upstream, with the default maxRetryAttempts of 1
+        MockResponse busy = TestWebServer.createResponse(429, "{\"error\":{\"message\":\"busy\"}}", "Retry-After", "5");
+        try (TestWebServer server = origin(request -> busy); CloseableHttpClient client = newClient()) {
+            Response response = post(client, MESSAGES_PATH, requestBody(true), "api-key", "proxyKey1");
+
+            assertEquals("Service is not available", assertAnthropicError(response, 503, "overloaded_error"));
+            long retryAfter = Long.parseLong(header(response, "Retry-After"));
+            assertTrue(retryAfter >= 0 && retryAfter <= 5, String.valueOf(retryAfter));
         }
     }
 

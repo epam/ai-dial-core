@@ -398,6 +398,13 @@
         "anthropicMessages": {"mode": "translator", "translator": "builtinResponses"}
       }
     },
+    "gpt-builtin-messages-consent": {
+      "type": "chat",
+      "interfaces": {
+        "openaiResponses": {"base_url": "http://localhost:4848"},
+        "anthropicMessages": {"mode": "translator", "translator": "builtinResponses", "features": {"consentRequired": true}}
+      }
+    },
     "gpt-builtin-limited": {
       "type": "chat",
       "interfaces": {
@@ -496,6 +503,7 @@
         "gpt-builtin": {"minute": "100000", "day": "10000000"},
         "gpt-builtin-two-upstreams": {"minute": "100000", "day": "10000000"},
         "gpt-builtin-consent": {"minute": "100000", "day": "10000000"},
+        "gpt-builtin-messages-consent": {"minute": "100000", "day": "10000000"},
         "gpt-builtin-limited": {"minute": "10", "day": "10"},
         "claude-ns": {"minute": "100000", "day": "10000000"},
         "claude-stream": {"minute": "100000", "day": "10000000"},

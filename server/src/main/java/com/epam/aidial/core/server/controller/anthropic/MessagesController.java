@@ -34,15 +34,20 @@ import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
+import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.translator.MessagesToResponses;
+import com.epam.aidial.core.translator.ResponsesToMessages;
 import com.epam.aidial.core.translator.ResponsesToMessagesStream;
 import com.epam.aidial.core.translator.ToolNames;
 import com.epam.aidial.core.translator.UntranslatableRequestException;
+import com.epam.aidial.core.translator.UpstreamFailureException;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
@@ -53,6 +58,8 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import javax.annotation.Nullable;
 
 /**
@@ -62,6 +69,9 @@ import javax.annotation.Nullable;
  */
 @Slf4j
 public class MessagesController extends MessagesBaseController {
+
+    private static final String BUILTIN_ERROR_BODY = "A model served by a builtin translator answers with the Anthropic error body "
+            + "(`AnthropicErrorData`: `{\"type\":\"error\",\"error\":{\"type\":...,\"message\":...}}`)";
 
     /**
      * The translated body sent upstream when a builtin translator serves the request; the context keeps the
@@ -83,6 +93,12 @@ public class MessagesController extends MessagesBaseController {
      * The request's {@code thinking.display} is {@code omitted}, read where the body is already parsed.
      */
     private boolean thinkingOmitted;
+
+    /**
+     * The translation of a builtin-translated stream, kept for the usage a failed response reports.
+     */
+    @Nullable
+    private ResponsesToMessagesStream translatedStream;
 
     /**
      * The caller's caps as read by {@link #verifyLimit()}; null when no caps were read.
@@ -116,9 +132,6 @@ public class MessagesController extends MessagesBaseController {
      */
     @SneakyThrows
     private void prepareTranslatedUpstreamRoute(MessagesApiRequest request) {
-        if (!request.isStreaming()) {
-            throw new HttpException(HttpStatus.BAD_REQUEST, "The builtin translator does not serve non-streaming requests yet");
-        }
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
@@ -127,9 +140,9 @@ public class MessagesController extends MessagesBaseController {
         ResponsesApiRequest translated;
         toolNames = new ToolNames();
         try {
-            // only a streaming request gets here, and Core is the transport that sets it
+            // Core is the transport that sets it, as the client asked, and reads the answer the same way
             translated = new ResponsesApiRequest(MessagesToResponses.translateRequest(request.getTree(), request.getModel(), toolNames)
-                    .put("stream", true));
+                    .put("stream", context.isStreamingRequest()));
         } catch (UntranslatableRequestException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
@@ -152,6 +165,43 @@ public class MessagesController extends MessagesBaseController {
                                 context.getConfig().getTranslators()), upstreamId);
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);
+    }
+
+    /**
+     * Every error Core answers once a builtin translator is known to serve the request goes through here and the two
+     * overloads below, and gets the Anthropic body the translator service would give: the client speaks only
+     * Anthropic. Pass-through models keep their answers.
+     */
+    @Override
+    protected void respond(HttpException exception) {
+        // an answer built in the Anthropic shape already, such as a reached spend cap, says so by its content type
+        if (builtinTranslator == null || Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON.equals(exception.getHeaders().get(HttpHeaders.CONTENT_TYPE.toString()))) {
+            super.respond(exception);
+            return;
+        }
+        int status = exception.getStatus().getCode();
+        Map<String, String> headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        headers.putAll(exception.getHeaders());
+        headers.put(HttpHeaders.CONTENT_TYPE.toString(), Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        super.respond(new HttpException(exception.getStatus(), AnthropicLimitResponses.errorBody(status, exception.getMessage()), headers));
+    }
+
+    @Override
+    protected Future<?> respond(HttpStatus status, String errorMessage) {
+        if (builtinTranslator == null) {
+            return super.respond(status, errorMessage);
+        }
+        respond(new HttpException(status, errorMessage));
+        return Future.succeededFuture();
+    }
+
+    @Override
+    protected void respond(HttpStatus status, Object result) {
+        if (builtinTranslator == null) {
+            super.respond(status, result);
+            return;
+        }
+        respond(new HttpException(status, ProxyUtil.convertToString(result)));
     }
 
     @Override
@@ -215,20 +265,25 @@ public class MessagesController extends MessagesBaseController {
                                             @ApiHeader(name = "anthropic-ratelimit-unified-reset", description = "When the reported spend cap resets, Unix seconds"),
                                             @ApiHeader(name = "anthropic-ratelimit-unified-overage-reset", description = "Same value as `anthropic-ratelimit-unified-reset`")
                                     }),
-                            @ApiResponse(code = 400),
-                            @ApiResponse(code = 403),
-                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 400, description = BUILTIN_ERROR_BODY),
+                            @ApiResponse(code = 403, description = BUILTIN_ERROR_BODY),
+                            @ApiResponse(code = 404, description = BUILTIN_ERROR_BODY),
+                            @ApiResponse(code = 409, description = "Replayed encrypted reasoning names an upstream the model no longer has. "
+                                    + BUILTIN_ERROR_BODY),
                             @ApiResponse(code = 415),
                             @ApiResponse(code = 429, description = "DIAL limit reached, with an Anthropic-format error body "
                                     + "(`{\"type\":\"error\",\"error\":{\"type\":...,\"message\":...}}`). A reached spend cap gives `billing_error`, "
                                     + "`x-should-retry: false` and `anthropic-ratelimit-unified-*` headers describing the cap; "
                                     + "an unreadable spend counter of a caller with a cost limit gives `billing_error` with only `x-should-retry: false` and "
                                     + "`anthropic-ratelimit-unified-overage-disabled-reason: fetch_error`; "
-                                    + "a token, request or per-minute cost limit gives `rate_limit_error` with `retry-after`, and `x-should-retry: true` for rolling windows only",
+                                    + "a token, request or per-minute cost limit gives `rate_limit_error` with `retry-after`, and `x-should-retry: true` for rolling windows only. "
+                                    + "For a model served by a builtin translator, a rate limit the upstream reports inside a `200` also gives `rate_limit_error`",
                                     body = @ApiSchema(implementation = AnthropicErrorData.class)),
-                            @ApiResponse(code = 500),
-                            @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
-                            @ApiResponse(code = 503)
+                            @ApiResponse(code = 500, description = BUILTIN_ERROR_BODY),
+                            @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server, or the upstream failed. " + BUILTIN_ERROR_BODY,
+                                    body = @ApiSchema(implementation = ErrorData.class)),
+                            @ApiResponse(code = 503, description = BUILTIN_ERROR_BODY),
+                            @ApiResponse(code = 504, description = "The upstream timed out. " + BUILTIN_ERROR_BODY)
                     }
             )
     })
@@ -273,28 +328,32 @@ public class MessagesController extends MessagesBaseController {
     /**
      * Must run before the first body write. Spend headers go on a 200 only and carry the state read before the request.
      */
-    private void putLimitHeaders(HttpServerResponse response, HttpClientResponse proxyResponse) {
+    private void putLimitHeaders(HttpServerResponse response, int status) {
         AnthropicLimitResponses.stripUpstreamRateLimitHeaders(response.headers());
-        if (proxyResponse.statusCode() == 200 && spendCaps != null && spendCaps.reported() != null) {
+        if (status == 200 && spendCaps != null && spendCaps.reported() != null) {
             AnthropicLimitResponses.putSpendHeaders(response.headers(), spendCaps.reported());
         }
     }
 
     @Override
     protected void processResponse(HttpClientResponse proxyResponse) {
-        if (!context.isStreamingRequest()) {
+        int status = proxyResponse.statusCode();
+        // a builtin translator answers an upstream error with an Anthropic error, to a streaming request too
+        if (!context.isStreamingRequest() || builtinTranslator != null && status != HttpStatus.OK.getCode()) {
             proxyResponse.body()
-                    .compose(body -> handleNonStreamingResponse(proxyResponse, body))
+                    .compose(body -> builtinTranslator == null
+                            ? handleNonStreamingResponse(proxyResponse, status, body, body)
+                            : handleTranslatedResponse(proxyResponse, body))
                     .onFailure(this::handleProxyConnectionError);
             return;
         }
 
         BufferingReadStream responseStream;
-        if (builtinTranslator != null && proxyResponse.statusCode() == HttpStatus.OK.getCode() && isEventStreamResponse(proxyResponse)) {
+        if (builtinTranslator != null && isEventStreamResponse(proxyResponse)) {
             // translated before it is buffered, so the rest of the path sees the stream the client gets
-            ResponsesToMessagesReadStream translated = new ResponsesToMessagesReadStream(proxyResponse,
-                    new ResponsesToMessagesStream(requestedModel,
-                            ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get()), toolNames, thinkingOmitted),
+            translatedStream = new ResponsesToMessagesStream(requestedModel,
+                    ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get()), toolNames, thinkingOmitted);
+            ResponsesToMessagesReadStream translated = new ResponsesToMessagesReadStream(proxyResponse, translatedStream,
                     new EncryptedContentWrapFn(proxy, context));
             responseStream = new BufferingReadStream(translated, ProxyUtil.contentLength(proxyResponse, 1024),
                     new MessagesSseListener(List.of(new CollectMessagesTokenUsageFn(proxy, context))));
@@ -305,7 +364,7 @@ public class MessagesController extends MessagesBaseController {
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
-        putLimitHeaders(response, proxyResponse);
+        putLimitHeaders(response, status);
         putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
         responseStream.pipe()
@@ -316,18 +375,64 @@ public class MessagesController extends MessagesBaseController {
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
-    private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
+    /**
+     * A builtin translator's answer, read whole: a 200 Responses object becomes the message or the Anthropic error it
+     * reports, and any other upstream answer gets the Anthropic error body.
+     */
+    private Future<Void> handleTranslatedResponse(HttpClientResponse proxyResponse, Buffer body) {
+        int status = proxyResponse.statusCode();
+        if (status != HttpStatus.OK.getCode()) {
+            Buffer error = Buffer.buffer(AnthropicLimitResponses.errorBody(status, body.toString()));
+            return handleNonStreamingResponse(proxyResponse, status, error, error);
+        }
+        if (!(JsonUtil.tryParse(body.getBytes()) instanceof ObjectNode responses)) {
+            Buffer error = Buffer.buffer(AnthropicLimitResponses.errorBody("api_error", "The upstream answer is not a Responses object"));
+            return handleNonStreamingResponse(proxyResponse, HttpStatus.BAD_GATEWAY.getCode(), error, error);
+        }
+        // stamped as the non-streaming Responses path stamps it, so the carriers replay onto the same upstream
+        if (EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
+            EncryptedContentAffinityUtil.wrapOutputArray(responses.path("output"), context.getUpstreamRoute().get().getId(), context.getDeployment().getName());
+        }
+        try {
+            Buffer message = Buffer.buffer(ResponsesToMessages.translateResponse(responses, requestedModel,
+                    ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get()), toolNames, thinkingOmitted).toString());
+            return handleNonStreamingResponse(proxyResponse, status, message, message);
+        } catch (UpstreamFailureException e) {
+            ObjectNode usage = ProxyUtil.MAPPER.createObjectNode();
+            usage.set("usage", ResponsesToMessages.convertUsage(responses.path("usage")));
+            // the client's body is the error, so the price reads the usage from here
+            context.setPricingUsageNode(usage);
+            return handleNonStreamingResponse(proxyResponse, e.getStatus(), Buffer.buffer(AnthropicLimitResponses.errorBody(e.getType(), e.getMessage())),
+                    Buffer.buffer(usage.toString()));
+        }
+    }
+
+    /**
+     * @param status the status to answer: for a builtin translator's 200 it may be an error's
+     * @param chargeBody the body whose usage is charged
+     */
+    private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, int status, Buffer body, Buffer chargeBody) {
         context.setResponseBody(body);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         HttpServerResponse response = context.getResponse();
         ProxyUtil.copyResponse(response, proxyResponse);
-        putLimitHeaders(response, proxyResponse);
+        if (builtinTranslator != null) {
+            // every body the builtin path answers is Anthropic JSON, whatever the upstream sent
+            response.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        }
+        putLimitHeaders(response, status);
         response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
         putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
-        return collectTokenUsage(body)
+        // charged while the client status is still the upstream's, as the Responses pass of a translator service is
+        return collectTokenUsage(chargeBody)
                 .transform(result -> {
                     if (result.failed()) {
                         log.warn("Failed to collect token usage", result.cause());
+                    }
+                    response.setStatusCode(status);
+                    if (status != proxyResponse.statusCode()) {
+                        // the span records the status the client gets, not the upstream's 200 the charge keyed on
+                        GenAiTraceAttributes.setResponseAttributes(context, interfaceType(), null);
                     }
                     completeProxyResponse(() -> response.end(body));
                     return Future.<Void>succeededFuture();
@@ -371,6 +476,13 @@ public class MessagesController extends MessagesBaseController {
     @Override
     protected TokenUsage parseTokenUsage(Buffer responseBody) {
         if (context.isStreamingRequest()) {
+            ObjectNode failedUsage = translatedStream == null ? null : translatedStream.getFailedUsage();
+            if (failedUsage != null) {
+                // the client got an error event, not the message_delta CollectMessagesTokenUsageFn reads the usage from;
+                // here, so a client that disconnected (handleResponseError) is charged it too
+                context.setPricingUsageNode(ProxyUtil.MAPPER.createObjectNode().set("usage", failedUsage));
+                return MessagesTokenUsageParser.fromUsageNode(failedUsage);
+            }
             // Populated event-by-event by CollectMessagesTokenUsageFn during streaming.
             return context.getTokenUsage();
         }

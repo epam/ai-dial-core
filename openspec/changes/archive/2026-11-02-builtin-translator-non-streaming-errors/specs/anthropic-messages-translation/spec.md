@@ -10,9 +10,9 @@ translated to a message".
 ### Requirement: Upstream request of a builtin translation
 Core SHALL `POST` the translated request to the URI `POST /openai/v1/responses` resolves to for the model
 (`overridePaths` and a legacy `responsesEndpoint` apply), with `model` = `overrideName` (else the name), the client's
-`stream` (default `false`), `store: false` and `include: ["reasoning.encrypted_content"]`, a per-request `API-KEY`
-and, for a model with `upstreams`, its `X-UPSTREAM-ENDPOINT` and `X-UPSTREAM-KEY`, but no `anthropic-version` or
-`X-DIAL-DEPLOYMENT-ID`.
+`stream` (`false` when absent), `store: false` and `include: ["reasoning.encrypted_content"]`. It SHALL carry a
+per-request `API-KEY` and, for a model with `upstreams`, the upstream's `X-UPSTREAM-ENDPOINT` and `X-UPSTREAM-KEY`.
+Core SHALL drop `anthropic-version` and add no `X-DIAL-DEPLOYMENT-ID`.
 
 #### Scenario: Upstream request
 - **WHEN** `gpt-builtin` declares `overrideName: gpt-5-upstream` and one upstream with
@@ -30,11 +30,10 @@ and, for a model with `upstreams`, its `X-UPSTREAM-ENDPOINT` and `X-UPSTREAM-KEY
 - **THEN** the origin body has `stream: false`, and the rest of the origin request is as above
 
 ### Requirement: Truncated or failed stream ends in an error event
-A translated stream SHALL end in exactly one `message_stop` or `error` event, with nothing after it. A stream that
-ends before `response.completed` or `response.incomplete`, or whose upstream connection fails, SHALL end in an `error`
-of type `api_error`. A `response.failed`, an `error` event, or an event carrying a top-level `error` object SHALL
-become an `error` with the upstream's message and the type that "Upstream failure names mapped to Anthropic errors"
-gives.
+A translated stream SHALL send nothing after its `message_stop` or `error`. An upstream stream that ends with no
+terminal event, or whose upstream connection fails, SHALL end in an `api_error`, and Core SHALL NOT reset the client
+connection for it. A `response.failed`, an `error` event or an event carrying a top-level `error` object SHALL become
+an `error` with the upstream's message and the type that "Upstream failure names mapped to Anthropic errors" gives.
 
 #### Scenario: Stream without a terminal event
 - **WHEN** the upstream stream ends after text deltas and before `response.completed`
@@ -76,11 +75,11 @@ gives.
   and holds no `error` event
 
 ### Requirement: Limits of a builtin translation charged once
-Core SHALL check the initiator's limits for the model before it sends the translated request, and charge them once,
-on this request, from the translated usage (input, cache-read and cache-write tokens add up to the upstream's input
-total), for a streamed and a non-streaming answer. A `200` answer that is not `completed` or `incomplete`, or a stream
-ending with `response.failed`, SHALL be charged the `usage` it carries. An upstream answer other than `200` SHALL NOT
-be charged.
+Core SHALL check the initiator's limits for the model before it sends the translated request. It SHALL charge them
+once, on this request, from the translated usage, whose input, cache-read and cache-write tokens add up to the
+upstream's input total, for a streamed and a non-streaming answer alike. A `200` answer whose `status` is `failed`,
+`queued`, `in_progress` or `cancelled`, and a stream that ends with `response.failed`, SHALL be charged the `usage`
+it carries. An upstream answer other than `200` SHALL NOT be charged.
 
 #### Scenario: Charged once
 - **WHEN** the upstream reports `input_tokens: 10` and `output_tokens: 8` for a builtin-translated request

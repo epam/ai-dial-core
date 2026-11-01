@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ResponsesToMessagesStreamTest {
@@ -142,6 +144,14 @@ class ResponsesToMessagesStreamTest {
         assertEquals("bad", sent.get(0).path("error").path("message").asText());
     }
 
+    @Test
+    void testErrorEventWithNullErrorReadsItsFlatFields() throws Exception {
+        feed("{\"type\":\"error\",\"error\":null,\"code\":\"rate_limit_exceeded\",\"message\":\"slow down\"}");
+
+        assertEquals("rate_limit_error", sent.get(0).path("error").path("type").asText());
+        assertEquals("slow down", sent.get(0).path("error").path("message").asText());
+    }
+
     private static String argumentsDelta(int outputIndex, String delta) {
         return "{\"type\":\"response.function_call_arguments.delta\",\"output_index\":" + outputIndex + ",\"delta\":\"" + delta + "\"}";
     }
@@ -232,5 +242,68 @@ class ResponsesToMessagesStreamTest {
                 "{\"type\":\"response.output_text.done\",\"text\":\"x\"}");
 
         assertEquals(List.of(), types());
+    }
+
+    @Test
+    void testDialErrorChunkEndsTheStream() throws Exception {
+        feed("{\"type\":\"response.output_text.delta\",\"output_index\":0,\"content_index\":0,\"delta\":\"a\"}",
+                "{\"error\":{\"type\":\"invalid_request_error\",\"message\":\"prompt is too long\"}}",
+                COMPLETED);
+        collect(stream.finish());
+
+        assertEquals("error", types().get(types().size() - 1), types().toString());
+        assertEquals(1, types().stream().filter("error"::equals).count());
+        JsonNode error = sent.get(sent.size() - 1).path("error");
+        assertEquals("invalid_request_error", error.path("type").asText());
+        assertEquals("prompt is too long", error.path("message").asText());
+    }
+
+    @Test
+    void testDialErrorChunkWithoutMessage() throws Exception {
+        feed("{\"error\":{\"code\":\"server_error\"}}");
+
+        assertEquals(List.of("error"), types());
+        assertEquals("api_error", sent.get(0).path("error").path("type").asText());
+        assertEquals("An error occurred during streaming", sent.get(0).path("error").path("message").asText());
+    }
+
+    @Test
+    void testIncompleteIsNotAnError() throws Exception {
+        feed("{\"type\":\"response.output_text.delta\",\"output_index\":0,\"content_index\":0,\"delta\":\"cut\"}",
+                "{\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"}}}");
+        collect(stream.finish());
+
+        assertFalse(types().contains("error"), types().toString());
+        assertEquals(List.of("message_delta", "message_stop"), types().subList(types().size() - 2, types().size()));
+        assertEquals("max_tokens", sent.get(sent.size() - 2).path("delta").path("stop_reason").asText());
+    }
+
+    @Test
+    void testEmitErrorEndsTheStream() throws Exception {
+        feed("{\"type\":\"response.output_text.delta\",\"output_index\":0,\"content_index\":0,\"delta\":\"a\"}");
+        collect(stream.emitError("api_error", "lost"));
+        collect(stream.emitError("api_error", "again"));
+        feed("{\"type\":\"response.output_text.delta\",\"output_index\":0,\"content_index\":0,\"delta\":\"late\"}", COMPLETED);
+        collect(stream.finish());
+
+        assertEquals(List.of("message_start", "ping", "content_block_start", "content_block_delta", "error"), types());
+        assertEquals("lost", sent.get(4).path("error").path("message").asText());
+    }
+
+    @Test
+    void testFailedKeepsItsUsage() throws Exception {
+        String failed = "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"server_error\",\"message\":\"boom\"}%s}}";
+        ResponsesToMessagesStream withoutUsage = new ResponsesToMessagesStream("requested", "msg_dial", toolNames, false);
+        List<String> expected = withoutUsage.handle(MAPPER.readTree(failed.formatted("")));
+
+        List<String> frames = stream.handle(MAPPER.readTree(failed.formatted(",\"usage\":{\"input_tokens\":10,\"output_tokens\":8}")));
+
+        assertEquals(expected, frames);
+        assertEquals(MAPPER.readTree("{\"input_tokens\":10,\"output_tokens\":8,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}"),
+                MAPPER.readTree(stream.getFailedUsage().toString()));
+
+        ResponsesToMessagesStream completed = new ResponsesToMessagesStream("requested", "msg_dial", toolNames, false);
+        completed.handle(MAPPER.readTree(COMPLETED));
+        assertNull(completed.getFailedUsage());
     }
 }
