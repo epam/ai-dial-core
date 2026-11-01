@@ -2,13 +2,13 @@
 
 ## Why
 
-Core is going to run some deployments in process instead of behind HTTP: a Java plugin loaded at start takes
-the place of the HTTP call to an origin, or transforms a request or a response inside the pass that serves it.
-Every such plugin needs an instance declaration with its settings, and that declaration has to live where the
-rest of the config lives: in the config files and in the `platform` bucket written through the Configuration
-API, hot-reloaded, validated on write and visible to the admin tooling. This change adds that declaration as a
-config entity of its own, `plugins`, and the host side that loads the plugin code the declarations refer to.
-It ships first because the two changes that give plugins a place in the request path depend on it.
+Core is going to run some deployments in process instead of behind HTTP. A Java plugin loaded at start will take
+the place of the HTTP call to an origin, or transform a request or a response inside the pass that serves it.
+Every such plugin needs a declaration with its settings. That declaration has to live where the rest of the
+config lives: in the config files and in the `platform` bucket written through the Configuration API,
+hot-reloaded, validated on write and visible to the admin tooling. This change adds that declaration as a config
+entity of its own, `plugins`, and the host side that loads the plugin code the declarations refer to. It ships
+first because the two changes that give plugins a place in the request path depend on it.
 
 ## What Changes
 
@@ -56,14 +56,19 @@ It ships first because the two changes that give plugins a place in the request 
 
 ## Impact
 
-Motivated by the plugin-system exploration of 2026-10-28 to 2026-11-01 in the perf improvement initiative,
-whose decisions were: four first components (a routing decision plugin, a guardrail interceptor, a Messages to
-Responses translator, a cloud-signing passthrough), first-party jars from other repositories, Java only with
-the boundary kept portable on paper, settings hot-reloaded and code rolled out, declarations as an entity type
-of their own in the bucket, two kinds (origin and filter) with Vert.x types in the API, a kind derived from the
-provider, named references only, and no secrets in settings. This change covers the entity type, the loading
-and the validation rule. It leaves the two kinds, the `call` host callback, the component plugins and the
-artifact publishing to the follow-up changes named above.
+Motivated by the plugin-system exploration of 2026-10-28 to 2026-11-01 in the perf improvement initiative. There
+is no GitHub issue; the design note is internal and not linked. Its decisions:
+
+- Four first components: a routing decision plugin, a guardrail interceptor, a Messages to Responses translator,
+  a cloud-signing passthrough.
+- First-party jars from other repositories; Java only, with the boundary kept portable on paper.
+- Settings hot-reloaded through the config; code rolled out with the image.
+- Declarations as an entity type of their own in the bucket.
+- Two kinds, origin and filter, with Vert.x types in the API; the kind derived from the provider; named references
+  only; no secrets in settings.
+
+This change covers the entity type, the loading and the validation rule. It leaves the two kinds, the `call` host
+callback, the component plugins and the artifact publishing to the follow-up changes named above.
 
 Code: the `config` module (`Plugin`, `Config.plugins`), the `storage` module (`ResourceTypes.PLUGIN`), the
 `server` module (merged store, config entity controllers, manifest support, apply and validate services,

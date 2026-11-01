@@ -28,14 +28,18 @@ SHALL make the body not bind to the entity type.
 - **THEN** Core answers `400` and writes nothing
 
 ### Requirement: Plugin providers loaded at start
-Core SHALL load plugin providers once at start from the jars in the directory named by the static setting
-`plugins.dir` (built-in default `plugins`, relative to the working directory; a missing directory loads
-nothing). Core SHALL fail to start when a jar in that directory cannot be loaded or two providers declare the
-same `type`. Providers do not reload while Core runs.
+Core SHALL load plugin providers once at start: those on its own classpath and those in the jars of the directory
+named by the static setting `plugins.dir` (built-in default `plugins`, relative to the working directory; a
+missing directory adds none). Core SHALL fail to start when a jar in that directory cannot be loaded or two
+providers declare the same `type`. Providers do not reload while Core runs.
 
-#### Scenario: No plugins directory
+#### Scenario: Jar in the directory
+- **WHEN** the plugins directory holds a jar whose provider declares type `test-echo`
+- **THEN** after start a `PUT /v1/plugins/platform/p1` with `{"type": "test-echo"}` is accepted
+
+#### Scenario: Missing directory
 - **WHEN** Core starts with `plugins.dir` pointing to a directory that does not exist
-- **THEN** Core starts, and a `PUT /v1/plugins/platform/p1` with any `type` is rejected as an unknown type
+- **THEN** Core starts, and only the providers of its own classpath are loaded
 
 #### Scenario: Duplicate provider type
 - **WHEN** the plugins directory holds two jars whose providers both declare type `test-echo`
