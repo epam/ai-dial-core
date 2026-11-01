@@ -1,0 +1,36 @@
+{
+  "features": [
+    "error"
+  ],
+  "input": {
+    "omit_thinking": false,
+    "requested_model": "gpt-5.5",
+    "response": {
+      "id": "resp_123",
+      "model": "gpt-5.5",
+      "object": "response",
+      "output": [],
+      "status": "failed",
+      "usage": {
+        "input_tokens": 12,
+        "input_tokens_details": {
+          "cached_tokens": 4
+        },
+        "output_tokens": 7,
+        "total_tokens": 19
+      }
+    },
+    "tool_names": null
+  },
+  "kind": "response",
+  "output": {
+    "error": {
+      "message": "The upstream request failed",
+      "status": 502,
+      "type": "api_error"
+    }
+  },
+  "tests": [
+    "tests/test_from_responses.py::test_failed_status_without_a_message_still_raises"
+  ]
+}

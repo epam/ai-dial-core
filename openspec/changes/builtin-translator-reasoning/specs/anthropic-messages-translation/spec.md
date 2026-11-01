@@ -280,6 +280,10 @@ SHALL send nothing upstream.
 - **WHEN** a client sends a builtin-translated request whose user turn holds a block of type `image`
 - **THEN** Core answers `400` with a message containing `'image'`, and the origin receives no request
 
+#### Scenario: Tool use block
+- **WHEN** a builtin-translated request has a user turn holding a `tool_use` block
+- **THEN** Core answers `400` with a message containing `'tool_use' in the user turn`
+
 #### Scenario: Image inside a tool result
 - **WHEN** a builtin-translated request has a user turn whose `tool_result` content is `[{"type": "image", "source":
   {"type": "base64", "media_type": "image/png", "data": "AA=="}}]`

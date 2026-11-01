@@ -1,0 +1,32 @@
+{
+  "features": [
+    "error",
+    "field:max_tokens",
+    "field:messages"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": "x",
+          "role": "tool"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "error": {
+      "message": "Unknown message role: 'tool'",
+      "status": 400,
+      "type": "invalid_request_error"
+    }
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_unknown_role_is_rejected"
+  ]
+}

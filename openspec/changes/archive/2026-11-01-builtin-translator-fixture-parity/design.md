@@ -154,7 +154,11 @@ The fixtures:
    request, 30 stream) and 38 for non-streaming and errors (36 response, 2 stream). Two of the reasoning request
    fixtures, `1acd561bc5894e4d` and `4c3e508c892771ad`, carry `thinking` but expect no reasoning in the output; they
    should pass with this change and stay off the list, so about 178 lines in all. The real list is what the test
-   reports. Rejected: a JSON map. Nothing reads it but this test, and one line per fixture diffs better.
+   reports: 172 lines, 41 for tools (35 request, 6 stream), 93 for reasoning (69 request, 24 stream) and 38 for
+   non-streaming and errors (36 response, 2 stream). Besides the two request fixtures, six reasoning stream fixtures
+   already pass, because their expected output holds no thinking block (empty thinking, or `omit_thinking`):
+   `4a627f45043952b9`, `4be9eb70bf9c1bd1`, `62283e4cf933ce2a`, `b1146019f5b99245`, `bca17e90aba3c8cf` and
+   `fb256b90140a7cc5`. Rejected: a JSON map. Nothing reads it but this test, and one line per fixture diffs better.
 
 8. **Field-level scenarios are verified by the parity test, not by one integration test each.** The
    `config.yaml` rule asks for an integration test per HTTP-boundary scenario. The request mapping and the stream
@@ -224,8 +228,9 @@ None. No config field changes. The builtin path has not shipped in a release.
   system text in a translated request" (`builtin-translator-tools`), "Generation settings in a translated request"
   (`builtin-translator-reasoning`), "Upstream request of a builtin translation" and "Truncated or failed stream ends
   in an error event" (`builtin-translator-non-streaming-errors`). Their copies must take the same edits.
-  `builtin-translator-reasoning` also counts 29 reasoning stream fixtures; by decision 7 it is 30, with
-  `f090be3551756c51`.
+  The applied list names `builtin-translator-reasoning` on 69 request and 24 stream lines: 8 fixtures the rule
+  assigns to reasoning already pass and are not listed. The counts in `builtin-translator-reasoning` are estimates;
+  the list is the authority.
 
 ## Spec review
 
@@ -283,7 +288,7 @@ None. No config field changes. The builtin path has not shipped in a release.
 13. simplicity, low: a `mid_conv_system` block in a user or assistant turn had no scenario. **Accepted.** New
     scenario "Mid-conversation block in a user turn" (checked against `to_responses.py:_convert_user_message`: the
     `system` item comes before the user message), tested by
-    `MessagesToResponsesTest.testMidConversationBlockInAUserTurnPrecedesIt` (task 2.1).
+    `MessagesToResponsesTest.testMidConversationBlockInUserTurnPrecedesIt` (task 2.1).
 14. simplicity, low: app-to-model-accounting and deployment-origin repeated builtin scenarios of
     anthropic-messages-translation. **Accepted.** Both deltas keep only the narrowing to translator services, with
     a pointer to anthropic-messages-translation; "Builtin-translated interface checked" and "No deployment id on a
@@ -293,3 +298,30 @@ None. No config field changes. The builtin path has not shipped in a release.
     JSON. "Both baseUrl and builtin" and "Unknown builtin" map to
     `testTranslatorNeedsExactlyOneOfBaseUrlOrBuiltin` and `testUnknownBuiltinTranslatorIsRejectedAsItIsRead`; task
     4.2 keeps only `inlineBuiltinTranslatorStaysInline`.
+
+## Implementation notes
+
+1. Design against the code. Every Context citation still holds: `Translator`, `BuiltinTranslator`,
+   `ConfigPostProcessor.builtinMismatch`, `DeploymentEndpointUtil.resolveBuiltinTranslator`,
+   `MessagesBaseController.setupDeployment` / `verifyAccess` / `enrichProxyRequestHeaders`,
+   `MessagesController.prepareTranslatedUpstreamRoute` / `processResponse`, and `ResponsesToMessagesReadStream`. No
+   earlier change of the series has landed: the four other builtin-translator changes are still open, and no spec
+   these deltas modify changed since the proposal, so the deltas needed no rebase.
+2. `app-builtin` (task 4.1) is registered by `BuiltinTranslatorApiTest.testApplicationIsNotServedByBuiltinTranslator`
+   through `ApplicationService.putApplication`, as `applications/public/app-builtin`, instead of in the shared
+   `server/src/test/resources/aidial.config.json`. `ApplicationDeploymentApiTest.testOpenAiApi` and
+   `CustomApplicationApiTest.testOpenAiApplicationListing` compare the whole application listing of that config, so a
+   config entry would have added about 110 lines of expected JSON to each. The application declares the same
+   `interfaces`; the scenario holds for an application however it is registered. The two models stay in the config.
+3. `BuiltinTranslatorApiTest` counts every request the origin receives (mapped `POST /openai/v1/responses` and anything
+   unmapped) in one helper, `origin(...)`, so "the origin receives no request" and "exactly one request" are asserted
+   the same way in each test. The application's own `POST /app` in the per-request-key test is not counted.
+4. Drift (task 2.2): none. The first parity run failed only two text-path fixtures, `request/0b300ff50856df84.json`
+   (compaction) and `request/20107656bd532f6b.json` (nested `mid_conv_system`), and task 2.1's port fixed both. All 21
+   text-path stream fixtures passed unchanged, so `ResponsesToMessagesStream` and `ResponsesToMessages` are not
+   touched.
+5. The harness treats any exception from a replay as a mismatch, not only the unsupported response kind and
+   `emit_error` call, so a known gap that fails by throwing is skipped like one that fails by comparison.
+6. Two test names in tasks.md broke checkstyle's `AbbreviationAsWordInName` rule (`InAUser`, `ByABuiltin`), so they
+   are `MessagesToResponsesTest.testMidConversationBlockInUserTurnPrecedesIt` and
+   `BuiltinTranslatorApiTest.testApplicationIsNotServedByBuiltinTranslator`; tasks.md and this file use the new names.

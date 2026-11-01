@@ -1,0 +1,62 @@
+{
+  "features": [
+    "compaction",
+    "field:max_tokens",
+    "field:messages"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": [
+            {
+              "content": "Earlier: we fixed X.",
+              "type": "compaction"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": "continue",
+          "role": "user"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": "Earlier: we fixed X.",
+          "role": "assistant",
+          "type": "message"
+        },
+        {
+          "content": [
+            {
+              "text": "continue",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_a_replayed_compaction_block_becomes_its_summary"
+  ]
+}

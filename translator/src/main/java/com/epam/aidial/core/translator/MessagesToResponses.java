@@ -14,9 +14,11 @@ import java.util.List;
  * Anthropic Messages request → OpenAI Responses request, ported from the Python translator's
  * {@code to_responses.py}, whose {@code CLAUDE.md} records why each rule is what it is.
  *
- * <p>Text only for now: a content block other than {@code text}, and any tool, is refused rather than
- * dropped, because the answer depends on it. A field with no Responses counterpart is dropped with a
- * warning, because clients send such fields on every request.
+ * <p>Text only for now: in a user or assistant turn, a content block other than {@code text},
+ * {@code compaction} and {@code mid_conv_system}, and any tool, is refused rather than dropped, because the
+ * answer depends on it. A system turn keeps only its text, as Python does: it carries instructions, not content
+ * the answer is about. A field with no Responses counterpart is dropped with a warning, because clients send
+ * such fields on every request.
  */
 @Slf4j
 @UtilityClass
@@ -36,9 +38,13 @@ public class MessagesToResponses {
     private static final List<String> DROPPED_FIELDS = List.of("top_k", "stop_sequences", "mcp_servers", "container",
             "inference_geo", "context_management", "compaction", "thinking", "output_config");
 
-    public static ObjectNode translateRequest(JsonNode request) {
+    /**
+     * The Responses body for {@code request}, sent to the upstream as {@code model}. {@code stream} is left to
+     * the caller, which is the transport.
+     */
+    public static ObjectNode translateRequest(JsonNode request, String model) {
         ObjectNode result = JsonNodeFactory.instance.objectNode();
-        result.set("model", request.get("model"));
+        result.put("model", model);
         result.set("input", translateMessages(request.path("messages")));
 
         String instructions = translateSystem(request.get("system"));
@@ -56,9 +62,8 @@ public class MessagesToResponses {
 
         // the Responses API stores every response unless told not to; the Messages API has nothing to store
         result.put("store", false);
-        if (request.has("stream")) {
-            result.put("stream", request.path("stream").asBoolean(false));
-        }
+        // asked for on every generation request, as the Python translator does, whether or not thinking is shown
+        result.putArray("include").add("reasoning.encrypted_content");
         if (request.hasNonNull("max_tokens")) {
             int maxTokens = request.path("max_tokens").asInt();
             result.put("max_output_tokens", maxTokens > 0 && maxTokens < MIN_OUTPUT_TOKENS ? MIN_OUTPUT_TOKENS : maxTokens);
@@ -99,10 +104,7 @@ public class MessagesToResponses {
         List<String> texts = new ArrayList<>();
         for (JsonNode block : system) {
             if ("text".equals(block.path("type").asText())) {
-                String text = block.path("text").asText("");
-                if (!text.isEmpty()) {
-                    texts.add(text);
-                }
+                addText(texts, block.path("text").asText(""));
             } else {
                 log.warn("Dropping unsupported system content block: {}", block.path("type").asText());
             }
@@ -126,12 +128,12 @@ public class MessagesToResponses {
             String role = message.path("role").asText();
             JsonNode content = message.path("content");
             switch (role) {
-                case "user" -> addMessage(input, "user", inputTextParts(content, "user"));
-                case "assistant" -> addAssistantMessage(input, content);
+                case "user" -> addMessage(input, "user", inputTextParts(turnTexts(input, content, "user")));
+                case "assistant" -> addAssistantMessage(input, turnTexts(input, content, "assistant"));
                 case "system" -> {
                     // shown only for the user turn it follows: a later user turn expires it
                     if (!("next_user_message".equals(message.path("clear_at").asText()) && i < lastUser)) {
-                        addMessage(input, "system", inputTextParts(content, "system"));
+                        addMessage(input, "system", systemParts(content));
                     }
                 }
                 default -> throw new UntranslatableRequestException("Unknown message role: '" + role + "'");
@@ -153,8 +155,7 @@ public class MessagesToResponses {
      * A replayed assistant turn goes as the lightweight input message with string content: the output-item
      * form would need the original item id and status.
      */
-    private static void addAssistantMessage(ArrayNode input, JsonNode content) {
-        List<String> texts = texts(content, "assistant");
+    private static void addAssistantMessage(ArrayNode input, List<String> texts) {
         if (!texts.isEmpty()) {
             ObjectNode message = input.addObject();
             message.put("type", "message");
@@ -163,33 +164,66 @@ public class MessagesToResponses {
         }
     }
 
-    private static ArrayNode inputTextParts(JsonNode content, String role) {
+    private static ArrayNode inputTextParts(List<String> texts) {
         ArrayNode parts = JsonNodeFactory.instance.arrayNode();
-        for (String text : texts(content, role)) {
+        for (String text : texts) {
             parts.addObject().put("type", "input_text").put("text", text);
         }
         return parts;
     }
 
-    private static List<String> texts(JsonNode content, String role) {
+    /**
+     * The non-empty texts of a user or assistant turn, a replayed {@code compaction} summary included. A
+     * {@code mid_conv_system} block goes to {@code input} as a system message ahead of the turn: in front of the
+     * user text it prefaces, and never between an assistant's function call and its output.
+     */
+    private static List<String> turnTexts(ArrayNode input, JsonNode content, String role) {
         List<String> texts = new ArrayList<>();
         if (content.isTextual()) {
-            if (!content.asText().isEmpty()) {
-                texts.add(content.asText());
-            }
+            addText(texts, content.asText());
             return texts;
         }
         for (JsonNode block : content) {
             String type = block.path("type").asText();
-            if (!"text".equals(type)) {
-                throw new UntranslatableRequestException("Content block '" + type + "' in the " + role
+            switch (type) {
+                case "text" -> addText(texts, block.path("text").asText(""));
+                // a null content is a failed compaction, which Anthropic treats as a no-op
+                case "compaction" -> addText(texts, block.path("content").isTextual() ? block.path("content").asText() : "");
+                case "mid_conv_system" -> addMessage(input, "system", systemParts(block.path("content")));
+                default -> throw new UntranslatableRequestException("Content block '" + type + "' in the " + role
                         + " turn is not supported by the builtin translator yet");
-            }
-            String text = block.path("text").asText("");
-            if (!text.isEmpty()) {
-                texts.add(text);
             }
         }
         return texts;
+    }
+
+    /**
+     * The parts of a system turn or a {@code mid_conv_system} block: its text, nested {@code mid_conv_system}
+     * blocks included. Any other block is dropped.
+     */
+    private static ArrayNode systemParts(JsonNode content) {
+        List<String> texts = new ArrayList<>();
+        addSystemTexts(texts, content);
+        return inputTextParts(texts);
+    }
+
+    private static void addSystemTexts(List<String> texts, JsonNode content) {
+        if (content.isTextual()) {
+            addText(texts, content.asText());
+        } else if (content.isArray()) {
+            for (JsonNode block : content) {
+                switch (block.path("type").asText()) {
+                    case "text" -> addText(texts, block.path("text").asText(""));
+                    case "mid_conv_system" -> addSystemTexts(texts, block.path("content"));
+                    default -> log.warn("Dropping unsupported system content block: {}", block.path("type").asText());
+                }
+            }
+        }
+    }
+
+    private static void addText(List<String> texts, String text) {
+        if (!text.isEmpty()) {
+            texts.add(text);
+        }
     }
 }

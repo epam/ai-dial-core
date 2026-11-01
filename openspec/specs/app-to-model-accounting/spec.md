@@ -162,9 +162,10 @@ kind.
 - **THEN** Core forwards the request to `app`
 
 ### Requirement: Translated interface not limit-checked
-A request for an interface the deployment serves in `translator` mode SHALL be neither checked nor charged (bar a
-background Responses job's finish, responses-api): the translator's call back to Core is. `/anthropic/v1/messages`
-alone still refuses it `429` when the initiator's day, week or month cost limit is already reached.
+A request for an interface the deployment serves in `translator` mode through a translator service (`baseUrl`) SHALL
+be neither checked nor charged (bar a background Responses job's finish, responses-api): the translator's call back
+to Core is. `/anthropic/v1/messages` alone still refuses it `429` when the initiator's day, week or month cost limit
+is already reached. A request a builtin translator serves is covered by anthropic-messages-translation.
 
 #### Scenario: Translated interface not charged
 - **WHEN** user `u1` has used the `m` per-minute token limit of its role, and `m` serves `anthropicMessages` in
@@ -176,8 +177,8 @@ alone still refuses it `429` when the initiator's day, week or month cost limit 
 Core SHALL answer `403` `Deployment <id> is not accessible by <sourceDeployment>` to a deployments-POST,
 `/openai/v1/chat/completions`, `/openai/v1/responses` or `/anthropic/v1/messages` request with a per-request key
 for a deployment whose features resolved for the interface have `accessibleByPerRequestKey: false`. The last
-interceptor's call to the initial deployment and a translator's call back carry such a key, so a deployment with
-interceptors, or a translated interface, is refused there.
+interceptor's call to the initial deployment and a translator service's call back carry such a key, so both are
+refused there (builtin: anthropic-messages-translation).
 
 #### Scenario: Application call refused
 - **WHEN** `gpt-4` declares `features.accessibleByPerRequestKey: false` and `app` calls it with its key

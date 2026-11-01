@@ -1,0 +1,98 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "redacted_thinking",
+    "text",
+    "thinking",
+    "tool_use"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "before",
+              "type": "text"
+            },
+            {
+              "signature": "{\"dial_translator_reasoning_wrapper\":{\"version\":2,\"id\":\"dialenc_original-id\",\"encrypted_content\":\"dialenc:dXBzdHJlYW0=;gAAAA_+/opaque==\"}}",
+              "thinking": "plan",
+              "type": "thinking"
+            },
+            {
+              "data": "{\"dial_translator_reasoning_wrapper\":{\"version\":2,\"id\":\"dialenc_original-id\",\"encrypted_content\":\"other\"}}",
+              "type": "redacted_thinking"
+            },
+            {
+              "id": "call_1",
+              "input": {},
+              "name": "Read",
+              "type": "tool_use"
+            },
+            {
+              "text": "after",
+              "type": "text"
+            }
+          ],
+          "role": "assistant"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": "before",
+          "role": "assistant",
+          "type": "message"
+        },
+        {
+          "encrypted_content": "dialenc:dXBzdHJlYW0=;gAAAA_+/opaque==",
+          "id": "dialenc_original-id",
+          "summary": [
+            {
+              "text": "plan",
+              "type": "summary_text"
+            }
+          ],
+          "type": "reasoning"
+        },
+        {
+          "encrypted_content": "other",
+          "id": "dialenc_original-id",
+          "summary": [],
+          "type": "reasoning"
+        },
+        {
+          "arguments": "{}",
+          "call_id": "call_1",
+          "name": "Read",
+          "type": "function_call"
+        },
+        {
+          "content": "after",
+          "role": "assistant",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_reasoning_replay.py::test_replay_keeps_text_reasoning_and_tool_history_in_order"
+  ]
+}

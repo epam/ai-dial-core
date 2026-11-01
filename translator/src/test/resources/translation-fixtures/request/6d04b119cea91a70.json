@@ -1,0 +1,79 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "redacted_thinking"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": "hi",
+          "role": "user"
+        },
+        {
+          "content": [
+            {
+              "data": "{\"dial_translator_reasoning_wrapper\":{\"version\":2,\"id\":\"dialenc_original-id\",\"encrypted_content\":\"dialenc:dXBzdHJlYW0=;gAAAA_+/opaque==\"}}",
+              "type": "redacted_thinking"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": "continue",
+          "role": "user"
+        }
+      ],
+      "model": "gpt-5.5"
+    },
+    "tool_names": {}
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "hi",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        },
+        {
+          "encrypted_content": "dialenc:dXBzdHJlYW0=;gAAAA_+/opaque==",
+          "id": "dialenc_original-id",
+          "summary": [],
+          "type": "reasoning"
+        },
+        {
+          "content": [
+            {
+              "text": "continue",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": {}
+  },
+  "tests": [
+    "tests/test_reasoning_replay.py::test_invalid_encrypted_content_is_not_silently_dropped_and_retried"
+  ]
+}

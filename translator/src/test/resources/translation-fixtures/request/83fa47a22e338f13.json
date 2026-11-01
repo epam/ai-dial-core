@@ -1,0 +1,36 @@
+{
+  "features": [
+    "error",
+    "field:max_tokens",
+    "field:messages",
+    "field:output_config"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": "hi",
+          "role": "user"
+        }
+      ],
+      "output_config": {
+        "effort": "xmax"
+      }
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "error": {
+      "message": "Unsupported 'output_config.effort': 'xmax'. Expected one of: none, minimal, low, medium, high, xhigh, max",
+      "status": 400,
+      "type": "invalid_request_error"
+    }
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_an_effort_outside_the_vocabulary_fails_the_request"
+  ]
+}

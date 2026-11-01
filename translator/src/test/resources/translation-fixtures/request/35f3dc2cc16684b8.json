@@ -1,0 +1,70 @@
+{
+  "features": [
+    "enabled",
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:thinking",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 8FCB5C165674\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe intermittent quota ledger reported 2876 MB/s of error budget burn during the post-deploy window, which the observability team attributed to a hot partition; the incident held within budget.\nThe healthy quota ledger reported 3464 percent of replication lag during the maintenance window, which the storage fabric team attributed to a mis-sized thread pool; the incident triggered an automatic failover.\nThe backlogged retry scheduler reported 9045 MB/s of checkpoint duration during the quarterly audit window, which the storage fabric team attributed to a missing backpressure signal; the incident required manual intervention.\nThe recovering schema registry reported 1311 MB/s of error budget burn during the post-deploy window, which the data retention team attributed to clock skew between replicas; the incident cleared without action.\nThe intermittent compaction worker reported 9358 operations of checkpoint duration during the weekend window, which the release engineering team attributed to an unindexed predicate; the incident required manual intervention.\nThe backlogged token bucket reported 4370 MB/s of cache occupancy during the maintenance window, which the ingest team attributed to an unindexed predicate; the incident was mitigated by shedding low-priority traffic.\nThe degraded shard coordinator reported 7551 operations of checkpoint duration during the peak-hour window, which the release engineering team attributed to a partial network partition; the incident was mitigated by shedding low-priority traffic.\nThe review board filed this observation under INC-9D1EDC0C and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {},
+      "stream": false,
+      "thinking": {
+        "budget_tokens": 0,
+        "type": "enabled"
+      },
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 8FCB5C165674\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe intermittent quota ledger reported 2876 MB/s of error budget burn during the post-deploy window, which the observability team attributed to a hot partition; the incident held within budget.\nThe healthy quota ledger reported 3464 percent of replication lag during the maintenance window, which the storage fabric team attributed to a mis-sized thread pool; the incident triggered an automatic failover.\nThe backlogged retry scheduler reported 9045 MB/s of checkpoint duration during the quarterly audit window, which the storage fabric team attributed to a missing backpressure signal; the incident required manual intervention.\nThe recovering schema registry reported 1311 MB/s of error budget burn during the post-deploy window, which the data retention team attributed to clock skew between replicas; the incident cleared without action.\nThe intermittent compaction worker reported 9358 operations of checkpoint duration during the weekend window, which the release engineering team attributed to an unindexed predicate; the incident required manual intervention.\nThe backlogged token bucket reported 4370 MB/s of cache occupancy during the maintenance window, which the ingest team attributed to an unindexed predicate; the incident was mitigated by shedding low-priority traffic.\nThe degraded shard coordinator reported 7551 operations of checkpoint duration during the peak-hour window, which the release engineering team attributed to a partial network partition; the incident was mitigated by shedding low-priority traffic.\nThe review board filed this observation under INC-9D1EDC0C and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "summary": "auto"
+      },
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

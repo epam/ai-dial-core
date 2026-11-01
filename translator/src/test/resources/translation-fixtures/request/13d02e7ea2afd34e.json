@@ -1,0 +1,51 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:stream"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "routed-deployment",
+    "request": {
+      "max_tokens": 20,
+      "messages": [
+        {
+          "content": "hi",
+          "role": "user"
+        }
+      ],
+      "model": "client-alias",
+      "stream": true
+    },
+    "tool_names": {}
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "hi",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 20,
+      "model": "routed-deployment",
+      "store": false
+    },
+    "tool_names": {}
+  },
+  "tests": [
+    "tests/test_translator_compatibility.py::test_core_deployment_routing_and_upstream_response_model[client-alias-routed-deployment-True-responses]"
+  ]
+}

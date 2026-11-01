@@ -16,7 +16,7 @@ Scenario tests. A scenario marked "fixture" is a case of `TranslationFixturePari
   - Expired system turn not sent: fixture `request/41e05bd29d2956a4.json`.
   - Nested mid-conversation block joins its system turn: fixture `request/20107656bd532f6b.json` and
     `BuiltinTranslatorApiTest.testBlocksOnceRefusedAreTranslated`.
-  - Mid-conversation block in a user turn: `MessagesToResponsesTest.testMidConversationBlockInAUserTurnPrecedesIt`.
+  - Mid-conversation block in a user turn: `MessagesToResponsesTest.testMidConversationBlockInUserTurnPrecedesIt`.
   - Replayed compaction block: fixture `request/0b300ff50856df84.json` and
     `BuiltinTranslatorApiTest.testBlocksOnceRefusedAreTranslated`.
   - Empty user turn: fixture `request/306da35de39f454e.json`.
@@ -61,21 +61,21 @@ Scenario tests. A scenario marked "fixture" is a case of `TranslationFixturePari
   - Unknown builtin rejected on read: `ConfigPostProcessorTest.testUnknownBuiltinTranslatorIsRejectedAsItIsRead`.
   - Registered builtin with another output: `ConfigPostProcessorTest.testSemanticThrowsOnRegistryBuiltinTranslatorNotMatchingItsMapping`.
   - Inline builtin under another interface: `ConfigPostProcessorTest.testSemanticThrowsOnInlineBuiltinTranslatorUnderAnotherInterface`.
-  - Application with a builtin translator: `BuiltinTranslatorApiTest.testApplicationIsNotServedByABuiltinTranslator`.
+  - Application with a builtin translator: `BuiltinTranslatorApiTest.testApplicationIsNotServedByBuiltinTranslator`.
   - All other scenarios: unchanged, with the tests that cover them on `development`.
 - app-to-model-accounting and deployment-origin: their scenarios are unchanged.
 
 ## 1. Fixtures and the parity test
 
-- [ ] 1.1 Copy the Python translator's recorded fixtures into `translator/src/test/resources/translation-fixtures/`:
+- [x] 1.1 Copy the Python translator's recorded fixtures into `translator/src/test/resources/translation-fixtures/`:
   `request/`, `response/`, `stream/` and `manifest.json` from `openai-translator-bedrock/build/translation-fixtures`.
   The manifest must name `translator_commit` `5e70209dae60f8de2c090972da32de38058e8600` and `dirty: false`. Copy
   only; the recorder stays in the Python repository. Verify there are 186, 41 and 60 files, the manifest's `counts`.
-- [ ] 1.2 Create `translator/src/test/resources/translation-fixtures-known-gaps.txt` with a header comment. The header
+- [x] 1.2 Create `translator/src/test/resources/translation-fixtures-known-gaps.txt` with a header comment. The header
   gives the line format (`<kind>/<file> <change id>`), the owner rule of design.md decision 7, the only-shrinks rule,
   and how to refresh: rerun the recorder in the Python repository, delete `translation-fixtures/`, copy the new output
   in, run the parity test and update this list.
-- [ ] 1.3 Change `MessagesToResponses.translateRequest` to `translateRequest(JsonNode request, String model)`:
+- [x] 1.3 Change `MessagesToResponses.translateRequest` to `translateRequest(JsonNode request, String model)`:
   - it takes `model` from the argument and no longer writes `stream`;
   - it writes `include: ["reasoning.encrypted_content"]` next to `store: false`.
 
@@ -83,14 +83,14 @@ Scenario tests. A scenario marked "fixture" is a case of `TranslationFixturePari
   translated tree. Update `MessagesToResponsesTest` for the new signature, the absent `stream` and the `include`
   field. In `BuiltinTranslatorApiTest.testStreamingIsTranslatedInOnePass`, assert the origin body's `include` and
   that the origin received exactly one request. Verify `MessagesToResponsesTest` and `BuiltinTranslatorApiTest` pass.
-- [ ] 1.4 Write `TranslationFixtureParityTest` in `translator/src/test/java/com/epam/aidial/core/translator/` as design.md
+- [x] 1.4 Write `TranslationFixtureParityTest` in `translator/src/test/java/com/epam/aidial/core/translator/` as design.md
   decisions 6 and 7 describe:
   - the count check against the manifest;
   - the out-of-scope skip;
   - request and stream replay, with response and `emit_error` failing as unsupported;
   - `message.id` normalisation and comparison after a round trip;
   - the known-gaps rules, with a separate test for lines that name a missing or out-of-scope fixture.
-- [ ] 1.5 Run the test once and write every in-scope fixture that fails into the known-gaps list, sorted by owner then
+- [x] 1.5 Run the test once and write every in-scope fixture that fails into the known-gaps list, sorted by owner then
   path: a fixture design.md decision 7 assigns to no later change gets `builtin-translator-fixture-parity`, every
   other gets its owner by decision 7. Verify `./gradlew :translator:test --tests
   "com.epam.aidial.core.translator.TranslationFixtureParityTest"` passes, with 287 cases and 38 skipped as out of
@@ -98,20 +98,20 @@ Scenario tests. A scenario marked "fixture" is a case of `TranslationFixturePari
 
 ## 2. Text-path parity
 
-- [ ] 2.1 In `MessagesToResponses`, port the text blocks of design.md decision 4:
+- [x] 2.1 In `MessagesToResponses`, port the text blocks of design.md decision 4:
   - `_system_parts` for a `system`-role turn: string content, text, nested `mid_conv_system`, and other blocks dropped
     with a warning;
   - `mid_conv_system` in a user turn, sent before the user message, and in an assistant turn, sent before the turn;
   - `compaction` as text when its `content` is a non-empty string.
 
   First add a `MessagesToResponsesTest` case for each branch: an image block in a system turn is dropped,
-  `testMidConversationBlockInAUserTurnPrecedesIt` (the scenario's request), a `mid_conv_system` block in an assistant
+  `testMidConversationBlockInUserTurnPrecedesIt` (the scenario's request), a `mid_conv_system` block in an assistant
   turn, and a `compaction` block with `null` content sends nothing. Add
   `BuiltinTranslatorApiTest.testBlocksOnceRefusedAreTranslated`: a streaming request whose turns hold a `compaction`
   block and a system turn with a nested `mid_conv_system` block gets `200`, and the origin `input` holds the
   translated `system` and `assistant` items. Delete the known-gaps lines of the fixtures that now pass. Verify the new
   cases, `TranslationFixtureParityTest` and `BuiltinTranslatorApiTest` pass.
-- [ ] 2.2 Make every fixture still listed with `builtin-translator-fixture-parity` pass, deleting its line. Fix a
+- [x] 2.2 Make every fixture still listed with `builtin-translator-fixture-parity` pass, deleting its line. Fix a
   failure in `MessagesToResponses`, `ResponsesToMessagesStream` or `ResponsesToMessages` by porting the Python function
   the failure points at, never by editing the harness or the fixture. Record any such fix in a "Drift" note at the end
   of design.md. Verify no line names `builtin-translator-fixture-parity`, 48 request and 21 stream fixtures pass,
@@ -120,10 +120,10 @@ Scenario tests. A scenario marked "fixture" is a case of `TranslationFixturePari
 
 ## 3. Known-gaps list
 
-- [ ] 3.1 Check the counts per owner in `translation-fixtures-known-gaps.txt` against the estimate of design.md
+- [x] 3.1 Check the counts per owner in `translation-fixtures-known-gaps.txt` against the estimate of design.md
   decision 7: about 41 tools, 99 reasoning and 38 non-streaming-errors. Where they differ, write the real counts into
   decision 7. Verify `TranslationFixtureParityTest` passes.
-- [ ] 3.2 Check by hand that the list can only shrink, then undo each edit:
+- [x] 3.2 Check by hand that the list can only shrink, then undo each edit:
   - delete one line: the test fails, naming that fixture;
   - add a line for a passing fixture such as `request/295dc13faf5d447f.json`: the test fails;
   - add a line for a file that does not exist: the test fails.
@@ -132,9 +132,9 @@ Scenario tests. A scenario marked "fixture" is a case of `TranslationFixturePari
 
 ## 4. Refusals, limits and config on the server
 
-- [ ] 4.1 In `server/src/test/resources/aidial.config.json`, add:
+- [x] 4.1 In `server/src/test/resources/aidial.config.json`, add:
   - an application `app-builtin` with `interfaces.openaiResponses.base_url: http://localhost:4848` and the builtin
-    `anthropicMessages` interface;
+    `anthropicMessages` interface (registered by the test instead: design.md "Implementation notes" 2);
   - a model `gpt-builtin-limited`, a copy of `gpt-builtin` without `overrideName`, with a role limit low enough that
     one translated answer of 18 tokens uses it up;
   - a model `gpt-builtin-closed`, a copy of `gpt-builtin` with `features.accessibleByPerRequestKey: false` on
@@ -146,7 +146,7 @@ Scenario tests. A scenario marked "fixture" is a case of `TranslationFixturePari
     `messages: "hi"` gets 400 with a message containing `'messages'`, and the origin receives nothing;
   - `testLimitIsCheckedBeforeTheUpstream`: the first request is served, the second gets 429, and the origin receives
     one request;
-  - `testApplicationIsNotServedByABuiltinTranslator`: 503 and the origin receives nothing;
+  - `testApplicationIsNotServedByBuiltinTranslator`: 503 and the origin receives nothing;
   - `testPerRequestKeyClosedOnTheTranslatedInterfaceIsRefused`: an application registered at
     `http://localhost:4848/app` calls Core back with the `API-KEY` it received, as
     `DeploymentPostApiTest.testAutoShareAnnotationCitationAttachment` does, sending a streaming
@@ -156,16 +156,16 @@ Scenario tests. A scenario marked "fixture" is a case of `TranslationFixturePari
   These test existing behaviour; a failure is drift to record in design.md before any code change. Verify
   `BuiltinTranslatorApiTest` passes, and so do the tests that list or count the shared test config's deployments:
   `ListingTest`, `DeploymentApiTest`, `ConfigApiTest`, `ConfigModelListTest` and `MessagesApiTest`.
-- [ ] 4.2 Add `inlineBuiltinTranslatorStaysInline` to `config/src/test/java/com/epam/aidial/core/config/TranslatorTest.java`
+- [x] 4.2 Add `inlineBuiltinTranslatorStaysInline` to `config/src/test/java/com/epam/aidial/core/config/TranslatorTest.java`
   (read and write back: the translator stays an inline object with `builtin` and no `baseUrl`). Verify
   `./gradlew :config:test --tests "com.epam.aidial.core.config.TranslatorTest"` passes, and so do
   `ConfigPostProcessorTest` and `DeploymentEndpointUtilTest`.
-- [ ] 4.3 In `ResponsesToMessagesReadStreamTest.testFlowControlAndFailuresReachTheUpstream`, assert that the stream
+- [x] 4.3 In `ResponsesToMessagesReadStreamTest.testFlowControlAndFailuresReachTheUpstream`, assert that the stream
   emits no frame after the upstream failure. Verify `ResponsesToMessagesReadStreamTest` passes.
 
 ## 5. Docs
 
-- [ ] 5.1 Update the "Builtin translators" section of `docs/dynamic-settings/translators.md`:
+- [x] 5.1 Update the "Builtin translators" section of `docs/dynamic-settings/translators.md`:
   - what `anthropicMessagesToOpenaiResponses` translates now: the system prompt, system turns, `mid_conv_system` and
     `compaction` blocks, and text;
   - that it asks the upstream for `include: ["reasoning.encrypted_content"]`;
@@ -174,21 +174,21 @@ Scenario tests. A scenario marked "fixture" is a case of `TranslationFixturePari
     `translator/src/test/resources/translation-fixtures-known-gaps.txt` lists the fixtures it does not match yet.
 
   Verify each statement against the anthropic-messages-translation spec delta.
-- [ ] 5.2 In `docs/dynamic-settings/models.md`, update the `interfaces` field list:
+- [x] 5.2 In `docs/dynamic-settings/models.md`, update the `interfaces` field list:
   - `translator`: the inline form takes `out` and one of `baseUrl` or `builtin`;
   - `mode`: the role-limits exemption applies to a translator service only, while a builtin translator is checked and
     charged once.
 
   Both link to translators.md "Builtin translators". Verify each statement against the deployment-interfaces-config and
   app-to-model-accounting spec deltas.
-- [ ] 5.3 Add the `translator` module to the module table in `CLAUDE.md` (`com.epam.aidial.core.translator`: pure
+- [x] 5.3 Add the `translator` module to the module table in `CLAUDE.md` (`com.epam.aidial.core.translator`: pure
   Java and Jackson translation between Anthropic Messages and OpenAI Responses for builtin translators,
   parity-tested against the Python translator's recorded fixtures), and add `./gradlew :translator:test` to the test
   commands. Verify the command runs as written.
 
 ## 6. Integration checks
 
-- [ ] 6.1 Run `./gradlew checkstyleMain checkstyleTest`, `./gradlew :translator:test`, `./gradlew :config:test --tests
+- [x] 6.1 Run `./gradlew checkstyleMain checkstyleTest`, `./gradlew :translator:test`, `./gradlew :config:test --tests
   "com.epam.aidial.core.config.TranslatorTest"`, and `./gradlew :server:test` with `--tests` for
   `BuiltinTranslatorApiTest`, `ConfigPostProcessorTest`, `DeploymentEndpointUtilTest`, `MessagesControllerLimitTest`,
   `ResponsesToMessagesReadStreamTest`, `ConfigEntityCodecTest`, `ListingTest`, `DeploymentApiTest`, `ConfigApiTest`,

@@ -14,7 +14,8 @@ class MessagesToResponsesTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static JsonNode translate(String json) throws Exception {
-        return MessagesToResponses.translateRequest(MAPPER.readTree(json));
+        // the upstream model comes from the caller, never from the body's own model
+        return MessagesToResponses.translateRequest(MAPPER.readTree(json), "upstream");
     }
 
     @Test
@@ -27,14 +28,15 @@ class MessagesToResponsesTest {
                    {"role":"assistant","content":[{"type":"text","text":"a"},{"type":"text","text":"b"}]},
                    {"role":"user","content":[{"type":"text","text":"more"}]}]}""");
 
+        // stream is the caller's to set: Core is the transport
         assertEquals(MAPPER.readTree("""
-                {"model":"m",
+                {"model":"upstream",
                  "input":[
                    {"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]},
                    {"type":"message","role":"assistant","content":"a\\nb"},
                    {"type":"message","role":"user","content":[{"type":"input_text","text":"more"}]}],
                  "instructions":"one\\n\\ntwo",
-                 "store":false,"stream":true,"max_output_tokens":100,"temperature":0.5,"top_p":0.9}"""), result);
+                 "store":false,"include":["reasoning.encrypted_content"],"max_output_tokens":100,"temperature":0.5,"top_p":0.9}"""), result);
     }
 
     @Test
@@ -94,6 +96,57 @@ class MessagesToResponsesTest {
                 {"model":"m","messages":[{"role":"assistant","content":[{"type":"tool_use","id":"t","name":"n","input":{}}]}]}"""));
 
         assertTrue(error.getMessage().contains("'tool_use' in the assistant turn"), error.getMessage());
+    }
+
+    @Test
+    void testNonTextBlockInSystemTurnIsDropped() throws Exception {
+        JsonNode result = translate("""
+                {"model":"m","messages":[
+                   {"role":"system","content":[{"type":"text","text":"a"},
+                     {"type":"image","source":{"type":"base64","media_type":"image/png","data":"AA=="}}]},
+                   {"role":"user","content":"hi"}]}""");
+
+        assertEquals(MAPPER.readTree("""
+                [{"type":"message","role":"system","content":[{"type":"input_text","text":"a"}]},
+                 {"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]}]"""), result.path("input"));
+    }
+
+    @Test
+    void testMidConversationBlockInUserTurnPrecedesIt() throws Exception {
+        JsonNode result = translate("""
+                {"model":"m","messages":[
+                   {"role":"user","content":[{"type":"text","text":"carry on"},{"type":"mid_conv_system","content":"injected"}]}]}""");
+
+        assertEquals(MAPPER.readTree("""
+                [{"type":"message","role":"system","content":[{"type":"input_text","text":"injected"}]},
+                 {"type":"message","role":"user","content":[{"type":"input_text","text":"carry on"}]}]"""), result.path("input"));
+    }
+
+    @Test
+    void testMidConversationBlockInAssistantTurnPrecedesIt() throws Exception {
+        JsonNode result = translate("""
+                {"model":"m","messages":[
+                   {"role":"user","content":"hi"},
+                   {"role":"assistant","content":[{"type":"text","text":"hello"},
+                     {"type":"mid_conv_system","content":[{"type":"text","text":"be brief"}]}]}]}""");
+
+        assertEquals(MAPPER.readTree("""
+                [{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]},
+                 {"type":"message","role":"system","content":[{"type":"input_text","text":"be brief"}]},
+                 {"type":"message","role":"assistant","content":"hello"}]"""), result.path("input"));
+    }
+
+    @Test
+    void testCompactionWithoutSummarySendsNothing() throws Exception {
+        // a null content is a failed compaction, which Anthropic treats as a no-op
+        JsonNode result = translate("""
+                {"model":"m","messages":[
+                   {"role":"assistant","content":[{"type":"compaction","content":null}]},
+                   {"role":"user","content":[{"type":"compaction","content":"Earlier: we fixed X."}]}]}""");
+
+        assertEquals(MAPPER.readTree("""
+                [{"type":"message","role":"user","content":[{"type":"input_text","text":"Earlier: we fixed X."}]}]"""),
+                result.path("input"));
     }
 
     @Test

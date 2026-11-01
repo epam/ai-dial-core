@@ -1,0 +1,125 @@
+{
+  "features": [
+    "omit_thinking",
+    "reasoning",
+    "summary_text"
+  ],
+  "input": {
+    "calls": [
+      {
+        "handle": {
+          "data": {
+            "output_index": 0,
+            "part": {
+              "text": "",
+              "type": "summary_text"
+            }
+          },
+          "event_type": "response.reasoning_summary_part.added"
+        }
+      },
+      {
+        "handle": {
+          "data": {
+            "item": {
+              "summary": [],
+              "type": "reasoning"
+            },
+            "output_index": 0
+          },
+          "event_type": "response.output_item.done"
+        }
+      },
+      {
+        "handle": {
+          "data": {
+            "response": {
+              "status": "completed"
+            }
+          },
+          "event_type": "response.completed"
+        }
+      }
+    ],
+    "omit_thinking": true,
+    "requested_model": "alias",
+    "tool_names": null
+  },
+  "kind": "stream",
+  "output": [
+    [],
+    [],
+    [
+      {
+        "data": {
+          "message": {
+            "content": [],
+            "id": "resp_unknown",
+            "model": "alias",
+            "role": "assistant",
+            "stop_reason": null,
+            "stop_sequence": null,
+            "type": "message",
+            "usage": {
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            }
+          },
+          "type": "message_start"
+        },
+        "event": "message_start"
+      },
+      {
+        "data": {
+          "type": "ping"
+        },
+        "event": "ping"
+      },
+      {
+        "data": {
+          "content_block": {
+            "text": "",
+            "type": "text"
+          },
+          "index": 0,
+          "type": "content_block_start"
+        },
+        "event": "content_block_start"
+      },
+      {
+        "data": {
+          "index": 0,
+          "type": "content_block_stop"
+        },
+        "event": "content_block_stop"
+      },
+      {
+        "data": {
+          "delta": {
+            "stop_reason": "end_turn",
+            "stop_sequence": null
+          },
+          "type": "message_delta",
+          "usage": {
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0
+          }
+        },
+        "event": "message_delta"
+      },
+      {
+        "data": {
+          "type": "message_stop"
+        },
+        "event": "message_stop"
+      }
+    ]
+  ],
+  "tests": [
+    "tests/test_translator_compatibility.py::test_empty_unsigned_reasoning_is_not_emitted[False-True]"
+  ]
+}

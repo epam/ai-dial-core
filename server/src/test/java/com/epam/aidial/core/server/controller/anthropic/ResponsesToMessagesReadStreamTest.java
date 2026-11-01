@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -90,6 +91,8 @@ class ResponsesToMessagesReadStreamTest {
         stream.exceptionHandler(failure::set);
         ArgumentCaptor<Handler<Throwable>> exceptions = ArgumentCaptor.forClass(Handler.class);
         verify(upstream).exceptionHandler(exceptions.capture());
+        upstreamChunks.handle(Buffer.buffer("data: {\"type\":\"response.output_text.delta\",\"delta\":\"a\"}\n\n"));
+        int framesBeforeFailure = received.size();
         RuntimeException reset = new RuntimeException("reset");
         exceptions.getValue().handle(reset);
 
@@ -98,6 +101,9 @@ class ResponsesToMessagesReadStreamTest {
         stream.resume();
 
         assertSame(reset, failure.get());
+        // a reset is passed on as it is: no error frame, no end
+        assertEquals(framesBeforeFailure, received.size(), received.toString());
+        assertFalse(ended.get());
         verify(upstream).pause();
         verify(upstream).fetch(3);
         verify(upstream).resume();

@@ -1,0 +1,85 @@
+{
+  "features": [],
+  "input": {
+    "calls": [
+      {
+        "handle": {
+          "data": {
+            "delta": ""
+          },
+          "event_type": "response.reasoning_summary_text.delta"
+        }
+      },
+      {
+        "handle": {
+          "data": {
+            "delta": "plan"
+          },
+          "event_type": "response.reasoning_summary_text.delta"
+        }
+      }
+    ],
+    "omit_thinking": false,
+    "requested_model": "alias",
+    "tool_names": null
+  },
+  "kind": "stream",
+  "output": [
+    [],
+    [
+      {
+        "data": {
+          "message": {
+            "content": [],
+            "id": "resp_unknown",
+            "model": "alias",
+            "role": "assistant",
+            "stop_reason": null,
+            "stop_sequence": null,
+            "type": "message",
+            "usage": {
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            }
+          },
+          "type": "message_start"
+        },
+        "event": "message_start"
+      },
+      {
+        "data": {
+          "type": "ping"
+        },
+        "event": "ping"
+      },
+      {
+        "data": {
+          "content_block": {
+            "signature": "",
+            "thinking": "",
+            "type": "thinking"
+          },
+          "index": 0,
+          "type": "content_block_start"
+        },
+        "event": "content_block_start"
+      },
+      {
+        "data": {
+          "delta": {
+            "thinking": "plan",
+            "type": "thinking_delta"
+          },
+          "index": 0,
+          "type": "content_block_delta"
+        },
+        "event": "content_block_delta"
+      }
+    ]
+  ],
+  "tests": [
+    "tests/test_translator_compatibility.py::test_unsigned_reasoning_opens_on_the_first_real_delta"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "features": [
+    "field:messages",
+    "field:thinking"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "messages": [],
+      "thinking": null
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [],
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_reasoning_replay.py::test_generation_requests_encrypted_content_without_changing_effort[None]"
+  ]
+}

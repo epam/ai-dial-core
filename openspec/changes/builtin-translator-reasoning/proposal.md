@@ -83,8 +83,8 @@ None.
   all of them for the streaming path. Left out: the non-streaming rows (change 4) and `count_tokens` (a later
   series).
 - Parity oracle: the recorded fixtures (Python commit `5e70209`). The in-scope request and stream fixtures whose
-  expected output depends on reasoning pass after this change and leave the known-gaps list: 70 request fixtures
-  (28 of them also need tools) and 29 stream fixtures (2 also need tools). The 8 response fixtures with reasoning
+  expected output depends on reasoning pass after this change and leave the known-gaps list: every entry owned by
+  this change (69 request and 24 stream lines when the list was first applied; the list is the authority). The 8 response fixtures with reasoning
   finish with `builtin-translator-non-streaming-errors`.
 - Code: `translator/` (`MessagesToResponses`, `ResponsesToMessagesStream`, one new carrier class);
   `server/.../controller/anthropic/MessagesController.java` (passes the omitted-display flag to the stream);

@@ -1,0 +1,74 @@
+{
+  "features": [
+    "base64",
+    "field:max_tokens",
+    "field:messages",
+    "image",
+    "text",
+    "tool_result"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": [
+            {
+              "content": [
+                {
+                  "text": "here it is",
+                  "type": "text"
+                },
+                {
+                  "source": {
+                    "data": "QUJD",
+                    "media_type": "image/png",
+                    "type": "base64"
+                  },
+                  "type": "image"
+                }
+              ],
+              "tool_use_id": "toolu_1",
+              "type": "tool_result"
+            }
+          ],
+          "role": "user"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "call_id": "toolu_1",
+          "output": [
+            {
+              "text": "here it is",
+              "type": "input_text"
+            },
+            {
+              "image_url": "data:image/png;base64,QUJD",
+              "type": "input_image"
+            }
+          ],
+          "type": "function_call_output"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_an_image_in_a_tool_result_stays_in_that_calls_output"
+  ]
+}

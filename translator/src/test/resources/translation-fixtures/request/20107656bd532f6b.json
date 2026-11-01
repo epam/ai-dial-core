@@ -1,0 +1,81 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "mid_conv_system",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "a",
+              "type": "text"
+            },
+            {
+              "content": [
+                {
+                  "text": "b",
+                  "type": "text"
+                }
+              ],
+              "type": "mid_conv_system"
+            }
+          ],
+          "role": "system"
+        },
+        {
+          "content": "hi",
+          "role": "user"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "a",
+              "type": "input_text"
+            },
+            {
+              "text": "b",
+              "type": "input_text"
+            }
+          ],
+          "role": "system",
+          "type": "message"
+        },
+        {
+          "content": [
+            {
+              "text": "hi",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_mid_conv_system_inside_a_system_turn_joins_that_item"
+  ]
+}

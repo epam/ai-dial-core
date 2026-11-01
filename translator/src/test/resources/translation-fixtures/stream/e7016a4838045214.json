@@ -1,0 +1,119 @@
+{
+  "features": [
+    "reasoning",
+    "response.completed"
+  ],
+  "input": {
+    "calls": [
+      {
+        "handle": {
+          "data": {
+            "output_index": 0,
+            "response": {
+              "id": "resp_123",
+              "model": "gpt-5.5",
+              "object": "response",
+              "output": [
+                {
+                  "encrypted_content": "dialenc:dXBzdHJlYW0=;gAAAA_+/opaque==",
+                  "id": "dialenc_original-id",
+                  "summary": [],
+                  "type": "reasoning"
+                }
+              ],
+              "status": "completed",
+              "usage": {
+                "input_tokens": 12,
+                "input_tokens_details": {
+                  "cached_tokens": 4
+                },
+                "output_tokens": 7,
+                "total_tokens": 19
+              }
+            },
+            "type": "response.completed"
+          },
+          "event_type": "response.completed"
+        }
+      }
+    ],
+    "omit_thinking": false,
+    "requested_model": "gpt-5.5",
+    "tool_names": null
+  },
+  "kind": "stream",
+  "output": [
+    [
+      {
+        "data": {
+          "message": {
+            "content": [],
+            "id": "resp_unknown",
+            "model": "gpt-5.5",
+            "role": "assistant",
+            "stop_reason": null,
+            "stop_sequence": null,
+            "type": "message",
+            "usage": {
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            }
+          },
+          "type": "message_start"
+        },
+        "event": "message_start"
+      },
+      {
+        "data": {
+          "type": "ping"
+        },
+        "event": "ping"
+      },
+      {
+        "data": {
+          "content_block": {
+            "data": "{\"dial_translator_reasoning_wrapper\":{\"version\":2,\"id\":\"dialenc_original-id\",\"encrypted_content\":\"dialenc:dXBzdHJlYW0=;gAAAA_+/opaque==\"}}",
+            "type": "redacted_thinking"
+          },
+          "index": 0,
+          "type": "content_block_start"
+        },
+        "event": "content_block_start"
+      },
+      {
+        "data": {
+          "index": 0,
+          "type": "content_block_stop"
+        },
+        "event": "content_block_stop"
+      },
+      {
+        "data": {
+          "delta": {
+            "stop_reason": "end_turn",
+            "stop_sequence": null
+          },
+          "type": "message_delta",
+          "usage": {
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 4,
+            "input_tokens": 8,
+            "output_tokens": 7
+          }
+        },
+        "event": "message_delta"
+      },
+      {
+        "data": {
+          "type": "message_stop"
+        },
+        "event": "message_stop"
+      }
+    ]
+  ],
+  "tests": [
+    "tests/test_reasoning_replay.py::test_summaryless_stream_and_terminal_fallback_preserve_payload[False-True]"
+  ]
+}

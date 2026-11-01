@@ -1,0 +1,60 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "redacted_thinking"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": [
+            {
+              "data": "{\"dial_translator_reasoning_wrapper\":{\"version\":2,\"id\":\"rs_a\",\"encrypted_content\":\"cipher-a\"}}",
+              "type": "redacted_thinking"
+            },
+            {
+              "data": "{\"dial_translator_reasoning_wrapper\":{\"version\":2,\"id\":\"dialenc_b\",\"encrypted_content\":\"cipher-b\"}}",
+              "type": "redacted_thinking"
+            }
+          ],
+          "role": "assistant"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "encrypted_content": "cipher-a",
+          "id": "rs_a",
+          "summary": [],
+          "type": "reasoning"
+        },
+        {
+          "encrypted_content": "cipher-b",
+          "id": "dialenc_b",
+          "summary": [],
+          "type": "reasoning"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_reasoning_wrapper.py::test_multiple_items_keep_distinct_id_ciphertext_pairs[False]",
+    "tests/test_reasoning_wrapper.py::test_multiple_items_keep_distinct_id_ciphertext_pairs[True]"
+  ]
+}

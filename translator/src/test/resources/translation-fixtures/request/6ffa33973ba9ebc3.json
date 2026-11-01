@@ -1,0 +1,55 @@
+{
+  "features": [
+    "auto",
+    "field:max_tokens",
+    "field:messages",
+    "field:tool_choice"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": "hi",
+          "role": "user"
+        }
+      ],
+      "tool_choice": {
+        "disable_parallel_tool_use": true,
+        "type": "auto"
+      }
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "hi",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "parallel_tool_calls": false,
+      "store": false,
+      "tool_choice": "auto"
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_disable_parallel_tool_use"
+  ]
+}

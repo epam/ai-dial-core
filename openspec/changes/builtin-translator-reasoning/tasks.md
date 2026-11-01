@@ -22,7 +22,7 @@ known-gaps list come from the first; each list entry names the change that owns 
 
 ## 2. Request translation
 
-- [ ] 2.1 Delete the known-gaps entries owned by `builtin-translator-reasoning` for request fixtures (70 entries) and
+- [ ] 2.1 Delete the known-gaps entries owned by `builtin-translator-reasoning` for request fixtures (69 lines when the list was first applied; the list is the authority) and
   add to `MessagesToResponsesTest` only the cases neither the fixtures nor the 2.2 tests reach: an expired `system`
   message's effort ignored, and `isThinkingOmitted` (design decision 8). Verify the parity test and the new cases fail
   before 2.3.
@@ -50,7 +50,7 @@ known-gaps list come from the first; each list entry names the change that owns 
 
 ## 3. Stream translation
 
-- [ ] 3.1 Delete the known-gaps entries owned by `builtin-translator-reasoning` for stream fixtures (29 entries) and add
+- [ ] 3.1 Delete the known-gaps entries owned by `builtin-translator-reasoning` for stream fixtures (24 lines when the list was first applied) and add
   to `ResponsesToMessagesStreamTest` only the case neither the fixtures nor the 3.2 test reaches: summary parts 0 and
   1 of one item joined by `\n\n` (design decision 8). Verify it fails before 3.3.
 - [ ] 3.2 Write `testReasoningStream`, parameterized over an SSE resource → expected client events on `gpt-builtin`,

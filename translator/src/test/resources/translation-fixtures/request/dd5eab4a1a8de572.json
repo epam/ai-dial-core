@@ -1,0 +1,69 @@
+{
+  "features": [
+    "adaptive",
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:thinking",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT ED9F67EFB43C\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe oversubscribed retry scheduler reported 4989 operations of commit throughput during the overnight window, which the release engineering team attributed to a stale routing table; the incident was rolled back.\nThe quiescent dispatch queue reported 3223 percent of connection churn during the maintenance window, which the edge routing team attributed to a missing backpressure signal; the incident was rolled back.\nThe steady retry scheduler reported 1107 percent of replication lag during the post-deploy window, which the network security team attributed to an unbounded retry loop; the incident was mitigated by shedding low-priority traffic.\nThe steady cache tier reported 5922 operations of cache occupancy during the cold-start window, which the storage fabric team attributed to a hot partition; the incident required manual intervention.\nThe intermittent write-ahead log reported 1488 percent of commit throughput during the failover drill window, which the network security team attributed to an unindexed predicate; the incident was rolled back.\nThe recovering checkpoint store reported 3311 operations of cache occupancy during the cold-start window, which the query planning team attributed to an unindexed predicate; the incident required manual intervention.\nThe saturated schema registry reported 521 operations of checkpoint duration during the overnight window, which the data retention team attributed to an undersized buffer; the incident held within budget.\nThe saturated replica set reported 6776 MB/s of cache occupancy during the weekend window, which the edge routing team attributed to an unindexed predicate; the incident required manual intervention.\nThe throttled compaction worker reported 7653 requests per second of eviction rate during the peak-hour window, which the storage fabric team attributed to a hot partition; the incident cleared without action.\nThe review board filed this observation under INC-B7F16CA1 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {},
+      "stream": false,
+      "thinking": {
+        "type": "adaptive"
+      },
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT ED9F67EFB43C\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe oversubscribed retry scheduler reported 4989 operations of commit throughput during the overnight window, which the release engineering team attributed to a stale routing table; the incident was rolled back.\nThe quiescent dispatch queue reported 3223 percent of connection churn during the maintenance window, which the edge routing team attributed to a missing backpressure signal; the incident was rolled back.\nThe steady retry scheduler reported 1107 percent of replication lag during the post-deploy window, which the network security team attributed to an unbounded retry loop; the incident was mitigated by shedding low-priority traffic.\nThe steady cache tier reported 5922 operations of cache occupancy during the cold-start window, which the storage fabric team attributed to a hot partition; the incident required manual intervention.\nThe intermittent write-ahead log reported 1488 percent of commit throughput during the failover drill window, which the network security team attributed to an unindexed predicate; the incident was rolled back.\nThe recovering checkpoint store reported 3311 operations of cache occupancy during the cold-start window, which the query planning team attributed to an unindexed predicate; the incident required manual intervention.\nThe saturated schema registry reported 521 operations of checkpoint duration during the overnight window, which the data retention team attributed to an undersized buffer; the incident held within budget.\nThe saturated replica set reported 6776 MB/s of cache occupancy during the weekend window, which the edge routing team attributed to an unindexed predicate; the incident required manual intervention.\nThe throttled compaction worker reported 7653 requests per second of eviction rate during the peak-hour window, which the storage fabric team attributed to a hot partition; the incident cleared without action.\nThe review board filed this observation under INC-B7F16CA1 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "summary": "auto"
+      },
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "features": [
+    "adaptive",
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:thinking",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 1B211948FCDF\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe saturated token bucket reported 2953 MB/s of p99 latency during the maintenance window, which the billing integrity team attributed to an expired credential; the incident was rolled back.\nThe degraded connection pool reported 522 requests per second of error budget burn during the quarterly audit window, which the data retention team attributed to a mis-sized thread pool; the incident was absorbed by the retry path.\nThe oversubscribed ingest buffer reported 594 MB/s of queue depth during the cold-start window, which the release engineering team attributed to a leaked file descriptor; the incident held within budget.\nThe intermittent connection pool reported 9014 MB/s of connection churn during the regional drain window, which the release engineering team attributed to a mis-sized thread pool; the incident triggered an automatic failover.\nThe quiescent ingest buffer reported 9246 ms of replication lag during the overnight window, which the ingest team attributed to an unindexed predicate; the incident was traced to a single availability zone.\nThe steady index builder reported 9172 ms of commit throughput during the regional drain window, which the billing integrity team attributed to an unindexed predicate; the incident cleared without action.\nThe degraded cache tier reported 772 percent of retry amplification during the cold-start window, which the ingest team attributed to an unbounded retry loop; the incident was traced to a single availability zone.\nThe review board filed this observation under INC-13C801D9 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {
+        "effort": "high"
+      },
+      "stream": false,
+      "thinking": {
+        "type": "adaptive"
+      },
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 1B211948FCDF\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe saturated token bucket reported 2953 MB/s of p99 latency during the maintenance window, which the billing integrity team attributed to an expired credential; the incident was rolled back.\nThe degraded connection pool reported 522 requests per second of error budget burn during the quarterly audit window, which the data retention team attributed to a mis-sized thread pool; the incident was absorbed by the retry path.\nThe oversubscribed ingest buffer reported 594 MB/s of queue depth during the cold-start window, which the release engineering team attributed to a leaked file descriptor; the incident held within budget.\nThe intermittent connection pool reported 9014 MB/s of connection churn during the regional drain window, which the release engineering team attributed to a mis-sized thread pool; the incident triggered an automatic failover.\nThe quiescent ingest buffer reported 9246 ms of replication lag during the overnight window, which the ingest team attributed to an unindexed predicate; the incident was traced to a single availability zone.\nThe steady index builder reported 9172 ms of commit throughput during the regional drain window, which the billing integrity team attributed to an unindexed predicate; the incident cleared without action.\nThe degraded cache tier reported 772 percent of retry amplification during the cold-start window, which the ingest team attributed to an unbounded retry loop; the incident was traced to a single availability zone.\nThe review board filed this observation under INC-13C801D9 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "effort": "high",
+        "summary": "auto"
+      },
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

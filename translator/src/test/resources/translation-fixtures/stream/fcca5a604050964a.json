@@ -1,0 +1,110 @@
+{
+  "features": [
+    "invalid_request_error",
+    "response.created",
+    "response.failed"
+  ],
+  "input": {
+    "calls": [
+      {
+        "handle": {
+          "data": {
+            "response": {
+              "created_at": 0.0,
+              "id": "resp_123",
+              "model": "gpt-5.5",
+              "object": "response",
+              "output": [],
+              "parallel_tool_calls": true,
+              "status": "in_progress",
+              "tool_choice": "auto",
+              "tools": []
+            },
+            "sequence_number": 0,
+            "type": "response.created"
+          },
+          "event_type": "response.created"
+        }
+      },
+      {
+        "handle": {
+          "data": {
+            "response": {
+              "created_at": 0.0,
+              "error": {
+                "code": "invalid_request_error",
+                "message": "This model does not support image inputs",
+                "type": "invalid_request_error"
+              },
+              "id": "resp_123",
+              "model": "gpt-5.5",
+              "object": "response",
+              "output": [],
+              "parallel_tool_calls": true,
+              "status": "failed",
+              "tool_choice": "auto",
+              "tools": []
+            },
+            "sequence_number": 2,
+            "type": "response.failed"
+          },
+          "event_type": "response.failed"
+        }
+      },
+      {
+        "finalize": {}
+      }
+    ],
+    "omit_thinking": false,
+    "requested_model": "gpt-5.5",
+    "tool_names": null
+  },
+  "kind": "stream",
+  "output": [
+    [
+      {
+        "data": {
+          "message": {
+            "content": [],
+            "id": "resp_123",
+            "model": "gpt-5.5",
+            "role": "assistant",
+            "stop_reason": null,
+            "stop_sequence": null,
+            "type": "message",
+            "usage": {
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            }
+          },
+          "type": "message_start"
+        },
+        "event": "message_start"
+      },
+      {
+        "data": {
+          "type": "ping"
+        },
+        "event": "ping"
+      }
+    ],
+    [
+      {
+        "data": {
+          "error": {
+            "message": "This model does not support image inputs",
+            "type": "invalid_request_error"
+          },
+          "type": "error"
+        },
+        "event": "error"
+      }
+    ],
+    []
+  ],
+  "tests": [
+    "tests/test_responses_streaming.py::test_a_failure_the_request_caused_keeps_its_kind_in_the_stream"
+  ]
+}

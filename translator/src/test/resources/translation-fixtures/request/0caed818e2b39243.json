@@ -1,0 +1,69 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "image",
+    "tool_result",
+    "url"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": [
+            {
+              "content": [
+                {
+                  "source": {
+                    "type": "url",
+                    "url": "u"
+                  },
+                  "type": "image"
+                }
+              ],
+              "is_error": true,
+              "tool_use_id": "toolu_1",
+              "type": "tool_result"
+            }
+          ],
+          "role": "user"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "call_id": "toolu_1",
+          "output": [
+            {
+              "text": "Error:",
+              "type": "input_text"
+            },
+            {
+              "image_url": "u",
+              "type": "input_image"
+            }
+          ],
+          "type": "function_call_output"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_an_error_result_with_an_image_prefixes_its_text"
+  ]
+}

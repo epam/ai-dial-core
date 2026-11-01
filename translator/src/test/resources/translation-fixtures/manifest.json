@@ -1,0 +1,11 @@
+{
+  "translator_commit": "5e70209dae60f8de2c090972da32de38058e8600",
+  "dirty": false,
+  "counts": {
+    "request": 186,
+    "response": 41,
+    "stream": 60
+  },
+  "normalization": "Each distinct srvtoolu_<32 hex> in an output is replaced by srvtoolu_<n>, n = 1, 2, \u2026 in order of first appearance in the output serialized with sorted keys. Apply the same to the replayed output before comparing.",
+  "replay_mismatches": []
+}

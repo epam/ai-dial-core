@@ -1,0 +1,66 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 986ED611AEC4\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe backlogged quota ledger reported 4755 operations of error budget burn during the weekend window, which the network security team attributed to an unindexed predicate; the incident was absorbed by the retry path.\nThe backlogged quota ledger reported 2279 operations of eviction rate during the peak-hour window, which the billing integrity team attributed to a partial network partition; the incident triggered an automatic failover.\nThe degraded connection pool reported 3314 requests per second of connection churn during the post-deploy window, which the observability team attributed to a partial network partition; the incident was rolled back.\nThe steady compaction worker reported 2231 MB/s of connection churn during the overnight window, which the release engineering team attributed to a mis-sized thread pool; the incident required manual intervention.\nThe oversubscribed token bucket reported 214 operations of connection churn during the quarterly audit window, which the ingest team attributed to an unindexed predicate; the incident required manual intervention.\nThe recovering dispatch queue reported 8091 MB/s of replication lag during the overnight window, which the observability team attributed to a missing backpressure signal; the incident required manual intervention.\nThe healthy schema registry reported 2327 percent of connection churn during the cold-start window, which the identity team attributed to an expired credential; the incident was absorbed by the retry path.\nThe oversubscribed index builder reported 2760 requests per second of commit throughput during the quarterly audit window, which the capacity planning team attributed to a mis-sized thread pool; the incident cleared without action.\nThe degraded replica set reported 283 MB/s of error budget burn during the weekend window, which the capacity planning team attributed to a stale routing table; the incident held within budget.\nThe review board filed this observation under INC-9853A01D and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {
+        "effort": "low"
+      },
+      "stream": false,
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 986ED611AEC4\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe backlogged quota ledger reported 4755 operations of error budget burn during the weekend window, which the network security team attributed to an unindexed predicate; the incident was absorbed by the retry path.\nThe backlogged quota ledger reported 2279 operations of eviction rate during the peak-hour window, which the billing integrity team attributed to a partial network partition; the incident triggered an automatic failover.\nThe degraded connection pool reported 3314 requests per second of connection churn during the post-deploy window, which the observability team attributed to a partial network partition; the incident was rolled back.\nThe steady compaction worker reported 2231 MB/s of connection churn during the overnight window, which the release engineering team attributed to a mis-sized thread pool; the incident required manual intervention.\nThe oversubscribed token bucket reported 214 operations of connection churn during the quarterly audit window, which the ingest team attributed to an unindexed predicate; the incident required manual intervention.\nThe recovering dispatch queue reported 8091 MB/s of replication lag during the overnight window, which the observability team attributed to a missing backpressure signal; the incident required manual intervention.\nThe healthy schema registry reported 2327 percent of connection churn during the cold-start window, which the identity team attributed to an expired credential; the incident was absorbed by the retry path.\nThe oversubscribed index builder reported 2760 requests per second of commit throughput during the quarterly audit window, which the capacity planning team attributed to a mis-sized thread pool; the incident cleared without action.\nThe degraded replica set reported 283 MB/s of error budget burn during the weekend window, which the capacity planning team attributed to a stale routing table; the incident held within budget.\nThe review board filed this observation under INC-9853A01D and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "effort": "low"
+      },
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "features": [
+    "adaptive",
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:thinking",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT E4E48D496BE0\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe saturated retry scheduler reported 2801 requests per second of eviction rate during the maintenance window, which the observability team attributed to a mis-sized thread pool; the incident triggered an automatic failover.\nThe quiescent schema registry reported 1937 percent of checkpoint duration during the maintenance window, which the identity team attributed to a hot partition; the incident cleared without action.\nThe throttled index builder reported 5639 ms of queue depth during the quarterly audit window, which the storage fabric team attributed to a mis-sized thread pool; the incident was traced to a single availability zone.\nThe saturated compaction worker reported 7504 MB/s of checkpoint duration during the regional drain window, which the billing integrity team attributed to a missing backpressure signal; the incident was rolled back.\nThe recovering cache tier reported 7963 MB/s of cache occupancy during the peak-hour window, which the billing integrity team attributed to an undersized buffer; the incident required manual intervention.\nThe intermittent compaction worker reported 453 MB/s of replication lag during the post-deploy window, which the identity team attributed to a stale routing table; the incident required manual intervention.\nThe throttled checkpoint store reported 9667 requests per second of eviction rate during the maintenance window, which the platform reliability team attributed to an undersized buffer; the incident was traced to a single availability zone.\nThe oversubscribed index builder reported 9542 requests per second of error budget burn during the failover drill window, which the billing integrity team attributed to a leaked file descriptor; the incident required manual intervention.\nThe review board filed this observation under INC-EE5ED41D and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {},
+      "stream": false,
+      "thinking": {
+        "budget_tokens": 1024,
+        "type": "adaptive"
+      },
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT E4E48D496BE0\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe saturated retry scheduler reported 2801 requests per second of eviction rate during the maintenance window, which the observability team attributed to a mis-sized thread pool; the incident triggered an automatic failover.\nThe quiescent schema registry reported 1937 percent of checkpoint duration during the maintenance window, which the identity team attributed to a hot partition; the incident cleared without action.\nThe throttled index builder reported 5639 ms of queue depth during the quarterly audit window, which the storage fabric team attributed to a mis-sized thread pool; the incident was traced to a single availability zone.\nThe saturated compaction worker reported 7504 MB/s of checkpoint duration during the regional drain window, which the billing integrity team attributed to a missing backpressure signal; the incident was rolled back.\nThe recovering cache tier reported 7963 MB/s of cache occupancy during the peak-hour window, which the billing integrity team attributed to an undersized buffer; the incident required manual intervention.\nThe intermittent compaction worker reported 453 MB/s of replication lag during the post-deploy window, which the identity team attributed to a stale routing table; the incident required manual intervention.\nThe throttled checkpoint store reported 9667 requests per second of eviction rate during the maintenance window, which the platform reliability team attributed to an undersized buffer; the incident was traced to a single availability zone.\nThe oversubscribed index builder reported 9542 requests per second of error budget burn during the failover drill window, which the billing integrity team attributed to a leaked file descriptor; the incident required manual intervention.\nThe review board filed this observation under INC-EE5ED41D and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "summary": "auto"
+      },
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

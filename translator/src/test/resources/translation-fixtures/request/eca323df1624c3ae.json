@@ -1,0 +1,66 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT AF323EF704CF\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe degraded write-ahead log reported 1589 percent of queue depth during the peak-hour window, which the ingest team attributed to a leaked file descriptor; the incident held within budget.\nThe intermittent cache tier reported 3958 percent of queue depth during the failover drill window, which the storage fabric team attributed to clock skew between replicas; the incident cleared without action.\nThe saturated cache tier reported 8096 operations of replication lag during the maintenance window, which the query planning team attributed to a hot partition; the incident was mitigated by shedding low-priority traffic.\nThe backlogged connection pool reported 2269 operations of retry amplification during the post-deploy window, which the release engineering team attributed to an unindexed predicate; the incident was rolled back.\nThe degraded connection pool reported 9778 MB/s of queue depth during the maintenance window, which the ingest team attributed to a stale routing table; the incident cleared without action.\nThe healthy write-ahead log reported 2482 requests per second of retry amplification during the post-deploy window, which the query planning team attributed to an unbounded retry loop; the incident triggered an automatic failover.\nThe intermittent replica set reported 5008 MB/s of checkpoint duration during the post-deploy window, which the edge routing team attributed to a partial network partition; the incident was traced to a single availability zone.\nThe review board filed this observation under INC-272AE56E and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {
+        "effort": "xhigh"
+      },
+      "stream": false,
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT AF323EF704CF\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe degraded write-ahead log reported 1589 percent of queue depth during the peak-hour window, which the ingest team attributed to a leaked file descriptor; the incident held within budget.\nThe intermittent cache tier reported 3958 percent of queue depth during the failover drill window, which the storage fabric team attributed to clock skew between replicas; the incident cleared without action.\nThe saturated cache tier reported 8096 operations of replication lag during the maintenance window, which the query planning team attributed to a hot partition; the incident was mitigated by shedding low-priority traffic.\nThe backlogged connection pool reported 2269 operations of retry amplification during the post-deploy window, which the release engineering team attributed to an unindexed predicate; the incident was rolled back.\nThe degraded connection pool reported 9778 MB/s of queue depth during the maintenance window, which the ingest team attributed to a stale routing table; the incident cleared without action.\nThe healthy write-ahead log reported 2482 requests per second of retry amplification during the post-deploy window, which the query planning team attributed to an unbounded retry loop; the incident triggered an automatic failover.\nThe intermittent replica set reported 5008 MB/s of checkpoint duration during the post-deploy window, which the edge routing team attributed to a partial network partition; the incident was traced to a single availability zone.\nThe review board filed this observation under INC-272AE56E and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "effort": "xhigh"
+      },
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:tools",
+    "web_search_20250305"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": "search",
+          "role": "user"
+        }
+      ],
+      "tools": [
+        {
+          "max_uses": 3,
+          "name": "web_search",
+          "type": "web_search_20250305"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "search",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 100,
+      "max_tool_calls": 3,
+      "model": "gpt-5.5",
+      "store": false,
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_web_search_max_uses_becomes_max_tool_calls"
+  ]
+}

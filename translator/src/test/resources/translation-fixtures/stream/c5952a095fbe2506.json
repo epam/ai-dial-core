@@ -1,0 +1,254 @@
+{
+  "features": [
+    "reasoning",
+    "response.completed",
+    "response.output_item.done",
+    "response.reasoning_summary_text.delta",
+    "response.reasoning_text.delta"
+  ],
+  "input": {
+    "calls": [
+      {
+        "handle": {
+          "data": {
+            "delta": "summary",
+            "output_index": 0,
+            "type": "response.reasoning_summary_text.delta"
+          },
+          "event_type": "response.reasoning_summary_text.delta"
+        }
+      },
+      {
+        "handle": {
+          "data": {
+            "delta": "detail",
+            "output_index": 0,
+            "type": "response.reasoning_text.delta"
+          },
+          "event_type": "response.reasoning_text.delta"
+        }
+      },
+      {
+        "handle": {
+          "data": {
+            "item": {
+              "encrypted_content": "dialenc:dXBzdHJlYW0=;gAAAA_+/opaque==",
+              "id": "dialenc_original-id",
+              "summary": [],
+              "type": "reasoning"
+            },
+            "output_index": 0,
+            "type": "response.output_item.done"
+          },
+          "event_type": "response.output_item.done"
+        }
+      },
+      {
+        "handle": {
+          "data": {
+            "item": {
+              "encrypted_content": "second",
+              "id": "dialenc_original-id",
+              "summary": [],
+              "type": "reasoning"
+            },
+            "output_index": 1,
+            "type": "response.output_item.done"
+          },
+          "event_type": "response.output_item.done"
+        }
+      },
+      {
+        "handle": {
+          "data": {
+            "item": {
+              "encrypted_content": "duplicate",
+              "id": "dialenc_original-id",
+              "summary": [],
+              "type": "reasoning"
+            },
+            "output_index": 1,
+            "type": "response.output_item.done"
+          },
+          "event_type": "response.output_item.done"
+        }
+      },
+      {
+        "handle": {
+          "data": {
+            "output_index": 0,
+            "response": {
+              "id": "resp_123",
+              "model": "gpt-5.5",
+              "object": "response",
+              "output": [
+                {
+                  "encrypted_content": "dialenc:dXBzdHJlYW0=;gAAAA_+/opaque==",
+                  "id": "dialenc_original-id",
+                  "summary": [],
+                  "type": "reasoning"
+                },
+                {
+                  "encrypted_content": "second",
+                  "id": "dialenc_original-id",
+                  "summary": [],
+                  "type": "reasoning"
+                }
+              ],
+              "status": "completed",
+              "usage": {
+                "input_tokens": 12,
+                "input_tokens_details": {
+                  "cached_tokens": 4
+                },
+                "output_tokens": 7,
+                "total_tokens": 19
+              }
+            },
+            "type": "response.completed"
+          },
+          "event_type": "response.completed"
+        }
+      }
+    ],
+    "omit_thinking": false,
+    "requested_model": "gpt-5.5",
+    "tool_names": null
+  },
+  "kind": "stream",
+  "output": [
+    [
+      {
+        "data": {
+          "message": {
+            "content": [],
+            "id": "resp_unknown",
+            "model": "gpt-5.5",
+            "role": "assistant",
+            "stop_reason": null,
+            "stop_sequence": null,
+            "type": "message",
+            "usage": {
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            }
+          },
+          "type": "message_start"
+        },
+        "event": "message_start"
+      },
+      {
+        "data": {
+          "type": "ping"
+        },
+        "event": "ping"
+      },
+      {
+        "data": {
+          "content_block": {
+            "signature": "",
+            "thinking": "",
+            "type": "thinking"
+          },
+          "index": 0,
+          "type": "content_block_start"
+        },
+        "event": "content_block_start"
+      },
+      {
+        "data": {
+          "delta": {
+            "thinking": "summary",
+            "type": "thinking_delta"
+          },
+          "index": 0,
+          "type": "content_block_delta"
+        },
+        "event": "content_block_delta"
+      }
+    ],
+    [
+      {
+        "data": {
+          "delta": {
+            "thinking": "\n\ndetail",
+            "type": "thinking_delta"
+          },
+          "index": 0,
+          "type": "content_block_delta"
+        },
+        "event": "content_block_delta"
+      }
+    ],
+    [
+      {
+        "data": {
+          "delta": {
+            "signature": "{\"dial_translator_reasoning_wrapper\":{\"version\":2,\"id\":\"dialenc_original-id\",\"encrypted_content\":\"dialenc:dXBzdHJlYW0=;gAAAA_+/opaque==\"}}",
+            "type": "signature_delta"
+          },
+          "index": 0,
+          "type": "content_block_delta"
+        },
+        "event": "content_block_delta"
+      },
+      {
+        "data": {
+          "index": 0,
+          "type": "content_block_stop"
+        },
+        "event": "content_block_stop"
+      }
+    ],
+    [
+      {
+        "data": {
+          "content_block": {
+            "data": "{\"dial_translator_reasoning_wrapper\":{\"version\":2,\"id\":\"dialenc_original-id\",\"encrypted_content\":\"second\"}}",
+            "type": "redacted_thinking"
+          },
+          "index": 1,
+          "type": "content_block_start"
+        },
+        "event": "content_block_start"
+      },
+      {
+        "data": {
+          "index": 1,
+          "type": "content_block_stop"
+        },
+        "event": "content_block_stop"
+      }
+    ],
+    [],
+    [
+      {
+        "data": {
+          "delta": {
+            "stop_reason": "end_turn",
+            "stop_sequence": null
+          },
+          "type": "message_delta",
+          "usage": {
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 4,
+            "input_tokens": 8,
+            "output_tokens": 7
+          }
+        },
+        "event": "message_delta"
+      },
+      {
+        "data": {
+          "type": "message_stop"
+        },
+        "event": "message_stop"
+      }
+    ]
+  ],
+  "tests": [
+    "tests/test_reasoning_replay.py::test_stream_handles_multiple_items_and_raw_reasoning_channel"
+  ]
+}

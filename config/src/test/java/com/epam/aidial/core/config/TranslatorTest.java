@@ -194,6 +194,34 @@ public class TranslatorTest {
     }
 
     @Test
+    void inlineBuiltinTranslatorStaysInline() throws Exception {
+        String json = """
+                {
+                    "interfaces": {
+                        "anthropicMessages": {
+                            "mode": "translator",
+                            "translator": {
+                                "out": "openaiResponses",
+                                "builtin": "anthropicMessagesToOpenaiResponses"
+                            }
+                        }
+                    }
+                }
+                """;
+
+        String written = MAPPER.writeValueAsString(MAPPER.readValue(json, Model.class));
+        Model restored = MAPPER.readValue(written, Model.class);
+
+        TranslatorRef translator = translatorOf(restored);
+        assertNull(translator.getName());
+        assertEquals(OPENAI_RESPONSES, translator.getInline().getOut());
+        assertEquals(BuiltinTranslator.ANTHROPIC_MESSAGES_TO_OPENAI_RESPONSES, translator.getInline().getBuiltin());
+        assertNull(translator.getInline().getBaseUrl());
+        assertTrue(written.contains("\"builtin\":\"anthropicMessagesToOpenaiResponses\""), written);
+        assertFalse(written.contains("baseUrl"), written);
+    }
+
+    @Test
     void translatorIsOmittedWhenAbsent() throws Exception {
         Model model = new Model();
         model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), new DeploymentInterface("http://anthropic")));

@@ -1,0 +1,61 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:tools",
+    "mcp_toolset"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": "hi",
+          "role": "user"
+        }
+      ],
+      "tools": [
+        {
+          "mcp_server_name": "github",
+          "type": "mcp_toolset"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "hi",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false,
+      "tools": [
+        {
+          "mcp_server_name": "github",
+          "type": "mcp_toolset"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_a_tool_with_no_counterpart_is_forwarded_as_sent[tool5]"
+  ]
+}

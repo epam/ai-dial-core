@@ -164,6 +164,11 @@ message.
 - **WHEN** a system turn holds `[{"type": "text", "text": "a"}, {"type": "mid_conv_system", "content": [{"type": "text", "text": "b"}]}]`
 - **THEN** the origin `input` has one `system` message with the parts `a` and `b`
 
+#### Scenario: Mid-conversation block in a user turn
+- **WHEN** a user turn holds `[{"type": "text", "text": "carry on"}, {"type": "mid_conv_system", "content": "injected"}]`
+- **THEN** the origin `input` is a `system` message with the part `injected`, then a `user` message with the part
+  `carry on`
+
 #### Scenario: Mid-conversation system text after tool results
 - **WHEN** a builtin-translated request has a user turn `[{"type": "text", "text": "carry on"}, {"type":
   "mid_conv_system", "content": [{"type": "text", "text": "injected"}]}, {"type": "tool_result", "tool_use_id":
@@ -247,6 +252,10 @@ Core SHALL answer `400` to a builtin-translated request whose user turn holds a 
 #### Scenario: Image block
 - **WHEN** a client sends a builtin-translated request whose user turn holds a block of type `image`
 - **THEN** Core answers `400` with a message containing `'image'`, and the origin receives no request
+
+#### Scenario: Tool use block
+- **WHEN** a builtin-translated request has a user turn holding a `tool_use` block
+- **THEN** Core answers `400` with a message containing `'tool_use' in the user turn`
 
 #### Scenario: Image inside a tool result
 - **WHEN** a builtin-translated request has a user turn whose `tool_result` content is `[{"type": "image", "source":

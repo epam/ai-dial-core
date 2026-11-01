@@ -1,0 +1,66 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT E3D0C7ED99E6\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe degraded shard coordinator reported 1878 percent of connection churn during the failover drill window, which the observability team attributed to an expired credential; the incident triggered an automatic failover.\nThe throttled connection pool reported 9970 operations of eviction rate during the cold-start window, which the release engineering team attributed to a leaked file descriptor; the incident required manual intervention.\nThe intermittent token bucket reported 5479 requests per second of cache occupancy during the peak-hour window, which the ingest team attributed to a missing backpressure signal; the incident was mitigated by shedding low-priority traffic.\nThe oversubscribed write-ahead log reported 5976 requests per second of error budget burn during the cold-start window, which the storage fabric team attributed to a hot partition; the incident was rolled back.\nThe backlogged replica set reported 3946 requests per second of cache occupancy during the maintenance window, which the edge routing team attributed to a leaked file descriptor; the incident cleared without action.\nThe intermittent cache tier reported 7382 ms of queue depth during the post-deploy window, which the network security team attributed to a partial network partition; the incident was traced to a single availability zone.\nThe oversubscribed token bucket reported 8210 ms of cache occupancy during the quarterly audit window, which the release engineering team attributed to an unbounded retry loop; the incident was mitigated by shedding low-priority traffic.\nThe review board filed this observation under INC-825C8E17 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {
+        "effort": "high"
+      },
+      "stream": false,
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT E3D0C7ED99E6\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe degraded shard coordinator reported 1878 percent of connection churn during the failover drill window, which the observability team attributed to an expired credential; the incident triggered an automatic failover.\nThe throttled connection pool reported 9970 operations of eviction rate during the cold-start window, which the release engineering team attributed to a leaked file descriptor; the incident required manual intervention.\nThe intermittent token bucket reported 5479 requests per second of cache occupancy during the peak-hour window, which the ingest team attributed to a missing backpressure signal; the incident was mitigated by shedding low-priority traffic.\nThe oversubscribed write-ahead log reported 5976 requests per second of error budget burn during the cold-start window, which the storage fabric team attributed to a hot partition; the incident was rolled back.\nThe backlogged replica set reported 3946 requests per second of cache occupancy during the maintenance window, which the edge routing team attributed to a leaked file descriptor; the incident cleared without action.\nThe intermittent cache tier reported 7382 ms of queue depth during the post-deploy window, which the network security team attributed to a partial network partition; the incident was traced to a single availability zone.\nThe oversubscribed token bucket reported 8210 ms of cache occupancy during the quarterly audit window, which the release engineering team attributed to an unbounded retry loop; the incident was mitigated by shedding low-priority traffic.\nThe review board filed this observation under INC-825C8E17 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "effort": "high"
+      },
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

@@ -386,6 +386,20 @@
         "openaiResponses": {"base_url": "http://localhost:4848", "features": {"consentRequired": true}},
         "anthropicMessages": {"mode": "translator", "translator": "builtinResponses"}
       }
+    },
+    "gpt-builtin-limited": {
+      "type": "chat",
+      "interfaces": {
+        "openaiResponses": {"base_url": "http://localhost:4848"},
+        "anthropicMessages": {"mode": "translator", "translator": "builtinResponses"}
+      }
+    },
+    "gpt-builtin-closed": {
+      "type": "chat",
+      "interfaces": {
+        "openaiResponses": {"base_url": "http://localhost:4848", "features": {"accessibleByPerRequestKey": false}},
+        "anthropicMessages": {"mode": "translator", "translator": "builtinResponses"}
+      }
     }
   },
   "toolsets": {
@@ -470,6 +484,7 @@
         "default-headers-model": {"minute": "100000", "day": "10000000"},
         "gpt-builtin": {"minute": "100000", "day": "10000000"},
         "gpt-builtin-consent": {"minute": "100000", "day": "10000000"},
+        "gpt-builtin-limited": {"minute": "10", "day": "10"},
         "claude-ns": {"minute": "100000", "day": "10000000"},
         "claude-stream": {"minute": "100000", "day": "10000000"},
         "claude-count": {"minute": "100000", "day": "10000000"},

@@ -1,0 +1,195 @@
+# Fixtures in translation-fixtures/ that the Java translation does not match yet.
+#
+# Read by TranslationFixtureParityTest. One fixture per line:
+#
+#   <kind>/<file> <change id>
+#
+# A listed fixture that fails is skipped. The test fails when a listed fixture passes, when an unlisted
+# in-scope fixture fails, and when a line names a fixture that is missing or out of scope. So the list can
+# only shrink: a change that makes a fixture pass deletes its line.
+#
+# The change id is the fixture's owner, the last change of the series it needs, read from the fixture's
+# `features`, a request's `output_config` and the event type of each stream `handle` call:
+#   - a response fixture, or a stream fixture with an `emit_error` call: builtin-translator-non-streaming-errors;
+#   - else one that needs reasoning (a feature among reasoning, thinking, redacted_thinking, summary_text,
+#     reasoning_text, field:thinking, omit_thinking, adaptive, enabled, disabled; an `output_config` holding
+#     `effort`; or an event type starting with `response.reasoning_`): builtin-translator-reasoning;
+#   - else one that needs tools (a feature among field:tools, field:tool_choice, function_call, tool_use,
+#     tool_result; or the event type response.function_call_arguments.delta or .done): builtin-translator-tools;
+#   - else builtin-translator-fixture-parity.
+#
+# Refreshing the fixtures: rerun the recorder in the Python translator repository, delete translation-fixtures/,
+# copy the recorder's new output in its place, run TranslationFixtureParityTest and update this list.
+
+response/02025bcdf8ce458d.json builtin-translator-non-streaming-errors
+response/0207a41bf90cd707.json builtin-translator-non-streaming-errors
+response/0670d93a7ae3830d.json builtin-translator-non-streaming-errors
+response/233df5294f163937.json builtin-translator-non-streaming-errors
+response/269a38895f482a3e.json builtin-translator-non-streaming-errors
+response/31fb0437fc740d9e.json builtin-translator-non-streaming-errors
+response/34a18d839b7b1442.json builtin-translator-non-streaming-errors
+response/35324209b78e9755.json builtin-translator-non-streaming-errors
+response/384ae4f41d7c3eb2.json builtin-translator-non-streaming-errors
+response/3a3eefcef325537e.json builtin-translator-non-streaming-errors
+response/49bcfa88a80c64d0.json builtin-translator-non-streaming-errors
+response/5a43905f8a52a05c.json builtin-translator-non-streaming-errors
+response/5ff73f6c16864fde.json builtin-translator-non-streaming-errors
+response/619315880f5ec3e5.json builtin-translator-non-streaming-errors
+response/687e214160fad229.json builtin-translator-non-streaming-errors
+response/6bd40e3f9ebffd64.json builtin-translator-non-streaming-errors
+response/6cc31c730a7500bf.json builtin-translator-non-streaming-errors
+response/70e27cf29036685a.json builtin-translator-non-streaming-errors
+response/7113b3c4a8b09a84.json builtin-translator-non-streaming-errors
+response/716c4175a7fc7fc6.json builtin-translator-non-streaming-errors
+response/7a7d3f77dd9cf634.json builtin-translator-non-streaming-errors
+response/81da2169b8611ecb.json builtin-translator-non-streaming-errors
+response/9b9a9a40e39a8c10.json builtin-translator-non-streaming-errors
+response/a713e7efdba07d6a.json builtin-translator-non-streaming-errors
+response/a778e65400b4ec03.json builtin-translator-non-streaming-errors
+response/ae3a4a688b38baef.json builtin-translator-non-streaming-errors
+response/b4cce6d7e720bb07.json builtin-translator-non-streaming-errors
+response/b5113ce0abbc15c0.json builtin-translator-non-streaming-errors
+response/b7e739e19bc3007a.json builtin-translator-non-streaming-errors
+response/bf1e3bdfb44fffb0.json builtin-translator-non-streaming-errors
+response/c248bed012fcdca7.json builtin-translator-non-streaming-errors
+response/d0f29113a3808d5b.json builtin-translator-non-streaming-errors
+response/db87c73dcecf9496.json builtin-translator-non-streaming-errors
+response/dd17760d20809c2a.json builtin-translator-non-streaming-errors
+response/eedfa6f7ee3c85a1.json builtin-translator-non-streaming-errors
+response/ff322dd3b51c834d.json builtin-translator-non-streaming-errors
+stream/b9750ab0ed887b26.json builtin-translator-non-streaming-errors
+stream/f6f52a87e0be887d.json builtin-translator-non-streaming-errors
+request/004c9adf0777021e.json builtin-translator-reasoning
+request/02f610bee1486507.json builtin-translator-reasoning
+request/0a9335258ff4cde1.json builtin-translator-reasoning
+request/0c33b635b30740a5.json builtin-translator-reasoning
+request/171961a52217ceb6.json builtin-translator-reasoning
+request/19ab72ea457a9bcf.json builtin-translator-reasoning
+request/1c2548b8ba928670.json builtin-translator-reasoning
+request/1cbff87a91e0ac54.json builtin-translator-reasoning
+request/1d4e46e395abcdfa.json builtin-translator-reasoning
+request/1f010fbda5773122.json builtin-translator-reasoning
+request/204dd75afa2c98cd.json builtin-translator-reasoning
+request/234ed3d1978eb795.json builtin-translator-reasoning
+request/277fcd5b6dcb4014.json builtin-translator-reasoning
+request/27cfd319c89a6942.json builtin-translator-reasoning
+request/2d515502608df9a9.json builtin-translator-reasoning
+request/2e56ef0cac05a0cf.json builtin-translator-reasoning
+request/2e8d255982c21425.json builtin-translator-reasoning
+request/34a35ec7d6724789.json builtin-translator-reasoning
+request/35b63d6b977b5e59.json builtin-translator-reasoning
+request/35f3dc2cc16684b8.json builtin-translator-reasoning
+request/425c4c20b154acc7.json builtin-translator-reasoning
+request/47aa290459c3b5ee.json builtin-translator-reasoning
+request/49d6a735c53cc8c0.json builtin-translator-reasoning
+request/4e850be98fe5fbdf.json builtin-translator-reasoning
+request/544aa5911dea137f.json builtin-translator-reasoning
+request/56ee759be04053e6.json builtin-translator-reasoning
+request/56f9e5d113e30411.json builtin-translator-reasoning
+request/5c47278968e47156.json builtin-translator-reasoning
+request/607fbad4ef553b7c.json builtin-translator-reasoning
+request/630bc329c827472c.json builtin-translator-reasoning
+request/638befe204fa4fdc.json builtin-translator-reasoning
+request/6b2b88df3d96a2d4.json builtin-translator-reasoning
+request/6bbb6f2b0f498e29.json builtin-translator-reasoning
+request/6d04b119cea91a70.json builtin-translator-reasoning
+request/6d52ee8bb92363ba.json builtin-translator-reasoning
+request/6e2e4fde79b4fd93.json builtin-translator-reasoning
+request/6ef7fe30f79cfccb.json builtin-translator-reasoning
+request/70c6cf1e90c3d83f.json builtin-translator-reasoning
+request/7b9907f12ed85fd0.json builtin-translator-reasoning
+request/7e151b41c2adbca6.json builtin-translator-reasoning
+request/83fa47a22e338f13.json builtin-translator-reasoning
+request/8dbd1fd7aaa54498.json builtin-translator-reasoning
+request/907056cb0a304237.json builtin-translator-reasoning
+request/93720a1bc78ab312.json builtin-translator-reasoning
+request/995f740eff2f5432.json builtin-translator-reasoning
+request/a05d93a9310bb26d.json builtin-translator-reasoning
+request/ab0defbe1c1e6c86.json builtin-translator-reasoning
+request/ae223eeb91a8c9e2.json builtin-translator-reasoning
+request/b302927c9e63f313.json builtin-translator-reasoning
+request/b94f30bddf05e8ba.json builtin-translator-reasoning
+request/c0420311496405b5.json builtin-translator-reasoning
+request/c9d6aade1db9f972.json builtin-translator-reasoning
+request/ca3a2464d84b4268.json builtin-translator-reasoning
+request/d06277a35d48c659.json builtin-translator-reasoning
+request/d59ae1b40797127f.json builtin-translator-reasoning
+request/d91df7dc1db638a8.json builtin-translator-reasoning
+request/dae756375456ed34.json builtin-translator-reasoning
+request/dc14ee66c79c938f.json builtin-translator-reasoning
+request/dd5eab4a1a8de572.json builtin-translator-reasoning
+request/dfa3cdc55bd488b2.json builtin-translator-reasoning
+request/e12a45a36a7c9ec4.json builtin-translator-reasoning
+request/e4477d0840979f7c.json builtin-translator-reasoning
+request/e46d4f210915659a.json builtin-translator-reasoning
+request/eca323df1624c3ae.json builtin-translator-reasoning
+request/f61a93ded53bea3b.json builtin-translator-reasoning
+request/f9427e0c31d95396.json builtin-translator-reasoning
+request/fbf74ce6b9cc4a3a.json builtin-translator-reasoning
+request/fd8641573730634f.json builtin-translator-reasoning
+request/fe6f04a92b1eb13d.json builtin-translator-reasoning
+stream/034f9395f501f56e.json builtin-translator-reasoning
+stream/04af625daba84405.json builtin-translator-reasoning
+stream/0f6cd974d121de33.json builtin-translator-reasoning
+stream/10cd8ef15082b746.json builtin-translator-reasoning
+stream/2862869787a8c0c3.json builtin-translator-reasoning
+stream/3519895fe902b51d.json builtin-translator-reasoning
+stream/41aaefbef8fedd36.json builtin-translator-reasoning
+stream/4fc9c021f58a78d9.json builtin-translator-reasoning
+stream/599140dfd1562f5a.json builtin-translator-reasoning
+stream/5b8d20f5950807ee.json builtin-translator-reasoning
+stream/61e833c70ec78569.json builtin-translator-reasoning
+stream/66b000678f931bd0.json builtin-translator-reasoning
+stream/7b1e7af74235b30c.json builtin-translator-reasoning
+stream/9466205ab633d265.json builtin-translator-reasoning
+stream/98abbef4d7ea30f1.json builtin-translator-reasoning
+stream/9e0476db7f3e4f00.json builtin-translator-reasoning
+stream/9e9c99eb4cb2d82a.json builtin-translator-reasoning
+stream/b4a5b00d835af214.json builtin-translator-reasoning
+stream/b5dc8d21f2b61294.json builtin-translator-reasoning
+stream/c2c2b1ae3d574247.json builtin-translator-reasoning
+stream/c5952a095fbe2506.json builtin-translator-reasoning
+stream/e7016a4838045214.json builtin-translator-reasoning
+stream/f090be3551756c51.json builtin-translator-reasoning
+stream/f89efceb6da70718.json builtin-translator-reasoning
+request/04320812394f4615.json builtin-translator-tools
+request/14001a47b6ce91bc.json builtin-translator-tools
+request/188c043ffd1a84c8.json builtin-translator-tools
+request/1a4a0cb3ed053b75.json builtin-translator-tools
+request/29df02ff22d58b76.json builtin-translator-tools
+request/47c3cc7fa43e51a9.json builtin-translator-tools
+request/48ff724e4a5d02aa.json builtin-translator-tools
+request/4cc69bc54b560dd2.json builtin-translator-tools
+request/58bb44046f4133c9.json builtin-translator-tools
+request/6ffa33973ba9ebc3.json builtin-translator-tools
+request/754c57387cbb32da.json builtin-translator-tools
+request/7b07054bb40fa343.json builtin-translator-tools
+request/7c9554ff2f718fb9.json builtin-translator-tools
+request/8632ce83897bd3b5.json builtin-translator-tools
+request/8e6ed727c22cc759.json builtin-translator-tools
+request/94aaa2d1c5aa38e5.json builtin-translator-tools
+request/94f36a07a706178d.json builtin-translator-tools
+request/9d971f93a3ddd5b9.json builtin-translator-tools
+request/a38bc77809a749b9.json builtin-translator-tools
+request/a4408dc7a87ebca8.json builtin-translator-tools
+request/ada56916cdee9fb9.json builtin-translator-tools
+request/af08976913d565df.json builtin-translator-tools
+request/b47c25ba2be01825.json builtin-translator-tools
+request/b6d62f21f20cc7c6.json builtin-translator-tools
+request/bca67803b2bccfa7.json builtin-translator-tools
+request/bf5f7cd21361c662.json builtin-translator-tools
+request/cc99849f4693ddae.json builtin-translator-tools
+request/ce4880e43e3698e7.json builtin-translator-tools
+request/dca1af90512c24e6.json builtin-translator-tools
+request/e01f9391a0828416.json builtin-translator-tools
+request/e16487dcbfe90e10.json builtin-translator-tools
+request/f08d86a9c8186e0c.json builtin-translator-tools
+request/fa3e6e89fce0d0cf.json builtin-translator-tools
+request/fd02f55c17fe3b30.json builtin-translator-tools
+request/ff219911c1f9da5f.json builtin-translator-tools
+stream/9e7b27ef0e55a351.json builtin-translator-tools
+stream/b199620dab510b59.json builtin-translator-tools
+stream/d0fe7b7b9867b7b5.json builtin-translator-tools
+stream/ed9b9b392603dae8.json builtin-translator-tools
+stream/f34a530f8e81e6f5.json builtin-translator-tools
+stream/f4f5960703e43647.json builtin-translator-tools

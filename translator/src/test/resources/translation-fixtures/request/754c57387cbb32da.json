@@ -1,0 +1,64 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "text",
+    "tool_result"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": [
+            {
+              "content": "42",
+              "tool_use_id": "toolu_1",
+              "type": "tool_result"
+            },
+            {
+              "text": "and now?",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "call_id": "toolu_1",
+          "output": "42",
+          "type": "function_call_output"
+        },
+        {
+          "content": [
+            {
+              "text": "and now?",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_tool_result_precedes_the_residual_user_message"
+  ]
+}

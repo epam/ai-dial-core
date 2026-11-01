@@ -1,0 +1,52 @@
+{
+  "features": [
+    "error",
+    "message",
+    "output_text"
+  ],
+  "input": {
+    "omit_thinking": false,
+    "requested_model": "gpt-5.5",
+    "response": {
+      "id": "resp_123",
+      "model": "gpt-5.5",
+      "object": "response",
+      "output": [
+        {
+          "content": [
+            {
+              "annotations": [],
+              "text": "partial",
+              "type": "output_text"
+            }
+          ],
+          "id": "msg_1",
+          "role": "assistant",
+          "status": "completed",
+          "type": "message"
+        }
+      ],
+      "status": "cancelled",
+      "usage": {
+        "input_tokens": 12,
+        "input_tokens_details": {
+          "cached_tokens": 4
+        },
+        "output_tokens": 7,
+        "total_tokens": 19
+      }
+    },
+    "tool_names": null
+  },
+  "kind": "response",
+  "output": {
+    "error": {
+      "message": "The upstream response did not complete (status 'cancelled')",
+      "status": 502,
+      "type": "api_error"
+    }
+  },
+  "tests": [
+    "tests/test_from_responses.py::test_a_response_that_never_finished_is_an_error[cancelled]"
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "features": [
+    "base64",
+    "document",
+    "field:max_tokens",
+    "field:messages"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": [
+            {
+              "source": {
+                "data": "QUJD",
+                "media_type": "application/pdf",
+                "type": "base64"
+              },
+              "title": "report.pdf",
+              "type": "document"
+            }
+          ],
+          "role": "user"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "file_data": "data:application/pdf;base64,QUJD",
+              "filename": "report.pdf",
+              "type": "input_file"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_base64_document_becomes_an_input_file"
+  ]
+}

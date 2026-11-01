@@ -115,7 +115,8 @@ public class MessagesController extends MessagesBaseController {
         ProxyUtil.processChain(request, List.of(new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES)));
         ResponsesApiRequest translated;
         try {
-            translated = new ResponsesApiRequest(MessagesToResponses.translateRequest(request.getTree()));
+            // only a streaming request gets here, and Core is the transport that sets it
+            translated = new ResponsesApiRequest(MessagesToResponses.translateRequest(request.getTree(), request.getModel()).put("stream", true));
         } catch (UntranslatableRequestException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
         }

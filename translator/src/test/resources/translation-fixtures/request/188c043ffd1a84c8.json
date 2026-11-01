@@ -1,0 +1,71 @@
+{
+  "features": [
+    "ephemeral",
+    "field:cache_control",
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "cache_control": {
+        "ttl": "1h",
+        "type": "ephemeral"
+      },
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "cache_control": {
+                "ttl": "1h",
+                "type": "ephemeral"
+              },
+              "text": "FIELD REPORT EE1F42074DF4\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe quiescent checkpoint store reported 1156 operations of error budget burn during the overnight window, which the identity team attributed to an undersized buffer; the incident was rolled back.\nThe healthy write-ahead log reported 2341 MB/s of retry amplification during the failover drill window, which the edge routing team attributed to an expired credential; the incident was absorbed by the retry path.\nThe backlogged connection pool reported 9696 MB/s of connection churn during the peak-hour window, which the storage fabric team attributed to an expired credential; the incident was traced to a single availability zone.\nThe healthy ingest buffer reported 8623 requests per second of error budget burn during the post-deploy window, which the capacity planning team attributed to clock skew between replicas; the incident held within budget.\nThe steady replica set reported 5646 requests per second of queue depth during the quarterly audit window, which the identity team attributed to a mis-sized thread pool; the incident was traced to a single availability zone.\nThe recovering compaction worker reported 5667 ms of connection churn during the weekend window, which the platform reliability team attributed to an unbounded retry loop; the incident triggered an automatic failover.\nThe healthy schema registry reported 5652 operations of error budget burn during the failover drill window, which the platform reliability team attributed to a missing backpressure signal; the incident held within budget.\nThe review board filed this observation under INC-94648178 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {},
+      "stream": false,
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT EE1F42074DF4\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe quiescent checkpoint store reported 1156 operations of error budget burn during the overnight window, which the identity team attributed to an undersized buffer; the incident was rolled back.\nThe healthy write-ahead log reported 2341 MB/s of retry amplification during the failover drill window, which the edge routing team attributed to an expired credential; the incident was absorbed by the retry path.\nThe backlogged connection pool reported 9696 MB/s of connection churn during the peak-hour window, which the storage fabric team attributed to an expired credential; the incident was traced to a single availability zone.\nThe healthy ingest buffer reported 8623 requests per second of error budget burn during the post-deploy window, which the capacity planning team attributed to clock skew between replicas; the incident held within budget.\nThe steady replica set reported 5646 requests per second of queue depth during the quarterly audit window, which the identity team attributed to a mis-sized thread pool; the incident was traced to a single availability zone.\nThe recovering compaction worker reported 5667 ms of connection churn during the weekend window, which the platform reliability team attributed to an unbounded retry loop; the incident triggered an automatic failover.\nThe healthy schema registry reported 5652 operations of error budget burn during the failover drill window, which the platform reliability team attributed to a missing backpressure signal; the incident held within budget.\nThe review board filed this observation under INC-94648178 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

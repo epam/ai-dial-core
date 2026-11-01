@@ -1,0 +1,63 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:tools",
+    "web_fetch_20250910"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": "hi",
+          "role": "user"
+        }
+      ],
+      "tools": [
+        {
+          "max_uses": 2,
+          "name": "web_fetch",
+          "type": "web_fetch_20250910"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "hi",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false,
+      "tools": [
+        {
+          "max_uses": 2,
+          "name": "web_fetch",
+          "type": "web_fetch_20250910"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_a_tool_with_no_counterpart_is_forwarded_as_sent[tool4]"
+  ]
+}

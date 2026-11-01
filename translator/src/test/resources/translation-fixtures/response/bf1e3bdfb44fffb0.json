@@ -1,0 +1,102 @@
+{
+  "features": [
+    "message",
+    "output_text",
+    "reasoning",
+    "reasoning_text",
+    "summary_text"
+  ],
+  "input": {
+    "omit_thinking": false,
+    "requested_model": "gpt-5.5",
+    "response": {
+      "id": "resp_123",
+      "model": "gpt-5.5",
+      "object": "response",
+      "output": [
+        {
+          "content": [
+            {
+              "text": "the detail",
+              "type": "reasoning_text"
+            }
+          ],
+          "id": "rs_1",
+          "summary": [
+            {
+              "text": "the plan",
+              "type": "summary_text"
+            }
+          ],
+          "type": "reasoning"
+        },
+        {
+          "content": [
+            {
+              "annotations": [],
+              "text": "done",
+              "type": "output_text"
+            }
+          ],
+          "id": "msg_1",
+          "role": "assistant",
+          "status": "completed",
+          "type": "message"
+        }
+      ],
+      "status": "completed",
+      "usage": {
+        "input_tokens": 12,
+        "input_tokens_details": {
+          "cached_tokens": 4
+        },
+        "output_tokens": 7,
+        "total_tokens": 19
+      }
+    },
+    "tool_names": null
+  },
+  "kind": "response",
+  "output": {
+    "message": {
+      "container": null,
+      "content": [
+        {
+          "signature": "",
+          "thinking": "the plan",
+          "type": "thinking"
+        },
+        {
+          "signature": "",
+          "thinking": "the detail",
+          "type": "thinking"
+        },
+        {
+          "citations": null,
+          "text": "done",
+          "type": "text"
+        }
+      ],
+      "id": "resp_123",
+      "model": "gpt-5.5",
+      "role": "assistant",
+      "stop_details": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "type": "message",
+      "usage": {
+        "cache_creation": null,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 4,
+        "inference_geo": null,
+        "input_tokens": 8,
+        "output_tokens": 7,
+        "server_tool_use": null,
+        "service_tier": null
+      }
+    }
+  },
+  "tests": [
+    "tests/test_from_responses.py::test_reasoning_mirrors_both_summary_and_content_channels"
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "features": [
+    "error",
+    "field:max_tokens",
+    "field:messages",
+    "file",
+    "image",
+    "tool_result"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": [
+            {
+              "content": [
+                {
+                  "source": {
+                    "file_id": "f",
+                    "type": "file"
+                  },
+                  "type": "image"
+                }
+              ],
+              "tool_use_id": "t1",
+              "type": "tool_result"
+            }
+          ],
+          "role": "user"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "error": {
+      "message": "Image source type 'file' cannot be translated to the Responses API: it refers to a file uploaded to Anthropic's Files API, which no other provider can read. Send the image with a 'base64' or 'url' source instead.",
+      "status": 400,
+      "type": "invalid_request_error"
+    }
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_an_image_in_a_tool_result_is_held_to_the_same_rule"
+  ]
+}
