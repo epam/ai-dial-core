@@ -73,6 +73,64 @@ public class SkillResourceApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testSubscriptionReceivesResourceAndFileEvents() {
+        String skillUrl = "skills/" + bucket + "/subscribed-skill";
+        try (EventStream events = subscribe("{\"resources\": [{\"url\": \"" + skillUrl + "\"}]}")) {
+            Map<String, byte[]> files = new LinkedHashMap<>();
+            files.put("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+            verify(uploadSkill("/subscribed-skill", files), 200);
+            assertEvent(events, skillUrl, "CREATE");
+            assertEvent(events, skillUrl + "/files/SKILL.md", "CREATE");
+
+            verify(putSkillFile("/subscribed-skill", "scripts/run.sh", "echo hi".getBytes(StandardCharsets.UTF_8)), 200);
+            assertEvent(events, skillUrl, "UPDATE");
+            assertEvent(events, skillUrl + "/files/scripts/run.sh", "CREATE");
+
+            verify(putSkillFile("/subscribed-skill", "scripts/run.sh", "echo bye".getBytes(StandardCharsets.UTF_8)), 200);
+            assertEvent(events, skillUrl, "UPDATE");
+            assertEvent(events, skillUrl + "/files/scripts/run.sh", "UPDATE");
+
+            verify(deleteSkillFile("/subscribed-skill", "scripts/run.sh"), 200);
+            assertEvent(events, skillUrl, "UPDATE");
+            assertEvent(events, skillUrl + "/files/scripts/run.sh", "DELETE");
+
+            verify(deleteSkill("/subscribed-skill"), 200);
+            assertEvent(events, skillUrl, "DELETE");
+            assertEvent(events, skillUrl + "/files/SKILL.md", "DELETE");
+
+            // internal marker and version files are never exposed
+            assertTrue(events.events.isEmpty());
+        }
+    }
+
+    @Test
+    void testSubscriptionIsScopedToResource() {
+        String otherUrl = "skills/" + bucket + "/other-skill";
+        try (EventStream events = subscribe("{\"resources\": [{\"url\": \"" + otherUrl + "\"}]}")) {
+            Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+            verify(uploadSkill("/unrelated-skill", files), 200);
+            verify(uploadSkill("/other-skill", files), 200);
+
+            assertEvent(events, otherUrl, "CREATE");
+            assertEvent(events, otherUrl + "/files/SKILL.md", "CREATE");
+            assertTrue(events.events.isEmpty());
+        }
+    }
+
+    @Test
+    void testSubscriptionToSkillFolderIsRejected() {
+        Response response = operationRequest("/v1/ops/resource/subscribe",
+                "{\"resources\": [{\"url\": \"skills/" + bucket + "/folder/\"}]}");
+        verify(response, 400, "resource folder is not supported: skills/" + bucket + "/folder/");
+    }
+
+    private static void assertEvent(EventStream events, String url, String action) {
+        JsonNode event = ProxyUtil.convertToObject(events.take(), JsonNode.class);
+        assertEquals(url, event.get("url").asText());
+        assertEquals(action, event.get("action").asText());
+    }
+
+    @Test
     void testRejectMissingManifest() {
         Map<String, byte[]> files = Map.of("data.txt", "x".getBytes(StandardCharsets.UTF_8));
 

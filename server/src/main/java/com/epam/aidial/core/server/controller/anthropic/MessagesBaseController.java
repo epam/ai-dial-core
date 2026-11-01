@@ -129,6 +129,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     protected MessagesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
+            context.setRequestBodyWithTimestamp(body);
             ObjectNode tree = ProxyUtil.parseObject(body);
             return new MessagesApiRequest(tree);
         } catch (IOException e) {

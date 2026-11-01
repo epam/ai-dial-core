@@ -10,6 +10,8 @@ import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Operator;
+import com.epam.aidial.core.config.OrgUnitPermission;
+import com.epam.aidial.core.config.OrgUnitRole;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.PricingRate;
 import com.epam.aidial.core.config.Role;
@@ -18,6 +20,7 @@ import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.config.UpstreamAuthConfig;
 import com.epam.aidial.core.config.UpstreamAuthType;
 import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -46,6 +49,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * structural slash-keyed-name rejection and semantic skip|abort routing.
  */
 public class ConfigPostProcessorTest {
+
+    @Test
+    void testOrgUnitRolesCoreCannotEvaluateFailTheLoad() {
+        Config config = new Config();
+        config.setOrgUnitRoles(Map.of("auditor", new OrgUnitRole("x", List.of(new OrgUnitPermission(List.of("read"), "rules/**")))));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ConfigPostProcessor.process(config, null));
+        assertTrue(error.getMessage().startsWith("orgUnitRoles.auditor: pathPattern"), error.getMessage());
+    }
 
     @Test
     void testStructuralDropsSlashKeyedNamesAcrossAllTypes() {
@@ -238,7 +250,7 @@ public class ConfigPostProcessorTest {
         Config config = newMutableConfig();
         Upstream upstream = new Upstream();
         upstream.setEndpoint("https://openrouter.ai/api/v1/chat/completions");
-        upstream.setAuthType(UpstreamAuthType.BEARER);
+        upstream.setAuthType(UpstreamAuthConfig.fromString("BEARER"));
         Route route = new Route();
         route.setUpstreams(List.of(upstream));
         config.getRoutes().put("openrouter", route);
@@ -253,7 +265,7 @@ public class ConfigPostProcessorTest {
         Upstream upstream = new Upstream();
         upstream.setEndpoint("https://openrouter.ai/api/v1/chat/completions");
         upstream.setKey("openrouter-key");
-        upstream.setAuthType(UpstreamAuthType.BEARER);
+        upstream.setAuthType(UpstreamAuthConfig.fromString("BEARER"));
         Route route = new Route();
         route.setUpstreams(List.of(upstream));
         config.getRoutes().put("openrouter", route);
@@ -261,6 +273,36 @@ public class ConfigPostProcessorTest {
         ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
 
         assertTrue(config.getRoutes().containsKey("openrouter"));
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnRouteCustomHeaderUpstreamWithoutKey() {
+        Config config = newMutableConfig();
+        Upstream upstream = new Upstream();
+        upstream.setEndpoint("https://example.com/api");
+        upstream.setAuthType(new UpstreamAuthConfig(UpstreamAuthType.CUSTOM_HEADER, "X-Api-Token"));
+        Route route = new Route();
+        route.setUpstreams(List.of(upstream));
+        config.getRoutes().put("custom", route);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticAllowsRouteCustomHeaderUpstreamWithKey() {
+        Config config = newMutableConfig();
+        Upstream upstream = new Upstream();
+        upstream.setEndpoint("https://example.com/api");
+        upstream.setKey("secret");
+        upstream.setAuthType(new UpstreamAuthConfig(UpstreamAuthType.CUSTOM_HEADER, "X-Api-Token"));
+        Route route = new Route();
+        route.setUpstreams(List.of(upstream));
+        config.getRoutes().put("custom", route);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getRoutes().containsKey("custom"));
     }
 
     @Test

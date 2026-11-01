@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.CredentialsLevel;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
@@ -26,6 +27,7 @@ import java.util.function.Consumer;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.APPLICATION;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.CONVERSATION;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.FILE;
+import static com.epam.aidial.core.storage.resource.ResourceTypes.PROJECT;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.PROMPT;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.SKILL;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.TOOL_SET;
@@ -33,7 +35,9 @@ import static com.epam.aidial.core.storage.resource.ResourceTypes.TOOL_SET;
 @AllArgsConstructor
 public class ResourceOperationService {
     private static final Set<ResourceTypes> ALLOWED_RESOURCES = Set.of(FILE, CONVERSATION,
-            PROMPT, APPLICATION, TOOL_SET, SKILL);
+            PROMPT, APPLICATION, TOOL_SET, SKILL, PROJECT);
+    private static final Consumer<Deployment> NO_CHECK = deployment -> {
+    };
 
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
@@ -50,6 +54,21 @@ public class ResourceOperationService {
 
     public void moveResource(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
                              boolean overwriteIfExists) {
+        move(context, source, destination, overwriteIfExists, NO_CHECK, false);
+    }
+
+    /**
+     * For a caller that holds the source's and destination's bucket locks.
+     *
+     * @param check runs on the application or toolset being moved, in the copy itself, before anything is written
+     */
+    public void moveResourceLocked(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
+                                   boolean overwriteIfExists, Consumer<Deployment> check) {
+        move(context, source, destination, overwriteIfExists, check, true);
+    }
+
+    private void move(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
+                      boolean overwriteIfExists, Consumer<Deployment> check, boolean bucketsLocked) {
         if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Moving folders is not supported");
         }
@@ -70,6 +89,7 @@ public class ResourceOperationService {
                 if (ApplicationService.isActive(app)) {
                     throw new HttpException(HttpStatus.CONFLICT, "Application must be stopped: " + source.getUrl());
                 }
+                check.accept(app);
             });
         } else if (destination.getType() == TOOL_SET) {
             Map<CredentialsLevel, Boolean> credentialsToCopy = Map.of(
@@ -78,9 +98,13 @@ public class ResourceOperationService {
             );
             // TODO: support move for USER and APP credentials for public toolsets
             // TODO: support move for USER and APP credentials for shared toolsets (?)
-            toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, credentialsToCopy);
-        } else if (destination.getType() == SKILL) {
-            if (!complexResourceService.copyResource(source, destination, null, overwriteIfExists)) {
+            toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, credentialsToCopy, check::accept);
+        } else if (destination.getType().isComplex()) {
+            // taking a bucket lock the caller holds would spin until it expires
+            boolean copied = bucketsLocked
+                    ? complexResourceService.copyResourceLocked(source, destination, null, overwriteIfExists)
+                    : complexResourceService.copyResource(source, destination, null, overwriteIfExists);
+            if (!copied) {
                 throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
                         .formatted(sourceResourceUrl, destinationResourceUrl));
             }
@@ -111,7 +135,7 @@ public class ResourceOperationService {
             applicationService.deleteApplication(source, EtagHeader.ANY);
         } else if (destination.getType() == TOOL_SET) {
             toolSetService.deleteToolset(context, source, EtagHeader.ANY);
-        } else if (destination.getType() == SKILL) {
+        } else if (destination.getType().isComplex()) {
             complexResourceService.delete(source, EtagHeader.ANY);
         } else {
             resourceService.deleteResource(source, EtagHeader.ANY);
@@ -120,6 +144,14 @@ public class ResourceOperationService {
 
     public void copyResource(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
                              boolean overwriteIfExists) {
+        copyResource(context, source, destination, overwriteIfExists, NO_CHECK);
+    }
+
+    /**
+     * @param check runs on the application or toolset being copied, in the copy itself, before anything is written
+     */
+    public void copyResource(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
+                             boolean overwriteIfExists, Consumer<Deployment> check) {
         if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Copying folders is not supported");
         }
@@ -140,12 +172,10 @@ public class ResourceOperationService {
         }
 
         if (destination.getType() == APPLICATION) {
-            applicationService.copyApplication(source, destination, null, overwriteIfExists, app -> {
-                // do nothing
-            });
+            applicationService.copyApplication(source, destination, null, overwriteIfExists, check::accept);
         } else if (destination.getType() == TOOL_SET) {
-            toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, Map.of());
-        } else if (destination.getType() == SKILL) {
+            toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, Map.of(), check::accept);
+        } else if (destination.getType().isComplex()) {
             if (!complexResourceService.copyResource(source, destination, null, overwriteIfExists)) {
                 throw new IllegalArgumentException("Can't copy resource %s to %s, because destination resource already exists"
                         .formatted(sourceResourceUrl, destinationResourceUrl));
@@ -160,7 +190,7 @@ public class ResourceOperationService {
     }
 
     private boolean hasResource(ResourceDescriptor resource) {
-        return resource.getType() == SKILL
+        return resource.getType().isComplex()
                 ? complexResourceService.getMarker(resource) != null
                 : resourceService.hasResource(resource);
     }
@@ -187,7 +217,7 @@ public class ResourceOperationService {
     private static void verifyResourceToDelete(ResourceDescriptor resource) {
         ResourceType type = resource.getType();
         if (!(APPLICATION == type || FILE == type
-                || CONVERSATION == type || type == PROMPT || type == TOOL_SET || type == SKILL)) {
+                || CONVERSATION == type || type == PROMPT || type == TOOL_SET || type.isComplex())) {
             throw new IllegalArgumentException("Unsupported resource type to delete: " + type.name());
         }
     }
@@ -204,7 +234,7 @@ public class ResourceOperationService {
         if (resource.getType() == TOOL_SET) {
             return toolSetService.deleteToolset(context, resource, etag);
         }
-        if (resource.getType() == SKILL) {
+        if (resource.getType().isComplex()) {
             try {
                 complexResourceService.delete(resource, etag);
             } catch (HttpException e) {

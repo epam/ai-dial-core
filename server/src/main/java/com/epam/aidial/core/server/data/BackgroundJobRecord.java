@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -26,6 +27,7 @@ public record BackgroundJobRecord(
         String project,
         String userHash,
         String conversationId,
+        String sessionId,
         String jobTitle,
         boolean securedApiKey,
         String userId,
@@ -52,6 +54,7 @@ public record BackgroundJobRecord(
                 .project(context.getProject())
                 .userHash(context.getUserHash())
                 .conversationId(context.getRequestHeader(Proxy.HEADER_CONVERSATION_ID))
+                .sessionId(GenAiTraceAttributes.resolveConversationId(context))
                 .jobTitle(context.getRequestHeader(Proxy.HEADER_JOB_TITLE))
                 .securedApiKey(context.isSecuredApiKey())
                 .userId(context.getUserId())

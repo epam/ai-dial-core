@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestCustomAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseCustomAttachmentsFn;
@@ -45,6 +46,11 @@ public class ApplicationRouteController extends BaseRouteController {
         super(proxy, context);
         this.deploymentId = deploymentId;
         this.routePath = routePath;
+    }
+
+    @Override
+    protected RouteType getRouteType() {
+        return RouteType.APPLICATION;
     }
 
     @Override

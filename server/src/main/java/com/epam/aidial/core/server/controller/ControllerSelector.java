@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.controller.anthropic.AnthropicModelController;
+import com.epam.aidial.core.server.controller.anthropic.AnthropicUsageController;
 import com.epam.aidial.core.server.controller.anthropic.MessagesController;
 import com.epam.aidial.core.server.controller.anthropic.MessagesCountTokensController;
 import com.epam.aidial.core.server.controller.route.ApplicationRouteController;
@@ -115,6 +116,10 @@ public class ControllerSelector {
         get(RouteTemplate.LLM_ANTHROPIC_MODELS, (proxy, context, pathMatcher) -> {
             AnthropicModelController controller = new AnthropicModelController(context);
             return controller::getModels;
+        });
+        get(RouteTemplate.ANTHROPIC_OAUTH_USAGE, (proxy, context, pathMatcher) -> {
+            AnthropicUsageController controller = new AnthropicUsageController(proxy, context);
+            return controller::handle;
         });
         get(RouteTemplate.APPLICATION, (proxy, context, pathMatcher) -> {
             ApplicationController controller = new ApplicationController(context);
@@ -411,6 +416,47 @@ public class ControllerSelector {
                 default -> null;
             };
         });
+        get(RouteTemplate.ORG_UNIT_ROLES, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.listRoles(path);
+        });
+        get(RouteTemplate.ORG_UNIT_ROLE_ASSIGNMENTS, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.listRoleAssignments(path);
+        });
+        post(RouteTemplate.ORG_UNIT_ROLE_ASSIGNMENTS, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.addRoleAssignment(path);
+        });
+        delete(RouteTemplate.ORG_UNIT_ROLE_ASSIGNMENT, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            String id = pathMatcher.group("id");
+            return () -> controller.removeRoleAssignment(path, id);
+        });
+        get(RouteTemplate.ORG_UNIT, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.getOrgUnit(path);
+        });
+        post(RouteTemplate.ORG_UNIT, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.createOrgUnit(path);
+        });
+        patch(RouteTemplate.ORG_UNIT, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.updateOrgUnit(path);
+        });
+        delete(RouteTemplate.ORG_UNIT, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.deleteOrgUnit(path);
+        });
         post(RouteTemplate.PUBLICATION_RULES, (proxy, context, pathMatcher) -> {
             PublicationController controller = new PublicationController(proxy, context);
             return controller::listRules;
@@ -501,6 +547,7 @@ public class ControllerSelector {
             };
         });
         post(RouteTemplate.CONFIG_VALIDATE, (proxy, context, pathMatcher) -> new AdminValidateController(proxy, context));
+        post(RouteTemplate.ADMIN_SYSTEM_EXPORT, (proxy, context, pathMatcher) -> new AdminSystemExportController(proxy, context));
         post(RouteTemplate.CONFIG_APPLY, (proxy, context, pathMatcher) -> {
             AdminApplyController controller = new AdminApplyController(proxy, context);
             return controller::handle;
@@ -668,6 +715,10 @@ public class ControllerSelector {
         ROUTES.add(new ControllerRoute(HttpMethod.PUT, template.getPattern(), controllerTemplate));
     }
 
+    private static void patch(RouteTemplate template, ControllerRoute.Initializer controllerTemplate) {
+        ROUTES.add(new ControllerRoute(HttpMethod.PATCH, template.getPattern(), controllerTemplate));
+    }
+
     private static void delete(RouteTemplate template, ControllerRoute.Initializer controllerTemplate) {
         ROUTES.add(new ControllerRoute(HttpMethod.DELETE, template.getPattern(), controllerTemplate));
     }
@@ -682,6 +733,9 @@ public class ControllerSelector {
         // FILES/RESOURCE routes (see ResourceDescriptorFactory.fromAnyUrl) and the {@code path}
         // contract on ResourceDescriptorFactory.fromDecoded ("url decoded relative path").
         String path = UrlUtil.decodePath(pathMatcher.group("path"));
+        if (PolicyController.serves(entityType)) {
+            return new PolicyController(proxy, context, entityType, bucket, path);
+        }
         return new ConfigResourceController(proxy, context, entityType, bucket, path);
     }
 
@@ -722,11 +776,11 @@ public class ControllerSelector {
     // Builds the whole-resource url (still percent-encoded, decoded downstream by fromAnyUrl) for a
     // single-file or metadata route match, so access control is evaluated against the whole resource.
     private static String complexResourceUrl(Matcher matcher) {
-        return "skills/" + matcher.group("bucket") + "/" + matcher.group("path");
+        return matcher.group("group") + "/" + matcher.group("bucket") + "/" + matcher.group("path");
     }
 
     // Builds the grouping-folder url (trailing slash so fromAnyUrl marks it a folder) for folder ops, and
-    // as the metadata route's second access-check candidate: {path} may name either a specific skill (shared
+    // as the metadata route's second access-check candidate: {path} may name either a specific complex resource (shared
     // as the non-folder url from complexResourceUrl) or a grouping folder (shared as this folder url), and
     // the client has no way to know which up front, so both shapes are checked. An empty path addresses the
     // bucket root.
@@ -736,7 +790,7 @@ public class ControllerSelector {
             path = path.substring(0, path.length() - 1);
         }
         String suffix = (path == null || path.isEmpty()) ? "" : path + "/";
-        return "skills/" + matcher.group("bucket") + "/" + suffix;
+        return matcher.group("group") + "/" + matcher.group("bucket") + "/" + suffix;
     }
 
     private record ControllerRoute(HttpMethod method, Pattern pathPattern, Initializer initializer) {

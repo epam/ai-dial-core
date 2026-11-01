@@ -15,6 +15,7 @@ import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceService;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -80,6 +81,15 @@ public class MergedConfigStorePartialUpdateTest {
     private ExternalServiceService externalServiceService;
     @Mock
     private ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
+
+    private static BackgroundOperationTracer mockBackgroundTracer() {
+        BackgroundOperationTracer tracer = org.mockito.Mockito.mock(BackgroundOperationTracer.class);
+        org.mockito.Mockito.lenient().when(tracer.traceFuture(org.mockito.Mockito.any())).thenAnswer(inv -> {
+            java.util.function.Supplier<io.vertx.core.Future<?>> supplier = inv.getArgument(0);
+            return supplier.get();
+        });
+        return tracer;
+    }
 
     @BeforeEach
     public void setUpLockService() {
@@ -354,7 +364,7 @@ public class MergedConfigStorePartialUpdateTest {
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
                 secretFieldProcessor, lockService, onInvalidEntity,
-                externalServiceService, resourceAuthSettingsEncryptionService);
+                externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
         return store;
     }

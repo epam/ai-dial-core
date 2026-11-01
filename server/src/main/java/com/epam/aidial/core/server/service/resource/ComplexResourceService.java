@@ -3,25 +3,31 @@ package com.epam.aidial.core.server.service.resource;
 import com.epam.aidial.core.server.data.folder.ComplexResourceRef;
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.ComplexResourceItemMetadata;
 import com.epam.aidial.core.storage.data.FileMetadata;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.NodeType;
+import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.data.UserMetadata;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceType;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagBuilder;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.vertx.core.buffer.Buffer;
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -31,12 +37,15 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import javax.annotation.Nullable;
@@ -47,7 +56,7 @@ import javax.annotation.Nullable;
  * pointer to the current version and the single commit point of a write.
  *
  * <p>Individual files (the version files and the marker) are managed through {@link ResourceService} so
- * they participate in the resource cache, etag tracking and event propagation; the engine never touches
+ * they participate in the resource cache and etag tracking; the engine never touches
  * blob storage directly.
  *
  * <p>Type-specific behavior (validation, marker metadata) is delegated to a {@link ComplexResourceHandler}.
@@ -82,13 +91,21 @@ public class ComplexResourceService {
     private final LockService lockService;
     private final BlobStorage blobStorage;
     private final Settings settings;
+    // throws to refuse a new resource's path; runs under the bucket lock, before any marker of it is written
+    private final Consumer<ResourceDescriptor> pathCheck;
 
     public ComplexResourceService(ResourceService resourceService, LockService lockService,
                                  BlobStorage blobStorage, Settings settings) {
+        this(resourceService, lockService, blobStorage, settings, resource -> { });
+    }
+
+    public ComplexResourceService(ResourceService resourceService, LockService lockService,
+                                 BlobStorage blobStorage, Settings settings, Consumer<ResourceDescriptor> pathCheck) {
         this.resourceService = resourceService;
         this.lockService = lockService;
         this.blobStorage = blobStorage;
         this.settings = settings;
+        this.pathCheck = pathCheck;
     }
 
     /**
@@ -102,6 +119,31 @@ public class ComplexResourceService {
         private int maxFiles = 100;
         private long maxTotalBytes = 16L * 1024 * 1024;
         private long maxFileSizeBytes = 1024 * 1024;
+        // Sparse per-type overrides keyed by resource group; unset fields fall back to the values above.
+        // Projects are larger than skills by default; supplying "types" replaces this map.
+        private Map<String, Limits> types = new HashMap<>(Map.of(
+                ResourceTypes.PROJECT.group(), new Limits(1000, 64L * 1024 * 1024, 5L * 1024 * 1024)));
+
+        /**
+         * Returns the limits that apply to the given resource type: its override where set, the defaults otherwise.
+         */
+        public Limits resolveLimits(ResourceType type) {
+            Limits override = types.get(type.group());
+            return new Limits(
+                    override != null && override.maxFiles != null ? override.maxFiles : maxFiles,
+                    override != null && override.maxTotalBytes != null ? override.maxTotalBytes : maxTotalBytes,
+                    override != null && override.maxFileSizeBytes != null ? override.maxFileSizeBytes : maxFileSizeBytes);
+        }
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class Limits {
+        private Integer maxFiles;
+        private Long maxTotalBytes;
+        private Long maxFileSizeBytes;
     }
 
     /**
@@ -132,7 +174,7 @@ public class ComplexResourceService {
 
         // Enforced before any write (and before the handler reads file content), so a rejection never
         // takes the bucket/resource lock and leaves nothing observable.
-        validateLimits(files);
+        validateLimits(resource, files);
         handler.validate(files);
 
         // Creating a resource is a structural change: the bucket lock serializes the ancestor walk
@@ -150,6 +192,7 @@ public class ComplexResourceService {
 
                 try {
                     FolderResourceMarker existing = readMarker(marker, false);
+                    Map<String, FolderResourceMarker.ResourceFileMetadata> before = activeFileMetadata(resource, existing);
                     if (existing == null) {
                         // First creation only: an overwrite of an existing (even `deleting`) marker reuses
                         // its reference, which is keyed by URL, not by version.
@@ -165,8 +208,11 @@ public class ComplexResourceService {
                         fileMetadata.put(relativePath,
                                 new FolderResourceMarker.ResourceFileMetadata(content.length, written.getEtag()));
                     }
-                    return commitMarker(marker, resource, versionId, aggregateEtag(fileMetadata),
+                    String aggregateEtag = commitMarker(marker, resource, versionId, aggregateEtag(fileMetadata),
                             handler.buildMarkerMetadata(files), fileMetadata, existing, author);
+                    publishEvents(resource, isActive(existing) ? ResourceEvent.Action.UPDATE : ResourceEvent.Action.CREATE,
+                            aggregateEtag, before, fileMetadata);
+                    return aggregateEtag;
                 } catch (Exception e) {
                     // Nothing is observable until the marker is committed; drop the orphan version files.
                     deleteVersion(versionFolder(resource, versionId));
@@ -215,6 +261,7 @@ public class ComplexResourceService {
             if (isActive(existing) && !overwrite) {
                 return false;
             }
+            Map<String, FolderResourceMarker.ResourceFileMetadata> before = activeFileMetadata(to, existing);
 
             try {
                 // Mirrors put(): an overwrite of an existing (even `deleting`) marker reuses its
@@ -233,8 +280,10 @@ public class ComplexResourceService {
                                 "Can't copy resource file from: " + sourceFile.getUrl() + " to: " + destFile.getUrl());
                     }
                 }
-                commitMarker(marker, to, versionId, aggregateEtag(fileMetadata), source.getMetadata(),
+                String aggregateEtag = commitMarker(marker, to, versionId, aggregateEtag(fileMetadata), source.getMetadata(),
                         fileMetadata, existing, author);
+                publishEvents(to, isActive(existing) ? ResourceEvent.Action.UPDATE : ResourceEvent.Action.CREATE,
+                        aggregateEtag, before, fileMetadata);
                 return true;
             } catch (Exception e) {
                 // Nothing is observable until the marker is committed; drop the orphan version files.
@@ -251,23 +300,24 @@ public class ComplexResourceService {
      *                       REQUEST_ENTITY_TOO_LARGE if any single file or the aggregate size exceeds
      *                       {@code maxFileSizeBytes}/{@code maxTotalBytes}
      */
-    private void validateLimits(Map<String, byte[]> files) {
-        if (files.size() > settings.getMaxFiles()) {
+    private void validateLimits(ResourceDescriptor resource, Map<String, byte[]> files) {
+        Limits limits = settings.resolveLimits(resource.getType());
+        if (files.size() > limits.getMaxFiles()) {
             throw new HttpException(HttpStatus.BAD_REQUEST,
-                    "Resource contains %d files which exceeds the limit of %d".formatted(files.size(), settings.getMaxFiles()));
+                    "Resource contains %d files which exceeds the limit of %d".formatted(files.size(), limits.getMaxFiles()));
         }
         long totalBytes = 0;
         for (Map.Entry<String, byte[]> entry : files.entrySet()) {
             long size = entry.getValue().length;
-            if (size > settings.getMaxFileSizeBytes()) {
+            if (size > limits.getMaxFileSizeBytes()) {
                 throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE,
-                        "File '%s' size %d exceeds max file size of %d".formatted(entry.getKey(), size, settings.getMaxFileSizeBytes()));
+                        "File '%s' size %d exceeds max file size of %d".formatted(entry.getKey(), size, limits.getMaxFileSizeBytes()));
             }
             totalBytes += size;
         }
-        if (totalBytes > settings.getMaxTotalBytes()) {
+        if (totalBytes > limits.getMaxTotalBytes()) {
             throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE,
-                    "Resource size %d exceeds max total size of %d".formatted(totalBytes, settings.getMaxTotalBytes()));
+                    "Resource size %d exceeds max total size of %d".formatted(totalBytes, limits.getMaxTotalBytes()));
         }
     }
 
@@ -298,25 +348,26 @@ public class ComplexResourceService {
     public String putFile(ResourceDescriptor resource, ComplexResourceHandler handler, String relativePath,
                           byte[] content, EtagHeader etag, String author) {
         String normalized = normalizePath(relativePath);
-        if (content.length > settings.getMaxFileSizeBytes()) {
+        Limits limits = settings.resolveLimits(resource.getType());
+        if (content.length > limits.getMaxFileSizeBytes()) {
             throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE,
-                    "File size %d exceeds max file size of %d".formatted(content.length, settings.getMaxFileSizeBytes()));
+                    "File size %d exceeds max file size of %d".formatted(content.length, limits.getMaxFileSizeBytes()));
         }
         handler.validateFileMutation(normalized, ComplexResourceHandler.FileMutation.PUT);
         return copyOnWrite(resource, etag, author,
                 fileMetadata -> {
                     boolean newFile = !fileMetadata.containsKey(normalized);
-                    if (newFile && fileMetadata.size() + 1 > settings.getMaxFiles()) {
+                    if (newFile && fileMetadata.size() + 1 > limits.getMaxFiles()) {
                         throw new HttpException(HttpStatus.BAD_REQUEST,
-                                "Resource would contain more than %d files".formatted(settings.getMaxFiles()));
+                                "Resource would contain more than %d files".formatted(limits.getMaxFiles()));
                     }
                     long existingTotal = fileMetadata.values().stream()
                             .mapToLong(FolderResourceMarker.ResourceFileMetadata::getSize).sum();
                     long oldSize = newFile ? 0L : fileMetadata.get(normalized).getSize();
                     long prospectiveTotal = existingTotal - oldSize + content.length;
-                    if (prospectiveTotal > settings.getMaxTotalBytes()) {
+                    if (prospectiveTotal > limits.getMaxTotalBytes()) {
                         throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE,
-                                "Resource size %d exceeds max total size of %d".formatted(prospectiveTotal, settings.getMaxTotalBytes()));
+                                "Resource size %d exceeds max total size of %d".formatted(prospectiveTotal, limits.getMaxTotalBytes()));
                     }
                 },
                 (newVersionId, fileMetadata) -> {
@@ -377,6 +428,7 @@ public class ComplexResourceService {
 
             Map<String, FolderResourceMarker.ResourceFileMetadata> fileMetadata = currentFileMetadata(resource, current);
             preflight.check(fileMetadata);
+            Map<String, FolderResourceMarker.ResourceFileMetadata> before = new TreeMap<>(fileMetadata);
             try {
                 resourceService.copyFolder(versionFolder(resource, current.getCurrentVersion()),
                         versionFolder(resource, newVersionId), false);
@@ -385,6 +437,7 @@ public class ComplexResourceService {
 
                 String aggregateEtag = commitMarker(marker, resource, newVersionId, aggregateEtag(fileMetadata),
                         metadata, fileMetadata, current, author);
+                publishEvents(resource, ResourceEvent.Action.UPDATE, aggregateEtag, before, fileMetadata);
                 deleteVersion(versionFolder(resource, current.getCurrentVersion()));
                 return aggregateEtag;
             } catch (Exception e) {
@@ -426,6 +479,48 @@ public class ComplexResourceService {
             }
         }
         return fileMetadata;
+    }
+
+    /**
+     * Per-file metadata of the active version of {@code existing}, or an empty map if there is none.
+     */
+    private Map<String, FolderResourceMarker.ResourceFileMetadata> activeFileMetadata(
+            ResourceDescriptor resource, @Nullable FolderResourceMarker existing) {
+        return isActive(existing) ? currentFileMetadata(resource, existing) : Map.of();
+    }
+
+    /**
+     * Publishes events for the logical URLs of a committed change: one for the resource and one for every file
+     * that was created, changed (by etag) or removed. Best effort: the change is already committed.
+     */
+    private void publishEvents(ResourceDescriptor resource, ResourceEvent.Action action, @Nullable String etag,
+                               Map<String, FolderResourceMarker.ResourceFileMetadata> before,
+                               Map<String, FolderResourceMarker.ResourceFileMetadata> after) {
+        long timestamp = System.currentTimeMillis();
+        try {
+            resourceService.publishLogicalEvent(resource, action, timestamp, etag);
+            for (Map.Entry<String, FolderResourceMarker.ResourceFileMetadata> entry : after.entrySet()) {
+                FolderResourceMarker.ResourceFileMetadata old = before.get(entry.getKey());
+                String fileEtag = entry.getValue().getEtag();
+                if (old == null) {
+                    publishFileEvent(resource, entry.getKey(), ResourceEvent.Action.CREATE, timestamp, fileEtag);
+                } else if (!Objects.equals(old.getEtag(), fileEtag)) {
+                    publishFileEvent(resource, entry.getKey(), ResourceEvent.Action.UPDATE, timestamp, fileEtag);
+                }
+            }
+            for (String path : before.keySet()) {
+                if (!after.containsKey(path)) {
+                    publishFileEvent(resource, path, ResourceEvent.Action.DELETE, timestamp, null);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to publish events for resource: {}", resource.getUrl(), e);
+        }
+    }
+
+    private void publishFileEvent(ResourceDescriptor resource, String relativePath, ResourceEvent.Action action,
+                                  long timestamp, @Nullable String etag) {
+        resourceService.publishLogicalEvent(displayFileDescriptor(resource, relativePath, false), action, timestamp, etag);
     }
 
     private String commitMarker(ResourceDescriptor marker, ResourceDescriptor resource, String versionId,
@@ -553,6 +648,40 @@ public class ComplexResourceService {
             resourceService.deleteResource(marker, EtagHeader.ANY);
             return null;
         });
+    }
+
+    /**
+     * Deletes the grouping folder and every grouping folder below it, deepest first, for a caller that already
+     * holds the folder's bucket lock. A resource in the {@code deleting} state doesn't count, as in
+     * {@link #deleteFolder}; the sweep still reclaims it. Folders that don't exist are skipped.
+     *
+     * @throws HttpException CONFLICT if any folder below holds an active resource
+     */
+    public void deleteFoldersLocked(ResourceDescriptor folder) {
+        List<ResourceDescriptor> folders = new ArrayList<>();
+        String token = null;
+        do {
+            ResourceFolderMetadata page = listChildren(folder, token, PAGE_SIZE, true);
+            if (page == null) {
+                break;
+            }
+            for (MetadataBase item : page.getItems()) {
+                if (item.getNodeType() != NodeType.FOLDER) {
+                    throw new HttpException(HttpStatus.CONFLICT, "Folder is not empty: " + folder.getUrl());
+                }
+                folders.add(item.getDescriptor());
+            }
+            token = page.getNextToken();
+        } while (token != null);
+
+        folders.sort(Comparator.comparingInt((ResourceDescriptor child) -> child.getParentFolders().size()).reversed());
+        folders.add(folder);
+        for (ResourceDescriptor child : folders) {
+            ResourceDescriptor marker = folderMarkerDescriptor(child);
+            if (isActive(readMarker(marker, false))) {
+                resourceService.deleteResource(marker, EtagHeader.ANY);
+            }
+        }
     }
 
     /**
@@ -688,6 +817,9 @@ public class ComplexResourceService {
      * collision rules for {@code kind}.
      */
     private void ensureStructuralPath(ResourceDescriptor target, ResourceKind kind, String author) {
+        if (kind == ResourceKind.RESOURCE) {
+            pathCheck.accept(target);
+        }
         List<String> parents = target.getParentFolders();
         for (int depth = 1; depth <= parents.size(); depth++) {
             ResourceDescriptor ancestor = ancestorDescriptor(target, depth);
@@ -847,19 +979,23 @@ public class ComplexResourceService {
     public void delete(ResourceDescriptor resource, EtagHeader etag) {
         ResourceDescriptor marker = markerDescriptor(resource);
 
-        resourceService.computeResource(marker, json -> {
-            if (json == null) {
-                throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + resource.getUrl());
-            }
-            FolderResourceMarker current = ProxyUtil.convertToObject(json, FolderResourceMarker.class);
+        // The events are published under the resource lock, like the other commit points, so a concurrent
+        // re-create of the resource cannot publish its CREATE before this DELETE.
+        try (LockService.Lock ignore = resourceService.lockResource(marker)) {
+            FolderResourceMarker current = readMarker(marker, false);
             if (!isActive(current)) {
                 throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + resource.getUrl());
             }
             etag.validate(current.getEtag());
+
+            Map<String, FolderResourceMarker.ResourceFileMetadata> deletedFiles =
+                    current.getFileMetadata() == null ? Map.of() : new TreeMap<>(current.getFileMetadata());
             current.setState(STATE_DELETING);
             current.setDeletedAt(System.currentTimeMillis());
-            return Objects.requireNonNull(ProxyUtil.convertToString(current));
-        });
+            resourceService.putResource(marker, Objects.requireNonNull(ProxyUtil.convertToString(current)),
+                    EtagHeader.ANY, null, false);
+            publishEvents(resource, ResourceEvent.Action.DELETE, null, deletedFiles, Map.of());
+        }
     }
 
     /**
@@ -1041,6 +1177,9 @@ public class ComplexResourceService {
     private static ResourceDescriptor subFolder(ResourceDescriptor versionFolder, String subPath) {
         List<String> segments = Arrays.asList(StringUtils.strip(subPath, ResourceDescriptor.PATH_SEPARATOR)
                 .split(ResourceDescriptor.PATH_SEPARATOR));
+        if (!segments.stream().allMatch(ResourceDescriptorFactory::isValidFilename)) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Invalid path provided: " + subPath);
+        }
         List<String> parentFolders = new ArrayList<>(versionFolder.getParentFolders());
         parentFolders.add(versionFolder.getName());
         parentFolders.addAll(segments.subList(0, segments.size() - 1));

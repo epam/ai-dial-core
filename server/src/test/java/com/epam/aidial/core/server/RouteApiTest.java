@@ -211,6 +211,20 @@ class RouteApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void routeCustomHeaderAuthType() {
+        TestWebServer.Handler handler = request -> {
+            assertEquals("customKey123", request.getHeader("X-Api-Token"));
+            assertNull(request.getHeader(Proxy.HEADER_API_KEY));
+            return new MockResponse().setBody(request.getPath());
+        };
+        try (TestWebServer ignored = new TestWebServer(9876, handler)) {
+            Response resp = send(HttpMethod.GET, "/v1/custom_header", null, null,
+                    "api-key", "vstore_user_key", "X-Api-Token", "caller-supplied");
+            assertEquals(200, resp.status());
+        }
+    }
+
+    @Test
     void route_404() {
         TestWebServer.Handler handler = request -> new MockResponse().setResponseCode(404);
         try (TestWebServer ignored = new TestWebServer(9876, handler)) {

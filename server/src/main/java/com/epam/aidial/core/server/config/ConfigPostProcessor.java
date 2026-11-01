@@ -25,10 +25,14 @@ import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.config.UpstreamAuthType;
 import com.epam.aidial.core.config.UpstreamInterface;
+import com.epam.aidial.core.config.policy.Policy;
+import com.epam.aidial.core.config.policy.PolicyAssignment;
+import com.epam.aidial.core.config.policy.PolicyAssignmentValidator;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.service.OrgUnitRoles;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.PathTemplateUtil;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -121,6 +125,7 @@ public final class ConfigPostProcessor {
         processRoles(config);
         processInterceptors(config, deploymentIds, onSkip);
         processToolSets(config, deploymentIds, onSkip);
+        OrgUnitRoles.validate(config.getOrgUnitRoles());
 
         if (apiKeyStore != null) {
             apiKeyStore.addProjectKeys(fileKeysBySecret, apiKeysByCanonicalId);
@@ -199,6 +204,62 @@ public final class ConfigPostProcessor {
         }
         config.getTranslators().remove(mapKey);
         onSkip.accept(ResourceTypes.TRANSLATOR, new InvalidEntityException(ResourceTypes.TRANSLATOR, mapKey, warnings));
+    }
+
+    /**
+     * Validates every policy and assignment of the rebuilt {@link Config}: policies first, so that an
+     * assignment of a policy dropped here is dropped as dangling.
+     */
+    static void processPolicies(Config config, @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        for (String path : List.copyOf(config.getPolicies().keySet())) {
+            validateSinglePolicy(config, path, onSkip);
+        }
+        for (String path : List.copyOf(config.getPolicyAssignments().keySet())) {
+            validateSingleAssignment(config, path, onSkip);
+        }
+    }
+
+    static void validateSinglePolicy(Config config, String mapKey,
+                                     @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Policy policy = config.getPolicies().get(mapKey);
+        if (policy == null) {
+            return;
+        }
+        String error = PolicyAssignmentValidator.validatePolicy(policy);
+        if (error == null && policy.isSelfApplying() && mapKey.indexOf('/') < 0) {
+            error = "A policy that pins both subject and costObject applies by itself and must live in the folder of its cost object";
+        }
+        if (error != null) {
+            rejectPolicyRecord(ResourceTypes.POLICY, config.getPolicies(), mapKey, error, onSkip);
+        }
+    }
+
+    /**
+     * Besides the record's own checks, an assignment whose policy is missing is invalid.
+     */
+    static void validateSingleAssignment(Config config, String mapKey,
+                                         @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        PolicyAssignment assignment = config.getPolicyAssignments().get(mapKey);
+        if (assignment == null) {
+            return;
+        }
+        String error = PolicyAssignmentValidator.validateAssignment(assignment);
+        if (error == null && !config.getPolicies().containsKey(assignment.getPolicy())) {
+            error = "Policy '" + assignment.getPolicy() + "' does not exist";
+        }
+        if (error != null) {
+            rejectPolicyRecord(ResourceTypes.POLICY_ASSIGNMENT, config.getPolicyAssignments(), mapKey, error, onSkip);
+        }
+    }
+
+    private static void rejectPolicyRecord(ResourceTypes type, Map<String, ?> records, String mapKey, String error,
+                                           @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        InvalidEntityException exception = new InvalidEntityException(type, mapKey, List.of(new ValidationWarning("body", error)));
+        if (onSkip == null) {
+            throw exception;
+        }
+        records.remove(mapKey);
+        onSkip.accept(type, exception);
     }
 
     /**
@@ -373,9 +434,10 @@ public final class ConfigPostProcessor {
         }
         for (int i = 0; i < upstreams.size(); i++) {
             Upstream upstream = upstreams.get(i);
-            if (upstream.getAuthType() == UpstreamAuthType.BEARER && upstream.getKey() == null) {
+            UpstreamAuthType authType = upstream.getAuthType().type();
+            if (authType != UpstreamAuthType.API_KEY && upstream.getKey() == null) {
                 warnings.add(new ValidationWarning("upstreams[" + i + "].authType",
-                        messageWithEntityPrefix(entityLabel, entityName, "authType 'BEARER' requires a key")));
+                        messageWithEntityPrefix(entityLabel, entityName, "authType '" + authType + "' requires a key")));
             }
         }
     }

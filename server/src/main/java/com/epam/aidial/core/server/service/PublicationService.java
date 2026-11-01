@@ -20,6 +20,8 @@ import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.data.UserMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -41,6 +43,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.LongSupplier;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -58,7 +61,7 @@ public class PublicationService {
             ResourceTypes.PUBLICATION, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, PUBLICATIONS_NAME);
 
     private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceTypes.FILE, ResourceTypes.CONVERSATION,
-            ResourceTypes.PROMPT, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET, ResourceTypes.SKILL);
+            ResourceTypes.PROMPT, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET, ResourceTypes.SKILL, ResourceTypes.PROJECT);
 
     private final EncryptionService encryption;
     private final ResourceService resourceService;
@@ -69,6 +72,8 @@ public class PublicationService {
     private final ToolSetService toolSetService;
     private final ResourceOperationService resourceOperationService;
     private final ComplexResourceService complexResourceService;
+    private final OrgUnitService orgUnitService;
+    private final OrgUnitApprovals orgUnitApprovals;
     private final Supplier<String> ids;
     private final LongSupplier clock;
 
@@ -145,6 +150,36 @@ public class PublicationService {
             throw new ResourceNotFoundException("No publication: " + resource.getUrl());
         }
 
+        return publication;
+    }
+
+    /**
+     * The pending requests whose target folder lies in a unit the caller approves, for a caller who approves at least one.
+     */
+    public Collection<Publication> listPublicationsToApprove(ProxyContext context, ResourceDescriptor resource) {
+        Predicate<String> approved = orgUnitApprovals.approvedTargetFolders(context);
+        if (approved == null) {
+            throw forbidden(resource);
+        }
+        return listPublications(resource).stream()
+                .filter(publication -> approved.test(publication.getTargetFolder()))
+                .toList();
+    }
+
+    /**
+     * Another user's request, for a unit approver who may review it. A missing request answers like a refused one.
+     */
+    public Publication getPublicationToReview(ProxyContext context, ResourceDescriptor resource) {
+        requireAdminOrApprover(context, resource);
+        Publication publication;
+        try {
+            publication = getPublication(resource);
+        } catch (ResourceNotFoundException e) {
+            throw forbidden(resource);
+        }
+        if (!orgUnitApprovals.mayReview(context, publication)) {
+            throw forbidden(resource);
+        }
         return publication;
     }
 
@@ -307,7 +342,7 @@ public class PublicationService {
                 ResourceDescriptor resource = ResourceDescriptorFactory.fromPrivateUrl(reviewResource.getReviewUrl(), encryption);
                 if (resource.getType() == ResourceTypes.TOOL_SET) {
                     toolSetService.deleteToolset(context, resource, EtagHeader.ANY);
-                } else if (resource.getType() == ResourceTypes.SKILL) {
+                } else if (resource.getType().isComplex()) {
                     complexResourceService.delete(resource, EtagHeader.ANY);
                 } else {
                     resourceService.deleteResource(resource, EtagHeader.ANY);
@@ -364,9 +399,20 @@ public class PublicationService {
         return encodeReviewBucket(bucketLocation, publicationId);
     }
 
+    /**
+     * The caller refuses non-approvers with {@link #requireAdminOrApprover} before taking the shared space's lock;
+     * {@link #requireDecider} still refuses here anyone who may not decide this request.
+     */
     @Nullable
     public Publication approvePublication(ProxyContext context, ResourceDescriptor resource) {
-        Publication publication = getPublication(resource);
+        boolean admin = accessService.hasAdminAccess(context);
+        Publication publication;
+        try {
+            publication = getPublication(resource);
+        } catch (ResourceNotFoundException e) {
+            throw admin ? e : forbidden(resource);
+        }
+        requireDecider(context, resource, publication, admin);
         if (publication.getStatus() != Publication.Status.PENDING) {
             throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
         }
@@ -401,13 +447,15 @@ public class PublicationService {
             return (removed == null) ? body : encodePublications(publications);
         });
 
-        ruleService.storeRules(publication);
+        if (!orgUnitApprovals.isInsideUnit(publication.getTargetFolder())) {
+            ruleService.storeRules(publication);
+        }
 
         copyReviewToTargetResources(context, publication, resourcesToAdd);
         deleteReviewResources(context, resourcesToAdd);
         deletePublicResources(context, resourcesToDelete);
 
-        String notificationMessage = "Your request has been approved by admin";
+        String notificationMessage = admin ? "Your request has been approved by admin" : "Your request has been approved";
         Notification notification = Notification.getPublicationNotification(resource.getUrl(), notificationMessage);
         notificationService.createNotification(resource.getBucketName(), resource.getBucketLocation(), notification);
 
@@ -416,45 +464,78 @@ public class PublicationService {
 
     @Nullable
     public Publication rejectPublication(ProxyContext context, ResourceDescriptor resource, RejectPublicationRequest request) {
-        validatePublicationResourceDescriptor(resource);
+        boolean admin = requireAdminOrApprover(context, resource);
+        Publication publication;
+        try {
+            publication = getPublication(resource);
+        } catch (ResourceNotFoundException e) {
+            throw admin ? e : forbidden(resource);
+        }
+        requireDecider(context, resource, publication, admin);
+        if (publication.getStatus() != Publication.Status.PENDING) {
+            throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
+        }
 
-        MutableObject<Publication> reference = new MutableObject<>();
         resourceService.computeResource(publications(resource), body -> {
             Map<String, Publication> publications = decodePublications(body);
-            Publication publication = publications.get(resource.getUrl());
+            Publication previous = publications.put(resource.getUrl(), publication);
 
-            if (publication == null) {
-                throw new ResourceNotFoundException("No publication: " + resource.getUrl());
+            if (!publication.equals(previous)) {
+                throw new ResourceNotFoundException("Publication changed during rejecting: " + resource.getUrl());
             }
 
-            if (publication.getStatus() != Publication.Status.PENDING) {
-                throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
-            }
-
-            reference.setValue(publication);
             publication.setStatus(Publication.Status.REJECTED);
             return encodePublications(publications);
         });
 
         resourceService.computeResource(PUBLIC_PUBLICATIONS, body -> {
             Map<String, Publication> publications = decodePublications(body);
-            Publication publication = publications.remove(resource.getUrl());
-            return (publication == null) ? body : encodePublications(publications);
+            Publication removed = publications.remove(resource.getUrl());
+            return (removed == null) ? body : encodePublications(publications);
         });
 
-        Publication publication = reference.get();
         List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
                 .filter(i -> i.getAction() == Publication.ResourceAction.ADD || i.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
                 .toList();
         deleteReviewResources(context, resourcesToAdd);
 
         String rejectReason = request.comment();
-        String notificationMessage = "Your request has been rejected by admin";
+        String notificationMessage = admin ? "Your request has been rejected by admin" : "Your request has been rejected";
         notificationMessage = rejectReason != null ? notificationMessage + ": " + rejectReason : notificationMessage;
         Notification notification = Notification.getPublicationNotification(resource.getUrl(), notificationMessage);
         notificationService.createNotification(resource.getBucketName(), resource.getBucketLocation(), notification);
 
         return publication;
+    }
+
+    /**
+     * Refuses, as before org units, anyone who is neither a DIAL admin nor an approver of some unit, before anything
+     * about the request is read.
+     *
+     * @return whether the caller is a DIAL admin
+     */
+    public boolean requireAdminOrApprover(ProxyContext context, ResourceDescriptor resource) {
+        boolean admin = accessService.hasAdminAccess(context);
+        if (!admin && !orgUnitApprovals.approvesAnyUnit(context)) {
+            throw forbidden(resource);
+        }
+        return admin;
+    }
+
+    /**
+     * DIAL admins decide every request; anyone else only what {@link OrgUnitApprovals#mayDecide} allows, and is refused
+     * the same way whether the request is outside their units or missing. A finalized request in their units answers
+     * as it does for an admin. Runs on the request being decided, so a change made after the check fails the
+     * comparison approve and reject make under the lock instead of widening it.
+     */
+    private void requireDecider(ProxyContext context, ResourceDescriptor resource, Publication publication, boolean admin) {
+        if (!admin && !orgUnitApprovals.mayDecide(context, publication)) {
+            throw forbidden(resource);
+        }
+    }
+
+    private static HttpException forbidden(ResourceDescriptor resource) {
+        return new HttpException(HttpStatus.FORBIDDEN, "Forbidden resource: " + resource.getUrl());
     }
 
     private void prepareAndValidatePublicationRequest(ProxyContext context, Publication publication,
@@ -514,8 +595,15 @@ public class PublicationService {
             throw new IllegalArgumentException("Rules are not allowed for root targetFolder");
         }
 
+        // inside an org unit roles decide who reads, so rules sent there are dropped: Chat sends an empty list, and the
+        // admin panel copies a moved folder's rules and saves cleared ones, which then approve to nothing
+        boolean rulesDropped = publication.getRules() != null && orgUnitApprovals.isInsideUnit(targetFolder);
+        if (rulesDropped) {
+            publication.setRules(null);
+        }
+
         // publication must contain resources or rule or both
-        if (publication.getResources().isEmpty() && publication.getRules() == null) {
+        if (publication.getResources().isEmpty() && publication.getRules() == null && !rulesDropped) {
             throw new IllegalArgumentException("Publication must have at least one resource or rule");
         }
 
@@ -552,6 +640,7 @@ public class PublicationService {
         if (source.getType() != target.getType()) {
             throw new IllegalArgumentException("Source and target resource types do not match: " + targetUrl);
         }
+        requireNoUnitFolder(target);
 
         if (isPublicationNew && !hasResource(source)) {
             throw new IllegalArgumentException("Source resource does not exist: " + sourceUrl);
@@ -653,11 +742,24 @@ public class PublicationService {
         }
     }
 
+    /**
+     * A skill or project keeps its files in the folder of its own name, which must not be an org unit's: refused before
+     * approving changes the request's status, as the copy would refuse it after.
+     */
+    private void requireNoUnitFolder(ResourceDescriptor target) {
+        if (target.getType().isComplex()) {
+            orgUnitService.requireNoUnitFolder(target);
+        }
+    }
+
     private void checkTargetResources(List<Publication.Resource> resources, boolean exists) {
         for (Publication.Resource resource : resources) {
             String url = resource.getTargetUrl();
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPublicUrl(url);
             verifyResourceType(descriptor);
+            if (!exists) {
+                requireNoUnitFolder(descriptor);
+            }
 
             if (resource.getAction() != Publication.ResourceAction.ADD_IF_ABSENT && hasResource(descriptor) != exists) {
                 String errorMessage = exists ? "Target resource does not exists: " + url : "Target resource exists: " + url;
@@ -667,7 +769,7 @@ public class PublicationService {
     }
 
     private boolean hasResource(ResourceDescriptor descriptor) {
-        return descriptor.getType() == ResourceTypes.SKILL
+        return descriptor.getType().isComplex()
                 ? complexResourceService.getMarker(descriptor) != null
                 : resourceService.hasResource(descriptor);
     }
@@ -706,7 +808,7 @@ public class PublicationService {
                 Map<CredentialsLevel, Boolean> credentialsToCopy = getCredentialsLevelsToCopy(resource);
                 toolSetService.copyToolSet(context, from, to, null, false, credentialsToCopy,
                         toolSet -> toolSet.setIconUrl(replaceLink(replacementLinks, toolSet.getIconUrl())));
-            } else if (from.getType() == ResourceTypes.SKILL) {
+            } else if (from.getType().isComplex()) {
                 if (!complexResourceService.copyResource(from, to, null, false)) {
                     throw new IllegalStateException("Can't copy source resource from: " + from.getUrl() + " to review: " + to.getUrl());
                 }
@@ -755,7 +857,7 @@ public class PublicationService {
                 Map<CredentialsLevel, Boolean> credentialsToCopy = getCredentialsLevelsToCopy(resource);
                 toolSetService.copyToolSet(context, from, to, publication.getDisplayAuthor(), false,
                         credentialsToCopy, toolSet -> toolSet.setIconUrl(replaceLink(replacementLinks, toolSet.getIconUrl())));
-            } else if (from.getType() == ResourceTypes.SKILL) {
+            } else if (from.getType().isComplex()) {
                 // approvePublication is always invoked under the public bucket lock (see
                 // PublicationController#approvePublication), so the "already locked" variant is required
                 // here: taking the same bucket lock again would self-deadlock.
@@ -818,6 +920,21 @@ public class PublicationService {
         if (!ALLOWED_RESOURCES.contains(descriptor.getType())) {
             throw new IllegalArgumentException("Unsupported type: " + descriptor.getType());
         }
+    }
+
+    /**
+     * The requester's bucket location and the request id of a review bucket location,
+     * {@code <requester location>publications/<id>/}, as {@link #encodeReviewBucket} builds it; null for any other location.
+     */
+    @Nullable
+    static Pair<String, String> decodeReviewBucket(String location) {
+        String suffix = PUBLICATIONS_NAME + ResourceDescriptor.PATH_SEPARATOR;
+        int idStart = location.lastIndexOf(ResourceDescriptor.PATH_SEPARATOR, location.length() - 2) + 1;
+        if (!location.endsWith(ResourceDescriptor.PATH_SEPARATOR) || idStart <= suffix.length()
+                || !location.substring(0, idStart).endsWith(suffix)) {
+            return null;
+        }
+        return Pair.of(location.substring(0, idStart - suffix.length()), location.substring(idStart, location.length() - 1));
     }
 
     private String encodeReviewBucket(String bucketLocation, String id) {

@@ -19,6 +19,7 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
@@ -64,6 +65,7 @@ public class BackgroundJobService {
     private final LogStore logStore;
     private final CredentialEncryptionService encryptionService;
     private final Settings settings;
+    private final BackgroundOperationTracer backgroundTracer;
     private BackgroundJobScheduler scheduler;
     @Setter
     private volatile String localBaseUrl;
@@ -82,7 +84,8 @@ public class BackgroundJobService {
             HttpClient httpClient,
             LogStore logStore,
             CredentialEncryptionService encryptionService,
-            Settings settings) {
+            Settings settings,
+            BackgroundOperationTracer backgroundTracer) {
         this.vertx = vertx;
         this.redis = redis;
         this.prefix = prefix;
@@ -97,11 +100,12 @@ public class BackgroundJobService {
         this.logStore = logStore;
         this.encryptionService = encryptionService;
         this.settings = settings;
+        this.backgroundTracer = backgroundTracer;
     }
 
     public void init() {
         scheduler = new BackgroundJobScheduler(vertx, redis, prefix, resourceService, taskExecutor,
-                settings, this::jobPoller, this::expireJob);
+                settings, this::jobPoller, this::expireJob, backgroundTracer);
         scheduler.init();
     }
 
@@ -110,9 +114,8 @@ public class BackgroundJobService {
                 .onSuccess(ignore -> scheduler.schedule(dialId, System.currentTimeMillis() + settings.getInitialPollIntervalMs()));
     }
 
-    public Future<Boolean> isJobActive(String dialId) {
-        return taskExecutor.submit(() ->
-                resourceService.hasResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId)));
+    public Boolean isJobActive(String dialId) {
+        return resourceService.hasResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId));
     }
 
     public Future<Boolean> deleteJob(String dialId) {
@@ -246,7 +249,9 @@ public class BackgroundJobService {
                         if (!hasUsage || traceId == null || spanId == null) {
                             return Future.succeededFuture(List.of());
                         }
-                        return tokenStatsTracker.updateDeploymentStats(traceId, spanId, responseMapping.getDeploymentName(), usage)
+                        // a job started by a child usually ends after its root, whose endSpan deletes the record
+                        boolean rootMayHaveEnded = !Boolean.TRUE.equals(jobRecord.isRootSpan());
+                        return tokenStatsTracker.updateDeploymentStats(traceId, spanId, responseMapping.getDeploymentName(), usage, rootMayHaveEnded)
                                 .compose(stats -> recordAggregatedCosts(stats.aggregatedCosts(), responseMapping.getInitiatorBucket())
                                         .map(ignored2 -> stats.usagePerModel()));
                     });

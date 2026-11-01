@@ -16,7 +16,9 @@ public sealed interface AdminTypedManifest permits
         AdminRouteManifest,
         AdminModelManifest,
         AdminToolSetManifest,
-        AdminApplicationManifest {
+        AdminApplicationManifest,
+        AdminPolicyManifest,
+        AdminPolicyAssignmentManifest {
 
     String kind();
 

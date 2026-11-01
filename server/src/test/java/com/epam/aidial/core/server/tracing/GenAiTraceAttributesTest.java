@@ -29,6 +29,7 @@ import static io.opentelemetry.api.common.AttributeKey.longKey;
 import static io.opentelemetry.api.common.AttributeKey.stringKey;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
@@ -115,6 +116,40 @@ class GenAiTraceAttributesTest {
         GenAiTraceAttributes.initialize(context);
 
         assertFalse(context.getTracingAttributes().containsKey("gen_ai.conversation.id"));
+    }
+
+    @Test
+    void resolveConversationIdFallsBackToTheNextHeaderPastAnOversizedOne() {
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
+        headers.add("x-claude-code-session-id", "x".repeat(257));
+        headers.add("thread-id", " ");
+        headers.add("x-session-id", "session-1");
+        when(request.headers()).thenReturn(headers);
+
+        assertEquals("session-1", GenAiTraceAttributes.resolveConversationId(context(proxy(enabledSettings()), request)));
+    }
+
+    @Test
+    void resolveConversationIdIgnoresTheSpanAttributesSwitch() {
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
+        headers.add("thread-id", "conversation-1");
+        when(request.headers()).thenReturn(headers);
+        TracingSettings settings = TracingSettings.from(new JsonObject()
+                .put("conversationIdHeaders", new JsonArray().add("thread-id")));
+
+        assertEquals("conversation-1", GenAiTraceAttributes.resolveConversationId(context(proxy(settings), request)));
+    }
+
+    @Test
+    void resolveConversationIdIsNullWithoutTracingSettings() {
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
+        headers.add("thread-id", "conversation-1");
+        when(request.headers()).thenReturn(headers);
+
+        assertNull(GenAiTraceAttributes.resolveConversationId(context(proxy(null), request)));
     }
 
     @ParameterizedTest

@@ -245,7 +245,7 @@ public class BaseDeploymentPostController {
      * A builtin translator serves the completion inside this request, so this request is the one the
      * initiator is accountable for, whatever {@code mode} says of a translator served over HTTP.
      */
-    private boolean subjectToLimits(Deployment deployment) {
+    protected boolean isSubjectToLimits(Deployment deployment) {
         return DeploymentEndpointUtil.resolveMode(deployment, interfaceType()).isSubjectToLimits()
                 || DeploymentEndpointUtil.resolveBuiltinTranslator(deployment, interfaceType(), context.getConfig().getTranslators()) != null;
     }
@@ -256,7 +256,7 @@ public class BaseDeploymentPostController {
      * is rejected on that one rather than on this.
      */
     protected Future<RateLimitResult> checkLimits(Deployment deployment) {
-        if (!subjectToLimits(deployment)) {
+        if (!isSubjectToLimits(deployment)) {
             return Future.succeededFuture(RateLimitResult.SUCCESS);
         }
         return proxy.getRateLimiter().limit(context, deployment);
@@ -268,12 +268,13 @@ public class BaseDeploymentPostController {
      */
     private Future<Void> increaseLimits(TokenUsage usage) {
         Deployment deployment = context.getDeployment();
-        if (!subjectToLimits(deployment)) {
+        if (!isSubjectToLimits(deployment)) {
             return Future.succeededFuture();
         }
         return proxy.getRateLimiter().increase(
                 deployment, BucketBuilder.buildInitiatorBucket(context), usage,
-                context.getRequestBody(), context.getResponseBody(), interfaceType(), context.getPricingUsageNode()
+                context.getRequestBody(), context.getResponseBody(), interfaceType(), context.getPricingUsageNode(),
+                context.getBudgetPayer()
         );
     }
 
@@ -289,8 +290,9 @@ public class BaseDeploymentPostController {
 
         Future<TokenStatsTracker.UsageStats> statsFuture;
         if (hasOwnUsage) {
+            // a child can report after its root ended, e.g. when the client stops the root behind an interceptor
             statsFuture = proxy.getTokenStatsTracker().updateDeploymentStats(
-                    context.getTraceId(), context.getSpanId(), deploymentName, ownUsage);
+                    context.getTraceId(), context.getSpanId(), deploymentName, ownUsage, !context.isOriginalRequest());
         } else {
             statsFuture = proxy.getTokenStatsTracker().getUsageStats(context);
         }

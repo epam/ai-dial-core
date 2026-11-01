@@ -19,6 +19,8 @@ import com.epam.aidial.core.server.data.config.manifest.AdminInterceptorManifest
 import com.epam.aidial.core.server.data.config.manifest.AdminKeyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminModelManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPolicyAssignmentManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPolicyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRoleManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRouteManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminSchemaManifest;
@@ -26,7 +28,10 @@ import com.epam.aidial.core.server.data.config.manifest.AdminSettingsManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminToolSetManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminTranslatorManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminTypedManifest;
+import com.epam.aidial.core.server.service.policy.PolicyRecordCodec;
+import com.epam.aidial.core.server.service.policy.PolicyService;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -63,7 +68,9 @@ public class ConfigManifestSupport {
             Map.entry("Route", 6),
             Map.entry("Model", 7),
             Map.entry("ToolSet", 8),
-            Map.entry("Application", 9));
+            Map.entry("Application", 9),
+            Map.entry("Policy", 10),
+            Map.entry("PolicyAssignment", 11));
 
     /**
      * Sorts a manifest list so a kind that other kinds can reference (e.g. {@code Interceptor})
@@ -85,7 +92,9 @@ public class ConfigManifestSupport {
             Map.entry("Route", "routes"),
             Map.entry("Model", "models"),
             Map.entry("ToolSet", "toolsets"),
-            Map.entry("Application", "applications"));
+            Map.entry("Application", "applications"),
+            Map.entry("Policy", "policies"),
+            Map.entry("PolicyAssignment", "policy_assignments"));
 
     public static Config newScratch(MergedConfigStore mergedConfigStore) {
         Config live = mergedConfigStore.get();
@@ -137,6 +146,9 @@ public class ConfigManifestSupport {
                         scratch.getToolsets().put(parsed.name().name(), toolSet.spec());
                     }
                 }
+                // policies and assignments are not part of the scratch config: a batch sees them through PolicyAssignmentPrecheck
+                case AdminPolicyManifest policy -> { }
+                case AdminPolicyAssignmentManifest assignment -> { }
                 case AdminSchemaManifest schema ->
                         putSchema(scratch.getApplicationTypeSchemas(), schema.spec());
                 case AdminCatalogSchemaManifest catalogSchema ->
@@ -248,6 +260,10 @@ public class ConfigManifestSupport {
                     ConfigEntityCodec.treeToEntity(entry.spec(), ToolSet.class));
             case "Application" -> new AdminApplicationManifest(entry.kind(), entry.name(),
                     ConfigEntityCodec.treeToEntity(entry.spec(), Application.class));
+            case "Policy" -> new AdminPolicyManifest(entry.kind(), entry.name(),
+                    PolicyRecordCodec.parsePolicy(entry.spec()));
+            case "PolicyAssignment" -> new AdminPolicyAssignmentManifest(entry.kind(), entry.name(),
+                    PolicyRecordCodec.parseAssignment(entry.spec()));
             default -> throw new IllegalArgumentException("Unknown kind: " + entry.kind());
         };
         return new ParsedManifest(manifest, name);
@@ -288,6 +304,17 @@ public class ConfigManifestSupport {
             throw new IllegalArgumentException("'name' is missing the entity name after the bucket segment");
         }
 
+        ResourceTypes policyType = policyTypeOf(entry.kind());
+        if (policyType != null && ResourceDescriptor.PLATFORM_BUCKET.equals(bucket)) {
+            // one folder level is allowed here, and PolicyService owns the rest of the path rules
+            try {
+                PolicyService.describe(policyType, rest);
+            } catch (HttpException e) {
+                throw new IllegalArgumentException(e.getMessage());
+            }
+            return new ParsedName(ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, rest);
+        }
+
         if (ResourceDescriptor.PLATFORM_BUCKET.equals(bucket)) {
             if (rest.contains("/")) {
                 throw new IllegalArgumentException(
@@ -312,6 +339,14 @@ public class ConfigManifestSupport {
         throw new IllegalArgumentException(
                 "'name' bucket segment must be 'platform'" + (allowPublicBucket ? " or 'public'" : "")
                         + ", got '" + bucket + "'");
+    }
+
+    private static ResourceTypes policyTypeOf(String kind) {
+        return switch (kind) {
+            case "Policy" -> ResourceTypes.POLICY;
+            case "PolicyAssignment" -> ResourceTypes.POLICY_ASSIGNMENT;
+            default -> null;
+        };
     }
 
     static String joinWarnings(List<ValidationWarning> warnings) {

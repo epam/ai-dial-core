@@ -7,9 +7,23 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.http.HttpHeaders;
 
 import java.util.Map;
+import javax.annotation.Nullable;
 
-public record RateLimitResult(HttpStatus status, String errorMessage, String displayErrorMessage, long replyAfterSeconds) {
+public record RateLimitResult(
+        HttpStatus status, String errorMessage, String displayErrorMessage, long replyAfterSeconds,
+        @Nullable LimitBreach breach, @Nullable SpendCaps spendCaps) {
     public static final RateLimitResult SUCCESS = new RateLimitResult(HttpStatus.OK, null, null, -1);
+
+    public RateLimitResult(HttpStatus status, String errorMessage, String displayErrorMessage, long replyAfterSeconds) {
+        this(status, errorMessage, displayErrorMessage, replyAfterSeconds, null, null);
+    }
+
+    public RateLimitResult withSpendCaps(@Nullable SpendCaps spendCaps) {
+        if (spendCaps == null) {
+            return this;
+        }
+        return new RateLimitResult(status, errorMessage, displayErrorMessage, replyAfterSeconds, breach, spendCaps);
+    }
 
     public void throwIfError() {
         if (status != HttpStatus.OK) {

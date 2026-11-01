@@ -66,6 +66,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
@@ -230,7 +231,7 @@ public class ResponsesControllerTest {
                 .thenAnswer(invocation -> complete(textContext));
         when(proxy.getDeploymentService().findDeployment(context, "test"))
                 .thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(eq(context), eq(deployment))).thenReturn(Future.succeededFuture(
+        when(proxy.getRateLimiter().limitWithSpendCaps(eq(context), eq(deployment))).thenReturn(Future.succeededFuture(
                 new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, "rate limit error", null, 0)));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         doCallRealMethod().when(context).setDeployment(any());
@@ -337,6 +338,7 @@ public class ResponsesControllerTest {
         when(context.copyWith(any())).thenReturn(context);
         when(context.getUserId()).thenReturn("test-user");
         when(proxyRequest.headers()).thenReturn(new HeadersMultiMap());
+        when(response.headers()).thenReturn(new HeadersMultiMap());
         when(proxyRequest.send(requestBody)).thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
@@ -344,9 +346,9 @@ public class ResponsesControllerTest {
         when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test"))
                 .thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
+        when(proxy.getRateLimiter().limitWithSpendCaps(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
-        when(proxy.getRateLimiter().increase(any(), any(), any(), any(), any(), any(), any()))
+        when(proxy.getRateLimiter().increase(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getClient()).thenReturn(httpClient);
@@ -375,7 +377,7 @@ public class ResponsesControllerTest {
         }).when(apiKeyStore).invalidatePerRequestApiKey(any());
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
-        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
         doCallRealMethod().when(context).getRequestBody();
         doCallRealMethod().when(context).setResponseBody(any());
         doCallRealMethod().when(context).getResponseBody();
@@ -455,13 +457,14 @@ public class ResponsesControllerTest {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
         when(proxyRequest.headers()).thenReturn(new HeadersMultiMap());
+        when(response.headers()).thenReturn(new HeadersMultiMap());
         when(proxyRequest.send(requestBody)).thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test"))
                 .thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
+        when(proxy.getRateLimiter().limitWithSpendCaps(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
@@ -477,7 +480,7 @@ public class ResponsesControllerTest {
                 .thenReturn(Future.succeededFuture());
         // the response body carries its own "usage" object, so it's captured as this app's
         // self-reported usage (see issue #1753) rather than read from the trace aggregate
-        when(proxy.getTokenStatsTracker().updateDeploymentStats(any(), any(), any(), any()))
+        when(proxy.getTokenStatsTracker().updateDeploymentStats(any(), any(), any(), any(), anyBoolean()))
                 .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(tokenUsage, List.of(), List.of())));
         doAnswer(invocation -> {
             textContext.completeNow();
@@ -485,7 +488,7 @@ public class ResponsesControllerTest {
         }).when(apiKeyStore).invalidatePerRequestApiKey(any());
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
-        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
         doCallRealMethod().when(context).getRequestBody();
         doCallRealMethod().when(context).setResponseBody(any());
         doCallRealMethod().when(context).getResponseBody();
@@ -585,13 +588,14 @@ public class ResponsesControllerTest {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
         when(proxyRequest.headers()).thenReturn(new HeadersMultiMap());
+        when(response.headers()).thenReturn(new HeadersMultiMap());
         when(proxyRequest.send(any(Buffer.class))).thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
         when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
+        when(proxy.getRateLimiter().limitWithSpendCaps(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
@@ -614,7 +618,7 @@ public class ResponsesControllerTest {
         }).when(apiKeyStore).invalidatePerRequestApiKey(any());
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
-        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
         doCallRealMethod().when(context).getRequestBody();
         doCallRealMethod().when(context).setResponseBody(any());
         doCallRealMethod().when(context).getResponseBody();
@@ -704,7 +708,7 @@ public class ResponsesControllerTest {
         }).when(response).write(any(Buffer.class), any());
         when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
+        when(proxy.getRateLimiter().limitWithSpendCaps(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
@@ -727,7 +731,7 @@ public class ResponsesControllerTest {
         }).when(apiKeyStore).invalidatePerRequestApiKey(any());
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
-        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
         doCallRealMethod().when(context).getRequestBody();
         doCallRealMethod().when(context).setResponseBody(any());
         doCallRealMethod().when(context).getResponseBody();
@@ -781,7 +785,7 @@ public class ResponsesControllerTest {
         when(context.respond(any(HttpStatus.class), anyString()))
                 .thenAnswer(invocation -> complete(textContext));
         when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
+        when(proxy.getRateLimiter().limitWithSpendCaps(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
@@ -792,7 +796,7 @@ public class ResponsesControllerTest {
         when(apiKeyStore.invalidatePerRequestApiKey(any())).thenReturn(Future.succeededFuture(Boolean.TRUE));
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
-        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
         doCallRealMethod().when(context).setUpstreamRoute(any());
         doCallRealMethod().when(context).getUpstreamRoute();
 
@@ -831,12 +835,13 @@ public class ResponsesControllerTest {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
         when(proxyRequest.headers()).thenReturn(new HeadersMultiMap());
+        when(response.headers()).thenReturn(new HeadersMultiMap());
         when(proxyRequest.send(any(Buffer.class))).thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
         when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(eq(context), eq(deployment)))
+        when(proxy.getRateLimiter().limitWithSpendCaps(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
@@ -846,7 +851,12 @@ public class ResponsesControllerTest {
         when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
-        when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
+        // a background job's usage record gets the longer TTL, so the flag must be set before startSpan
+        AtomicBoolean backgroundAtStartSpan = new AtomicBoolean();
+        when(proxy.getTokenStatsTracker().startSpan(context)).thenAnswer(invocation -> {
+            backgroundAtStartSpan.set(context.isBackgroundJob());
+            return Future.succeededFuture();
+        });
         when(proxy.getResponseMappingService().saveMapping(any(), any())).thenReturn(expectedDialId);
         when(context.getUserId()).thenReturn("test-user");
         when(proxy.getBackgroundJobService().saveJob(anyString(), any())).thenAnswer(invocation -> {
@@ -855,7 +865,7 @@ public class ResponsesControllerTest {
         });
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
-        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
         doCallRealMethod().when(context).getRequestBody();
         doCallRealMethod().when(context).setResponseBody(any());
         doCallRealMethod().when(context).setUpstreamRoute(any());
@@ -869,6 +879,7 @@ public class ResponsesControllerTest {
         controller.handle();
 
         await(textContext);
+        assertTrue(backgroundAtStartSpan.get());
     }
 
     @Test
@@ -911,6 +922,8 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setProxyApiKeyData(any());
         doCallRealMethod().when(context).getProxyApiKeyData();
+        doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
+        doCallRealMethod().when(context).getRequestBody();
 
         controller.handle();
 
@@ -948,7 +961,7 @@ public class ResponsesControllerTest {
         when(context.getApiKeyData()).thenReturn(apiKeyData);
         DeploymentService deploymentService = proxy.getDeploymentService();
         when(deploymentService.findDeployment(context, "actual-model")).thenReturn(deployment);
-        when(proxy.getRateLimiter().limit(eq(context), eq(deployment))).thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
+        when(proxy.getRateLimiter().limitWithSpendCaps(eq(context), eq(deployment))).thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
         when(proxy.getClient()).thenReturn(httpClient);

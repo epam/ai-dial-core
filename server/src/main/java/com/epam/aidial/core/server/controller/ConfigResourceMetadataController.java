@@ -290,6 +290,48 @@ public class ConfigResourceMetadataController implements Controller {
                 @ApiResponse(code = 500)
             }
         )
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/metadata/policies/{bucket}/{path}",
+            operationId = "getPolicyMetadata",
+            tags = {"Policies"},
+            parameters = {
+                @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
+                    description = "Empty for the root of the policies, a cost object folder (ending with a slash) to list its project policies, or a policy name."),
+                @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
+                @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
+                @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
+            },
+            responses = {
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                @ApiResponse(code = 400),
+                @ApiResponse(code = 403),
+                @ApiResponse(code = 404),
+                @ApiResponse(code = 500)
+            }
+        )
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/metadata/policy_assignments/{bucket}/{path}",
+            operationId = "getPolicyAssignmentMetadata",
+            tags = {"Policy Assignments"},
+            parameters = {
+                @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
+                    description = "Empty for the cost objects that have assignments, a cost object folder (ending with a slash) to list its assignments, or an assignment path."),
+                @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
+                @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
+                @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
+            },
+            responses = {
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                @ApiResponse(code = 400),
+                @ApiResponse(code = 403),
+                @ApiResponse(code = 404),
+                @ApiResponse(code = 500)
+            }
+        )
     @Override
     public Future<?> handle() throws Exception {
         if (!EntityBucketBinding.isAllowed(entityType, bucket)) {

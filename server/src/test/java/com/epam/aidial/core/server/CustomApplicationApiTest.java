@@ -1622,7 +1622,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         "endpoint" : "http://localhost:4848",
                         "weight" : 1,
                         "tier" : 0,
-                        "authType" : "API_KEY"
+                        "authType" : {
+                          "type" : "API_KEY",
+                          "headerName" : null
+                        }
                       } ],
                       "maxRetryAttempts" : 1,
                       "order" : 5,

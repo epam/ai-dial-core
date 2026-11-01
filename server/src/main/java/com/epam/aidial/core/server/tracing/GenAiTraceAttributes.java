@@ -238,9 +238,16 @@ public final class GenAiTraceAttributes {
         return statusCode < 200 || statusCode >= 300 ? "failed" : "completed";
     }
 
-    private static String resolveConversationId(ProxyContext context) {
+    /**
+     * Shared with the analytics log, so it must not depend on whether span enrichment is enabled.
+     */
+    public static String resolveConversationId(ProxyContext context) {
+        TracingSettings settings = context.getTracingSettings();
+        if (settings == null) {
+            return null;
+        }
         // TracingSettings drops blank and credential header names
-        for (String header : context.getTracingSettings().conversationIdHeaders()) {
+        for (String header : settings.conversationIdHeaders()) {
             String value = context.getRequest().headers().get(header);
             if (value != null && !value.isBlank()) {
                 String conversationId = value.trim();

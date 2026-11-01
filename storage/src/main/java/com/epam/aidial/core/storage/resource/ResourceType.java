@@ -19,6 +19,13 @@ public interface ResourceType {
     boolean requireCompression();
 
     /**
+     * @return true if the resource is a versioned multi-file folder resource managed by the complex resource engine.
+     */
+    default boolean isComplex() {
+        return false;
+    }
+
+    /**
      * @return TTL in milliseconds.
      */
     long ttl();

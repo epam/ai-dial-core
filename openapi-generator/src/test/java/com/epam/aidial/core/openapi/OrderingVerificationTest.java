@@ -40,7 +40,8 @@ class OrderingVerificationTest {
         JsonNode root = YAML_MAPPER.readTree(yaml);
         JsonNode paths = root.get("paths");
 
-        List<String> expectedOrder = List.of("get", "post", "put", "patch", "delete", "options", "head", "trace");
+        // the order swagger's PathItem serializes its operations in
+        List<String> expectedOrder = List.of("get", "put", "post", "delete", "options", "head", "patch", "trace");
 
         paths.fields().forEachRemaining(pathEntry -> {
             JsonNode pathItem = pathEntry.getValue();
