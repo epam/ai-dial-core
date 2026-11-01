@@ -10,9 +10,9 @@ translated to a message".
 ### Requirement: Upstream request of a builtin translation
 Core SHALL `POST` the translated request to the URI `POST /openai/v1/responses` resolves to for the model
 (`overridePaths` and a legacy `responsesEndpoint` apply), with `model` = `overrideName` (else the name), the client's
-`stream` (`false` when absent), `store: false` and `include: ["reasoning.encrypted_content"]`. It SHALL carry a
-per-request `API-KEY` and, for a model with `upstreams`, the upstream's `X-UPSTREAM-ENDPOINT` and `X-UPSTREAM-KEY`.
-Core SHALL drop `anthropic-version` and add no `X-DIAL-DEPLOYMENT-ID`.
+`stream` (default `false`), `store: false` and `include: ["reasoning.encrypted_content"]`, a per-request `API-KEY`
+and, for a model with `upstreams`, its `X-UPSTREAM-ENDPOINT` and `X-UPSTREAM-KEY`, but no `anthropic-version` or
+`X-DIAL-DEPLOYMENT-ID`.
 
 #### Scenario: Upstream request
 - **WHEN** `gpt-builtin` declares `overrideName: gpt-5-upstream` and one upstream with
@@ -76,12 +76,11 @@ gives.
   and holds no `error` event
 
 ### Requirement: Limits of a builtin translation charged once
-Core SHALL check the initiator's limits for the model before it sends the translated request. It SHALL charge them
-once, on this request, from the translated usage, whose input, cache-read and cache-write tokens add up to the
-upstream's input total. This holds for a streamed and a non-streaming answer. A `200` answer whose Responses object
-is `failed`, `queued`, `in_progress` or `cancelled`, or whose stream ends with `response.failed`, SHALL be charged the
-`usage` that object carries, as a `POST /openai/v1/responses` for the model charges it. An upstream answer other than
-`200` SHALL NOT be charged.
+Core SHALL check the initiator's limits for the model before it sends the translated request, and charge them once,
+on this request, from the translated usage (input, cache-read and cache-write tokens add up to the upstream's input
+total), for a streamed and a non-streaming answer. A `200` answer that is not `completed` or `incomplete`, or a stream
+ending with `response.failed`, SHALL be charged the `usage` it carries. An upstream answer other than `200` SHALL NOT
+be charged.
 
 #### Scenario: Charged once
 - **WHEN** the upstream reports `input_tokens: 10` and `output_tokens: 8` for a builtin-translated request

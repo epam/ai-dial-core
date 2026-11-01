@@ -329,6 +329,25 @@ class MessagesToResponsesTest {
     }
 
     @Test
+    void testExpiredSystemMessageNamesNoEffort() throws Exception {
+        JsonNode result = translate("""
+                {"model":"m","output_config":{"effort":"low"},"messages":[
+                   {"role":"user","content":"1"},
+                   {"role":"system","content":"x","clear_at":"next_user_message","output_config":{"effort":"max"}},
+                   {"role":"system","content":"y","output_config":{"effort":""}},
+                   {"role":"user","content":"2"}]}""");
+
+        assertEquals(MAPPER.readTree("{\"effort\":\"low\"}"), result.path("reasoning"));
+    }
+
+    @Test
+    void testNamedEffortNoneSendsNoSummary() throws Exception {
+        JsonNode result = translate("""
+                {"model":"m","messages":[],"thinking":{"type":"adaptive"},"output_config":{"effort":"none"}}""");
+        assertEquals(MAPPER.readTree("{\"effort\":\"none\"}"), result.get("reasoning"));
+    }
+
+    @Test
     void testMessagesMustBeAnArray() {
         assertThrows(UntranslatableRequestException.class, () -> translate("""
                 {"model":"m","messages":{"role":"user","content":"x"}}"""));

@@ -3,10 +3,13 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
+import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.http.HttpMethod;
 import lombok.SneakyThrows;
 import okhttp3.mockwebserver.MockResponse;
@@ -16,6 +19,10 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -23,9 +30,11 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -43,6 +52,9 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
     private static final String MESSAGES_PATH = "/anthropic/v1/messages";
     private static final String COUNT_TOKENS_PATH = "/anthropic/v1/messages/count_tokens";
     private static final String RESPONSES_PATH = "/openai/v1/responses";
+    private static final String TWO_UPSTREAMS = "gpt-builtin-two-upstreams";
+    private static final String CREATED = "{\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"model\":\"gpt-5-upstream\"}}";
+    private static final String COMPLETED = "{\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":8}}}";
 
     private static String requestBody(boolean stream) {
         return "{\"model\":\"gpt-builtin\",\"max_tokens\":100,\"stream\":" + stream
@@ -323,6 +335,338 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
         }
     }
 
+    static Stream<Arguments> reasoningRequests() {
+        String hi = "[{\"role\":\"user\",\"content\":\"hi\"}]";
+        String carrier = quoted("{\"dial_translator_reasoning_wrapper\":{\"version\":2,\"id\":\"rs_1\",\"encrypted_content\":\"cipher-xyz\"}}");
+        String redactedCarrier = quoted("{\"dial_translator_reasoning_wrapper\":{\"version\":2,\"encrypted_content\":\"cipher-xyz\"}}");
+        String olderCarrier = quoted("{\"dial_translator_reasoning_wrapper\":{\"version\":1,\"encrypted_content\":\"cipher-xyz\"}}");
+        return Stream.of(
+                Arguments.of("Adaptive thinking with an effort", "\"thinking\":{\"type\":\"adaptive\"},\"output_config\":{\"effort\":\"high\"}", hi,
+                        "{\"reasoning\":{\"effort\":\"high\",\"summary\":\"auto\"}}"),
+                Arguments.of("A token budget names no effort", "\"thinking\":{\"type\":\"enabled\",\"budget_tokens\":32000}", hi,
+                        "{\"reasoning\":{\"summary\":\"auto\"}}"),
+                Arguments.of("Omitted display asks for no summary, with an effort",
+                        "\"thinking\":{\"type\":\"adaptive\",\"display\":\"omitted\"},\"output_config\":{\"effort\":\"high\"}", hi,
+                        "{\"reasoning\":{\"effort\":\"high\"}}"),
+                Arguments.of("Omitted display asks for no summary, without an effort", "\"thinking\":{\"type\":\"adaptive\",\"display\":\"omitted\"}", hi,
+                        "{\"reasoning\":null}"),
+                Arguments.of("A visible system message's effort wins", "\"output_config\":{\"effort\":\"low\"}", """
+                        [{"role":"user","content":"hi"},
+                         {"role":"system","content":"be thorough","clear_at":"next_user_message","output_config":{"effort":"max"}}]""",
+                        "{\"reasoning\":{\"effort\":\"max\"}}"),
+                Arguments.of("Nothing named", "\"temperature\":0.5", hi, "{\"reasoning\":null}"),
+                Arguments.of("Disabled thinking outranks an effort", "\"thinking\":{\"type\":\"disabled\"},\"output_config\":{\"effort\":\"high\"}", hi,
+                        "{\"reasoning\":{\"effort\":\"none\"}}"),
+                Arguments.of("Unknown effort under disabled thinking", "\"thinking\":{\"type\":\"disabled\"},\"output_config\":{\"effort\":\"xmax\"}", hi,
+                        "{\"reasoning\":{\"effort\":\"none\"}}"),
+                Arguments.of("A thinking block between two texts", "\"temperature\":0.5", """
+                        [{"role":"user","content":"hi"},
+                         {"role":"assistant","content":[{"type":"text","text":"before"},
+                           {"type":"thinking","thinking":"plan","signature":%s},{"type":"text","text":"after"}]},
+                         {"role":"user","content":"next"}]""".formatted(carrier), """
+                        {"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]},
+                          {"type":"message","role":"assistant","content":"before"},
+                          {"type":"reasoning","id":"rs_1","encrypted_content":"cipher-xyz","summary":[{"type":"summary_text","text":"plan"}]},
+                          {"type":"message","role":"assistant","content":"after"},
+                          {"type":"message","role":"user","content":[{"type":"input_text","text":"next"}]}]}"""),
+                Arguments.of("A redacted thinking block", "\"temperature\":0.5", """
+                        [{"role":"user","content":"hi"},
+                         {"role":"assistant","content":[{"type":"redacted_thinking","data":%s}]},
+                         {"role":"user","content":"next"}]""".formatted(redactedCarrier), """
+                        {"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]},
+                          {"type":"reasoning","encrypted_content":"cipher-xyz","summary":[]},
+                          {"type":"message","role":"user","content":[{"type":"input_text","text":"next"}]}]}"""),
+                Arguments.of("A Claude-signed thinking block", "\"temperature\":0.5", """
+                        [{"role":"user","content":"hi"},
+                         {"role":"assistant","content":[{"type":"text","text":"before"},
+                           {"type":"thinking","thinking":"plan","signature":"EqQBCkgIARABGAIiQDNmTx"},{"type":"text","text":"after"}]},
+                         {"role":"user","content":"next"}]""", """
+                        {"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]},
+                          {"type":"message","role":"assistant","content":"before\\nafter"},
+                          {"type":"message","role":"user","content":[{"type":"input_text","text":"next"}]}]}"""),
+                Arguments.of("An older carrier version", "\"temperature\":0.5", """
+                        [{"role":"user","content":"hi"},
+                         {"role":"assistant","content":[{"type":"redacted_thinking","data":%s}]},
+                         {"role":"user","content":"next"}]""".formatted(olderCarrier), """
+                        {"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]},
+                          {"type":"message","role":"user","content":[{"type":"input_text","text":"next"}]}]}"""),
+                Arguments.of("Structured output format dropped",
+                        "\"output_config\":{\"effort\":\"high\",\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\"}}}", hi,
+                        "{\"reasoning\":{\"effort\":\"high\"},\"text\":null}"));
+    }
+
+    /**
+     * {@code expected} holds the upstream body's fields to compare; a null one must be absent.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("reasoningRequests")
+    public void testReasoningRequest(String scenario, String fields, String messages, String expected) throws IOException {
+        String sse = readFixture("responses-sse.txt");
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = origin(request -> {
+            captured.set(request);
+            return eventStream(sse);
+        }); CloseableHttpClient client = newClient()) {
+            String body = "{\"model\":\"gpt-builtin\",\"max_tokens\":100,\"stream\":true," + fields + ",\"messages\":" + messages + "}";
+
+            Response response = post(client, MESSAGES_PATH, body, "api-key", "proxyKey1");
+
+            assertEquals(200, response.status(), response.body());
+            JsonNode upstream = ProxyUtil.MAPPER.readTree(captured.get().getBody().readUtf8());
+            ProxyUtil.MAPPER.readTree(expected).properties().forEach(field -> {
+                if (field.getValue().isNull()) {
+                    assertFalse(upstream.has(field.getKey()), scenario + ": " + upstream);
+                } else {
+                    assertEquals(field.getValue(), upstream.get(field.getKey()), scenario);
+                }
+            });
+        }
+    }
+
+    static Stream<Arguments> reasoningStreams() {
+        String carrier = carrier("gpt-builtin", "responses-upstream", "cipher-xyz");
+        String omitted = "\"thinking\":{\"type\":\"adaptive\",\"display\":\"omitted\"},";
+        return Stream.of(
+                Arguments.of("Summary streamed, then the carrier", "",
+                        List.of(CREATED, summaryDelta("Let me"), summaryDelta(" think"), reasoningDone("cipher-xyz", "Let me think"),
+                                textAdded(1), textDelta(1, "Hi"), textDone(1), COMPLETED),
+                        List.of(started(0, thinkingBlock("", "")), delta(0, "thinking_delta", "thinking", "Let me"),
+                                delta(0, "thinking_delta", "thinking", " think"), delta(0, "signature_delta", "signature", carrier), stopped(0),
+                                started(1, textBlock()), delta(1, "text_delta", "text", "Hi"), stopped(1))),
+                Arguments.of("Summary and raw reasoning text in one item", "",
+                        List.of(CREATED, summaryDelta("summary"),
+                                "{\"type\":\"response.reasoning_text.delta\",\"output_index\":0,\"content_index\":0,\"delta\":\"detail\"}",
+                                reasoningDone(null, "summary"), COMPLETED),
+                        List.of(started(0, thinkingBlock("", "")), delta(0, "thinking_delta", "thinking", "summary"),
+                                delta(0, "thinking_delta", "thinking", "\n\ndetail"), stopped(0))),
+                Arguments.of("Unencrypted reasoning", "",
+                        List.of(CREATED, summaryDelta("plan"), reasoningDone(null, "plan"), COMPLETED),
+                        List.of(started(0, thinkingBlock("", "")), delta(0, "thinking_delta", "thinking", "plan"), stopped(0))),
+                Arguments.of("Encrypted reasoning with no summary", "",
+                        List.of(CREATED, reasoningDone("cipher-xyz", null), COMPLETED),
+                        List.of(started(0, redactedBlock(carrier)), stopped(0))),
+                Arguments.of("A summary only in the completed item", "",
+                        List.of(CREATED, reasoningDone("cipher-xyz", "plan"), COMPLETED),
+                        List.of(started(0, thinkingBlock("plan", carrier)), stopped(0))),
+                Arguments.of("A carrier during a tool call", "",
+                        List.of(CREATED, summaryDelta("plan"), callAdded(1), reasoningDone("cipher-xyz", "plan"),
+                                "{\"type\":\"response.function_call_arguments.delta\",\"output_index\":1,\"delta\":\"{}\"}", callDone(1), COMPLETED),
+                        List.of(started(0, thinkingBlock("", "")), delta(0, "thinking_delta", "thinking", "plan"), stopped(0),
+                                started(1, toolUseBlock()), delta(1, "input_json_delta", "partial_json", "{}"), stopped(1),
+                                started(2, redactedBlock(carrier)), stopped(2))),
+                Arguments.of("A carrier after its thinking block closed", "",
+                        List.of(CREATED, summaryDelta("plan"), textAdded(1), textDelta(1, "hi"), textDone(1), reasoningDone("cipher-xyz", "plan"),
+                                callAdded(2), callDone(2), COMPLETED),
+                        List.of(started(0, thinkingBlock("", "")), delta(0, "thinking_delta", "thinking", "plan"), stopped(0),
+                                started(1, textBlock()), delta(1, "text_delta", "text", "hi"), stopped(1),
+                                started(2, redactedBlock(carrier)), stopped(2),
+                                started(3, toolUseBlock()), delta(3, "input_json_delta", "partial_json", "{}"), stopped(3))),
+                Arguments.of("A carrier only in the terminal event", "",
+                        List.of(CREATED, completed(reasoningItem("cipher-xyz", null))),
+                        List.of(started(0, redactedBlock(carrier)), stopped(0))),
+                Arguments.of("An unencrypted item-done, then an encrypted terminal copy", "",
+                        List.of(CREATED, summaryDelta("plan"), reasoningDone(null, "plan"), textAdded(1), textDelta(1, "hi"), textDone(1),
+                                completed(reasoningItem("late", "plan"))),
+                        List.of(started(0, thinkingBlock("", "")), delta(0, "thinking_delta", "thinking", "plan"), stopped(0),
+                                started(1, textBlock()), delta(1, "text_delta", "text", "hi"), stopped(1),
+                                started(2, redactedBlock(carrier("gpt-builtin", "responses-upstream", "late"))), stopped(2))),
+                Arguments.of("No second carrier from the terminal copy", "",
+                        List.of(CREATED, textAdded(1), textDelta(1, "hi"), reasoningDone("first", null), completed(reasoningItem("second", null))),
+                        List.of(started(0, textBlock()), delta(0, "text_delta", "text", "hi"), stopped(0),
+                                started(1, redactedBlock(carrier("gpt-builtin", "responses-upstream", "first"))), stopped(1))),
+                Arguments.of("The carrier is kept without text", omitted,
+                        List.of(CREATED, summaryDelta("plan"), reasoningDone("cipher-xyz", "plan"), COMPLETED),
+                        List.of(started(0, thinkingBlock("", carrier)), stopped(0))),
+                Arguments.of("Unencrypted reasoning is not shown", omitted,
+                        List.of(CREATED, summaryDelta("plan"), reasoningDone(null, "plan"), textAdded(1), textDelta(1, "hi"), textDone(1), COMPLETED),
+                        List.of(started(0, textBlock()), delta(0, "text_delta", "text", "hi"), stopped(0))));
+    }
+
+    /**
+     * {@code expected} is every {@code content_block_*} event the client gets, in order; {@code message_delta} and
+     * {@code message_stop} follow them.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("reasoningStreams")
+    public void testReasoningStream(String scenario, String thinking, List<String> upstreamEvents, List<JsonNode> expected) throws IOException {
+        String sse = sseEvents(upstreamEvents.toArray(String[]::new));
+        try (TestWebServer server = origin(request -> eventStream(sse)); CloseableHttpClient client = newClient()) {
+            String body = "{\"model\":\"gpt-builtin\",\"max_tokens\":100,\"stream\":true," + thinking + "\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+
+            Response response = post(client, MESSAGES_PATH, body, "api-key", "proxyKey1");
+
+            assertEquals(200, response.status(), response.body());
+            List<JsonNode> blocks = eventData(response.body()).stream()
+                    .filter(data -> data.path("type").asText().startsWith("content_block_"))
+                    .toList();
+            assertEquals(expected, blocks, scenario);
+            List<String> names = eventNames(response.body());
+            assertEquals(List.of("message_delta", "message_stop"), names.subList(names.size() - 2, names.size()), scenario);
+        }
+    }
+
+    @Test
+    public void testCarrierHoldsStampedValues() throws IOException {
+        String sse = sseEvents(CREATED, reasoningDone("cipher-xyz", null), COMPLETED);
+        AtomicReference<String> upstreamKey = new AtomicReference<>();
+        try (TestWebServer server = origin(request -> {
+            upstreamKey.set(request.getHeader("X-UPSTREAM-KEY"));
+            return eventStream(sse);
+        }); CloseableHttpClient client = newClient()) {
+            Response response = post(client, MESSAGES_PATH, twoUpstreamsBody("[{\"role\":\"user\",\"content\":\"hi\"}]"), "api-key", "proxyKey1");
+
+            assertEquals(200, response.status(), response.body());
+            String upstreamId = "keyA".equals(upstreamKey.get()) ? "up-a" : "up-b";
+            assertEquals(ProxyUtil.MAPPER.readTree(carrier(TWO_UPSTREAMS, upstreamId, "cipher-xyz")), ProxyUtil.MAPPER.readTree(carriers(response.body()).get(0)));
+        }
+    }
+
+    @Test
+    public void testReplayedReasoningKeepsItsUpstream() throws IOException {
+        String sse = sseEvents(CREATED, summaryDelta("plan"), reasoningDone("cipher-xyz", "plan"), textAdded(1), textDelta(1, "Hi"), textDone(1), COMPLETED);
+        List<UpstreamCall> calls = new CopyOnWriteArrayList<>();
+        try (TestWebServer server = origin(request -> {
+            calls.add(UpstreamCall.of(request));
+            return eventStream(sse);
+        }); CloseableHttpClient client = newClient()) {
+            Response first = post(client, MESSAGES_PATH, twoUpstreamsBody("[{\"role\":\"user\",\"content\":\"hi\"}]"), "api-key", "proxyKey1");
+            assertEquals(200, first.status(), first.body());
+            String carrier = carriers(first.body()).get(0);
+
+            for (int i = 0; i < 5; i++) {
+                Response next = post(client, MESSAGES_PATH, replayBody(carrier), "api-key", "proxyKey1");
+                assertEquals(200, next.status(), next.body());
+            }
+
+            assertEquals(6, calls.size());
+            for (UpstreamCall call : calls.subList(1, 6)) {
+                assertEquals(calls.get(0).endpoint(), call.endpoint());
+                assertEquals(calls.get(0).key(), call.key());
+                assertReplayedItem(call.body());
+            }
+        }
+    }
+
+    @Test
+    public void testTranslatorServiceCarrierReplays() throws IOException {
+        List<UpstreamCall> calls = new CopyOnWriteArrayList<>();
+        String sse = readFixture("responses-sse.txt");
+        try (TestWebServer server = origin(request -> {
+            calls.add(UpstreamCall.of(request));
+            return eventStream(sse);
+        }); CloseableHttpClient client = newClient()) {
+            Response response = post(client, MESSAGES_PATH, replayBody(carrier(TWO_UPSTREAMS, "up-b", "cipher-xyz")), "api-key", "proxyKey1");
+
+            assertEquals(200, response.status(), response.body());
+            assertEquals(1, calls.size());
+            assertEquals("http://upstream-b/v1/responses", calls.get(0).endpoint());
+            assertEquals("keyB", calls.get(0).key());
+            assertReplayedItem(calls.get(0).body());
+        }
+    }
+
+    @Test
+    public void testCarrierOfGoneUpstreamIsRefused() throws IOException {
+        try (TestWebServer server = refusingOrigin(); CloseableHttpClient client = newClient()) {
+            Response response = post(client, MESSAGES_PATH, replayBody(carrier(TWO_UPSTREAMS, "up-gone", "cipher-xyz")), "api-key", "proxyKey1");
+
+            assertEquals(409, response.status(), response.body());
+            assertEquals(0, originRequests.get());
+        }
+    }
+
+    @Test
+    public void testCarriersFromTwoUpstreamsAreRefused() throws IOException {
+        try (TestWebServer server = refusingOrigin(); CloseableHttpClient client = newClient()) {
+            String body = replayBody(carrier(TWO_UPSTREAMS, "up-a", "cipher-1"), carrier(TWO_UPSTREAMS, "up-b", "cipher-2"));
+
+            Response response = post(client, MESSAGES_PATH, body, "api-key", "proxyKey1");
+
+            assertEquals(400, response.status(), response.body());
+            assertEquals(0, originRequests.get());
+        }
+    }
+
+    /**
+     * What a test reads back from one upstream request: its body can be read only once.
+     */
+    private record UpstreamCall(String endpoint, String key, JsonNode body) {
+        @SneakyThrows
+        static UpstreamCall of(RecordedRequest request) {
+            return new UpstreamCall(request.getHeader("X-UPSTREAM-ENDPOINT"), request.getHeader("X-UPSTREAM-KEY"),
+                    ProxyUtil.MAPPER.readTree(request.getBody().readUtf8()));
+        }
+    }
+
+    private static String twoUpstreamsBody(String messages) {
+        return "{\"model\":\"" + TWO_UPSTREAMS + "\",\"max_tokens\":100,\"stream\":true,\"messages\":" + messages + "}";
+    }
+
+    /**
+     * Turn 2 of a conversation whose assistant turn holds a thinking block for each of {@code carriers}.
+     */
+    private static String replayBody(String... carriers) {
+        StringBuilder blocks = new StringBuilder();
+        for (String carrier : carriers) {
+            blocks.append("{\"type\":\"thinking\",\"thinking\":\"plan\",\"signature\":").append(quoted(carrier)).append("},");
+        }
+        return twoUpstreamsBody("[{\"role\":\"user\",\"content\":\"hi\"},{\"role\":\"assistant\",\"content\":[" + blocks
+                + "{\"type\":\"text\",\"text\":\"Hi\"}]},{\"role\":\"user\",\"content\":\"more\"}]");
+    }
+
+    private static void assertReplayedItem(JsonNode upstreamBody) {
+        JsonNode item = upstreamBody.path("input").path(1);
+        assertEquals("reasoning", item.path("type").asText(), upstreamBody.toString());
+        assertEquals("rs_1", item.path("id").asText());
+        assertEquals("cipher-xyz", item.path("encrypted_content").asText());
+    }
+
+    /**
+     * Every carrier the client got, from {@code signature_delta} events and whole thinking blocks.
+     */
+    private static List<String> carriers(String sse) {
+        List<String> carriers = new ArrayList<>();
+        for (JsonNode data : eventData(sse)) {
+            for (JsonNode value : List.of(data.path("delta").path("signature"), data.path("content_block").path("signature"),
+                    data.path("content_block").path("data"))) {
+                if (!value.asText("").isEmpty()) {
+                    carriers.add(value.asText());
+                }
+            }
+        }
+        return carriers;
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\"xmax\"", "5"})
+    public void testUnknownEffortIsRefused(String effort) throws IOException {
+        try (TestWebServer server = refusingOrigin(); CloseableHttpClient client = newClient()) {
+            String body = requestBody(true).replace("\"messages\"", "\"output_config\":{\"effort\":" + effort + "},\"messages\"");
+
+            Response response = post(client, MESSAGES_PATH, body, "api-key", "proxyKey1");
+
+            assertEquals(400, response.status());
+            assertEquals("Unsupported 'output_config.effort': '" + effort.replace("\"", "")
+                    + "'. Expected one of: none, minimal, low, medium, high, xhigh, max", response.body());
+            assertEquals(0, originRequests.get());
+        }
+    }
+
+    @Test
+    public void testThinkingBlockInUserTurnIsRefused() throws IOException {
+        try (TestWebServer server = refusingOrigin(); CloseableHttpClient client = newClient()) {
+            String body = """
+                    {"model":"gpt-builtin","max_tokens":100,"stream":true,"messages":[
+                      {"role":"user","content":[{"type":"thinking","thinking":"plan","signature":"x"}]}]}""";
+
+            Response response = post(client, MESSAGES_PATH, body, "api-key", "proxyKey1");
+
+            assertEquals(400, response.status());
+            assertTrue(response.body().contains("'thinking' in the user turn"), response.body());
+            assertEquals(0, originRequests.get());
+        }
+    }
+
     @Test
     public void testLimitIsCheckedBeforeTheUpstream() throws IOException, InterruptedException {
         String sse = readFixture("responses-sse.txt");
@@ -488,6 +832,108 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
         response.setHeader("Content-Type", "text/event-stream");
         response.setChunkedBody(sse, 200);
         return response;
+    }
+
+    @SneakyThrows
+    private static String quoted(String text) {
+        return ProxyUtil.MAPPER.writeValueAsString(text);
+    }
+
+    /**
+     * The carrier the client gets for reasoning item {@code rs_1} with {@code cipher}, in the translator service's
+     * format, holding the values a Responses client gets for the item from {@code upstreamId}.
+     */
+    private static String carrier(String deployment, String upstreamId, String cipher) {
+        ObjectNode item = ProxyUtil.MAPPER.createObjectNode().put("type", "reasoning").put("id", "rs_1").put("encrypted_content", cipher);
+        EncryptedContentAffinityUtil.wrapOutputItem(item, upstreamId, deployment);
+        ObjectNode payload = ProxyUtil.MAPPER.createObjectNode().put("version", 2);
+        payload.set("id", item.get("id"));
+        payload.set("encrypted_content", item.get("encrypted_content"));
+        return "{\"dial_translator_reasoning_wrapper\":" + payload + "}";
+    }
+
+    private static String summaryDelta(String delta) {
+        return "{\"type\":\"response.reasoning_summary_text.delta\",\"item_id\":\"rs_1\",\"output_index\":0,\"summary_index\":0,\"delta\":" + quoted(delta) + "}";
+    }
+
+    /**
+     * Reasoning item {@code rs_1}, encrypted unless {@code cipher} is null, with a summary unless {@code summary} is.
+     */
+    private static String reasoningItem(String cipher, String summary) {
+        ObjectNode item = ProxyUtil.MAPPER.createObjectNode().put("type", "reasoning").put("id", "rs_1");
+        ArrayNode parts = item.putArray("summary");
+        if (summary != null) {
+            parts.addObject().put("type", "summary_text").put("text", summary);
+        }
+        if (cipher != null) {
+            item.put("encrypted_content", cipher);
+        }
+        return item.toString();
+    }
+
+    private static String reasoningDone(String cipher, String summary) {
+        return "{\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":" + reasoningItem(cipher, summary) + "}";
+    }
+
+    private static String completed(String outputItem) {
+        return "{\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[" + outputItem + "],"
+                + "\"usage\":{\"input_tokens\":10,\"output_tokens\":8}}}";
+    }
+
+    private static String textAdded(int index) {
+        return "{\"type\":\"response.content_part.added\",\"output_index\":" + index + ",\"content_index\":0,\"part\":{\"type\":\"output_text\"}}";
+    }
+
+    private static String textDelta(int index, String delta) {
+        return "{\"type\":\"response.output_text.delta\",\"output_index\":" + index + ",\"content_index\":0,\"delta\":" + quoted(delta) + "}";
+    }
+
+    private static String textDone(int index) {
+        return "{\"type\":\"response.content_part.done\",\"output_index\":" + index + ",\"content_index\":0,\"part\":{\"type\":\"output_text\"}}";
+    }
+
+    private static String callAdded(int index) {
+        return "{\"type\":\"response.output_item.added\",\"output_index\":" + index
+                + ",\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"Read\",\"arguments\":\"\"}}";
+    }
+
+    private static String callDone(int index) {
+        return "{\"type\":\"response.output_item.done\",\"output_index\":" + index
+                + ",\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"Read\",\"arguments\":\"{}\"}}";
+    }
+
+    private static JsonNode started(int index, ObjectNode block) {
+        ObjectNode event = ProxyUtil.MAPPER.createObjectNode().put("type", "content_block_start").put("index", index);
+        event.set("content_block", block);
+        return event;
+    }
+
+    private static JsonNode delta(int index, String type, String field, String value) {
+        ObjectNode event = ProxyUtil.MAPPER.createObjectNode().put("type", "content_block_delta").put("index", index);
+        event.putObject("delta").put("type", type).put(field, value);
+        return event;
+    }
+
+    private static JsonNode stopped(int index) {
+        return ProxyUtil.MAPPER.createObjectNode().put("type", "content_block_stop").put("index", index);
+    }
+
+    private static ObjectNode thinkingBlock(String thinking, String signature) {
+        return ProxyUtil.MAPPER.createObjectNode().put("type", "thinking").put("thinking", thinking).put("signature", signature);
+    }
+
+    private static ObjectNode redactedBlock(String data) {
+        return ProxyUtil.MAPPER.createObjectNode().put("type", "redacted_thinking").put("data", data);
+    }
+
+    private static ObjectNode textBlock() {
+        return ProxyUtil.MAPPER.createObjectNode().put("type", "text").put("text", "");
+    }
+
+    private static ObjectNode toolUseBlock() {
+        ObjectNode block = ProxyUtil.MAPPER.createObjectNode().put("type", "tool_use").put("id", "call_1").put("name", "Read");
+        block.putObject("input");
+        return block;
     }
 
     private static String deltaText(String sse) {

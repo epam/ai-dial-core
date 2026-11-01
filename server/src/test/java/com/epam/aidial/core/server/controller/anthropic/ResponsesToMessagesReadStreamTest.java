@@ -41,7 +41,7 @@ class ResponsesToMessagesReadStreamTest {
     @SuppressWarnings("unchecked")
     void setUp() {
         when(wrapFn.apply(any())).thenAnswer(invocation -> Future.succeededFuture(invocation.getArgument(0, JsonNode.class)));
-        stream = new ResponsesToMessagesReadStream(upstream, new ResponsesToMessagesStream("model", "msg_dial", new ToolNames()), wrapFn);
+        stream = new ResponsesToMessagesReadStream(upstream, new ResponsesToMessagesStream("model", "msg_dial", new ToolNames(), false), wrapFn);
         ArgumentCaptor<Handler<Buffer>> chunks = ArgumentCaptor.forClass(Handler.class);
         ArgumentCaptor<Handler<Void>> end = ArgumentCaptor.forClass(Handler.class);
         verify(upstream).handler(chunks.capture());

@@ -155,7 +155,7 @@ and its role limit serve the carrier and affinity tests. Expected stamped values
 `EncryptedContentAffinityUtil.wrapOutputItem`, which is deterministic for the same upstream, deployment and value.
 `ReasoningCarrier` gets a unit test for each decode branch. `MessagesToResponsesTest` and
 `ResponsesToMessagesStreamTest` get only the cases neither the fixtures nor the integration tests reach (an expired
-`system` message's effort, `isThinkingOmitted`, the switch between summary parts), as change 1's decision 8 keeps one
+`system` message's effort, a named effort `none` with thinking, the switch between summary parts), as change 1's decision 8 keeps one
 oracle per mapping row.
 
 Rejected: adding `anthropicMessages` to `responses-cache`. `ResponsesApiTest` owns that model.
@@ -246,3 +246,36 @@ deployed; rolling back drops it again, and the carriers clients hold stay valid 
 | 9 | simplicity | low | accepted | Tasks 2.1 and 3.1 now only delete the known-gaps entries and add the cases neither the fixtures nor the integration tests reach (an expired `system` message's effort, `isThinkingOmitted`, the switch between summary parts). `ReasoningCarrierTest` stays. Decision 8 says why. |
 | 10 | simplicity | low | accepted | "A carrier only in the terminal event" now pins the input (only `response.created` and a `response.completed` listing an encrypted item with an empty summary) and the output (one `redacted_thinking` block, then `message_delta`), matching `_on_final` → `_finish_reasoning` → `encrypted_block`. |
 | 11 | simplicity | low | accepted | (1) Added the scenario "Structured output format dropped" to "Generation settings" (`output_config` with `effort` and `format` → `reasoning: {"effort": "high"}`, no `text`), in `testReasoningRequest`. (2) Took the finding's second option: the carrier requirement no longer has the untested parenthetical and defines the values as the ones a `POST /openai/v1/responses` to the same model answers, which covers a model without configured upstreams with no new test model. (3) Added the scenario "Non-string effort" (`"effort": 5` → 400 naming `'5'`); `testUnknownEffortIsRefused` is parameterized over both effort scenarios. |
+
+## Implementation notes
+
+Compared with the code after `builtin-translator-fixture-parity` and `builtin-translator-tools` (commit `09c127bf`).
+The context above still holds: the request side, the Responses chain, `EncryptedContentWrapFn` and the stream state
+machine are as described. Differences found while applying, and what was done:
+
+- Known-gaps list: 68 request lines and 24 stream lines were owned by this change when it was applied (the proposal
+  counted 69 request lines when the list was first written). All 92 are deleted and the parity test passes, so no
+  entry owned by `builtin-translator-reasoning` is left.
+- Decision 3: the carrier is written by an `ObjectWriter` with `JsonWriteFeature.WRITE_HEX_UPPER_CASE` off
+  (`ReasoningCarrier.java:encode`), the switch `MessagesToResponses.PYTHON_JSON` already uses, instead of
+  `JsonNode.toString()`. A control character other than `\b \t \n \f \r` is then written `\u001b`, as Python writes
+  it, so the carrier is the same text as the translator service's. The known difference in decision 3, and the
+  matching bullet of "Deliberate differences", no longer apply. `ReasoningCarrierTest` pins it.
+- Decision 1: `ReasoningCarrier` is a package-private utility class. Beside `encode`, `decode` and `wholeBlock` it has
+  `hasEncryptedContent` (Python's `encrypted_content`), which the stream uses for both the item-done and the terminal
+  copies.
+- Decision 5: a `system` message's effort counts only when Python's truthiness says so (`turn_effort` uses
+  `if value := output_config.get("effort")`), through the existing `MessagesToResponses.isPythonFalsy`. The refusal
+  names a non-string effort by its JSON text (`'5'`, `'{"a":1}'`), as the spec says.
+- Decision 6: function-call completion and reasoning completion share one handler, `onOutputItemDone`, as
+  `streaming.py:_on_output_item_done` does; the terminal path and the empty-answer block use a new `emitWhole`
+  (Python's `_emit_whole`).
+- Decision 8: the stream scenarios' upstream events are built inline with helpers in `BuiltinTranslatorApiTest`
+  (`summaryDelta`, `reasoningDone`, `completed`, …), as the class's existing tests build theirs with `sseEvents`,
+  rather than read from resource files under `server/src/test/resources`; the expected client events are JSON trees.
+  The carrier a test expects is built from `EncryptedContentAffinityUtil.wrapOutputItem` and the translator
+  service's format written out in the test, so the wire format is checked, not echoed.
+- Task 4.2: the test for "The carrier's upstream is gone" is `testCarrierOfGoneUpstreamIsRefused`; checkstyle's
+  abbreviation rule rejects `OfAGone`.
+- `ResponsesToMessagesReadStreamTest` gains the constructor's new `omitThinking` argument (`false`); nothing else in
+  it changes.

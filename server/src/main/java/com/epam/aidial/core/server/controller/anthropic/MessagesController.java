@@ -80,6 +80,11 @@ public class MessagesController extends MessagesBaseController {
     private ToolNames toolNames;
 
     /**
+     * The request's {@code thinking.display} is {@code omitted}, read where the body is already parsed.
+     */
+    private boolean thinkingOmitted;
+
+    /**
      * The caller's caps as read by {@link #verifyLimit()}; null when no caps were read.
      */
     @Nullable
@@ -133,6 +138,7 @@ public class MessagesController extends MessagesBaseController {
         proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
 
         requestedModel = request.getModel();
+        thinkingOmitted = MessagesToResponses.isThinkingOmitted(request.getTree());
         context.setRequestBody(Buffer.buffer(request.serialize()));
         translatedRequestBody = Buffer.buffer(translated.serialize());
 
@@ -288,7 +294,7 @@ public class MessagesController extends MessagesBaseController {
             // translated before it is buffered, so the rest of the path sees the stream the client gets
             ResponsesToMessagesReadStream translated = new ResponsesToMessagesReadStream(proxyResponse,
                     new ResponsesToMessagesStream(requestedModel,
-                            ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get()), toolNames),
+                            ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get()), toolNames, thinkingOmitted),
                     new EncryptedContentWrapFn(proxy, context));
             responseStream = new BufferingReadStream(translated, ProxyUtil.contentLength(proxyResponse, 1024),
                     new MessagesSseListener(List.of(new CollectMessagesTokenUsageFn(proxy, context))));

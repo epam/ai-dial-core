@@ -140,7 +140,8 @@ class TranslationFixtureParityTest {
         ToolNames toolNames = new ToolNames();
         input.path("tool_names").properties().forEach(entry ->
                 assertEquals(entry.getValue().asText(), toolNames.alias(entry.getKey(), Set.of()), entry.getKey()));
-        ResponsesToMessagesStream stream = new ResponsesToMessagesStream(input.path("requested_model").asText(), MESSAGE_ID, toolNames);
+        ResponsesToMessagesStream stream = new ResponsesToMessagesStream(input.path("requested_model").asText(), MESSAGE_ID, toolNames,
+                input.path("omit_thinking").asBoolean());
         ArrayNode output = MAPPER.createArrayNode();
         for (JsonNode call : input.path("calls")) {
             List<String> frames;

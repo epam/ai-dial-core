@@ -6,7 +6,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Responses SSE events → Anthropic Messages SSE events, for one response. Ported from the Python translator's
@@ -19,7 +24,11 @@ import java.util.List;
  * {@code message_stop} or {@code error}; one that ends before a terminal Responses event is an error, not a
  * finished answer.
  *
- * <p>Text and tool calls for now. Not thread-safe: one instance per response, fed in event order.
+ * <p>A reasoning item becomes a {@code thinking} block, its encrypted content the block's carrier
+ * ({@link ReasoningCarrier}), sent before the block stops. A carrier that comes while another block is open is held
+ * and sent as a block of its own at the next safe point, never inside that block and never twice.
+ *
+ * <p>Text, tool calls and reasoning for now. Not thread-safe: one instance per response, fed in event order.
  */
 @Slf4j
 public class ResponsesToMessagesStream {
@@ -27,6 +36,7 @@ public class ResponsesToMessagesStream {
     private final String requestedModel;
     private final String messageId;
     private final ToolNames toolNames;
+    private final boolean omitThinking;
     private String model;
     private boolean started;
     private boolean terminated;
@@ -42,13 +52,29 @@ public class ResponsesToMessagesStream {
     private boolean openArgumentsSent;
 
     /**
+     * The summary or content part each reasoning key's last delta belonged to; a delta of another part starts
+     * with a blank line.
+     */
+    private final Map<String, String> lastPartByReasoningKey = new HashMap<>();
+
+    private final Set<String> reasoningCarried = new HashSet<>();
+
+    /**
+     * Encrypted reasoning items that completed while another block was open, by key, in arrival order.
+     */
+    private final Map<String, JsonNode> heldReasoningByKey = new LinkedHashMap<>();
+
+    /**
      * @param messageId the id the client gets for the message, in place of the upstream's own response id
      * @param toolNames the aliases the request's translation issued, restored in the tool calls the client gets
+     * @param omitThinking the request's {@code thinking.display} is {@code omitted}: reasoning text is not sent,
+     *                     its carriers are
      */
-    public ResponsesToMessagesStream(String requestedModel, String messageId, ToolNames toolNames) {
+    public ResponsesToMessagesStream(String requestedModel, String messageId, ToolNames toolNames, boolean omitThinking) {
         this.requestedModel = requestedModel;
         this.messageId = messageId;
         this.toolNames = toolNames;
+        this.omitThinking = omitThinking;
         this.model = requestedModel;
     }
 
@@ -82,15 +108,8 @@ public class ResponsesToMessagesStream {
             case "response.output_item.added" -> onOutputItemAdded(event, frames);
             case "response.function_call_arguments.delta" -> onArgumentsDelta(event, frames);
             case "response.function_call_arguments.done" -> flushArguments(functionKey(event), event.path("arguments"), frames);
-            case "response.output_item.done" -> {
-                if ("function_call".equals(event.path("item").path("type").asText())) {
-                    String key = functionKey(event);
-                    flushArguments(key, event.path("item").path("arguments"), frames);
-                    if (key.equals(openKey)) {
-                        closeOpen(frames);
-                    }
-                }
-            }
+            case "response.output_item.done" -> onOutputItemDone(event, frames);
+            case "response.reasoning_summary_text.delta", "response.reasoning_text.delta" -> onReasoningDelta(event, frames);
             case "response.completed", "response.incomplete" -> onFinal(event.path("response"), frames);
             case "response.failed" -> emitError(event.path("response").path("error"), frames);
             case "error" -> emitError(event.has("error") ? event.path("error") : event, frames);
@@ -131,6 +150,85 @@ public class ResponsesToMessagesStream {
         delta.put("type", "text_delta");
         delta.put("text", event.path("delta").asText(""));
         emitDelta(delta, frames);
+    }
+
+    private void onOutputItemDone(JsonNode event, List<String> frames) {
+        JsonNode item = event.path("item");
+        String type = item.path("type").asText();
+        if ("reasoning".equals(type)) {
+            finishReasoning(reasoningKey(event), item, frames);
+        } else if ("function_call".equals(type)) {
+            String key = functionKey(event);
+            flushArguments(key, item.path("arguments"), frames);
+            if (key.equals(openKey)) {
+                closeOpen(frames);
+            }
+            flushHeldReasoning(frames);
+        }
+    }
+
+    /**
+     * Opened at the first non-empty delta, never on the part events: those are no evidence of text.
+     */
+    private void onReasoningDelta(JsonNode event, List<String> frames) {
+        String text = event.path("delta").asText("");
+        if (text.isEmpty() || omitThinking) {
+            return;
+        }
+        String key = reasoningKey(event);
+        if (!key.equals(openKey)) {
+            openBlock(key, JsonNodeFactory.instance.objectNode().put("type", "thinking").put("thinking", "").put("signature", ""), frames);
+        }
+        String part = "response.reasoning_text.delta".equals(event.path("type").asText())
+                ? "content:" + event.path("content_index").asInt(0)
+                : "summary:" + event.path("summary_index").asInt(0);
+        String previous = lastPartByReasoningKey.put(key, part);
+        if (previous != null && !previous.equals(part)) {
+            text = "\n\n" + text;
+        }
+        emitDelta(JsonNodeFactory.instance.objectNode().put("type", "thinking_delta").put("thinking", text), frames);
+    }
+
+    /**
+     * The carrier of a completed reasoning item: into its open thinking block, else as a block of its own, held
+     * while another block is open. The first copy with encrypted content wins; one held earlier outranks a later
+     * terminal copy, which the upstream may have encrypted afresh.
+     */
+    private void finishReasoning(String key, JsonNode completed, List<String> frames) {
+        if (reasoningCarried.contains(key)) {
+            return;
+        }
+        JsonNode item = heldReasoningByKey.getOrDefault(key, completed);
+        if (!ReasoningCarrier.hasEncryptedContent(item)) {
+            if (key.equals(openKey)) {
+                closeOpen(frames);
+            }
+            return;
+        }
+        if (openKey != null && !openKey.equals(key)) {
+            heldReasoningByKey.putIfAbsent(key, item);
+            return;
+        }
+        reasoningCarried.add(key);
+        heldReasoningByKey.remove(key);
+        if (key.equals(openKey)) {
+            emitDelta(JsonNodeFactory.instance.objectNode().put("type", "signature_delta").put("signature", ReasoningCarrier.encode(item)), frames);
+            closeOpen(frames);
+        } else if (lastPartByReasoningKey.containsKey(key)) {
+            // its thinking block was opened and its text sent, so the carrier goes out alone
+            emitWhole(ReasoningCarrier.redactedBlock(item), frames);
+        } else {
+            emitWhole(ReasoningCarrier.wholeBlock(item, omitThinking), frames);
+        }
+    }
+
+    private void flushHeldReasoning(List<String> frames) {
+        if (openKey != null) {
+            return;
+        }
+        for (Map.Entry<String, JsonNode> held : new ArrayList<>(heldReasoningByKey.entrySet())) {
+            finishReasoning(held.getKey(), held.getValue(), frames);
+        }
     }
 
     private void onOutputItemAdded(JsonNode event, List<String> frames) {
@@ -189,11 +287,19 @@ public class ResponsesToMessagesStream {
 
     private void onFinal(JsonNode response, List<String> frames) {
         start(frames);
+        // an upstream may skip output_item.done, so the terminal copies carry what it did not
+        JsonNode output = response.path("output");
+        for (int i = 0; output.isArray() && i < output.size(); i++) {
+            JsonNode item = output.get(i);
+            if ("reasoning".equals(item.path("type").asText()) && ReasoningCarrier.hasEncryptedContent(item)) {
+                finishReasoning(reasoningKey(i), item, frames);
+            }
+        }
         closeOpen(frames);
+        flushHeldReasoning(frames);
         if (nextIndex == 0) {
             // never a zero-block message: the SDKs index content[0]
-            openBlock("whole", textBlock(), frames);
-            closeOpen(frames);
+            emitWhole(textBlock(), frames);
         }
         ObjectNode delta = JsonNodeFactory.instance.objectNode();
         delta.put("stop_reason", ResponsesToMessages.stopReason(response, sawFunctionCall, sawRefusal));
@@ -261,6 +367,14 @@ public class ResponsesToMessagesStream {
         frames.add(frame("content_block_start", data));
     }
 
+    /**
+     * A block with no delta form, opened and closed at once.
+     */
+    private void emitWhole(ObjectNode block, List<String> frames) {
+        openBlock("whole", block, frames);
+        closeOpen(frames);
+    }
+
     private void closeOpen(List<String> frames) {
         if (openKey == null) {
             return;
@@ -282,6 +396,14 @@ public class ResponsesToMessagesStream {
 
     private static String functionKey(JsonNode event) {
         return "f:" + event.path("output_index").asInt(0);
+    }
+
+    private static String reasoningKey(JsonNode event) {
+        return reasoningKey(event.path("output_index").asInt(0));
+    }
+
+    private static String reasoningKey(int outputIndex) {
+        return "r:" + outputIndex;
     }
 
     /**

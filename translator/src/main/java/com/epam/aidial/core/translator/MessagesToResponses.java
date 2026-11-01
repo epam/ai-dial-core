@@ -21,9 +21,9 @@ import java.util.List;
  * Anthropic Messages request → OpenAI Responses request, ported from the Python translator's
  * {@code to_responses.py}, whose {@code CLAUDE.md} records why each rule is what it is.
  *
- * <p>Text and tools for now: a content block with no translation yet (an image, a document, a thinking block,
- * or one inside a {@code tool_result} other than text), and a web search tool, are refused rather than dropped,
- * because the answer depends on them. A system turn keeps only its text, as Python does: it carries
+ * <p>Text, tools and reasoning for now: a content block with no translation yet (an image, a document, a thinking
+ * block in a user turn, or one inside a {@code tool_result} other than text), and a web search tool, are refused
+ * rather than dropped, because the answer depends on them. A system turn keeps only its text, as Python does: it carries
  * instructions, not content the answer is about. A field with no Responses counterpart is dropped with a
  * warning, because clients send such fields on every request.
  */
@@ -43,7 +43,13 @@ public class MessagesToResponses {
     private static final int MIN_OUTPUT_TOKENS = 16;
 
     private static final List<String> DROPPED_FIELDS = List.of("top_k", "stop_sequences", "mcp_servers", "container",
-            "inference_geo", "context_management", "compaction", "thinking", "output_config");
+            "inference_geo", "context_management", "compaction");
+
+    /**
+     * The efforts the Responses API documents, in the order the refusal lists them. Which of them a model takes is
+     * the model's to say.
+     */
+    private static final List<String> EFFORTS = List.of("none", "minimal", "low", "medium", "high", "xhigh", "max");
 
     // ponytail: a float is spelled the Java way (1.0E-5, Python 1e-05) and U+007F stays unescaped; the JSON value
     // is the same, only the string differs. Port Python's float repr if an upstream prompt cache ever misses on it.
@@ -80,7 +86,8 @@ public class MessagesToResponses {
     public static ObjectNode translateRequest(JsonNode request, String model, ToolNames toolNames) {
         ObjectNode result = JsonNodeFactory.instance.objectNode();
         result.put("model", model);
-        result.set("input", translateMessages(request.path("messages")));
+        JsonNode messages = request.path("messages");
+        result.set("input", translateMessages(messages));
 
         String instructions = translateSystem(request.get("system"));
         if (instructions != null) {
@@ -91,10 +98,14 @@ public class MessagesToResponses {
             result.set("tools", tools);
         }
         translateToolChoice(request.get("tool_choice"), result);
+        translateReasoning(request, turnEffort(messages), result);
         for (String field : DROPPED_FIELDS) {
             if (request.hasNonNull(field)) {
                 log.warn("Dropping '{}': not translated to the Responses API", field);
             }
+        }
+        if (request.path("output_config").hasNonNull("format")) {
+            log.warn("Dropping 'output_config.format': not translated to the Responses API");
         }
 
         // the Responses API stores every response unless told not to; the Messages API has nothing to store
@@ -131,6 +142,71 @@ public class MessagesToResponses {
         // last, so it also covers the function_call items replayed into input
         toolNames.applyResponses(result);
         return result;
+    }
+
+    /**
+     * Whether the client asked for thinking blocks without their text; the Responses API has no such switch, so
+     * the answer drops the text.
+     */
+    public static boolean isThinkingOmitted(JsonNode request) {
+        return "omitted".equals(request.path("thinking").path("display").asText());
+    }
+
+    /**
+     * {@code reasoning} from what the client named, or nothing: an effort only when one is named, never one
+     * inferred from the thinking type or {@code budget_tokens}, and {@code summary} for a thinking block to show.
+     * Disabled thinking outranks any effort, so a deployment whose defaults reason is told not to.
+     */
+    private static void translateReasoning(JsonNode request, JsonNode turnEffort, ObjectNode result) {
+        JsonNode thinking = request.path("thinking");
+        boolean hasThinking = request.hasNonNull("thinking");
+        if (hasThinking && "disabled".equals(thinking.path("type").asText())) {
+            result.putObject("reasoning").put("effort", "none");
+            return;
+        }
+        JsonNode effort = turnEffort != null ? turnEffort : request.path("output_config").path("effort");
+        ObjectNode reasoning = JsonNodeFactory.instance.objectNode();
+        if (!effort.isMissingNode() && !effort.isNull()) {
+            if (!effort.isTextual() || !EFFORTS.contains(effort.textValue())) {
+                // the one refused field: a named effort has a counterpart, and dropping it would answer at another depth
+                String value = effort.isTextual() ? effort.textValue() : effort.toString();
+                throw new UntranslatableRequestException("Unsupported 'output_config.effort': '" + value + "'. Expected one of: "
+                        + String.join(", ", EFFORTS));
+            }
+            if ("none".equals(effort.textValue())) {
+                // an opt-out: there is no reasoning to summarize
+                result.putObject("reasoning").put("effort", "none");
+                return;
+            }
+            reasoning.set("effort", effort);
+        }
+        if (hasThinking) {
+            if (!isThinkingOmitted(request)) {
+                reasoning.put("summary", "auto");
+            }
+            if (thinking.hasNonNull("budget_tokens")) {
+                log.debug("Dropping 'thinking.budget_tokens': no Responses API equivalent");
+            }
+        }
+        if (!reasoning.isEmpty()) {
+            result.set("reasoning", reasoning);
+        }
+    }
+
+    /**
+     * The effort the last visible {@code system} message names, which outranks the request's for this turn.
+     */
+    private static JsonNode turnEffort(JsonNode messages) {
+        JsonNode effort = null;
+        int lastUser = lastUserIndex(messages);
+        for (int i = 0; i < messages.size(); i++) {
+            JsonNode message = messages.get(i);
+            JsonNode value = message.path("output_config").path("effort");
+            if ("system".equals(message.path("role").asText()) && !isExpired(message, i, lastUser) && !isPythonFalsy(value)) {
+                effort = value;
+            }
+        }
+        return effort;
     }
 
     /**
@@ -254,12 +330,7 @@ public class MessagesToResponses {
             throw new UntranslatableRequestException("'messages' must be an array");
         }
         ArrayNode input = JsonNodeFactory.instance.arrayNode();
-        int lastUser = -1;
-        for (int i = 0; i < messages.size(); i++) {
-            if ("user".equals(messages.get(i).path("role").asText())) {
-                lastUser = i;
-            }
-        }
+        int lastUser = lastUserIndex(messages);
         for (int i = 0; i < messages.size(); i++) {
             JsonNode message = messages.get(i);
             String role = message.path("role").asText();
@@ -268,8 +339,7 @@ public class MessagesToResponses {
                 case "user" -> addUserTurn(input, content);
                 case "assistant" -> addAssistantTurn(input, content);
                 case "system" -> {
-                    // shown only for the user turn it follows: a later user turn expires it
-                    if (!("next_user_message".equals(message.path("clear_at").asText()) && i < lastUser)) {
+                    if (!isExpired(message, i, lastUser)) {
                         addMessage(input, "system", systemParts(content));
                     }
                 }
@@ -277,6 +347,23 @@ public class MessagesToResponses {
             }
         }
         return input;
+    }
+
+    private static int lastUserIndex(JsonNode messages) {
+        int lastUser = -1;
+        for (int i = 0; i < messages.size(); i++) {
+            if ("user".equals(messages.get(i).path("role").asText())) {
+                lastUser = i;
+            }
+        }
+        return lastUser;
+    }
+
+    /**
+     * A system message is shown only for the user turn it follows when it says so: a later user turn expires it.
+     */
+    private static boolean isExpired(JsonNode message, int index, int lastUser) {
+        return "next_user_message".equals(message.path("clear_at").asText()) && index < lastUser;
     }
 
     private static void addMessage(ArrayNode input, String role, ArrayNode parts) {
@@ -336,9 +423,11 @@ public class MessagesToResponses {
     }
 
     /**
-     * An assistant turn: each run of texts no {@code tool_use} interrupts as one assistant message, and each
-     * {@code tool_use} as a {@code function_call} item at its place. A {@code mid_conv_system} block goes ahead of
-     * the whole turn, never between a function call and its output.
+     * An assistant turn: each run of texts no {@code tool_use} or replayed reasoning interrupts as one assistant
+     * message, each {@code tool_use} as a {@code function_call} item and each thinking block holding a carrier as a
+     * {@code reasoning} item, at its place. A thinking block without one (a Claude signature) is dropped, as the
+     * Python translator drops it, and does not split the text around it. A {@code mid_conv_system} block goes ahead
+     * of the whole turn, never between a function call and its output.
      */
     private static void addAssistantTurn(ArrayNode input, JsonNode content) {
         List<String> texts = new ArrayList<>();
@@ -358,6 +447,14 @@ public class MessagesToResponses {
                     addAssistantMessage(items, texts);
                     texts.clear();
                     addFunctionCall(items, block);
+                }
+                case "thinking", "redacted_thinking" -> {
+                    ObjectNode reasoning = ReasoningCarrier.decode(block);
+                    if (reasoning != null) {
+                        addAssistantMessage(items, texts);
+                        texts.clear();
+                        items.add(reasoning);
+                    }
                 }
                 default -> throw unsupportedBlock(type, "assistant");
             }

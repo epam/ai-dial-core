@@ -5,7 +5,7 @@
 ### Requirement: Reasoning settings from thinking and effort
 A builtin translation SHALL set `reasoning` only from the request after its Messages defaults, unless thinking is
 disabled. `effort` is the named effort (next requirement), verbatim. `summary` is `"auto"` when `thinking` is present
-and not null, unless its `display` is `omitted`. No effort comes from a thinking type or `budget_tokens`. With
+and not null, unless its `display` is `omitted` or the effort is `none`. No effort comes from a thinking type or `budget_tokens`. With
 neither named it sets no `reasoning`. The model's `openaiResponses` defaults then fill keys it left unset; the
 scenarios use a model with none.
 

@@ -372,6 +372,17 @@
       },
       "upstreams": [{"endpoint": "http://responses-upstream", "responsesEndpoint": "http://responses-upstream/v1/responses", "key": "upstreamKey", "id": "responses-upstream"}]
     },
+    "gpt-builtin-two-upstreams": {
+      "type": "chat",
+      "interfaces": {
+        "openaiResponses": {"base_url": "http://localhost:4848"},
+        "anthropicMessages": {"mode": "translator", "translator": "builtinResponses"}
+      },
+      "upstreams": [
+        {"endpoint": "http://upstream-a", "responsesEndpoint": "http://upstream-a/v1/responses", "key": "keyA", "id": "up-a"},
+        {"endpoint": "http://upstream-b", "responsesEndpoint": "http://upstream-b/v1/responses", "key": "keyB", "id": "up-b"}
+      ]
+    },
     "gpt-builtin-intercepted": {
       "type": "chat",
       "interceptors": ["interceptor1"],
@@ -483,6 +494,7 @@
         "gpt-3-turbo": {"minute": "100", "day": "1000"},
         "default-headers-model": {"minute": "100000", "day": "10000000"},
         "gpt-builtin": {"minute": "100000", "day": "10000000"},
+        "gpt-builtin-two-upstreams": {"minute": "100000", "day": "10000000"},
         "gpt-builtin-consent": {"minute": "100000", "day": "10000000"},
         "gpt-builtin-limited": {"minute": "10", "day": "10"},
         "claude-ns": {"minute": "100000", "day": "10000000"},

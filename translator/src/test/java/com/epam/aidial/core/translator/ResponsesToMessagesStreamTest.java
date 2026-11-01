@@ -23,7 +23,7 @@ class ResponsesToMessagesStreamTest {
     private static final String COMPLETED = "{\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}";
 
     private final ToolNames toolNames = new ToolNames();
-    private final ResponsesToMessagesStream stream = new ResponsesToMessagesStream("requested", "msg_dial", toolNames);
+    private final ResponsesToMessagesStream stream = new ResponsesToMessagesStream("requested", "msg_dial", toolNames, false);
     private final List<JsonNode> sent = new ArrayList<>();
 
     private void feed(String... events) throws Exception {
@@ -100,6 +100,18 @@ class ResponsesToMessagesStreamTest {
 
         assertEquals(List.of("message_start", "ping", "content_block_start", "content_block_stop", "message_delta", "message_stop"), types());
         assertEquals("max_tokens", sent.get(4).path("delta").path("stop_reason").asText());
+    }
+
+    @Test
+    void testSummaryPartsOfOneItemAreSeparated() throws Exception {
+        feed("{\"type\":\"response.reasoning_summary_text.delta\",\"output_index\":0,\"summary_index\":0,\"delta\":\"one\"}",
+                "{\"type\":\"response.reasoning_summary_text.delta\",\"output_index\":0,\"summary_index\":0,\"delta\":\" more\"}",
+                "{\"type\":\"response.reasoning_summary_text.delta\",\"output_index\":0,\"summary_index\":1,\"delta\":\"two\"}",
+                COMPLETED);
+
+        assertEquals(List.of("message_start", "ping", "content_block_start", "content_block_delta", "content_block_delta",
+                "content_block_delta", "content_block_stop", "message_delta", "message_stop"), types());
+        assertEquals(List.of("one", " more", "\n\ntwo"), sent.subList(3, 6).stream().map(data -> data.path("delta").path("thinking").asText()).toList());
     }
 
     @Test
