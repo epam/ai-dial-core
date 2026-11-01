@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller.anthropic;
 
 import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
 import com.epam.aidial.core.translator.ResponsesToMessagesStream;
+import com.epam.aidial.core.translator.ToolNames;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -40,7 +41,7 @@ class ResponsesToMessagesReadStreamTest {
     @SuppressWarnings("unchecked")
     void setUp() {
         when(wrapFn.apply(any())).thenAnswer(invocation -> Future.succeededFuture(invocation.getArgument(0, JsonNode.class)));
-        stream = new ResponsesToMessagesReadStream(upstream, new ResponsesToMessagesStream("model", "msg_dial"), wrapFn);
+        stream = new ResponsesToMessagesReadStream(upstream, new ResponsesToMessagesStream("model", "msg_dial", new ToolNames()), wrapFn);
         ArgumentCaptor<Handler<Buffer>> chunks = ArgumentCaptor.forClass(Handler.class);
         ArgumentCaptor<Handler<Void>> end = ArgumentCaptor.forClass(Handler.class);
         verify(upstream).handler(chunks.capture());

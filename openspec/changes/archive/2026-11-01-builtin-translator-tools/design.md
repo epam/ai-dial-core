@@ -350,3 +350,44 @@ fixtures at `5e70209`.
     keeps the per-request map.
 18. simplicity, low: the proposal and task read as if `strict` were omitted. **Accepted.** The proposal and task
     2.1 now say "`strict: true` only when the tool sets it, otherwise `strict: false`", as the spec does.
+
+## Implementation notes
+
+1. Design against the code. The Context citations hold (`MessagesController.prepareTranslatedUpstreamRoute` /
+   `processResponse`, `ResponsesToMessagesStream.handle` / `onFinal`, `ResponsesToMessages.stopReason`,
+   `ResponsesApiRequest.buildCacheKeys`, `CacheKeyBuilder.update` / `JsonUtil.sort`,
+   `EncryptedContentAffinityUtil.resolveAndUnwrap`), with one name: the method Context calls
+   `MessagesToResponses.java:texts` is `turnTexts`. It is replaced by `addUserTurn` and `addAssistantTurn`, one per
+   role, because the two roles now order their items differently (D7).
+2. Spec deltas. `builtin-translator-fixture-parity` is archived, and each of the five MODIFIED blocks differs from
+   the current `openspec/specs/anthropic-messages-translation/spec.md` only by this change's own edits (checked
+   block by block), so nothing needed carrying over. The "Answer with no text" WHEN wording ("streams
+   `response.created` and then `response.incomplete` with no output") is this change's draft edit, not drift: the
+   fixture-parity draft at the proposal commit already had the archived wording. "Tools are refused", which the
+   delta removes, exists. The reasoning change's MODIFIED "Content blocks without a translation are refused" already
+   holds the `tool_result` clause and the "Image inside a tool result" scenario, so task 4.2 changed nothing there.
+3. Known-gaps owners (task 2.3). "Fixtures" expected 12 of the 36 request fixtures under `builtin-translator-reasoning`.
+   The archived list names only `6ef7fe30f79cfccb` there: its owner rule counts `output_config` as reasoning only when
+   it holds `effort`, so the 11 with `output_config: {}` were already owned by this change. All 36 are removed either
+   way, and the fixture test proved exactly these 36 request and 6 stream fixtures started passing.
+4. `ToolNames.alias` always takes the `taken` set; the fixture harness passes `Set.of()`, so there is no one-argument
+   overload. `alias`, `restore` and `applyResponses` are package-private: the server only creates the map and hands
+   it over.
+5. `server/.../controller/anthropic/ResponsesToMessagesReadStreamTest` also builds a `ResponsesToMessagesStream`; it
+   now passes `new ToolNames()`.
+6. Malformed tool fields are refused with `'tools' must be an array`, `'tools[<i>]' must be an object`,
+   `'tools[<i>].name' must be a string`, `'tools[<i>].type' must be a string` and `'tool_choice' must be an object`.
+7. Small deliberate differences from the reference, none visible in a fixture:
+   - an entry inside a `tool_result` content list that is not an object is refused as a block of type `''`, as a
+     non-object block of a turn already is (CODE_STYLE: invalid input throws); Python skips it;
+   - a `tool_choice` type with no translation is dropped with a warning log; Python drops it silently;
+   - the stream fills in only a string `arguments` from the `*.done` events, the type the Responses API defines;
+     Python would forward any non-empty value.
+8. Known edge, not handled: a client tool sent with `type: "function"` (a Responses-shaped tool on the Messages API)
+   is forwarded as the client's own node, and `applyResponses` renames it in place when its name needs an alias, so
+   the client body Core stores for pricing and the analytics row would show the alias. Python aliases it too, on its
+   own copy. Copying such a tool before forwarding is the fix if it ever shows up.
+9. Fail-before runs: `ToolNamesTest` and the translator tests did not compile before 1.2 and 2.2;
+   `testOutOfScopeToolContentIsRefused`, `testMalformedConversationIsRefused` and `testToolHistoryIsTranslated`
+   failed before 2.2; `testClaudeCodeToolRequestIsTranslated` and `testLongToolNameIsAliasedAndRestored` failed
+   before 3.2 on the client's event sequence, with their upstream-body assertions already passing.

@@ -41,6 +41,7 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.translator.MessagesToResponses;
 import com.epam.aidial.core.translator.ResponsesToMessagesStream;
+import com.epam.aidial.core.translator.ToolNames;
 import com.epam.aidial.core.translator.UntranslatableRequestException;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -72,6 +73,11 @@ public class MessagesController extends MessagesBaseController {
      * The {@code model} the client asked for, reported back when the upstream names none.
      */
     private String requestedModel;
+
+    /**
+     * The tool-name aliases the builtin translation issued, which every upstream attempt's answer restores.
+     */
+    private ToolNames toolNames;
 
     /**
      * The caller's caps as read by {@link #verifyLimit()}; null when no caps were read.
@@ -114,9 +120,11 @@ public class MessagesController extends MessagesBaseController {
 
         ProxyUtil.processChain(request, List.of(new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES)));
         ResponsesApiRequest translated;
+        toolNames = new ToolNames();
         try {
             // only a streaming request gets here, and Core is the transport that sets it
-            translated = new ResponsesApiRequest(MessagesToResponses.translateRequest(request.getTree(), request.getModel()).put("stream", true));
+            translated = new ResponsesApiRequest(MessagesToResponses.translateRequest(request.getTree(), request.getModel(), toolNames)
+                    .put("stream", true));
         } catch (UntranslatableRequestException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
@@ -280,7 +288,7 @@ public class MessagesController extends MessagesBaseController {
             // translated before it is buffered, so the rest of the path sees the stream the client gets
             ResponsesToMessagesReadStream translated = new ResponsesToMessagesReadStream(proxyResponse,
                     new ResponsesToMessagesStream(requestedModel,
-                            ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get())),
+                            ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get()), toolNames),
                     new EncryptedContentWrapFn(proxy, context));
             responseStream = new BufferingReadStream(translated, ProxyUtil.contentLength(proxyResponse, 1024),
                     new MessagesSseListener(List.of(new CollectMessagesTokenUsageFn(proxy, context))));

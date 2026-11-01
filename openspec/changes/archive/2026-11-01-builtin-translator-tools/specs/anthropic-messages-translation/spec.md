@@ -74,8 +74,9 @@ in `tools`, a function `tool_choice` and replayed `function_call` items alike.
   `tool_choice` and in the `function_call` item, and names `Read` unchanged
 
 ### Requirement: Aliases never collide within a request
-Core SHALL give a name the same alias at every site of a request. An alias SHALL differ from every name in the
-request that needs no alias and from the request's other aliases: on a collision the suffix SHALL become
+Core SHALL give a name the same alias at every site of a request. An alias SHALL differ from every function name in
+the request (function tools, a function `tool_choice`, replayed `function_call` items) that needs no alias and from
+the request's other aliases: on a collision the suffix SHALL become
 `_<8 hex>_<n>`, n = 1, 2, … until the alias is free, with the head cut so that the whole alias fits in 64 characters.
 With no collision a name SHALL get the same alias in every request.
 

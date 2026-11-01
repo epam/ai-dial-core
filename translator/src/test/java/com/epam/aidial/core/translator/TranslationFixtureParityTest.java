@@ -123,19 +123,24 @@ class TranslationFixtureParityTest {
     private static JsonNode replayRequest(JsonNode input) {
         ObjectNode output = MAPPER.createObjectNode();
         try {
-            output.set("body", MessagesToResponses.translateRequest(input.path("request"), input.path("model").asText()));
+            output.set("body", MessagesToResponses.translateRequest(input.path("request"), input.path("model").asText(), new ToolNames()));
         } catch (UntranslatableRequestException e) {
             // Core answers it with a 400, and invalid_request_error is the Anthropic type of a 400
             output.putObject("error").put("status", 400).put("type", "invalid_request_error").put("message", e.getMessage());
             return output;
         }
-        // echoed: tool names are not aliased yet
+        // echoed: every request fixture passes null and records null, or passes {} and records {}, so no recorded
+        // map tells the echo from a real one; ToolNamesTest checks the aliases
         output.set("tool_names", input.get("tool_names"));
         return output;
     }
 
     private static JsonNode replayStream(JsonNode input) {
-        ResponsesToMessagesStream stream = new ResponsesToMessagesStream(input.path("requested_model").asText(), MESSAGE_ID);
+        // seeded the way a request translation fills it, so the recorded aliases are checked too
+        ToolNames toolNames = new ToolNames();
+        input.path("tool_names").properties().forEach(entry ->
+                assertEquals(entry.getValue().asText(), toolNames.alias(entry.getKey(), Set.of()), entry.getKey()));
+        ResponsesToMessagesStream stream = new ResponsesToMessagesStream(input.path("requested_model").asText(), MESSAGE_ID, toolNames);
         ArrayNode output = MAPPER.createArrayNode();
         for (JsonNode call : input.path("calls")) {
             List<String> frames;

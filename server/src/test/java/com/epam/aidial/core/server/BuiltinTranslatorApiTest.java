@@ -21,9 +21,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -126,15 +128,173 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
     }
 
     @Test
-    public void testToolsAreRefused() throws IOException {
-        try (TestWebServer server = refusingOrigin(); CloseableHttpClient client = newClient()) {
-            String body = requestBody(true).replace("\"messages\"",
-                    "\"tools\":[{\"name\":\"get_weather\",\"input_schema\":{\"type\":\"object\"}}],\"messages\"");
+    public void testToolHistoryIsTranslated() throws IOException {
+        String sse = readFixture("responses-sse.txt");
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = origin(request -> {
+            captured.set(request);
+            return eventStream(sse);
+        }); CloseableHttpClient client = newClient()) {
+            String body = """
+                    {"model":"gpt-builtin","max_tokens":100,"stream":true,"messages":[
+                      {"role":"user","content":"Read a.txt"},
+                      {"role":"assistant","content":[{"type":"text","text":"Reading it."},
+                        {"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"a.txt"}},
+                        {"type":"tool_use","id":"toolu_2","name":"Read","input":{}},
+                        {"type":"text","text":"Done."}]},
+                      {"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":[{"type":"text","text":"42"}]},
+                        {"type":"tool_result","tool_use_id":"toolu_2","content":"file not found","is_error":true},
+                        {"type":"text","text":"and now?"}]}]}""";
 
             Response response = post(client, MESSAGES_PATH, body, "api-key", "proxyKey1");
 
+            assertEquals(200, response.status(), response.body());
+            assertEquals("Who’s there?", deltaText(response.body()));
+            JsonNode input = ProxyUtil.MAPPER.readTree(captured.get().getBody().readUtf8()).path("input");
+            assertEquals(ProxyUtil.MAPPER.readTree("""
+                    [{"type":"message","role":"user","content":[{"type":"input_text","text":"Read a.txt"}]},
+                     {"type":"message","role":"assistant","content":"Reading it."},
+                     {"type":"function_call","call_id":"toolu_1","name":"Read","arguments":"{\\"file_path\\": \\"a.txt\\"}"},
+                     {"type":"function_call","call_id":"toolu_2","name":"Read","arguments":"{}"},
+                     {"type":"message","role":"assistant","content":"Done."},
+                     {"type":"function_call_output","call_id":"toolu_1","output":"42"},
+                     {"type":"function_call_output","call_id":"toolu_2","output":"Error: file not found"},
+                     {"type":"message","role":"user","content":[{"type":"input_text","text":"and now?"}]}]"""), input);
+        }
+    }
+
+    @Test
+    public void testClaudeCodeToolRequestIsTranslated() throws IOException, InterruptedException {
+        String sse = sseEvents(
+                "{\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"model\":\"gpt-5-upstream\"}}",
+                "{\"type\":\"response.content_part.added\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\"}}",
+                "{\"type\":\"response.output_text.delta\",\"output_index\":0,\"content_index\":0,\"delta\":\"Reading the file.\"}",
+                "{\"type\":\"response.content_part.done\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\"}}",
+                "{\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"Read\"}}",
+                "{\"type\":\"response.function_call_arguments.delta\",\"output_index\":1,\"delta\":\"{\\\"file_path\\\":\"}",
+                "{\"type\":\"response.function_call_arguments.delta\",\"output_index\":1,\"delta\":\" \\\"a.txt\\\"}\"}",
+                "{\"type\":\"response.function_call_arguments.done\",\"output_index\":1,\"arguments\":\"{\\\"file_path\\\": \\\"a.txt\\\"}\"}",
+                "{\"type\":\"response.output_item.done\",\"output_index\":1,"
+                        + "\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"Read\",\"arguments\":\"{\\\"file_path\\\": \\\"a.txt\\\"}\"}}",
+                "{\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":8}}}");
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = origin(request -> {
+            captured.set(request);
+            return eventStream(sse);
+        }); CloseableHttpClient client = newClient()) {
+            String body = """
+                    {"model":"gpt-builtin","max_tokens":100,"stream":true,
+                     "tools":[
+                       {"name":"Read","description":"Read a file","input_schema":{"$schema":"http://json-schema.org/draft-07/schema#",
+                         "type":"object","properties":{"file_path":{"type":"string"}}}},
+                       {"name":"Bash","input_schema":{"type":"object"},"strict":true},
+                       {"type":"bash_20250124","name":"bash"},
+                       {"type":"mcp_toolset","mcp_server_name":"github"}],
+                     "tool_choice":{"type":"tool","name":"Read","disable_parallel_tool_use":true},
+                     "messages":[{"role":"user","content":"Read a.txt"}]}""";
+
+            Response response = post(client, MESSAGES_PATH, body, "api-key", "proxyKey1");
+
+            assertEquals(200, response.status(), response.body());
+            JsonNode upstream = ProxyUtil.MAPPER.readTree(captured.get().getBody().readUtf8());
+            assertEquals(ProxyUtil.MAPPER.readTree("""
+                    [{"type":"function","name":"Read","description":"Read a file",
+                      "parameters":{"type":"object","properties":{"file_path":{"type":"string"}}},"strict":false},
+                     {"type":"function","name":"Bash","parameters":{"type":"object"},"strict":true},
+                     {"type":"bash_20250124","name":"bash"},
+                     {"type":"mcp_toolset","mcp_server_name":"github"}]"""), upstream.path("tools"));
+            assertEquals(ProxyUtil.MAPPER.readTree("{\"type\":\"function\",\"name\":\"Read\"}"), upstream.path("tool_choice"));
+            assertFalse(upstream.path("parallel_tool_calls").asBoolean(true));
+
+            assertEquals(List.of("message_start", "ping", "content_block_start", "content_block_delta", "content_block_stop",
+                    "content_block_start", "content_block_delta", "content_block_delta", "content_block_stop",
+                    "message_delta", "message_stop"), eventNames(response.body()));
+            List<JsonNode> events = eventData(response.body());
+            assertEquals("Reading the file.", events.get(3).path("delta").path("text").asText());
+            assertEquals(ProxyUtil.MAPPER.readTree("{\"type\":\"tool_use\",\"id\":\"call_1\",\"name\":\"Read\",\"input\":{}}"),
+                    events.get(5).path("content_block"));
+            assertEquals("{\"file_path\":", events.get(6).path("delta").path("partial_json").asText());
+            assertEquals(" \"a.txt\"}", events.get(7).path("delta").path("partial_json").asText());
+            assertEquals("tool_use", events.get(9).path("delta").path("stop_reason").asText());
+
+            Thread.sleep(1000); // wait for core to save usage
+            // a turn that ends on a tool call is charged as a text answer is
+            assertUsed("gpt-builtin", 18);
+        }
+    }
+
+    @Test
+    public void testLongToolNameIsAliasedAndRestored() throws IOException {
+        String longName = "mcp__dial-knowledge-base__search_documents_by_semantic_similarity_v2";
+        String alias = "mcp__dial-knowledge-base__search_documents_by_semantic__7bc2a2fa";
+        String sse = sseEvents(
+                "{\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"model\":\"gpt-5-upstream\"}}",
+                "{\"type\":\"response.output_item.added\",\"output_index\":0,"
+                        + "\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"" + alias + "\",\"arguments\":\"\"}}",
+                "{\"type\":\"response.function_call_arguments.done\",\"output_index\":0,\"arguments\":\"{\\\"query\\\": \\\"incident code\\\"}\"}",
+                "{\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\","
+                        + "\"name\":\"" + alias + "\",\"arguments\":\"{\\\"query\\\": \\\"incident code\\\"}\"}}",
+                "{\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":8}}}");
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = origin(request -> {
+            captured.set(request);
+            return eventStream(sse);
+        }); CloseableHttpClient client = newClient()) {
+            String body = """
+                    {"model":"gpt-builtin","max_tokens":100,"stream":true,
+                     "tools":[{"name":"Read"},{"name":"%1$s"},{"name":"a"},{"name":"a_ca978112"}],
+                     "tool_choice":{"type":"tool","name":"%1$s"},
+                     "messages":[{"role":"user","content":"Look it up"},
+                       {"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"%1$s","input":{"query":"x"}}]},
+                       {"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"nothing"}]}]}"""
+                    .formatted(longName);
+
+            Response response = post(client, MESSAGES_PATH, body, "api-key", "proxyKey1");
+
+            assertEquals(200, response.status(), response.body());
+            JsonNode upstream = ProxyUtil.MAPPER.readTree(captured.get().getBody().readUtf8());
+            List<String> toolNames = new ArrayList<>();
+            upstream.path("tools").forEach(tool -> toolNames.add(tool.path("name").asText()));
+            assertEquals(List.of("Read", alias, "a_ca978112_1", "a_ca978112"), toolNames);
+            assertEquals(alias, upstream.path("tool_choice").path("name").asText());
+            assertEquals(alias, upstream.path("input").path(1).path("name").asText());
+            assertFalse(upstream.toString().contains(longName), upstream.toString());
+
+            // a call alone is the whole answer: no empty text block next to it
+            assertEquals(List.of("message_start", "ping", "content_block_start", "content_block_delta", "content_block_stop",
+                    "message_delta", "message_stop"), eventNames(response.body()));
+            List<JsonNode> events = eventData(response.body());
+            assertEquals(longName, events.get(2).path("content_block").path("name").asText());
+            // the arguments only the done event carried, sent once, not again at output_item.done
+            assertEquals("{\"query\": \"incident code\"}", events.get(3).path("delta").path("partial_json").asText());
+            assertFalse(response.body().contains(alias), response.body());
+        }
+    }
+
+    @Test
+    public void testOutOfScopeToolContentIsRefused() throws IOException {
+        try (TestWebServer server = refusingOrigin(); CloseableHttpClient client = newClient()) {
+            String webSearch = requestBody(true).replace("\"messages\"",
+                    "\"tools\":[{\"type\":\"web_search_20250305\",\"name\":\"web_search\"}],\"messages\"");
+            Response response = post(client, MESSAGES_PATH, webSearch, "api-key", "proxyKey1");
+
             assertEquals(400, response.status());
-            assertTrue(response.body().contains("Tools"), response.body());
+            assertTrue(response.body().contains("web_search_20250305"), response.body());
+
+            String responsesWebSearch = requestBody(true).replace("\"messages\"", "\"tools\":[{\"type\":\"web_search\"}],\"messages\"");
+            response = post(client, MESSAGES_PATH, responsesWebSearch, "api-key", "proxyKey1");
+
+            assertEquals(400, response.status());
+            assertTrue(response.body().contains("'web_search'"), response.body());
+
+            String imageResult = """
+                    {"model":"gpt-builtin","max_tokens":100,"stream":true,"messages":[{"role":"user","content":[
+                      {"type":"tool_result","tool_use_id":"toolu_1","content":[
+                        {"type":"image","source":{"type":"base64","media_type":"image/png","data":"AA=="}}]}]}]}""";
+            response = post(client, MESSAGES_PATH, imageResult, "api-key", "proxyKey1");
+
+            assertEquals(400, response.status());
+            assertTrue(response.body().contains("'image'"), response.body());
             assertEquals(0, originRequests.get());
         }
     }
@@ -153,6 +313,12 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
 
             assertEquals(400, response.status());
             assertTrue(response.body().contains("'messages'"), response.body());
+
+            String stringToolChoice = requestBody(true).replace("\"messages\"", "\"tool_choice\":\"auto\",\"messages\"");
+            response = post(client, MESSAGES_PATH, stringToolChoice, "api-key", "proxyKey1");
+
+            assertEquals(400, response.status());
+            assertTrue(response.body().contains("'tool_choice'"), response.body());
             assertEquals(0, originRequests.get());
         }
     }
@@ -324,14 +490,30 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
         return response;
     }
 
-    @SneakyThrows
     private static String deltaText(String sse) {
-        StringBuilder text = new StringBuilder();
-        for (String line : sse.lines().filter(line -> line.startsWith("data: ")).toList()) {
-            JsonNode data = ProxyUtil.MAPPER.readTree(line.substring("data: ".length()));
-            text.append(data.path("delta").path("text").asText(""));
+        return eventData(sse).stream().map(data -> data.path("delta").path("text").asText("")).collect(Collectors.joining());
+    }
+
+    /**
+     * An upstream Responses event stream holding {@code events}, one data object each.
+     */
+    @SneakyThrows
+    private static String sseEvents(String... events) {
+        StringBuilder sse = new StringBuilder();
+        for (String event : events) {
+            String type = ProxyUtil.MAPPER.readTree(event).path("type").asText();
+            sse.append("event: ").append(type).append("\ndata: ").append(event).append("\n\n");
         }
-        return text.toString();
+        return sse.toString();
+    }
+
+    @SneakyThrows
+    private static List<JsonNode> eventData(String sse) {
+        List<JsonNode> events = new ArrayList<>();
+        for (String line : sse.lines().filter(line -> line.startsWith("data: ")).toList()) {
+            events.add(ProxyUtil.MAPPER.readTree(line.substring("data: ".length())));
+        }
+        return events;
     }
 
     private static List<String> eventNames(String sse) {

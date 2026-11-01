@@ -19,13 +19,14 @@ import java.util.List;
  * {@code message_stop} or {@code error}; one that ends before a terminal Responses event is an error, not a
  * finished answer.
  *
- * <p>Text only for now. Not thread-safe: one instance per response, fed in event order.
+ * <p>Text and tool calls for now. Not thread-safe: one instance per response, fed in event order.
  */
 @Slf4j
 public class ResponsesToMessagesStream {
 
     private final String requestedModel;
     private final String messageId;
+    private final ToolNames toolNames;
     private String model;
     private boolean started;
     private boolean terminated;
@@ -33,13 +34,21 @@ public class ResponsesToMessagesStream {
     private String openKey;
     private int openIndex;
     private boolean sawRefusal;
+    private boolean sawFunctionCall;
+
+    /**
+     * Whether the open block's function call arguments have reached the client.
+     */
+    private boolean openArgumentsSent;
 
     /**
      * @param messageId the id the client gets for the message, in place of the upstream's own response id
+     * @param toolNames the aliases the request's translation issued, restored in the tool calls the client gets
      */
-    public ResponsesToMessagesStream(String requestedModel, String messageId) {
+    public ResponsesToMessagesStream(String requestedModel, String messageId, ToolNames toolNames) {
         this.requestedModel = requestedModel;
         this.messageId = messageId;
+        this.toolNames = toolNames;
         this.model = requestedModel;
     }
 
@@ -68,6 +77,18 @@ public class ResponsesToMessagesStream {
             case "response.content_part.done" -> {
                 if (textKey(event).equals(openKey)) {
                     closeOpen(frames);
+                }
+            }
+            case "response.output_item.added" -> onOutputItemAdded(event, frames);
+            case "response.function_call_arguments.delta" -> onArgumentsDelta(event, frames);
+            case "response.function_call_arguments.done" -> flushArguments(functionKey(event), event.path("arguments"), frames);
+            case "response.output_item.done" -> {
+                if ("function_call".equals(event.path("item").path("type").asText())) {
+                    String key = functionKey(event);
+                    flushArguments(key, event.path("item").path("arguments"), frames);
+                    if (key.equals(openKey)) {
+                        closeOpen(frames);
+                    }
                 }
             }
             case "response.completed", "response.incomplete" -> onFinal(event.path("response"), frames);
@@ -109,6 +130,56 @@ public class ResponsesToMessagesStream {
         ObjectNode delta = JsonNodeFactory.instance.objectNode();
         delta.put("type", "text_delta");
         delta.put("text", event.path("delta").asText(""));
+        emitDelta(delta, frames);
+    }
+
+    private void onOutputItemAdded(JsonNode event, List<String> frames) {
+        JsonNode item = event.path("item");
+        // a message or reasoning item opens on its part events
+        if ("function_call".equals(item.path("type").asText())) {
+            sawFunctionCall = true;
+            ObjectNode block = JsonNodeFactory.instance.objectNode();
+            block.put("type", "tool_use");
+            block.set("id", item.get("call_id"));
+            block.set("name", toolNames.restore(item.get("name")));
+            block.putObject("input");
+            openBlock(functionKey(event), block, frames);
+        }
+    }
+
+    /**
+     * Sent as it comes, an empty delta included; only a non-empty one counts as the arguments having been sent.
+     */
+    private void onArgumentsDelta(JsonNode event, List<String> frames) {
+        String key = functionKey(event);
+        if (!key.equals(openKey)) {
+            return;
+        }
+        String delta = event.path("delta").asText("");
+        emitDelta(inputJsonDelta(delta), frames);
+        if (!delta.isEmpty()) {
+            openArgumentsSent = true;
+        }
+    }
+
+    /**
+     * The whole arguments, once, for a call no delta carried them for: only the {@code *.done} events are certain
+     * to hold them, and without this a call from an upstream that skips the deltas reaches the client with an
+     * empty {@code input}.
+     */
+    private void flushArguments(String key, JsonNode arguments, List<String> frames) {
+        String whole = arguments.asText("");
+        if (key.equals(openKey) && !whole.isEmpty() && !openArgumentsSent) {
+            emitDelta(inputJsonDelta(whole), frames);
+            openArgumentsSent = true;
+        }
+    }
+
+    private static ObjectNode inputJsonDelta(String partialJson) {
+        return JsonNodeFactory.instance.objectNode().put("type", "input_json_delta").put("partial_json", partialJson);
+    }
+
+    private void emitDelta(ObjectNode delta, List<String> frames) {
         ObjectNode data = JsonNodeFactory.instance.objectNode();
         data.put("type", "content_block_delta");
         data.put("index", openIndex);
@@ -125,7 +196,7 @@ public class ResponsesToMessagesStream {
             closeOpen(frames);
         }
         ObjectNode delta = JsonNodeFactory.instance.objectNode();
-        delta.put("stop_reason", ResponsesToMessages.stopReason(response, false, sawRefusal));
+        delta.put("stop_reason", ResponsesToMessages.stopReason(response, sawFunctionCall, sawRefusal));
         delta.putNull("stop_sequence");
         ObjectNode data = JsonNodeFactory.instance.objectNode();
         data.put("type", "message_delta");
@@ -181,6 +252,7 @@ public class ResponsesToMessagesStream {
         start(frames);
         closeOpen(frames);
         openKey = key;
+        openArgumentsSent = false;
         openIndex = nextIndex++;
         ObjectNode data = JsonNodeFactory.instance.objectNode();
         data.put("type", "content_block_start");
@@ -206,6 +278,10 @@ public class ResponsesToMessagesStream {
 
     private static String textKey(JsonNode event) {
         return "m:" + event.path("output_index").asInt(0) + ":" + event.path("content_index").asInt(0);
+    }
+
+    private static String functionKey(JsonNode event) {
+        return "f:" + event.path("output_index").asInt(0);
     }
 
     /**

@@ -6,7 +6,7 @@ which includes that change's fixture test.
 
 ## 1. Alias map
 
-- [ ] 1.1 Write `translator/src/test/.../ToolNamesTest.java` first. It covers: a conforming name untouched;
+- [x] 1.1 Write `translator/src/test/.../ToolNamesTest.java` first. It covers: a conforming name untouched;
   `mcp__dial-knowledge-base__search_documents_by_semantic_similarity_v2` →
   `mcp__dial-knowledge-base__search_documents_by_semantic__7bc2a2fa`; the same long name with that alias taken →
   `mcp__dial-knowledge-base__search_documents_by_semanti_7bc2a2fa_1` (64 characters, head cut again); a name starting
@@ -14,14 +14,14 @@ which includes that change's fixture test.
   a real `a_ca978112` → `a_ca978112_1`; the same name gets one alias at all three sites of `applyResponses`;
   `restore` passes an unknown name and a non-string through; a nameless function tool is left alone. Verify the test
   fails before 1.2.
-- [ ] 1.2 Add `ToolNames` to `translator/` as design D1 describes, ported from `tool_names.py:ToolNames`. Verify
+- [x] 1.2 Add `ToolNames` to `translator/` as design D1 describes, ported from `tool_names.py:ToolNames`. Verify
   `ToolNamesTest` passes.
-- [ ] 1.3 Run `./gradlew checkstyleMain checkstyleTest` and `./gradlew :translator:test --tests
+- [x] 1.3 Run `./gradlew checkstyleMain checkstyleTest` and `./gradlew :translator:test --tests
   "com.epam.aidial.core.translator.ToolNamesTest"`. Verify both pass.
 
 ## 2. Request translation
 
-- [ ] 2.1 Write the request tests first.
+- [x] 2.1 Write the request tests first.
   - In `MessagesToResponsesTest`, replace `testToolsAreRefused` and the `tool_use` refusal test
     `testNonTextContentIsRefused` with tests for: a custom tool → function tool (`$schema` stripped while the client's
     `input_schema` keeps it, default schema when absent, `strict: true` only when the tool sets it and `strict: false`
@@ -45,22 +45,22 @@ which includes that change's fixture test.
     around a tool use" and "Tool results answer the calls before the user text". The upstream answers with text.
 
   Verify the new tests fail before 2.2.
-- [ ] 2.2 Implement design D2–D5, D7 and D8 in `MessagesToResponses`: a `ToolNames` parameter on `translateRequest`,
+- [x] 2.2 Implement design D2–D5, D7 and D8 in `MessagesToResponses`: a `ToolNames` parameter on `translateRequest`,
   the `json.dumps`-style writer with its `ponytail:` comment, and aliasing last. In
   `MessagesController.prepareTranslatedUpstreamRoute`, create the request's `ToolNames`, keep it on the controller and
   pass it to `translateRequest`; update the test callers. Verify `MessagesToResponsesTest` and `BuiltinTranslatorApiTest`
   pass.
-- [ ] 2.3 Remove the 36 request fixtures listed in design "Fixtures" from the known-gaps list, whatever owner their
+- [x] 2.3 Remove the 36 request fixtures listed in design "Fixtures" from the known-gaps list, whatever owner their
   line names (12 of them are listed under `builtin-translator-reasoning`). The other 27 tool-and-reasoning request
   fixtures stay, owned by the reasoning change. Verify the fixture test passes, which proves the 36 now pass and the
   rest still fail.
-- [ ] 2.4 Run `./gradlew checkstyleMain checkstyleTest`, `./gradlew :translator:test --tests
+- [x] 2.4 Run `./gradlew checkstyleMain checkstyleTest`, `./gradlew :translator:test --tests
   "com.epam.aidial.core.translator.*"` and `./gradlew :server:test --tests
   "com.epam.aidial.core.server.BuiltinTranslatorApiTest"`. Verify all pass.
 
 ## 3. Tool calls on the stream
 
-- [ ] 3.1 Write the stream tests first.
+- [x] 3.1 Write the stream tests first.
   - In `ResponsesToMessagesStreamTest`, add tests for: `output_item.added` with a `function_call` opens a `tool_use`
     block (`id` from `call_id`, `input: {}`) and closes an open text block first; deltas become `input_json_delta`, an
     empty one included; `function_call_arguments.done` sends the whole arguments only when no non-empty delta came,
@@ -78,25 +78,25 @@ which includes that change's fixture test.
     `response.function_call_arguments.done`.
 
   Verify they fail before 3.2.
-- [ ] 3.2 Implement design D6 in `ResponsesToMessagesStream`, with the constructor taking the request's `ToolNames`
+- [x] 3.2 Implement design D6 in `ResponsesToMessagesStream`, with the constructor taking the request's `ToolNames`
   and `onFinal` passing `sawFunctionCall` to `ResponsesToMessages.stopReason`. In `MessagesController.processResponse`,
   pass the request's `ToolNames` to each `ResponsesToMessagesStream` it builds. Verify `ResponsesToMessagesStreamTest`
   and `BuiltinTranslatorApiTest` pass.
-- [ ] 3.3 Teach the fixture test to seed a `ToolNames` from a stream fixture's input `tool_names` by calling `alias`
+- [x] 3.3 Teach the fixture test to seed a `ToolNames` from a stream fixture's input `tool_names` by calling `alias`
   and asserting each recorded alias. Request fixtures keep the `tool_names` echo (design "Fixtures"). Then remove the
   6 stream fixtures in design "Fixtures" from the known-gaps list. Verify the fixture test passes.
-- [ ] 3.4 Run `./gradlew checkstyleMain checkstyleTest`, `./gradlew :translator:test --tests
+- [x] 3.4 Run `./gradlew checkstyleMain checkstyleTest`, `./gradlew :translator:test --tests
   "com.epam.aidial.core.translator.*"` and `./gradlew :server:test --tests
   "com.epam.aidial.core.server.BuiltinTranslatorApiTest"`. Verify all pass.
 
 ## 4. Docs, spec copies and measurement
 
-- [ ] 4.1 Update `docs/dynamic-settings/translators.md` (the `anthropicMessagesToOpenaiResponses` bullet). Say that
+- [x] 4.1 Update `docs/dynamic-settings/translators.md` (the `anthropicMessagesToOpenaiResponses` bullet). Say that
   tools and `tool_choice` are translated; that server tool types are forwarded as sent and the deployment answers
   for them; that names the upstream may reject are aliased and restored; and that tools whose `type` starts with
   `web_search`, images and documents (also inside a `tool_result`), non-streaming requests and `count_tokens` are
   still refused. Verify the bullet matches the spec delta.
-- [ ] 4.2 Before archiving, compare the five MODIFIED blocks in `specs/anthropic-messages-translation/spec.md` with
+- [x] 4.2 Before archiving, compare the five MODIFIED blocks in `specs/anthropic-messages-translation/spec.md` with
   the archived text of `builtin-translator-fixture-parity`, and carry over any wording that changed there, keeping
   only this change's edits. Then check that the MODIFIED "Content blocks without a translation are refused" in
   `builtin-translator-reasoning` holds this change's clause for blocks inside a `tool_result` (other than `text` or
@@ -106,7 +106,7 @@ which includes that change's fixture test.
 - [ ] 4.3 (deferred: needs the perf environment) Measure a Claude Code-shaped streaming corpus with tools on a
   builtin-translated model against the same model behind the translator service. Compare Core passes and Core CPU per
   request (one pass instead of two).
-- [ ] 4.4 Run `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests
+- [x] 4.4 Run `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests
   "com.epam.aidial.core.server.BuiltinTranslatorApiTest"` and `./gradlew :translator:test`. Verify all pass.
 
 ## Workflow follow-up
