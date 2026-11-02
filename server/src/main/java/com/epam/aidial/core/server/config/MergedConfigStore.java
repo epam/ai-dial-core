@@ -571,8 +571,8 @@ public final class MergedConfigStore implements ConfigStore {
     }
 
     /**
-     * Whether the {@code globalInterceptors} / {@code retriableErrorCodes} / {@code rateLimitSchedule}
-     * fields in the current {@link Config} were sourced from the API-managed settings singleton blob
+     * Whether the {@code globalInterceptors} / {@code retriableErrorCodes} / {@code rateLimitSchedule} /
+     * {@code spendingLimits} fields in the current {@link Config} were sourced from the API-managed settings singleton blob
      * ({@code platform/settings/global}) rather than from the file-defined defaults.
      * Drives the blob-only {@code 404} path on {@code GET /v1/settings/platform/global}
      * (slice U.1): when {@code false}, the per-entity endpoint returns {@code 404} and
@@ -826,7 +826,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     /**
      * Settings singleton overlay write (slice 4S.4). Applies {@code globalInterceptors} +
-     * {@code retriableErrorCodes} + {@code rateLimitSchedule} fields from the supplied
+     * {@code retriableErrorCodes} + {@code rateLimitSchedule} + {@code spendingLimits} fields from the supplied
      * {@link GlobalSettings}, flips {@code settingsFromApi} to {@code true}.
      */
     public Config applySettingsWrite(GlobalSettings settings) {
@@ -839,6 +839,8 @@ public final class MergedConfigStore implements ConfigStore {
                     ? Set.of() : settings.getRetriableErrorCodes());
             next.setRateLimitSchedule(settings.getRateLimitSchedule() == null
                     ? new RateLimitSchedule() : settings.getRateLimitSchedule());
+            next.setSpendingLimits(settings.getSpendingLimits() == null
+                    ? new SpendingLimits() : settings.getSpendingLimits());
             this.config = next;
             this.settingsFromApi = true;
             return next;
@@ -849,8 +851,8 @@ public final class MergedConfigStore implements ConfigStore {
 
     /**
      * Settings singleton overlay delete (slice 4S.4). Restores {@code globalInterceptors} +
-     * {@code retriableErrorCodes} + {@code rateLimitSchedule} from the file-derived {@link Config}
-     * and flips {@code settingsFromApi} to {@code false}.
+     * {@code retriableErrorCodes} + {@code rateLimitSchedule} + {@code spendingLimits} from the
+     * file-derived {@link Config} and flips {@code settingsFromApi} to {@code false}.
      */
     public Config applySettingsDelete() {
         rebuildLock.lock();
@@ -860,6 +862,7 @@ public final class MergedConfigStore implements ConfigStore {
             next.setGlobalInterceptors(base.getGlobalInterceptors());
             next.setRetriableErrorCodes(base.getRetriableErrorCodes());
             next.setRateLimitSchedule(base.getRateLimitSchedule());
+            next.setSpendingLimits(base.getSpendingLimits());
             this.config = next;
             this.settingsFromApi = false;
             return next;
@@ -1385,8 +1388,8 @@ public final class MergedConfigStore implements ConfigStore {
     /**
      * Singleton overlay (design 02 §4): when the API-managed settings blob exists at
      * {@code platform/settings/global}, its fields replace the file-derived
-     * {@code globalInterceptors} / {@code retriableErrorCodes} / {@code rateLimitSchedule} on the
-     * merged {@link Config}.
+     * {@code globalInterceptors} / {@code retriableErrorCodes} / {@code rateLimitSchedule} /
+     * {@code spendingLimits} on the merged {@link Config}.
      * GlobalSettings is intentionally NOT in {@link #MANAGED_TYPES} — it is a singleton overlay,
      * not a union-by-key like other types. Returns {@code true} iff the blob is present and
      * parses; on parse failure records an {@link InvalidEntityRecord} under {@code GLOBAL_SETTINGS}
@@ -1422,6 +1425,8 @@ public final class MergedConfigStore implements ConfigStore {
                     settings.getRetriableErrorCodes() == null ? Set.of() : settings.getRetriableErrorCodes());
             merged.setRateLimitSchedule(
                     settings.getRateLimitSchedule() == null ? new RateLimitSchedule() : settings.getRateLimitSchedule());
+            merged.setSpendingLimits(
+                    settings.getSpendingLimits() == null ? new SpendingLimits() : settings.getSpendingLimits());
             return true;
         } catch (Exception parseError) {
             log.warn("Failed to bind settings singleton blob to GlobalSettings", parseError);
