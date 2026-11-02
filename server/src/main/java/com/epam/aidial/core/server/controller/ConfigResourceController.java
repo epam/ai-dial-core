@@ -1626,6 +1626,8 @@ public class ConfigResourceController implements Controller {
                         checkOverridePaths(interceptor);
                     } else if (entity instanceof Translator t) {
                         checkTranslator(t);
+                    } else if (entity instanceof Route route) {
+                        checkRoute(route);
                     }
                     ResourceTypes writeType = resourceType();
                     if (writeType == ResourceTypes.MODEL || writeType == ResourceTypes.INTERCEPTOR) {
@@ -1965,6 +1967,15 @@ public class ConfigResourceController implements Controller {
     private void checkOverridePaths(Deployment entity) {
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validateOverridePaths(entity, warnings);
+        if (warnings.isEmpty()) {
+            return;
+        }
+        rejectWithValidationWarnings(warnings);
+    }
+
+    private void checkRoute(Route entity) {
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateRouteInvariants(entity, warnings);
         if (warnings.isEmpty()) {
             return;
         }
