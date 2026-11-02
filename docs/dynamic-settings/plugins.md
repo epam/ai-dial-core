@@ -2,7 +2,7 @@
 
 A plugin is Java code that DIAL Core runs in process, instead of calling a service over HTTP. The code comes as a jar that Core loads at start; a `plugins` entry declares one instance of that code with its own settings.
 
-> In this version a `plugins` entry is stored, validated and listed like any other config entity, but nothing uses it yet: no model, application, interceptor or translator can reference a plugin. The ways a plugin takes part in a request come in later versions.
+> In this version a plugin can answer a deployment interface in place of an HTTP origin: see [Origin plugins](#origin-plugins). Request and response filters come in a later version.
 
 ## plugins
 
@@ -40,6 +40,27 @@ DIAL Core checks each entry against the plugin code of its `type`, on every writ
 
 * **The settings are rejected by the plugin code.** The entry itself is wrong. Plugin code that fails while checking the settings counts as rejecting them. A write through the Configuration API is refused with `422` and a warning whose `field` is `settings` or `settings.<path>`, whatever the mode; in `/v1/admin/validate` and `/v1/admin/apply` the entry's result is `FAILED` with that warning. On a reload, the default `config.onInvalidEntity: abort` keeps the previous config live; with `skip`, the entry alone is dropped and recorded as invalid, visible in `GET /v1/admin/health/config` and, for an entry in the bucket, in the entry's `GET` (`status: "invalid"`).
 * **No loaded plugin code declares the type.** This is treated like a model that names an interceptor which does not exist. A write is refused with `422` and a warning on `type`, unless `config.write.softValidation` is `true`; in that mode `/v1/admin/apply` reports the entry `APPLIED_INVALID`. On a reload the type is checked only with `config.onInvalidEntity: skip`, where the entry is dropped and recorded as invalid; with the default `abort` the entry stays. This lets you write a declaration before every DIAL Core pod runs the version that carries its jar.
+
+## Origin plugins
+
+An origin plugin answers the requests of a deployment interface inside DIAL Core, in place of the HTTP call to the deployment's endpoint. A model or an application names it in an interface entry:
+
+```json
+"interfaces": {
+    "openaiChatCompletions": { "mode": "embedded", "plugin": "my-plugin" }
+}
+```
+
+Any interface type can be embedded: chat completions, embeddings, the Responses API with its item operations, and Anthropic Messages. Refer to [models](models.md) and [applications](applications.md) for the interface fields.
+
+* **What the plugin receives.** The request DIAL Core would send to an HTTP origin: the method, the path and query it would append to a base URL, the same headers and the body. The headers carry the per-request key in `API-KEY`, `X-DIAL-DEPLOYMENT-FEATURES`, and for a model with upstreams the `X-UPSTREAM-*` headers of the chosen upstream. DIAL Core forwards the client's headers too, as it does to an HTTP origin, so trust `X-UPSTREAM-*` only for a model with upstreams: elsewhere the client may have set them. There is no `traceparent` header.
+* **What DIAL Core does with the answer.** The same as with an HTTP origin's: a retriable status moves to the next upstream, the body is relayed as it arrives, usage is parsed and charged, and one analytics row is written. The row's `response.upstream_uri` is `plugin://<name>` for a deployment without upstreams.
+* **When the plugin cannot serve.** DIAL Core answers `502` `Failed to connect to upstream server`, without trying another upstream, when no `plugins` entry has the name, its plugin code is not loaded or serves no requests, or the plugin cannot be created from its settings. A Responses item operation answers `500` `Failed to process response operation` in these cases, as it does when its HTTP origin cannot be reached. A plugin that fails a call counts as an origin that failed to send its response headers.
+* **Settings changes.** DIAL Core creates the plugin from the entry's settings on the first request it serves, and again on the first request after the entry changes. A settings edit applies to the next request, with no restart.
+* **Platform deployments only.** A plugin runs platform code, so only the platform config (the config files and the `platform` bucket) can name one. A custom application in any other bucket with an `embedded` interface is refused with `422`, and is never served by a plugin.
+* **Rollout.** Deploy the DIAL Core image that carries the plugin before writing `embedded` config: an older DIAL Core does not know the mode. Roll back by switching the interface back to its `base_url`.
+
+Plugin code runs on DIAL Core's event loop. It must not block, and must answer and stream its body on the thread it was called on.
 
 ## Plugin code
 

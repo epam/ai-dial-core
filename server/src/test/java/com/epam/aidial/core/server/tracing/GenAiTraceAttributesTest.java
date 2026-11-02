@@ -8,12 +8,12 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.opentelemetry.api.trace.Span;
 import io.vertx.core.MultiMap;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -386,7 +386,7 @@ class GenAiTraceAttributesTest {
     @Test
     void setResponseAttributesReportsTheClientStatusNotTheUpstreamOne() {
         ProxyContext context = context(proxy(enabledSettings()));
-        HttpClientResponse proxyResponse = mock(HttpClientResponse.class);
+        ProxyResponse proxyResponse = mock(ProxyResponse.class);
         when(proxyResponse.statusCode()).thenReturn(200);
         context.setProxyResponse(proxyResponse);
         // DIAL rewrote the status after a 200 upstream

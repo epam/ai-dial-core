@@ -23,6 +23,7 @@ import com.epam.aidial.core.config.UpstreamAuthConfig;
 import com.epam.aidial.core.config.UpstreamAuthType;
 import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.plugin.PluginProvider;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -1000,9 +1001,125 @@ public class ConfigPostProcessorTest {
     }
 
     @Test
+    void testEmbeddedInterfaceIsRead() throws Exception {
+        Model model = ProxyUtil.MAPPER.readValue("""
+                {"interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1"}}}
+                """, Model.class);
+
+        DeploymentInterface declared = model.getInterfaces().get("openaiChatCompletions");
+        assertEquals(InterfaceMode.EMBEDDED, declared.getMode());
+        assertEquals("p1", declared.getPlugin());
+    }
+
+    @Test
+    void testEmbeddedModelNeedsNoBaseUrl() {
+        assertEquals(List.of(), modelWarnings(embedded("p1")));
+    }
+
+    @Test
+    void testEmbeddedModeRequiresPlugin() {
+        assertWarning(modelWarnings(embedded(null)), "Mode 'embedded' requires a plugin");
+        assertWarning(applicationWarnings(embedded(null)), "Mode 'embedded' requires a plugin");
+    }
+
+    @Test
+    void testPluginAndBaseUrlRejected() {
+        DeploymentInterface declared = embedded("p1");
+        declared.setBaseUrl("http://app");
+
+        assertWarning(modelWarnings(declared), "An interface is served either by a plugin or by a base_url, not by both");
+        assertWarning(applicationWarnings(declared), "An interface is served either by a plugin or by a base_url, not by both");
+    }
+
+    @Test
+    void testPluginRequiresEmbeddedMode() {
+        DeploymentInterface declared = new DeploymentInterface("http://app");
+        declared.setPlugin("p1");
+
+        assertWarning(modelWarnings(declared), "A plugin requires mode 'embedded'");
+        assertWarning(applicationWarnings(declared), "A plugin requires mode 'embedded'");
+        Interceptor interceptor = new Interceptor();
+        interceptor.setName("interceptor");
+        interceptor.setInterfaces(Map.of("openaiChatCompletions", declared));
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateInterfaces(interceptor, warnings);
+        assertWarning(warnings, "A plugin requires mode 'embedded'");
+    }
+
+    @Test
+    void testEmbeddedInterceptorRejected() {
+        Interceptor interceptor = new Interceptor();
+        interceptor.setName("interceptor");
+        interceptor.setInterfaces(Map.of("openaiChatCompletions", embedded("p1")));
+
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateInterfaces(interceptor, warnings);
+
+        assertWarning(warnings, "Mode 'embedded' is not supported for an interceptor");
+    }
+
+    @Test
+    void testOverridePathsUnderEmbeddedEntryRejected() {
+        DeploymentInterface declared = embedded("p1");
+        declared.setOverridePaths(Map.of("postAzureOpenaiChatCompletions", "/x"));
+
+        assertWarning(applicationWarnings(declared), "An embedded interface is served by its plugin: overridePaths has no effect");
+    }
+
+    @Test
+    void testUnresolvedPluginNameAccepted() {
+        // no plugins map is consulted: a name with no entry leaves the interface unserved, not the deployment invalid
+        assertEquals(List.of(), applicationWarnings(embedded("not-registered-yet")));
+    }
+
+    @Test
+    void testFileConfigWithPluginAndBaseUrlRejected() {
+        Config config = newMutableConfig();
+        Application application = new Application();
+        DeploymentInterface declared = embedded("p1");
+        declared.setBaseUrl("http://app");
+        application.setInterfaces(Map.of("openaiChatCompletions", declared));
+        config.getApplications().put("app", application);
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.process(config, null, PluginRegistry.EMPTY));
+
+        assertWarning(error.getWarnings(), "An interface is served either by a plugin or by a base_url, not by both");
+    }
+
+    private static List<ValidationWarning> modelWarnings(DeploymentInterface declared) {
+        Model model = new Model();
+        model.setName("model");
+        model.setInterfaces(Map.of("openaiChatCompletions", declared));
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateModelInvariants(model, Map.of(), warnings);
+        return warnings;
+    }
+
+    private static List<ValidationWarning> applicationWarnings(DeploymentInterface declared) {
+        Application application = new Application();
+        application.setName("app");
+        application.setInterfaces(Map.of("openaiChatCompletions", declared));
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateInterfaces(application, warnings);
+        return warnings;
+    }
+
+    private static void assertWarning(List<ValidationWarning> warnings, String message) {
+        assertTrue(warnings.stream().anyMatch(warning -> warning.getMessage().contains(message)), () -> "no '" + message + "' in " + warnings);
+    }
+
+    private static DeploymentInterface embedded(String plugin) {
+        DeploymentInterface declared = new DeploymentInterface();
+        declared.setMode(InterfaceMode.EMBEDDED);
+        declared.setPlugin(plugin);
+        return declared;
+    }
+
+    @Test
     void testValidateModelInvariantsDoesNotDuplicateOverridePathWarnings() {
         // validateDeploymentInterfaces already runs the per-entry override-path check, so callers
-        // must not also call validateOverridePaths(Deployment, ...) — this pins that contract.
+        // must not also call validateInterfaces(Deployment, ...) — this pins that contract.
         Model model = new Model();
         model.setName("model");
         model.setBaseUrl("http://model");

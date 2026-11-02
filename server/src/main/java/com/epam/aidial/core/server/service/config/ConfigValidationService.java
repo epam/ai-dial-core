@@ -104,7 +104,7 @@ public class ConfigValidationService {
                 }
                 case AdminInterceptorManifest interceptorManifest -> {
                     List<ValidationWarning> warnings = new ArrayList<>();
-                    ConfigPostProcessor.validateOverridePaths(interceptorManifest.spec(), warnings);
+                    ConfigPostProcessor.validateInterfaces(interceptorManifest.spec(), warnings);
                     if (!warnings.isEmpty()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
@@ -147,7 +147,7 @@ public class ConfigValidationService {
                 }
                 case AdminApplicationManifest applicationManifest -> {
                     List<ValidationWarning> warnings = new ArrayList<>();
-                    ConfigPostProcessor.validateOverridePaths(applicationManifest.spec(), warnings);
+                    ConfigPostProcessor.validateInterfaces(applicationManifest.spec(), warnings);
                     if (!warnings.isEmpty()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }

@@ -22,6 +22,9 @@ import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.tracing.TracingSettings;
+import com.epam.aidial.core.server.upstream.OriginClient;
+import com.epam.aidial.core.server.upstream.ProxyRequest;
+import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -38,8 +41,6 @@ import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -133,6 +134,7 @@ public class DeploymentPostControllerTest {
     void stubConfig() {
         // the controller resolves translator references against the request's config on every routing step
         lenient().when(context.getConfig()).thenReturn(new Config());
+        lenient().when(proxy.getOriginClient()).thenAnswer(invocation -> new OriginClient(proxy.getClient(), null, null));
         lenient().when(proxy.getBlockingCallTracer()).thenReturn(BlockingCallTracer.NOOP);
     }
 
@@ -409,7 +411,7 @@ public class DeploymentPostControllerTest {
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
 
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        ProxyRequest proxyRequest = mock(ProxyRequest.class, RETURNS_DEEP_STUBS);
         MultiMap proxyHeaders = new HeadersMultiMap();
         when(proxyRequest.headers()).thenReturn(proxyHeaders);
 
@@ -442,7 +444,7 @@ public class DeploymentPostControllerTest {
         when(context.getDeployment()).thenReturn(model);
         when(request.headers()).thenReturn(new HeadersMultiMap());
 
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        ProxyRequest proxyRequest = mock(ProxyRequest.class, RETURNS_DEEP_STUBS);
         MultiMap proxyHeaders = new HeadersMultiMap();
         when(proxyRequest.headers()).thenReturn(proxyHeaders);
         ApiKeyData proxyApiKeyData = new ApiKeyData();
@@ -851,7 +853,7 @@ public class DeploymentPostControllerTest {
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
 
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        ProxyRequest proxyRequest = mock(ProxyRequest.class, RETURNS_DEEP_STUBS);
         MultiMap proxyHeaders = new HeadersMultiMap();
         when(proxyRequest.headers()).thenReturn(proxyHeaders);
 
@@ -891,7 +893,7 @@ public class DeploymentPostControllerTest {
         when(request.uri()).thenReturn("/test");
         when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
         when(request.headers()).thenReturn(new HeadersMultiMap());
-        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        when(context.getProxyResponse()).thenReturn(mock(ProxyResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);
@@ -926,7 +928,7 @@ public class DeploymentPostControllerTest {
         when(request.uri()).thenReturn("/test");
         when(request.path()).thenReturn("/openai/deployments/name/embeddings");
         when(request.headers()).thenReturn(new HeadersMultiMap());
-        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        when(context.getProxyResponse()).thenReturn(mock(ProxyResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);
@@ -974,7 +976,7 @@ public class DeploymentPostControllerTest {
         when(request.uri()).thenReturn("/test");
         when(request.path()).thenReturn("/openai/deployments/name/embeddings");
         when(request.headers()).thenReturn(new HeadersMultiMap());
-        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        when(context.getProxyResponse()).thenReturn(mock(ProxyResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
         when(bufferingReadStream.getContent()).thenReturn(Buffer.buffer("{}"));
         Map<String, Object> tracingAttributes = getTracingAttributes();
@@ -1017,7 +1019,7 @@ public class DeploymentPostControllerTest {
         when(request.uri()).thenReturn("/test");
         when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
         when(request.headers()).thenReturn(new HeadersMultiMap());
-        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        when(context.getProxyResponse()).thenReturn(mock(ProxyResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);
@@ -1074,7 +1076,7 @@ public class DeploymentPostControllerTest {
         when(request.uri()).thenReturn("/test");
         when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
         when(request.headers()).thenReturn(new HeadersMultiMap());
-        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        when(context.getProxyResponse()).thenReturn(mock(ProxyResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);
@@ -1106,7 +1108,7 @@ public class DeploymentPostControllerTest {
         when(request.method()).thenReturn(HttpMethod.POST);
         when(request.uri()).thenReturn("/test");
         when(request.headers()).thenReturn(new HeadersMultiMap());
-        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        when(context.getProxyResponse()).thenReturn(mock(ProxyResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);
@@ -1152,7 +1154,7 @@ public class DeploymentPostControllerTest {
         when(request.method()).thenReturn(HttpMethod.POST);
         when(request.uri()).thenReturn("/test");
         when(request.headers()).thenReturn(new HeadersMultiMap());
-        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        when(context.getProxyResponse()).thenReturn(mock(ProxyResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);
@@ -1206,7 +1208,7 @@ public class DeploymentPostControllerTest {
         when(context.getRequest()).thenReturn(request);
         when(request.headers()).thenReturn(new HeadersMultiMap());
 
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        ProxyRequest proxyRequest = mock(ProxyRequest.class, RETURNS_DEEP_STUBS);
         MultiMap proxyHeaders = new HeadersMultiMap();
         when(proxyRequest.headers()).thenReturn(proxyHeaders);
 
@@ -1243,7 +1245,7 @@ public class DeploymentPostControllerTest {
         when(context.getRequest()).thenReturn(request);
         when(request.headers()).thenReturn(new HeadersMultiMap());
 
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        ProxyRequest proxyRequest = mock(ProxyRequest.class, RETURNS_DEEP_STUBS);
         MultiMap proxyHeaders = new HeadersMultiMap();
         when(proxyRequest.headers()).thenReturn(proxyHeaders);
 
@@ -1278,7 +1280,7 @@ public class DeploymentPostControllerTest {
         when(context.getRequest()).thenReturn(request);
         when(request.headers()).thenReturn(new HeadersMultiMap());
 
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        ProxyRequest proxyRequest = mock(ProxyRequest.class, RETURNS_DEEP_STUBS);
         MultiMap proxyHeaders = new HeadersMultiMap();
         when(proxyRequest.headers()).thenReturn(proxyHeaders);
 
@@ -1323,7 +1325,7 @@ public class DeploymentPostControllerTest {
         when(context.getRequest()).thenReturn(request);
         when(request.headers()).thenReturn(new HeadersMultiMap());
 
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        ProxyRequest proxyRequest = mock(ProxyRequest.class, RETURNS_DEEP_STUBS);
         MultiMap proxyHeaders = new HeadersMultiMap();
         when(proxyRequest.headers()).thenReturn(proxyHeaders);
 

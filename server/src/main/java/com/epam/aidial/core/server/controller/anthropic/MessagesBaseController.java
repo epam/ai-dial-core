@@ -18,6 +18,8 @@ import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequest
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.upstream.ProxyRequest;
+import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -27,8 +29,6 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -42,7 +42,7 @@ import java.util.List;
  * {@link MessagesCountTokensController}): the whole {@link #handle()} flow — body parsing,
  * deployment resolution + the {@code anthropicMessages} 503 gate, the enhancement chain,
  * upstream-route preparation and the send/retry loop. Subclasses implement
- * {@link #processResponse(HttpClientResponse)} and may override {@link #verifyLimit()}.
+ * {@link #processResponse(ProxyResponse)} and may override {@link #verifyLimit()}.
  */
 @Slf4j
 abstract class MessagesBaseController extends BaseDeploymentPostController {
@@ -192,7 +192,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         }
     }
 
-    private void handleProxyRequest(HttpClientRequest proxyRequest) {
+    private void handleProxyRequest(ProxyRequest proxyRequest) {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
@@ -206,15 +206,16 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
      * carried to the adapter out of band.
      */
     @Override
-    protected void enrichProxyRequestHeaders(HttpClientRequest proxyRequest) {
+    protected void enrichProxyRequestHeaders(ProxyRequest proxyRequest) {
         proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, deploymentId);
     }
 
-    private void handleProxyResponse(HttpClientResponse proxyResponse) {
+    private void handleProxyResponse(ProxyResponse proxyResponse) {
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         int responseStatusCode = proxyResponse.statusCode();
         if (isRetriableError(responseStatusCode)) {
             upstreamRoute.fail(proxyResponse);
+            proxyResponse.discard();
             sendRequest(); // try next
             return;
         }
@@ -237,7 +238,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         context.getUpstreamRoute().fail(HttpStatus.BAD_GATEWAY);
         log.warn("Proxy failed to receive response header from origin. Deployment: {}. Address: {}. Error:",
                 context.getDeployment().getName(),
-                context.getProxyRequest().connection().remoteAddress(),
+                context.getProxyRequest().remoteAddress(),
                 error);
 
         sendRequest(); // try next
@@ -246,7 +247,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     /**
      * Route-specific response handling, invoked after the shared retry/succeed/fail bookkeeping.
      */
-    protected abstract void processResponse(HttpClientResponse proxyResponse);
+    protected abstract void processResponse(ProxyResponse proxyResponse);
 
     protected Void handleRequestError(String deploymentId, Throwable error) {
         if (error instanceof PermissionDeniedException) {

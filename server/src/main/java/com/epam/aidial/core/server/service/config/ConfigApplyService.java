@@ -229,7 +229,7 @@ public class ConfigApplyService {
         // resolved through Config.selectDeployment, so they don't share the short-name namespace.
         if (type == ResourceTypes.INTERCEPTOR) {
             List<ValidationWarning> warnings = new ArrayList<>();
-            ConfigPostProcessor.validateOverridePaths((Interceptor) entity, warnings);
+            ConfigPostProcessor.validateInterfaces((Interceptor) entity, warnings);
             if (!warnings.isEmpty()) {
                 return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
             }

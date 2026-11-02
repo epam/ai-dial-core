@@ -61,6 +61,8 @@ Interceptors support only one interface type:
 
 > The Responses API (`openaiResponses`) and any other interface types are **not** supported for interceptors. If declared, they are dropped on config read with a warning.
 
+> `mode: embedded` is **not** supported for interceptors: an interceptor declaring it, or a `plugin`, is rejected on config load and on write.
+
 Each value is an object with the following fields:
 
 * `base_url`: The interceptor service root that the matching ingress path is appended to. Optional — the interceptor-level `baseUrl` serves an entry that omits it.

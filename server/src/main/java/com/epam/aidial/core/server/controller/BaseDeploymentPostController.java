@@ -20,6 +20,8 @@ import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
+import com.epam.aidial.core.server.upstream.ProxyRequest;
+import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
@@ -37,8 +39,6 @@ import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
@@ -53,6 +53,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
@@ -67,7 +68,7 @@ public class BaseDeploymentPostController {
     protected final Proxy proxy;
     protected final ProxyContext context;
 
-    protected BufferingReadStream createResponseStream(HttpClientResponse proxyResponse,
+    protected BufferingReadStream createResponseStream(ProxyResponse proxyResponse,
                                                        Supplier<BufferingReadStream.BaseEventListener> listenerSupplier) {
         BufferingReadStream.BaseEventListener eventListener = null;
         if (isEventStreamResponse(proxyResponse)) {
@@ -76,7 +77,7 @@ public class BaseDeploymentPostController {
         return new BufferingReadStream(proxyResponse, ProxyUtil.contentLength(proxyResponse, 1024), eventListener);
     }
 
-    protected boolean isEventStreamResponse(HttpClientResponse proxyResponse) {
+    protected boolean isEventStreamResponse(ProxyResponse proxyResponse) {
         String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
         return Strings.CI.contains(contentType, "text/event-stream") && context.isStreamingRequest();
     }
@@ -375,11 +376,22 @@ public class BaseDeploymentPostController {
     }
 
     /**
-     * Low-level: build and issue the proxy request to an already-resolved absolute URI.
+     * Low-level: build and issue the proxy request to an already-resolved absolute URI, over HTTP.
      */
-    protected Future<HttpClientRequest> createProxyRequest(String absoluteUri) {
+    protected Future<ProxyRequest> createProxyRequest(String absoluteUri) {
+        return createProxyRequest(absoluteUri, null);
+    }
+
+    /**
+     * Low-level: build and issue the proxy request to an already-resolved absolute URI: a call to {@code plugin} when an
+     * {@code embedded} interface names one, an HTTP request otherwise.
+     */
+    protected Future<ProxyRequest> createProxyRequest(String absoluteUri, @Nullable String plugin) {
         HttpServerRequest request = context.getRequest();
         context.setProxyRequestUri(absoluteUri);
+        if (plugin != null) {
+            return proxy.getOriginClient().embedded(context, request.method(), absoluteUri, plugin);
+        }
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(absoluteUri)
                 .setMethod(request.method())
@@ -387,10 +399,10 @@ public class BaseDeploymentPostController {
                 .setConnectTimeout(proxy.getClientOptions().getConnectTimeout())
                 .setIdleTimeout(proxy.getClientOptions().getIdleTimeout());
 
-        return proxy.getClient().request(options);
+        return proxy.getOriginClient().http(options);
     }
 
-    protected Future<HttpClientRequest> createProxyRequest(InterfaceType type) {
+    protected Future<ProxyRequest> createProxyRequest(InterfaceType type) {
         HttpServerRequest request = context.getRequest();
         return createProxyRequest(
                 DeploymentEndpointUtil.resolveRequestUri(
@@ -398,14 +410,15 @@ public class BaseDeploymentPostController {
                         type, context.getConfig().getTranslators(),
                         request.path(),
                         request.query()
-                )
+                ),
+                DeploymentEndpointUtil.resolvePlugin(context.getDeployment(), type)
         );
     }
 
-    protected Future<HttpClientResponse> sendProxyRequest(HttpClientRequest proxyRequest, InterfaceType type) {
+    protected Future<ProxyResponse> sendProxyRequest(ProxyRequest proxyRequest, InterfaceType type) {
         log.info("Connected to origin. Deployment: {}. Address: {}",
                 context.getDeployment().getName(),
-                proxyRequest.connection().remoteAddress());
+                proxyRequest.remoteAddress());
 
         MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
         if (!context.getDeployment().isForwardAuthToken()) {
@@ -415,7 +428,7 @@ public class BaseDeploymentPostController {
         excludeHeaders.add(HEADER_APPLICATION_ID, "whatever");
 
         ProxyUtil.copyHeaders(context.getRequest().headers(), proxyRequest.headers(), excludeHeaders);
-        ProxyUtil.setOverrideNameHeader(proxyRequest, context.getDeployment());
+        ProxyUtil.setOverrideNameHeader(proxyRequest.headers(), context.getDeployment());
 
         proxyRequest.headers().add(Proxy.HEADER_API_KEY, context.getProxyApiKeyData().getPerRequestKey());
 
@@ -460,7 +473,7 @@ public class BaseDeploymentPostController {
      * Hook for route-specific headers. Invoked after the client headers have been copied, so anything set
      * here replaces the value a client may have sent under the same name.
      */
-    protected void enrichProxyRequestHeaders(HttpClientRequest proxyRequest) {
+    protected void enrichProxyRequestHeaders(ProxyRequest proxyRequest) {
         // no additional headers by default
     }
 

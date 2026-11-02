@@ -28,13 +28,13 @@ import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
+import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -175,7 +175,7 @@ public class MessagesController extends MessagesBaseController {
     /**
      * Must run before the first body write. Spend headers go on a 200 only and carry the state read before the request.
      */
-    private void putLimitHeaders(HttpServerResponse response, HttpClientResponse proxyResponse) {
+    private void putLimitHeaders(HttpServerResponse response, ProxyResponse proxyResponse) {
         AnthropicLimitResponses.stripUpstreamRateLimitHeaders(response.headers());
         if (proxyResponse.statusCode() == 200 && spendCaps != null && spendCaps.reported() != null) {
             AnthropicLimitResponses.putSpendHeaders(response.headers(), spendCaps.reported());
@@ -183,7 +183,7 @@ public class MessagesController extends MessagesBaseController {
     }
 
     @Override
-    protected void processResponse(HttpClientResponse proxyResponse) {
+    protected void processResponse(ProxyResponse proxyResponse) {
         if (!context.isStreamingRequest()) {
             proxyResponse.body()
                     .compose(body -> handleNonStreamingResponse(proxyResponse, body))
@@ -207,7 +207,7 @@ public class MessagesController extends MessagesBaseController {
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
-    private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
+    private Future<Void> handleNonStreamingResponse(ProxyResponse proxyResponse, Buffer body) {
         context.setResponseBody(body);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         HttpServerResponse response = context.getResponse();

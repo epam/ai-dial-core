@@ -18320,6 +18320,8 @@ components:
           $ref: "#/components/schemas/Features"
         overridePaths:
           $ref: "#/components/schemas/MapStringString"
+        plugin:
+          type: string
     DeploymentNameData:
       type: object
       properties:
@@ -18843,6 +18845,7 @@ components:
       enum:
       - passthrough
       - translator
+      - embedded
     InterfaceType:
       type: string
       enum:

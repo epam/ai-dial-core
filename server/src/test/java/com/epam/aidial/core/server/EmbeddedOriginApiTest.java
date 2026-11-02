@@ -1,0 +1,491 @@
+package com.epam.aidial.core.server;
+
+import com.epam.aidial.core.plugin.OriginRequest;
+import com.epam.aidial.core.server.config.TestEchoPluginProvider;
+import com.epam.aidial.core.server.config.TestOriginPluginProvider;
+import com.epam.aidial.core.server.data.ResponseMapping;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.util.EtagHeader;
+import com.fasterxml.jackson.databind.JsonNode;
+import io.vertx.core.MultiMap;
+import io.vertx.core.http.HttpMethod;
+import lombok.SneakyThrows;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.io.InputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * Interfaces in {@code embedded} mode: the config rules on write, and the requests a plugin serves. Each test
+ * creates its own {@code plugins} entry and deployments through the Configuration API, so the shared test config
+ * and the listings other tests count stay as they are.
+ */
+public class EmbeddedOriginApiTest extends ResourceBaseTest {
+
+    @Test
+    void testEmbeddedModeWithoutPlugin() {
+        Response put = adminPut("/v1/models/platform/m", """
+                {"type": "chat", "interfaces": {"openaiChatCompletions": {"mode": "embedded"}}}
+                """);
+
+        assertEquals(422, put.status(), put.body());
+        assertTrue(put.body().contains("Mode 'embedded' requires a plugin"), put.body());
+        assertEquals(404, adminGet("/v1/models/platform/m").status());
+    }
+
+    @Test
+    void testPluginNotRegisteredYet() {
+        verify(adminPut("/v1/applications/platform/a", embeddedChat("later")), 200);
+        verify(adminGet("/v1/applications/platform/a"), 200);
+    }
+
+    @Test
+    void testEmbeddedInterceptor() {
+        Response put = adminPut("/v1/interceptors/platform/i", embeddedChat("p1"));
+
+        assertEquals(422, put.status(), put.body());
+        assertTrue(put.body().contains("Mode 'embedded' is not supported for an interceptor"), put.body());
+    }
+
+    @Test
+    void testOverridePathsUnderAnEmbeddedEntry() {
+        Response put = adminPut("/v1/applications/platform/a", """
+                {"interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1",
+                  "overridePaths": {"postAzureOpenaiChatCompletions": "/x"}}}}
+                """);
+
+        assertEquals(422, put.status(), put.body());
+        assertTrue(put.body().contains("An embedded interface is served by its plugin: overridePaths has no effect"), put.body());
+    }
+
+    @Test
+    void testApplicationWithPluginButNoEmbeddedMode() {
+        Response put = adminPut("/v1/applications/platform/a", """
+                {"interfaces": {"openaiChatCompletions": {"base_url": "http://app", "plugin": "p1"}}}
+                """);
+
+        assertEquals(422, put.status(), put.body());
+        assertTrue(put.body().contains("A plugin requires mode 'embedded'"), put.body());
+        assertEquals(404, adminGet("/v1/applications/platform/a").status());
+    }
+
+    @Test
+    @SneakyThrows
+    void testEmbeddedInterfaceAdvertised() {
+        verify(adminPut("/v1/applications/platform/listed-embedded", embeddedChat("p1")), 200);
+
+        Response list = adminGet("/v1/deployments");
+        verify(list, 200);
+        JsonNode listed = null;
+        for (JsonNode item : ProxyUtil.MAPPER.readTree(list.body())) {
+            if (item.path("id").asText().endsWith("listed-embedded")) {
+                listed = item;
+            }
+        }
+        assertNotNull(listed, list.body());
+        assertTrue(listed.path("interface_configs").has("openaiChatCompletions"), listed.toString());
+    }
+
+    // deployment-origin "Embedded origin request"
+
+    @Test
+    void testChatCompletionHandedToThePlugin() {
+        servedApp("openaiChatCompletions");
+
+        Response response = chat("/openai/deployments/app/chat/completions?api-version=1", "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}");
+
+        verify(response, 200);
+        OriginRequest request = onlyRequest();
+        assertEquals(HttpMethod.POST, request.method());
+        assertEquals("/openai/deployments/app/chat/completions?api-version=1", request.uri());
+        assertNotNull(request.headers().get("X-DIAL-DEPLOYMENT-FEATURES"));
+        assertNotNull(request.headers().get("API-KEY"));
+        assertNotEquals("proxyKey1", request.headers().get("API-KEY"));
+        assertTrue(request.body().toString().contains("\"messages\""), request.body().toString());
+    }
+
+    @Test
+    void testUnifiedChatEndpointHandedToThePlugin() {
+        servedApp("openaiChatCompletions");
+
+        Response response = chat("/openai/v1/chat/completions", "{\"model\":\"app\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}");
+
+        verify(response, 200);
+        assertEquals("/openai/v1/chat/completions", onlyRequest().uri());
+    }
+
+    @Test
+    void testUpstreamHeadersForModel() {
+        plugin("p1", "{}");
+        verify(adminPut("/v1/models/platform/" + MODEL, """
+                {"type": "chat", "upstreams": [{"endpoint": "http://cloud/v1", "key": "k1"}],
+                 "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1"}}}
+                """), 200);
+
+        verify(chat("/openai/deployments/" + MODEL + "/chat/completions", CHAT_BODY), 200);
+
+        MultiMap headers = onlyRequest().headers();
+        assertEquals("http://cloud/v1", headers.get("X-UPSTREAM-ENDPOINT"));
+        assertEquals("k1", headers.get("X-UPSTREAM-KEY"));
+    }
+
+    @Test
+    void testEmbeddingsHandedToThePlugin() {
+        servedApp("openaiEmbeddings");
+
+        verify(chat("/openai/deployments/app/embeddings", "{\"input\":\"hi\"}"), 200);
+
+        assertEquals("/openai/deployments/app/embeddings", onlyRequest().uri());
+    }
+
+    @Test
+    void testResponsesCreateHandedToThePlugin() {
+        servedApp("openaiResponses");
+
+        verify(chat("/openai/v1/responses", "{\"model\":\"app\",\"input\":\"hi\"}"), 200);
+
+        assertEquals("/openai/v1/responses", onlyRequest().uri());
+    }
+
+    @Test
+    void testMessagesHandedToThePlugin() {
+        servedApp("anthropicMessages");
+        String body = "{\"model\":\"app\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+
+        verify(chat("/anthropic/v1/messages", body), 200);
+        verify(chat("/anthropic/v1/messages/count_tokens", body), 200);
+
+        assertEquals(List.of("/anthropic/v1/messages", "/anthropic/v1/messages/count_tokens"),
+                TestOriginPluginProvider.REQUESTS.stream().map(OriginRequest::uri).toList());
+    }
+
+    // deployment-origin "Embedded origin answer"
+
+    @Test
+    void testStreamedAnswerFromPlugin() {
+        servedApp("openaiChatCompletions");
+
+        Response response = chat("/openai/deployments/app/chat/completions", STREAM_BODY);
+
+        verify(response, 200);
+        assertTrue(response.body().contains("\"content\":\"ok\""), response.body());
+        assertTrue(response.body().contains("[DONE]"), response.body());
+        assertEquals("1", response.headers().get("X-UPSTREAM-ATTEMPTS"));
+        List<AnalyticsLogContext> rows = awaitAnalyticsRows(1);
+        assertEquals(1, rows.size());
+        AnalyticsLogContext row = rows.get(0);
+        assertEquals("app", row.getDeploymentName());
+        assertEquals("plugin://p1", row.getUpstreamEndpoint());
+    }
+
+    @Test
+    @SneakyThrows
+    void testModelUsageCharged() {
+        plugin("p1", "{}");
+        verify(adminPut("/v1/models/platform/" + MODEL, """
+                {"type": "chat", "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1"}}}
+                """), 200);
+
+        verify(chat("/openai/deployments/" + MODEL + "/chat/completions", CHAT_BODY), 200);
+
+        awaitAnalyticsRows(1);
+        Response limits = send(HttpMethod.GET, "/v1/deployments/" + MODEL + "/limits", null, null);
+        verify(limits, 200);
+        assertEquals(15, ProxyUtil.MAPPER.readTree(limits.body()).path("minuteTokenStats").path("used").asInt(), limits.body());
+    }
+
+    @Test
+    void testRetriableStatusFromPlugin() {
+        Response response = retriedChat();
+
+        verify(response, 200);
+        assertEquals(List.of("http://cloud-a", "http://cloud-b"),
+                TestOriginPluginProvider.REQUESTS.stream().map(request -> request.headers().get("X-UPSTREAM-ENDPOINT")).toList());
+        assertEquals("2", response.headers().get("X-UPSTREAM-ATTEMPTS"));
+        // the row of a model with upstreams names the upstream of the attempt that answered
+        assertEquals("http://cloud-b", awaitAnalyticsRows(1).get(0).getUpstreamEndpoint());
+    }
+
+    // deployment-origin "Embedded origin failure"
+
+    @Test
+    void testMissingPluginEntry() {
+        verify(adminPut("/v1/applications/platform/app", embeddedChat("missing")), 200);
+
+        Response response = chat("/openai/deployments/app/chat/completions", CHAT_BODY);
+
+        assertConnectFailure(response);
+    }
+
+    @Test
+    void testProviderThatDoesNotServeRequests() {
+        putPlugin("p2", "{\"type\": \"" + TestEchoPluginProvider.TYPE + "\", \"settings\": {\"greeting\": \"hi\"}}");
+        verify(adminPut("/v1/applications/platform/app", embeddedChat("p2")), 200);
+
+        assertConnectFailure(chat("/openai/deployments/app/chat/completions", CHAT_BODY));
+    }
+
+    @Test
+    void testPluginCallFails() {
+        servedApp("openaiChatCompletions");
+
+        Response response = send(HttpMethod.POST, "/openai/deployments/app/chat/completions", null, CHAT_BODY,
+                "content-type", "application/json", "X-Test-Fail", "call");
+
+        assertEquals(502, response.status(), response.body());
+        assertTrue(response.body().contains("No route"), response.body());
+        assertEquals(1, TestOriginPluginProvider.REQUESTS.size());
+    }
+
+    // deployment-origin "Client gone from an embedded origin"
+
+    @Test
+    @SneakyThrows
+    void testClientDisconnectsMidStreamFromAnEmbeddedApplication() {
+        servedApp("openaiChatCompletions");
+
+        try (HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build()) {
+            HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + serverPort + "/openai/deployments/app/chat/completions"))
+                    .header("api-key", "proxyKey1")
+                    .header("content-type", "application/json")
+                    .header("X-Test-Hold", "true")
+                    .POST(HttpRequest.BodyPublishers.ofString(STREAM_BODY))
+                    .build();
+            HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            try (InputStream body = response.body()) {
+                assertEquals(200, response.statusCode());
+                byte[] first = new byte[16];
+                assertTrue(body.read(first) > 0);
+            }
+        }
+
+        awaitCondition(() -> TestOriginPluginProvider.CANCELLED.get() == 1);
+    }
+
+    @Test
+    void testRetriedAnswerCancelled() {
+        verify(retriedChat(), 200);
+
+        // the first answer was cancelled before the second call arrived
+        assertEquals(List.of(0, 1), TestOriginPluginProvider.CANCELLED_BEFORE);
+    }
+
+    // deployment-interfaces-config, request side
+
+    @Test
+    void testEmbeddedInterfaceGoesToThePlugin() {
+        plugin("p1", "{}");
+        verify(adminPut("/v1/applications/platform/app", """
+                {"baseUrl": "http://localhost:4848", "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1"}}}
+                """), 200);
+
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/deployments/app/chat/completions",
+                    request -> TestWebServer.createResponse(500, "the base url must not be called"));
+
+            verify(chat("/openai/deployments/app/chat/completions", CHAT_BODY), 200);
+        }
+        assertEquals(1, TestOriginPluginProvider.REQUESTS.size());
+    }
+
+    @Test
+    void testEmbeddedInterfaceNeverFallsBack() {
+        verify(adminPut("/v1/models/platform/" + MODEL, """
+                {"type": "chat", "endpoint": "http://localhost:4848/chat",
+                 "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "missing"}}}
+                """), 200);
+
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/chat",
+                    request -> TestWebServer.createResponse(200, "{\"error\":\"the legacy endpoint must not be called\"}"));
+
+            assertConnectFailure(chat("/openai/deployments/" + MODEL + "/chat/completions", CHAT_BODY));
+        }
+    }
+
+    @Test
+    void testCustomApplicationRefusedOnWrite() {
+        Response put = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/my-app", null, embeddedChat("p1"));
+
+        assertEquals(422, put.status(), put.body());
+        assertTrue(put.body().contains("Mode 'embedded' is reserved for platform deployments"), put.body());
+        assertEquals(404, send(HttpMethod.GET, "/v1/applications/" + bucket + "/my-app", null, "").status());
+    }
+
+    @Test
+    void testStoredCustomApplicationNotServedByPlugin() {
+        plugin("p1", "{}");
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPrivateUrl("applications/" + bucket + "/my-app",
+                dial.getProxy().getEncryptionService());
+        dial.getProxy().getResourceService().putResource(descriptor, embeddedChat("p1"), EtagHeader.ANY, null, false);
+
+        Response response = chat("/openai/deployments/applications/" + bucket + "/my-app/chat/completions", CHAT_BODY);
+
+        assertEquals(502, response.status(), response.body());
+        assertTrue(TestOriginPluginProvider.REQUESTS.isEmpty());
+    }
+
+    // responses-api "Item request to an embedded origin"
+
+    @Test
+    @SneakyThrows
+    void testStoredResponseReadBackFromPlugin() {
+        String dialId = createdResponse();
+
+        ResponseMapping mapping = dial.getProxy().getResponseMappingService().getMapping(dialId);
+        assertEquals("plugin-resp-1", mapping.getUpstreamResponseId());
+        assertEquals("plugin://p1", mapping.getUpstreamKey());
+
+        verify(send(HttpMethod.GET, "/openai/v1/responses/" + dialId, null, ""), 200);
+        assertEquals(HttpMethod.GET, lastRequest().method());
+        assertEquals("/openai/v1/responses/plugin-resp-1", lastRequest().uri());
+    }
+
+    @Test
+    void testCancelReachesThePlugin() {
+        String dialId = createdResponse();
+
+        verify(send(HttpMethod.POST, "/openai/v1/responses/" + dialId + "/cancel", null, ""), 200);
+
+        assertEquals(HttpMethod.POST, lastRequest().method());
+        assertEquals("/openai/v1/responses/plugin-resp-1/cancel", lastRequest().uri());
+    }
+
+    @Test
+    void testPluginGoneBeforeTheItemOperation() {
+        String dialId = createdResponse();
+        verify(send(HttpMethod.DELETE, "/v1/plugins/platform/p1", null, "", "authorization", "admin"), 204);
+
+        Response response = send(HttpMethod.GET, "/openai/v1/responses/" + dialId, null, "");
+
+        assertEquals(500, response.status(), response.body());
+        assertTrue(response.body().contains("Failed to process response operation"), response.body());
+        assertEquals(1, TestOriginPluginProvider.REQUESTS.size());
+    }
+
+    // plugin-registry "Origin plugins"
+
+    @Test
+    void testSettingsChangeTakesEffect() {
+        plugin("p1", "{\"greeting\": \"hello\"}");
+        verify(adminPut("/v1/applications/platform/app", embeddedChat("p1")), 200);
+        Response hello = chat("/openai/deployments/app/chat/completions", CHAT_BODY);
+        assertTrue(hello.body().contains("\"content\":\"hello\""), hello.body());
+
+        plugin("p1", "{\"greeting\": \"hi\"}");
+
+        Response hi = chat("/openai/deployments/app/chat/completions", CHAT_BODY);
+        assertTrue(hi.body().contains("\"content\":\"hi\""), hi.body());
+    }
+
+    @Test
+    void testEntryRemoved() {
+        servedApp("openaiChatCompletions");
+        verify(chat("/openai/deployments/app/chat/completions", CHAT_BODY), 200);
+
+        verify(send(HttpMethod.DELETE, "/v1/plugins/platform/p1", null, "", "authorization", "admin"), 204);
+
+        assertConnectFailure(chat("/openai/deployments/app/chat/completions", CHAT_BODY));
+    }
+
+    @BeforeEach
+    void resetTestOrigin() {
+        TestOriginPluginProvider.reset();
+    }
+
+    private static final String MODEL = "chat-gpt-35-turbo";
+    private static final String CHAT_BODY = "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+    private static final String STREAM_BODY = "{\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+
+    /**
+     * Plugin {@code p1} of type {@code test-origin}, and application {@code app} served by it on {@code type}.
+     */
+    private void servedApp(String type) {
+        plugin("p1", "{}");
+        verify(adminPut("/v1/applications/platform/app", """
+                {"interfaces": {"%s": {"mode": "embedded", "plugin": "p1"}}}
+                """.formatted(type)), 200);
+    }
+
+    /**
+     * Plugin entry {@code name} of type {@code test-origin} with {@code settings}.
+     */
+    private void plugin(String name, String settings) {
+        putPlugin(name, "{\"type\": \"" + TestOriginPluginProvider.TYPE + "\", \"settings\": " + settings + "}");
+    }
+
+    private void putPlugin(String name, String body) {
+        verify(adminPut("/v1/plugins/platform/" + name, body), 200);
+    }
+
+    private Response chat(String path, String body) {
+        return send(HttpMethod.POST, path, null, body, "content-type", "application/json");
+    }
+
+    /**
+     * A model with two upstreams in two tiers and two attempts, whose plugin answers {@code 429} to the first tier.
+     */
+    private Response retriedChat() {
+        plugin("p1", "{}");
+        verify(adminPut("/v1/models/platform/" + MODEL, """
+                {"type": "chat", "maxRetryAttempts": 2,
+                 "upstreams": [{"endpoint": "http://cloud-a", "key": "a", "tier": 0}, {"endpoint": "http://cloud-b", "key": "b", "tier": 1}],
+                 "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1"}}}
+                """), 200);
+        return send(HttpMethod.POST, "/openai/deployments/" + MODEL + "/chat/completions", null, CHAT_BODY,
+                "content-type", "application/json", "X-Test-Status-For-Endpoint", "http://cloud-a=429");
+    }
+
+    @SneakyThrows
+    private String createdResponse() {
+        servedApp("openaiResponses");
+        Response created = chat("/openai/v1/responses", "{\"model\":\"app\",\"input\":\"hi\"}");
+        verify(created, 200);
+        return ProxyUtil.MAPPER.readTree(created.body()).path("id").asText();
+    }
+
+    private static OriginRequest onlyRequest() {
+        assertEquals(1, TestOriginPluginProvider.REQUESTS.size(), () -> TestOriginPluginProvider.REQUESTS.toString());
+        return TestOriginPluginProvider.REQUESTS.get(0);
+    }
+
+    private static OriginRequest lastRequest() {
+        List<OriginRequest> requests = TestOriginPluginProvider.REQUESTS;
+        return requests.get(requests.size() - 1);
+    }
+
+    @SneakyThrows
+    private static void assertConnectFailure(Response response) {
+        assertEquals(502, response.status(), response.body());
+        JsonNode error = ProxyUtil.MAPPER.readTree(response.body()).path("error");
+        assertEquals("Failed to connect to upstream server", error.path("message").asText(), response.body());
+        assertEquals("Failed to connect to upstream server", error.path("display_message").asText(), response.body());
+    }
+
+    static String embeddedChat(String plugin) {
+        return """
+                {"interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "%s"}}}
+                """.formatted(plugin);
+    }
+
+    Response adminPut(String path, String body) {
+        return send(HttpMethod.PUT, path, null, body, "authorization", "admin");
+    }
+
+    Response adminGet(String path) {
+        return send(HttpMethod.GET, path, null, "", "authorization", "admin");
+    }
+}

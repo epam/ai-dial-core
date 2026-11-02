@@ -21,6 +21,8 @@ import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.upstream.ProxyRequest;
+import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -33,8 +35,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.SneakyThrows;
@@ -135,7 +135,7 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
      * Called when proxy connected to the origin.
      */
     @VisibleForTesting
-    void handleProxyRequest(HttpClientRequest proxyRequest) {
+    void handleProxyRequest(ProxyRequest proxyRequest) {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
@@ -147,7 +147,7 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
     /**
      * Called when proxy received the response headers from the origin.
      */
-    private void handleProxyResponse(HttpClientResponse proxyResponse) {
+    private void handleProxyResponse(ProxyResponse proxyResponse) {
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         Upstream currentUpstream = upstreamRoute.get();
         log.info("Received header from origin. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Headers: {}. Upstream.extraData: {}",
@@ -159,6 +159,7 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
         int responseStatusCode = proxyResponse.statusCode();
         if (isRetriableError(responseStatusCode)) {
             upstreamRoute.fail(proxyResponse);
+            proxyResponse.discard();
             sendRequest(); // try next
             return;
         }
@@ -204,7 +205,7 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
-    private boolean isEventStreamContentType(HttpClientResponse proxyResponse) {
+    private boolean isEventStreamContentType(ProxyResponse proxyResponse) {
         String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
         return Strings.CI.contains(contentType, "text/event-stream");
     }
@@ -214,7 +215,7 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
      * non-streaming handling) so {@code statistics.usage_per_model} can be injected before the
      * client sees a byte of it.
      */
-    private Future<Void> handleNonStreamingChatCompletionResponse(HttpClientResponse proxyResponse, Buffer body) {
+    private Future<Void> handleNonStreamingChatCompletionResponse(ProxyResponse proxyResponse, Buffer body) {
         context.setResponseBody(body);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         HttpServerResponse response = context.getResponse();
@@ -320,7 +321,7 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
         upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
         log.warn("Proxy failed to receive response header from origin. Deployment: {}. Address: {}. Error:",
                 context.getDeployment().getName(),
-                context.getProxyRequest().connection().remoteAddress(),
+                context.getProxyRequest().remoteAddress(),
                 error);
         sendRequest(); // try next
     }

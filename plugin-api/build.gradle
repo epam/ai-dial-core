@@ -1,4 +1,6 @@
 dependencies {
     // The provider contract hands settings over as a Jackson tree, so a plugin needs no parse of its own
     implementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
+    // An origin plugin answers in Vert.x types (Future, Buffer, ReadStream), so Core relays the answer with no wrapping
+    implementation("io.vertx:vertx-core:${vertx_version}")
 }

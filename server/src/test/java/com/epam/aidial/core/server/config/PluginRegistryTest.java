@@ -34,6 +34,7 @@ class PluginRegistryTest {
         PluginRegistry registry = PluginRegistry.load(dir.resolve("missing"));
 
         assertInstanceOf(TestEchoPluginProvider.class, registry.get(TestEchoPluginProvider.TYPE));
+        assertInstanceOf(TestOriginPluginProvider.class, registry.get(TestOriginPluginProvider.TYPE));
         assertNull(registry.get(JarEchoPluginProvider.TYPE));
     }
 

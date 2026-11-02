@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.util;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -15,8 +16,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
@@ -104,15 +103,11 @@ public class ProxyUtil {
         }
     }
 
-    public static void setOverrideNameHeader(HttpClientRequest request, Deployment deployment) {
-        setOverrideNameHeader(request.headers(), deployment);
-    }
-
     public static int contentLength(HttpServerRequest request, int defaultValue) {
         return contentLength(request.headers(), defaultValue);
     }
 
-    public static int contentLength(HttpClientResponse request, int defaultValue) {
+    public static int contentLength(ProxyResponse request, int defaultValue) {
         MultiMap header = request.headers();
         return contentLength(header, defaultValue);
     }
@@ -280,12 +275,12 @@ public class ProxyUtil {
         return socketAddress.host();
     }
 
-    public void copyResponse(HttpServerResponse response, HttpClientResponse proxyResponse) {
+    public void copyResponse(HttpServerResponse response, ProxyResponse proxyResponse) {
         response.setStatusCode(proxyResponse.statusCode());
         copyHeaders(proxyResponse.headers(), response.headers());
     }
 
-    public void handleChunkedResponse(HttpServerResponse response, HttpClientResponse proxyResponse) {
+    public void handleChunkedResponse(HttpServerResponse response, ProxyResponse proxyResponse) {
         response.setChunked(true);
         copyResponse(response, proxyResponse);
         String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);

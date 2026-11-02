@@ -1707,7 +1707,7 @@ public class ConfigResourceController implements Controller {
                     if (entity instanceof Model m) {
                         checkModel(m);
                     } else if (entity instanceof Interceptor interceptor) {
-                        checkOverridePaths(interceptor);
+                        checkInterfaces(interceptor);
                     } else if (entity instanceof Translator t) {
                         checkTranslator(t);
                     } else if (entity instanceof Plugin plugin) {
@@ -2060,13 +2060,13 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * Structural check for a deployment write: an {@code overridePaths} entry Core cannot render is
-     * rejected before the blob is written, exactly as {@link #checkTranslator} rejects a translator the
-     * rebuild would refuse. Always enforced, unlike {@link #checkModel}'s soft-mode allowance.
+     * Structural check for a deployment write: an {@code overridePaths} entry Core cannot render, or a plugin
+     * reference its mode contradicts, is rejected before the blob is written, exactly as {@link #checkTranslator}
+     * rejects a translator the rebuild would refuse. Always enforced, unlike {@link #checkModel}'s soft-mode allowance.
      */
-    private void checkOverridePaths(Deployment entity) {
+    private void checkInterfaces(Deployment entity) {
         List<ValidationWarning> warnings = new ArrayList<>();
-        ConfigPostProcessor.validateOverridePaths(entity, warnings);
+        ConfigPostProcessor.validateInterfaces(entity, warnings);
         if (warnings.isEmpty()) {
             return;
         }

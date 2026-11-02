@@ -346,7 +346,7 @@ public final class ConfigPostProcessor {
         }
         application.setName(mapKey);
         List<ValidationWarning> warnings = new ArrayList<>();
-        validateOverridePaths(application, warnings);
+        validateInterfaces(application, warnings);
         if (warnings.isEmpty()) {
             return;
         }
@@ -365,7 +365,7 @@ public final class ConfigPostProcessor {
         }
         interceptor.setName(mapKey);
         List<ValidationWarning> warnings = new ArrayList<>();
-        validateOverridePaths(interceptor, warnings);
+        validateInterfaces(interceptor, warnings);
         if (warnings.isEmpty()) {
             return;
         }
@@ -680,8 +680,8 @@ public final class ConfigPostProcessor {
     }
 
     /**
-     * Validates a model's {@code interfaces}. An entry is served either by a base url or by a translator,
-     * never by both and never by neither, and {@code mode} is what says which — routing and limits both
+     * Validates a model's {@code interfaces}. An entry is served by a base url, a translator or a plugin, never
+     * by two of them and never by none, and {@code mode} is what says which — routing and limits both
      * read it, so a config where it disagrees with the fields around it is rejected rather than resolved.
      * Named translator references are resolved against {@code translators} — the registry of the config the
      * model is entering — exactly as the request path resolves them.
@@ -703,22 +703,23 @@ public final class ConfigPostProcessor {
                 validateTranslatedInterface(model, entry.getKey(), declared, translators, field, warnings);
             } else if (declared.getTranslator() != null) {
                 warnings.add(new ValidationWarning(field, messageWithEntityPrefix("Model", model.getName(), "A translator requires mode 'translator'")));
-            } else if (declared.getBaseUrl() == null && model.getBaseUrl() == null) {
+            } else if (declared.getMode() != InterfaceMode.EMBEDDED && declared.getBaseUrl() == null && model.getBaseUrl() == null) {
                 warnings.add(new ValidationWarning(field,
                         messageWithEntityPrefix("Model", model.getName(), "Interface '" + entry.getKey() + "' declares no base_url and the model declares no baseUrl")));
             }
+            validatePluginReference(model, declared, field, warnings);
             validateOverridePaths(model, entry.getKey(), declared, field, warnings);
         }
     }
 
     /**
-     * Validates every interface entry's {@code overridePaths} on a deployment whose interfaces get no
-     * other semantic validation — applications and interceptors. Models run the same per-entry check
-     * inside {@link #validateDeploymentInterfaces}. Shared by every write surface, each of which turns
-     * the warnings into its own layer's failure: a result object for the admin services, a response
-     * status for the controllers.
+     * Validates every interface entry's plugin reference and {@code overridePaths} on a deployment whose
+     * interfaces get no other semantic validation — applications and interceptors. Models run the same
+     * per-entry checks inside {@link #validateDeploymentInterfaces}. Shared by every write surface, each of
+     * which turns the warnings into its own layer's failure: a result object for the admin services, a
+     * response status for the controllers.
      */
-    public static void validateOverridePaths(Deployment deployment, List<ValidationWarning> warnings) {
+    public static void validateInterfaces(Deployment deployment, List<ValidationWarning> warnings) {
         Map<String, DeploymentInterface> interfaces = deployment.getInterfaces();
         if (interfaces == null) {
             return;
@@ -728,7 +729,9 @@ public final class ConfigPostProcessor {
             if (declared == null) {
                 continue;
             }
-            validateOverridePaths(deployment, entry.getKey(), declared, "interfaces." + entry.getKey(), warnings);
+            String field = "interfaces." + entry.getKey();
+            validatePluginReference(deployment, declared, field, warnings);
+            validateOverridePaths(deployment, entry.getKey(), declared, field, warnings);
         }
     }
 
@@ -736,7 +739,8 @@ public final class ConfigPostProcessor {
      * Validates an interface entry's {@code overridePaths}. A key this Core does not know is tolerated —
      * exactly as an unknown interface type is — but a known key under an interface that does not own it,
      * a template that does not parse, and a variable the operation cannot render are config contradicting
-     * itself. A translated interface routes to its translator, so overrides on it are dead config.
+     * itself. A translated interface routes to its translator, and an embedded one to its plugin, so overrides
+     * on either are dead config.
      */
     private static void validateOverridePaths(Deployment deployment, String type, DeploymentInterface declared, String field,
                                               List<ValidationWarning> warnings) {
@@ -748,6 +752,11 @@ public final class ConfigPostProcessor {
         if (declared.getMode() == InterfaceMode.TRANSLATOR) {
             warnings.add(new ValidationWarning(field,
                     messageWithEntityPrefix(entityLabel, deployment.getName(), "A translated interface is served by its translator: overridePaths has no effect")));
+            return;
+        }
+        if (declared.getMode() == InterfaceMode.EMBEDDED) {
+            warnings.add(new ValidationWarning(field,
+                    messageWithEntityPrefix(entityLabel, deployment.getName(), "An embedded interface is served by its plugin: overridePaths has no effect")));
             return;
         }
         for (Map.Entry<String, String> entry : overridePaths.entrySet()) {
@@ -774,6 +783,34 @@ public final class ConfigPostProcessor {
         }
         if (!pathMapping.isIdApplicable() && PathTemplateUtil.referencesId(template)) {
             warnings.add(new ValidationWarning(keyField, messageWithEntityPrefix(entityLabel, deployment.getName(), "The operation carries no id: {id} cannot render")));
+        }
+    }
+
+    /**
+     * An entry in {@code embedded} mode is served by the plugin it names and by nothing else, and only that mode
+     * names a plugin. Interceptor hops are always sent over HTTP, so an interceptor cannot be embedded. A name no
+     * {@code plugins} entry has leaves the interface unserved, not the deployment invalid, as for a translator.
+     */
+    private static void validatePluginReference(Deployment deployment, DeploymentInterface declared, String field,
+                                                List<ValidationWarning> warnings) {
+        String entityLabel = deployment.getClass().getSimpleName();
+        if (declared.getMode() != InterfaceMode.EMBEDDED) {
+            if (declared.getPlugin() != null) {
+                warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), "A plugin requires mode 'embedded'")));
+            }
+            return;
+        }
+        if (deployment instanceof Interceptor) {
+            warnings.add(new ValidationWarning(field,
+                    messageWithEntityPrefix(entityLabel, deployment.getName(), "Mode 'embedded' is not supported for an interceptor")));
+            return;
+        }
+        if (declared.getPlugin() == null || declared.getPlugin().isBlank()) {
+            warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), "Mode 'embedded' requires a plugin")));
+        }
+        if (declared.getBaseUrl() != null) {
+            warnings.add(new ValidationWarning(field,
+                    messageWithEntityPrefix(entityLabel, deployment.getName(), "An interface is served either by a plugin or by a base_url, not by both")));
         }
     }
 
@@ -852,7 +889,7 @@ public final class ConfigPostProcessor {
             application.setName(name);
             validateExternalServices(application);
             List<ValidationWarning> warnings = new ArrayList<>();
-            validateOverridePaths(application, warnings);
+            validateInterfaces(application, warnings);
             if (!warnings.isEmpty()) {
                 if (onSkip == null) {
                     throw new InvalidEntityException(ResourceTypes.APPLICATION, name, warnings);
@@ -937,7 +974,7 @@ public final class ConfigPostProcessor {
             Interceptor interceptor = entry.getValue();
             interceptor.setName(name);
             List<ValidationWarning> warnings = new ArrayList<>();
-            validateOverridePaths(interceptor, warnings);
+            validateInterfaces(interceptor, warnings);
             if (!warnings.isEmpty()) {
                 if (onSkip == null) {
                     throw new InvalidEntityException(ResourceTypes.INTERCEPTOR, name, warnings);

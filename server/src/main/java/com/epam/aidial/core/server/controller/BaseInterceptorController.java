@@ -8,6 +8,8 @@ import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
+import com.epam.aidial.core.server.upstream.ProxyRequest;
+import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -15,8 +17,6 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
@@ -116,9 +116,9 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
                 .onFailure(this::handleProxyConnectionError);
     }
 
-    private void handleProxyRequest(HttpClientRequest proxyRequest) {
+    private void handleProxyRequest(ProxyRequest proxyRequest) {
         log.info("Connected to interceptor. Deployment: {}. Address: {}",
-                context.getDeployment().getName(), proxyRequest.connection().remoteAddress());
+                context.getDeployment().getName(), proxyRequest.remoteAddress());
 
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
@@ -148,10 +148,10 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
      */
     @VisibleForTesting
     void handleProxyResponseError(Throwable error) {
-        HttpClientRequest proxyRequest = context.getProxyRequest();
+        ProxyRequest proxyRequest = context.getProxyRequest();
         // N/A: send() has not set proxyRequest yet (tests / call before connect).
         log.warn("Proxy failed to receive response header from origin. Address: {}. Error:",
-                proxyRequest == null ? "N/A" : proxyRequest.connection().remoteAddress(),
+                proxyRequest == null ? "N/A" : proxyRequest.remoteAddress(),
                 error);
         if (proxyRequest != null) {
             proxyRequest.reset();
@@ -164,7 +164,7 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
         respond(HttpStatus.BAD_GATEWAY, response);
     }
 
-    private void handleProxyResponse(HttpClientResponse proxyResponse) {
+    private void handleProxyResponse(ProxyResponse proxyResponse) {
         log.info("Received header from origin. Endpoint: {}. Status: {}. Headers: {}",
                 context.getProxyRequestUri(), proxyResponse.statusCode(), proxyResponse.headers().size());
 

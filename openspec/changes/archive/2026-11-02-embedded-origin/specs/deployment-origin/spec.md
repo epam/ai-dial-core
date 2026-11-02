@@ -67,8 +67,8 @@ from its settings fails. A plugin call that fails SHALL count as a failure to re
 #### Scenario: Missing plugin entry
 - **WHEN** application `app` declares `interfaces.openaiChatCompletions: {"mode": "embedded", "plugin": "missing"}`,
   no `plugins.missing` exists, and a client sends a chat completion for it
-- **THEN** the client gets `502` with the body `{"error":{"code":"502","message":"Failed to connect to upstream
-  server","display_message":"Failed to connect to upstream server"}}`
+- **THEN** the client gets `502` with `message` and `display_message` `Failed to connect to upstream server`, the
+  answer of "Connect failure"
 
 #### Scenario: Provider that does not serve requests
 - **WHEN** the interface names `plugins.p2` of type `test-echo`, whose provider only validates settings

@@ -3,7 +3,12 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
+import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.upstream.OriginClient;
+import com.epam.aidial.core.server.upstream.ProxyRequest;
+import com.epam.aidial.core.server.upstream.ProxyResponse;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.util.UpstreamInterfaceUtil;
@@ -11,9 +16,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
 import lombok.RequiredArgsConstructor;
@@ -21,16 +24,23 @@ import lombok.SneakyThrows;
 
 @RequiredArgsConstructor
 public class ResponsesApiClient {
-    private final HttpClient httpClient;
+    private final OriginClient originClient;
     private final HttpClientOptions clientOptions;
 
-    public Future<HttpClientResponse> send(String url, HttpMethod method, Upstream upstream, String apiKey) {
-        RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(url)
-                .setMethod(method)
-                .setConnectTimeout(clientOptions.getConnectTimeout())
-                .setIdleTimeout(clientOptions.getIdleTimeout());
-        return httpClient.request(options)
+    /**
+     * Sends an item operation to the origin of the context's deployment: to its plugin when its Responses interface
+     * is {@code embedded}, over HTTP otherwise.
+     */
+    public Future<ProxyResponse> send(String url, HttpMethod method, Upstream upstream, String apiKey, ProxyContext context) {
+        String plugin = DeploymentEndpointUtil.resolvePlugin(context.getDeployment(), InterfaceType.OPENAI_RESPONSES);
+        Future<ProxyRequest> proxyRequest = plugin != null
+                ? originClient.embedded(context, method, url, plugin)
+                : originClient.http(new RequestOptions()
+                        .setAbsoluteURI(url)
+                        .setMethod(method)
+                        .setConnectTimeout(clientOptions.getConnectTimeout())
+                        .setIdleTimeout(clientOptions.getIdleTimeout()));
+        return proxyRequest
                 .compose(request -> request.putHeader(Proxy.HEADER_API_KEY, apiKey)
                             .putHeader(Proxy.HEADER_UPSTREAM_KEY,
                                     UpstreamInterfaceUtil.resolveKey(upstream, InterfaceType.OPENAI_RESPONSES))

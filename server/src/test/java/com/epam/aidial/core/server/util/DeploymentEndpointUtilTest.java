@@ -21,6 +21,7 @@ import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.hasRouting
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.isInterfaceDeclared;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveLocalResponseItemUri;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveMode;
+import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolvePlugin;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveRequestUri;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveResponseItemUri;
 import static com.epam.aidial.core.server.util.DeploymentEndpointUtil.resolveResponsesBaseUri;
@@ -33,6 +34,75 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class DeploymentEndpointUtilTest {
 
     private static final Map<String, Translator> NO_TRANSLATORS = Map.of();
+
+    @Test
+    void embeddedInterfaceResolvesToItsPlugin() {
+        Application application = new Application();
+        application.setName("app");
+        application.setBaseUrl("http://app");
+        application.setEndpoint("http://legacy/chat");
+        application.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), embedded("p1")));
+
+        assertEquals("plugin://p1", resolveServingEndpoint(application, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
+        assertEquals("plugin://p1/openai/deployments/app/chat/completions?api-version=1",
+                resolveRequestUri(application, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
+                        "/openai/deployments/app/chat/completions", "api-version=1"));
+        assertEquals(InterfaceMode.EMBEDDED, resolveMode(application, OPENAI_CHAT_COMPLETIONS));
+        assertEquals("p1", resolvePlugin(application, OPENAI_CHAT_COMPLETIONS));
+        assertTrue(isInterfaceDeclared(application, OPENAI_CHAT_COMPLETIONS));
+    }
+
+    @Test
+    void embeddedInterfaceWithoutPluginServesNothing() {
+        Application application = new Application();
+        application.setEndpoint("http://legacy/chat");
+        DeploymentInterface entry = embedded(null);
+        application.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), entry));
+
+        assertNull(resolveServingEndpoint(application, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
+        assertFalse(isInterfaceDeclared(application, OPENAI_CHAT_COMPLETIONS));
+        assertNull(resolvePlugin(application, OPENAI_CHAT_COMPLETIONS));
+    }
+
+    @Test
+    void embeddedInterfaceTakesNoOverridePath() {
+        Application application = new Application();
+        application.setName("app");
+        DeploymentInterface entry = embedded("p1");
+        entry.setOverridePaths(Map.of("postAzureOpenaiChatCompletions", "/x"));
+        application.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), entry));
+
+        assertEquals("plugin://p1/openai/deployments/app/chat/completions",
+                resolveRequestUri(application, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
+                        "/openai/deployments/app/chat/completions", null));
+    }
+
+    @Test
+    void pluginOutsideEmbeddedModeIsIgnored() {
+        Application application = new Application();
+        DeploymentInterface entry = new DeploymentInterface("http://app");
+        entry.setPlugin("p1");
+        application.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), entry));
+
+        assertNull(resolvePlugin(application, OPENAI_CHAT_COMPLETIONS));
+        assertEquals("http://app", resolveServingEndpoint(application, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
+    }
+
+    @Test
+    void embeddedResponsesItemUri() {
+        Application application = new Application();
+        application.setInterfaces(Map.of(OPENAI_RESPONSES.getValue(), embedded("p1")));
+
+        assertEquals("plugin://p1/openai/v1/responses/resp-1/cancel", resolveResponseItemUri(application, NO_TRANSLATORS,
+                InterfacePathMapping.POST_OPENAI_RESPONSES_CANCEL, "resp-1", null));
+    }
+
+    private static DeploymentInterface embedded(String plugin) {
+        DeploymentInterface entry = new DeploymentInterface();
+        entry.setMode(InterfaceMode.EMBEDDED);
+        entry.setPlugin(plugin);
+        return entry;
+    }
 
     @Test
     void legacyOnlyChatCompletions() {

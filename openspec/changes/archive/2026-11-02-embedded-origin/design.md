@@ -439,6 +439,41 @@ scenarios.
 - **[A missing plugin answers `502`, a missing translator `503`]** → recorded in D3. An operator reads the cause in
   the log line of the failed request.
 
+## Apply notes
+
+- **D1, two more members.**
+  - `ProxyRequest` has `send()` as well as `send(Buffer)`: item operations send no body. The HTTP implementation
+    keeps `HttpClientRequest.send()` for them, so what an HTTP origin receives does not change.
+  - The URI accessor is `absoluteUri()`: checkstyle refuses `absoluteURI`.
+- **D2, where the pieces sit.**
+  - `OriginClient` holds the `EmbeddedOrigins`, built in `AiDial`, so `Proxy` gained only the `OriginClient`.
+  - `OriginClient.embedded` reads the deployment from the context: both callers set it first.
+  - `ResponsesApiClient.send` takes the context and the plugin as trailing arguments.
+  - The two-argument `createProxyRequest(String, String)` arrived with task 3.5, when there was a plugin to pass.
+- **D8, interceptors.** An interceptor with a `plugin` and no `embedded` mode gets `A plugin requires mode 'embedded'`,
+  as a model or an application does.
+- **D9, the request check** is in `OriginClient.embedded`: the application's name is a key of
+  `config.getApplications()`, or starts with `applications/platform/`. The second case is a platform-bucket
+  application called by its url, which `DeploymentService.findDeployment` loads from the bucket under that url.
+- **D9, copies.** `ApplicationService.copyApplication` runs the same check as a write, against the destination
+  bucket, so a copy, a move or a publication of an embedded application out of the platform bucket is refused.
+- **D6, plugin errors.** The calls into plugin code (`handle` and `create`) catch `LinkageError` as well as
+  `RuntimeException`: a jar missing a class throws `NoClassDefFoundError` on first use, which would otherwise
+  escape a listener and leave the request unanswered.
+- **D6, the body stream.** `EmbeddedProxyResponse.body()` resumes the stream after setting its handlers, and the
+  `OriginResponse` Javadoc says a plugin's body emits only from a task of its own, never from inside a call Core
+  makes to it: `BufferingReadStream` sets its handlers one after another.
+- **D10, the hold stream.** The test plugin's `X-Test-Hold` stream adds an event every 100 ms until it is cancelled.
+  Core notices a client that has gone only when it next writes to it, so a stream that never wrote again would never
+  be cancelled; an HTTP origin is in the same position.
+- **Connect-failure body.** The baseline "Connect failure" requirement of `deployment-origin` quotes `"code":"502"`,
+  but `BaseDeploymentPostController.handleProxyConnectionError` writes `String.valueOf(HttpStatus.BAD_GATEWAY)`,
+  which is `"BAD_GATEWAY"`. The "Missing plugin entry" scenario of this change now asserts the status and the
+  messages only. The baseline text is a separate fix.
+- **A Windows-only failure.** `CustomApplicationApiTest.testApplicationListing` fails locally because the filesystem
+  blob store lists a folder as `gpt\` on Windows, as `ResourceApiTest.testWorkflow` does. The change does not touch
+  folder listing; CI runs on Linux.
+
 ## Migration Plan
 
 1. Deploy the image. With no `mode: embedded` in any config nothing changes, and HTTP origins go through the D1
