@@ -30,6 +30,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -789,8 +790,7 @@ public class ComplexResourceService {
             if (nodeType == NodeType.ITEM && !isActive(itemMarker)) {
                 continue;
             }
-            items.add(nodeMetadata(item.getDescriptor().getParent(), nodeType, (ResourceItemMetadata) item,
-                    itemMarker == null ? null : itemMarker.getMetadata()));
+            items.add(nodeMetadata(item.getDescriptor().getParent(), nodeType, (ResourceItemMetadata) item, itemMarker));
         }
         return new ResourceFolderMetadata(groupingFolder, items, raw.getNextToken());
     }
@@ -919,20 +919,23 @@ public class ComplexResourceService {
     }
 
     /**
-     * Builds a listing item for a DIAL node from its marker's listing metadata (timestamps/author) and,
-     * for an {@code ITEM}, its manifest-derived attributes (e.g. a skill's name/description/version).
+     * Builds a listing item for a DIAL node from its marker's listing metadata (author) and, for an
+     * {@code ITEM}, the marker document: its timestamps and its manifest-derived attributes (e.g. a skill's
+     * name/description/version). The document's timestamps are taken over the marker blob's: a write updates
+     * the document in Redis at once, while the blob's own metadata only catches up on the next sync.
      * The {@code nodeType} ({@code ITEM} for a resource, {@code FOLDER} for a grouping folder) already
      * conveys the kind. The aggregate etag is not included: it lives inside the marker and is available
      * via a whole-resource GET.
      */
     private static ResourceItemMetadata nodeMetadata(ResourceDescriptor node, NodeType nodeType, ResourceItemMetadata marker,
-            @Nullable Map<String, Object> attributes) {
+            @Nullable FolderResourceMarker itemMarker) {
+        Map<String, Object> attributes = itemMarker == null ? null : itemMarker.getMetadata();
         ResourceItemMetadata metadata = attributes == null
                 ? new ResourceItemMetadata(node)
                 : new ComplexResourceItemMetadata(node).setAttributes(attributes);
         metadata.setNodeType(nodeType);
-        metadata.setCreatedAt(marker.getCreatedAt());
-        metadata.setUpdatedAt(marker.getUpdatedAt());
+        metadata.setCreatedAt(itemMarker == null ? marker.getCreatedAt() : ObjectUtils.firstNonNull(itemMarker.getCreatedAt(), marker.getCreatedAt()));
+        metadata.setUpdatedAt(itemMarker == null ? marker.getUpdatedAt() : ObjectUtils.firstNonNull(itemMarker.getUpdatedAt(), marker.getUpdatedAt()));
         metadata.setAuthor(marker.getAuthor());
         return metadata;
     }

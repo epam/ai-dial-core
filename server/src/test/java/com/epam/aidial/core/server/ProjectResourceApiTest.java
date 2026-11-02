@@ -389,6 +389,24 @@ public class ProjectResourceApiTest extends ResourceBaseTest {
     }
 
     @Test
+    @SneakyThrows
+    void testMetadataListingTimestampsFollowWrites() {
+        Map<String, byte[]> files = Map.of("README.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadProject("/listed/project-a", files), 200);
+        verify(putProjectFile("/listed/project-a", "notes.md", "hello".getBytes(StandardCharsets.UTF_8)), 200);
+
+        // the write is not yet synced to the marker blob; the listing must still report the item's own timestamps
+        Response itemResponse = listMetadata("listed/project-a");
+        verify(itemResponse, 200);
+        JsonNode item = ProxyUtil.MAPPER.readTree(itemResponse.body());
+        JsonNode listed = ProxyUtil.MAPPER.readTree(listMetadata("listed").body()).get("items").get(0);
+
+        assertEquals("project-a", listed.get("name").asText());
+        assertEquals(item.get("createdAt"), listed.get("createdAt"));
+        assertEquals(item.get("updatedAt"), listed.get("updatedAt"));
+    }
+
+    @Test
     void testMetadataFilesListing() {
         Map<String, byte[]> files = new LinkedHashMap<>();
         files.put("README.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
