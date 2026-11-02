@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.zip.ZipEntry;
@@ -716,6 +717,48 @@ public class SkillResourceApiTest extends ResourceBaseTest {
         Response metadata = listMetadata("shared-item/skill-a", "Api-key", "proxyKey2");
         verify(metadata, 200);
         assertEquals("ITEM", nodeType(metadata));
+    }
+
+    @Test
+    @SneakyThrows
+    void testSharedSkillCarriesTimestamps() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/timestamps-skill", files), 200);
+
+        Response share = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    { "url": "skills/%s/timestamps-skill" }
+                  ]
+                }
+                """.formatted(bucket));
+        verify(share, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(share.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+        verify(send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2"), 200);
+
+        Response metadataResponse = listMetadata("timestamps-skill");
+        verify(metadataResponse, 200);
+        JsonNode metadata = ProxyUtil.MAPPER.readTree(metadataResponse.body());
+
+        String listRequest = """
+                {
+                  "resourceTypes": ["SKILL"],
+                  "with": "%s"
+                }
+                """;
+        JsonNode withMe = ProxyUtil.MAPPER.readTree(operationRequest("/v1/ops/resource/share/list", listRequest.formatted("me"), "Api-key", "proxyKey2").body())
+                .get("resources").get(0);
+        JsonNode byMe = ProxyUtil.MAPPER.readTree(operationRequest("/v1/ops/resource/share/list", listRequest.formatted("others")).body())
+                .get("resources").get(0);
+
+        for (JsonNode item : List.of(withMe, byMe)) {
+            assertTrue(item.get("createdAt").isNumber());
+            assertTrue(item.get("updatedAt").isNumber());
+            assertEquals(metadata.get("createdAt"), item.get("createdAt"));
+            assertEquals(metadata.get("updatedAt"), item.get("updatedAt"));
+        }
     }
 
     @Test
