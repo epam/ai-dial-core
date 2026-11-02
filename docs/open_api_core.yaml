@@ -222,6 +222,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: "Replayed encrypted reasoning names an upstream the model no longer has. A model served by a builtin translator answers with the Anthropic error body (`AnthropicErrorData`: `{\"type\":\"error\",\"error\":{\"type\":...,\"message\":...}}`)"
         "415":
           description: Unsupported Media Type
           content:
@@ -252,6 +254,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "504":
+          description: "The upstream timed out. A model served by a builtin translator answers with the Anthropic error body (`AnthropicErrorData`: `{\"type\":\"error\",\"error\":{\"type\":...,\"message\":...}}`)"
   /anthropic/v1/messages/count_tokens:
     post:
       tags:
