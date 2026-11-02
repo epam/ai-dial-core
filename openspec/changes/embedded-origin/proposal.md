@@ -75,7 +75,8 @@ None.
 ## Out of scope
 
 - **The host `call`.** This is a plugin calling another deployment in process, as a child pass with no HTTP
-  request back into Core, with a metadata-only child row and the parent's parsed body shared. It is the follow-up
+  request back into Core, with a metadata-only child row and the parent's parsed body shared. The child row can
+  build on the rows without bodies that the `analytics-log` capability now defines. It is the follow-up
   change `embedded-call`, which depends on this one and carries the perf measurement on the path through a routing application.
   - Until then, an origin plugin that needs a model calls Core back over HTTP with the per-request key it is
     handed, as an HTTP application does.

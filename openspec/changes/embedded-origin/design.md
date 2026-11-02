@@ -3,8 +3,8 @@
 ## Context
 
 See proposal.md for why. Paths are under `server/src/main/java/com/epam/aidial/core/server/` unless a module is
-named. Line numbers are from this branch at `6a4e4ef3`; the request-path files are unchanged from `development`
-at `d2868d15`.
+named. Line numbers are from this branch at `1f67f81e`, after `development` was merged in. The merge left the
+request-path files unchanged.
 
 **Where Core calls an origin today.** Every interface family reaches the HTTP call through two methods of
 `controller/BaseDeploymentPostController.java`.
@@ -72,8 +72,10 @@ loop, so `handleProxyRequest`, `sendProxyRequest` and the relay run there; retri
 **Plugins today.** `config/PluginRegistry` (change `plugin-config-entity`) holds the providers loaded at start, by
 type, and `Config.plugins` holds the declarations. A provider today only validates settings.
 
-**Analytics rows in tests.** `AiDial.start` builds `new GfLogStore(...)` inline (241), and no integration test
-asserts a row today.
+**Analytics rows in tests.** `AiDial.start` builds `new GfLogStore(...)` inline (245), and no integration test
+asserts a row today. `GfLogStoreTest` checks rows at unit level only, against a mocked `LogEntry`.
+`GfLogStore.admit` may queue a row without its bodies (`AnalyticsLogContext.withoutBodies`, spec `analytics-log`);
+`upstream_uri` is written either way.
 
 ## Goals / Non-Goals
 
@@ -308,7 +310,7 @@ origin plugin may answer by itself, and then nothing would be charged.
   after the translator check. The messages are in the spec.
 - **Applications and interceptors.** `validateOverridePaths(Deployment, warnings)` is the per-entry entry point for
   applications and interceptors on every write surface:
-  - `ConfigPostProcessor` (347, 366, 853, 938);
+  - `ConfigPostProcessor` (349, 368, 855, 940);
   - `ConfigResourceController` (2069);
   - `ApplicationService.requireRenderableOverridePaths`;
   - `ConfigApplyService` (232);
@@ -331,6 +333,10 @@ plugin that signs requests for a cloud API would. So a user's custom application
 
 - **On write.** `ApplicationService.prepareApplication` already knows `platformBucket`. Outside it, any
   `embedded` entry is refused with `422` `Mode 'embedded' is reserved for platform deployments`.
+  - Both application write paths run it: `putApplication`, and `putApplicationByUnitRole` for a write an org-unit
+    role allows.
+  - Org-unit roles grant access only under org units, never to the `platform` bucket
+    (`AccessService.getUnitRoleAccess`).
 - **On request.** `OriginClient.embedded` refuses an `Application` whose name is not a key of
   `config.getApplications()`, and the D2 failure paths answer it.
   - Config applications are keyed by their name: `MergedConfigStore.isShortNameKeyed`, and
@@ -343,7 +349,8 @@ plugin that signs requests for a cloud API would. So a user's custom application
   - a request that straddles a config reload, since a rebuild makes new deployment objects;
   - every schema-typed application, which `ApplicationSchemaService` replaces by a copy.
 - **Why both checks.** The write check gives the user a clear answer. The request check also covers blobs that
-  reach a user bucket by another path: a publication copy, an import, or a blob written by an older Core.
+  reach a user bucket by another path: an import, a blob written by an older Core, or a publication copy. Org-unit
+  approvers can now approve publications (`PublicationService`), so a publication need not pass an admin.
 
 ### D10. Tests
 
@@ -364,9 +371,10 @@ cases:
 
 Core copies client headers to the origin request, so these reach the plugin as they would reach an HTTP origin.
 
-**Reading analytics rows.** `AiDial` gets a protected `createLogStore(AnalyticsSettings)` that returns the
-`GfLogStore` it builds today. `ResourceBaseTest` overrides it with a store that records each `AnalyticsLogContext`
-and forwards it to `GfLogStore`, and exposes the recorded rows. `embedded-call` reuses this for its child-row
+**Reading analytics rows.** No test reads a row at API level today (Context). `AiDial` gets a protected
+`createLogStore(AnalyticsSettings)` that returns the `GfLogStore` it builds today. `ResourceBaseTest` overrides it
+with a store that records each `AnalyticsLogContext` and forwards it to `GfLogStore`, and exposes the recorded rows.
+It records the context before `GfLogStore.admit` decides on bodies. `embedded-call` reuses this for its child-row
 scenarios.
 
 **The test classes.**
