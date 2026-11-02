@@ -35,9 +35,8 @@
   `Route` with `precheck: false` give `applied: 1`, `failed: 1`, the route `FAILED`, the interceptor `200` on `GET`
   and the route `404` (scenario "Apply"). Verify with `./gradlew :server:test --tests
   "com.epam.aidial.core.server.AdminApplyApiTest"`.
-- [x] 2.4 Update `docs/dynamic-settings/routes.md` (the `authType` line, "`BEARER` requires `key` to be set") to say the
-  configuration API and `/v1/admin/validate` and `/v1/admin/apply` refuse such a route with `422` or `FAILED`.
-  Verify by reading the rendered paragraph against the spec requirement.
+- [x] 2.4 Update the `authType` line of `docs/dynamic-settings/routes.md` to document `CUSTOM_HEADER` and to say that
+  `BEARER` and `CUSTOM_HEADER` require `key`. Verify by reading the paragraph against the spec requirement.
 - [x] 2.5 Run `./gradlew checkstyleMain checkstyleTest` and the touched test classes with `--tests`.
 
 ## 3. Integration checks

@@ -13,7 +13,8 @@ A record of what was done and checked. It is not an independent or three-lens re
   `Route` arm) and `/v1/admin/apply` (a `ROUTE` branch in `applyManagedEntity`, before the write) refuse a route upstream
   with an `authType` other than `API_KEY` and no `key`: `422` with `validationWarnings` on `PUT`, `FAILED` with `error`
   on validate and apply.
-- `docs/dynamic-settings/routes.md` states the new answer next to the `authType` description.
+- `docs/dynamic-settings/routes.md` documents `CUSTOM_HEADER` in the `authType` description and says `BEARER` and
+  `CUSTOM_HEADER` require a `key`.
 - `docs/open_api_core.yaml` is unchanged: `saveRoute` already documents `422`.
 
 ## Checked
