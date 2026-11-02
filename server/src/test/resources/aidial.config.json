@@ -11,6 +11,11 @@
       "baseUrl": "http://localhost:4089/translator"
     }
   },
+  "plugins": {
+    "file-plugin": {"type": "test-echo", "settings": {"greeting": "hi"}},
+    "valid-plugin": {"type": "test-echo", "settings": {"greeting": "hi"}},
+    "bad/plugin": {"type": "test-echo", "settings": {"greeting": "hi"}}
+  },
   "routes" : {
     "route-rate" : {
       "paths": ["/+v1/rate"],

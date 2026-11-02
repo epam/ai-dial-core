@@ -205,8 +205,8 @@ public class AdminApplyApiTest extends ResourceBaseTest {
     @Test
     @SneakyThrows
     void testApplyAcceptsModelWithInBatchTranslator() {
-        // Manifest lists the Model first on purpose: DEPENDENCY_ORDER_COMPARATOR sorts Translator (2)
-        // ahead of Model (7), and mutateScratch stages each success, so the translator is in scratch
+        // Manifest lists the Model first on purpose: DEPENDENCY_ORDER_COMPARATOR sorts Translator (3)
+        // ahead of Model (8), and mutateScratch stages each success, so the translator is in scratch
         // by the time the model is validated. Author order must not matter.
         String body = """
                 {
@@ -242,6 +242,37 @@ public class AdminApplyApiTest extends ResourceBaseTest {
             assertEquals("APPLIED", result.get("status").asText(),
                     () -> "Body: " + response.body());
         }
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyReportsPluginBeforeTranslator() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Translator",
+                      "name": "translators/platform/apply-order-translator",
+                      "spec": {
+                        "in": "anthropicMessages",
+                        "out": "openaiChatCompletions",
+                        "baseUrl": "http://localhost:7001/translate"
+                      }
+                    },
+                    {
+                      "kind": "Plugin",
+                      "name": "plugins/platform/apply-order-plugin",
+                      "spec": {"type": "test-echo", "settings": {"greeting": "hi"}}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+        assertEquals("plugins/platform/apply-order-plugin", results.get(0).get("entityId").asText(), response::body);
+        assertEquals("translators/platform/apply-order-translator", results.get(1).get("entityId").asText(), response::body);
+        verify(send(HttpMethod.GET, "/v1/plugins/platform/apply-order-plugin", null, "", "authorization", "admin"), 200);
     }
 
     @Test
@@ -1408,6 +1439,23 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                     () -> "Body: " + response.body());
             verify(send(HttpMethod.GET, "/v1/models/platform/apply-soft-unserved", null, "",
                     "authorization", "admin"), 404);
+        }
+
+        @Test
+        @SneakyThrows
+        void testApplyAdmitsPluginOfUnknownTypeAsInvalid() {
+            String body = """
+                    {
+                      "precheck": false,
+                      "manifests": [
+                        {"kind": "Plugin", "name": "plugins/platform/apply-soft-plugin", "spec": {"type": "missing"}}
+                      ]
+                    }
+                    """;
+            Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+            verify(response, 200);
+            JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+            assertEquals("APPLIED_INVALID", parsed.get("results").get(0).get("status").asText(), response::body);
         }
 
         @Test

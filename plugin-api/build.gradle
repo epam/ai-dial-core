@@ -1,0 +1,4 @@
+dependencies {
+    // The provider contract hands settings over as a Jackson tree, so a plugin needs no parse of its own
+    implementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
+}

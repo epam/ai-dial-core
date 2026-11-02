@@ -91,8 +91,7 @@ plus the batch's earlier accepted entries.
 A config `PUT` SHALL answer `422` `{"validationWarnings": [{"field": ..., "message": ...}]}` and write nothing when a
 model breaks a rebuild invariant (pricing, interfaces, translator refs, catalog properties) or, unless soft mode is
 on, references an interceptor absent from the merged config; when a translator or an `overridePaths` entry is
-invalid, whatever the mode; and when a plugin declaration fails as plugin-registry defines (an unknown `type`
-unless soft mode is on, rejected `settings` whatever the mode).
+invalid, whatever the mode; and when a plugin declaration fails as plugin-registry defines.
 
 #### Scenario: Unknown interceptor
 - **WHEN** an admin sends `PUT /v1/models/platform/cr-unknown` with `interceptors: ["unknown-interceptor"]` and no

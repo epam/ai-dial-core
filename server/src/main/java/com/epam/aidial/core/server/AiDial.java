@@ -32,6 +32,7 @@ import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
 import com.epam.aidial.core.server.config.PlatformEntityLocationStrategy;
+import com.epam.aidial.core.server.config.PluginRegistry;
 import com.epam.aidial.core.server.config.RouteNormalizingMeterFilter;
 import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.controller.HealthCheckController;
@@ -145,6 +146,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.List;
@@ -289,15 +291,17 @@ public class AiDial {
             ExternalServiceService externalServiceService = new ExternalServiceService(
                     resourceService, resourceAuthSettingsEncryptionService, resourceCredentialsService, secretFieldProcessor);
 
+            // Before the config stores: they validate every plugins entry against the provider of its type
+            PluginRegistry pluginRegistry = PluginRegistry.load(Path.of(settings("plugins").getString("dir", "plugins")));
             String onInvalidEntity = settings("config").getString("onInvalidEntity", MergedConfigStore.MODE_ABORT);
             boolean softValidation = settings("config").getJsonObject("write", new JsonObject())
                     .getBoolean("softValidation", false);
             MergedConfigStore mergedConfigStore = new MergedConfigStore(
                     vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                    secretFieldProcessor, lockService, onInvalidEntity, softValidation, podId,
+                    secretFieldProcessor, lockService, onInvalidEntity, softValidation, podId, pluginRegistry,
                     externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
             FileConfigStore fileConfigStore = new FileConfigStore(
-                    vertx, settings("config"), null,
+                    vertx, settings("config"), null, pluginRegistry,
                     List.of(cfg -> mergedConfigStore.requestRebuild()));
             mergedConfigStore.init(fileConfigStore);
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
@@ -351,7 +355,7 @@ public class AiDial {
                     mergedConfigStore, resourceService, secretFieldProcessor, mergedConfigStore.isSoftValidation(),
                     apiKeyStore, applicationService, toolSetService, catalogSchemaService);
             ConfigValidationService configValidationService = new ConfigValidationService(
-                    resourceService, mergedConfigStore.isSoftValidation(), catalogSchemaService);
+                    resourceService, mergedConfigStore.isSoftValidation(), catalogSchemaService, pluginRegistry);
 
             Settings backgroundJobSettings =
                     Json.decodeValue(settings("backgroundJob").toBuffer(), Settings.class);

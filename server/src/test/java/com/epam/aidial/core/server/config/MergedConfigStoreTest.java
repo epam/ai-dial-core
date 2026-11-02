@@ -331,7 +331,7 @@ public class MergedConfigStoreTest {
     private Consumer<ResourceEvent> registerAndCaptureListener(String thisPodId) {
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT, false, thisPodId,
+                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT, false, thisPodId, PluginRegistry.EMPTY,
                 externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
 

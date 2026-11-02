@@ -35,7 +35,7 @@ public class FileConfigStoreTest {
 
     @Test
     public void testLoad_ArrayMergeStrategy_Overwrite() {
-        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(true), apiKeyStore, List.of());
+        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(true), apiKeyStore, PluginRegistry.EMPTY, List.of());
         Set<String> expectedUserRoles = Set.of("second_role1");
 
         Config config = fileConfigStore.get();
@@ -46,7 +46,7 @@ public class FileConfigStoreTest {
 
     @Test
     public void testLoad_ArrayMergeStrategy_Concat() {
-        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(false), apiKeyStore, List.of());
+        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(false), apiKeyStore, PluginRegistry.EMPTY, List.of());
         Set<String> expectedUserRoles = Set.of("first_role1", "second_role1");
 
         Config config = fileConfigStore.get();
@@ -57,7 +57,7 @@ public class FileConfigStoreTest {
 
     @Test
     public void testLoad_DefaultArrayMergeStrategy_Concat() {
-        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(null), apiKeyStore, List.of());
+        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(null), apiKeyStore, PluginRegistry.EMPTY, List.of());
         Set<String> expectedUserRoles = Set.of("first_role1", "second_role1");
 
         Config config = fileConfigStore.get();
@@ -68,7 +68,7 @@ public class FileConfigStoreTest {
 
     @Test
     public void testLoad_OnlyValidToolSets() {
-        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(null), apiKeyStore, List.of());
+        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(null), apiKeyStore, PluginRegistry.EMPTY, List.of());
         Set<String> expectedToolSetNames = Set.of("toolset-1_2");
 
         Config config = fileConfigStore.get();
@@ -91,7 +91,7 @@ public class FileConfigStoreTest {
         settings.put("reload", 1000);
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> new FileConfigStore(vertx, settings, apiKeyStore, List.of()));
+                () -> new FileConfigStore(vertx, settings, apiKeyStore, PluginRegistry.EMPTY, List.of()));
         assertTrue(error.getMessage().contains(expectedKey), error.getMessage());
         assertTrue(error.getMessage().contains("canonical-ID shape"), error.getMessage());
     }
@@ -102,7 +102,7 @@ public class FileConfigStoreTest {
         Consumer<Config> callback = seen::set;
 
         FileConfigStore fileConfigStore = new FileConfigStore(
-                vertx, prepareSettings(null), apiKeyStore, List.of(callback));
+                vertx, prepareSettings(null), apiKeyStore, PluginRegistry.EMPTY, List.of(callback));
 
         Config loaded = fileConfigStore.get();
         assertNotNull(seen.get());

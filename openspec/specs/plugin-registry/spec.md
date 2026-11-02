@@ -1,12 +1,11 @@
-# Spec Delta
+# plugin-registry Specification
 
 ## Purpose
-
 The `plugins` config entity: a named declaration of an in-process plugin instance, its provider `type` and its
 `settings`; how Core loads the plugin code the declarations refer to at start; and how a declaration is checked
 against that code on write and on a config rebuild.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Plugin entity shape
 A `plugins` entity SHALL be a JSON object with a non-blank string `type`, naming the provider that serves it,
@@ -14,10 +13,10 @@ and an optional object `settings` (default `{}`), whose content only the provide
 SHALL make the body not bind to the entity type.
 
 #### Scenario: Minimal declaration
-- **WHEN** an admin sends `PUT /v1/plugins/platform/p1` with `{"type": "test-echo"}` and a provider of type
-  `test-echo` is loaded
+- **WHEN** an admin sends `PUT /v1/plugins/platform/p1` with `{"type": "jar-echo"}` and a provider of type
+  `jar-echo` that accepts any settings is loaded
 - **THEN** Core answers `200` `{"name": "p1"}` with an `ETag`, and `GET /v1/plugins/platform/p1` answers
-  `type: "test-echo"`, `settings: {}`, `name: "p1"` and `status: "valid"`
+  `type: "jar-echo"`, `settings: {}`, `name: "p1"` and `status: "valid"`
 
 #### Scenario: Missing type
 - **WHEN** an admin sends `PUT /v1/plugins/platform/p1` with `{"settings": {}}`
@@ -30,24 +29,29 @@ SHALL make the body not bind to the entity type.
 ### Requirement: Plugin providers loaded at start
 Core SHALL load plugin providers once at start: those on its own classpath and those in the jars of the directory
 named by the static setting `plugins.dir` (built-in default `plugins`, relative to the working directory; a
-missing directory adds none). Core SHALL fail to start when a jar in that directory cannot be loaded or two
-providers declare the same `type`. Providers do not reload while Core runs.
+missing directory adds none). Core SHALL fail to start when a jar in that directory cannot be loaded, two jars
+register the same provider class, or two providers declare the same `type`. Providers do not reload while Core runs.
 
 #### Scenario: Jar in the directory
-- **WHEN** the plugins directory holds a jar whose provider declares type `test-echo`
-- **THEN** after start a `PUT /v1/plugins/platform/p1` with `{"type": "test-echo"}` is accepted
+- **WHEN** the plugins directory holds a jar whose provider declares type `jar-echo`
+- **THEN** after start a `PUT /v1/plugins/platform/p1` with `{"type": "jar-echo"}` is accepted
 
 #### Scenario: Missing directory
 - **WHEN** Core starts with `plugins.dir` pointing to a directory that does not exist
 - **THEN** Core starts, and only the providers of its own classpath are loaded
 
 #### Scenario: Duplicate provider type
-- **WHEN** the plugins directory holds two jars whose providers both declare type `test-echo`
+- **WHEN** the plugins directory holds two jars whose providers both declare type `jar-echo`
 - **THEN** Core does not start
+
+#### Scenario: Same provider class in two jars
+- **WHEN** the plugins directory holds `echo-1.0.jar` and `echo-1.1.jar`, both registering the same provider class
+- **THEN** Core does not start, with a message naming both jars
 
 ### Requirement: Unknown plugin type is a dangling reference
 A `type` no loaded provider declares SHALL be treated as a dangling reference: a Configuration API write
-SHALL answer `422` with warning field `type` unless `config.write.softValidation` is on; a rebuild SHALL check
+SHALL answer `422` with warning field `type` unless `config.write.softValidation` is on, and an admin apply
+entry SHALL be `FAILED`, or `APPLIED_INVALID` when it is on; a rebuild SHALL check
 it only under `config.onInvalidEntity: skip`, where the entity is dropped and recorded as invalid; under
 `abort` the entity SHALL stay in the merged config.
 
@@ -62,6 +66,11 @@ it only under `config.onInvalidEntity: skip`, where the entity is dropped and re
 - **THEN** Core answers `200`, and `GET /v1/plugins/platform/p1` answers `status: "invalid"` with warning
   field `type`
 
+#### Scenario: Unknown type in a soft batch
+- **WHEN** `config.write.softValidation` is on and an admin sends `POST /v1/admin/apply` with one `Plugin`
+  manifest `plugins/platform/p1` of type `missing`
+- **THEN** Core answers `200` with that result `APPLIED_INVALID`
+
 #### Scenario: Rebuild under abort keeps the entity
 - **WHEN** a blob `plugins/platform/p1` declares `type: "missing"`, `config.onInvalidEntity` is unset and the
   config reloads
@@ -74,8 +83,8 @@ it only under `config.onInvalidEntity: skip`, where the entity is dropped and re
   `id: "plugins/platform/p1"`, and the entity GET answers `status: "invalid"` with warning field `type`
 
 ### Requirement: Settings validated by the provider
-When the provider of a declaration is loaded, Core SHALL hand it the `settings` object to validate. A rejection
-SHALL be an invariant violation: a Configuration API write and an admin validate or apply entry SHALL fail
+When the provider of a declaration is loaded, Core SHALL hand it the `settings` object to validate. A rejection,
+or an exception the provider throws while validating, SHALL be an invariant violation: a Configuration API write and an admin validate or apply entry SHALL fail
 with `422` or `FAILED` and a warning whose field starts with `settings`, whatever the mode; a rebuild SHALL
 fail under `abort` and drop and record the entity under `skip`.
 
@@ -88,6 +97,12 @@ fail under `abort` and drop and record the entity under `skip`.
 - **WHEN** an admin sends `POST /v1/admin/validate` with one `Plugin` manifest `plugins/platform/p1` whose
   `spec.settings` the provider rejects
 - **THEN** Core answers `422` with that result `FAILED` and an `error` naming `settings.greeting`
+
+#### Scenario: Provider failure on a rebuild under skip
+- **WHEN** a blob `plugins/platform/p1` names a type whose provider throws while validating,
+  `config.onInvalidEntity: skip` is on and the config reloads
+- **THEN** the entity is dropped and recorded as invalid with warning field `settings`, and the other entities
+  load
 
 #### Scenario: Rejected settings on a rebuild under skip
 - **WHEN** a blob `plugins/platform/p1` holds settings the loaded provider rejects, `config.onInvalidEntity:

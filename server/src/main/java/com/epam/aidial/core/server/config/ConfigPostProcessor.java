@@ -12,6 +12,7 @@ import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.PricingRate;
 import com.epam.aidial.core.config.ResourceAuthSettings;
@@ -30,6 +31,7 @@ import com.epam.aidial.core.config.policy.PolicyAssignmentValidator;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
+import com.epam.aidial.core.plugin.PluginProvider;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.PathTemplateUtil;
@@ -66,7 +68,7 @@ import javax.annotation.Nullable;
  *       the entry from the map ({@code skip} mode).</li>
  * </ul>
  *
- * <p>Entry point {@link #process(Config, ApiKeyStore)} is retained for
+ * <p>Entry point {@link #process(Config, ApiKeyStore, PluginRegistry)} is retained for
  * {@link FileConfigStore}'s today-behavior — whole-config-atomic with abort on
  * any violation.
  */
@@ -85,14 +87,15 @@ public final class ConfigPostProcessor {
     private ConfigPostProcessor() {
     }
 
-    public static void process(Config config, @Nullable ApiKeyStore apiKeyStore) {
+    public static void process(Config config, @Nullable ApiKeyStore apiKeyStore, PluginRegistry pluginRegistry) {
         processStructural(config);
+        processPlugins(config, pluginRegistry, null);
         processSemantic(config, apiKeyStore, config.getKeys(), Map.of(), null);
     }
 
     /**
      * Drops file-defined entries with slash-keyed names across models, applications,
-     * interceptors, translators, roles, routes, and toolsets. Warn + drop, not warn + skip-record:
+     * interceptors, translators, plugins, roles, routes, and toolsets. Warn + drop, not warn + skip-record:
      * the entries never reach {@link Config} and are not surfaced through the
      * invalid-entity sibling store.
      */
@@ -101,6 +104,7 @@ public final class ConfigPostProcessor {
         rejectSlashKeyedNames(config.getApplications(), "applications");
         rejectSlashKeyedNames(config.getInterceptors(), "interceptors");
         rejectSlashKeyedNames(config.getTranslators(), "translators");
+        rejectSlashKeyedNames(config.getPlugins(), "plugins");
         rejectSlashKeyedNames(config.getRoles(), "roles");
         rejectSlashKeyedNames(config.getRoutes(), "routes");
         rejectSlashKeyedNames(config.getToolsets(), "toolsets");
@@ -126,6 +130,74 @@ public final class ConfigPostProcessor {
 
         if (apiKeyStore != null) {
             apiKeyStore.addProjectKeys(fileKeysBySecret, apiKeysByCanonicalId);
+        }
+    }
+
+    /**
+     * Checks every {@code plugins} entry with {@link #validatePlugin}. Runs before {@link #processSemantic}, so the
+     * entities that reference a plugin see only the valid ones. An unknown type is checked only when {@code onSkip} is
+     * set, as a model's interceptors are in {@link #processModels}: a jar not yet on a pod during a rollout must not
+     * fail that pod's rebuild.
+     */
+    public static void processPlugins(Config config, PluginRegistry pluginRegistry,
+                                      @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        for (String name : List.copyOf(config.getPlugins().keySet())) {
+            validateSinglePlugin(config, pluginRegistry, name, onSkip);
+        }
+    }
+
+    /**
+     * {@link #processPlugins} for one entry; a {@link MergedConfigStore} partial update calls it for the entry it wrote.
+     */
+    static void validateSinglePlugin(Config config, PluginRegistry pluginRegistry, String mapKey,
+                                     @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Plugin plugin = config.getPlugins().get(mapKey);
+        if (plugin == null) {
+            return;
+        }
+        List<ValidationWarning> warnings = new ArrayList<>();
+        validatePlugin(mapKey, plugin, pluginRegistry, onSkip != null, warnings);
+        if (warnings.isEmpty()) {
+            return;
+        }
+        if (onSkip == null) {
+            throw new InvalidEntityException(ResourceTypes.PLUGIN, mapKey, warnings);
+        }
+        config.getPlugins().remove(mapKey);
+        onSkip.accept(ResourceTypes.PLUGIN, new InvalidEntityException(ResourceTypes.PLUGIN, mapKey, warnings));
+    }
+
+    /**
+     * Checks a {@code plugins} entry against the provider of its type. Settings the provider rejects are a defect of
+     * the entry itself, reported under {@code settings.<path>} whatever {@code checkType}. A type no loaded provider
+     * declares is a dangling reference, reported under {@code type} only when {@code checkType}; without a provider the
+     * settings cannot be checked. A provider that fails while checking rejects the settings, so one provider's defect
+     * drops or fails only its own entries. Shared by every write surface (full load, partial update, Configuration API,
+     * admin apply and validate).
+     */
+    public static void validatePlugin(@Nullable String name, Plugin plugin, PluginRegistry pluginRegistry,
+                                      boolean checkType, List<ValidationWarning> warnings) {
+        PluginProvider provider = pluginRegistry.get(plugin.getType());
+        if (provider == null) {
+            if (checkType) {
+                warnings.add(new ValidationWarning("type", messageWithEntityPrefix("Plugin", name,
+                        "No plugin provider of type '" + plugin.getType() + "' is loaded")));
+            }
+            return;
+        }
+        List<PluginProvider.Problem> problems;
+        try {
+            problems = List.copyOf(provider.validate(plugin.getSettings()));
+        } catch (RuntimeException e) {
+            log.warn("Plugin provider of type '{}' failed to check plugin '{}'", plugin.getType(), name, e);
+            warnings.add(new ValidationWarning("settings", messageWithEntityPrefix("Plugin", name,
+                    "The plugin provider of type '" + plugin.getType() + "' failed to check the settings")));
+            return;
+        }
+        for (PluginProvider.Problem problem : problems) {
+            String path = problem.path();
+            String field = path == null || path.isEmpty() ? "settings" : "settings." + path;
+            warnings.add(new ValidationWarning(field, messageWithEntityPrefix("Plugin", name, problem.message())));
         }
     }
 

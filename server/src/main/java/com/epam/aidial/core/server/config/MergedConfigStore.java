@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
@@ -98,6 +99,7 @@ public final class MergedConfigStore implements ConfigStore {
             ResourceTypes.CATALOG_SCHEMA,
             ResourceTypes.INTERCEPTOR,
             ResourceTypes.TRANSLATOR,
+            ResourceTypes.PLUGIN,
             ResourceTypes.ROLE,
             ResourceTypes.PROJECT_KEY,
             ResourceTypes.ROUTE,
@@ -150,6 +152,7 @@ public final class MergedConfigStore implements ConfigStore {
     private final String onInvalidEntity;
     private final boolean softValidation;
     private final String thisPodId;
+    private final PluginRegistry pluginRegistry;
 
     private FileConfigStore fileConfigStore;
     private volatile Config config;
@@ -178,7 +181,7 @@ public final class MergedConfigStore implements ConfigStore {
                              ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService,
                              BackgroundOperationTracer backgroundTracer) {
         this(vertx, taskExecutor, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor,
-                lockService, onInvalidEntity, false, "", externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
+                lockService, onInvalidEntity, false, "", PluginRegistry.EMPTY, externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
     }
 
     public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
@@ -191,7 +194,7 @@ public final class MergedConfigStore implements ConfigStore {
                              ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService,
                              BackgroundOperationTracer backgroundTracer) {
         this(vertx, taskExecutor, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor,
-                lockService, onInvalidEntity, softValidation, "", externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
+                lockService, onInvalidEntity, softValidation, "", PluginRegistry.EMPTY, externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
     }
 
     public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
@@ -201,6 +204,7 @@ public final class MergedConfigStore implements ConfigStore {
                              String onInvalidEntity,
                              boolean softValidation,
                              String thisPodId,
+                             PluginRegistry pluginRegistry,
                              ExternalServiceService externalServiceService,
                              ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService,
                              BackgroundOperationTracer backgroundTracer) {
@@ -220,6 +224,7 @@ public final class MergedConfigStore implements ConfigStore {
         this.onInvalidEntity = MODE_SKIP.equalsIgnoreCase(onInvalidEntity) ? MODE_SKIP : MODE_ABORT;
         this.softValidation = softValidation;
         this.thisPodId = thisPodId == null ? "" : thisPodId;
+        this.pluginRegistry = Objects.requireNonNull(pluginRegistry, "pluginRegistry must not be null");
 
         Gauge.builder("dial_config_skipped_entities", this, MergedConfigStore::countInvalidEntities)
                 .description("Number of entities skipped from in-memory Config (design 02 §4.1)")
@@ -485,6 +490,7 @@ public final class MergedConfigStore implements ConfigStore {
             case MODEL -> BLOB_MAPPER.treeToValue(node, Model.class);
             case INTERCEPTOR -> BLOB_MAPPER.treeToValue(node, Interceptor.class);
             case TRANSLATOR -> BLOB_MAPPER.treeToValue(node, Translator.class);
+            case PLUGIN -> BLOB_MAPPER.treeToValue(node, Plugin.class);
             case ROLE -> BLOB_MAPPER.treeToValue(node, Role.class);
             case PROJECT_KEY -> BLOB_MAPPER.treeToValue(node, Key.class);
             case ROUTE -> BLOB_MAPPER.treeToValue(node, Route.class);
@@ -517,7 +523,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> resourceAuthSettingsEncryptionService.decrypt(descriptor.getUrl(),
                     new BucketInfo(descriptor.getBucketName(), descriptor.getBucketLocation()),
                     ((ToolSet) entity).getAuthSettings());
-            case POLICY, POLICY_ASSIGNMENT -> { /* carry no secrets */ }
+            case POLICY, POLICY_ASSIGNMENT, PLUGIN -> { /* carry no secrets */ }
             default -> secretFieldProcessor.decryptFields(entity, descriptor);
         }
     }
@@ -589,6 +595,14 @@ public final class MergedConfigStore implements ConfigStore {
      */
     public SecretFieldProcessor getSecretFieldProcessor() {
         return secretFieldProcessor;
+    }
+
+    /**
+     * The plugin providers loaded at start: write controllers check a {@code plugins} entry against them, as the
+     * rebuild does.
+     */
+    public PluginRegistry getPluginRegistry() {
+        return pluginRegistry;
     }
 
     /**
@@ -786,6 +800,7 @@ public final class MergedConfigStore implements ConfigStore {
                     resurrectInvalidModels(next, nextInvalid);
                 }
                 case TRANSLATOR -> ConfigPostProcessor.validateSingleTranslator(next, mapKey, onSkip);
+                case PLUGIN -> ConfigPostProcessor.validateSinglePlugin(next, pluginRegistry, mapKey, onSkip);
                 case ROLE -> ConfigPostProcessor.setRoleNameAsMapKey(next.getRoles(), mapKey);
                 case APPLICATION -> ConfigPostProcessor.validateSingleApplication(next, mapKey, onSkip);
                 case TOOL_SET -> ConfigPostProcessor.setNameAsMapKey(next.getToolsets(), mapKey);
@@ -993,6 +1008,7 @@ public final class MergedConfigStore implements ConfigStore {
         next.setRateLimitSchedule(base.getRateLimitSchedule());
         next.setSpendingLimits(base.getSpendingLimits());
         next.setTranslators(base.getTranslators());
+        next.setPlugins(base.getPlugins());
         next.setPolicies(base.getPolicies());
         next.setPolicyAssignments(base.getPolicyAssignments());
         next.setCostObjectIndex(base.getCostObjectIndex());
@@ -1032,6 +1048,7 @@ public final class MergedConfigStore implements ConfigStore {
             case MODEL -> config.setModels(new LinkedHashMap<>(config.getModels()));
             case INTERCEPTOR -> config.setInterceptors(new LinkedHashMap<>(config.getInterceptors()));
             case TRANSLATOR -> config.setTranslators(new LinkedHashMap<>(config.getTranslators()));
+            case PLUGIN -> config.setPlugins(new LinkedHashMap<>(config.getPlugins()));
             case ROLE -> config.setRoles(new HashMap<>(config.getRoles()));
             case PROJECT_KEY -> config.setKeys(new HashMap<>(config.getKeys()));
             case ROUTE -> config.setRoutes(new LinkedHashMap<>(config.getRoutes()));
@@ -1050,6 +1067,7 @@ public final class MergedConfigStore implements ConfigStore {
             case MODEL -> config.getModels().get(mapKey);
             case INTERCEPTOR -> config.getInterceptors().get(mapKey);
             case TRANSLATOR -> config.getTranslators().get(mapKey);
+            case PLUGIN -> config.getPlugins().get(mapKey);
             case ROLE -> config.getRoles().get(mapKey);
             case PROJECT_KEY -> config.getKeys().get(mapKey);
             case ROUTE -> config.getRoutes().get(mapKey);
@@ -1068,6 +1086,7 @@ public final class MergedConfigStore implements ConfigStore {
             case MODEL -> config.getModels().put(mapKey, (Model) entity);
             case INTERCEPTOR -> config.getInterceptors().put(mapKey, (Interceptor) entity);
             case TRANSLATOR -> config.getTranslators().put(mapKey, (Translator) entity);
+            case PLUGIN -> config.getPlugins().put(mapKey, (Plugin) entity);
             case ROLE -> config.getRoles().put(mapKey, (Role) entity);
             case PROJECT_KEY -> config.getKeys().put(mapKey, (Key) entity);
             case ROUTE -> config.getRoutes().put(mapKey, (Route) entity);
@@ -1086,6 +1105,7 @@ public final class MergedConfigStore implements ConfigStore {
             case MODEL -> config.getModels().remove(mapKey);
             case INTERCEPTOR -> config.getInterceptors().remove(mapKey);
             case TRANSLATOR -> config.getTranslators().remove(mapKey);
+            case PLUGIN -> config.getPlugins().remove(mapKey);
             case ROLE -> config.getRoles().remove(mapKey);
             case PROJECT_KEY -> config.getKeys().remove(mapKey);
             case ROUTE -> config.getRoutes().remove(mapKey);
@@ -1187,6 +1207,7 @@ public final class MergedConfigStore implements ConfigStore {
         Map<String, Application> applications = new LinkedHashMap<>(base.getApplications());
         Map<String, ToolSet> toolsets = new LinkedHashMap<>(base.getToolsets());
         Map<String, Translator> translators = new LinkedHashMap<>(base.getTranslators());
+        Map<String, Plugin> plugins = new LinkedHashMap<>(base.getPlugins());
         Map<String, Policy> policies = new HashMap<>();
         Map<String, PolicyAssignment> policyAssignments = new HashMap<>();
         merged.setRetriableErrorCodes(base.getRetriableErrorCodes());
@@ -1200,6 +1221,7 @@ public final class MergedConfigStore implements ConfigStore {
         merged.setModels(models);
         merged.setInterceptors(interceptors);
         merged.setTranslators(translators);
+        merged.setPlugins(plugins);
         merged.setRoles(roles);
         merged.setKeys(keys);
         merged.setRoutes(routes);
@@ -1328,6 +1350,7 @@ public final class MergedConfigStore implements ConfigStore {
         // File partition = base file keys (keyed by secret); API partition = PROJECT_KEY blob entries
         // collected above (keyed by canonical id). The merged Config.getKeys() folds both for config
         // consumers, but the ApiKeyStore feed stays explicitly source-classified (FINDING #7).
+        ConfigPostProcessor.processPlugins(merged, pluginRegistry, onSkip);
         ConfigPostProcessor.processSemantic(merged, apiKeyStore, base.getKeys(), apiKeysByCanonicalId, onSkip);
         ConfigPostProcessor.processPolicies(merged, onSkip);
         merged.setCostObjectIndex(CostObjectIndex.build(policies, policyAssignments));
@@ -1539,7 +1562,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     public static boolean isShortNameKeyed(ResourceTypes type) {
         return switch (type) {
-            case MODEL, INTERCEPTOR, TRANSLATOR, ROLE, APPLICATION, TOOL_SET -> true;
+            case MODEL, INTERCEPTOR, TRANSLATOR, PLUGIN, ROLE, APPLICATION, TOOL_SET -> true;
             default -> false;
         };
     }
@@ -1567,6 +1590,12 @@ public final class MergedConfigStore implements ConfigStore {
             case TRANSLATOR -> {
                 Translator entity = BLOB_MAPPER.treeToValue(node, Translator.class);
                 Object previous = config.getTranslators().put(mapKey, entity);
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(entity, previous);
+            }
+            case PLUGIN -> {
+                Plugin entity = BLOB_MAPPER.treeToValue(node, Plugin.class);
+                Object previous = config.getPlugins().put(mapKey, entity);
                 warnIfReplaced(type, mapKey, previous);
                 return new BlobPutResult(entity, previous);
             }
@@ -1645,6 +1674,7 @@ public final class MergedConfigStore implements ConfigStore {
             case MODEL -> restore(config.getModels(), mapKey, (Model) previous);
             case INTERCEPTOR -> restore(config.getInterceptors(), mapKey, (Interceptor) previous);
             case TRANSLATOR -> restore(config.getTranslators(), mapKey, (Translator) previous);
+            case PLUGIN -> restore(config.getPlugins(), mapKey, (Plugin) previous);
             case ROLE -> restore(config.getRoles(), mapKey, (Role) previous);
             case PROJECT_KEY -> restore(config.getKeys(), mapKey, (Key) previous);
             case ROUTE -> restore(config.getRoutes(), mapKey, (Route) previous);

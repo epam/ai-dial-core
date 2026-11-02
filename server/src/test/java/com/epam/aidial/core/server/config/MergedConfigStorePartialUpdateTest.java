@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Translator;
@@ -266,6 +267,32 @@ public class MergedConfigStorePartialUpdateTest {
         Config result = store.applyEntityDelete(ResourceTypes.TRANSLATOR, "anthropicMessagesToOpenaiChatCompletions");
 
         assertFalse(result.getTranslators().containsKey("anthropicMessagesToOpenaiChatCompletions"));
+    }
+
+    @Test
+    public void pluginWriteKeepsTheOtherPlugins() {
+        Config seeded = newConfig();
+        seeded.setPlugins(mutable("a", new Plugin("test-echo", null)));
+        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        Config before = store.get();
+
+        Config result = store.applyEntityWrite(ResourceTypes.PLUGIN, "b", new Plugin("test-echo", null));
+
+        assertEquals(Set.of("a", "b"), result.getPlugins().keySet());
+        assertEquals(Set.of("a"), before.getPlugins().keySet(), "the previous Config keeps its own map");
+    }
+
+    @Test
+    public void pluginDeleteKeepsTheOtherPlugins() {
+        Config seeded = newConfig();
+        Map<String, Plugin> plugins = mutable("a", new Plugin("test-echo", null));
+        plugins.put("b", new Plugin("test-echo", null));
+        seeded.setPlugins(plugins);
+        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+
+        Config result = store.applyEntityDelete(ResourceTypes.PLUGIN, "a");
+
+        assertEquals(Set.of("b"), result.getPlugins().keySet());
     }
 
     @Test

@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Operator;
+import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.PricingRate;
 import com.epam.aidial.core.config.Role;
@@ -19,15 +20,20 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.config.UpstreamAuthConfig;
 import com.epam.aidial.core.config.UpstreamAuthType;
 import com.epam.aidial.core.config.UpstreamInterface;
+import com.epam.aidial.core.plugin.PluginProvider;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 import static com.epam.aidial.core.config.InterfaceType.ANTHROPIC_MESSAGES;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_CHAT_COMPLETIONS;
@@ -44,6 +50,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * structural slash-keyed-name rejection and semantic skip|abort routing.
  */
 public class ConfigPostProcessorTest {
+
+    // test-echo, from the test classpath
+    private static final PluginRegistry PLUGINS = PluginRegistry.load(Path.of("no-plugins-dir"));
 
     @Test
     void testStructuralDropsSlashKeyedNamesAcrossAllTypes() {
@@ -368,7 +377,7 @@ public class ConfigPostProcessorTest {
         model.setInterfaces(interfaces);
         config.getModels().put("model", model);
 
-        ConfigPostProcessor.process(config, null);
+        ConfigPostProcessor.process(config, null, PluginRegistry.EMPTY);
 
         assertEquals(3, config.getModels().get("model").getInterfaces().size());
     }
@@ -750,6 +759,114 @@ public class ConfigPostProcessorTest {
                 () -> ConfigPostProcessor.validateSingleInterceptor(config, "interceptor", null));
     }
 
+    @Test
+    void testPluginOfAnUnknownTypeIsKeptInAbortMode() {
+        Config config = configWithPlugin("p1", new Plugin("missing", null));
+
+        ConfigPostProcessor.processPlugins(config, PLUGINS, null);
+
+        assertTrue(config.getPlugins().containsKey("p1"));
+    }
+
+    @Test
+    void testPluginOfAnUnknownTypeIsDroppedInSkipMode() {
+        Config config = configWithPlugin("p1", new Plugin("missing", null));
+        AtomicReference<InvalidEntityException> skipped = new AtomicReference<>();
+
+        ConfigPostProcessor.processPlugins(config, PLUGINS, (type, error) -> skipped.set(error));
+
+        assertFalse(config.getPlugins().containsKey("p1"));
+        assertEquals("p1", skipped.get().getMapKey());
+        assertEquals("type", skipped.get().getWarnings().get(0).getField());
+    }
+
+    @Test
+    void testPluginWithRejectedSettingsFailsInAbortMode() {
+        Config config = configWithPlugin("p1", new Plugin(TestEchoPluginProvider.TYPE, null));
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processPlugins(config, PLUGINS, null));
+
+        assertEquals("settings.greeting", error.getWarnings().get(0).getField());
+    }
+
+    @Test
+    void testPluginWithRejectedSettingsIsDroppedInSkipMode() {
+        Config config = configWithPlugin("p1", new Plugin(TestEchoPluginProvider.TYPE, null));
+        AtomicReference<InvalidEntityException> skipped = new AtomicReference<>();
+
+        ConfigPostProcessor.processPlugins(config, PLUGINS, (type, error) -> skipped.set(error));
+
+        assertFalse(config.getPlugins().containsKey("p1"));
+        assertEquals("settings.greeting", skipped.get().getWarnings().get(0).getField());
+    }
+
+    @Test
+    void testValidPluginIsKeptInSkipMode() {
+        ObjectNode settings = JsonNodeFactory.instance.objectNode().put("greeting", "hi");
+        Config config = configWithPlugin("p1", new Plugin(TestEchoPluginProvider.TYPE, settings));
+
+        ConfigPostProcessor.processPlugins(config, PLUGINS, (type, error) -> {
+            throw new AssertionError("unexpected skip: " + error.getMessage());
+        });
+
+        assertTrue(config.getPlugins().containsKey("p1"));
+    }
+
+    @Test
+    void testStructuralDropsSlashKeyedPlugin() {
+        Config config = configWithPlugin("bad/plugin", new Plugin(TestEchoPluginProvider.TYPE, null));
+        config.getPlugins().put("valid-plugin", new Plugin(TestEchoPluginProvider.TYPE, null));
+
+        ConfigPostProcessor.processStructural(config);
+
+        assertEquals(List.of("valid-plugin"), List.copyOf(config.getPlugins().keySet()));
+    }
+
+    @Test
+    void testProviderFailureRejectsTheSettings() {
+        PluginRegistry registry = registryOf(settings -> {
+            throw new IllegalStateException("provider defect");
+        });
+        Config config = configWithPlugin("p1", new Plugin("custom", null));
+        AtomicReference<InvalidEntityException> skipped = new AtomicReference<>();
+
+        ConfigPostProcessor.processPlugins(config, registry, (type, error) -> skipped.set(error));
+
+        assertFalse(config.getPlugins().containsKey("p1"));
+        assertEquals("settings", skipped.get().getWarnings().get(0).getField());
+    }
+
+    @Test
+    void testProblemWithoutPathIsReportedOnSettings() {
+        PluginRegistry registry = registryOf(settings -> List.of(new PluginProvider.Problem("", "bad settings")));
+        List<ValidationWarning> warnings = new ArrayList<>();
+
+        ConfigPostProcessor.validatePlugin("p1", new Plugin("custom", null), registry, true, warnings);
+
+        assertEquals("settings", warnings.get(0).getField());
+    }
+
+    private static PluginRegistry registryOf(Function<ObjectNode, List<PluginProvider.Problem>> validate) {
+        return new PluginRegistry(Map.of("custom", new PluginProvider() {
+            @Override
+            public String type() {
+                return "custom";
+            }
+
+            @Override
+            public List<Problem> validate(ObjectNode settings) {
+                return validate.apply(settings);
+            }
+        }));
+    }
+
+    private static Config configWithPlugin(String name, Plugin plugin) {
+        Config config = newMutableConfig();
+        config.setPlugins(new LinkedHashMap<>(Map.of(name, plugin)));
+        return config;
+    }
+
     private static DeploymentInterface translated(TranslatorRef translator) {
         DeploymentInterface declared = new DeploymentInterface();
         declared.setMode(InterfaceMode.TRANSLATOR);
@@ -795,7 +912,7 @@ public class ConfigPostProcessorTest {
         models.put("good", new Model());
         config.setModels(models);
 
-        ConfigPostProcessor.process(config, null);
+        ConfigPostProcessor.process(config, null, PluginRegistry.EMPTY);
 
         assertEquals(List.of("good"), List.copyOf(config.getModels().keySet()));
     }

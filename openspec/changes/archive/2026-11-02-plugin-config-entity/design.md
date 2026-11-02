@@ -218,6 +218,41 @@ blob put and resource event as a translator write. No cost effect is claimed, so
   stored. The upgrade path is an encrypted string map on the entity, as `Key.key` and `Upstream.key`.
 - [The merged config JSON of `POST /v1/ops/config/reload` grows by the plugin declarations] → it already carries
   every other type; nothing new is exposed.
+- [A provider's `validate` throws] → caught: `validatePlugin` logs it and reports a `settings` warning, so it counts
+  as rejected settings (`422` on a write, the entity dropped under `skip`). Uncaught, it would fail the first
+  rebuild at start, which has no previous config to keep, and every new pod would stop.
+
+## Apply notes
+
+Where the code differs from the decisions above, found while implementing:
+
+- **D5, where `processPlugins` runs.** Not inside `processSemantic`: `ConfigPostProcessor.process` (the file load)
+  and `MergedConfigStore.rebuildMergedConfig` call it right before `processSemantic`. The order is the same (before
+  the translators), and `processSemantic` keeps its signature, which about 45 unit tests call.
+- **D5, how the registry reaches the batch endpoints.** `ConfigValidationService` takes it as a constructor
+  argument; `ConfigApplyService` and `ConfigResourceController` read it from `MergedConfigStore.getPluginRegistry()`.
+- **D4, two more checks in `PluginRegistry.load`.** It opens each jar with `JarFile` first, because `URLClassLoader`
+  skips a jar it cannot open without an error, and it rejects a provider that declares a blank type. The class
+  loader is never closed, so it keeps the jars open; on Windows the tests therefore keep their temporary jars.
+- **D1, no secret walk for plugins.** `MergedConfigStore.decryptManagedEntity` puts `PLUGIN` with the types that
+  carry no secrets, so the secret walker does not descend into Jackson's tree classes.
+- **D7, test fixtures.** `TestEchoPluginProvider` is on the classpath of every server test and rejects settings
+  without `greeting`. The scenarios that need a provider accepting any settings, and the jar scenario, use
+  `JarEchoPluginProvider` (type `jar-echo`), which only a jar written by the test registers; the spec scenarios
+  "Minimal declaration" and "Jar in the directory" name `jar-echo` for that reason. `ConfigPluginApiTest` points
+  `plugins.dir` at such a jar, which also covers the startup wiring of `plugins.dir`. Settings overrides apply per
+  test class, so the soft-write and `skip` scenarios run in the nested `ConfigPluginApiTest.SkipMode`, not in
+  `MergedConfigStoreApiTest`, which runs under `abort`.
+- **Review round, three behaviours added to the spec delta.**
+  - `ServiceLoader` loads a provider class that two jars register once, from the first jar. `listJars` therefore
+    reads each jar's services file and refuses a class registered twice, so an old jar left beside its new version
+    stops the start (scenario "Same provider class in two jars").
+  - A provider exception while validating counts as rejected settings (Risks, scenario "Provider failure on a
+    rebuild under skip").
+  - In soft mode a batch apply of a plugin of an unknown type answers `APPLIED_INVALID`, as a model with a dangling
+    interceptor does (scenario "Unknown type in a soft batch").
+- **D7, test jars.** They carry only the `META-INF/services` entry; the provider class stays on the test classpath,
+  which the plugin class loader asks first. The duplicate-type test registers `jar-echo` and a subclass of it.
 
 ## Migration Plan
 
