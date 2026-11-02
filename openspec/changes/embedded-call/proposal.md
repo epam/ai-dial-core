@@ -6,7 +6,7 @@ After `embedded-origin`, an origin plugin answers a request inside Core. A plugi
 routing plugin, still calls Core back over HTTP with its per-request key. That costs a whole second pass. A pass is
 one request Core serves, with its own limit check, token-stats span, per-request key and analytics row.
 
-Measured through a routing application at a 383 KB body, a pass costs about 27 ms of Core CPU. The second one
+Measured through a routing application at a 383 KB body, a pass costs about 25 ms of Core CPU. The second one
 re-parses a body Core has already parsed, writes a second analytics row with the same bodies, and adds an HTTP round
 trip into Core itself.
 
@@ -16,8 +16,8 @@ span and row field, and loses the HTTP request into Core, the second parse and t
 ## What Changes
 
 - **The host call.** An origin plugin gets a way to call a deployment while it answers a request.
-  - It names the path: a deployments-POST action, `/openai/v1/chat/completions`, `/openai/v1/responses` (not in
-    background) or `/anthropic/v1/messages`.
+  - It names the path: a deployments-POST action, `/openai/v1/chat/completions`, `/openai/v1/responses` or
+    `/openai/responses` (not in background), or `/anthropic/v1/messages`.
   - It passes the body as a parsed tree.
   - Core serves the call as a child pass of the plugin's pass and hands back the answer: status and headers first,
     then the body as it arrives. No HTTP request goes into Core.

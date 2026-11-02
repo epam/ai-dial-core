@@ -13,8 +13,10 @@ the request and authenticates it. `processAuthorizationResult` (472-485) then:
    local;
 3. calls `ControllerSelector.select(request).build(this, context).handle()`.
 
-`ControllerSelector.select` (684-696) routes any request by method and path. It caches the choice in the request's
-context only when the request is Vert.x-internal.
+`ControllerSelector.select` (684-696) routes any request by method and path against the `RouteTemplate` patterns. It
+caches the choice in the request's context only when the request is Vert.x-internal. The create operations are
+`POST_DEPLOYMENT`, `LLM_CHAT_COMPLETIONS_API`, `LLM_RESPONSES_API`, `LLM_RESPONSES_API_UNVERSIONED` and
+`LLM_MESSAGES_API` (333-356).
 
 **A child pass today.** An application calls Core back with the per-request key in `API-KEY`. Core runs:
 - `ApiKeyStore.getApiKeyData`: one Redis GET and a Jackson parse of the key record, and `401 Unknown api key` when
@@ -39,20 +41,40 @@ The error paths call `respond(...)` from `AsyncTaskExecutor` tasks, so on a virt
 - `ResponsesController.sendRequest`;
 - `MessagesBaseController.sendRequest`.
 
-These end in `ProxyContext.respond` (191) writing the response off the event loop.
+These end in `ProxyContext.respond` (191) writing the response off the event loop, and in `finalizeRequest` on the same
+thread.
+
+**When the relay fails.** `BaseDeploymentPostController.handleResponseError` (165-185) and
+`BaseInterceptorController.handleResponseError` (206-211) run when the pipe to the client fails: the client went away,
+or the origin's stream failed. Both `reset()` the client response, so a cut answer does not look complete. Then a
+`Model` reads its origin to the end, writes its row and calls `finalizeRequest`; any other deployment resets its origin
+and does not call `finalizeRequest`, so the pass's key is not deleted.
+
+**Headers Core sets for an origin.** `sendProxyRequest` (418-466) copies the client's headers without the hop-by-hop
+ones (`API-KEY` and `Content-Length` among them), the trace headers and `X-DIAL-APPLICATION-ID`/`-PROPERTIES`, and
+replaces `X-DIAL-DEPLOYMENT-FEATURES`. It sets some headers only for some targets:
+- `X-UPSTREAM-ENDPOINT`, `X-UPSTREAM-KEY`, `X-UPSTREAM-EXTRA-DATA`, `X-DIAL-CACHE-BREAKPOINT-PATH` and
+  `X-DIAL-CACHE-EXTRA-METADATA` for a `Model` with upstreams;
+- `X-DIAL-OVERRIDE-NAME` for a target with an `overrideName` (`ProxyUtil.setOverrideNameHeader`);
+- `X-DIAL-DEPLOYMENT-ID` for a translator interface.
 
 **Pipes.** In vertx-core 4.5.35, `PipeImpl.to` sets only the source's handlers. It pauses the source and sets the
-destination's `drainHandler` when `writeQueueFull()`, and fails only when the ack of a `write(item, handler)` fails.
-The controllers set no close or exception handler on the response; `BaseChatCompletionController` (200-205) and
-`ResponsesController` (425-430) only pipe.
+destination's `drainHandler` when `writeQueueFull()`, and fails only when the ack of a `write(item, handler)` fails or
+the source fails. The controllers set no close or exception handler on the response; `BaseChatCompletionController`
+(200-205) and `ResponsesController` (425-430) only pipe.
 
 **Contexts and tracing.** `ContextInternal.duplicate()` makes a context on the same event loop with empty locals.
-`ContextImpl.emit` runs its handler inline only on the context's own thread, and queues it otherwise. The Vert.x
-OTel tracer reads the active OTel context from the local `VertxContextStorageProvider.ACTIVE_CONTEXT`. Without that
-local, a client request starts no client span and sends no `traceparent`. `tracing/DialVertxTracer` (47-52) already
-copies the local for that reason. `GenAiTraceAttributes.set` (293-301) writes to `Span.current()`.
-`vertx/stream/InputStreamReader` already uses Vert.x's `InboundBuffer`, which queues, pauses, fetches and drains on a
-context.
+`ContextImpl.emit` runs its handler inline, with that context current, when called on the context's thread, and queues
+it otherwise. The Vert.x OTel tracer reads the active OTel context from the local
+`VertxContextStorageProvider.ACTIVE_CONTEXT`. Without that local, a client request starts no client span and sends no
+`traceparent`. `tracing/DialVertxTracer` (47-52) already copies the local for that reason. `GenAiTraceAttributes.set`
+(293-301) writes to `Span.current()`.
+
+**`InboundBuffer`.** `vertx/stream/InputStreamReader` already uses Vert.x's `InboundBuffer`. Its `write` hands an
+element to the handler inline when there is demand and nothing is being emitted, and queues it otherwise; `fetch` and
+`resume` drain the queue from a task on the buffer's context, and the drain handler fires from there. A new buffer
+flows, and a `write` with no handler set drops the element, so `InputStreamReader` creates it paused (52) and marks the
+end with an empty buffer. Its methods check the thread and are `synchronized`.
 
 **Where the body is parsed.** Six sites do it the same way, `ProxyUtil.parseObject(body)`, the first four after
 `context.setRequestBodyWithTimestamp(body)`:
@@ -63,6 +85,10 @@ context.
 - `ChatCompletionInterceptorController.parseRequest` and `ResponsesInterceptorController.parseRequest`, called from
   `BaseInterceptorController.handleRequestBody` (91-98).
 
+`BaseInterceptorController.handle` (71-75) reads `context.getRequestBody()` and, when it is null, the request's body,
+before its chain. `ChatCompletionsController` and `ResponsesController` parse before `dispatch` hands over to an
+interceptor; `DeploymentPostController` hands over before it reads the body.
+
 Each enhancement chain then re-serialises the body before the origin or interceptor request, because
 `ApplyDefaultDeploymentSettingsFn` reports a change:
 - `BaseChatCompletionController.processChatCompletionsRequestBody`;
@@ -70,20 +96,24 @@ Each enhancement chain then re-serialises the body before the origin or intercep
 - `MessagesBaseController.prepareUpstreamRoute`;
 - `BaseInterceptorController.handleRequestBody`.
 
-On a retry, `BaseChatCompletionController.handleProxyResponse` (160-164) resends `context.getRequestBody()`.
+On a retry, `BaseChatCompletionController.handleProxyResponse` (160-164) resends `context.getRequestBody()`. After the
+chain, the readers of the body are the origin request, the limits (`increaseLimits`, only after a `200`) and the row.
 
 **The analytics row.** `AnalyticsLogContext.from` builds the row; `withoutBodies()` (from `development`'s
 analytics-backlog change) copies it without the three body fields.
 - `BaseChatCompletionController.completeProxyResponse` (288-291) builds the assembled streamed answer for every SSE
-  pass.
+  pass, then saves the row and calls `finalizeRequest` in the same task (296-312).
 - Responses builds its own in `ExtractTerminalResponseFn`.
 - Messages builds none (`MessagesController`, 242).
 
 **Embedded origins.** These come from `embedded-origin`.
-- `EmbeddedProxyRequest.send` calls `OriginPlugin.handle(OriginRequest)` on the request's event loop.
+- `OriginClient.embedded` makes an `EmbeddedProxyRequest` per attempt; it holds no `ProxyContext` (36).
+- `EmbeddedProxyRequest.send` calls `OriginPlugin.handle(OriginRequest)` on the request's event loop. `reset` and
+  `EmbeddedProxyResponse.discard` end the attempt; `discard` calls the answer's `cancel`.
+- `OriginPlugin` asks the plugin to complete its future and emit its answer on the context `handle` was called on.
 - The pass keeps its minted per-request key record as `ProxyContext.proxyApiKeyData`: executionPath
   `[<deployment>]`, spanId the pass's span, and the trace id.
-- `finalizeRequest` deletes that key when the pass ends (`BaseDeploymentPostController`, 131-138).
+- `finalizeRequest` deletes that key when the pass ends (`BaseDeploymentPostController`, 127-139).
 
 ## Goals / Non-Goals
 
@@ -125,19 +155,17 @@ public record OriginCaller(String userId, List<String> roles, String project) {}
 - **`OriginCall.uri`** is the path and query of a create operation:
   - a deployments-POST action;
   - `/openai/v1/chat/completions`;
-  - `/openai/v1/responses`, not with `background: true`;
+  - `/openai/v1/responses` or its unversioned alias `/openai/responses`, not with `background: true`;
   - `/anthropic/v1/messages`.
 
   For the three that name the deployment in the body, the body's `model` names the target, as for any client.
-- **`OriginCall.headers`** are copied; Core does not keep the plugin's map. Core drops the headers it sets for an origin
-  itself, so a plugin that forwards its own request's headers cannot pass them on to another deployment:
-  - `API-KEY`;
-  - `X-UPSTREAM-ENDPOINT`, `X-UPSTREAM-KEY` and `X-UPSTREAM-EXTRA-DATA`;
-  - `X-DIAL-DEPLOYMENT-FEATURES`, `X-DIAL-APPLICATION-ID`, `X-DIAL-APPLICATION-PROPERTIES` and
-    `X-DIAL-DEPLOYMENT-ID`;
-  - `Content-Length`.
-
-  Core adds `Content-Type`. The call carries the plugin pass's per-request key.
+- **`OriginCall.headers`** are copied; Core does not keep the plugin's map. Core drops from them the headers of Context
+  that `sendProxyRequest` sets only for some targets: `X-UPSTREAM-ENDPOINT`, `X-UPSTREAM-KEY`,
+  `X-UPSTREAM-EXTRA-DATA`, `X-DIAL-CACHE-BREAKPOINT-PATH`, `X-DIAL-CACHE-EXTRA-METADATA`, `X-DIAL-OVERRIDE-NAME` and
+  `X-DIAL-DEPLOYMENT-ID`. A plugin that forwards its own request's headers would otherwise pass its origin's
+  upstream key, or its override name, on to a target Core does not set them for. The other headers Core sets for an
+  origin it already drops or replaces for every origin request. Core adds `Content-Type`. The call carries the plugin
+  pass's per-request key.
 - **`OriginCall.body`** passes to Core: the child's chain changes it in place, so a plugin that calls twice passes a
   `deepCopy()`.
 - **`OriginRequest.bodyTree`** is the tree Core serialised into `body`, after the pass's chain. The plugin may pass it
@@ -153,12 +181,12 @@ Rejected alternatives:
 
 ### D2. The child driver: an in-memory request routed by Core's own selector
 
-A new `ChildPass` (server package) implements `OriginHost` for one embedded request. `call` does this:
+A new `ChildPass` (server package) implements `OriginHost` for one attempt of an embedded request. `call` does this:
 
 1. Refuses a call it cannot serve. The call's future fails, and the plugin decides what to answer:
-   - one whose path `ControllerSelector` does not resolve to one of the four create routes;
+   - one whose path matches none of the five create routes of Context;
    - a Responses call with `background: true`.
-2. Answers `401` `Unknown api key`, as an HTTP child with a deleted key would get, when the plugin's pass has ended.
+2. Answers `401` `Unknown api key`, as an HTTP child with a deleted key would get, when the attempt has ended.
 3. Builds a `ChildServerRequest`: method `POST`, the call's path and query, its headers (D1) plus
    `Content-Type: application/json`, an empty `body()`, and `response()` a `ChildServerResponse`.
 4. Builds the child's `ProxyContext`:
@@ -176,16 +204,22 @@ A new `ChildPass` (server package) implements `OriginHost` for one embedded requ
      (`AsyncTaskExecutor.execute` captures the current context), never touch the parent's.
    - A dispatch that fails is answered through `Proxy.handleError` on the child request, as for HTTP, so the plugin
      gets a status.
-6. Returns a future that completes with the answer once the child response's head is written. A controller that
+6. Returns a future that completes with the answer once the child response's head is written (D4). A controller that
    answers `404`, `403` or `429` gives an answer, not a failure.
 
-**When `ChildPass` closes.** It closes when the plugin's pass ends: `finalizeRequest` closes it, and so does
-`EmbeddedProxyRequest.reset`.
+**Who holds it.** `OriginClient.embedded` passes the pass's `ProxyContext` to `EmbeddedProxyRequest`. `send` makes the
+attempt's `ChildPass`, hands it to the plugin as the host, and registers it on the context.
+
+**When it closes.** `finalizeRequest` closes every `ChildPass` registered on the context; `EmbeddedProxyRequest.reset`
+and `EmbeddedProxyResponse.discard` close the attempt's own. `reset` covers the client gone from an application, whose
+pass never reaches `finalizeRequest`. Closing runs on the parent's Vert.x context, as `finalizeRequest` can run on a
+virtual thread.
 - It cancels the answers it handed out that are still open.
 - It cancels a head that arrives after it closed.
 - It answers any later call `401`.
 
-So a plugin that forgets a call cannot leave a child running past its own pass.
+So a plugin that forgets a call cannot leave a child relaying past its own pass. A child serving a `Model` still reads
+its origin to the end and writes its row, as after any client gone.
 
 Rejected alternatives:
 - **A request facade in `ProxyContext`** in place of `HttpServerRequest`. Every controller reads
@@ -197,19 +231,28 @@ Rejected alternatives:
 
 ### D3. The body tree, shared instead of parsed
 
-`ProxyContext` gains `parseRequestBody(Buffer body)`, which all six parse sites call in place of
-`ProxyUtil.parseObject`:
-- For a child with a tree, it returns the tree once and sets only the body timestamp.
-- Otherwise it parses as today. The four controller sites also set the body.
+**The child's tree.** A child's `ProxyContext` carries the call's tree. `getCallTree()` returns it while no body is set,
+and null after that and on every other pass. The six parse sites use it in place of `ProxyUtil.parseObject` when it is
+not null:
+- the four controller sites then set only the body timestamp, not the body;
+- `BaseInterceptorController.handle` reads the request's body only when neither the body nor the call tree is set.
 
-`ProxyContext.requestTree` keeps the tree only when the interface is `embedded`; `EmbeddedProxyRequest.send` takes it
-and clears the field. Other passes keep no tree on the context, so their heap does not grow.
+So the tree reaches the chain of the controller that serves the call, through an interceptor hop too:
+`ChatCompletionsController.parseBody` and `ResponsesController.parseBody` wrap it before `dispatch` hands over, and the
+interceptor's `parseRequest` wraps the same tree. The chain serialises it, as today, and that sets the body. Before
+the chain there is no body, as for a request answered `415` today; on the create paths only the row reads it then, and
+a child's row drops it. A mocked `ProxyContext` returns null, so the controller tests parse as today.
 
-`getRequestBody()` serialises the shared tree when the body has not been set. Only a reader before a chain needs that,
-such as a request whose chain fails early: every chain path, the interceptor hop included, sets the body itself.
+**The plugin's tree.** The four serialise points of Context set the body through one `BaseDeploymentPostController`
+helper. It also keeps the tree on the context when `DeploymentEndpointUtil.resolveMode` gives `embedded` for the
+interface. `EmbeddedProxyRequest.send` hands it to the plugin as `bodyTree` and clears it; when it finds none, on a
+retried attempt, it parses `body`. Other passes keep no tree on the context, so their heap does not grow.
 
-Rejected alternative: **serialise the call's tree when the call is made.** That costs one serialisation per call,
-and every chain path throws the result away.
+Rejected alternatives:
+- **Serialise the call's tree when the call is made.** That costs one serialisation per call, and every chain path
+  throws the result away.
+- **A lazily serialised `getRequestBody()`.** `BaseInterceptorController.handle` reads it before its chain, so every
+  interceptor hop would serialise the tree and parse it again.
 
 ### D4. The in-memory request and response
 
@@ -220,20 +263,33 @@ and every chain path throws the result away.
   `UnsupportedOperationException` naming the member and the in-process call. The tests (D8) cover each interface and
   the interceptor hop, so a member missed on a tested path fails a test.
 - **Threads.** Every mutator (`setStatusCode`, `putHeader`, `write`, `end`, `reset`) runs on the child's context. A
-  call from a virtual thread, as the error paths make, moves there first.
-- **Head.** The first `write` or `end` freezes the status and headers into the answer that `call` completes with.
-- **Body.** `write` and `end` feed an `InboundBuffer` on the parent's context. The answer's `ReadStream` is that
-  buffer, so its chunks and its end are emitted from tasks of their own, as the `OriginResponse` contract asks, and
-  the plugin's `pause`, `fetch` and `resume` work as on any Vert.x stream. `writeQueueFull` is the buffer's answer to
-  the last write. `drainHandler` fires when the buffer drains, so a pipe from the child's `BufferingReadStream` pauses
-  the child's origin as an HTTP client would.
-- **Cancel.** `cancel` on the answer acts as a client connection closing.
+  call from a virtual thread, as the error paths make, moves there first. The state the log layout reads from other
+  threads (status, `ended`, `closed`) is `volatile`.
+- **Head.** The first `write` or `end` freezes the status and headers into the answer. The call's future completes with
+  it through `parentContext.emit`.
+- **Body.** The answer's `ReadStream` is an `InboundBuffer` on the parent's context, created paused and resumed when
+  the plugin sets a handler, so nothing written before is dropped.
+  - `write` and `end` hand their chunk, or an end marker, to the buffer through `parentContext.emit`. When the plugin
+    has demand the chunk reaches its handler inline, on the same event loop, with the parent's context current, as
+    `OriginPlugin` asks.
+  - The plugin's `pause`, `fetch` and `resume` work as on any Vert.x stream.
+  - `writeQueueFull` is the buffer's answer to the last write. The buffer's drain fires the response's `drainHandler`
+    through `childContext.emit`, so a pipe from the child's `BufferingReadStream` resumes its origin on the child's
+    context, as with an HTTP client.
+- **Reset.** `reset()` is how the child cuts its answer: `handleResponseError` calls it when the child's origin fails
+  mid-stream.
+  - Before the head, it fails the call's future, as an HTTP client sees a connection dropped before the headers.
+  - After the head, it drops the queued chunks and fails the answer's body through its exception handler.
+- **Cancel.** `cancel` on the answer acts as a client connection closing. It runs on the child's context.
   - The response turns `closed()`.
   - It fails the ack of every pending and later `write` and `end`.
   - It fires a pending `drainHandler`, so a paused pipe resumes and fails on its next write.
 
   The child's pipe then fails into `handleResponseError`: a `Model` reads its origin to the end and writes its row,
   and any other deployment resets its origin.
+
+`InboundBuffer`'s methods are `synchronized`. Its monitor is taken by one thread only, so it never blocks the event
+loop; `InputStreamReader` already uses it there. This is a recorded exception to the CODE_STYLE rule on locks.
 
 Rejected alternatives:
 - **`java.lang.reflect.Proxy` instances for the two interfaces.** Both ways fail at run time on a member nobody
@@ -242,6 +298,8 @@ Rejected alternatives:
   two plain classes.
 - **A hand-written chunk queue** in place of `InboundBuffer`. It would repeat demand, pause and drain logic Core
   already reuses from Vert.x.
+- **Delivering each chunk from a task of its own.** One task per chunk costs more than the inline hand-over, and
+  `emit` already makes the parent's context current.
 
 ### D5. The child's row carries no bodies
 
@@ -274,7 +332,7 @@ A new module `plugin-samples` holds `ForwardOriginPluginProvider`, type `forward
 `{"deployment": "<name>"}` (a required string).
 - **deployments-POST actions:** each request goes to `/openai/deployments/<name>/<action>` through `host.call`, with the
   request's `bodyTree`.
-- **`/openai/v1/chat/completions`, Responses and Messages:** the same path as the request, with `model` set in the tree.
+- **Chat completions, Responses and Messages:** the same path as the request, with `model` set in the tree.
 - **The answer** is the call's answer, relayed as is. Cancel goes to the call's answer.
 
 The module depends on `plugin-api`, Vert.x and Jackson as `compileOnly`, because Core's class loader provides them,
@@ -291,31 +349,35 @@ Rejected alternatives:
 ### D8. Tests
 
 - **The test plugin.** `TestOriginPluginProvider` gains a call mode:
-  - `X-Test-Call: <path>` calls that path with the request's own `bodyTree` and relays the answer;
+  - `X-Test-Call: <path>` calls that path with the request's own `bodyTree` and relays the answer. The relay wraps the
+    call's answer, so a cancel of the relayed answer is counted in `CANCELLED` and passed on;
   - `X-Test-Call-Model: <name>` sets `model` in the tree first;
-  - `X-Test-Call-Cancel` cancels the call after its first event and answers by itself;
-  - `X-Test-Call-Late` makes a second call after it has answered, and records that call's status.
+  - `X-Test-Call-Cancel` cancels the call after its first event and answers by itself.
 
   The call passes on every header but `X-Test-Call*`, so a `p2` of the same type does not recurse, while `X-Test-Hold`
-  reaches it. The plugin records the `OriginCaller` of each request.
+  reaches it. The plugin records the `OriginCaller` of each request, and keeps its `OriginHost` and Vert.x context.
 - **`EmbeddedCallApiTest`** (new) covers the scenarios of the deltas. Targets are a second plugin `p2`, or an HTTP
-  origin on `TestWebServer` for the interceptor and HTTP-origin scenarios. Rows are read through the recording log
-  store of `ResourceBaseTest`.
+  origin on `TestWebServer` for the interceptor, HTTP-origin and mid-stream failure scenarios. Rows are read through the
+  recording log store of `ResourceBaseTest`.
+  - "Plugin cancels a call" holds `p2`'s answer open with `X-Test-Hold`.
+  - "Call after the plugin's pass ended" awaits `app`'s row, which Core saves in the same task as `finalizeRequest`,
+    then calls through `p1`'s kept host on its kept context and awaits the status. That order is fixed, so the test
+    does not race the pass's end.
 - **Unit tests:**
-  - `ChildServerResponseTest`: the head on the first write; the backpressure; tasks of their own on the parent's
-    context; a write from a virtual thread; cancel failing the pipe;
+  - `ChildServerResponseTest`: the head on the first write; nothing dropped before the plugin sets a handler; chunks
+    reaching the plugin with the parent's context current; the backpressure and the drain on the child's context; a
+    write from a virtual thread; `reset` before and after the head; cancel failing the pipe;
   - `ChildServerRequestTest`: path, query and the headers dropped;
   - `ChildPassTest`: refused routes, a background call, a call after close, a late head;
-  - the `ProxyContext` test: `parseRequestBody` and the lazy body;
+  - `ProxyContextTest`: `getCallTree` until the body is set;
   - `plugin-samples`: `validate` and the path mapping.
-- **Controller tests.** `DeploymentPostControllerTest`, `ChatCompletionsControllerTest` and `ResponsesControllerTest`
-  mock `ProxyContext`, so they need `parseRequestBody` stubbed.
+- **Controller tests.** The tests that mock `ProxyContext` get null from `getCallTree()` and need no change.
 
 ### D9. Effect per request
 
 These are estimates. The measured base is the perf env run of 2026-10-20: the path through a routing application at
-a 383 KB body, 53.5 ms of Core CPU per user request, two passes of about 27 ms each plus about 3 ms for the router's
-`/v1/user/info` call.
+a 383 KB body, 53.5 ms of Core CPU per user request. That is two passes, about 25 ms each, and about 3 ms for the
+router's `/v1/user/info` call.
 
 **What the child pass loses:**
 - the HTTP client and server request into Core (connection, header writing and parsing, body aggregation), a few ms;
@@ -332,14 +394,14 @@ a 383 KB body, 53.5 ms of Core CPU per user request, two passes of about 27 ms e
 - the usage parse.
 
 **What it adds:**
-- one `InboundBuffer` task per chunk delivered to the plugin, and one task for a write from a virtual thread;
+- one `emit` per chunk handed to the plugin, and one task for a write from a virtual thread;
 - the tree kept on the context of an embedded pass until its plugin is called.
 
 Expected:
 - the child pass at about 10-14 ms;
-- a user request through a routing plugin at about 37-41 ms, against 53.5 ms with the HTTP router. About 3 ms of that
-  difference is the `/v1/user/info` call the HTTP router makes and the `forward` plugin does not; the A/B reports it
-  apart.
+- a user request through a routing plugin at about 35-39 ms (the plugin's pass and the child pass), against 53.5 ms
+  with the HTTP router. About 3 ms of that difference is the `/v1/user/info` call the HTTP router makes and the
+  `forward` plugin does not; the A/B reports it apart.
 
 It does not reach 30 ms: the doubled event processing and the parent pass's own costs remain.
 
@@ -359,6 +421,11 @@ Blob round trips: none added.
   - The child copies `perRequestReceivers` from the in-memory record (`ApiKeyData.initFromContext`), so a later call
     in the same pass misses those writes.
   - The effect is an attachment or a share refused where an HTTP child would succeed. Nothing is granted wrongly.
+- **[A call after the client of an application went away]** → `401`, while an HTTP child would still succeed until
+  the key expires, as Core does not delete the key on that path. This is a deliberate difference: nobody reads the
+  answer.
+- **[Child passes are not HTTP requests]** → they do not appear in the Vert.x HTTP server metrics. Their rows and
+  token-stats spans do.
 - **[A plugin calls its own deployment]** → an endless chain of child passes, as with an HTTP application calling
   itself today, without the HTTP connection pool to slow it. There is no depth guard in v1.
 - **[No OTel server span for the child]** → traces show the plugin's pass, and under it the client spans of the child's

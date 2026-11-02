@@ -2,9 +2,10 @@
 
 ### Requirement: Calling a deployment from an origin plugin
 An origin plugin SHALL be able to call a deployment while it answers a request. Core SHALL serve a `POST` the plugin
-names to a deployments-POST action, `/openai/v1/chat/completions`, `/openai/v1/responses` (not in background) or
-`/anthropic/v1/messages`, with the body tree the plugin passes, as a request authenticated by the per-request key of
-the plugin's pass, and SHALL hand the plugin the answer: status and headers first, then the body as it arrives.
+names to a deployments-POST action, `/openai/v1/chat/completions`, `/openai/v1/responses` or `/openai/responses` (not
+in background), or `/anthropic/v1/messages`, with the body tree the plugin passes, as a request authenticated by the
+per-request key of the plugin's pass, and SHALL hand the plugin the answer: status and headers first, then the body
+as it arrives.
 
 #### Scenario: Call reaches a model
 - **WHEN** application `app` is served by plugin `p1` of type `test-origin`, a client sends a chat completion to
@@ -33,16 +34,21 @@ the plugin's pass, and SHALL hand the plugin the answer: status and headers firs
 - **WHEN** `p1` calls `/openai/v1/responses`, and then `/anthropic/v1/messages`, with `"model": "<model>"` in the body
 - **THEN** `p2` receives `POST /openai/v1/responses`, and then `POST /anthropic/v1/messages`
 
+#### Scenario: Target fails mid-stream
+- **WHEN** `p1` relays the streamed answer of a call to a model whose HTTP origin closes its connection mid-stream
+- **THEN** the answer of `p1`'s call fails, and the client's connection is closed before the answer completes
+
 #### Scenario: Call outside the create operations
 - **WHEN** `p1` calls `/v1/ops/resource/share/list`, or `/openai/v1/responses` with `"background": true`
-- **THEN** the call fails without reaching a controller, and the client gets `502` with the message `No route`
+- **THEN** the call fails, no deployment is called and no row is written for it, and the client gets `502` with the
+  message `No route`
 
 ### Requirement: Calls end with the plugin's pass
 When the plugin's pass ends, Core SHALL cancel the answers of its calls that are still open, and SHALL answer a call
 made after that `401` with the message `Unknown api key`.
 
 #### Scenario: Call after the plugin's pass ended
-- **WHEN** `p1` answers the client and then makes a call
+- **WHEN** `p1`'s pass has ended and its analytics row is written, and `p1` then makes a call
 - **THEN** that call's answer is `401`
 
 ### Requirement: Caller in the plugin request

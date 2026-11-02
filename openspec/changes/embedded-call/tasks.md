@@ -10,9 +10,10 @@
       - that `bodyTree` is read-only unless it is handed to `call`.
 
       Verify `./gradlew :plugin-api:build` passes
-- [ ] 1.2 Fill `caller` in `EmbeddedProxyRequest` (design D6), with `bodyTree` null and an `OriginHost` that fails every
-      call until groups 2 and 4. Update `TestOriginPluginProvider`, `EmbeddedProxyRequestTest` and its plugin lambdas
-      to the new signature, and make the test plugin record the caller. Verify:
+- [ ] 1.2 Have `OriginClient.embedded` pass the pass's `ProxyContext` to `EmbeddedProxyRequest` (design D2), and fill
+      `caller` from it (design D6), with `bodyTree` null and an `OriginHost` that fails every call until groups 2
+      and 4. Update `TestOriginPluginProvider`, `EmbeddedProxyRequestTest` and its plugin lambdas to the new signature,
+      and make the test plugin record the caller. Verify:
       - `EmbeddedOriginApiTest` and `EmbeddedProxyRequestTest` pass;
       - deployment-origin "Caller with an API key" and "Caller with a JWT" pass in a new `EmbeddedCallApiTest`.
 - [ ] 1.3 `./gradlew checkstyleMain checkstyleTest`, then verify these pass:
@@ -22,42 +23,43 @@
 
 ## 2. The shared body tree
 
-- [ ] 2.1 Write the tests first:
-      - `parseRequestBody` returns a child's tree once without parsing, and parses otherwise;
-      - `getRequestBody()` serialises the shared tree when no body was set;
-      - `requestTree` is kept for an embedded interface only.
-
-      Then add `ProxyContext.parseRequestBody`, `requestTree` and the lazy `getRequestBody()` (design D3). Verify the
-      tests pass
-- [ ] 2.2 Call `parseRequestBody` from the six parse sites:
+- [ ] 2.1 Write a `ProxyContextTest` case first: `getCallTree()` returns the call's tree until a body is set, and null
+      after that and without a call tree. Then add the call tree to `ProxyContext` (design D3). Verify the test passes
+- [ ] 2.2 Use the call tree at the six parse sites in place of `ProxyUtil.parseObject` (design D3):
       - `DeploymentPostController.handleRequestBody`;
       - `ChatCompletionsController.parseBody`;
       - `ResponsesController.parseBody`;
       - `MessagesBaseController.parseBody`;
       - `ChatCompletionInterceptorController.parseRequest` and `ResponsesInterceptorController.parseRequest`.
 
-      Have `EmbeddedProxyRequest` take the tree as `bodyTree`, re-parsing `body` on a retried attempt. Stub
-      `parseRequestBody` in the controller tests that mock `ProxyContext`: `DeploymentPostControllerTest`,
-      `ChatCompletionsControllerTest`, `ResponsesControllerTest` and `ChatCompletionInterceptorControllerTest`. Verify
-      by 2.3
+      Have the four controller sites set only the body timestamp when they use it, and
+      `BaseInterceptorController.handle` read the request's body only when neither a body nor a call tree is set.
+      Route the four serialise points through one `BaseDeploymentPostController` helper that keeps the tree for an
+      embedded interface, and have `EmbeddedProxyRequest` hand that tree to the plugin as `bodyTree`, parsing `body`
+      when none is kept. Add to `EmbeddedOriginApiTest` that the plugin's `bodyTree` equals its `body` on each
+      interface and on a retried attempt. Verify by 2.3
 - [ ] 2.3 `./gradlew checkstyleMain checkstyleTest`, then verify these pass:
       - API tests (`com.epam.aidial.core.server.`): `DeploymentPostApiTest`, `ChatCompletionApiTest`,
         `EmbeddingsApiTest`, `ResponsesApiTest`, `MessagesApiTest`, `ConfigInterceptorTest`, `EmbeddedOriginApiTest`;
       - controller tests (`com.epam.aidial.core.server.controller.`): `DeploymentPostControllerTest`,
-        `ChatCompletionsControllerTest`, `ResponsesControllerTest`, `ChatCompletionInterceptorControllerTest`.
+        `ChatCompletionsControllerTest`, `ResponsesControllerTest`, `ChatCompletionInterceptorControllerTest`,
+        `ResponsesInterceptorControllerTest`;
+      - `com.epam.aidial.core.server.ProxyContextTest`.
 
 ## 3. The in-memory request and response
 
 - [ ] 3.1 Write `ChildServerResponseTest` and `ChildServerRequestTest` first.
       - Response:
         - the head freezes on the first `write` or `end`;
-        - `writeQueueFull` and `drainHandler` follow the plugin's reads;
-        - chunks and the end reach the plugin from tasks of their own on the parent's context;
+        - nothing written before the plugin sets a handler is dropped;
+        - chunks reach the plugin with the parent's context current;
+        - `writeQueueFull` follows the plugin's reads, and `drainHandler` fires on the child's context;
         - a write from a virtual thread runs on the child's context;
+        - `reset` before the head fails the call, and after the head fails the body;
         - after `cancel`, a piped source's next write fails and the pipe fails.
       - Request: the path, the query, the method `POST`, and the headers Core drops.
 
-      Then implement both (design D4), with the response's body an `InboundBuffer`. Verify both test classes pass
+      Then implement both (design D4), with the answer's body an `InboundBuffer`. Verify both test classes pass
 - [ ] 3.2 `./gradlew checkstyleMain checkstyleTest`, then verify these pass:
       - `--tests "com.epam.aidial.core.server.upstream.ChildServerResponseTest"`
       - `--tests "com.epam.aidial.core.server.upstream.ChildServerRequestTest"`
@@ -66,18 +68,21 @@
 
 - [ ] 4.1 Extract `Proxy.dispatch(ProxyContext)` from `processAuthorizationResult`, with no behaviour change. Verify
       `DeploymentPostApiTest` and `ResourceApiTest` pass
-- [ ] 4.2 Write `ChildPassTest` first: a path outside the create routes fails the call; a background Responses call
-      fails; a call after close answers `401`; a head after close is cancelled. Then implement `ChildPass` (design D2):
-      - the route check;
+- [ ] 4.2 Write `ChildPassTest` first: a path outside the five create routes fails the call; a background Responses
+      call fails; a call after close answers `401`; a head after close is cancelled. Then implement `ChildPass`
+      (design D2):
+      - the route check against the `RouteTemplate` patterns;
       - the child context on a duplicated Vert.x context carrying the parent's `ACTIVE_CONTEXT`, the parent's key
         record and a minted span id;
       - dispatch failures answered through `Proxy.handleError`;
-      - closing from `finalizeRequest` and `EmbeddedProxyRequest.reset`.
+      - one `ChildPass` per attempt, registered on the pass's `ProxyContext`;
+      - closing, on the parent's context, from `finalizeRequest` (every registered one), `EmbeddedProxyRequest.reset`
+        and `EmbeddedProxyResponse.discard`.
 
-      Skip the span writes of `GenAiTraceAttributes` for a child pass. Give `TestOriginPluginProvider` its call mode
-      (design D8). Verify `ChildPassTest` passes
+      Skip the span writes of `GenAiTraceAttributes` for a child pass. Give `TestOriginPluginProvider` its call mode,
+      the relay that counts a cancel, and the kept host and context (design D8). Verify `ChildPassTest` passes
 - [ ] 4.3 Add to `EmbeddedCallApiTest`, and verify they pass:
-      - deployment-origin "Calling a deployment from an origin plugin", all seven scenarios;
+      - deployment-origin "Calling a deployment from an origin plugin", all eight scenarios;
       - "Calls end with the plugin's pass";
       - "Cancelling a call", both scenarios.
 - [ ] 4.4 `./gradlew checkstyleMain checkstyleTest`, then verify these pass:
