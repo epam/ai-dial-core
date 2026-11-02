@@ -254,7 +254,7 @@ public class MessagesController extends MessagesBaseController {
                                             @ApiHeader(name = Proxy.HEADER_UPSTREAM_ATTEMPTS,
                                                     description = "Number of upstream attempts performed before returning the response"),
                                             @ApiHeader(name = "anthropic-ratelimit-unified-status",
-                                                    description = "DIAL spend cap status before this request: `allowed`, or `allowed_warning` past 75%. "
+                                                    description = "DIAL spend cap status before this request: `allowed`, or `allowed_warning` from 75%. "
                                                             + "Sent only when the caller has a day/week/month cost limit; "
                                                             + "the upstream's own `anthropic-ratelimit-*` headers are removed"),
                                             @ApiHeader(name = "anthropic-ratelimit-unified-representative-claim", description = "Always `overage`"),

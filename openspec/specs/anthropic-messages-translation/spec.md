@@ -289,7 +289,8 @@ a stream ending with `response.failed`, SHALL be charged the `usage` it carries.
 
 #### Scenario: Limit reached
 - **WHEN** the caller has used the model's token limit and sends another builtin-translated request
-- **THEN** Core answers `429` and sends nothing upstream
+- **THEN** Core answers the `rate_limit_error` `429` of the requirement "Other limits rejected in the Anthropic format"
+  of spend-limit-reporting and sends nothing upstream
 
 #### Scenario: Non-streaming answer charged once
 - **WHEN** a client sends a non-streaming request for `gpt-builtin` and the upstream answers `200` with
@@ -769,9 +770,8 @@ Anthropic message as a JSON body.
 - **THEN** the client gets `200` and a message with one `text` block `hi` and `stop_reason: "end_turn"`
 
 ### Requirement: Non-streaming answer headers
-The translated message SHALL carry `Content-Type: application/json`, `Content-Length`, `X-UPSTREAM-ATTEMPTS` and, for
-a caller with a day, week or month cost limit, the `anthropic-ratelimit-unified-*` headers of a successful Messages
-answer.
+The translated message SHALL carry `Content-Type: application/json`, `Content-Length`, `X-UPSTREAM-ATTEMPTS` and the
+spend headers of the requirement "Anthropic limit headers on a successful Messages answer" of spend-limit-reporting.
 
 #### Scenario: Answer headers
 - **WHEN** a client sends a non-streaming request for `gpt-builtin` and the upstream answers `200` on the first attempt
@@ -937,7 +937,8 @@ gives `502` `api_error`.
 Once Core has found that a builtin translator serves a `POST /anthropic/v1/messages`, every error Core answers SHALL
 have the body `{"type":"error","error":{"type":<type>,"message":<message>}}` with `Content-Type: application/json`,
 and today's status and other headers, `Retry-After` included. The message is Core's, or the `error.message` of a
-DIAL error body. An answer already in the Anthropic shape, such as a reached spend cap, SHALL stay unchanged.
+DIAL error body. The limit answers of spend-limit-reporting's "Builtin-translated Messages models", already in the
+Anthropic shape, SHALL stay unchanged.
 
 #### Scenario: Refused content block
 - **WHEN** a client sends a streaming request for `gpt-builtin` whose user message holds an `image` block
@@ -967,8 +968,8 @@ DIAL error body. An answer already in the Anthropic shape, such as a reached spe
 
 #### Scenario: Reached spend cap unchanged
 - **WHEN** a caller who has reached a day cost limit sends a request for a model served by a builtin translator
-- **THEN** the client gets `429` with `error.type: "billing_error"`, not `rate_limit_error`, and the same body and
-  headers as for a pass-through Anthropic model, and nothing reaches the upstream
+- **THEN** the client gets the `billing_error` `429` of the requirement "Reached spend cap rejected in the Anthropic
+  format" of spend-limit-reporting, not a `rate_limit_error`, and nothing reaches the upstream
 
 #### Scenario: Pass-through model keeps its error answers
 - **WHEN** nothing listens on the endpoint of a model whose `anthropicMessages` interface is passed through
@@ -1069,24 +1070,6 @@ for the same answer. Core SHALL count the tokens from the Anthropic usage the cl
 - **WHEN** the usage is `input_tokens` 10 and `output_tokens` 30 with `output_tokens_details.reasoning_tokens` 12, and
   `total_tokens` 40
 - **THEN** each of the two requests adds 40 tokens and a cost of 0.70
-
-### Requirement: Spend caps of a builtin-translated request
-Core SHALL check the caller's spend caps on a builtin-translated request itself, as for a pass-through Messages
-model: a 200 answer SHALL carry the `anthropic-ratelimit-unified-*` headers of the reported cap, and an unreadable
-spend record of a caller with a cost limit SHALL get Core's spend-cap 429 before anything is sent upstream. A reached
-cap gets the 429 of the scenario "Reached spend cap unchanged" of "Anthropic error body for Core errors on the builtin
-path".
-
-#### Scenario: At 82% of a day cap
-- **WHEN** a caller who has spent $8.20 of a $10 day cap streams a Messages request to a builtin-translated model and
-  the upstream answers 200
-- **THEN** the answer carries `anthropic-ratelimit-unified-status: allowed_warning` and
-  `anthropic-ratelimit-unified-overage-utilization: 0.82`
-
-#### Scenario: Spend record unreadable
-- **WHEN** a caller with a day cost limit sends the same request and the spend counter cannot be read
-- **THEN** Core answers 429 with `anthropic-ratelimit-unified-overage-disabled-reason: fetch_error`, and the upstream
-  receives no request
 
 ### Requirement: Upstream cache key of a builtin-translated request
 Core SHALL compute the upstream cache key of a builtin-translated request from the translated Responses body, with

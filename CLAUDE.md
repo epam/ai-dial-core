@@ -118,6 +118,7 @@ Gradle 8.10 needs a JDK 21 as `JAVA_HOME`; a newer default JDK fails with "Unsup
 export JAVA_HOME="<path to a JDK 21>"
 ./gradlew checkstyleMain checkstyleTest
 ./gradlew :server:test --tests "com.epam.aidial.core.server.SomeApiTest"     # the classes the change touches
+./gradlew :translator:test                                                  # when the translator module changes
 npx -y @fission-ai/openspec@1.14.3 validate --all --strict
 ```
 

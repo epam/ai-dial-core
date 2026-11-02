@@ -164,8 +164,8 @@ kind.
 ### Requirement: Translated interface not limit-checked
 A request for an interface the deployment serves in `translator` mode through a translator service (`baseUrl`) SHALL
 be neither checked nor charged (bar a background Responses job's finish, responses-api): the translator's call back
-to Core is. `/anthropic/v1/messages` and `/openai/v1/responses` still refuse it `429` when the initiator's day, week
-or month cost limit is already reached (spend-limit-reporting). A request a builtin translator serves is covered by anthropic-messages-translation.
+to Core is. `/anthropic/v1/messages` and `/openai/v1/responses` still refuse it `429` when the initiator's reported
+spend cap is reached (spend-limit-reporting). A request a builtin translator serves is covered by anthropic-messages-translation.
 
 #### Scenario: Translated interface not charged
 - **WHEN** user `u1` has used the `m` per-minute token limit of its role, and `m` serves `anthropicMessages` in

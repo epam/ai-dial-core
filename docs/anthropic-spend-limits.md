@@ -68,7 +68,7 @@ in the response headers, before the body.
 
 | Header | Value |
 |---|---|
-| `anthropic-ratelimit-unified-status` | `allowed`, or `allowed_warning` once past 75% |
+| `anthropic-ratelimit-unified-status` | `allowed`, or `allowed_warning` from 75% |
 | `anthropic-ratelimit-unified-representative-claim` | always `overage` |
 | `anthropic-ratelimit-unified-overage-status` | same as `-status` |
 | `anthropic-ratelimit-unified-overage-utilization` | used/total, floored to two decimals, at most `0.99` while allowed (e.g. `0.82`) |
