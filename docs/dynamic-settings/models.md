@@ -334,7 +334,7 @@ An absent, `null`, or empty interface `features` object inherits all model-level
 
 Chat completions and Responses inherit `["low", "medium", "high"]`; Anthropic Messages uses `["low", "medium", "high", "xhigh", "max"]`. All three retain `tools_supported: true` and `temperature_supported: true`. Tool support is explicitly enabled here because Core's default is `false`.
 
-The same rule applies to `openaiEmbeddings`. It needs its own interface declaration when using `interfaces` for routing. Passthrough and translator requests receive effective features in `X-DIAL-DEPLOYMENT-FEATURES`, using the existing header format (`tools`, `temperature`, `reasoning_efforts`, etc.). Request-time caching, automatic caching, per-request-key access, and consent checks also use the requested interface's features. Consent reviews include requirements declared on interfaces.
+The same rule applies to `openaiEmbeddings`. It needs its own interface declaration when using `interfaces` for routing. Passthrough and translator requests receive effective features in `X-DIAL-DEPLOYMENT-FEATURES`, using the existing header format (`tools`, `temperature`, `reasoning_efforts`, etc.). Request-time caching, automatic caching, per-request-key access, and consent checks also use the requested interface's features; for a builtin translator, see [Builtin translators](translators.md#builtin-translators). Consent reviews include requirements declared on interfaces.
 
 Core defaults are applied after merging, and resolving a request does not modify the shared configuration.
 

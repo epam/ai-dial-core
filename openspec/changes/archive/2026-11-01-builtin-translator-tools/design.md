@@ -250,8 +250,9 @@ The alias map in the harness:
   the model supports caching.
 
 Nothing here is measured on its own. The saving that matters is that Claude Code traffic (which always carries tools)
-now takes the one-pass path. That is measured as a Core pass count and Core CPU per request against the translator
-service, on the perf environment (tasks.md, task 4.3).
+now takes the one-pass path. That is not measured yet: the planned measurement (a Core pass count and Core CPU per
+request against the translator service, on the perf environment, tasks.md task 4.3) is deferred and listed in
+`openspec/audits/2026-11-02.md`.
 
 ## Risks / Trade-offs
 

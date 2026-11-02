@@ -47,6 +47,7 @@ import com.epam.aidial.core.translator.ResponsesToMessagesStream;
 import com.epam.aidial.core.translator.ToolNames;
 import com.epam.aidial.core.translator.UntranslatableRequestException;
 import com.epam.aidial.core.translator.UpstreamFailureException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -349,8 +350,9 @@ public class MessagesController extends MessagesBaseController {
         }
 
         BufferingReadStream responseStream;
-        if (builtinTranslator != null && isEventStreamResponse(proxyResponse)) {
-            // translated before it is buffered, so the rest of the path sees the stream the client gets
+        if (builtinTranslator != null) {
+            // translated before it is buffered, so the rest of the path sees the stream the client gets; a body that is
+            // not an event stream holds no events, so the client gets the api_error of a stream with no terminal event
             translatedStream = new ResponsesToMessagesStream(requestedModel,
                     ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get()), toolNames, thinkingOmitted);
             ResponsesToMessagesReadStream translated = new ResponsesToMessagesReadStream(proxyResponse, translatedStream,
@@ -364,6 +366,10 @@ public class MessagesController extends MessagesBaseController {
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
+        if (builtinTranslator != null) {
+            response.putHeader(HttpHeaders.CONTENT_TYPE, "text/event-stream");
+            response.putHeader("X-Accel-Buffering", "no");
+        }
         putLimitHeaders(response, status);
         putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
@@ -394,17 +400,23 @@ public class MessagesController extends MessagesBaseController {
             EncryptedContentAffinityUtil.wrapOutputArray(responses.path("output"), context.getUpstreamRoute().get().getId(), context.getDeployment().getName());
         }
         try {
-            Buffer message = Buffer.buffer(ResponsesToMessages.translateResponse(responses, requestedModel,
-                    ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get()), toolNames, thinkingOmitted).toString());
-            return handleNonStreamingResponse(proxyResponse, status, message, message);
+            ObjectNode message = ResponsesToMessages.translateResponse(responses, requestedModel,
+                    ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get()), toolNames, thinkingOmitted);
+            return handleNonStreamingResponse(proxyResponse, status, Buffer.buffer(message.toString()), chargeBody(message.get("usage")));
         } catch (UpstreamFailureException e) {
-            ObjectNode usage = ProxyUtil.MAPPER.createObjectNode();
-            usage.set("usage", ResponsesToMessages.convertUsage(responses.path("usage")));
-            // the client's body is the error, so the price reads the usage from here
-            context.setPricingUsageNode(usage);
             return handleNonStreamingResponse(proxyResponse, e.getStatus(), Buffer.buffer(AnthropicLimitResponses.errorBody(e.getType(), e.getMessage())),
-                    Buffer.buffer(usage.toString()));
+                    chargeBody(ResponsesToMessages.convertUsage(responses.path("usage"))));
         }
+    }
+
+    /**
+     * The usage the price reads, so neither the charge nor the price parses the whole answer back.
+     */
+    private Buffer chargeBody(JsonNode usage) {
+        ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
+        body.set("usage", usage);
+        context.setPricingUsageNode(body);
+        return Buffer.buffer(body.toString());
     }
 
     /**

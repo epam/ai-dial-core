@@ -47,8 +47,8 @@ A user can have several cost caps (day, week, month). Exactly one is reported:
 Unlimited windows (total is 0 or at least 2^53) are skipped. A user with no cap gets no headers, and the
 usage endpoint returns `{"limits":[]}`. The per-minute cost limit is never reported as a cap.
 
-A model served in translated mode (`"mode": "translator"` on its `anthropicMessages` interface) gets the same
-headers. Its limits are checked and charged by the call the translator makes back to Core, so the outer
+A model whose `anthropicMessages` interface is served by a translator service (`"mode": "translator"` with a
+translator that has a `baseUrl`) gets the same headers. Its limits are checked and charged by the call the translator makes back to Core, so the outer
 request only reads the spend caps. It rejects with the spend-cap 429 below once a cap is already reached,
 and if the spend record can't be read it sends no headers instead of failing closed. Token and request limits
 for such a model are enforced only by the inner call. When the inner call rejects (a token, request or

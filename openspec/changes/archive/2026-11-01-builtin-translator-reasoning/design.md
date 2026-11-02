@@ -205,8 +205,9 @@ From the reference:
   `request.serialize()`) and serialized with the translated body (`translated.serialize()`).
 - Response side: the state machine writes one JSON string per encrypted reasoning item, not per event, holding the
   whole ciphertext. That string is escaped a second time into its SSE frame (`ResponsesToMessagesStream.java:frame`),
-  then buffered by `BufferingReadStream` and parsed by `MessagesSseListener`
-  (`MessagesController.java:processResponse`), like every client frame.
+  then buffered by `BufferingReadStream`, parsed by `MessagesSseListener` (`MessagesController.java:processResponse`)
+  and escaped a third time when the listener serialized the frame again, like every client frame. Since the
+  2026-11-02 audit the listener relays `content_block_*` frames, the carrier's among them, as written.
 - Redis and blob round trips: none added.
 - The client's stream grows by the upstream's ciphertext in the carriers, as through the translator service.
 

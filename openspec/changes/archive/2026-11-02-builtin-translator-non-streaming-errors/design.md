@@ -244,9 +244,10 @@ a non-streaming one.
   two: one per-request key, one limit check and charge, one token-stats span and one analytics row instead of two of
   each, and no translator hop.
 - **Body work on a non-streaming answer.** The upstream body is parsed once into a tree, stamped in place,
-  translated and serialized once. The Messages path then parses the serialized message again for its usage
-  (`MessagesTokenUsageParser.parse`), as it parses every pass-through answer. That second parse is the one extra
-  compared with a pass-through answer; removing it is CPU tuning, which is out of scope.
+  translated and serialized once. As first built, the Messages path then parsed the serialized message twice more:
+  for its usage (`MessagesTokenUsageParser.parse`) and again for its price (`ModelCostCalculator.calculate`). The
+  2026-11-02 audit removed both: the usage is taken from the translated tree and charged from a small
+  `{"usage": ...}` body, as the failure path already did.
 - **Errors.** No new blob calls. One new set of Redis calls: an upstream connection that fails mid-stream now runs
   `collectTokenUsage` (the limit charge and the token-stats update, with zero usage) and writes one analytics row,
   where today it does neither. A failed or unfinished answer makes the same calls as a successful one. An upstream

@@ -94,6 +94,7 @@ A translator with `builtin` instead of `baseUrl` is performed by DIAL Core insid
 * A `builtin` value DIAL Core does not know is rejected as the config is read. Unlike a translator *name*, the set is fixed in code, so it cannot be registered later.
 * `in` and `out` must be the pair the builtin converts. Written inline, `in` is implied by the interface the definition sits under, as for `baseUrl`.
 * Only a model can use a builtin translator: the translated request is served by the model's own `out` interface. An application referencing one answers `503` for that interface.
+* Consent and per-request-key access are checked against the features of both the model's `anthropicMessages` interface and its `openaiResponses` interface: a request that either one refuses (`consentRequired: true` without consent, or `accessibleByPerRequestKey: false` with a per-request key) gets `403`.
 * Falling back to a translator service is a config edit: replace the translator entry's `builtin` with the service's `baseUrl`.
 
   ```json

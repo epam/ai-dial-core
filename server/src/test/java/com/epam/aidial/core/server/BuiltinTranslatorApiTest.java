@@ -929,7 +929,21 @@ public class BuiltinTranslatorApiTest extends ResourceBaseTest {
     }
 
     @Test
-    public void testMidStreamFailureBecomesAnErrorEvent() throws IOException, InterruptedException {
+    public void testStreamingRequestAnsweredWithoutSseEndsInError() throws IOException {
+        MockResponse answer = json(200, responsesObject("completed", "{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"hi\"}]}", "1", "1"));
+        try (TestWebServer server = origin(request -> answer); CloseableHttpClient client = newClient()) {
+            Response response = post(client, MESSAGES_PATH, requestBody(true), "api-key", "proxyKey1");
+
+            assertEquals(200, response.status());
+            assertEquals("text/event-stream", header(response, "Content-Type"));
+            assertEquals(List.of("error"), eventNames(response.body()), response.body());
+            assertErrorEvent(response.body(), "api_error", "The upstream stream ended before the response completed");
+            assertFalse(response.body().contains("resp_075fcfcf"), response.body());
+        }
+    }
+
+    @Test
+    public void testMidStreamFailureBecomesAnErrorEvent()throws IOException, InterruptedException {
         String sse = sseEvents(CREATED, textAdded(0), textDelta(0, "Who"),
                 "{\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"upstream exploded\"},"
                         + "\"usage\":{\"input_tokens\":10,\"output_tokens\":8}}}");

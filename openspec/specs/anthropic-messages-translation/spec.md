@@ -245,6 +245,12 @@ an `error` with the upstream's message and the type that "Upstream failure names
 - **THEN** the client's stream ends with an `error` event of type `api_error` and message
   `An error occurred during streaming`
 
+#### Scenario: Streaming request answered without an event stream
+- **WHEN** the upstream answers a streaming request of a builtin-translated model 200 with an `application/json`
+  Responses object
+- **THEN** the client gets 200 `text/event-stream` whose only event is `error` with `type: api_error` and the message
+  `The upstream stream ended before the response completed`, and none of the upstream's body
+
 #### Scenario: Upstream connection fails mid-stream
 - **WHEN** the upstream connection fails after Core has sent `message_start` to the client
 - **THEN** the client's stream ends with an `error` event of type `api_error` and message
@@ -1017,11 +1023,11 @@ upstream's `error.message`, else its string `error`, else its `message`, else it
 - **THEN** the client gets `500` with that body unchanged
 
 ### Requirement: Analytics row of a builtin-translated request
-For `POST /anthropic/v1/messages` served through a builtin translator, Core SHALL write exactly one analytics row, for
-the model. The row SHALL carry `request.uri`
-`/anthropic/v1/messages`, as `request.body` the Messages request the client sent with the model's
-`anthropicMessages` defaults, as `response.body` the Anthropic event stream the client received, and the cost
-charged as `deployment_price` and `price`.
+For `POST /anthropic/v1/messages` served through a builtin translator, Core SHALL write one analytics row, for the
+model, for each request whose upstream answer it relays (app-to-model-accounting covers the others). The row SHALL
+carry `request.uri` `/anthropic/v1/messages`, as `request.body` the Messages request the client sent with the
+model's `anthropicMessages` defaults, as `response.body` the body the client received, and the cost charged as
+`deployment_price` and `price`.
 
 #### Scenario: Streamed answer
 - **WHEN** a client with a key that is not `secured` streams a Messages request for builtin-translated model `m`
@@ -1035,6 +1041,12 @@ charged as `deployment_price` and `price`.
 #### Scenario: Upstream error
 - **WHEN** the upstream answers 400 to the same request
 - **THEN** exactly one row is written for the request, with `response.status` `"400"` and no `token_usage`
+
+#### Scenario: Failed answer inside a 200
+- **WHEN** the upstream answers a non-streaming request for `m` 200 with a Responses object of `status: failed` and
+  usage of 10 input and 8 output tokens
+- **THEN** exactly one row is written for the request, with the client's `response.status` `"502"`,
+  `token_usage.total_tokens` 18 and `token_usage.price` 0.26
 
 ### Requirement: Builtin-translated request billed as its Responses pass
 For one upstream Responses answer whose `usage.total_tokens` is its input plus output tokens, Core SHALL add to the
@@ -1109,8 +1121,7 @@ so the client receives one Anthropic event stream and only that answer's usage i
 
 ### Requirement: Client gone from a builtin-translated stream
 When the client closes its connection while Core relays a builtin-translated stream, Core SHALL keep reading and
-translating the upstream's Responses stream to its end, charge the usage it reports and write the analytics row, as
-for any model (deployment-origin "Client gone during the relay").
+translating the upstream's Responses stream to its end, charge the usage it reports and write the analytics row.
 
 #### Scenario: Client disconnects mid-stream
 - **WHEN** the client closes its connection after the first event of a builtin-translated stream whose Responses

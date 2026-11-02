@@ -63,8 +63,9 @@ The fixtures:
 
 **Non-Goals:**
 
-- Changing the stream reader or the CPU cost per frame (`ResponsesToMessagesReadStream` parses each frame, and
-  `MessagesSseListener` parses it again).
+- Changing the stream reader or the CPU cost per frame (`ResponsesToMessagesReadStream` parses each upstream event;
+  `MessagesSseListener` then parsed each client frame again and serialized it a second time. The 2026-11-02 audit
+  made it relay `content_block_*` and `ping` frames as written, so only the other frames are parsed again).
 - A Java fixture recorder. Fixtures are recorded in Python and copied.
 
 ## Decisions

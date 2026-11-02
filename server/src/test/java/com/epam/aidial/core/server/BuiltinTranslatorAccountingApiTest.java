@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import lombok.SneakyThrows;
+import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.Test;
 
@@ -39,6 +40,7 @@ class BuiltinTranslatorAccountingApiTest extends ResourceBaseTest {
     private static final String RESPONSES_PATH = "/openai/v1/responses";
     private static final String PLAIN_USAGE = "{\"input_tokens\":10,\"output_tokens\":8,\"total_tokens\":18}";
     private static final String MESSAGES_BODY = messagesBody("[{\"role\":\"user\",\"content\":\"Knock, knock\"}]");
+    private static final String NON_STREAMING_BODY = MESSAGES_BODY.replace("\"stream\":true", "\"stream\":false");
 
     @Test
     @DialConfigLocation(CONFIG)
@@ -114,6 +116,49 @@ class BuiltinTranslatorAccountingApiTest extends ResourceBaseTest {
     void testReasoningTokensBilledAsItsResponsesPass() {
         assertBilledAsItsResponsesPass("{\"input_tokens\":10,\"output_tokens\":30,\"output_tokens_details\":{\"reasoning_tokens\":12},\"total_tokens\":40}",
                 40, "0.70");
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testNonStreamingAnswerBilledFromItsUsage() {
+        // the cached tokens are priced from the usage the message is built from: 60 x 0.01 + 40 x 0.001 + 10 x 0.02
+        try (TestWebServer server = origin(request -> json(responsesObject("completed",
+                "{\"input_tokens\":100,\"input_tokens_details\":{\"cached_tokens\":40},\"output_tokens\":10,\"total_tokens\":110}")))) {
+            verify(post(MESSAGES_PATH, NON_STREAMING_BODY), 200);
+            logStore.await(MESSAGES_PATH, 1);
+
+            LimitStats usage = usage();
+            assertEquals(110, usage.getDayTokenStats().getUsed());
+            assertCost("0.84", usage.getDayCostStats().getUsed());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testFailedAnswerRowHasTheClientStatusAndTheCharge() {
+        try (TestWebServer server = origin(request -> json(responsesObject("failed", PLAIN_USAGE)))) {
+            verify(post(MESSAGES_PATH, NON_STREAMING_BODY), 502);
+
+            List<AnalyticsLogContext> rows = logStore.await(MESSAGES_PATH, 1);
+            assertEquals(1, rows.size());
+            assertEquals(502, rows.get(0).getResponseStatusCode());
+            assertEquals(18, rows.get(0).getTokenUsage().getTotalTokens());
+            assertCost("0.26", rows.get(0).getTokenUsage().getCost());
+        }
+    }
+
+    private static MockResponse json(String body) {
+        return TestWebServer.createResponse(200, body, "Content-Type", "application/json");
+    }
+
+    /**
+     * A non-streaming Responses object of {@code status} with the text {@code Hi} and {@code usage}; a failed one
+     * carries an {@code error}.
+     */
+    private static String responsesObject(String status, String usage) {
+        return "{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"" + status + "\","
+                + "\"error\":" + ("failed".equals(status) ? "{\"code\":\"server_error\",\"message\":\"upstream exploded\"}" : "null") + ","
+                + "\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"Hi\"}]}],\"usage\":" + usage + "}";
     }
 
     /**
