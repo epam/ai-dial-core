@@ -407,6 +407,35 @@ It does not reach 30 ms: the doubled event processing and the parent pass's own 
 
 Blob round trips: none added.
 
+## Open Questions
+
+Raised by the Java model-provider port (`ai-dial-model-provider-java`, its `embedded-mode` spec), which would run as
+an origin plugin: the openai, vertexai and bedrock adapters, the passthrough signer of P1 among them. Not decided here.
+Since D1 already changes `handle`'s signature, they could join it, or a later change.
+
+1. **Cancellation before the answer.**
+   - Today `EmbeddedProxyRequest.reset` only sets a flag (`EmbeddedProxyRequest.java`, 87-88). The plugin learns
+     nothing until it answers, and its answer is then cancelled (72-74).
+   - A plugin whose answer takes time keeps its upstream calls running for a client that has gone: a non-streamed
+     generation, a truncation's several upstream counts, a credential fetch.
+   - Proposal: `OriginHost.cancelled()`, a `Future<Void>` that `reset` completes on the request's context, whether
+     or not the answer exists. `OriginResponse.cancel()` stays for the body.
+   - The model-provider library takes exactly such a future (`AdapterRequest.aborted`).
+2. **Closing a replaced instance.**
+   - `EmbeddedOrigins` replaces a plugin instance when its declaration changes, and drops the old one
+     (`EmbeddedOrigins.java`, 23-45).
+   - A plugin that holds HTTP client pools, token caches or timers leaks them on every settings change, and they are
+     never closed at shutdown either.
+   - Proposal: `OriginPlugin` gains `default void close() {}`. Core calls it once the replaced instance has no request
+     in flight, or at once with the plugin draining itself, and at shutdown.
+3. **Core's `Vertx` for a plugin's clients.**
+   - `create` may run off a Vert.x context, so a plugin that builds clients can only take
+     `Vertx.currentContext().owner()` on its first `handle`.
+   - Proposal: `OriginPluginProvider.create(ObjectNode settings, Vertx vertx)`, or `OriginHost.vertx()`.
+
+`OriginRequest.uri` (the upstream URL after the interface's base URL, `EmbeddedProxyRequest.java`, 63) is enough for
+the port: its plugin maps it onto its own `/compat/<adapter>` routes from its settings.
+
 ## Risks / Trade-offs
 
 - **[A Vert.x upgrade adds members to `HttpServerRequest` or `HttpServerResponse`]** → a compile error in the two
