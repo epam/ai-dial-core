@@ -14,6 +14,8 @@ public interface OriginPlugin {
     /**
      * Answers one request. A failed future, or an exception thrown here, counts as an origin that failed to send its
      * response headers.
+     *
+     * @param host calls other deployments for this request, see {@link OriginHost#call}
      */
-    Future<OriginResponse> handle(OriginRequest request);
+    Future<OriginResponse> handle(OriginRequest request, OriginHost host);
 }

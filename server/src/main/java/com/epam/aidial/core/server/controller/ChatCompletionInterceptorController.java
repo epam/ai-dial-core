@@ -44,7 +44,7 @@ public class ChatCompletionInterceptorController extends BaseInterceptorControll
 
     @Override
     protected RequestObject parseRequest(Buffer body) throws IOException {
-        return new ChatCompletionRequest(ProxyUtil.parseObject(body));
+        return new ChatCompletionRequest(parseObject(body));
     }
 
     @Override

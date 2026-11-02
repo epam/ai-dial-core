@@ -2,7 +2,7 @@
 
 ## 1. The contract additions
 
-- [ ] 1.1 Add `OriginHost`, `OriginCall` and `OriginCaller` to `plugin-api`, change `OriginPlugin.handle` to take the
+- [x] 1.1 Add `OriginHost`, `OriginCall` and `OriginCaller` to `plugin-api`, change `OriginPlugin.handle` to take the
       host, and add `bodyTree` and `caller` to `OriginRequest` (design D1). The Javadoc says:
       - that `call` takes the body tree it is given;
       - which operations `uri` may name, and that `background: true` is refused;
@@ -10,22 +10,22 @@
       - that `bodyTree` is read-only unless it is handed to `call`.
 
       Verify `./gradlew :plugin-api:build` passes
-- [ ] 1.2 Have `OriginClient.embedded` pass the pass's `ProxyContext` to `EmbeddedProxyRequest` (design D2), and fill
+- [x] 1.2 Have `OriginClient.embedded` pass the pass's `ProxyContext` to `EmbeddedProxyRequest` (design D2), and fill
       `caller` from it (design D6), with `bodyTree` null and an `OriginHost` that fails every call until groups 2
       and 4. Update `TestOriginPluginProvider`, `EmbeddedProxyRequestTest` and its plugin lambdas to the new signature,
       and make the test plugin record the caller. Verify:
       - `EmbeddedOriginApiTest` and `EmbeddedProxyRequestTest` pass;
       - deployment-origin "Caller with an API key" and "Caller with a JWT" pass in a new `EmbeddedCallApiTest`.
-- [ ] 1.3 `./gradlew checkstyleMain checkstyleTest`, then verify these pass:
+- [x] 1.3 `./gradlew checkstyleMain checkstyleTest`, then verify these pass:
       - `--tests "com.epam.aidial.core.server.EmbeddedOriginApiTest"`
       - `--tests "com.epam.aidial.core.server.EmbeddedCallApiTest"`
       - `--tests "com.epam.aidial.core.server.upstream.EmbeddedProxyRequestTest"`
 
 ## 2. The shared body tree
 
-- [ ] 2.1 Write a `ProxyContextTest` case first: `getCallTree()` returns the call's tree until a body is set, and null
+- [x] 2.1 Write a `ProxyContextTest` case first: `getCallTree()` returns the call's tree until a body is set, and null
       after that and without a call tree. Then add the call tree to `ProxyContext` (design D3). Verify the test passes
-- [ ] 2.2 Use the call tree at the six parse sites in place of `ProxyUtil.parseObject` (design D3):
+- [x] 2.2 Use the call tree at the six parse sites in place of `ProxyUtil.parseObject` (design D3):
       - `DeploymentPostController.handleRequestBody`;
       - `ChatCompletionsController.parseBody`;
       - `ResponsesController.parseBody`;
@@ -38,7 +38,7 @@
       embedded interface, and have `EmbeddedProxyRequest` hand that tree to the plugin as `bodyTree`, parsing `body`
       when none is kept. Add to `EmbeddedOriginApiTest` that the plugin's `bodyTree` equals its `body` on each
       interface and on a retried attempt. Verify by 2.3
-- [ ] 2.3 `./gradlew checkstyleMain checkstyleTest`, then verify these pass:
+- [x] 2.3 `./gradlew checkstyleMain checkstyleTest`, then verify these pass:
       - API tests (`com.epam.aidial.core.server.`): `DeploymentPostApiTest`, `ChatCompletionApiTest`,
         `EmbeddingsApiTest`, `ResponsesApiTest`, `MessagesApiTest`, `ConfigInterceptorTest`, `EmbeddedOriginApiTest`;
       - controller tests (`com.epam.aidial.core.server.controller.`): `DeploymentPostControllerTest`,
@@ -48,7 +48,7 @@
 
 ## 3. The in-memory request and response
 
-- [ ] 3.1 Write `ChildServerResponseTest` and `ChildServerRequestTest` first.
+- [x] 3.1 Write `ChildServerResponseTest` and `ChildServerRequestTest` first.
       - Response:
         - the head freezes on the first `write` or `end`;
         - nothing written before the plugin sets a handler is dropped;
@@ -60,15 +60,15 @@
       - Request: the path, the query, the method `POST`, and the headers Core drops.
 
       Then implement both (design D4), with the answer's body an `InboundBuffer`. Verify both test classes pass
-- [ ] 3.2 `./gradlew checkstyleMain checkstyleTest`, then verify these pass:
+- [x] 3.2 `./gradlew checkstyleMain checkstyleTest`, then verify these pass:
       - `--tests "com.epam.aidial.core.server.upstream.ChildServerResponseTest"`
       - `--tests "com.epam.aidial.core.server.upstream.ChildServerRequestTest"`
 
 ## 4. The child pass
 
-- [ ] 4.1 Extract `Proxy.dispatch(ProxyContext)` from `processAuthorizationResult`, with no behaviour change. Verify
+- [x] 4.1 Extract `Proxy.dispatch(ProxyContext)` from `processAuthorizationResult`, with no behaviour change. Verify
       `DeploymentPostApiTest` and `ResourceApiTest` pass
-- [ ] 4.2 Write `ChildPassTest` first: a path outside the five create routes fails the call; a background Responses
+- [x] 4.2 Write `ChildPassTest` first: a path outside the five create routes fails the call; a background Responses
       call fails; a call after close answers `401`; a head after close is cancelled. Then implement `ChildPass`
       (design D2):
       - the route check against the `RouteTemplate` patterns;
@@ -81,11 +81,11 @@
 
       Skip the span writes of `GenAiTraceAttributes` for a child pass. Give `TestOriginPluginProvider` its call mode,
       the relay that counts a cancel, and the kept host and context (design D8). Verify `ChildPassTest` passes
-- [ ] 4.3 Add to `EmbeddedCallApiTest`, and verify they pass:
+- [x] 4.3 Add to `EmbeddedCallApiTest`, and verify they pass:
       - deployment-origin "Calling a deployment from an origin plugin", all eight scenarios;
       - "Calls end with the plugin's pass";
       - "Cancelling a call", both scenarios.
-- [ ] 4.4 `./gradlew checkstyleMain checkstyleTest`, then verify these pass:
+- [x] 4.4 `./gradlew checkstyleMain checkstyleTest`, then verify these pass:
       - `--tests "com.epam.aidial.core.server.EmbeddedCallApiTest"`
       - `--tests "com.epam.aidial.core.server.ChildPassTest"`
       - `--tests "com.epam.aidial.core.server.EmbeddedOriginApiTest"`
@@ -94,25 +94,25 @@
 
 ## 5. Accounting and the row
 
-- [ ] 5.1 Return `withoutBodies()` from `AnalyticsLogContext.from` for a child pass, and skip the assembled answer for
+- [x] 5.1 Return `withoutBodies()` from `AnalyticsLogContext.from` for a child pass, and skip the assembled answer for
       one in `BaseChatCompletionController.completeProxyResponse` (design D5). Verify by 5.2
-- [ ] 5.2 Add to `EmbeddedCallApiTest`, and verify they pass:
+- [x] 5.2 Add to `EmbeddedCallApiTest`, and verify they pass:
       - app-to-model-accounting "Target limits charged", "Usage rolled up to the plugin's pass" and "Child row";
       - analytics-log "Bodies logged once".
-- [ ] 5.3 `./gradlew checkstyleMain checkstyleTest`, then verify these pass:
+- [x] 5.3 `./gradlew checkstyleMain checkstyleTest`, then verify these pass:
       - `--tests "com.epam.aidial.core.server.EmbeddedCallApiTest"`
       - `--tests "com.epam.aidial.core.server.log.GfLogStoreTest"`
 
 ## 6. The forward sample plugin and the docs
 
-- [ ] 6.1 Add the module `plugin-samples` to `settings.gradle`, with `ForwardOriginPluginProvider` (type `forward`,
+- [x] 6.1 Add the module `plugin-samples` to `settings.gradle`, with `ForwardOriginPluginProvider` (type `forward`,
       design D7), its `META-INF/services` entry, and unit tests of `validate` and the path mapping. Verify
       `./gradlew :plugin-samples:build` passes and the jar holds only the provider's classes and the services file
-- [ ] 6.2 Add `ARG SAMPLE_PLUGINS=false` to the `Dockerfile` builder stage, copying the sample jar into `/build/plugins`
+- [x] 6.2 Add `ARG SAMPLE_PLUGINS=false` to the `Dockerfile` builder stage, copying the sample jar into `/build/plugins`
       when it is `true` (design D7). Verify by reading the `RUN` line against the builder stage's paths that it copies
       `plugin-samples/build/libs/*.jar` and does nothing by default (deferred: a Docker build needs the GitHub Packages
       credentials)
-- [ ] 6.3 Document the call in `docs/dynamic-settings/plugins.md`:
+- [x] 6.3 Document the call in `docs/dynamic-settings/plugins.md`:
       - what a call is, and which operations it reaches;
       - that the child pass is checked, charged and logged with no bodies in its row, and ends with the plugin's pass;
       - the caller and `bodyTree` the plugin gets;
@@ -120,7 +120,7 @@
 
       In `docs/tracing.md`, state that a child pass has no server span and its origin calls keep their client spans.
       Add `plugin-samples` to the module table in `CLAUDE.md`. Verify the docs name no class beyond `plugin-api`
-- [ ] 6.4 `./gradlew checkstyleMain checkstyleTest` and `./gradlew :plugin-samples:test`
+- [x] 6.4 `./gradlew checkstyleMain checkstyleTest` and `./gradlew :plugin-samples:test`
 
 ## 7. Measurement
 
@@ -128,6 +128,24 @@
       against one embedded with the `forward` plugin, on an image built with `SAMPLE_PLUGINS=true`. Record Core CPU per
       user request for both in review.md, with the HTTP router's `/v1/user/info` call reported apart, against the
       estimate of design D9 (deferred: needs the perf env)
+
+## 8. Cancellation before the answer and Core's Vert.x
+
+- [x] 8.1 Change `OriginPluginProvider.create` to take Core's `Vertx`, passed by `EmbeddedOrigins` from `AiDial`
+      (design D11), and update `TestOriginPluginProvider` and `ForwardOriginPluginProvider`. Verify an
+      `EmbeddedOriginsTest` case that the plugin is created with Core's `Vertx`, and `./gradlew :plugin-samples:build`
+- [x] 8.2 Write `ChildPassTest` cases first: `cancel` completes `cancelled()` and a later call answers `401`; `close`
+      leaves `cancelled()` pending. Then add `OriginHost.cancelled()`, `ChildPass.cancel`, cancel from
+      `EmbeddedProxyRequest.reset` and `EmbeddedProxyResponse.discard`, and the client-close watch in
+      `EmbeddedProxyRequest.send` that ends the attempt quietly when a cancelled plugin fails (design D10). Give
+      `TestOriginPluginProvider` `X-Test-Await-Cancel`. Verify deployment-origin "Client gone before the plugin
+      answers", both scenarios, in `EmbeddedCallApiTest`
+- [x] 8.3 `./gradlew checkstyleMain checkstyleTest`, then verify these pass:
+      - `--tests "com.epam.aidial.core.server.EmbeddedCallApiTest"`
+      - `--tests "com.epam.aidial.core.server.ChildPassTest"`
+      - `--tests "com.epam.aidial.core.server.EmbeddedOriginApiTest"`
+      - `--tests "com.epam.aidial.core.server.upstream.EmbeddedProxyRequestTest"`
+      - `--tests "com.epam.aidial.core.server.config.EmbeddedOriginsTest"`
 
 ## Workflow follow-up
 

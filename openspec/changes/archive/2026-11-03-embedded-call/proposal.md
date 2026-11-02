@@ -38,6 +38,10 @@ span and row field, and loses the HTTP request into Core, the second parse and t
   no parse of its own.
 - **Cancel.** When Core cancels the plugin's answer, or the plugin cancels a call's answer, the child pass stops as a
   pass whose client went away does.
+- **Told before it answers.** When the client goes away while the plugin is still working, Core tells the plugin, so
+  it can stop its upstream work. A plugin that then fails ends the request quietly: no retry on another upstream.
+- **Core's Vert.x at create.** A plugin is created with Core's Vert.x instance, for the clients and timers it builds
+  once.
 - **A sample `forward` origin plugin** (new module `plugin-samples`). It forwards each request to one configured
   deployment through the host call. It is the measurement vehicle until a routing plugin exists, and a worked example
   for plugin authors.
@@ -52,7 +56,7 @@ None.
 ### Modified Capabilities
 
 - `deployment-origin`: new requirements "Calling a deployment from an origin plugin", "Calls end with the plugin's
-  pass", "Caller in the plugin request" and "Cancelling a call".
+  pass", "Caller in the plugin request", "Client gone before the plugin answers" and "Cancelling a call".
 - `app-to-model-accounting`: new requirement "In-process child pass". It is limited, charged, spanned and recorded as
   a deployment calling Core back with its per-request key.
 - `analytics-log`: "Bodies in the analytics row" gains the in-process child pass as an exception. New requirement:
@@ -81,8 +85,8 @@ not linked. This change covers their child call, the cheaper child pass that the
 measurement. It leaves the candidate list and the filters to later changes.
 
 Code:
-- `plugin-api`: `OriginHost`, `OriginCall` and `OriginCaller`; `OriginPlugin.handle` gains the host; `OriginRequest`
-  gains the caller and the body tree.
+- `plugin-api`: `OriginHost` (`call`, `cancelled`), `OriginCall` and `OriginCaller`; `OriginPlugin.handle` gains the
+  host; `OriginRequest` gains the caller and the body tree; `OriginPluginProvider.create` gains Core's `Vertx`.
 - `server`:
   - an in-memory server request and response for the child pass;
   - the child driver beside `Proxy.processAuthorizationResult`;
@@ -91,7 +95,9 @@ Code:
     `MessagesBaseController`, and the two interceptor controllers;
   - `AnalyticsLogContext` and `BaseChatCompletionController` (the row without bodies);
   - `GenAiTraceAttributes` (no span writes from a child pass);
-  - `BaseDeploymentPostController.finalizeRequest`, which closes the calls.
+  - `BaseDeploymentPostController.finalizeRequest`, which closes the calls;
+  - `EmbeddedProxyRequest`, which watches the client while the plugin works, and `EmbeddedOrigins`, which passes Core's
+    `Vertx` to `create`.
 - New module `plugin-samples`, plus `settings.gradle` and `Dockerfile` (the opt-in build argument).
 - Docs: `docs/dynamic-settings/plugins.md`, `docs/tracing.md`, and `CLAUDE.md` (module table).
 

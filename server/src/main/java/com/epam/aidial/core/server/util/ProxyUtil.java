@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.Proxy;
+import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.storage.util.EtagHeader;
@@ -287,6 +288,21 @@ public class ProxyUtil {
         if (Strings.CI.contains(contentType, "text/event-stream")) {
             response.putHeader("X-Accel-Buffering", "no");
         }
+    }
+
+    /**
+     * Parses the request's body at a controller's parse site, and sets it as the request's body. A pass Core serves
+     * for an origin plugin's in-process call already has the tree: it is taken as it is, and only the body's timestamp
+     * is set, as the chain sets the body when it serialises the tree.
+     */
+    public ObjectNode parseRequestBody(ProxyContext context, Buffer body) throws IOException {
+        ObjectNode tree = context.getCallTree();
+        if (tree != null) {
+            context.setRequestBodyTimestamp(System.currentTimeMillis());
+            return tree;
+        }
+        context.setRequestBodyWithTimestamp(body);
+        return parseObject(body);
     }
 
     public ObjectNode parseObject(Buffer buffer) throws IOException {

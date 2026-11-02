@@ -15,11 +15,16 @@ final class EmbeddedProxyResponse implements ProxyResponse {
 
     private final OriginResponse answer;
     private final ReadStream<Buffer> body;
+    private final Runnable onDiscard;
     private boolean cancelled;
 
-    EmbeddedProxyResponse(OriginResponse answer) {
+    /**
+     * @param onDiscard what else ends with the answer: the in-process calls of the attempt
+     */
+    EmbeddedProxyResponse(OriginResponse answer, Runnable onDiscard) {
         this.answer = answer;
         this.body = answer.body();
+        this.onDiscard = onDiscard;
     }
 
     @Override
@@ -53,6 +58,7 @@ final class EmbeddedProxyResponse implements ProxyResponse {
         if (!cancelled) {
             cancelled = true;
             answer.cancel();
+            onDiscard.run();
         }
     }
 

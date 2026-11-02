@@ -1,5 +1,7 @@
 package com.epam.aidial.core.server.config;
 
+import com.epam.aidial.core.plugin.OriginCall;
+import com.epam.aidial.core.plugin.OriginHost;
 import com.epam.aidial.core.plugin.OriginPlugin;
 import com.epam.aidial.core.plugin.OriginPluginProvider;
 import com.epam.aidial.core.plugin.OriginRequest;
@@ -11,6 +13,7 @@ import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.MultiMap;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
@@ -21,6 +24,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Origin plugin provider of type {@code test-origin}, registered on the test classpath. It answers like an HTTP
@@ -31,7 +35,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li>{@code X-Test-Status: <code>} answers that status;</li>
  *   <li>{@code X-Test-Status-For-Endpoint: <endpoint>=<code>} answers that status to the call for that upstream;</li>
  *   <li>{@code X-Test-Fail: call} fails the call;</li>
- *   <li>{@code X-Test-Hold} streams one event every 100 ms until {@link OriginResponse#cancel()}, as a long answer does.</li>
+ *   <li>{@code X-Test-Hold} streams one event every 100 ms until {@link OriginResponse#cancel()}, as a long answer does;</li>
+ *   <li>{@code X-Test-Call: <path>} calls that path through the host with the request's {@code bodyTree} and relays the
+ *   call's answer, a cancel of it counted in {@link #CANCELLED} and passed on. The call carries every header but the
+ *   {@code X-Test-Call*} ones, so a plugin of this type serving the target does not call again;</li>
+ *   <li>{@code X-Test-Call-Model: <name>} sets {@code model} in the tree first;</li>
+ *   <li>{@code X-Test-Call-Cancel} cancels the call after its first chunk and answers a chat completion itself;</li>
+ *   <li>{@code X-Test-Await-Cancel} answers nothing until the host says the request is cancelled, then counts it in
+ *   {@link #TOLD_CANCELLED} and fails the call.</li>
  * </ul>
  * The setting {@code failCreate: true} makes {@link #create} throw. Tests clear the recorded state with {@link #reset}.
  */
@@ -48,6 +59,18 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
      * The value of {@link #CANCELLED} when each request arrived, in the order of {@link #REQUESTS}.
      */
     public static final List<Integer> CANCELLED_BEFORE = new CopyOnWriteArrayList<>();
+    /**
+     * The host and the Vert.x context of each request, in the order of {@link #REQUESTS}, for a call a test makes later.
+     */
+    public static final List<Host> HOSTS = new CopyOnWriteArrayList<>();
+    /**
+     * The {@code Vertx} the last plugin was created with.
+     */
+    public static final AtomicReference<Vertx> CREATED_WITH = new AtomicReference<>();
+    /**
+     * How many requests the host told it were cancelled before it answered.
+     */
+    public static final AtomicInteger TOLD_CANCELLED = new AtomicInteger();
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -55,6 +78,8 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
         REQUESTS.clear();
         CANCELLED.set(0);
         CANCELLED_BEFORE.clear();
+        HOSTS.clear();
+        TOLD_CANCELLED.set(0);
     }
 
     @Override
@@ -69,18 +94,30 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
     }
 
     @Override
-    public OriginPlugin create(ObjectNode settings) {
+    public OriginPlugin create(ObjectNode settings, Vertx vertx) {
+        CREATED_WITH.set(vertx);
         if (settings.path("failCreate").asBoolean()) {
             throw new IllegalStateException("test-origin was told not to start");
         }
         String greeting = settings.path("greeting").asText("ok");
-        return request -> answer(request, greeting);
+        return (request, host) -> answer(request, host, greeting);
     }
 
-    private static Future<OriginResponse> answer(OriginRequest request, String greeting) {
+    private static Future<OriginResponse> answer(OriginRequest request, OriginHost host, String greeting) {
         CANCELLED_BEFORE.add(CANCELLED.get());
         REQUESTS.add(request);
+        HOSTS.add(new Host(host, Vertx.currentContext()));
         MultiMap headers = request.headers();
+        String callPath = headers.get("X-Test-Call");
+        if (callPath != null) {
+            return call(request, host, callPath, greeting);
+        }
+        if (headers.contains("X-Test-Await-Cancel")) {
+            return host.cancelled().compose(ignored -> {
+                TOLD_CANCELLED.incrementAndGet();
+                return Future.failedFuture(new IllegalStateException("test-origin stopped: its client went away"));
+            });
+        }
         if ("call".equals(headers.get("X-Test-Fail"))) {
             return Future.failedFuture(new IllegalStateException("test-origin failed the call"));
         }
@@ -119,6 +156,34 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
                      "stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":5}}""".formatted(greeting)));
         }
         return Future.succeededFuture(json(404, "{\"error\":{\"message\":\"test-origin serves no " + path + "\"}}"));
+    }
+
+    private static Future<OriginResponse> call(OriginRequest request, OriginHost host, String path, String greeting) {
+        ObjectNode body = request.bodyTree();
+        String model = request.headers().get("X-Test-Call-Model");
+        if (model != null) {
+            body.put("model", model);
+        }
+        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
+        request.headers().forEach(header -> {
+            if (!header.getKey().regionMatches(true, 0, "X-Test-Call", 0, "X-Test-Call".length())) {
+                headers.add(header.getKey(), header.getValue());
+            }
+        });
+        Future<OriginResponse> answer = host.call(new OriginCall(path, headers, body));
+        if (!request.headers().contains("X-Test-Call-Cancel")) {
+            return answer.map(Relay::new);
+        }
+        return answer.compose(called -> {
+            Promise<OriginResponse> own = Promise.promise();
+            called.body().handler(chunk -> {
+                if (!own.future().isComplete()) {
+                    called.cancel();
+                    own.complete(json(200, chat(greeting)));
+                }
+            });
+            return own.future();
+        });
     }
 
     private static int status(MultiMap headers) {
@@ -174,6 +239,36 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
         chunks.add(Buffer.buffer(body));
         return new Answer(status, MultiMap.caseInsensitiveMultiMap().add("Content-Type", "application/json"),
                 new ChunkStream(chunks, false));
+    }
+
+    public record Host(OriginHost host, Context context) {
+    }
+
+    /**
+     * A call's answer relayed as the plugin's own.
+     */
+    private record Relay(OriginResponse called) implements OriginResponse {
+
+        @Override
+        public int statusCode() {
+            return called.statusCode();
+        }
+
+        @Override
+        public MultiMap headers() {
+            return called.headers();
+        }
+
+        @Override
+        public ReadStream<Buffer> body() {
+            return called.body();
+        }
+
+        @Override
+        public void cancel() {
+            CANCELLED.incrementAndGet();
+            called.cancel();
+        }
     }
 
     private record Answer(int statusCode, MultiMap headers, ChunkStream body) implements OriginResponse {

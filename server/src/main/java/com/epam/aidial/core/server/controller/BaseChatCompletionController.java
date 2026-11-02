@@ -101,9 +101,7 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
     protected void processChatCompletionsRequestBody(RequestObject request) {
         Deployment deployment = context.getDeployment();
         context.setStreamingRequest(request.isStreaming());
-        if (ProxyUtil.processChain(request, buildEnhancementFunctions())) {
-            context.setRequestBody(Buffer.buffer(request.serialize()));
-        }
+        setProcessedRequestBody(request, ProxyUtil.processChain(request, buildEnhancementFunctions()), requestedInterface());
         proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
 
         String upstreamId = context.getRequest().headers().get(HEADER_UPSTREAM_ID);
@@ -286,7 +284,8 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
         responseStream.end(response);
 
         String assembledStreamingResponse = null;
-        if (isEventStreamResponse(context.getProxyResponse())) {
+        // the row of an in-process call's pass drops it, so it is not built
+        if (isEventStreamResponse(context.getProxyResponse()) && !context.isChildPass()) {
             assembledStreamingResponse = context.assembledChatCompletionsResponse();
         }
         finishAndLog(assembledStreamingResponse);

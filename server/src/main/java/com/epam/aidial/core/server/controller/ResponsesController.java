@@ -280,8 +280,7 @@ public class ResponsesController extends BaseDeploymentPostController {
     private ResponsesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
-            context.setRequestBodyWithTimestamp(body);
-            ObjectNode tree = ProxyUtil.parseObject(body);
+            ObjectNode tree = ProxyUtil.parseRequestBody(context, body);
             if (tree.has("previous_response_id")) {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "previous_response_id is not supported");
             }
@@ -330,7 +329,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
         }
 
-        context.setRequestBody(Buffer.buffer(request.serialize()));
+        setProcessedRequestBody(request, true, InterfaceType.OPENAI_RESPONSES);
 
         Deployment deployment = context.getDeployment();
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);

@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
+import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
@@ -33,6 +34,7 @@ import com.epam.aidial.core.server.util.UsagePerModelInjector;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
@@ -124,8 +126,24 @@ public class BaseDeploymentPostController {
         GenAiTraceAttributes.setUpstreamAttempts(context, attemptCount);
     }
 
+    /**
+     * Sets the request's body once the chain has run: {@code request} serialised, when the chain changed it or the
+     * pass has no body yet, as the pass of an in-process call has not. For an embedded interface the tree stays on the
+     * context too, and its plugin gets it as {@code bodyTree} instead of parsing the body again.
+     */
+    protected void setProcessedRequestBody(RequestObject request, boolean changed, InterfaceType type) throws JsonProcessingException {
+        if (changed || context.getRequestBody() == null) {
+            context.setRequestBody(Buffer.buffer(request.serialize()));
+        }
+        if (DeploymentEndpointUtil.resolveMode(context.getDeployment(), type) == InterfaceMode.EMBEDDED) {
+            context.setRequestTree(request.getTree());
+        }
+    }
+
     protected void finalizeRequest() {
-        // every terminal path of all four LLM surfaces reaches here, including the respond(...) helpers above
+        // every terminal path of all four LLM surfaces reaches here, including the respond(...) helpers above;
+        // ResponseItemController, which is not one of them, closes its child passes in its own finalizeRequest
+        context.closeChildPasses();
         GenAiTraceAttributes.setLatencyAttributes(context);
         proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();

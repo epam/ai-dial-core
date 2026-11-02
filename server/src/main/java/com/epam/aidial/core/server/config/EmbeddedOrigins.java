@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.plugin.OriginPlugin;
 import com.epam.aidial.core.plugin.OriginPluginProvider;
 import com.epam.aidial.core.plugin.PluginProvider;
+import io.vertx.core.Vertx;
 import lombok.RequiredArgsConstructor;
 
 import java.util.Map;
@@ -18,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class EmbeddedOrigins {
 
     private final PluginRegistry pluginRegistry;
+    private final Vertx vertx;
     // ponytail: one plugin per name ever declared, never evicted or closed. Add eviction and a close hook once a
     // plugin holds threads or connections.
     private final Map<String, Origin> origins = new ConcurrentHashMap<>();
@@ -51,7 +53,7 @@ public class EmbeddedOrigins {
         }
         OriginPlugin plugin;
         try {
-            plugin = originProvider.create(declaration.getSettings());
+            plugin = originProvider.create(declaration.getSettings(), vertx);
         } catch (RuntimeException | LinkageError e) {
             // plugin code: a jar missing a class throws NoClassDefFoundError on first use
             throw new IllegalStateException("Plugin '" + name + "' cannot be created: " + e.getMessage(), e);

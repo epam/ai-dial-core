@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.plugin.OriginPlugin;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.Vertx;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -14,12 +15,21 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 
 class EmbeddedOriginsTest {
 
     private static final PluginRegistry REGISTRY = PluginRegistry.load(Path.of("no-plugins-dir"));
 
-    private final EmbeddedOrigins origins = new EmbeddedOrigins(REGISTRY);
+    private final Vertx vertx = mock(Vertx.class);
+    private final EmbeddedOrigins origins = new EmbeddedOrigins(REGISTRY, vertx);
+
+    @Test
+    void testPluginCreatedWithCoresVertx() {
+        origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE, greeting("hello"))), "p1");
+
+        assertSame(vertx, TestOriginPluginProvider.CREATED_WITH.get());
+    }
 
     @Test
     void testSamePluginForTheSameAndForAnEqualDeclaration() {

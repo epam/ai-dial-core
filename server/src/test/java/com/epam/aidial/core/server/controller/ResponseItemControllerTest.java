@@ -11,6 +11,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.upstream.OriginClient;
 import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -751,6 +752,8 @@ public class ResponseItemControllerTest {
         }).when(httpClient).request(any(RequestOptions.class));
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
+        // taken before the request starts: a deep stub called while the controller still runs on another thread races
+        ResponsesApiClient responsesApiClient = proxy.getResponsesApiClient();
 
         controller("dial_test-deployment_123", GET).handle();
 
@@ -761,7 +764,7 @@ public class ResponseItemControllerTest {
         verify(httpClient).request(argThat(opts ->
                 "interceptor2".equals(opts.getHost())
                 && "/responses/dial_test-deployment_123".equals(opts.getURI().toString())));
-        verify(proxy.getResponsesApiClient(), never()).send(any(), any(), any(), any(), any());
+        verify(responsesApiClient, never()).send(any(), any(), any(), any(), any());
     }
 
     @Test

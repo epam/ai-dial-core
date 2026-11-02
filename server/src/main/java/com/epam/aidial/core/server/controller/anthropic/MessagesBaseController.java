@@ -26,7 +26,6 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
@@ -116,9 +115,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     protected MessagesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
-            context.setRequestBodyWithTimestamp(body);
-            ObjectNode tree = ProxyUtil.parseObject(body);
-            return new MessagesApiRequest(tree);
+            return new MessagesApiRequest(ProxyUtil.parseRequestBody(context, body));
         } catch (IOException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
@@ -166,7 +163,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         // Enhancement functions update the api key, and it should be saved after that
         proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
 
-        context.setRequestBody(Buffer.buffer(request.serialize()));
+        setProcessedRequestBody(request, true, InterfaceType.ANTHROPIC_MESSAGES);
 
         Deployment deployment = context.getDeployment();
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);

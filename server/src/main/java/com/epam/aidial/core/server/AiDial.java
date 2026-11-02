@@ -422,7 +422,7 @@ public class AiDial {
             budgetCounterSweepService = new BudgetCounterSweepService(timerService, resourceService, lockService, redis,
                     mergedConfigStore, budgetCounterSweepSettings, backgroundTracer);
 
-            OriginClient originClient = new OriginClient(client, vertx, new EmbeddedOrigins(pluginRegistry));
+            OriginClient originClient = new OriginClient(client, vertx, new EmbeddedOrigins(pluginRegistry, vertx));
             ResponsesApiClient responsesApiClient = new ResponsesApiClient(originClient, clientOptions);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(),

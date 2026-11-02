@@ -51,7 +51,7 @@ public class OriginClient {
             }
             OriginPlugin origin = embeddedOrigins.resolve(config, plugin);
             String baseUrl = DeploymentEndpointUtil.PLUGIN_URL_PREFIX + plugin;
-            return vertxContext.succeededFuture(new EmbeddedProxyRequest(vertxContext, origin, method, baseUrl, absoluteUri));
+            return vertxContext.succeededFuture(new EmbeddedProxyRequest(vertxContext, context, origin, method, baseUrl, absoluteUri));
         } catch (RuntimeException e) {
             return vertxContext.failedFuture(e);
         }

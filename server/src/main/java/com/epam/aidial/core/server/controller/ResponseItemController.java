@@ -131,6 +131,7 @@ public class ResponseItemController implements Controller {
     }
 
     private Future<Void> finalizeRequest() {
+        context.closeChildPasses();
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData == null) {
             return Future.succeededFuture();

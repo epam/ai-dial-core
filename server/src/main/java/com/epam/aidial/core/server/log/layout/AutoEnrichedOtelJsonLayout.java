@@ -76,8 +76,10 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         // Handle exception info
         enrichExceptionAttributes(event, attributes);
         
-        // Enrich OpenTelemetry span
-        enrichOpenTelemetrySpan(event, attributes);
+        // Enrich OpenTelemetry span; a pass served in process for a plugin's call has none: the current one is the plugin's
+        if (proxyContext == null || !proxyContext.isChildPass()) {
+            enrichOpenTelemetrySpan(event, attributes);
+        }
 
         // after the span pass: GenAiTraceAttributes already set these on the span, typed
         if (proxyContext != null) {

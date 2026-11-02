@@ -64,6 +64,21 @@ project of a caller with an API key, and the caller's roles.
 - **WHEN** a client authenticated by a JWT sends the same request
 - **THEN** `p1` receives the token's user id and the roles it grants
 
+### Requirement: Client gone before the plugin answers
+When the client of a pass that an origin plugin serves goes away before the plugin answers, Core SHALL tell the plugin
+that the request is cancelled. When the plugin then fails its answer, Core SHALL end the pass without trying another
+upstream and without an analytics row; an answer it still gives SHALL be handled as an HTTP origin's answer after its
+client went away.
+
+#### Scenario: Plugin told
+- **WHEN** a client sends a chat completion to `app`, served by plugin `p1`, and closes its connection before `p1`
+  answers
+- **THEN** `p1` is told its request is cancelled
+
+#### Scenario: No retry after the plugin fails
+- **WHEN** the same happens for a model with two upstreams served by `p1`, and `p1` then fails its answer
+- **THEN** `p1` is called once, and no analytics row is written
+
 ### Requirement: Cancelling a call
 When Core cancels the plugin's answer ("Client gone from an embedded origin"), or the plugin cancels the answer of a
 call, Core SHALL end the child pass as one whose client went away ("Client gone during the relay").

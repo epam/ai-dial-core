@@ -26,6 +26,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -170,6 +171,35 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
 
         assertEquals(List.of("/anthropic/v1/messages", "/anthropic/v1/messages/count_tokens"),
                 TestOriginPluginProvider.REQUESTS.stream().map(OriginRequest::uri).toList());
+    }
+
+    @Test
+    void testBodyTreeIsTheBody() {
+        plugin("p1", "{}");
+        verify(adminPut("/v1/applications/platform/app", """
+                {"interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1"},
+                  "openaiEmbeddings": {"mode": "embedded", "plugin": "p1"},
+                  "openaiResponses": {"mode": "embedded", "plugin": "p1"},
+                  "anthropicMessages": {"mode": "embedded", "plugin": "p1"}}}
+                """), 200);
+
+        verify(chat("/openai/deployments/app/chat/completions", CHAT_BODY), 200);
+        verify(chat("/openai/deployments/app/embeddings", "{\"input\":\"hi\"}"), 200);
+        verify(chat("/openai/v1/responses", "{\"model\":\"app\",\"input\":\"hi\"}"), 200);
+        verify(chat("/anthropic/v1/messages", "{\"model\":\"app\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"), 200);
+
+        assertEquals(4, TestOriginPluginProvider.REQUESTS.size());
+        TestOriginPluginProvider.REQUESTS.forEach(EmbeddedOriginApiTest::assertBodyTreeIsTheBody);
+    }
+
+    @Test
+    void testBodyTreeOfRetriedAttempt() {
+        verify(retriedChat(), 200);
+
+        List<OriginRequest> requests = TestOriginPluginProvider.REQUESTS;
+        assertEquals(2, requests.size());
+        requests.forEach(EmbeddedOriginApiTest::assertBodyTreeIsTheBody);
+        assertNotSame(requests.get(0).bodyTree(), requests.get(1).bodyTree());
     }
 
     // deployment-origin "Embedded origin answer"
@@ -465,6 +495,12 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     private static OriginRequest lastRequest() {
         List<OriginRequest> requests = TestOriginPluginProvider.REQUESTS;
         return requests.get(requests.size() - 1);
+    }
+
+    @SneakyThrows
+    private static void assertBodyTreeIsTheBody(OriginRequest request) {
+        assertNotNull(request.bodyTree(), request.uri());
+        assertEquals(ProxyUtil.MAPPER.readTree(request.body().getBytes()), request.bodyTree(), request.uri());
     }
 
     @SneakyThrows

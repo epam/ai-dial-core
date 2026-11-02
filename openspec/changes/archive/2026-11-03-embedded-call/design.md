@@ -142,6 +142,11 @@ public interface OriginPlugin {
 
 public interface OriginHost {
     Future<OriginResponse> call(OriginCall call);       // a child pass of this request
+    Future<Void> cancelled();                           // Core stopped waiting for the answer (D10)
+}
+
+public interface OriginPluginProvider extends PluginProvider {
+    OriginPlugin create(ObjectNode settings, Vertx vertx);   // Core's Vert.x (D11)
 }
 
 public record OriginCall(String uri, MultiMap headers, ObjectNode body) {}
@@ -163,9 +168,10 @@ public record OriginCaller(String userId, List<String> roles, String project) {}
   that `sendProxyRequest` sets only for some targets: `X-UPSTREAM-ENDPOINT`, `X-UPSTREAM-KEY`,
   `X-UPSTREAM-EXTRA-DATA`, `X-DIAL-CACHE-BREAKPOINT-PATH`, `X-DIAL-CACHE-EXTRA-METADATA`, `X-DIAL-OVERRIDE-NAME` and
   `X-DIAL-DEPLOYMENT-ID`. A plugin that forwards its own request's headers would otherwise pass its origin's
-  upstream key, or its override name, on to a target Core does not set them for. The other headers Core sets for an
-  origin it already drops or replaces for every origin request. Core adds `Content-Type`. The call carries the plugin
-  pass's per-request key.
+  upstream key, or its override name, on to a target Core does not set them for. It also drops
+  `X-DIAL-APPLICATION-ID`, `X-DIAL-APPLICATION-PROPERTIES` and `X-DIAL-DEPLOYMENT-FEATURES`: `sendProxyRequest`
+  drops or replaces them, but the interceptor hop copies every header on. Core adds `Content-Type`. The call carries
+  the plugin pass's per-request key.
 - **`OriginCall.body`** passes to Core: the child's chain changes it in place, so a plugin that calls twice passes a
   `deepCopy()`.
 - **`OriginRequest.bodyTree`** is the tree Core serialised into `body`, after the pass's chain. The plugin may pass it
@@ -284,6 +290,8 @@ Rejected alternatives:
   - The response turns `closed()`.
   - It fails the ack of every pending and later `write` and `end`.
   - It fires a pending `drainHandler`, so a paused pipe resumes and fails on its next write.
+  - It fails the call's future, when the head has not come yet, and an answer body the plugin has not read to its
+    end, so neither waits forever.
 
   The child's pipe then fails into `handleResponseError`: a `Model` reads its origin to the end and writes its row,
   and any other deployment resets its origin.
@@ -352,7 +360,8 @@ Rejected alternatives:
   - `X-Test-Call: <path>` calls that path with the request's own `bodyTree` and relays the answer. The relay wraps the
     call's answer, so a cancel of the relayed answer is counted in `CANCELLED` and passed on;
   - `X-Test-Call-Model: <name>` sets `model` in the tree first;
-  - `X-Test-Call-Cancel` cancels the call after its first event and answers by itself.
+  - `X-Test-Call-Cancel` cancels the call after its first event and answers by itself;
+  - `X-Test-Await-Cancel` answers nothing until `cancelled()` completes, then counts it and fails.
 
   The call passes on every header but `X-Test-Call*`, so a `p2` of the same type does not recurse, while `X-Test-Hold`
   reaches it. The plugin records the `OriginCaller` of each request, and keeps its `OriginHost` and Vert.x context.
@@ -407,34 +416,56 @@ It does not reach 30 ms: the doubled event processing and the parent pass's own 
 
 Blob round trips: none added.
 
+### D10. Telling the plugin its client went away before it answered
+
+Today nothing watches the client while Core waits for an origin's head: the relay notices a client gone on its first
+write, and a reset happens only then. A plugin whose answer takes time (a non-streamed generation, several upstream
+calls, a credential fetch) keeps working for a client that has left.
+
+- **The signal.** `OriginHost.cancelled()` is a future that completes on the plugin's context when Core stops waiting
+  for the attempt's answer. `ChildPass.cancel` completes it and closes the attempt; `close` alone leaves it pending.
+  - `EmbeddedProxyRequest.reset` (the client gone during the relay) and `EmbeddedProxyResponse.discard` (a retry past
+    the answer) cancel.
+  - `finalizeRequest` closes: a request that ends normally never completes the future.
+- **The watch.** While the plugin's future is pending, `EmbeddedProxyRequest.send` holds the close handler of the
+  pass's client response. A close then cancels the attempt. For a pass that itself serves a call, the client response
+  is the in-memory one, whose close handler fires when its caller cancels, so the signal passes down a chain of calls.
+- **After the signal.** A plugin answer that fails ends the attempt quietly: the send's future never completes, so
+  Core neither marks the upstream failed nor tries the next one, and writes no row. That is how a client gone from an
+  application ends today. An answer the plugin still gives is relayed and fails on its first write, as an HTTP
+  origin's does after its client went away: a `Model` reads it to the end and charges it.
+
+Rejected alternatives:
+- **Reset or fail the send on a client close.** A failed send marks the upstream failed and calls the next one, for a
+  client that has gone.
+- **Stop retries for every origin once the client is gone**, in the shared controllers. It would save HTTP work too,
+  but it changes the HTTP path, which this change leaves as it is.
+- **A future in `OriginRequest`.** A request record should not carry a lifecycle signal.
+
+### D11. Core's `Vertx` at create
+
+`OriginPluginProvider.create(ObjectNode settings, Vertx vertx)` hands a plugin Core's Vert.x instance, so a plugin
+builds its HTTP clients and timers once, when it is created, rather than from `Vertx.currentContext()` on its first
+request. `EmbeddedOrigins` gets it from `AiDial`. The provider contract is not published yet, so the signature changes
+now rather than through a second method later.
+
+Rejected alternative: **`OriginHost.vertx()`.** It breaks nothing, but every plugin would still build its clients
+lazily on a request, with the races that brings.
+
 ## Open Questions
 
-Raised by the Java model-provider port (`ai-dial-model-provider-java`, its `embedded-mode` spec), which would run as
-an origin plugin: the openai, vertexai and bedrock adapters, the passthrough signer of P1 among them. Not decided here.
-Since D1 already changes `handle`'s signature, they could join it, or a later change.
+Raised by a Java port of the model provider, which would run as an origin plugin serving the openai, vertexai and
+bedrock adapters. Two of the three it raised are decided here: telling a plugin its request was cancelled before it
+answers (D10) and Core's `Vertx` at create (D11). The third is left to a follow-up change:
 
-1. **Cancellation before the answer.**
-   - Today `EmbeddedProxyRequest.reset` only sets a flag (`EmbeddedProxyRequest.java`, 87-88). The plugin learns
-     nothing until it answers, and its answer is then cancelled (72-74).
-   - A plugin whose answer takes time keeps its upstream calls running for a client that has gone: a non-streamed
-     generation, a truncation's several upstream counts, a credential fetch.
-   - Proposal: `OriginHost.cancelled()`, a `Future<Void>` that `reset` completes on the request's context, whether
-     or not the answer exists. `OriginResponse.cancel()` stays for the body.
-   - The model-provider library takes exactly such a future (`AdapterRequest.aborted`).
-2. **Closing a replaced instance.**
-   - `EmbeddedOrigins` replaces a plugin instance when its declaration changes, and drops the old one
-     (`EmbeddedOrigins.java`, 23-45).
-   - A plugin that holds HTTP client pools, token caches or timers leaks them on every settings change, and they are
-     never closed at shutdown either.
-   - Proposal: `OriginPlugin` gains `default void close() {}`. Core calls it once the replaced instance has no request
-     in flight, or at once with the plugin draining itself, and at shutdown.
-3. **Core's `Vertx` for a plugin's clients.**
-   - `create` may run off a Vert.x context, so a plugin that builds clients can only take
-     `Vertx.currentContext().owner()` on its first `handle`.
-   - Proposal: `OriginPluginProvider.create(ObjectNode settings, Vertx vertx)`, or `OriginHost.vertx()`.
+- **Closing a replaced instance.** `EmbeddedOrigins` replaces a plugin instance when its declaration changes, and
+  drops the old one. A plugin that holds HTTP client pools, token caches or timers leaks them on every settings
+  change, and they are never closed at shutdown either. Proposal: `OriginPlugin` gains `default void close() {}`,
+  which Core calls once the replaced instance has no attempt in flight (counted from `send` to the attempt's
+  `ChildPass` closing) and at shutdown. A default method breaks no plugin, so it can come later.
 
-`OriginRequest.uri` (the upstream URL after the interface's base URL, `EmbeddedProxyRequest.java`, 63) is enough for
-the port: its plugin maps it onto its own `/compat/<adapter>` routes from its settings.
+`OriginRequest.uri` (the path and query after the interface's base URL) is enough for the port: its plugin maps it
+onto its own routes from its settings.
 
 ## Risks / Trade-offs
 
@@ -459,16 +490,54 @@ the port: its plugin maps it onto its own `/compat/<adapter>` routes from its se
   itself today, without the HTTP connection pool to slow it. There is no depth guard in v1.
 - **[No OTel server span for the child]** → traces show the plugin's pass, and under it the client spans of the child's
   HTTP origin calls. The analytics row and the token-stats span carry the child's ids.
+- **[A plugin stops on `cancelled()` and fails]** → no row and no charge for the request, while an HTTP model origin
+  whose client went away keeps generating and is charged in full. This is a deliberate difference: the plugin's
+  upstream work is cut short, and a plugin that answers what it has is charged for what it reports.
 - **[A plugin keeps `bodyTree` after passing it to `call`]** → the child's chain changes it under the plugin. The
   Javadoc says the call takes it.
 
 ## Migration Plan
 
-None for config. A plugin built against `embedded-origin`'s `handle(OriginRequest)` is rebuilt against the new
-signature. None is published yet.
+None for config. A plugin built against `embedded-origin`'s `handle(OriginRequest)` and `create(ObjectNode)` is
+rebuilt against the new signatures. None is published yet.
 
 To measure:
 1. Build a Core image with `--build-arg SAMPLE_PLUGINS=true`.
 2. Declare `plugins.forward-perf` of type `forward` and an application whose `openaiChatCompletions` is embedded with
    it.
 3. Run the routing-application perf scenario against that application.
+
+## Apply notes
+
+Where the implementation differs from the decisions above, or settles what they left open:
+
+- **D4, threads.** The status, the headers and the response's state (`ended`, `closed`, the frozen head) change in
+  the thread that calls, as on Vert.x's own response, not after a hop to the child's context. A pass writing from a
+  virtual thread then reads back the status it set (`collectTokenUsage` reads it). Only the hand-over to the plugin
+  moves: it runs on the plugin's context through `emit`, and the write acks and the drain handler on the child's.
+- **D4, head and reset.** The call's future completes, or fails on a reset before the head, from a task of its own on
+  the plugin's context (`runOnContext`), so the plugin's code never runs inside the pass's first write. A reset after
+  the head reaches the body's exception handler the same way, and a body cut before the plugin set that handler
+  reports it once the handler is set.
+- **D3.** The four controller sites call `ProxyUtil.parseRequestBody(context, body)`, and the interceptor controllers
+  a `parseObject` helper of `BaseInterceptorController`; both take the call tree when there is one. The serialise
+  helper `setProcessedRequestBody` also sets the body when the pass has none yet, whatever the chain reported, so an
+  in-process pass never reaches its origin without one. `RequestObject` gains `getTree()`; on `ResponsesApiRequest`
+  it is `@JsonIgnore`, as the OpenAPI schema is built from that class.
+- **D2.** A call with no `uri` or no body fails like a refused path. `close` cancels every response of the attempt,
+  one before its head included, so the late-head cancel is a guard for a head already on its way. After close a call
+  is answered `401` with the plain-text body `Unknown api key`, as `Proxy.handleError` writes it for an HTTP child.
+  `EmbeddedProxyResponse` closes the attempt's `ChildPass` through a `Runnable` it is given.
+- **D4, members.** `ChildServerRequest.host()` is null and `absoluteURI()` is the path and query; `authority()`
+  throws. `writeHead()` freezes the head.
+- **D10 and D11** were added during apply, from the open questions of a Java model-provider port; task group 8
+  implements them.
+- **After the implementation review:**
+  - D10: the watch also covers a client gone before `send`, as a close handler set on a closed connection never
+    fires; the attempt is then cancelled at once.
+  - D2: `ResponseItemController` has its own `finalizeRequest`, which closes its child passes too.
+  - D2: a child pass's log lines write no attributes onto the plugin's span: the log layout skips its span enrichment
+    for one, as `GenAiTraceAttributes` does.
+- **Not run here.** Task 6.2 was checked by reading the `Dockerfile`; no image was built. Task 7.1, the perf A/B, is
+  open. `ResourceApiTest.testWorkflow` fails locally on Windows only, as before this change.
+

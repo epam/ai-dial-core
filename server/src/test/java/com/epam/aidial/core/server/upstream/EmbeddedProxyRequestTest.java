@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.upstream;
 import com.epam.aidial.core.plugin.OriginPlugin;
 import com.epam.aidial.core.plugin.OriginRequest;
 import com.epam.aidial.core.plugin.OriginResponse;
+import com.epam.aidial.core.server.ProxyContext;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -11,6 +12,7 @@ import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.streams.ReadStream;
 import org.junit.jupiter.api.AfterAll;
@@ -25,6 +27,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class EmbeddedProxyRequestTest {
 
@@ -44,7 +48,7 @@ class EmbeddedProxyRequestTest {
     void testPluginGetsThePathAndQuery() throws Exception {
         AtomicReference<OriginRequest> seen = new AtomicReference<>();
 
-        await(request(call -> {
+        await(request((call, host) -> {
             seen.set(call);
             return Future.succeededFuture(new Answer(stream(false)));
         }).send(Buffer.buffer("{}")));
@@ -55,14 +59,14 @@ class EmbeddedProxyRequestTest {
 
     @Test
     void testThrowingPluginFailsTheSend() {
-        assertSendFails(call -> {
+        assertSendFails((call, host) -> {
             throw new IllegalStateException("plugin defect");
         }, IllegalStateException.class);
     }
 
     @Test
     void testPluginMissingClassFailsTheSend() {
-        assertSendFails(call -> {
+        assertSendFails((call, host) -> {
             throw new NoClassDefFoundError("com/example/Missing");
         }, NoClassDefFoundError.class);
     }
@@ -70,7 +74,7 @@ class EmbeddedProxyRequestTest {
     @Test
     void testResetBeforeTheAnswerCancelsIt() {
         Promise<OriginResponse> pending = Promise.promise();
-        EmbeddedProxyRequest request = request(call -> pending.future());
+        EmbeddedProxyRequest request = request((call, host) -> pending.future());
         Future<ProxyResponse> sent = request.send(Buffer.buffer("{}"));
 
         request.reset();
@@ -84,7 +88,7 @@ class EmbeddedProxyRequestTest {
     @Test
     void testResetAfterTheAnswerCancelsItOnce() throws Exception {
         Answer answer = new Answer(stream(false));
-        EmbeddedProxyRequest request = request(call -> Future.succeededFuture(answer));
+        EmbeddedProxyRequest request = request((call, host) -> Future.succeededFuture(answer));
         await(request.send(Buffer.buffer("{}")));
 
         request.reset();
@@ -94,8 +98,22 @@ class EmbeddedProxyRequestTest {
     }
 
     @Test
+    void testClientGoneBeforeTheSendCancelsAtOnce() throws Exception {
+        HttpServerResponse closed = mock(HttpServerResponse.class);
+        when(closed.closed()).thenReturn(true);
+        AtomicReference<Future<Void>> cancelled = new AtomicReference<>();
+
+        request((call, host) -> {
+            cancelled.set(host.cancelled());
+            return Promise.<OriginResponse>promise().future();
+        }, closed).send(Buffer.buffer("{}"));
+
+        await(cancelled.get());
+    }
+
+    @Test
     void testBodyReadsStreamHandedBackPaused() throws Exception {
-        ProxyResponse response = await(request(call -> Future.succeededFuture(new Answer(stream(true)))).send(Buffer.buffer("{}")));
+        ProxyResponse response = await(request((call, host) -> Future.succeededFuture(new Answer(stream(true)))).send(Buffer.buffer("{}")));
 
         assertEquals("answer", await(response.body()).toString());
     }
@@ -106,8 +124,14 @@ class EmbeddedProxyRequestTest {
     }
 
     private static EmbeddedProxyRequest request(OriginPlugin plugin) {
+        return request(plugin, mock(HttpServerResponse.class));
+    }
+
+    private static EmbeddedProxyRequest request(OriginPlugin plugin, HttpServerResponse client) {
         ContextInternal context = (ContextInternal) vertx.getOrCreateContext();
-        return new EmbeddedProxyRequest(context, plugin, HttpMethod.POST, "plugin://p1", "plugin://p1/openai/v1/responses?x=1");
+        ProxyContext pass = mock(ProxyContext.class);
+        when(pass.getResponse()).thenReturn(client);
+        return new EmbeddedProxyRequest(context, pass, plugin, HttpMethod.POST, "plugin://p1", "plugin://p1/openai/v1/responses?x=1");
     }
 
     private static <T> T await(Future<T> future) throws Exception {
