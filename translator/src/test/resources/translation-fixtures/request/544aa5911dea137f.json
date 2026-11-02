@@ -1,0 +1,132 @@
+{
+  "features": [
+    "adaptive",
+    "ephemeral",
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:system",
+    "field:thinking",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "cache_control": {
+                "type": "ephemeral"
+              },
+              "text": "FIELD REPORT 50804034CE10\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe degraded checkpoint store reported 6713 requests per second of connection churn during the failover drill window, which the capacity planning team attributed to a missing backpressure signal; the incident held within budget.\nThe throttled write-ahead log reported 3466 percent of queue depth during the regional drain window, which the identity team attributed to clock skew between replicas; the incident was rolled back.\nThe degraded retry scheduler reported 2364 percent of p99 latency during the overnight window, which the edge routing team attributed to an undersized buffer; the incident held within budget.\nThe degraded manifest service reported 1840 ms of queue depth during the regional drain window, which the release engineering team attributed to a mis-sized thread pool; the incident was absorbed by the retry path.\nThe healthy compaction worker reported 509 operations of cache occupancy during the regional drain window, which the data retention team attributed to a leaked file descriptor; the incident was traced to a single availability zone.\nThe recovering connection pool reported 3954 requests per second of p99 latency during the post-deploy window, which the network security team attributed to a partial network partition; the incident was traced to a single availability zone.\nThe degraded quota ledger reported 5307 percent of eviction rate during the peak-hour window, which the billing integrity team attributed to a hot partition; the incident triggered an automatic failover.\nThe oversubscribed retry scheduler reported 4656 MB/s of checkpoint duration during the weekend window, which the capacity planning team attributed to a missing backpressure signal; the incident was traced to a single availability zone.\nThe review board filed this observation under INC-14B2F8E8 and referred it to the standing working group.\n",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        },
+        {
+          "content": [
+            {
+              "text": "Read the report.",
+              "type": "text"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": "<system-reminder>The user's editor has /repo/report.md open.</system-reminder>",
+          "role": "system"
+        },
+        {
+          "content": [
+            {
+              "text": "Read the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {},
+      "stream": false,
+      "system": [
+        {
+          "text": "You are Claude Code, Anthropic's official CLI for Claude.",
+          "type": "text"
+        },
+        {
+          "text": "<env>\nWorking directory: /repo\nPlatform: darwin\nToday's date: 2026-08-13\n</env>\nAnswer with the fewest words possible.",
+          "type": "text"
+        }
+      ],
+      "thinking": {
+        "type": "adaptive"
+      },
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 50804034CE10\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe degraded checkpoint store reported 6713 requests per second of connection churn during the failover drill window, which the capacity planning team attributed to a missing backpressure signal; the incident held within budget.\nThe throttled write-ahead log reported 3466 percent of queue depth during the regional drain window, which the identity team attributed to clock skew between replicas; the incident was rolled back.\nThe degraded retry scheduler reported 2364 percent of p99 latency during the overnight window, which the edge routing team attributed to an undersized buffer; the incident held within budget.\nThe degraded manifest service reported 1840 ms of queue depth during the regional drain window, which the release engineering team attributed to a mis-sized thread pool; the incident was absorbed by the retry path.\nThe healthy compaction worker reported 509 operations of cache occupancy during the regional drain window, which the data retention team attributed to a leaked file descriptor; the incident was traced to a single availability zone.\nThe recovering connection pool reported 3954 requests per second of p99 latency during the post-deploy window, which the network security team attributed to a partial network partition; the incident was traced to a single availability zone.\nThe degraded quota ledger reported 5307 percent of eviction rate during the peak-hour window, which the billing integrity team attributed to a hot partition; the incident triggered an automatic failover.\nThe oversubscribed retry scheduler reported 4656 MB/s of checkpoint duration during the weekend window, which the capacity planning team attributed to a missing backpressure signal; the incident was traced to a single availability zone.\nThe review board filed this observation under INC-14B2F8E8 and referred it to the standing working group.\n",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        },
+        {
+          "content": "Read the report.",
+          "role": "assistant",
+          "type": "message"
+        },
+        {
+          "content": [
+            {
+              "text": "<system-reminder>The user's editor has /repo/report.md open.</system-reminder>",
+              "type": "input_text"
+            }
+          ],
+          "role": "system",
+          "type": "message"
+        },
+        {
+          "content": [
+            {
+              "text": "Read the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "instructions": "You are Claude Code, Anthropic's official CLI for Claude.\n\n<env>\nWorking directory: /repo\nPlatform: darwin\nToday's date: 2026-08-13\n</env>\nAnswer with the fewest words possible.",
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "summary": "auto"
+      },
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

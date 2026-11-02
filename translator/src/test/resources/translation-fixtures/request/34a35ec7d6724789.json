@@ -1,0 +1,51 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "thinking"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": [
+            {
+              "signature": "{\"dial_translator_reasoning_wrapper\":{\"version\":2,\"encrypted_content\":\"dialenc:opaque;cipher@@\\\"\\\\\\n雪==\"}}",
+              "thinking": "",
+              "type": "thinking"
+            }
+          ],
+          "role": "assistant"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "encrypted_content": "dialenc:opaque;cipher@@\"\\\n雪==",
+          "summary": [],
+          "type": "reasoning"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_reasoning_wrapper.py::test_response_carrier_preserves_original_id_and_ciphertext[None-True-plan]",
+    "tests/test_reasoning_wrapper.py::test_response_carrier_preserves_original_id_and_ciphertext[-True-plan]",
+    "tests/test_reasoning_wrapper.py::test_response_carrier_preserves_original_id_and_ciphertext[123-True-plan]"
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "features": [
+    "field:messages"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "messages": [
+        {
+          "content": "hello",
+          "role": "user"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "hello",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_absent_output_budget_sends_no_cap[body0]"
+  ]
+}

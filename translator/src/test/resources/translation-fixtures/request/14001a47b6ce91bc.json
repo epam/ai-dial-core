@@ -1,0 +1,94 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 280D84D285FE\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe steady manifest service reported 8251 ms of queue depth during the overnight window, which the data retention team attributed to an unindexed predicate; the incident was absorbed by the retry path.\nThe saturated retry scheduler reported 1957 MB/s of checkpoint duration during the post-deploy window, which the edge routing team attributed to a leaked file descriptor; the incident was mitigated by shedding low-priority traffic.\nThe degraded replica set reported 9493 operations of connection churn during the failover drill window, which the ingest team attributed to a leaked file descriptor; the incident was traced to a single availability zone.\nThe throttled replica set reported 1471 ms of commit throughput during the weekend window, which the capacity planning team attributed to a mis-sized thread pool; the incident was traced to a single availability zone.\nThe throttled compaction worker reported 2263 ms of replication lag during the weekend window, which the edge routing team attributed to clock skew between replicas; the incident was absorbed by the retry path.\nThe oversubscribed shard coordinator reported 8631 requests per second of queue depth during the post-deploy window, which the identity team attributed to an undersized buffer; the incident was mitigated by shedding low-priority traffic.\nThe throttled shard coordinator reported 6268 MB/s of error budget burn during the regional drain window, which the release engineering team attributed to a stale routing table; the incident triggered an automatic failover.\nThe steady connection pool reported 8721 percent of eviction rate during the post-deploy window, which the data retention team attributed to an expired credential; the incident cleared without action.\nThe review board filed this observation under INC-EEFA06F3 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        },
+        {
+          "content": [
+            {
+              "text": "Understood — I have read the report.",
+              "type": "text"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": [
+            {
+              "text": "Now reply with only the last four characters of that incident code.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {},
+      "stream": false,
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 280D84D285FE\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe steady manifest service reported 8251 ms of queue depth during the overnight window, which the data retention team attributed to an unindexed predicate; the incident was absorbed by the retry path.\nThe saturated retry scheduler reported 1957 MB/s of checkpoint duration during the post-deploy window, which the edge routing team attributed to a leaked file descriptor; the incident was mitigated by shedding low-priority traffic.\nThe degraded replica set reported 9493 operations of connection churn during the failover drill window, which the ingest team attributed to a leaked file descriptor; the incident was traced to a single availability zone.\nThe throttled replica set reported 1471 ms of commit throughput during the weekend window, which the capacity planning team attributed to a mis-sized thread pool; the incident was traced to a single availability zone.\nThe throttled compaction worker reported 2263 ms of replication lag during the weekend window, which the edge routing team attributed to clock skew between replicas; the incident was absorbed by the retry path.\nThe oversubscribed shard coordinator reported 8631 requests per second of queue depth during the post-deploy window, which the identity team attributed to an undersized buffer; the incident was mitigated by shedding low-priority traffic.\nThe throttled shard coordinator reported 6268 MB/s of error budget burn during the regional drain window, which the release engineering team attributed to a stale routing table; the incident triggered an automatic failover.\nThe steady connection pool reported 8721 percent of eviction rate during the post-deploy window, which the data retention team attributed to an expired credential; the incident cleared without action.\nThe review board filed this observation under INC-EEFA06F3 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        },
+        {
+          "content": "Understood — I have read the report.",
+          "role": "assistant",
+          "type": "message"
+        },
+        {
+          "content": [
+            {
+              "text": "Now reply with only the last four characters of that incident code.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

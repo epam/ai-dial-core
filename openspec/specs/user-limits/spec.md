@@ -1,7 +1,8 @@
 # user-limits Specification
 
 ## Purpose
-TBD - created by archiving change user-budget-stats. Update Purpose after archive.
+What `GET /v1/user/limits` and `GET /v1/user/usage` report about the budgets that apply to the caller, next to the
+role-based limits and usage they already report.
 
 ## Requirements
 

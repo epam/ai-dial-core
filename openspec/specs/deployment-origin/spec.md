@@ -78,7 +78,8 @@ the route holds a cached upstream entry.
 ### Requirement: Identity headers for applications and translated interfaces
 For an application with `applicationTypeSchemaId`, Core SHALL add `X-DIAL-APPLICATION-ID` with the deployment name,
 and `X-DIAL-APPLICATION-PROPERTIES` when the schema asks for it. For an interface in translator mode, Core SHALL add
-`X-DIAL-DEPLOYMENT-ID` with the deployment name.
+`X-DIAL-DEPLOYMENT-ID` with the deployment name to the request it sends a translator service. The request of a builtin
+translator is covered by anthropic-messages-translation.
 
 #### Scenario: Schema application id
 - **WHEN** an application with an `applicationTypeSchemaId` is called
@@ -130,7 +131,7 @@ when an upstream supplied one, and `502` with the message `No route` otherwise.
 
 ### Requirement: Connect failure
 When Core cannot open a connection to the origin, it SHALL answer the client `502` with a JSON body
-`{"error":{"code":"502","message":"Failed to connect to upstream server","display_message":"Failed to connect to upstream server"}}`
+`{"error":{"code":"BAD_GATEWAY","message":"Failed to connect to upstream server","display_message":"Failed to connect to upstream server"}}`
 without trying another upstream.
 
 #### Scenario: Origin port closed

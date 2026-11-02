@@ -1,0 +1,47 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 16,
+      "messages": [
+        {
+          "content": "hello",
+          "role": "user"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "hello",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 16,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_responses_output_budget_compatibility[16-16]"
+  ]
+}

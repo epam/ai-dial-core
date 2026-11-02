@@ -1,0 +1,52 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:tool_choice",
+    "whatever"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": "hi",
+          "role": "user"
+        }
+      ],
+      "tool_choice": {
+        "type": "whatever"
+      }
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "hi",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_unknown_tool_choice_type_is_omitted"
+  ]
+}

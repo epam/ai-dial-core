@@ -1,0 +1,69 @@
+{
+  "features": [
+    "enabled",
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:thinking",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 0DFD4C577925\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe degraded replica set reported 7846 operations of commit throughput during the overnight window, which the data retention team attributed to a mis-sized thread pool; the incident cleared without action.\nThe steady retry scheduler reported 5844 MB/s of cache occupancy during the peak-hour window, which the release engineering team attributed to a hot partition; the incident triggered an automatic failover.\nThe steady compaction worker reported 3716 operations of connection churn during the quarterly audit window, which the edge routing team attributed to a hot partition; the incident was rolled back.\nThe degraded checkpoint store reported 2287 requests per second of checkpoint duration during the overnight window, which the query planning team attributed to a hot partition; the incident was absorbed by the retry path.\nThe intermittent index builder reported 8232 MB/s of cache occupancy during the quarterly audit window, which the observability team attributed to a leaked file descriptor; the incident was mitigated by shedding low-priority traffic.\nThe healthy quota ledger reported 9342 operations of commit throughput during the maintenance window, which the identity team attributed to a mis-sized thread pool; the incident required manual intervention.\nThe oversubscribed connection pool reported 3991 ms of p99 latency during the maintenance window, which the billing integrity team attributed to clock skew between replicas; the incident held within budget.\nThe review board filed this observation under INC-4CA95504 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {},
+      "stream": false,
+      "thinking": {
+        "type": "enabled"
+      },
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 0DFD4C577925\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe degraded replica set reported 7846 operations of commit throughput during the overnight window, which the data retention team attributed to a mis-sized thread pool; the incident cleared without action.\nThe steady retry scheduler reported 5844 MB/s of cache occupancy during the peak-hour window, which the release engineering team attributed to a hot partition; the incident triggered an automatic failover.\nThe steady compaction worker reported 3716 operations of connection churn during the quarterly audit window, which the edge routing team attributed to a hot partition; the incident was rolled back.\nThe degraded checkpoint store reported 2287 requests per second of checkpoint duration during the overnight window, which the query planning team attributed to a hot partition; the incident was absorbed by the retry path.\nThe intermittent index builder reported 8232 MB/s of cache occupancy during the quarterly audit window, which the observability team attributed to a leaked file descriptor; the incident was mitigated by shedding low-priority traffic.\nThe healthy quota ledger reported 9342 operations of commit throughput during the maintenance window, which the identity team attributed to a mis-sized thread pool; the incident required manual intervention.\nThe oversubscribed connection pool reported 3991 ms of p99 latency during the maintenance window, which the billing integrity team attributed to clock skew between replicas; the incident held within budget.\nThe review board filed this observation under INC-4CA95504 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "summary": "auto"
+      },
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

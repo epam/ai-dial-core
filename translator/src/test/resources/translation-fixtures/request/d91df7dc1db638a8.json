@@ -1,0 +1,50 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "redacted_thinking"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": [
+            {
+              "data": "{\"dial_translator_reasoning_wrapper\":{\"version\":2,\"id\":\"rs_original\",\"encrypted_content\":\"dialenc:opaque;cipher@@\\\"\\\\\\n雪==\"}}",
+              "type": "redacted_thinking"
+            }
+          ],
+          "role": "assistant"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "encrypted_content": "dialenc:opaque;cipher@@\"\\\n雪==",
+          "id": "rs_original",
+          "summary": [],
+          "type": "reasoning"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_reasoning_wrapper.py::test_response_carrier_preserves_original_id_and_ciphertext[rs_original-False-]",
+    "tests/test_reasoning_wrapper.py::test_response_carrier_preserves_original_id_and_ciphertext[rs_original-True-]"
+  ]
+}

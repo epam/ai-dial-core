@@ -1,0 +1,66 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT DCB8DD0676A5\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe healthy schema registry reported 540 ms of replication lag during the cold-start window, which the data retention team attributed to an undersized buffer; the incident was rolled back.\nThe steady schema registry reported 4022 ms of replication lag during the weekend window, which the ingest team attributed to a missing backpressure signal; the incident was mitigated by shedding low-priority traffic.\nThe saturated compaction worker reported 9358 requests per second of error budget burn during the overnight window, which the storage fabric team attributed to a leaked file descriptor; the incident required manual intervention.\nThe degraded shard coordinator reported 5454 MB/s of retry amplification during the weekend window, which the billing integrity team attributed to a partial network partition; the incident cleared without action.\nThe oversubscribed index builder reported 8651 MB/s of retry amplification during the overnight window, which the network security team attributed to an unbounded retry loop; the incident required manual intervention.\nThe saturated replica set reported 6003 operations of error budget burn during the quarterly audit window, which the billing integrity team attributed to a partial network partition; the incident triggered an automatic failover.\nThe steady manifest service reported 3475 ms of p99 latency during the post-deploy window, which the storage fabric team attributed to a mis-sized thread pool; the incident was mitigated by shedding low-priority traffic.\nThe saturated retry scheduler reported 4579 ms of error budget burn during the quarterly audit window, which the release engineering team attributed to a partial network partition; the incident triggered an automatic failover.\nThe review board filed this observation under INC-D01D72BD and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {
+        "effort": "medium"
+      },
+      "stream": false,
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT DCB8DD0676A5\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe healthy schema registry reported 540 ms of replication lag during the cold-start window, which the data retention team attributed to an undersized buffer; the incident was rolled back.\nThe steady schema registry reported 4022 ms of replication lag during the weekend window, which the ingest team attributed to a missing backpressure signal; the incident was mitigated by shedding low-priority traffic.\nThe saturated compaction worker reported 9358 requests per second of error budget burn during the overnight window, which the storage fabric team attributed to a leaked file descriptor; the incident required manual intervention.\nThe degraded shard coordinator reported 5454 MB/s of retry amplification during the weekend window, which the billing integrity team attributed to a partial network partition; the incident cleared without action.\nThe oversubscribed index builder reported 8651 MB/s of retry amplification during the overnight window, which the network security team attributed to an unbounded retry loop; the incident required manual intervention.\nThe saturated replica set reported 6003 operations of error budget burn during the quarterly audit window, which the billing integrity team attributed to a partial network partition; the incident triggered an automatic failover.\nThe steady manifest service reported 3475 ms of p99 latency during the post-deploy window, which the storage fabric team attributed to a mis-sized thread pool; the incident was mitigated by shedding low-priority traffic.\nThe saturated retry scheduler reported 4579 ms of error budget burn during the quarterly audit window, which the release engineering team attributed to a partial network partition; the incident triggered an automatic failover.\nThe review board filed this observation under INC-D01D72BD and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "effort": "medium"
+      },
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

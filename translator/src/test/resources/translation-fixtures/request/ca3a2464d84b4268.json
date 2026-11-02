@@ -1,0 +1,198 @@
+{
+  "features": [
+    "adaptive",
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:system",
+    "field:thinking",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": "I need help reviewing an operational report.",
+          "role": "user"
+        },
+        {
+          "content": [
+            {
+              "text": "Sure — paste it and tell me what you need.",
+              "type": "text"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT FE9D83A3AF02\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe saturated retry scheduler reported 4067 requests per second of queue depth during the quarterly audit window, which the ingest team attributed to an unbounded retry loop; the incident was mitigated by shedding low-priority traffic.\nThe backlogged cache tier reported 4237 ms of queue depth during the maintenance window, which the ingest team attributed to a leaked file descriptor; the incident triggered an automatic failover.\nThe degraded ingest buffer reported 6008 requests per second of replication lag during the overnight window, which the billing integrity team attributed to a mis-sized thread pool; the incident triggered an automatic failover.\nThe saturated ingest buffer reported 5966 requests per second of connection churn during the failover drill window, which the network security team attributed to a leaked file descriptor; the incident was rolled back.\nThe steady quota ledger reported 9954 ms of p99 latency during the peak-hour window, which the platform reliability team attributed to a partial network partition; the incident was traced to a single availability zone.\nThe degraded replica set reported 8729 requests per second of eviction rate during the weekend window, which the query planning team attributed to a stale routing table; the incident required manual intervention.\nThe quiescent schema registry reported 5343 ms of replication lag during the quarterly audit window, which the billing integrity team attributed to a leaked file descriptor; the incident was traced to a single availability zone.\nThe steady ingest buffer reported 8720 requests per second of p99 latency during the peak-hour window, which the identity team attributed to an unindexed predicate; the incident was mitigated by shedding low-priority traffic.\nThe steady schema registry reported 7566 MB/s of retry amplification during the failover drill window, which the ingest team attributed to an undersized buffer; the incident required manual intervention.\nThe review board filed this observation under INC-93359A72 and referred it to the standing working group.\n",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        },
+        {
+          "content": [
+            {
+              "text": "I have read the report.",
+              "type": "text"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": "Summarise it in one word.",
+          "role": "user"
+        },
+        {
+          "content": [
+            {
+              "text": "Reliability.",
+              "type": "text"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": "Which section numbers exist?",
+          "role": "user"
+        },
+        {
+          "content": [
+            {
+              "text": "They are numbered sequentially from 1.",
+              "type": "text"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": [
+            {
+              "text": "Read the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {},
+      "stream": false,
+      "system": [
+        {
+          "text": "You are Claude Code, Anthropic's official CLI for Claude.",
+          "type": "text"
+        },
+        {
+          "text": "<env>\nWorking directory: /repo\nPlatform: darwin\nToday's date: 2026-08-13\n</env>\nAnswer with the fewest words possible.",
+          "type": "text"
+        }
+      ],
+      "thinking": {
+        "type": "adaptive"
+      },
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "I need help reviewing an operational report.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        },
+        {
+          "content": "Sure — paste it and tell me what you need.",
+          "role": "assistant",
+          "type": "message"
+        },
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT FE9D83A3AF02\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe saturated retry scheduler reported 4067 requests per second of queue depth during the quarterly audit window, which the ingest team attributed to an unbounded retry loop; the incident was mitigated by shedding low-priority traffic.\nThe backlogged cache tier reported 4237 ms of queue depth during the maintenance window, which the ingest team attributed to a leaked file descriptor; the incident triggered an automatic failover.\nThe degraded ingest buffer reported 6008 requests per second of replication lag during the overnight window, which the billing integrity team attributed to a mis-sized thread pool; the incident triggered an automatic failover.\nThe saturated ingest buffer reported 5966 requests per second of connection churn during the failover drill window, which the network security team attributed to a leaked file descriptor; the incident was rolled back.\nThe steady quota ledger reported 9954 ms of p99 latency during the peak-hour window, which the platform reliability team attributed to a partial network partition; the incident was traced to a single availability zone.\nThe degraded replica set reported 8729 requests per second of eviction rate during the weekend window, which the query planning team attributed to a stale routing table; the incident required manual intervention.\nThe quiescent schema registry reported 5343 ms of replication lag during the quarterly audit window, which the billing integrity team attributed to a leaked file descriptor; the incident was traced to a single availability zone.\nThe steady ingest buffer reported 8720 requests per second of p99 latency during the peak-hour window, which the identity team attributed to an unindexed predicate; the incident was mitigated by shedding low-priority traffic.\nThe steady schema registry reported 7566 MB/s of retry amplification during the failover drill window, which the ingest team attributed to an undersized buffer; the incident required manual intervention.\nThe review board filed this observation under INC-93359A72 and referred it to the standing working group.\n",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        },
+        {
+          "content": "I have read the report.",
+          "role": "assistant",
+          "type": "message"
+        },
+        {
+          "content": [
+            {
+              "text": "Summarise it in one word.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        },
+        {
+          "content": "Reliability.",
+          "role": "assistant",
+          "type": "message"
+        },
+        {
+          "content": [
+            {
+              "text": "Which section numbers exist?",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        },
+        {
+          "content": "They are numbered sequentially from 1.",
+          "role": "assistant",
+          "type": "message"
+        },
+        {
+          "content": [
+            {
+              "text": "Read the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "instructions": "You are Claude Code, Anthropic's official CLI for Claude.\n\n<env>\nWorking directory: /repo\nPlatform: darwin\nToday's date: 2026-08-13\n</env>\nAnswer with the fewest words possible.",
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "summary": "auto"
+      },
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

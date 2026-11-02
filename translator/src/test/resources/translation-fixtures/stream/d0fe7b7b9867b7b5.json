@@ -1,0 +1,325 @@
+{
+  "features": [
+    "function_call",
+    "output_text",
+    "response.completed",
+    "response.content_part.added",
+    "response.content_part.done",
+    "response.created",
+    "response.function_call_arguments.delta",
+    "response.output_item.added",
+    "response.output_item.done",
+    "response.output_text.delta"
+  ],
+  "input": {
+    "calls": [
+      {
+        "handle": {
+          "data": {
+            "response": {
+              "created_at": 0.0,
+              "id": "resp_123",
+              "model": "gpt-5.5",
+              "object": "response",
+              "output": [],
+              "parallel_tool_calls": true,
+              "status": "in_progress",
+              "tool_choice": "auto",
+              "tools": []
+            },
+            "sequence_number": 0,
+            "type": "response.created"
+          },
+          "event_type": "response.created"
+        }
+      },
+      {
+        "handle": {
+          "data": {
+            "content_index": 0,
+            "item_id": "msg_1",
+            "output_index": 0,
+            "part": {
+              "annotations": [],
+              "text": "",
+              "type": "output_text"
+            },
+            "sequence_number": 1,
+            "type": "response.content_part.added"
+          },
+          "event_type": "response.content_part.added"
+        }
+      },
+      {
+        "handle": {
+          "data": {
+            "content_index": 0,
+            "delta": "checking",
+            "item_id": "msg_1",
+            "logprobs": [],
+            "output_index": 0,
+            "sequence_number": 2,
+            "type": "response.output_text.delta"
+          },
+          "event_type": "response.output_text.delta"
+        }
+      },
+      {
+        "handle": {
+          "data": {
+            "content_index": 0,
+            "item_id": "msg_1",
+            "output_index": 0,
+            "part": {
+              "annotations": [],
+              "text": "checking",
+              "type": "output_text"
+            },
+            "sequence_number": 3,
+            "type": "response.content_part.done"
+          },
+          "event_type": "response.content_part.done"
+        }
+      },
+      {
+        "handle": {
+          "data": {
+            "item": {
+              "arguments": "",
+              "call_id": "call_abc",
+              "id": "fc_1",
+              "name": "get_weather",
+              "status": "in_progress",
+              "type": "function_call"
+            },
+            "output_index": 1,
+            "sequence_number": 4,
+            "type": "response.output_item.added"
+          },
+          "event_type": "response.output_item.added"
+        }
+      },
+      {
+        "handle": {
+          "data": {
+            "delta": "{\"city\":",
+            "item_id": "fc_1",
+            "output_index": 1,
+            "sequence_number": 5,
+            "type": "response.function_call_arguments.delta"
+          },
+          "event_type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "handle": {
+          "data": {
+            "delta": " \"Kyiv\"}",
+            "item_id": "fc_1",
+            "output_index": 1,
+            "sequence_number": 5,
+            "type": "response.function_call_arguments.delta"
+          },
+          "event_type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "handle": {
+          "data": {
+            "item": {
+              "arguments": "",
+              "call_id": "call_abc",
+              "id": "fc_1",
+              "name": "get_weather",
+              "status": "completed",
+              "type": "function_call"
+            },
+            "output_index": 1,
+            "sequence_number": 6,
+            "type": "response.output_item.done"
+          },
+          "event_type": "response.output_item.done"
+        }
+      },
+      {
+        "handle": {
+          "data": {
+            "response": {
+              "created_at": 0.0,
+              "id": "resp_123",
+              "model": "gpt-5.5",
+              "object": "response",
+              "output": [],
+              "parallel_tool_calls": true,
+              "status": "completed",
+              "tool_choice": "auto",
+              "tools": [],
+              "usage": {
+                "input_tokens": 12,
+                "input_tokens_details": {
+                  "cached_tokens": 4
+                },
+                "output_tokens": 7,
+                "total_tokens": 19
+              }
+            },
+            "sequence_number": 90,
+            "type": "response.completed"
+          },
+          "event_type": "response.completed"
+        }
+      },
+      {
+        "finalize": {}
+      }
+    ],
+    "omit_thinking": false,
+    "requested_model": "gpt-5.5",
+    "tool_names": null
+  },
+  "kind": "stream",
+  "output": [
+    [
+      {
+        "data": {
+          "message": {
+            "content": [],
+            "id": "resp_123",
+            "model": "gpt-5.5",
+            "role": "assistant",
+            "stop_reason": null,
+            "stop_sequence": null,
+            "type": "message",
+            "usage": {
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            }
+          },
+          "type": "message_start"
+        },
+        "event": "message_start"
+      },
+      {
+        "data": {
+          "type": "ping"
+        },
+        "event": "ping"
+      }
+    ],
+    [
+      {
+        "data": {
+          "content_block": {
+            "text": "",
+            "type": "text"
+          },
+          "index": 0,
+          "type": "content_block_start"
+        },
+        "event": "content_block_start"
+      }
+    ],
+    [
+      {
+        "data": {
+          "delta": {
+            "text": "checking",
+            "type": "text_delta"
+          },
+          "index": 0,
+          "type": "content_block_delta"
+        },
+        "event": "content_block_delta"
+      }
+    ],
+    [
+      {
+        "data": {
+          "index": 0,
+          "type": "content_block_stop"
+        },
+        "event": "content_block_stop"
+      }
+    ],
+    [
+      {
+        "data": {
+          "content_block": {
+            "id": "call_abc",
+            "input": {},
+            "name": "get_weather",
+            "type": "tool_use"
+          },
+          "index": 1,
+          "type": "content_block_start"
+        },
+        "event": "content_block_start"
+      }
+    ],
+    [
+      {
+        "data": {
+          "delta": {
+            "partial_json": "{\"city\":",
+            "type": "input_json_delta"
+          },
+          "index": 1,
+          "type": "content_block_delta"
+        },
+        "event": "content_block_delta"
+      }
+    ],
+    [
+      {
+        "data": {
+          "delta": {
+            "partial_json": " \"Kyiv\"}",
+            "type": "input_json_delta"
+          },
+          "index": 1,
+          "type": "content_block_delta"
+        },
+        "event": "content_block_delta"
+      }
+    ],
+    [
+      {
+        "data": {
+          "index": 1,
+          "type": "content_block_stop"
+        },
+        "event": "content_block_stop"
+      }
+    ],
+    [
+      {
+        "data": {
+          "delta": {
+            "stop_reason": "tool_use",
+            "stop_sequence": null
+          },
+          "type": "message_delta",
+          "usage": {
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 4,
+            "input_tokens": 8,
+            "output_tokens": 7
+          }
+        },
+        "event": "message_delta"
+      },
+      {
+        "data": {
+          "type": "message_stop"
+        },
+        "event": "message_stop"
+      }
+    ],
+    []
+  ],
+  "tests": [
+    "tests/test_responses_streaming.py::test_text_and_tool_call_get_distinct_ascending_indices"
+  ]
+}

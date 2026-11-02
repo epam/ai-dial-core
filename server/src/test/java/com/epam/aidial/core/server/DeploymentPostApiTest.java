@@ -57,6 +57,17 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
             + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";
 
     @Test
+    public void testConnectFailureBody() throws IOException {
+        // nothing listens on the model's endpoint
+        Response response = send(HttpMethod.POST, CHAT_URI, null, "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+                "content-type", "application/json");
+
+        assertEquals(502, response.status(), response.body());
+        assertEquals(ProxyUtil.MAPPER.readTree("{\"error\":{\"code\":\"BAD_GATEWAY\",\"message\":\"Failed to connect to upstream server\","
+                + "\"display_message\":\"Failed to connect to upstream server\"}}"), ProxyUtil.MAPPER.readTree(response.body()));
+    }
+
+    @Test
     public void testCollectTokenUsageStats_WhenClientClosesConnection() throws IOException {
         String responseBody = """
                 data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"this is a"}}],"usage":null}\r

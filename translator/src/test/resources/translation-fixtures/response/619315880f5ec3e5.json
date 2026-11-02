@@ -1,0 +1,86 @@
+{
+  "features": [
+    "message",
+    "omit_thinking",
+    "output_text",
+    "reasoning",
+    "summary_text"
+  ],
+  "input": {
+    "omit_thinking": true,
+    "requested_model": "gpt-5.5",
+    "response": {
+      "id": "resp_123",
+      "model": "gpt-5.5",
+      "object": "response",
+      "output": [
+        {
+          "id": "rs_1",
+          "summary": [
+            {
+              "text": "secret",
+              "type": "summary_text"
+            }
+          ],
+          "type": "reasoning"
+        },
+        {
+          "content": [
+            {
+              "annotations": [],
+              "text": "answer",
+              "type": "output_text"
+            }
+          ],
+          "id": "msg_1",
+          "role": "assistant",
+          "status": "completed",
+          "type": "message"
+        }
+      ],
+      "status": "completed",
+      "usage": {
+        "input_tokens": 12,
+        "input_tokens_details": {
+          "cached_tokens": 4
+        },
+        "output_tokens": 7,
+        "total_tokens": 19
+      }
+    },
+    "tool_names": null
+  },
+  "kind": "response",
+  "output": {
+    "message": {
+      "container": null,
+      "content": [
+        {
+          "citations": null,
+          "text": "answer",
+          "type": "text"
+        }
+      ],
+      "id": "resp_123",
+      "model": "gpt-5.5",
+      "role": "assistant",
+      "stop_details": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "type": "message",
+      "usage": {
+        "cache_creation": null,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 4,
+        "inference_geo": null,
+        "input_tokens": 8,
+        "output_tokens": 7,
+        "server_tool_use": null,
+        "service_tier": null
+      }
+    }
+  },
+  "tests": [
+    "tests/test_from_responses.py::test_omitted_unsigned_thinking_has_no_replay_state_to_keep"
+  ]
+}

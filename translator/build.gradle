@@ -1,0 +1,13 @@
+dependencies {
+    // External dependencies
+    implementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
+    implementation("org.slf4j:slf4j-api:${slf4j_version}")
+
+    // Test dependencies
+    testImplementation platform("org.junit:junit-bom:${junit_version}")
+    testImplementation("org.junit.jupiter:junit-jupiter:${junit_version}")
+}
+
+test {
+    useJUnitPlatform()
+}

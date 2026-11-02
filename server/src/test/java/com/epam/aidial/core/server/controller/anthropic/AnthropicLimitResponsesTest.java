@@ -300,4 +300,35 @@ class AnthropicLimitResponsesTest {
         assertEquals("weekly", active.getGroup());
         assertEquals("weekly", AnthropicLimitResponses.spendCapReached(week, NOW).getHeaders().get("anthropic-ratelimit-unified-overage-period"));
     }
+
+    @Test
+    void testTypeForStatus() {
+        assertEquals("invalid_request_error", AnthropicLimitResponses.typeForStatus(400));
+        assertEquals("invalid_request_error", AnthropicLimitResponses.typeForStatus(422));
+        assertEquals("authentication_error", AnthropicLimitResponses.typeForStatus(401));
+        assertEquals("permission_error", AnthropicLimitResponses.typeForStatus(403));
+        assertEquals("not_found_error", AnthropicLimitResponses.typeForStatus(404));
+        assertEquals("request_too_large", AnthropicLimitResponses.typeForStatus(413));
+        assertEquals("rate_limit_error", AnthropicLimitResponses.typeForStatus(429));
+        assertEquals("overloaded_error", AnthropicLimitResponses.typeForStatus(503));
+        assertEquals("overloaded_error", AnthropicLimitResponses.typeForStatus(529));
+        assertEquals("api_error", AnthropicLimitResponses.typeForStatus(409));
+        assertEquals("api_error", AnthropicLimitResponses.typeForStatus(500));
+        assertEquals("api_error", AnthropicLimitResponses.typeForStatus(502));
+        assertEquals("api_error", AnthropicLimitResponses.typeForStatus(504));
+    }
+
+    @Test
+    void testExtractMessage() {
+        // a DIAL error body, as the affinity errors and a connect failure carry it
+        assertEquals("Conflicting encrypted content affinity across input items.", AnthropicLimitResponses.extractMessage(
+                "{\"error\":{\"message\":\"Conflicting encrypted content affinity across input items.\",\"code\":\"x\"}}", 400));
+        assertEquals("boom", AnthropicLimitResponses.extractMessage("{\"error\":\"boom\"}", 500));
+        assertEquals("top", AnthropicLimitResponses.extractMessage("{\"error\":{\"code\":\"x\"},\"message\":\"top\"}", 500));
+        // JSON without a message gives its text
+        assertEquals("{\"error\":{\"code\":\"x\"}}", AnthropicLimitResponses.extractMessage("{\"error\":{\"code\":\"x\"}}", 500));
+        assertEquals("No route", AnthropicLimitResponses.extractMessage(" No route\n", 502));
+        assertEquals("Error code: 404", AnthropicLimitResponses.extractMessage("", 404));
+        assertEquals("Error code: 500", AnthropicLimitResponses.extractMessage(null, 500));
+    }
 }

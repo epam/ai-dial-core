@@ -1,0 +1,100 @@
+{
+  "features": [
+    "message",
+    "output_text",
+    "reasoning",
+    "summary_text"
+  ],
+  "input": {
+    "omit_thinking": false,
+    "requested_model": "gpt-5.5",
+    "response": {
+      "created_at": 0.0,
+      "id": "resp_123",
+      "model": "gpt-5.5",
+      "object": "response",
+      "output": [
+        {
+          "encrypted_content": "dialenc:dXBzdHJlYW0=;gAAAA_+/opaque==",
+          "id": "dialenc_original-id",
+          "summary": [
+            {
+              "text": "plan",
+              "type": "summary_text"
+            },
+            {
+              "text": "check",
+              "type": "summary_text"
+            }
+          ],
+          "type": "reasoning"
+        },
+        {
+          "content": [
+            {
+              "annotations": [],
+              "text": "42",
+              "type": "output_text"
+            }
+          ],
+          "id": "msg_1",
+          "role": "assistant",
+          "status": "completed",
+          "type": "message"
+        }
+      ],
+      "parallel_tool_calls": true,
+      "status": "completed",
+      "tool_choice": "auto",
+      "tools": [],
+      "usage": {
+        "input_tokens": 12,
+        "input_tokens_details": {
+          "cached_tokens": 4
+        },
+        "output_tokens": 7,
+        "total_tokens": 19
+      }
+    },
+    "tool_names": {}
+  },
+  "kind": "response",
+  "output": {
+    "message": {
+      "container": null,
+      "content": [
+        {
+          "signature": "{\"dial_translator_reasoning_wrapper\":{\"version\":2,\"id\":\"dialenc_original-id\",\"encrypted_content\":\"dialenc:dXBzdHJlYW0=;gAAAA_+/opaque==\"}}",
+          "thinking": "plan\n\ncheck",
+          "type": "thinking"
+        },
+        {
+          "citations": null,
+          "text": "42",
+          "type": "text"
+        }
+      ],
+      "id": "resp_123",
+      "model": "gpt-5.5",
+      "role": "assistant",
+      "stop_details": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "type": "message",
+      "usage": {
+        "cache_creation": null,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 4,
+        "inference_geo": null,
+        "input_tokens": 8,
+        "output_tokens": 7,
+        "server_tool_use": null,
+        "service_tier": null
+      }
+    }
+  },
+  "tests": [
+    "tests/test_reasoning_replay.py::test_real_sdks_two_turn_replay_through_http[False]",
+    "tests/test_reasoning_replay.py::test_real_sdks_two_turn_replay_through_http[True]"
+  ]
+}

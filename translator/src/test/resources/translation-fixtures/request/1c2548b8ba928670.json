@@ -1,0 +1,71 @@
+{
+  "features": [
+    "disabled",
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:thinking",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT A8CBEAA52B5F\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe intermittent replica set reported 2855 MB/s of error budget burn during the cold-start window, which the ingest team attributed to an unbounded retry loop; the incident was traced to a single availability zone.\nThe degraded token bucket reported 6755 requests per second of commit throughput during the regional drain window, which the ingest team attributed to a partial network partition; the incident was traced to a single availability zone.\nThe intermittent checkpoint store reported 3073 requests per second of cache occupancy during the overnight window, which the identity team attributed to an unbounded retry loop; the incident was traced to a single availability zone.\nThe healthy shard coordinator reported 3580 MB/s of checkpoint duration during the quarterly audit window, which the platform reliability team attributed to an unindexed predicate; the incident required manual intervention.\nThe degraded ingest buffer reported 4123 operations of error budget burn during the maintenance window, which the data retention team attributed to an unbounded retry loop; the incident cleared without action.\nThe healthy index builder reported 3160 ms of checkpoint duration during the regional drain window, which the platform reliability team attributed to an unindexed predicate; the incident triggered an automatic failover.\nThe healthy quota ledger reported 2091 requests per second of p99 latency during the quarterly audit window, which the platform reliability team attributed to a mis-sized thread pool; the incident was mitigated by shedding low-priority traffic.\nThe review board filed this observation under INC-CDAC1FBE and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {
+        "effort": "high"
+      },
+      "stream": false,
+      "thinking": {
+        "type": "disabled"
+      },
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT A8CBEAA52B5F\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe intermittent replica set reported 2855 MB/s of error budget burn during the cold-start window, which the ingest team attributed to an unbounded retry loop; the incident was traced to a single availability zone.\nThe degraded token bucket reported 6755 requests per second of commit throughput during the regional drain window, which the ingest team attributed to a partial network partition; the incident was traced to a single availability zone.\nThe intermittent checkpoint store reported 3073 requests per second of cache occupancy during the overnight window, which the identity team attributed to an unbounded retry loop; the incident was traced to a single availability zone.\nThe healthy shard coordinator reported 3580 MB/s of checkpoint duration during the quarterly audit window, which the platform reliability team attributed to an unindexed predicate; the incident required manual intervention.\nThe degraded ingest buffer reported 4123 operations of error budget burn during the maintenance window, which the data retention team attributed to an unbounded retry loop; the incident cleared without action.\nThe healthy index builder reported 3160 ms of checkpoint duration during the regional drain window, which the platform reliability team attributed to an unindexed predicate; the incident triggered an automatic failover.\nThe healthy quota ledger reported 2091 requests per second of p99 latency during the quarterly audit window, which the platform reliability team attributed to a mis-sized thread pool; the incident was mitigated by shedding low-priority traffic.\nThe review board filed this observation under INC-CDAC1FBE and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "effort": "none"
+      },
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

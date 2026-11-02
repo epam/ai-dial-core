@@ -1,0 +1,33 @@
+{
+  "features": [
+    "count_tokens",
+    "field:max_tokens",
+    "field:messages"
+  ],
+  "input": {
+    "for_count_tokens": true,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": [],
+          "role": "assistant"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "input": [],
+      "model": "gpt-5.5"
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_reasoning_replay.py::test_generation_requests_encrypted_content_without_changing_effort[None]",
+    "tests/test_reasoning_replay.py::test_generation_requests_encrypted_content_without_changing_effort[thinking1]"
+  ]
+}

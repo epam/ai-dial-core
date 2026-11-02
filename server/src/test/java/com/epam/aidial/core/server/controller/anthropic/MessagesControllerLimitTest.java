@@ -1,9 +1,13 @@
 package com.epam.aidial.core.server.controller.anthropic;
 
+import com.epam.aidial.core.config.BuiltinTranslator;
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Translator;
+import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.limiter.CalendarPeriod;
@@ -37,7 +41,8 @@ import static org.mockito.Mockito.when;
 /**
  * A passthrough request of a user with a cost limit fails closed on an unreadable spend record; any other failure of the check
  * is a server error the client retries. A translated one only reads the spend caps:
- * the inner call the translator makes back to Core enforces the limits.
+ * the inner call the translator makes back to Core enforces the limits. A builtin translator makes no such call, so its
+ * request is checked as a passthrough one.
  */
 @ExtendWith(MockitoExtension.class)
 class MessagesControllerLimitTest {
@@ -125,6 +130,7 @@ class MessagesControllerLimitTest {
     @Test
     void testVerifyLimit_translatedReadsSpendWithoutEnforcing() {
         when(context.getDeployment()).thenReturn(translatedModel());
+        when(context.getConfig()).thenReturn(new Config());
         when(proxy.getRateLimiter()).thenReturn(rateLimiter);
         when(rateLimiter.readSpendCaps(any())).thenReturn(Future.succeededFuture(SpendCaps.EMPTY));
 
@@ -138,6 +144,7 @@ class MessagesControllerLimitTest {
     @Test
     void testVerifyLimit_translatedRejectsOnceSpendCapIsReached() {
         when(context.getDeployment()).thenReturn(translatedModel());
+        when(context.getConfig()).thenReturn(new Config());
         when(proxy.getRateLimiter()).thenReturn(rateLimiter);
         SpendCap day = new SpendCap(CalendarPeriod.DAY, BigDecimal.TEN, BigDecimal.TEN, System.currentTimeMillis() + 60_000);
         when(rateLimiter.readSpendCaps(any())).thenReturn(Future.succeededFuture(new SpendCaps(List.of(day), day)));
@@ -153,6 +160,7 @@ class MessagesControllerLimitTest {
     @Test
     void testVerifyLimit_translatedLetsRequestThroughWhenSpendIsUnreadable() {
         when(context.getDeployment()).thenReturn(translatedModel());
+        when(context.getConfig()).thenReturn(new Config());
         when(proxy.getRateLimiter()).thenReturn(rateLimiter);
         when(rateLimiter.readSpendCaps(any())).thenReturn(Future.failedFuture(new IllegalStateException("redis down")));
 
@@ -160,6 +168,31 @@ class MessagesControllerLimitTest {
 
         // the inner call the translator makes back to Core enforces the limits, so this one must not fail closed
         assertTrue(result.succeeded());
+    }
+
+    @Test
+    void testVerifyLimit_builtinFailsClosedWhenSpendIsUnreadable() {
+        DeploymentInterface anthropic = new DeploymentInterface();
+        anthropic.setMode(InterfaceMode.TRANSLATOR);
+        anthropic.setTranslator(TranslatorRef.inline(new Translator(null, InterfaceType.OPENAI_RESPONSES, null,
+                BuiltinTranslator.ANTHROPIC_MESSAGES_TO_OPENAI_RESPONSES)));
+        Model model = new Model();
+        model.setName("claude-builtin");
+        model.setInterfaces(Map.of(InterfaceType.ANTHROPIC_MESSAGES.getValue(), anthropic));
+        when(context.getDeployment()).thenReturn(model);
+        when(context.getConfig()).thenReturn(new Config());
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(rateLimiter.limitWithSpendCaps(any(), any()))
+                .thenReturn(Future.failedFuture(new SpendReadException(new IllegalStateException("redis down"))));
+        when(rateLimiter.hasCostLimit(context)).thenReturn(true);
+
+        Future<Void> result = new MessagesController(proxy, context).verifyLimit();
+
+        // the request is the one the caller is accountable for, so it fails closed as a pass-through one does
+        HttpException exception = assertInstanceOf(HttpException.class, result.cause());
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, exception.getStatus());
+        assertEquals("fetch_error", exception.getHeaders().get("anthropic-ratelimit-unified-overage-disabled-reason"));
+        verify(rateLimiter, never()).readSpendCaps(any());
     }
 
     private static void assertRetriedServerError(Future<Void> result) {

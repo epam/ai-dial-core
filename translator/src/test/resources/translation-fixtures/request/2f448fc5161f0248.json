@@ -1,0 +1,77 @@
+{
+  "features": [
+    "content",
+    "document",
+    "field:max_tokens",
+    "field:messages",
+    "search_result",
+    "text",
+    "tool_result"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": [
+            {
+              "content": [
+                {
+                  "content": [
+                    {
+                      "text": "x",
+                      "type": "text"
+                    }
+                  ],
+                  "source": "kb://1",
+                  "title": "Doc",
+                  "type": "search_result"
+                },
+                {
+                  "source": {
+                    "content": [
+                      {
+                        "text": "body",
+                        "type": "text"
+                      }
+                    ],
+                    "type": "content"
+                  },
+                  "type": "document"
+                }
+              ],
+              "tool_use_id": "toolu_1",
+              "type": "tool_result"
+            }
+          ],
+          "role": "user"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "call_id": "toolu_1",
+          "output": "Doc\nkb://1\n\nx\nbody",
+          "type": "function_call_output"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_documents_and_search_results_in_a_tool_result_are_kept"
+  ]
+}

@@ -1,0 +1,83 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "text",
+    "thinking",
+    "tool_use"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": "weather?",
+          "role": "user"
+        },
+        {
+          "content": [
+            {
+              "signature": "s",
+              "thinking": "hmm",
+              "type": "thinking"
+            },
+            {
+              "text": "let me check",
+              "type": "text"
+            },
+            {
+              "id": "toolu_1",
+              "input": {
+                "city": "Kyiv"
+              },
+              "name": "get_weather",
+              "type": "tool_use"
+            }
+          ],
+          "role": "assistant"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "weather?",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        },
+        {
+          "content": "let me check",
+          "role": "assistant",
+          "type": "message"
+        },
+        {
+          "arguments": "{\"city\": \"Kyiv\"}",
+          "call_id": "toolu_1",
+          "name": "get_weather",
+          "type": "function_call"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_assistant_text_then_tool_use_preserves_order"
+  ]
+}

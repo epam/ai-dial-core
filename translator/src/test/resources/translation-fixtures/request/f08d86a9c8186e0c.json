@@ -1,0 +1,61 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT F5167A1797BA\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe quiescent shard coordinator reported 9151 percent of queue depth during the weekend window, which the edge routing team attributed to an expired credential; the incident was mitigated by shedding low-priority traffic.\nThe oversubscribed token bucket reported 519 requests per second of replication lag during the failover drill window, which the billing integrity team attributed to a stale routing table; the incident triggered an automatic failover.\nThe healthy token bucket reported 9085 ms of p99 latency during the overnight window, which the storage fabric team attributed to a stale routing table; the incident triggered an automatic failover.\nThe backlogged shard coordinator reported 618 operations of checkpoint duration during the cold-start window, which the platform reliability team attributed to a stale routing table; the incident was traced to a single availability zone.\nThe recovering replica set reported 7882 percent of eviction rate during the quarterly audit window, which the identity team attributed to a mis-sized thread pool; the incident was rolled back.\nThe oversubscribed cache tier reported 2015 MB/s of connection churn during the peak-hour window, which the capacity planning team attributed to a mis-sized thread pool; the incident was mitigated by shedding low-priority traffic.\nThe oversubscribed write-ahead log reported 4349 MB/s of commit throughput during the weekend window, which the network security team attributed to a partial network partition; the incident was rolled back.\nThe degraded write-ahead log reported 7646 operations of retry amplification during the maintenance window, which the identity team attributed to an unindexed predicate; the incident held within budget.\nThe review board filed this observation under INC-F5A3BAD7 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the number of the section that contains an incident code. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {},
+      "stream": false,
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT F5167A1797BA\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe quiescent shard coordinator reported 9151 percent of queue depth during the weekend window, which the edge routing team attributed to an expired credential; the incident was mitigated by shedding low-priority traffic.\nThe oversubscribed token bucket reported 519 requests per second of replication lag during the failover drill window, which the billing integrity team attributed to a stale routing table; the incident triggered an automatic failover.\nThe healthy token bucket reported 9085 ms of p99 latency during the overnight window, which the storage fabric team attributed to a stale routing table; the incident triggered an automatic failover.\nThe backlogged shard coordinator reported 618 operations of checkpoint duration during the cold-start window, which the platform reliability team attributed to a stale routing table; the incident was traced to a single availability zone.\nThe recovering replica set reported 7882 percent of eviction rate during the quarterly audit window, which the identity team attributed to a mis-sized thread pool; the incident was rolled back.\nThe oversubscribed cache tier reported 2015 MB/s of connection churn during the peak-hour window, which the capacity planning team attributed to a mis-sized thread pool; the incident was mitigated by shedding low-priority traffic.\nThe oversubscribed write-ahead log reported 4349 MB/s of commit throughput during the weekend window, which the network security team attributed to a partial network partition; the incident was rolled back.\nThe degraded write-ahead log reported 7646 operations of retry amplification during the maintenance window, which the identity team attributed to an unindexed predicate; the incident held within budget.\nThe review board filed this observation under INC-F5A3BAD7 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the number of the section that contains an incident code. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

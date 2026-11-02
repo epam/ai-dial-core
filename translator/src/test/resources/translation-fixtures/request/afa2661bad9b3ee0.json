@@ -1,0 +1,61 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": "hook-injected context",
+          "role": "system"
+        },
+        {
+          "content": "hi",
+          "role": "user"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "hook-injected context",
+              "type": "input_text"
+            }
+          ],
+          "role": "system",
+          "type": "message"
+        },
+        {
+          "content": [
+            {
+              "text": "hi",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_mid_conversation_system_role_becomes_a_system_input_message"
+  ]
+}

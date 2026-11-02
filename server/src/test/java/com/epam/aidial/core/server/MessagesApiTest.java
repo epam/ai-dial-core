@@ -443,6 +443,32 @@ public class MessagesApiTest extends ResourceBaseTest {
         }
     }
 
+    @Test
+    public void testPassThroughUpstreamErrorIsRelayedUnchanged() throws IOException {
+        String error = "{\"error\":{\"message\":\"boom\",\"type\":\"server_error\"}}";
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> TestWebServer.createResponse(500, error, "Content-Type", "application/json"));
+
+            Response response = post(client, MESSAGES_PATH, requestBody("claude-ns", false), "api-key", "proxyKey1");
+
+            assertEquals(500, response.status());
+            assertEquals(error, response.body());
+        }
+    }
+
+    @Test
+    public void testPassThroughConnectFailureKeepsItsBody() throws IOException {
+        // nothing listens on the model's endpoint; the Anthropic error body is for builtin-translated models only
+        try (CloseableHttpClient client = newClient()) {
+            Response response = post(client, MESSAGES_PATH, requestBody("claude-ns", false), "api-key", "proxyKey1");
+
+            assertEquals(502, response.status());
+            assertEquals(ProxyUtil.MAPPER.readTree("""
+                    {"error":{"message":"Failed to connect to upstream server","display_message":"Failed to connect to upstream server","code":"BAD_GATEWAY"}}"""),
+                    ProxyUtil.MAPPER.readTree(response.body()));
+        }
+    }
+
     private void assertUsed(String deployment, long expected) {
         Response response = send(HttpMethod.GET, "/v1/deployments/" + deployment + "/limits", null, null);
         verify(response, 200);

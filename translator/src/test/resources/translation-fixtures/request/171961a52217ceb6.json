@@ -1,0 +1,69 @@
+{
+  "features": [
+    "disabled",
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:thinking",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT F10569FFBC0A\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe healthy index builder reported 981 operations of retry amplification during the overnight window, which the identity team attributed to an expired credential; the incident held within budget.\nThe steady index builder reported 8582 ms of checkpoint duration during the quarterly audit window, which the platform reliability team attributed to an expired credential; the incident was rolled back.\nThe intermittent dispatch queue reported 2 operations of replication lag during the regional drain window, which the billing integrity team attributed to an undersized buffer; the incident held within budget.\nThe healthy checkpoint store reported 3639 percent of error budget burn during the failover drill window, which the identity team attributed to a stale routing table; the incident cleared without action.\nThe steady shard coordinator reported 3912 ms of commit throughput during the regional drain window, which the data retention team attributed to an unbounded retry loop; the incident was absorbed by the retry path.\nThe recovering replica set reported 1665 MB/s of commit throughput during the maintenance window, which the query planning team attributed to an expired credential; the incident cleared without action.\nThe recovering index builder reported 8913 MB/s of retry amplification during the weekend window, which the query planning team attributed to an unbounded retry loop; the incident was absorbed by the retry path.\nThe healthy manifest service reported 8615 ms of connection churn during the post-deploy window, which the release engineering team attributed to an expired credential; the incident was rolled back.\nThe healthy schema registry reported 1384 ms of error budget burn during the post-deploy window, which the data retention team attributed to a mis-sized thread pool; the incident held within budget.\nThe review board filed this observation under INC-16D5094F and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {},
+      "stream": false,
+      "thinking": {
+        "type": "disabled"
+      },
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT F10569FFBC0A\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe healthy index builder reported 981 operations of retry amplification during the overnight window, which the identity team attributed to an expired credential; the incident held within budget.\nThe steady index builder reported 8582 ms of checkpoint duration during the quarterly audit window, which the platform reliability team attributed to an expired credential; the incident was rolled back.\nThe intermittent dispatch queue reported 2 operations of replication lag during the regional drain window, which the billing integrity team attributed to an undersized buffer; the incident held within budget.\nThe healthy checkpoint store reported 3639 percent of error budget burn during the failover drill window, which the identity team attributed to a stale routing table; the incident cleared without action.\nThe steady shard coordinator reported 3912 ms of commit throughput during the regional drain window, which the data retention team attributed to an unbounded retry loop; the incident was absorbed by the retry path.\nThe recovering replica set reported 1665 MB/s of commit throughput during the maintenance window, which the query planning team attributed to an expired credential; the incident cleared without action.\nThe recovering index builder reported 8913 MB/s of retry amplification during the weekend window, which the query planning team attributed to an unbounded retry loop; the incident was absorbed by the retry path.\nThe healthy manifest service reported 8615 ms of connection churn during the post-deploy window, which the release engineering team attributed to an expired credential; the incident was rolled back.\nThe healthy schema registry reported 1384 ms of error budget burn during the post-deploy window, which the data retention team attributed to a mis-sized thread pool; the incident held within budget.\nThe review board filed this observation under INC-16D5094F and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "effort": "none"
+      },
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

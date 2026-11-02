@@ -1,0 +1,66 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT B0F54DE3EF28\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe throttled cache tier reported 288 MB/s of commit throughput during the cold-start window, which the storage fabric team attributed to an undersized buffer; the incident required manual intervention.\nThe throttled shard coordinator reported 7910 operations of commit throughput during the quarterly audit window, which the capacity planning team attributed to a stale routing table; the incident triggered an automatic failover.\nThe saturated replica set reported 9445 ms of error budget burn during the post-deploy window, which the release engineering team attributed to a stale routing table; the incident was traced to a single availability zone.\nThe throttled checkpoint store reported 8063 MB/s of eviction rate during the quarterly audit window, which the release engineering team attributed to a stale routing table; the incident cleared without action.\nThe intermittent dispatch queue reported 1823 ms of eviction rate during the maintenance window, which the data retention team attributed to a leaked file descriptor; the incident was mitigated by shedding low-priority traffic.\nThe intermittent quota ledger reported 5253 ms of retry amplification during the peak-hour window, which the ingest team attributed to a mis-sized thread pool; the incident was absorbed by the retry path.\nThe recovering compaction worker reported 2015 operations of connection churn during the maintenance window, which the release engineering team attributed to a leaked file descriptor; the incident was rolled back.\nThe review board filed this observation under INC-9BC95E06 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {
+        "effort": "minimal"
+      },
+      "stream": false,
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT B0F54DE3EF28\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe throttled cache tier reported 288 MB/s of commit throughput during the cold-start window, which the storage fabric team attributed to an undersized buffer; the incident required manual intervention.\nThe throttled shard coordinator reported 7910 operations of commit throughput during the quarterly audit window, which the capacity planning team attributed to a stale routing table; the incident triggered an automatic failover.\nThe saturated replica set reported 9445 ms of error budget burn during the post-deploy window, which the release engineering team attributed to a stale routing table; the incident was traced to a single availability zone.\nThe throttled checkpoint store reported 8063 MB/s of eviction rate during the quarterly audit window, which the release engineering team attributed to a stale routing table; the incident cleared without action.\nThe intermittent dispatch queue reported 1823 ms of eviction rate during the maintenance window, which the data retention team attributed to a leaked file descriptor; the incident was mitigated by shedding low-priority traffic.\nThe intermittent quota ledger reported 5253 ms of retry amplification during the peak-hour window, which the ingest team attributed to a mis-sized thread pool; the incident was absorbed by the retry path.\nThe recovering compaction worker reported 2015 operations of connection churn during the maintenance window, which the release engineering team attributed to a leaked file descriptor; the incident was rolled back.\nThe review board filed this observation under INC-9BC95E06 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "effort": "minimal"
+      },
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

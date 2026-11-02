@@ -1,0 +1,72 @@
+{
+  "features": [
+    "adaptive",
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:thinking",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 7650F29CD759\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe steady manifest service reported 9225 MB/s of error budget burn during the peak-hour window, which the ingest team attributed to an expired credential; the incident required manual intervention.\nThe healthy cache tier reported 6198 ms of checkpoint duration during the cold-start window, which the identity team attributed to a stale routing table; the incident was mitigated by shedding low-priority traffic.\nThe throttled compaction worker reported 9670 requests per second of cache occupancy during the cold-start window, which the release engineering team attributed to an undersized buffer; the incident triggered an automatic failover.\nThe intermittent replica set reported 7980 operations of replication lag during the post-deploy window, which the billing integrity team attributed to an expired credential; the incident was rolled back.\nThe recovering retry scheduler reported 649 ms of checkpoint duration during the weekend window, which the observability team attributed to a stale routing table; the incident held within budget.\nThe degraded quota ledger reported 2535 requests per second of queue depth during the peak-hour window, which the capacity planning team attributed to an unbounded retry loop; the incident was traced to a single availability zone.\nThe saturated connection pool reported 7297 operations of replication lag during the maintenance window, which the identity team attributed to an unindexed predicate; the incident was traced to a single availability zone.\nThe intermittent connection pool reported 6337 operations of error budget burn during the regional drain window, which the observability team attributed to a stale routing table; the incident triggered an automatic failover.\nThe quiescent replica set reported 8074 operations of cache occupancy during the overnight window, which the edge routing team attributed to a partial network partition; the incident triggered an automatic failover.\nThe review board filed this observation under INC-2EB30BD5 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {
+        "effort": "high"
+      },
+      "stream": true,
+      "thinking": {
+        "type": "adaptive"
+      },
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 7650F29CD759\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe steady manifest service reported 9225 MB/s of error budget burn during the peak-hour window, which the ingest team attributed to an expired credential; the incident required manual intervention.\nThe healthy cache tier reported 6198 ms of checkpoint duration during the cold-start window, which the identity team attributed to a stale routing table; the incident was mitigated by shedding low-priority traffic.\nThe throttled compaction worker reported 9670 requests per second of cache occupancy during the cold-start window, which the release engineering team attributed to an undersized buffer; the incident triggered an automatic failover.\nThe intermittent replica set reported 7980 operations of replication lag during the post-deploy window, which the billing integrity team attributed to an expired credential; the incident was rolled back.\nThe recovering retry scheduler reported 649 ms of checkpoint duration during the weekend window, which the observability team attributed to a stale routing table; the incident held within budget.\nThe degraded quota ledger reported 2535 requests per second of queue depth during the peak-hour window, which the capacity planning team attributed to an unbounded retry loop; the incident was traced to a single availability zone.\nThe saturated connection pool reported 7297 operations of replication lag during the maintenance window, which the identity team attributed to an unindexed predicate; the incident was traced to a single availability zone.\nThe intermittent connection pool reported 6337 operations of error budget burn during the regional drain window, which the observability team attributed to a stale routing table; the incident triggered an automatic failover.\nThe quiescent replica set reported 8074 operations of cache occupancy during the overnight window, which the edge routing team attributed to a partial network partition; the incident triggered an automatic failover.\nThe review board filed this observation under INC-2EB30BD5 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "effort": "high",
+        "summary": "auto"
+      },
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

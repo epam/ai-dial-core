@@ -1,0 +1,282 @@
+{
+  "features": [
+    "adaptive",
+    "base64",
+    "ephemeral",
+    "field:cache_control",
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:system",
+    "field:thinking",
+    "field:tools",
+    "image",
+    "object",
+    "string",
+    "text",
+    "thinking",
+    "tool_result",
+    "tool_use"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "cache_control": {
+        "type": "ephemeral"
+      },
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "source": {
+                "data": "offline-fixture",
+                "media_type": "image/png",
+                "type": "base64"
+              },
+              "type": "image"
+            },
+            {
+              "text": "Context.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        },
+        {
+          "content": [
+            {
+              "text": "Noted.",
+              "type": "text"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": "<system-reminder>The user's editor has /repo/report.md open.</system-reminder>",
+          "role": "system"
+        },
+        {
+          "content": "Search the knowledge base for the incident code.",
+          "role": "user"
+        },
+        {
+          "content": [
+            {
+              "signature": "",
+              "thinking": "The user wants the code; I should search.",
+              "type": "thinking"
+            },
+            {
+              "id": "toolu_01COMPOSITE",
+              "input": {
+                "query": "incident code"
+              },
+              "name": "mcp__dial-knowledge-base__search_documents_by_semantic_similarity_v2",
+              "type": "tool_use"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": [
+            {
+              "content": [
+                {
+                  "text": "FIELD REPORT F6651FA3EEEE\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe backlogged index builder reported 1821 MB/s of retry amplification during the post-deploy window, which the ingest team attributed to an expired credential; the incident was traced to a single availability zone.\nThe intermittent token bucket reported 4305 operations of connection churn during the regional drain window, which the identity team attributed to clock skew between replicas; the incident triggered an automatic failover.\nThe degraded schema registry reported 7593 percent of commit throughput during the failover drill window, which the capacity planning team attributed to an unbounded retry loop; the incident required manual intervention.\nThe intermittent shard coordinator reported 6790 MB/s of error budget burn during the cold-start window, which the identity team attributed to a missing backpressure signal; the incident held within budget.\nThe degraded token bucket reported 2903 percent of eviction rate during the maintenance window, which the billing integrity team attributed to an unbounded retry loop; the incident was absorbed by the retry path.\nThe saturated ingest buffer reported 1590 requests per second of checkpoint duration during the failover drill window, which the capacity planning team attributed to a partial network partition; the incident cleared without action.\nThe review board filed this observation under INC-58BC9A22 and referred it to the standing working group.\n",
+                  "type": "text"
+                }
+              ],
+              "tool_use_id": "toolu_01COMPOSITE",
+              "type": "tool_result"
+            },
+            {
+              "cache_control": {
+                "type": "ephemeral"
+              },
+              "text": "Read the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {},
+      "stream": true,
+      "system": [
+        {
+          "text": "You are Claude Code, Anthropic's official CLI for Claude.",
+          "type": "text"
+        },
+        {
+          "text": "<env>\nWorking directory: /repo\nPlatform: darwin\nToday's date: 2026-08-13\n</env>\nAnswer with the fewest words possible.",
+          "type": "text"
+        },
+        {
+          "cache_control": {
+            "type": "ephemeral"
+          },
+          "text": "Prefer terse answers.",
+          "type": "text"
+        }
+      ],
+      "thinking": {
+        "type": "adaptive"
+      },
+      "tools": [
+        {
+          "description": "Read a file from the filesystem.",
+          "input_schema": {
+            "properties": {
+              "file_path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "file_path"
+            ],
+            "type": "object"
+          },
+          "name": "Read"
+        },
+        {
+          "description": "Search the knowledge base.",
+          "input_schema": {
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "type": "object"
+          },
+          "name": "mcp__dial-knowledge-base__search_documents_by_semantic_similarity_v2"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "image_url": "data:image/png;base64,offline-fixture",
+              "type": "input_image"
+            },
+            {
+              "text": "Context.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        },
+        {
+          "content": "Noted.",
+          "role": "assistant",
+          "type": "message"
+        },
+        {
+          "content": [
+            {
+              "text": "<system-reminder>The user's editor has /repo/report.md open.</system-reminder>",
+              "type": "input_text"
+            }
+          ],
+          "role": "system",
+          "type": "message"
+        },
+        {
+          "content": [
+            {
+              "text": "Search the knowledge base for the incident code.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        },
+        {
+          "arguments": "{\"query\": \"incident code\"}",
+          "call_id": "toolu_01COMPOSITE",
+          "name": "mcp__dial-knowledge-base__search_documents_by_semantic__7bc2a2fa",
+          "type": "function_call"
+        },
+        {
+          "call_id": "toolu_01COMPOSITE",
+          "output": "FIELD REPORT F6651FA3EEEE\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe backlogged index builder reported 1821 MB/s of retry amplification during the post-deploy window, which the ingest team attributed to an expired credential; the incident was traced to a single availability zone.\nThe intermittent token bucket reported 4305 operations of connection churn during the regional drain window, which the identity team attributed to clock skew between replicas; the incident triggered an automatic failover.\nThe degraded schema registry reported 7593 percent of commit throughput during the failover drill window, which the capacity planning team attributed to an unbounded retry loop; the incident required manual intervention.\nThe intermittent shard coordinator reported 6790 MB/s of error budget burn during the cold-start window, which the identity team attributed to a missing backpressure signal; the incident held within budget.\nThe degraded token bucket reported 2903 percent of eviction rate during the maintenance window, which the billing integrity team attributed to an unbounded retry loop; the incident was absorbed by the retry path.\nThe saturated ingest buffer reported 1590 requests per second of checkpoint duration during the failover drill window, which the capacity planning team attributed to a partial network partition; the incident cleared without action.\nThe review board filed this observation under INC-58BC9A22 and referred it to the standing working group.\n",
+          "type": "function_call_output"
+        },
+        {
+          "content": [
+            {
+              "text": "Read the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "instructions": "You are Claude Code, Anthropic's official CLI for Claude.\n\n<env>\nWorking directory: /repo\nPlatform: darwin\nToday's date: 2026-08-13\n</env>\nAnswer with the fewest words possible.\n\nPrefer terse answers.",
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "summary": "auto"
+      },
+      "store": false,
+      "tools": [
+        {
+          "description": "Read a file from the filesystem.",
+          "name": "Read",
+          "parameters": {
+            "properties": {
+              "file_path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "file_path"
+            ],
+            "type": "object"
+          },
+          "strict": false,
+          "type": "function"
+        },
+        {
+          "description": "Search the knowledge base.",
+          "name": "mcp__dial-knowledge-base__search_documents_by_semantic__7bc2a2fa",
+          "parameters": {
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "type": "object"
+          },
+          "strict": false,
+          "type": "function"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

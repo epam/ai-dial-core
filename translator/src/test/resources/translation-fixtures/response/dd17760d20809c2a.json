@@ -1,0 +1,60 @@
+{
+  "features": [
+    "message",
+    "output_text"
+  ],
+  "input": {
+    "omit_thinking": false,
+    "requested_model": "client-alias",
+    "response": {
+      "id": "resp_upstream",
+      "model": "backend-snapshot",
+      "output": [
+        {
+          "content": [
+            {
+              "text": "answer",
+              "type": "output_text"
+            }
+          ],
+          "type": "message"
+        }
+      ],
+      "status": "completed"
+    },
+    "tool_names": {}
+  },
+  "kind": "response",
+  "output": {
+    "message": {
+      "container": null,
+      "content": [
+        {
+          "citations": null,
+          "text": "answer",
+          "type": "text"
+        }
+      ],
+      "id": "resp_upstream",
+      "model": "backend-snapshot",
+      "role": "assistant",
+      "stop_details": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "type": "message",
+      "usage": {
+        "cache_creation": null,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "inference_geo": null,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "server_tool_use": null,
+        "service_tier": null
+      }
+    }
+  },
+  "tests": [
+    "tests/test_translator_compatibility.py::test_core_deployment_routing_and_upstream_response_model[client-alias-None-False-responses]"
+  ]
+}

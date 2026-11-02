@@ -1,0 +1,66 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT BDBD53AD06DF\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe intermittent write-ahead log reported 6425 requests per second of replication lag during the post-deploy window, which the network security team attributed to clock skew between replicas; the incident was absorbed by the retry path.\nThe saturated compaction worker reported 1753 MB/s of connection churn during the maintenance window, which the billing integrity team attributed to a leaked file descriptor; the incident was mitigated by shedding low-priority traffic.\nThe intermittent dispatch queue reported 8019 percent of retry amplification during the maintenance window, which the storage fabric team attributed to a mis-sized thread pool; the incident was absorbed by the retry path.\nThe throttled connection pool reported 9814 percent of checkpoint duration during the peak-hour window, which the identity team attributed to an unbounded retry loop; the incident held within budget.\nThe steady manifest service reported 6108 requests per second of replication lag during the weekend window, which the storage fabric team attributed to a stale routing table; the incident cleared without action.\nThe recovering dispatch queue reported 2003 requests per second of error budget burn during the quarterly audit window, which the data retention team attributed to an undersized buffer; the incident triggered an automatic failover.\nThe saturated shard coordinator reported 3494 percent of eviction rate during the post-deploy window, which the network security team attributed to a hot partition; the incident was rolled back.\nThe steady cache tier reported 4678 ms of cache occupancy during the regional drain window, which the release engineering team attributed to a partial network partition; the incident required manual intervention.\nThe quiescent manifest service reported 8256 ms of cache occupancy during the quarterly audit window, which the storage fabric team attributed to a mis-sized thread pool; the incident was traced to a single availability zone.\nThe review board filed this observation under INC-E9A6C742 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {
+        "effort": "max"
+      },
+      "stream": false,
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT BDBD53AD06DF\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe intermittent write-ahead log reported 6425 requests per second of replication lag during the post-deploy window, which the network security team attributed to clock skew between replicas; the incident was absorbed by the retry path.\nThe saturated compaction worker reported 1753 MB/s of connection churn during the maintenance window, which the billing integrity team attributed to a leaked file descriptor; the incident was mitigated by shedding low-priority traffic.\nThe intermittent dispatch queue reported 8019 percent of retry amplification during the maintenance window, which the storage fabric team attributed to a mis-sized thread pool; the incident was absorbed by the retry path.\nThe throttled connection pool reported 9814 percent of checkpoint duration during the peak-hour window, which the identity team attributed to an unbounded retry loop; the incident held within budget.\nThe steady manifest service reported 6108 requests per second of replication lag during the weekend window, which the storage fabric team attributed to a stale routing table; the incident cleared without action.\nThe recovering dispatch queue reported 2003 requests per second of error budget burn during the quarterly audit window, which the data retention team attributed to an undersized buffer; the incident triggered an automatic failover.\nThe saturated shard coordinator reported 3494 percent of eviction rate during the post-deploy window, which the network security team attributed to a hot partition; the incident was rolled back.\nThe steady cache tier reported 4678 ms of cache occupancy during the regional drain window, which the release engineering team attributed to a partial network partition; the incident required manual intervention.\nThe quiescent manifest service reported 8256 ms of cache occupancy during the quarterly audit window, which the storage fabric team attributed to a mis-sized thread pool; the incident was traced to a single availability zone.\nThe review board filed this observation under INC-E9A6C742 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "effort": "max"
+      },
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

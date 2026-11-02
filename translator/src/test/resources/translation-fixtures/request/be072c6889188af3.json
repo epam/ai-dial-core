@@ -1,0 +1,50 @@
+{
+  "features": [
+    "count_tokens",
+    "field:compaction",
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "summarize"
+  ],
+  "input": {
+    "for_count_tokens": true,
+    "model": "gpt-5.5",
+    "request": {
+      "compaction": {
+        "type": "summarize"
+      },
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": "summarize us",
+          "role": "user"
+        }
+      ],
+      "model": "gpt-5.5"
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "input": [
+        {
+          "content": [
+            {
+              "text": "summarize us",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "model": "gpt-5.5"
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_responses_app.py::test_count_tokens_ignores_compaction_as_anthropic_does"
+  ]
+}

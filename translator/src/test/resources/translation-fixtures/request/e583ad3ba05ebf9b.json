@@ -1,0 +1,54 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:stream"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-4.1",
+    "request": {
+      "max_tokens": 1024,
+      "messages": [
+        {
+          "content": "hi",
+          "role": "user"
+        }
+      ],
+      "model": "gpt-4.1",
+      "stream": true
+    },
+    "tool_names": {}
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "hi",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 1024,
+      "model": "gpt-4.1",
+      "store": false
+    },
+    "tool_names": {}
+  },
+  "tests": [
+    "tests/test_stream_disconnect.py::test_upstream_closed_when_client_leaves[responses-2.3]",
+    "tests/test_stream_disconnect.py::test_upstream_closed_when_client_leaves[responses-2.4]",
+    "tests/test_translation_trace.py::test_responses_upstream_rejection_keeps_partial_trace[True]",
+    "tests/test_translation_trace.py::test_responses_stream_error_is_traced"
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:tools",
+    "object"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": "hi",
+          "role": "user"
+        }
+      ],
+      "tools": [
+        {
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "hi",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false,
+      "tools": [
+        {
+          "name": null,
+          "parameters": {
+            "type": "object"
+          },
+          "strict": false,
+          "type": "function"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_custom_tool_without_a_name_is_forwarded_for_the_upstream_to_judge"
+  ]
+}

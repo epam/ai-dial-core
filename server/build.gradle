@@ -1,6 +1,7 @@
 dependencies {
     // Project dependencies (internal modules)
     implementation project(':config')
+    implementation project(':translator')
     implementation project(':credentials')
     implementation project(':storage')
     implementation project(':openapi-annotations')

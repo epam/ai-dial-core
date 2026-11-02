@@ -1,0 +1,43 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "thinking"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": [
+            {
+              "signature": "native-Claude-signature",
+              "thinking": "not trusted",
+              "type": "thinking"
+            }
+          ],
+          "role": "assistant"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_reasoning_replay.py::test_foreign_empty_and_malformed_signatures_are_not_replayed[native-Claude-signature-signature]"
+  ]
+}

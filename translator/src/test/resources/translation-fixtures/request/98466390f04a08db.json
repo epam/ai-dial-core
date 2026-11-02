@@ -1,0 +1,49 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 1,
+      "messages": [
+        {
+          "content": "summarize us",
+          "role": "user"
+        }
+      ],
+      "model": "gpt-5.5"
+    },
+    "tool_names": {}
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "summarize us",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 16,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": {}
+  },
+  "tests": [
+    "tests/test_responses_app.py::test_one_token_probe_reaches_a_responses_upstream"
+  ]
+}

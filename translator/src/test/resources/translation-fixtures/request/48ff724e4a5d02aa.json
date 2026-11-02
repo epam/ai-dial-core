@@ -1,0 +1,61 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 6C39B2B25D9D\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe steady connection pool reported 7512 operations of eviction rate during the peak-hour window, which the billing integrity team attributed to an undersized buffer; the incident held within budget.\nThe recovering index builder reported 9254 percent of eviction rate during the quarterly audit window, which the storage fabric team attributed to a stale routing table; the incident was mitigated by shedding low-priority traffic.\nThe oversubscribed write-ahead log reported 1616 ms of connection churn during the failover drill window, which the platform reliability team attributed to clock skew between replicas; the incident cleared without action.\nThe degraded manifest service reported 2882 operations of queue depth during the weekend window, which the network security team attributed to an unbounded retry loop; the incident was rolled back.\nThe steady cache tier reported 3147 MB/s of eviction rate during the quarterly audit window, which the capacity planning team attributed to a leaked file descriptor; the incident was rolled back.\nThe throttled checkpoint store reported 1605 MB/s of eviction rate during the cold-start window, which the data retention team attributed to a mis-sized thread pool; the incident triggered an automatic failover.\nThe saturated manifest service reported 9201 ms of replication lag during the regional drain window, which the edge routing team attributed to an unbounded retry loop; the incident was traced to a single availability zone.\nThe steady manifest service reported 1819 requests per second of commit throughput during the cold-start window, which the ingest team attributed to an expired credential; the incident cleared without action.\nThe degraded quota ledger reported 566 requests per second of retry amplification during the cold-start window, which the storage fabric team attributed to clock skew between replicas; the incident triggered an automatic failover.\nThe review board filed this observation under INC-37C806A1 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {},
+      "stream": false,
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 6C39B2B25D9D\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe steady connection pool reported 7512 operations of eviction rate during the peak-hour window, which the billing integrity team attributed to an undersized buffer; the incident held within budget.\nThe recovering index builder reported 9254 percent of eviction rate during the quarterly audit window, which the storage fabric team attributed to a stale routing table; the incident was mitigated by shedding low-priority traffic.\nThe oversubscribed write-ahead log reported 1616 ms of connection churn during the failover drill window, which the platform reliability team attributed to clock skew between replicas; the incident cleared without action.\nThe degraded manifest service reported 2882 operations of queue depth during the weekend window, which the network security team attributed to an unbounded retry loop; the incident was rolled back.\nThe steady cache tier reported 3147 MB/s of eviction rate during the quarterly audit window, which the capacity planning team attributed to a leaked file descriptor; the incident was rolled back.\nThe throttled checkpoint store reported 1605 MB/s of eviction rate during the cold-start window, which the data retention team attributed to a mis-sized thread pool; the incident triggered an automatic failover.\nThe saturated manifest service reported 9201 ms of replication lag during the regional drain window, which the edge routing team attributed to an unbounded retry loop; the incident was traced to a single availability zone.\nThe steady manifest service reported 1819 requests per second of commit throughput during the cold-start window, which the ingest team attributed to an expired credential; the incident cleared without action.\nThe degraded quota ledger reported 566 requests per second of retry amplification during the cold-start window, which the storage fabric team attributed to clock skew between replicas; the incident triggered an automatic failover.\nThe review board filed this observation under INC-37C806A1 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

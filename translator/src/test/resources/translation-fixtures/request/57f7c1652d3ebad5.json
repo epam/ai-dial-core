@@ -1,0 +1,54 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:stream"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "routed",
+    "request": {
+      "max_tokens": 20,
+      "messages": [
+        {
+          "content": "fixture",
+          "role": "user"
+        }
+      ],
+      "model": "client-alias",
+      "stream": true
+    },
+    "tool_names": {}
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "fixture",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 20,
+      "model": "routed",
+      "store": false
+    },
+    "tool_names": {}
+  },
+  "tests": [
+    "tests/test_manual_stream_fixture.py::test_manual_fixture_runs_through_the_real_translator[success-responses]",
+    "tests/test_manual_stream_fixture.py::test_manual_fixture_runs_through_the_real_translator[empty-thinking-responses]",
+    "tests/test_manual_stream_fixture.py::test_manual_fixture_runs_through_the_real_translator[error-responses]",
+    "tests/test_manual_stream_fixture.py::test_manual_fixture_runs_through_the_real_translator[truncated-responses]"
+  ]
+}

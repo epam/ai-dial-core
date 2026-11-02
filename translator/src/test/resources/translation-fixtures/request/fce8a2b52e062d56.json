@@ -1,0 +1,53 @@
+{
+  "features": [
+    "count_tokens",
+    "field:max_tokens",
+    "field:messages",
+    "field:metadata",
+    "field:service_tier",
+    "field:temperature",
+    "field:top_p"
+  ],
+  "input": {
+    "for_count_tokens": true,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": "hi",
+          "role": "user"
+        }
+      ],
+      "metadata": {
+        "user_id": "u1"
+      },
+      "service_tier": "auto",
+      "temperature": 0.5,
+      "top_p": 0.9
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "input": [
+        {
+          "content": [
+            {
+              "text": "hi",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "model": "gpt-5.5"
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_count_tokens_omits_generation_only_fields[100]"
+  ]
+}

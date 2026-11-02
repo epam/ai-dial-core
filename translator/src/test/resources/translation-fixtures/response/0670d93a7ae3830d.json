@@ -1,0 +1,70 @@
+{
+  "features": [
+    "function_call"
+  ],
+  "input": {
+    "omit_thinking": false,
+    "requested_model": "gpt-5.5",
+    "response": {
+      "id": "resp_123",
+      "model": "gpt-5.5",
+      "object": "response",
+      "output": [
+        {
+          "arguments": "{}",
+          "call_id": "call_abc",
+          "id": "fc_1",
+          "name": "mcp__aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa__bbbbbbbb_aaa2c6ff",
+          "type": "function_call"
+        }
+      ],
+      "status": "completed",
+      "usage": {
+        "input_tokens": 12,
+        "input_tokens_details": {
+          "cached_tokens": 4
+        },
+        "output_tokens": 7,
+        "total_tokens": 19
+      }
+    },
+    "tool_names": {
+      "mcp__aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa__bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "mcp__aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa__bbbbbbbb_aaa2c6ff"
+    }
+  },
+  "kind": "response",
+  "output": {
+    "message": {
+      "container": null,
+      "content": [
+        {
+          "caller": null,
+          "id": "call_abc",
+          "input": {},
+          "name": "mcp__aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa__bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "type": "tool_use"
+        }
+      ],
+      "id": "resp_123",
+      "model": "gpt-5.5",
+      "role": "assistant",
+      "stop_details": null,
+      "stop_reason": "tool_use",
+      "stop_sequence": null,
+      "type": "message",
+      "usage": {
+        "cache_creation": null,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 4,
+        "inference_geo": null,
+        "input_tokens": 8,
+        "output_tokens": 7,
+        "server_tool_use": null,
+        "service_tier": null
+      }
+    }
+  },
+  "tests": [
+    "tests/test_from_responses.py::test_an_aliased_tool_name_is_restored"
+  ]
+}

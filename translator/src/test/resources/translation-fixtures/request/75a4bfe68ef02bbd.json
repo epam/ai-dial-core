@@ -1,0 +1,83 @@
+{
+  "features": [
+    "approximate",
+    "field:max_tokens",
+    "field:messages",
+    "field:tools",
+    "web_search_20250305"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": "hi",
+          "role": "user"
+        }
+      ],
+      "tools": [
+        {
+          "allowed_domains": [
+            "docs.python.org"
+          ],
+          "max_uses": 5,
+          "name": "web_search",
+          "type": "web_search_20250305",
+          "user_location": {
+            "city": "Kyiv",
+            "country": "UA",
+            "timezone": "Europe/Kyiv",
+            "type": "approximate"
+          }
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "hi",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 100,
+      "max_tool_calls": 5,
+      "model": "gpt-5.5",
+      "store": false,
+      "tools": [
+        {
+          "filters": {
+            "allowed_domains": [
+              "docs.python.org"
+            ]
+          },
+          "type": "web_search",
+          "user_location": {
+            "city": "Kyiv",
+            "country": "UA",
+            "timezone": "Europe/Kyiv",
+            "type": "approximate"
+          }
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_web_search_options_with_a_counterpart_travel"
+  ]
+}

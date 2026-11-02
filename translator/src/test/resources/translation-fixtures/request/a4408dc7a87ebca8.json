@@ -1,0 +1,61 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 96BC911E580D\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe degraded token bucket reported 1254 percent of replication lag during the failover drill window, which the billing integrity team attributed to a mis-sized thread pool; the incident was rolled back.\nThe quiescent write-ahead log reported 2782 ms of commit throughput during the cold-start window, which the ingest team attributed to a missing backpressure signal; the incident held within budget.\nThe recovering token bucket reported 6517 MB/s of retry amplification during the maintenance window, which the billing integrity team attributed to an unbounded retry loop; the incident was rolled back.\nThe intermittent replica set reported 3413 requests per second of retry amplification during the maintenance window, which the edge routing team attributed to an undersized buffer; the incident held within budget.\nThe intermittent shard coordinator reported 8504 operations of queue depth during the cold-start window, which the storage fabric team attributed to a leaked file descriptor; the incident was traced to a single availability zone.\nThe saturated cache tier reported 6782 requests per second of eviction rate during the overnight window, which the storage fabric team attributed to an expired credential; the incident cleared without action.\nThe recovering quota ledger reported 9576 requests per second of eviction rate during the post-deploy window, which the platform reliability team attributed to a partial network partition; the incident cleared without action.\nThe review board filed this observation under INC-34ABBE92 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {},
+      "stream": false,
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 96BC911E580D\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe degraded token bucket reported 1254 percent of replication lag during the failover drill window, which the billing integrity team attributed to a mis-sized thread pool; the incident was rolled back.\nThe quiescent write-ahead log reported 2782 ms of commit throughput during the cold-start window, which the ingest team attributed to a missing backpressure signal; the incident held within budget.\nThe recovering token bucket reported 6517 MB/s of retry amplification during the maintenance window, which the billing integrity team attributed to an unbounded retry loop; the incident was rolled back.\nThe intermittent replica set reported 3413 requests per second of retry amplification during the maintenance window, which the edge routing team attributed to an undersized buffer; the incident held within budget.\nThe intermittent shard coordinator reported 8504 operations of queue depth during the cold-start window, which the storage fabric team attributed to a leaked file descriptor; the incident was traced to a single availability zone.\nThe saturated cache tier reported 6782 requests per second of eviction rate during the overnight window, which the storage fabric team attributed to an expired credential; the incident cleared without action.\nThe recovering quota ledger reported 9576 requests per second of eviction rate during the post-deploy window, which the platform reliability team attributed to a partial network partition; the incident cleared without action.\nThe review board filed this observation under INC-34ABBE92 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

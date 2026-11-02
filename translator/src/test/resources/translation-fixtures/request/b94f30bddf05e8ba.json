@@ -1,0 +1,213 @@
+{
+  "features": [
+    "adaptive",
+    "ephemeral",
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:system",
+    "field:thinking",
+    "field:tools",
+    "object",
+    "string",
+    "text",
+    "tool_result",
+    "tool_use"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": "Find the incident code in the operations knowledge base.",
+          "role": "user"
+        },
+        {
+          "content": [
+            {
+              "text": "Searching the knowledge base.",
+              "type": "text"
+            },
+            {
+              "id": "toolu_01SEARCH",
+              "input": {
+                "query": "incident code"
+              },
+              "name": "mcp__dial-knowledge-base__search_documents_by_semantic_similarity_v2",
+              "type": "tool_use"
+            }
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": [
+            {
+              "content": [
+                {
+                  "text": "FIELD REPORT 2FE6C7FF70B7\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe degraded manifest service reported 458 operations of replication lag during the post-deploy window, which the query planning team attributed to a mis-sized thread pool; the incident was absorbed by the retry path.\nThe degraded cache tier reported 5644 requests per second of cache occupancy during the overnight window, which the release engineering team attributed to an unindexed predicate; the incident was traced to a single availability zone.\nThe saturated replica set reported 8408 percent of error budget burn during the peak-hour window, which the network security team attributed to an unindexed predicate; the incident required manual intervention.\nThe quiescent ingest buffer reported 948 requests per second of p99 latency during the weekend window, which the network security team attributed to a partial network partition; the incident cleared without action.\nThe oversubscribed checkpoint store reported 5686 percent of queue depth during the overnight window, which the identity team attributed to a stale routing table; the incident was absorbed by the retry path.\nThe intermittent manifest service reported 1422 operations of p99 latency during the cold-start window, which the observability team attributed to an unbounded retry loop; the incident held within budget.\nThe intermittent token bucket reported 1285 MB/s of commit throughput during the post-deploy window, which the edge routing team attributed to an unbounded retry loop; the incident triggered an automatic failover.\nThe backlogged token bucket reported 5255 requests per second of cache occupancy during the weekend window, which the edge routing team attributed to a missing backpressure signal; the incident was rolled back.\nThe review board filed this observation under INC-A53DD5C8 and referred it to the standing working group.\n",
+                  "type": "text"
+                }
+              ],
+              "tool_use_id": "toolu_01SEARCH",
+              "type": "tool_result"
+            },
+            {
+              "cache_control": {
+                "type": "ephemeral"
+              },
+              "text": "Read the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {},
+      "stream": false,
+      "system": [
+        {
+          "text": "You are Claude Code, Anthropic's official CLI for Claude.",
+          "type": "text"
+        },
+        {
+          "text": "<env>\nWorking directory: /repo\nPlatform: darwin\nToday's date: 2026-08-13\n</env>\nAnswer with the fewest words possible.",
+          "type": "text"
+        }
+      ],
+      "thinking": {
+        "type": "adaptive"
+      },
+      "tools": [
+        {
+          "description": "Read a file from the filesystem.",
+          "input_schema": {
+            "properties": {
+              "file_path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "file_path"
+            ],
+            "type": "object"
+          },
+          "name": "Read"
+        },
+        {
+          "description": "Search the knowledge base.",
+          "input_schema": {
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "type": "object"
+          },
+          "name": "mcp__dial-knowledge-base__search_documents_by_semantic_similarity_v2"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "Find the incident code in the operations knowledge base.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        },
+        {
+          "content": "Searching the knowledge base.",
+          "role": "assistant",
+          "type": "message"
+        },
+        {
+          "arguments": "{\"query\": \"incident code\"}",
+          "call_id": "toolu_01SEARCH",
+          "name": "mcp__dial-knowledge-base__search_documents_by_semantic__7bc2a2fa",
+          "type": "function_call"
+        },
+        {
+          "call_id": "toolu_01SEARCH",
+          "output": "FIELD REPORT 2FE6C7FF70B7\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe degraded manifest service reported 458 operations of replication lag during the post-deploy window, which the query planning team attributed to a mis-sized thread pool; the incident was absorbed by the retry path.\nThe degraded cache tier reported 5644 requests per second of cache occupancy during the overnight window, which the release engineering team attributed to an unindexed predicate; the incident was traced to a single availability zone.\nThe saturated replica set reported 8408 percent of error budget burn during the peak-hour window, which the network security team attributed to an unindexed predicate; the incident required manual intervention.\nThe quiescent ingest buffer reported 948 requests per second of p99 latency during the weekend window, which the network security team attributed to a partial network partition; the incident cleared without action.\nThe oversubscribed checkpoint store reported 5686 percent of queue depth during the overnight window, which the identity team attributed to a stale routing table; the incident was absorbed by the retry path.\nThe intermittent manifest service reported 1422 operations of p99 latency during the cold-start window, which the observability team attributed to an unbounded retry loop; the incident held within budget.\nThe intermittent token bucket reported 1285 MB/s of commit throughput during the post-deploy window, which the edge routing team attributed to an unbounded retry loop; the incident triggered an automatic failover.\nThe backlogged token bucket reported 5255 requests per second of cache occupancy during the weekend window, which the edge routing team attributed to a missing backpressure signal; the incident was rolled back.\nThe review board filed this observation under INC-A53DD5C8 and referred it to the standing working group.\n",
+          "type": "function_call_output"
+        },
+        {
+          "content": [
+            {
+              "text": "Read the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "instructions": "You are Claude Code, Anthropic's official CLI for Claude.\n\n<env>\nWorking directory: /repo\nPlatform: darwin\nToday's date: 2026-08-13\n</env>\nAnswer with the fewest words possible.",
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "summary": "auto"
+      },
+      "store": false,
+      "tools": [
+        {
+          "description": "Read a file from the filesystem.",
+          "name": "Read",
+          "parameters": {
+            "properties": {
+              "file_path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "file_path"
+            ],
+            "type": "object"
+          },
+          "strict": false,
+          "type": "function"
+        },
+        {
+          "description": "Search the knowledge base.",
+          "name": "mcp__dial-knowledge-base__search_documents_by_semantic__7bc2a2fa",
+          "parameters": {
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "type": "object"
+          },
+          "strict": false,
+          "type": "function"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

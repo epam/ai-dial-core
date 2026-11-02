@@ -1,0 +1,84 @@
+{
+  "features": [
+    "bash_20250124",
+    "field:max_tokens",
+    "field:messages",
+    "field:tools",
+    "object",
+    "web_search_20250305"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": "hi",
+          "role": "user"
+        }
+      ],
+      "tools": [
+        {
+          "input_schema": {
+            "type": "object"
+          },
+          "name": "Read"
+        },
+        {
+          "name": "bash",
+          "type": "bash_20250124"
+        },
+        {
+          "name": "web_search",
+          "type": "web_search_20250305"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "hi",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false,
+      "tools": [
+        {
+          "name": "Read",
+          "parameters": {
+            "type": "object"
+          },
+          "strict": false,
+          "type": "function"
+        },
+        {
+          "name": "bash",
+          "type": "bash_20250124"
+        },
+        {
+          "type": "web_search"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_every_tool_is_kept_in_order"
+  ]
+}

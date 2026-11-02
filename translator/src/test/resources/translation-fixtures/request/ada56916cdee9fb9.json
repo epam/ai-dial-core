@@ -1,0 +1,69 @@
+{
+  "features": [
+    "ephemeral",
+    "field:cache_control",
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "cache_control": {
+        "type": "ephemeral"
+      },
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "cache_control": {
+                "type": "ephemeral"
+              },
+              "text": "FIELD REPORT C814FD465244\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe backlogged schema registry reported 3298 ms of commit throughput during the quarterly audit window, which the storage fabric team attributed to an unbounded retry loop; the incident was rolled back.\nThe oversubscribed compaction worker reported 5904 percent of queue depth during the cold-start window, which the storage fabric team attributed to an unbounded retry loop; the incident required manual intervention.\nThe oversubscribed compaction worker reported 274 MB/s of commit throughput during the failover drill window, which the release engineering team attributed to a mis-sized thread pool; the incident triggered an automatic failover.\nThe recovering checkpoint store reported 4844 percent of connection churn during the post-deploy window, which the network security team attributed to a missing backpressure signal; the incident cleared without action.\nThe oversubscribed manifest service reported 4628 MB/s of checkpoint duration during the regional drain window, which the platform reliability team attributed to a stale routing table; the incident triggered an automatic failover.\nThe oversubscribed connection pool reported 6907 operations of error budget burn during the peak-hour window, which the platform reliability team attributed to a hot partition; the incident was traced to a single availability zone.\nThe healthy manifest service reported 3563 ms of checkpoint duration during the maintenance window, which the edge routing team attributed to a missing backpressure signal; the incident was absorbed by the retry path.\nThe saturated write-ahead log reported 8213 MB/s of error budget burn during the regional drain window, which the platform reliability team attributed to a stale routing table; the incident was mitigated by shedding low-priority traffic.\nThe backlogged token bucket reported 6016 MB/s of checkpoint duration during the cold-start window, which the platform reliability team attributed to a missing backpressure signal; the incident was traced to a single availability zone.\nThe review board filed this observation under INC-2BF1EF72 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {},
+      "stream": false,
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT C814FD465244\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe backlogged schema registry reported 3298 ms of commit throughput during the quarterly audit window, which the storage fabric team attributed to an unbounded retry loop; the incident was rolled back.\nThe oversubscribed compaction worker reported 5904 percent of queue depth during the cold-start window, which the storage fabric team attributed to an unbounded retry loop; the incident required manual intervention.\nThe oversubscribed compaction worker reported 274 MB/s of commit throughput during the failover drill window, which the release engineering team attributed to a mis-sized thread pool; the incident triggered an automatic failover.\nThe recovering checkpoint store reported 4844 percent of connection churn during the post-deploy window, which the network security team attributed to a missing backpressure signal; the incident cleared without action.\nThe oversubscribed manifest service reported 4628 MB/s of checkpoint duration during the regional drain window, which the platform reliability team attributed to a stale routing table; the incident triggered an automatic failover.\nThe oversubscribed connection pool reported 6907 operations of error budget burn during the peak-hour window, which the platform reliability team attributed to a hot partition; the incident was traced to a single availability zone.\nThe healthy manifest service reported 3563 ms of checkpoint duration during the maintenance window, which the edge routing team attributed to a missing backpressure signal; the incident was absorbed by the retry path.\nThe saturated write-ahead log reported 8213 MB/s of error budget burn during the regional drain window, which the platform reliability team attributed to a stale routing table; the incident was mitigated by shedding low-priority traffic.\nThe backlogged token bucket reported 6016 MB/s of checkpoint duration during the cold-start window, which the platform reliability team attributed to a missing backpressure signal; the incident was traced to a single availability zone.\nThe review board filed this observation under INC-2BF1EF72 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

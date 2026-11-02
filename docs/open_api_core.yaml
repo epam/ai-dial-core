@@ -160,7 +160,7 @@ paths:
               schema:
                 type: string
             anthropic-ratelimit-unified-status:
-              description: "DIAL spend cap status before this request: `allowed`, or `allowed_warning` past 75%. Sent only when the caller has a day/week/month cost limit; the upstream's own `anthropic-ratelimit-*` headers are removed"
+              description: "DIAL spend cap status before this request: `allowed`, or `allowed_warning` from 75%. Sent only when the caller has a day/week/month cost limit; the upstream's own `anthropic-ratelimit-*` headers are removed"
               required: false
               schema:
                 type: string
@@ -222,6 +222,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: "Replayed encrypted reasoning names an upstream the model no longer has. A model served by a builtin translator answers with the Anthropic error body (`AnthropicErrorData`: `{\"type\":\"error\",\"error\":{\"type\":...,\"message\":...}}`)"
         "415":
           description: Unsupported Media Type
           content:
@@ -252,6 +254,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "504":
+          description: "The upstream timed out. A model served by a builtin translator answers with the Anthropic error body (`AnthropicErrorData`: `{\"type\":\"error\",\"error\":{\"type\":...,\"message\":...}}`)"
   /anthropic/v1/messages/count_tokens:
     post:
       tags:
@@ -16516,6 +16520,10 @@ components:
           type: string
         priority:
           type: integer
+    BuiltinTranslator:
+      type: string
+      enum:
+      - anthropicMessagesToOpenaiResponses
     CacheBreakpoint:
       type: object
       properties:
@@ -20357,6 +20365,8 @@ components:
           $ref: "#/components/schemas/InterfaceType"
         out:
           $ref: "#/components/schemas/InterfaceType"
+        builtin:
+          $ref: "#/components/schemas/BuiltinTranslator"
     TranslatorRef:
       type: object
       properties:

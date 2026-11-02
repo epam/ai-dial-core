@@ -19,6 +19,7 @@ export GPR_PASSWORD=<github_token>
 
 # Run tests for a specific module
 ./gradlew :server:test
+./gradlew :translator:test
 
 # Run a single test class
 ./gradlew :server:test --tests "com.epam.aidial.core.server.ResourceApiTest"
@@ -47,6 +48,7 @@ AI DIAL Core is an **HTTP reverse proxy / API gateway** for LLMs built on **Java
 | `storage`              | `com.epam.aidial.core.storage`              | Blob storage abstraction via Apache JClouds (S3, GCS, Azure Blob, filesystem), Redis-backed resource service, resource descriptors, locking                                                                 |
 | `credentials`          | `com.epam.aidial.core.credentials`          | OAuth2 token management, AES credential encryption, KMS integration (AWS/Azure/GCP)                                                                                                                         |
 | `server`               | `com.epam.aidial.core.server`               | Entry point (`AiDial.java`), HTTP proxy engine (`Proxy.java`), all controllers, services, security, rate limiting, upstream load balancing, telemetry                                                       |
+| `translator`           | `com.epam.aidial.core.translator`           | Pure Java and Jackson translation between Anthropic Messages and OpenAI Responses for builtin translators, parity-tested against the Python translator's recorded fixtures                                  |
 | `openapi-annotations`  | `com.epam.aidial.core.openapi.annotations`  | Custom annotations for describing OpenAPI operations, schemas, parameters, responses, headers, extensions, and reusable response profiles.                                                                  |
 | `openapi-generator`    | `com.epam.aidial.core.openapi`              | Generates and validates the OpenAPI 3.0 specification from controller annotations, builds schemas and responses, assembles the specification, and merges it with the manually maintained OpenAPI document.  |
 
@@ -116,6 +118,7 @@ Gradle 8.10 needs a JDK 21 as `JAVA_HOME`; a newer default JDK fails with "Unsup
 export JAVA_HOME="<path to a JDK 21>"
 ./gradlew checkstyleMain checkstyleTest
 ./gradlew :server:test --tests "com.epam.aidial.core.server.SomeApiTest"     # the classes the change touches
+./gradlew :translator:test                                                  # when the translator module changes
 npx -y @fission-ai/openspec@1.14.3 validate --all --strict
 ```
 

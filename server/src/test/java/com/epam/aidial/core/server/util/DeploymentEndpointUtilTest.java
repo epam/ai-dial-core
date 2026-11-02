@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.BuiltinTranslator;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceMode;
@@ -193,6 +194,40 @@ public class DeploymentEndpointUtilTest {
         // declared without a mode, and served by the legacy endpoint, are both pass-through
         assertEquals(InterfaceMode.PASSTHROUGH, resolveMode(model, OPENAI_RESPONSES));
         assertEquals(InterfaceMode.PASSTHROUGH, resolveMode(model, OPENAI_CHAT_COMPLETIONS));
+    }
+
+    @Test
+    void builtinTranslatorIsResolvedForModelOnly() {
+        Translator builtin = new Translator(ANTHROPIC_MESSAGES, OPENAI_RESPONSES, null,
+                BuiltinTranslator.ANTHROPIC_MESSAGES_TO_OPENAI_RESPONSES);
+        Map<String, Translator> translators = Map.of("builtin", builtin,
+                "http", new Translator(ANTHROPIC_MESSAGES, OPENAI_RESPONSES, "http://translator"));
+        DeploymentInterface viaBuiltin = new DeploymentInterface();
+        viaBuiltin.setMode(InterfaceMode.TRANSLATOR);
+        viaBuiltin.setTranslator(TranslatorRef.named("builtin"));
+        DeploymentInterface viaHttp = new DeploymentInterface();
+        viaHttp.setMode(InterfaceMode.TRANSLATOR);
+        viaHttp.setTranslator(TranslatorRef.named("http"));
+        DeploymentInterface unregistered = new DeploymentInterface();
+        unregistered.setMode(InterfaceMode.TRANSLATOR);
+        unregistered.setTranslator(TranslatorRef.named("missing"));
+        Model model = new Model();
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), viaBuiltin,
+                OPENAI_CHAT_COMPLETIONS.getValue(), viaHttp,
+                OPENAI_EMBEDDINGS.getValue(), unregistered,
+                OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://adapter")));
+        Application application = new Application();
+        application.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), viaBuiltin));
+
+        assertEquals(BuiltinTranslator.ANTHROPIC_MESSAGES_TO_OPENAI_RESPONSES,
+                DeploymentEndpointUtil.resolveBuiltinTranslator(model, ANTHROPIC_MESSAGES, translators));
+        assertNull(DeploymentEndpointUtil.resolveBuiltinTranslator(model, OPENAI_CHAT_COMPLETIONS, translators));
+        assertNull(DeploymentEndpointUtil.resolveBuiltinTranslator(model, OPENAI_EMBEDDINGS, translators));
+        assertNull(DeploymentEndpointUtil.resolveBuiltinTranslator(model, OPENAI_RESPONSES, translators));
+        // an application has no interface of its own to serve the translated request
+        assertNull(DeploymentEndpointUtil.resolveBuiltinTranslator(application, ANTHROPIC_MESSAGES, translators));
+        // a builtin has no url to forward to, so nothing serves the interface it translates
+        assertNull(resolveServingEndpoint(model, ANTHROPIC_MESSAGES, translators));
     }
 
     @Test

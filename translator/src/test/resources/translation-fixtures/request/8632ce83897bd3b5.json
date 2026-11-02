@@ -1,0 +1,147 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:system",
+    "field:tool_choice",
+    "field:tools",
+    "object",
+    "string",
+    "text",
+    "tool"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": "Look up the incident code for the reliability review. FIELD REPORT F3C348D728E1\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe recovering ingest buffer reported 7299 percent of p99 latency during the peak-hour window, which the observability team attributed to a hot partition; the incident held within budget.\nThe overs",
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {},
+      "stream": true,
+      "system": [
+        {
+          "text": "You are Claude Code, Anthropic's official CLI for Claude.",
+          "type": "text"
+        },
+        {
+          "text": "<env>\nWorking directory: /repo\nPlatform: darwin\nToday's date: 2026-08-13\n</env>\nAnswer with the fewest words possible.",
+          "type": "text"
+        }
+      ],
+      "tool_choice": {
+        "name": "mcp__dial-knowledge-base__search_documents_by_semantic_similarity_v2",
+        "type": "tool"
+      },
+      "tools": [
+        {
+          "description": "Read a file from the filesystem.",
+          "input_schema": {
+            "properties": {
+              "file_path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "file_path"
+            ],
+            "type": "object"
+          },
+          "name": "Read"
+        },
+        {
+          "description": "Search the knowledge base.",
+          "input_schema": {
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "type": "object"
+          },
+          "name": "mcp__dial-knowledge-base__search_documents_by_semantic_similarity_v2"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "Look up the incident code for the reliability review. FIELD REPORT F3C348D728E1\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe recovering ingest buffer reported 7299 percent of p99 latency during the peak-hour window, which the observability team attributed to a hot partition; the incident held within budget.\nThe overs",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "instructions": "You are Claude Code, Anthropic's official CLI for Claude.\n\n<env>\nWorking directory: /repo\nPlatform: darwin\nToday's date: 2026-08-13\n</env>\nAnswer with the fewest words possible.",
+      "max_output_tokens": 4000,
+      "model": "model",
+      "store": false,
+      "tool_choice": {
+        "name": "mcp__dial-knowledge-base__search_documents_by_semantic__7bc2a2fa",
+        "type": "function"
+      },
+      "tools": [
+        {
+          "description": "Read a file from the filesystem.",
+          "name": "Read",
+          "parameters": {
+            "properties": {
+              "file_path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "file_path"
+            ],
+            "type": "object"
+          },
+          "strict": false,
+          "type": "function"
+        },
+        {
+          "description": "Search the knowledge base.",
+          "name": "mcp__dial-knowledge-base__search_documents_by_semantic__7bc2a2fa",
+          "parameters": {
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "type": "object"
+          },
+          "strict": false,
+          "type": "function"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

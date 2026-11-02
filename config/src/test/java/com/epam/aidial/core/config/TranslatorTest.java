@@ -48,10 +48,10 @@ public class TranslatorTest {
                 }
                 """;
 
-        // absent, so Jackson refuses the creator property
-        assertThrows(MismatchedInputException.class, () -> MAPPER.readValue(json, Config.class));
+        // neither baseUrl nor builtin, so the constructor refuses it
+        assertThrows(ValueInstantiationException.class, () -> MAPPER.readValue(json, Config.class));
 
-        // present but null, so the constructor refuses it
+        // present but null reads the same
         String explicitNull = json.replace("\"out\": \"openaiResponses\"", "\"out\": \"openaiResponses\", \"baseUrl\": null");
         assertThrows(ValueInstantiationException.class, () -> MAPPER.readValue(explicitNull, Config.class));
     }
@@ -191,6 +191,34 @@ public class TranslatorTest {
         assertEquals("http://some-custom-translator/to-chat-completions", translator.getInline().getBaseUrl());
         // in is implied by the entry the definition sits under
         assertNull(translator.getInline().getIn());
+    }
+
+    @Test
+    void inlineBuiltinTranslatorStaysInline() throws Exception {
+        String json = """
+                {
+                    "interfaces": {
+                        "anthropicMessages": {
+                            "mode": "translator",
+                            "translator": {
+                                "out": "openaiResponses",
+                                "builtin": "anthropicMessagesToOpenaiResponses"
+                            }
+                        }
+                    }
+                }
+                """;
+
+        String written = MAPPER.writeValueAsString(MAPPER.readValue(json, Model.class));
+        Model restored = MAPPER.readValue(written, Model.class);
+
+        TranslatorRef translator = translatorOf(restored);
+        assertNull(translator.getName());
+        assertEquals(OPENAI_RESPONSES, translator.getInline().getOut());
+        assertEquals(BuiltinTranslator.ANTHROPIC_MESSAGES_TO_OPENAI_RESPONSES, translator.getInline().getBuiltin());
+        assertNull(translator.getInline().getBaseUrl());
+        assertTrue(written.contains("\"builtin\":\"anthropicMessagesToOpenaiResponses\""), written);
+        assertFalse(written.contains("baseUrl"), written);
     }
 
     @Test

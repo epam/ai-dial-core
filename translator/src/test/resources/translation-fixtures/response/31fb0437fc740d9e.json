@@ -1,0 +1,42 @@
+{
+  "features": [
+    "error",
+    "invalid_request_error"
+  ],
+  "input": {
+    "omit_thinking": false,
+    "requested_model": "gpt-5.5",
+    "response": {
+      "error": {
+        "code": "invalid_request_error",
+        "message": "This model does not support image inputs",
+        "type": "invalid_request_error"
+      },
+      "id": "resp_123",
+      "model": "gpt-5.5",
+      "object": "response",
+      "output": [],
+      "status": "failed",
+      "usage": {
+        "input_tokens": 12,
+        "input_tokens_details": {
+          "cached_tokens": 4
+        },
+        "output_tokens": 7,
+        "total_tokens": 19
+      }
+    },
+    "tool_names": null
+  },
+  "kind": "response",
+  "output": {
+    "error": {
+      "message": "This model does not support image inputs",
+      "status": 400,
+      "type": "invalid_request_error"
+    }
+  },
+  "tests": [
+    "tests/test_from_responses.py::test_a_failed_status_the_request_caused_is_a_400"
+  ]
+}

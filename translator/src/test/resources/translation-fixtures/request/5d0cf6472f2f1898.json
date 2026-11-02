@@ -1,0 +1,49 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": "calculate",
+          "role": "user"
+        }
+      ],
+      "model": "gpt-5.5"
+    },
+    "tool_names": {}
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "calculate",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false
+    },
+    "tool_names": {}
+  },
+  "tests": [
+    "tests/test_reasoning_replay.py::test_real_sdks_two_turn_replay_through_http[False]"
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "features": [
+    "error",
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT A9F2640CB4A8\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe throttled manifest service reported 6952 ms of p99 latency during the peak-hour window, which the ingest team attributed to a stale routing table; the incident was absorbed by the retry path.\nThe backlogged shard coordinator reported 7945 MB/s of p99 latency during the weekend window, which the identity team attributed to a partial network partition; the incident triggered an automatic failover.\nThe degraded connection pool reported 1802 operations of eviction rate during the weekend window, which the capacity planning team attributed to a partial network partition; the incident triggered an automatic failover.\nThe steady write-ahead log reported 3585 MB/s of replication lag during the overnight window, which the storage fabric team attributed to an expired credential; the incident held within budget.\nThe recovering retry scheduler reported 6221 percent of checkpoint duration during the peak-hour window, which the identity team attributed to a partial network partition; the incident triggered an automatic failover.\nThe healthy token bucket reported 9194 percent of queue depth during the maintenance window, which the storage fabric team attributed to a hot partition; the incident was absorbed by the retry path.\nThe intermittent compaction worker reported 1275 ms of replication lag during the cold-start window, which the query planning team attributed to an unbounded retry loop; the incident cleared without action.\nThe review board filed this observation under INC-7F6BD440 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {
+        "effort": "xmax"
+      },
+      "stream": false,
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "error": {
+      "message": "Unsupported 'output_config.effort': 'xmax'. Expected one of: none, minimal, low, medium, high, xhigh, max",
+      "status": 400,
+      "type": "invalid_request_error"
+    }
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

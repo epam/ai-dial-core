@@ -21,6 +21,16 @@
           "translator": {"out": "openaiChatCompletions", "baseUrl": "http://localhost:4848"}
         }
       }
+    },
+    "claude-builtin": {
+      "type": "chat",
+      "interfaces": {
+        "openaiResponses": {"base_url": "http://localhost:4848"},
+        "anthropicMessages": {
+          "mode": "translator",
+          "translator": {"out": "openaiResponses", "builtin": "anthropicMessagesToOpenaiResponses"}
+        }
+      }
     }
   },
   "keys": {
@@ -33,7 +43,8 @@
         "claude-spend": {},
         "claude-burst": {"minute": "10"},
         "gpt-spend": {},
-        "claude-translated": {"minute": "10"}
+        "claude-translated": {"minute": "10"},
+        "claude-builtin": {}
       },
       "costLimit": {"day": "10", "week": "100", "month": "1000"}
     },

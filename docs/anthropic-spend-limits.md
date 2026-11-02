@@ -47,13 +47,18 @@ A user can have several cost caps (day, week, month). Exactly one is reported:
 Unlimited windows (total is 0 or at least 2^53) are skipped. A user with no cap gets no headers, and the
 usage endpoint returns `{"limits":[]}`. The per-minute cost limit is never reported as a cap.
 
-A model served in translated mode (`"mode": "translator"` on its `anthropicMessages` interface) gets the same
-headers. Its limits are checked and charged by the call the translator makes back to Core, so the outer
+A model whose `anthropicMessages` interface is served by a translator service (`"mode": "translator"` with a
+translator that has a `baseUrl`) gets the same headers. Its limits are checked and charged by the call the translator makes back to Core, so the outer
 request only reads the spend caps. It rejects with the spend-cap 429 below once a cap is already reached,
 and if the spend record can't be read it sends no headers instead of failing closed. Token and request limits
 for such a model are enforced only by the inner call. When the inner call rejects (a token, request or
 per-minute cost limit, or a cap crossed after the outer read), the client gets whatever error the translator
 returns, without `anthropic-ratelimit-unified-*` headers.
+
+A model whose `anthropicMessages` interface uses a builtin translator (`builtin` instead of `baseUrl` in its translator
+entry, see [Builtin translators](dynamic-settings/translators.md#builtin-translators)) makes no call back to Core,
+so its request is checked like a pass-through model's: it gets the spend headers, the spend-cap 429, DIAL's own 429
+for a token or request limit, and the `fetch_error` 429 when the spend record can't be read.
 
 ## Headers on `POST /anthropic/v1/messages`
 
@@ -63,7 +68,7 @@ in the response headers, before the body.
 
 | Header | Value |
 |---|---|
-| `anthropic-ratelimit-unified-status` | `allowed`, or `allowed_warning` once past 75% |
+| `anthropic-ratelimit-unified-status` | `allowed`, or `allowed_warning` from 75% |
 | `anthropic-ratelimit-unified-representative-claim` | always `overage` |
 | `anthropic-ratelimit-unified-overage-status` | same as `-status` |
 | `anthropic-ratelimit-unified-overage-utilization` | used/total, floored to two decimals, at most `0.99` while allowed (e.g. `0.82`) |

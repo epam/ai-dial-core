@@ -1,0 +1,77 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:tool_choice",
+    "field:tools",
+    "object",
+    "tool"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-5.5",
+    "request": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": "hi",
+          "role": "user"
+        }
+      ],
+      "tool_choice": {
+        "name": "web_search",
+        "type": "tool"
+      },
+      "tools": [
+        {
+          "input_schema": {
+            "type": "object"
+          },
+          "name": "web_search"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "hi",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 100,
+      "model": "gpt-5.5",
+      "store": false,
+      "tool_choice": {
+        "name": "web_search",
+        "type": "function"
+      },
+      "tools": [
+        {
+          "name": "web_search",
+          "parameters": {
+            "type": "object"
+          },
+          "strict": false,
+          "type": "function"
+        }
+      ]
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_to_responses.py::test_forcing_a_function_still_names_the_function"
+  ]
+}

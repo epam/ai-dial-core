@@ -1,0 +1,73 @@
+{
+  "features": [
+    "enabled",
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:thinking",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT B98ABC84FD69\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe degraded connection pool reported 2267 ms of cache occupancy during the post-deploy window, which the query planning team attributed to an expired credential; the incident required manual intervention.\nThe recovering checkpoint store reported 579 percent of p99 latency during the post-deploy window, which the capacity planning team attributed to a mis-sized thread pool; the incident was absorbed by the retry path.\nThe intermittent ingest buffer reported 6070 percent of queue depth during the weekend window, which the release engineering team attributed to an unbounded retry loop; the incident required manual intervention.\nThe backlogged quota ledger reported 2313 percent of connection churn during the regional drain window, which the billing integrity team attributed to a missing backpressure signal; the incident triggered an automatic failover.\nThe recovering checkpoint store reported 2100 operations of commit throughput during the quarterly audit window, which the storage fabric team attributed to a leaked file descriptor; the incident cleared without action.\nThe intermittent dispatch queue reported 6119 ms of queue depth during the regional drain window, which the platform reliability team attributed to an undersized buffer; the incident required manual intervention.\nThe recovering shard coordinator reported 5093 MB/s of cache occupancy during the quarterly audit window, which the storage fabric team attributed to an undersized buffer; the incident was traced to a single availability zone.\nThe recovering checkpoint store reported 2739 requests per second of queue depth during the quarterly audit window, which the platform reliability team attributed to a mis-sized thread pool; the incident was rolled back.\nThe review board filed this observation under INC-E833B814 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {
+        "effort": "low"
+      },
+      "stream": false,
+      "thinking": {
+        "budget_tokens": 50000,
+        "type": "enabled"
+      },
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT B98ABC84FD69\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe degraded connection pool reported 2267 ms of cache occupancy during the post-deploy window, which the query planning team attributed to an expired credential; the incident required manual intervention.\nThe recovering checkpoint store reported 579 percent of p99 latency during the post-deploy window, which the capacity planning team attributed to a mis-sized thread pool; the incident was absorbed by the retry path.\nThe intermittent ingest buffer reported 6070 percent of queue depth during the weekend window, which the release engineering team attributed to an unbounded retry loop; the incident required manual intervention.\nThe backlogged quota ledger reported 2313 percent of connection churn during the regional drain window, which the billing integrity team attributed to a missing backpressure signal; the incident triggered an automatic failover.\nThe recovering checkpoint store reported 2100 operations of commit throughput during the quarterly audit window, which the storage fabric team attributed to a leaked file descriptor; the incident cleared without action.\nThe intermittent dispatch queue reported 6119 ms of queue depth during the regional drain window, which the platform reliability team attributed to an undersized buffer; the incident required manual intervention.\nThe recovering shard coordinator reported 5093 MB/s of cache occupancy during the quarterly audit window, which the storage fabric team attributed to an undersized buffer; the incident was traced to a single availability zone.\nThe recovering checkpoint store reported 2739 requests per second of queue depth during the quarterly audit window, which the platform reliability team attributed to a mis-sized thread pool; the incident was rolled back.\nThe review board filed this observation under INC-E833B814 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "effort": "low",
+        "summary": "auto"
+      },
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

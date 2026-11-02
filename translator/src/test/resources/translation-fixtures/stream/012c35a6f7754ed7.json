@@ -1,0 +1,84 @@
+{
+  "features": [
+    "response.output_text.delta"
+  ],
+  "input": {
+    "calls": [
+      {
+        "handle": {
+          "data": {
+            "content_index": 0,
+            "delta": "a",
+            "item_id": "m",
+            "logprobs": [],
+            "output_index": 0,
+            "sequence_number": 1,
+            "type": "response.output_text.delta"
+          },
+          "event_type": "response.output_text.delta"
+        }
+      }
+    ],
+    "omit_thinking": false,
+    "requested_model": "gpt-4.1",
+    "tool_names": {}
+  },
+  "kind": "stream",
+  "output": [
+    [
+      {
+        "data": {
+          "message": {
+            "content": [],
+            "id": "resp_unknown",
+            "model": "gpt-4.1",
+            "role": "assistant",
+            "stop_reason": null,
+            "stop_sequence": null,
+            "type": "message",
+            "usage": {
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            }
+          },
+          "type": "message_start"
+        },
+        "event": "message_start"
+      },
+      {
+        "data": {
+          "type": "ping"
+        },
+        "event": "ping"
+      },
+      {
+        "data": {
+          "content_block": {
+            "text": "",
+            "type": "text"
+          },
+          "index": 0,
+          "type": "content_block_start"
+        },
+        "event": "content_block_start"
+      },
+      {
+        "data": {
+          "delta": {
+            "text": "a",
+            "type": "text_delta"
+          },
+          "index": 0,
+          "type": "content_block_delta"
+        },
+        "event": "content_block_delta"
+      }
+    ]
+  ],
+  "tests": [
+    "tests/test_stream_disconnect.py::test_upstream_closed_when_client_leaves[responses-2.3]",
+    "tests/test_stream_disconnect.py::test_upstream_closed_when_client_leaves[responses-2.4]"
+  ]
+}

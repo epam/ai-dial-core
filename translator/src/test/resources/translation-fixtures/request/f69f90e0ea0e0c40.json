@@ -1,0 +1,54 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:stream",
+    "field:system"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "gpt-4.1",
+    "request": {
+      "max_tokens": 1024,
+      "messages": [
+        {
+          "content": "hi",
+          "role": "user"
+        }
+      ],
+      "model": "gpt-4.1",
+      "stream": false,
+      "system": "be brief"
+    },
+    "tool_names": {}
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "hi",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "instructions": "be brief",
+      "max_output_tokens": 1024,
+      "model": "gpt-4.1",
+      "store": false
+    },
+    "tool_names": {}
+  },
+  "tests": [
+    "tests/test_translation_trace.py::test_responses_records_four_stages[False]"
+  ]
+}

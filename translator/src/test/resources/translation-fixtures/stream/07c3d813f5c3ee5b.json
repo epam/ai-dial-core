@@ -1,0 +1,134 @@
+{
+  "features": [
+    "message",
+    "output_text",
+    "response.created",
+    "response.output_text.delta"
+  ],
+  "input": {
+    "calls": [
+      {
+        "handle": {
+          "data": {
+            "response": {
+              "created_at": 0.0,
+              "id": "resp_fixture",
+              "model": "backend-fixture-snapshot",
+              "object": "response",
+              "output": [
+                {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "text": "fixture answer",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_fixture",
+                  "role": "assistant",
+                  "type": "message"
+                }
+              ],
+              "status": "in_progress",
+              "usage": {
+                "input_tokens": 10,
+                "output_tokens": 2,
+                "total_tokens": 12
+              }
+            },
+            "type": "response.created"
+          },
+          "event_type": "response.created"
+        }
+      },
+      {
+        "handle": {
+          "data": {
+            "content_index": 0,
+            "delta": "fixture answer",
+            "output_index": 1,
+            "type": "response.output_text.delta"
+          },
+          "event_type": "response.output_text.delta"
+        }
+      },
+      {
+        "finalize": {}
+      }
+    ],
+    "omit_thinking": false,
+    "requested_model": "routed",
+    "tool_names": {}
+  },
+  "kind": "stream",
+  "output": [
+    [
+      {
+        "data": {
+          "message": {
+            "content": [],
+            "id": "resp_fixture",
+            "model": "backend-fixture-snapshot",
+            "role": "assistant",
+            "stop_reason": null,
+            "stop_sequence": null,
+            "type": "message",
+            "usage": {
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            }
+          },
+          "type": "message_start"
+        },
+        "event": "message_start"
+      },
+      {
+        "data": {
+          "type": "ping"
+        },
+        "event": "ping"
+      }
+    ],
+    [
+      {
+        "data": {
+          "content_block": {
+            "text": "",
+            "type": "text"
+          },
+          "index": 0,
+          "type": "content_block_start"
+        },
+        "event": "content_block_start"
+      },
+      {
+        "data": {
+          "delta": {
+            "text": "fixture answer",
+            "type": "text_delta"
+          },
+          "index": 0,
+          "type": "content_block_delta"
+        },
+        "event": "content_block_delta"
+      }
+    ],
+    [
+      {
+        "data": {
+          "error": {
+            "message": "The upstream stream ended before the response completed",
+            "type": "api_error"
+          },
+          "type": "error"
+        },
+        "event": "error"
+      }
+    ]
+  ],
+  "tests": [
+    "tests/test_manual_stream_fixture.py::test_manual_fixture_runs_through_the_real_translator[truncated-responses]"
+  ]
+}

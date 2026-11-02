@@ -1,0 +1,66 @@
+{
+  "features": [
+    "field:max_tokens",
+    "field:messages",
+    "field:model",
+    "field:output_config",
+    "field:stream",
+    "field:tools",
+    "text"
+  ],
+  "input": {
+    "for_count_tokens": false,
+    "model": "model",
+    "request": {
+      "max_tokens": 4000,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 48A759996F87\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe degraded checkpoint store reported 1127 requests per second of queue depth during the cold-start window, which the edge routing team attributed to a stale routing table; the incident was mitigated by shedding low-priority traffic.\nThe degraded compaction worker reported 2550 operations of retry amplification during the post-deploy window, which the edge routing team attributed to a mis-sized thread pool; the incident was absorbed by the retry path.\nThe steady index builder reported 6556 percent of error budget burn during the cold-start window, which the data retention team attributed to a missing backpressure signal; the incident required manual intervention.\nThe intermittent shard coordinator reported 3805 MB/s of queue depth during the cold-start window, which the release engineering team attributed to a hot partition; the incident was rolled back.\nThe throttled dispatch queue reported 9601 operations of retry amplification during the cold-start window, which the platform reliability team attributed to a leaked file descriptor; the incident cleared without action.\nThe backlogged index builder reported 2541 MB/s of commit throughput during the cold-start window, which the network security team attributed to a hot partition; the incident was traced to a single availability zone.\nThe degraded checkpoint store reported 5609 requests per second of cache occupancy during the failover drill window, which the data retention team attributed to a hot partition; the incident was mitigated by shedding low-priority traffic.\nThe review board filed this observation under INC-09361CE6 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": "model",
+      "output_config": {
+        "effort": "none"
+      },
+      "stream": false,
+      "tools": []
+    },
+    "tool_names": null
+  },
+  "kind": "request",
+  "output": {
+    "body": {
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "content": [
+            {
+              "text": "FIELD REPORT 48A759996F87\n\nOperational review prepared for the reliability board. Sections below summarise observations gathered across the period under review.\n\n## Section 1 — Throughput and saturation\nThe degraded checkpoint store reported 1127 requests per second of queue depth during the cold-start window, which the edge routing team attributed to a stale routing table; the incident was mitigated by shedding low-priority traffic.\nThe degraded compaction worker reported 2550 operations of retry amplification during the post-deploy window, which the edge routing team attributed to a mis-sized thread pool; the incident was absorbed by the retry path.\nThe steady index builder reported 6556 percent of error budget burn during the cold-start window, which the data retention team attributed to a missing backpressure signal; the incident required manual intervention.\nThe intermittent shard coordinator reported 3805 MB/s of queue depth during the cold-start window, which the release engineering team attributed to a hot partition; the incident was rolled back.\nThe throttled dispatch queue reported 9601 operations of retry amplification during the cold-start window, which the platform reliability team attributed to a leaked file descriptor; the incident cleared without action.\nThe backlogged index builder reported 2541 MB/s of commit throughput during the cold-start window, which the network security team attributed to a hot partition; the incident was traced to a single availability zone.\nThe degraded checkpoint store reported 5609 requests per second of cache occupancy during the failover drill window, which the data retention team attributed to a hot partition; the incident was mitigated by shedding low-priority traffic.\nThe review board filed this observation under INC-09361CE6 and referred it to the standing working group.\n\n\nRead the report above. Reply with only the incident code it contains, in the form INC-XXXXXXXX. No other words.",
+              "type": "input_text"
+            }
+          ],
+          "role": "user",
+          "type": "message"
+        }
+      ],
+      "max_output_tokens": 4000,
+      "model": "model",
+      "reasoning": {
+        "effort": "none"
+      },
+      "store": false
+    },
+    "tool_names": null
+  },
+  "tests": [
+    "tests/test_manual_trace_runner.py::test_responses_matrix_accepts_current_request_shapes"
+  ]
+}

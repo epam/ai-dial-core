@@ -1,0 +1,35 @@
+{
+  "translators": {
+    "builtinResponses": {
+      "in": "anthropicMessages",
+      "out": "openaiResponses",
+      "builtin": "anthropicMessagesToOpenaiResponses"
+    }
+  },
+  "models": {
+    "gpt-builtin-priced": {
+      "type": "chat",
+      "overrideName": "gpt-builtin-priced-upstream",
+      "interfaces": {
+        "openaiResponses": {"base_url": "http://localhost:4848", "features": {"autoCachingSupported": true}},
+        "anthropicMessages": {"mode": "translator", "translator": "builtinResponses", "defaults": {"temperature": 0.3}}
+      },
+      "pricing": {"unit": "token", "prompt": "0.01", "completion": "0.02", "cacheRead": "0.001"},
+      "maxRetryAttempts": 2,
+      "upstreams": [
+        {"responsesEndpoint": "http://upstream-a/v1/responses", "key": "keyA", "id": "up-a"},
+        {"responsesEndpoint": "http://upstream-b/v1/responses", "key": "keyB", "id": "up-b"}
+      ]
+    }
+  },
+  "keys": {
+    "proxyKey1": {"project": "accounting", "role": "metered"}
+  },
+  "roles": {
+    "metered": {
+      "limits": {
+        "gpt-builtin-priced": {"day": "10000000", "requestDay": "1000"}
+      }
+    }
+  }
+}
