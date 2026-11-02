@@ -61,6 +61,19 @@ public class RuleService {
         });
     }
 
+    /**
+     * Removes the rules of the folder and of every folder below it.
+     *
+     * @param folder a folder of the shared space
+     */
+    public void removeRulesUnder(ResourceDescriptor folder) {
+        String prefix = ruleUrl(folder);
+        resources.computeResource(PUBLIC_RULES, body -> {
+            Map<String, List<Rule>> rulesMap = decodeRules(body);
+            return rulesMap.keySet().removeIf(key -> key.startsWith(prefix)) ? encodeRules(rulesMap) : body;
+        });
+    }
+
     public Map<String, List<Rule>> listRules(ResourceDescriptor resource) {
         if (!resource.isFolder() || !resource.isPublic()) {
             throw new IllegalArgumentException("Bad rule url: " + resource.getUrl());
@@ -81,7 +94,6 @@ public class RuleService {
 
         return result;
     }
-
 
     public Set<ResourceDescriptor> getAllowedPublicResources(
             ProxyContext context, Set<ResourceDescriptor> resources) {
@@ -171,7 +183,7 @@ public class RuleService {
         return evaluated;
     }
 
-    private static String ruleUrl(ResourceDescriptor resource) {
+    public static String ruleUrl(ResourceDescriptor resource) {
         String prefix = resource.getType().group();
         return resource.getUrl().substring(prefix.length() + 1);
     }

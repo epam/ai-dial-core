@@ -48,6 +48,8 @@ public class Config {
     private Map<String, Interceptor> interceptors = Map.of();
     // key: translator name, as referenced by interfaces.<type>.translator
     private Map<String, Translator> translators = Map.of();
+    // key: role name; replaces the built-in org unit role of that name, or adds a role
+    private Map<String, OrgUnitRole> orgUnitRoles = Map.of();
 
     // key: path relative to the policies folder, "<costObject>/<name>" or "<name>" for a global policy
     @JsonIgnore
@@ -82,6 +84,8 @@ public class Config {
 
     // deployment-wide anchor for the DAY/WEEK/MONTH fixed calendar rate-limit windows
     private RateLimitSchedule rateLimitSchedule = new RateLimitSchedule();
+
+    private SpendingLimits spendingLimits = new SpendingLimits();
 
     @JsonIgnore
     public Deployment selectDeployment(String deploymentId) {

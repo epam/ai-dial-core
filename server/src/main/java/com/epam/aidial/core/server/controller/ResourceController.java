@@ -770,6 +770,10 @@ public class ResourceController extends AccessControlBaseController {
                         AdminManagedFieldsWriteMode.of(adminPublicWrite, bodyJson);
                 return taskExecutor.submit(() -> {
                     validateCustomApplication(application);
+                    if (isUnitRoleWrite(descriptor, adminPublicWrite)) {
+                        return applicationService.putApplicationByUnitRole(descriptor, etag, author, application,
+                                externalServicesWriteMode).getKey();
+                    }
                     return applicationService.putApplication(descriptor, etag, author, application, adminPublicWrite,
                             adminManagedFieldsWriteMode, externalServicesWriteMode).getKey();
                 });
@@ -781,7 +785,9 @@ public class ResourceController extends AccessControlBaseController {
                 if (toolSet == null) {
                     throw new HttpException(BAD_REQUEST, "ToolSet can't be empty");
                 }
-                return taskExecutor.submit(() -> toolSetService.putToolSet(descriptor, etag, author, toolSet, adminPublicWrite).getKey());
+                return taskExecutor.submit(() -> isUnitRoleWrite(descriptor, adminPublicWrite)
+                        ? toolSetService.putToolSetByUnitRole(descriptor, etag, author, toolSet).getKey()
+                        : toolSetService.putToolSet(descriptor, etag, author, toolSet, adminPublicWrite).getKey());
             });
         } else {
             responseFuture = requestFuture.compose(pair -> {
@@ -798,6 +804,14 @@ public class ResourceController extends AccessControlBaseController {
                 .onFailure(error -> handleError(descriptor, error));
 
         return Future.succeededFuture();
+    }
+
+    /**
+     * Whether only roles in an org unit allow this shared-space write.
+     */
+    private boolean isUnitRoleWrite(ResourceDescriptor descriptor, boolean adminPublicWrite) {
+        return descriptor.isPublic() && !adminPublicWrite && proxy.getOrgUnitService().isEnabled()
+                && !accessService.hasWriteAccessBesidesUnitRoles(descriptor, context);
     }
 
     private Future<?> deleteResource(ResourceDescriptor descriptor) {

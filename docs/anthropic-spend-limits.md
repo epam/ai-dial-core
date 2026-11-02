@@ -9,7 +9,8 @@ Two things are reported:
 1. Limit headers on `POST /anthropic/v1/messages`, on success and when a limit is reached.
 2. `GET /anthropic/api/oauth/usage`.
 
-Both are built from one function that picks the cap to report, so the two answers always agree.
+Both are built from one function that picks the cap to report, so the two answers always agree. Codex CLI gets the
+same cap on the Responses API; see [Codex spend limits](codex-spend-limits.md).
 
 ## Gateway-mode setup
 

@@ -2,16 +2,21 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
@@ -23,6 +28,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 public class FileConfigStoreTest {
@@ -107,6 +114,30 @@ public class FileConfigStoreTest {
         Config loaded = fileConfigStore.get();
         assertNotNull(seen.get());
         assertSame(loaded, seen.get());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testBadOrgUnitRolesKeepThePreviousConfig(@TempDir Path dir) throws Exception {
+        String roles = """
+                {"orgUnitRoles": {"auditor": {"description": "x", "permissions": [{"actions": ["read"], "pathPattern": "%s"}]}}}
+                """;
+        Path file = dir.resolve("aidial.config.json");
+        Files.writeString(file, roles.formatted("files/**"));
+        FileConfigStore store = new FileConfigStore(vertx,
+                new JsonObject().put("files", new JsonArray().add(file.toString())).put("reload", 1000), apiKeyStore, List.of());
+        ArgumentCaptor<Handler<Long>> periodic = ArgumentCaptor.forClass(Handler.class);
+        verify(vertx).setPeriodic(eq(1000L), eq(1000L), periodic.capture());
+        Config before = store.get();
+
+        Files.writeString(file, roles.formatted("file/**"));
+        assertThrows(IllegalArgumentException.class, store::reload);
+        periodic.getValue().handle(1L);
+        assertSame(before, store.get());
+
+        Files.writeString(file, roles.formatted("prompts/**"));
+        periodic.getValue().handle(2L);
+        assertEquals("prompts/**", store.get().getOrgUnitRoles().get("auditor").getPermissions().get(0).getPathPattern());
     }
 
     private static JsonObject prepareSettings(@Nullable Boolean overwriteArrays) {

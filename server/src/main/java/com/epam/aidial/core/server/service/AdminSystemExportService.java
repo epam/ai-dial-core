@@ -35,7 +35,7 @@ import java.util.zip.ZipOutputStream;
 /**
  * Streams the {@code public} and {@code platform} buckets as a ZIP archive.
  *
- * <p>Layout: {@code .dial-export/manifest.json} first; then, for every blob, {@code .dial-export/metadata/<path>}
+ * <p>Layout: {@code .dial-system-export/manifest.json} first; then, for every blob, {@code .dial-system-export/metadata/<path>}
  * (content headers, blob timestamps and user metadata) immediately followed by the entry {@code <path>} holding the
  * bytes exactly as stored. Encryption keys and credentials are not exported.
  *
@@ -43,10 +43,10 @@ import java.util.zip.ZipOutputStream;
  * may not be in it yet.
  */
 @Slf4j
-public class AdminExportService {
+public class AdminSystemExportService {
 
-    static final String MANIFEST_ENTRY = ".dial-export/manifest.json";
-    static final String METADATA_ENTRY_PREFIX = ".dial-export/metadata/";
+    static final String MANIFEST_ENTRY = ".dial-system-export/manifest.json";
+    static final String METADATA_ENTRY_PREFIX = ".dial-system-export/metadata/";
     static final int FORMAT_VERSION = 1;
 
     private static final String IDENTITY_ENCODING = "identity";
@@ -60,7 +60,7 @@ public class AdminExportService {
     private final LongSupplier clock;
     private final String coreVersion;
 
-    public AdminExportService(BlobStorage blobStorage, LockService lockService, LongSupplier clock, String coreVersion) {
+    public AdminSystemExportService(BlobStorage blobStorage, LockService lockService, LongSupplier clock, String coreVersion) {
         this.blobStorage = blobStorage;
         this.lockService = lockService;
         this.clock = clock;
@@ -71,17 +71,17 @@ public class AdminExportService {
      * Blocks while holding both bucket locks. Does not close {@code out}. If this throws, the archive is
      * left unfinished, so the consumer must treat what it has received as truncated.
      *
-     * <p>The locks are not renewed, so the export fails once it has run for the lock period.
+     * <p>The locks are not renewed, so the system export fails once it has run for the lock period.
      *
-     * @param start the time recorded in the manifest as the start of the export
-     * @throws AdminExportBusyException if a bucket lock is held by another export or a writer, nothing is written then
+     * @param start the time recorded in the manifest as the start of the system export
+     * @throws AdminSystemExportBusyException if a bucket lock is held by another system export or a writer, nothing is written then
      */
     public void export(OutputStream out, Instant start) {
         long startMillis = clock.getAsLong();
         LockService.Lock locks = lockService.tryLockBuckets(MergedConfigStore.ADMIN_BUCKET_LOCATIONS);
         if (locks == null) {
-            log.info("Admin export rejected: a bucket lock is held by another export or a write");
-            throw new AdminExportBusyException("A bucket lock is held by another export or a write");
+            log.info("Admin system export rejected: a bucket lock is held by another system export or a write");
+            throw new AdminSystemExportBusyException("A bucket lock is held by another system export or a write");
         }
 
         ExportStats stats = new ExportStats();
@@ -89,12 +89,12 @@ public class AdminExportService {
             writeArchive(out, start, startMillis, stats);
         } catch (Throwable e) {
             Duration duration = Duration.ofMillis(clock.getAsLong() - startMillis);
-            log.error("Admin export failed: duration={}ms, entries={}, bytes={}", duration.toMillis(), stats.entries, stats.bytes, e);
+            log.error("Admin system export failed: duration={}ms, entries={}, bytes={}", duration.toMillis(), stats.entries, stats.bytes, e);
             throw e;
         }
 
         Duration duration = Duration.ofMillis(clock.getAsLong() - startMillis);
-        log.info("Admin export completed: duration={}ms, entries={}, bytes={}", duration.toMillis(), stats.entries, stats.bytes);
+        log.info("Admin system export completed: duration={}ms, entries={}, bytes={}", duration.toMillis(), stats.entries, stats.bytes);
     }
 
     private void writeArchive(OutputStream out, Instant start, long startMillis, ExportStats stats) {
@@ -136,7 +136,7 @@ public class AdminExportService {
     private void exportBlob(ZipOutputStream zip, String path, ExportStats stats) throws IOException {
         Blob blob = blobStorage.load(path);
         if (blob == null) {
-            log.debug("Skipping blob deleted during the export: {}", path);
+            log.debug("Skipping blob deleted during the system export: {}", path);
             return;
         }
 
@@ -194,7 +194,7 @@ public class AdminExportService {
     }
 
     /**
-     * A failed export must not write the central directory, so the stream is never closed on failure,
+     * A failed system export must not write the central directory, so the stream is never closed on failure,
      * and its native deflater is released by {@link #discard()} instead.
      */
     static final class DiscardableZipOutputStream extends ZipOutputStream {
@@ -244,7 +244,7 @@ public class AdminExportService {
 
         private void checkDeadline() throws IOException {
             if (clock.getAsLong() > deadlineMillis) {
-                throw new IOException("The export ran longer than the lock period of " + LockService.LOCK_PERIOD.toSeconds()
+                throw new IOException("The system export ran longer than the lock period of " + LockService.LOCK_PERIOD.toSeconds()
                         + "s, so the buckets may have been modified");
             }
         }
@@ -262,13 +262,13 @@ public class AdminExportService {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Settings {
         /**
-         * Milliseconds the export waits for a slow client to take the buffered data before it fails.
+         * Milliseconds the system export waits for a slow client to take the buffered data before it fails.
          */
         private long stallTimeout = 60_000;
 
         public void validate() {
             if (stallTimeout <= 0 || stallTimeout >= LockService.LOCK_PERIOD.toMillis()) {
-                throw new IllegalArgumentException("adminExport.stallTimeout must be positive and below the lock period of "
+                throw new IllegalArgumentException("adminSystemExport.stallTimeout must be positive and below the lock period of "
                         + LockService.LOCK_PERIOD.toMillis() + " ms, but got: " + stallTimeout);
             }
         }

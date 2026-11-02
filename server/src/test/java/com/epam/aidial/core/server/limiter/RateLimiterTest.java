@@ -1241,6 +1241,40 @@ public class RateLimiterTest {
         assertEquals(0, new BigDecimal("0.82").compareTo(reported.ratio()));
     }
 
+    /**
+     * The Responses route switched from limit() to limitWithSpendCaps(), and a translated deployment from no check to
+     * readSpendCaps(): the switch must not add a record read to a request.
+     */
+    @Test
+    public void testLimitWithSpendCaps_ReadsNoMoreRecordsThanLimit() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "8.2");
+        ResourceService countingService = Mockito.spy(resourceService);
+        ConfigStore configStore = mock(ConfigStore.class);
+        lenient().when(configStore.get()).thenReturn(new Config());
+        RateLimiter countingLimiter = new RateLimiter(taskExecutor, countingService, configStore, BlockingCallTracer.NOOP);
+
+        assertEquals(HttpStatus.OK, countingLimiter.limit(proxyContext, model("model")).result().status());
+        long limitReads = countRecordReads(countingService);
+        Mockito.clearInvocations(countingService);
+        assertEquals(HttpStatus.OK, countingLimiter.limitWithSpendCaps(proxyContext, model("model")).result().status());
+        long limitWithSpendCapsReads = countRecordReads(countingService);
+        Mockito.clearInvocations(countingService);
+        assertNotNull(countingLimiter.readSpendCaps(proxyContext).result().reported());
+        long readSpendCapsReads = countRecordReads(countingService);
+
+        // the token and the cost record; the role sets no request limit
+        assertEquals(2, limitReads);
+        assertEquals(limitReads, limitWithSpendCapsReads);
+        assertEquals(1, readSpendCapsReads);
+    }
+
+    private static long countRecordReads(ResourceService service) {
+        return Mockito.mockingDetails(service).getInvocations().stream()
+                .filter(invocation -> invocation.getMethod().getName().equals("getResource") && invocation.getArguments().length == 1)
+                .count();
+    }
+
     @Test
     public void testLimit_CostRecordMissing_CarriesZeroSpendCaps() {
         ProxyContext proxyContext = spendCapContext("10");

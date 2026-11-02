@@ -8,6 +8,8 @@ import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Operator;
+import com.epam.aidial.core.config.OrgUnitPermission;
+import com.epam.aidial.core.config.OrgUnitRole;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.PricingRate;
 import com.epam.aidial.core.config.Role;
@@ -44,6 +46,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * structural slash-keyed-name rejection and semantic skip|abort routing.
  */
 public class ConfigPostProcessorTest {
+
+    @Test
+    void testOrgUnitRolesCoreCannotEvaluateFailTheLoad() {
+        Config config = new Config();
+        config.setOrgUnitRoles(Map.of("auditor", new OrgUnitRole("x", List.of(new OrgUnitPermission(List.of("read"), "rules/**")))));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ConfigPostProcessor.process(config, null));
+        assertTrue(error.getMessage().startsWith("orgUnitRoles.auditor: pathPattern"), error.getMessage());
+    }
 
     @Test
     void testStructuralDropsSlashKeyedNamesAcrossAllTypes() {

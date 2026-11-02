@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.policy.Policy;
 import com.epam.aidial.core.config.policy.PolicyAssignment;
 import com.epam.aidial.core.config.policy.PolicyKind;
 import com.epam.aidial.core.config.policy.PolicyObjectSet;
+import com.epam.aidial.core.config.policy.PolicyQuantity;
 import com.epam.aidial.core.config.policy.PolicySubjectRule;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -217,6 +218,37 @@ class EffectiveBudgetsTest {
         assertTrue(resolve(policies, assignments, user("alice"), "gpt").isEmpty());
     }
 
+    @Test
+    void testAllMatchingBudgetsAreListedByCostObjectAndPriority() {
+        Map<String, Policy> policies = Map.of(
+                "low", costPolicy(2, PolicyObjectSet.of(List.of("gpt"))),
+                "high", costPolicy(1, PolicyObjectSet.all()));
+        Map<String, PolicyAssignment> assignments = Map.of(
+                "projA/g1", assignment("low", null, anyone()),
+                "projA/g2", assignment("high", null, anyone()),
+                "projB/g1", assignment("low", null, anyone()),
+                "projC/g1", assignment("low", null, equal("sub", "bob")));
+
+        List<BudgetInstance> all = EffectiveBudgets
+                .resolveAll(CostObjectIndex.build(policies, assignments), user("alice"), NOW);
+
+        assertEquals(List.of("projA/g2", "projA/g1", "projB/g1"), ids(all));
+    }
+
+    @Test
+    void testReportingSkipsExpiredAndNonCostAndApiKey() {
+        Policy tokens = costPolicy(1, PolicyObjectSet.all());
+        tokens.setQuantity(PolicyQuantity.TOKENS);
+        Map<String, Policy> policies = Map.of("cost", costPolicy(1, PolicyObjectSet.all()), "tokens", tokens);
+        Map<String, PolicyAssignment> assignments = Map.of(
+                "projA/expired", assignment("cost", "2026-11-03T09:00:00Z", anyone()),
+                "projB/tokens", assignment("tokens", null, anyone()));
+        CostObjectIndex index = CostObjectIndex.build(policies, assignments);
+
+        assertTrue(EffectiveBudgets.resolveAll(index, user("alice"), NOW).isEmpty());
+        assertTrue(EffectiveBudgets.resolveAll(index, null, NOW).isEmpty());
+    }
+
     private void assertMatched(PolicySubjectRule rule, boolean expected) {
         assertMatchedAny(List.of(rule), expected);
     }
@@ -242,6 +274,12 @@ class EffectiveBudgetsTest {
         policy.setPriority(priority);
         policy.setKind(PolicyKind.BUDGET);
         policy.setObject(object);
+        return policy;
+    }
+
+    private static Policy costPolicy(int priority, PolicyObjectSet object) {
+        Policy policy = policy(priority, object);
+        policy.setQuantity(PolicyQuantity.COST);
         return policy;
     }
 

@@ -13,6 +13,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.Metrics;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
@@ -30,6 +33,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 
@@ -55,14 +60,38 @@ public class GfLogStore implements LogStore {
 
     private final ExecutorService executor;
     private final AnalyticsSettings settings;
+    // bytes of bodies held by the rows that wait in the executor queue
+    private final AtomicLong pendingBodyBytes = new AtomicLong();
+    // true from the first row whose bodies are left out until a row is queued with them while under half the limit, so
+    // a writer that hovers at the limit logs one episode, not two lines per row it writes. It only gates those two log
+    // lines: admit leaves bodies out by the limit alone
+    private final AtomicBoolean behind = new AtomicBoolean();
+    private final Counter bodiesSkipped;
+    // the limit on pendingBodyBytes; 0 or below means no limit
+    private final long maxPendingBodyBytes;
 
     public GfLogStore(AnalyticsSettings settings) {
+        this(settings, Runtime.getRuntime().maxMemory());
+    }
+
+    @VisibleForTesting
+    GfLogStore(AnalyticsSettings settings, long maxHeapBytes) {
         this.settings = settings;
+        double percent = settings.maxPendingBodyHeapPercent();
+        // a double product: maxMemory() is Long.MAX_VALUE when the JVM has no heap limit, and a long would overflow
+        maxPendingBodyBytes = percent > 0 ? (long) (maxHeapBytes * percent / 100) : -1;
         BasicThreadFactory factory = BasicThreadFactory.builder()
                 .namingPattern("gflog-store-%d")
                 .daemon(true)
                 .build();
         executor = Executors.newSingleThreadExecutor(factory);
+
+        Gauge.builder("dial_analytics_log_pending_body_bytes", pendingBodyBytes, AtomicLong::get)
+                .description("Bytes of request and response bodies held by analytics log rows that wait to be written")
+                .register(Metrics.globalRegistry);
+        bodiesSkipped = Counter.builder("dial_analytics_log_bodies_skipped_total")
+                .description("Analytics log rows written without bodies because the waiting bodies reached the limit")
+                .register(Metrics.globalRegistry);
     }
 
     @Override
@@ -70,9 +99,60 @@ public class GfLogStore implements LogStore {
         if (!LOGGER.isInfoEnabled() || !"POST".equals(logContext.getRequestMethod())) {
             return;
         }
+        AnalyticsLogContext queued = admit(logContext);
         // run the process of saving analytics logs in a single thread in order to reduce memory footprint.
         // Gflog allocates a buffer per thread: the more threads the more buffers need to be allocated.
-        executor.submit(() -> doSave(logContext));
+        executor.submit(() -> {
+            try {
+                return doSave(queued);
+            } finally {
+                release(queued);
+            }
+        });
+    }
+
+    /**
+     * Decides which row to queue. A secured key's row never writes its bodies, and while the bodies already waiting
+     * reach the limit no row does, so those rows are queued without them. The bodies of the others are counted.
+     */
+    @VisibleForTesting
+    AnalyticsLogContext admit(AnalyticsLogContext logContext) {
+        if (logContext.isSecuredApiKey()) {
+            return logContext.withoutBodies();
+        }
+        long bytes = countBodyBytes(logContext);
+        long pending = pendingBodyBytes.get();
+        if (maxPendingBodyBytes > 0 && pending >= maxPendingBodyBytes) {
+            // a row with no bodies loses nothing, so it is not counted and does not start an episode
+            if (bytes > 0) {
+                bodiesSkipped.increment();
+                if (behind.compareAndSet(false, true)) {
+                    log.warn("Analytics log writer is behind: {} bytes of bodies wait to be written, limit is {} bytes. "
+                            + "Rows are written without bodies until it catches up", pending, maxPendingBodyBytes);
+                }
+            }
+            return logContext.withoutBodies();
+        }
+        if (behind.get() && pending * 2 < maxPendingBodyBytes && behind.compareAndSet(true, false)) {
+            log.info("Analytics log writer caught up: {} bytes of bodies wait to be written. Rows carry bodies again", pending);
+        }
+        pendingBodyBytes.addAndGet(bytes);
+        return logContext;
+    }
+
+    @VisibleForTesting
+    void release(AnalyticsLogContext logContext) {
+        pendingBodyBytes.addAndGet(-countBodyBytes(logContext));
+    }
+
+    private static long countBodyBytes(AnalyticsLogContext logContext) {
+        String assembled = logContext.getAssembledStreamingResponse();
+        return countBytes(logContext.getRequestBody()) + countBytes(logContext.getResponseBody())
+                + (assembled == null ? 0 : assembled.length());
+    }
+
+    private static long countBytes(Buffer body) {
+        return body == null ? 0 : body.length();
     }
 
     private Void doSave(AnalyticsLogContext logContext) {
@@ -93,6 +173,8 @@ public class GfLogStore implements LogStore {
 
     @VisibleForTesting
     void append(AnalyticsLogContext logContext, LogEntry entry) throws JsonProcessingException {
+        boolean withBodies = !logContext.isSecuredApiKey() && !logContext.isBodiesOmitted();
+
         append(entry, "{\"apiType\":\"DialOpenAI\",\"chat\":{\"id\":\"", false);
         append(entry, logContext.getConversationId(), true);
 
@@ -195,7 +277,7 @@ public class GfLogStore implements LogStore {
         append(entry, Long.toString(logContext.getOperationDurationMs()), true);
 
         // without an assembled stream the field would only repeat the response body
-        if (!logContext.isSecuredApiKey() && logContext.getAssembledStreamingResponse() != null) {
+        if (withBodies && logContext.getAssembledStreamingResponse() != null) {
             append(entry, ",\"assembled_response\":\"", false);
             appendBody(entry, Buffer.buffer(logContext.getAssembledStreamingResponse()));
             append(entry, "\"", false);
@@ -225,7 +307,7 @@ public class GfLogStore implements LogStore {
         append(entry, "\",\"time\":\"", false);
         append(entry, formatTimestamp(logContext.getRequestTimestamp()), true);
 
-        if (!logContext.isSecuredApiKey()) {
+        if (withBodies) {
             append(entry, "\",\"body\":\"", false);
             appendBody(entry, logContext.getRequestBody());
         }
@@ -238,7 +320,7 @@ public class GfLogStore implements LogStore {
             append(entry, logContext.getUpstreamEndpoint(), true);
         }
 
-        if (!logContext.isSecuredApiKey()) {
+        if (withBodies) {
             append(entry, "\",\"body\":\"", false);
             appendBody(entry, logContext.getResponseBody());
         }

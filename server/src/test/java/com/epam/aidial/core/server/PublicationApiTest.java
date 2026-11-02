@@ -1,6 +1,8 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.Publications;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -21,6 +23,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -1492,6 +1495,25 @@ class PublicationApiTest extends ResourceBaseTest {
         response = operationRequest("/v1/ops/publication/rule/list", """
                 {"url": "public/folder/"}
                 """);
+        verify(response, 403);
+    }
+
+    @Test
+    void testRulesHiddenFromAppWithAttachedFolder() {
+        Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
+        verify(response, 200);
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket));
+        verify(response, 200);
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verify(response, 200);
+
+        ApiKeyData apiKeyData = createAppKey("guest", Map.of());
+        apiKeyData.setAttachedFolders(Map.of("files/public/folder/", new AutoSharedData(ResourceAccessType.READ_ONLY)));
+        apiKeyStore.assignPerRequestApiKey(apiKeyData);
+
+        response = operationRequest("/v1/ops/publication/rule/list", """
+                {"url": "public/folder/"}
+                """, "api-key", apiKeyData.getPerRequestKey());
         verify(response, 403);
     }
 

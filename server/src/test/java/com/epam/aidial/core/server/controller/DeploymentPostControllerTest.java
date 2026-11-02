@@ -884,7 +884,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
@@ -897,7 +897,7 @@ public class DeploymentPostControllerTest {
         controller.handleResponse(bufferingReadStream);
 
         ArgumentCaptor<InterfaceType> interfaceTypeCaptor = ArgumentCaptor.forClass(InterfaceType.class);
-        verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), interfaceTypeCaptor.capture(), any());
+        verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), interfaceTypeCaptor.capture(), any(), any());
         assertEquals(InterfaceType.OPENAI_CHAT_COMPLETIONS, interfaceTypeCaptor.getValue());
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(any(AnalyticsLogContext.class));
@@ -919,7 +919,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
@@ -932,7 +932,7 @@ public class DeploymentPostControllerTest {
         controller.handleResponse(bufferingReadStream);
 
         ArgumentCaptor<InterfaceType> interfaceTypeCaptor = ArgumentCaptor.forClass(InterfaceType.class);
-        verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), interfaceTypeCaptor.capture(), any());
+        verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), interfaceTypeCaptor.capture(), any(), any());
         assertEquals(InterfaceType.OPENAI_EMBEDDINGS, interfaceTypeCaptor.getValue());
     }
 
@@ -967,7 +967,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer("{}"));
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
@@ -1010,7 +1010,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
@@ -1024,7 +1024,7 @@ public class DeploymentPostControllerTest {
 
         // an interface declaring no mode is what every config written before mode existed is: still charged
         verify(rateLimiter).increase(
-                eq(model), any(), any(), any(), any(), eq(InterfaceType.OPENAI_CHAT_COMPLETIONS), any());
+                eq(model), any(), any(), any(), any(), eq(InterfaceType.OPENAI_CHAT_COMPLETIONS), any(), any());
     }
 
     @ParameterizedTest
@@ -1080,7 +1080,7 @@ public class DeploymentPostControllerTest {
         controller.handleResponse(bufferingReadStream);
 
         // the translator calls Core back for the completion; that inner request carries the usage to limits
-        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any(), any());
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(any(AnalyticsLogContext.class));
         verify(bufferingReadStream).end(response);
@@ -1111,7 +1111,7 @@ public class DeploymentPostControllerTest {
 
         controller.handleResponse(bufferingReadStream);
 
-        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any(), any());
         verify(tokenStatsTracker).getUsageStats(eq(context));
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(context).setUsagePerModel(any());
@@ -1157,7 +1157,7 @@ public class DeploymentPostControllerTest {
 
         controller.handleResponse(bufferingReadStream);
 
-        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any(), any());
         verify(rateLimiter).recordAggregatedCost(eq("inner-app"), any(), eq(new BigDecimal("0.40")));
         verify(rateLimiter).recordAggregatedCost(eq("router-app"), any(), eq(new BigDecimal("0.40")));
         verify(bufferingReadStream).end(response);
