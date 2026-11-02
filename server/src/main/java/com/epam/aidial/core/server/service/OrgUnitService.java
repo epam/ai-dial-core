@@ -1,9 +1,14 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.data.orgunit.OrgUnit;
 import com.epam.aidial.core.server.data.orgunit.OrgUnitData;
 import com.epam.aidial.core.server.data.orgunit.OrgUnitList;
+import com.epam.aidial.core.server.data.orgunit.OrgUnitRoleData;
+import com.epam.aidial.core.server.data.orgunit.RoleAssignment;
+import com.epam.aidial.core.server.data.orgunit.Subject;
+import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
@@ -21,28 +26,40 @@ import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 /**
  * Org units as folders of the shared space, recorded in a unit tree next to the rules document. One tree key covers
  * the unit's folder in every content type tree.
+ *
+ * <p>A resource belongs to the nearest unit above it, whatever its type: the type folder is dropped and the
+ * longest matching key wins, so {@code files/public/Risk/US Risk/a.pdf} and {@code applications/public/Risk/US Risk/x}
+ * both belong to {@code public/Risk/US Risk/}. Two invariants keep that unambiguous: a unit's parent is a unit or the
+ * shared space, and a new unit never takes the name of an existing folder or item in any type tree.
  *
  * <p>The shared space itself is not a unit: what lies under no unit stays with the DIAL admins. The customer's
  * organization is the first unit below it, such as {@code public/Acme/}.
@@ -51,8 +68,7 @@ import javax.annotation.Nullable;
  * unit without files gets the clients' hidden empty-folder marker, {@link #FOLDER_MARKER}; that is where Chat and the admin panel look
  * for folders.
  *
- * <p>The tree is read through the shared resource cache and decoded again only when its etag changes. An unreadable
- * tree fails the request.
+ * <p>The tree is read through {@link OrgUnitLookup}.
  */
 @Slf4j
 public class OrgUnitService {
@@ -65,7 +81,7 @@ public class OrgUnitService {
     /**
      * The type trees a unit's folder spans: every type that can be published or moved into the shared space.
      */
-    private static final List<ResourceTypes> CONTENT_TYPES = List.of(ResourceTypes.FILE, ResourceTypes.CONVERSATION,
+    static final List<ResourceTypes> CONTENT_TYPES = List.of(ResourceTypes.FILE, ResourceTypes.CONVERSATION,
             ResourceTypes.PROMPT, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET, ResourceTypes.SKILL, ResourceTypes.PROJECT);
 
     private static final String FOLDER_MARKER = ".dial_folder";
@@ -77,90 +93,104 @@ public class OrgUnitService {
     private static final Set<String> RESERVED_NAMES = Set.of("roles", "role-assignments", "rate");
     private static final int MAX_DISPLAY_NAME = 128;
     private static final int LIST_PAGE = 1000;
-    private static final ResourceDescriptor UNITS = ResourceDescriptorFactory.fromDecoded(
-            ResourceTypes.ORG_UNITS, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, "units");
+    private static final String UNITS_NAME = "units";
+    static final ResourceDescriptor UNITS = ResourceDescriptorFactory.fromDecoded(
+            ResourceTypes.ORG_UNITS, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, UNITS_NAME);
+    private static final Pattern POLICY_ID = Pattern.compile("[A-Za-z0-9_-]{1,64}");
+    private static final String ROLE_ASSIGNMENTS = "roleAssignments";
+    private static final int MAX_SUBJECT_TEXT = 256;
+    /**
+     * A read rule's source is a JSON path, and a unit admin writes subjects; a path with filters could run a
+     * regex against every caller's claims on every check, so a subject's source is plain claim names only.
+     */
+    private static final Pattern CLAIM_PATH = Pattern.compile("[A-Za-z0-9_-]{1,64}(\\.[A-Za-z0-9_-]{1,64}){0,7}");
 
+    private final OrgUnitLookup lookup;
     private final ResourceService resources;
+    private final ComplexResourceService complexResources;
     private final RuleService ruleService;
     private final LockService locks;
-    private final OrgUnitSettings settings;
     private final Supplier<String> ids;
     private final LongSupplier clock;
 
     /**
-     * Key is the document's etag, which changes with every write; two writes can share an update time.
-     * Value is the decoded list, read-only.
+     * Key is the unit id; value is the policy's etag and its readable assignments.
      */
-    private final AtomicReference<Pair<String, OrgUnitList>> cached = new AtomicReference<>();
+    private final Map<String, Pair<String, List<RoleAssignment>>> cachedPolicies = new ConcurrentHashMap<>();
 
-    public OrgUnitService(ResourceService resources, RuleService ruleService, LockService locks, OrgUnitSettings settings,
-                          Supplier<String> ids, LongSupplier clock) {
+    public OrgUnitService(OrgUnitLookup lookup, ResourceService resources, ComplexResourceService complexResources,
+                          RuleService ruleService, LockService locks, Supplier<String> ids, LongSupplier clock) {
+        this.lookup = lookup;
         this.resources = resources;
+        this.complexResources = complexResources;
         this.ruleService = ruleService;
         this.locks = locks;
-        this.settings = settings;
         this.ids = ids;
         this.clock = clock;
     }
 
     public boolean isEnabled() {
-        return settings.enabled();
+        return lookup.isEnabled();
     }
 
-    /**
-     * Whether the folder of this name, the resource's own folder for an item, is a unit's: a complex resource keeps
-     * its files there. Names compare ignoring case, as on create, since folders that differ only in case are one on
-     * some storages.
-     */
-    private boolean isUnitFolder(ResourceDescriptor resource) {
-        if (!isEnabled() || !resource.isPublic()) {
-            return false;
-        }
-        String path = resource.getDecodedUrl().substring(resource.getType().urlSegment().length() + 1);
-        String key = resource.isFolder() ? path : path + ResourceDescriptor.PATH_SEPARATOR;
-        return getUnitList().units().keySet().stream().anyMatch(key::equalsIgnoreCase);
-    }
-
-    /**
-     * Refuses a skill or project whose own folder is a unit's, since it keeps its files there.
-     */
     public void requireNoUnitFolder(ResourceDescriptor resource) {
-        if (isUnitFolder(resource)) {
-            throw new HttpException(HttpStatus.CONFLICT, "An org unit holds this path: " + resource.getUrl());
-        }
+        lookup.requireNoUnitFolder(resource);
     }
 
-    /**
-     * Reads the list once, so a node that cannot read it refuses to start.
-     */
-    public void checkOnStartup() {
-        if (settings.enabled()) {
-            getUnitList();
-        }
-    }
-
-    /**
-     * The unit list as stored now, read-only.
-     */
     OrgUnitList getUnitList() {
-        Pair<ResourceItemMetadata, String> resource = resources.getResourceWithMetadata(UNITS, EtagHeader.ANY);
-        String key = (resource == null) ? "" : resource.getKey().getEtag();
-        Pair<String, OrgUnitList> current = cached.get();
+        return lookup.getUnitList();
+    }
 
-        if (current == null || !current.getKey().equals(key)) {
-            OrgUnitList decoded = decode(units(parse(resource == null ? null : resource.getValue()))).readOnly();
-            Pair<String, OrgUnitList> next = Pair.of(key, decoded);
-            cached.compareAndSet(current, next);
-            current = next;
+    /**
+     * The key of the unit that owns the shared-space item or folder, or {@link #SHARED_SPACE_KEY} when no unit is
+     * above it, as for anything outside the shared space. A unit's own folder belongs to that unit.
+     */
+    static String ownerOf(Map<String, OrgUnit> units, ResourceDescriptor resource) {
+        if (!resource.isPublic()) {
+            return SHARED_SPACE_KEY;
+        }
+        String key = keyOf(resource.isFolder() ? resource : resource.getParent());
+        while (!key.equals(SHARED_SPACE_KEY)) {
+            if (units.containsKey(key)) {
+                return key;
+            }
+            key = parentKey(key);
+        }
+        return SHARED_SPACE_KEY;
+    }
+
+    /**
+     * Refuses a move inside the shared space that would hand an item to another unit. Folders are moved item by item,
+     * so this is what stops a unit's folder from being renamed or moved away from its entry. Folder moves are left to
+     * the move itself, which refuses them.
+     */
+    public void requireSameUnit(ResourceDescriptor source, ResourceDescriptor destination) {
+        if (!isEnabled() || !source.isPublic() || !destination.isPublic() || source.isFolder() || destination.isFolder()) {
+            return;
+        }
+        if (keyOf(source.getParent()).equals(keyOf(destination.getParent()))) {
+            return;
         }
 
-        return current.getValue();
+        Map<String, OrgUnit> units = getUnitList().units();
+        String from = ownerOf(units, source);
+        String to = ownerOf(units, destination);
+        if (!from.equals(to)) {
+            throw new HttpException(HttpStatus.CONFLICT, "A move can't change which org unit owns a resource: %s belongs to %s, %s to %s. "
+                    .formatted(source.getDecodedUrl(), owner(from), destination.getDecodedUrl(), owner(to))
+                    + "Copy or publish it instead.");
+        }
+    }
+
+    private static String owner(String key) {
+        return key.equals(SHARED_SPACE_KEY) ? "no unit" : describe(key);
     }
 
     /**
      * Reads the shared space or a unit with the units directly below it, or every unit below when {@code recursive}.
-     * An admin sees every unit; anyone else sees the units whose folder the read rules let them see, and a unit they
-     * can't see answers as one that doesn't exist.
+     * An admin sees every unit; anyone else sees a unit where they hold a role, and the units directly below one where
+     * they hold {@code read} on {@code org-units}, as long as they see every unit above it too. A unit they can't see
+     * answers as one that doesn't exist.
      *
      * @param path {@code public}, then each unit's name
      */
@@ -205,9 +235,525 @@ public class OrgUnitService {
                 author, clock.getAsLong());
         update(list -> list.units().put(key, unit));
         addFolderMarker(key, author);
+        // inside a unit roles decide who reads, so the folder's old read rules would only mislead
+        try {
+            ruleService.removeRulesUnder(folder(ResourceTypes.FILE, key));
+        } catch (RuntimeException e) {
+            log.warn("The read rules under {} stay, granting nothing inside the unit: {}", describe(key), e.getMessage());
+        }
 
         return new OrgUnitData(unit.id(), name, unit.displayName(), path(key), encodedFolder(key), unit.author(), unit.createdAt(),
                 List.of());
+    }
+
+    /**
+     * The roles that can be assigned at the unit: the same for every unit.
+     */
+    public List<OrgUnitRoleData> listRoles(List<String> path, OrgUnitRoles roles) {
+        String key = keyOf(requireSharedSpace(path));
+        if (key.equals(SHARED_SPACE_KEY)) {
+            throw new IllegalArgumentException("The shared space is not a unit and holds no roles");
+        }
+        if (!getUnitList().units().containsKey(key)) {
+            throw new ResourceNotFoundException("No org unit: " + String.join("/", path));
+        }
+        return roles.roles().entrySet().stream()
+                .map(entry -> new OrgUnitRoleData(entry.getKey(), entry.getValue().getDescription(), true,
+                        List.copyOf(entry.getValue().getPermissions())))
+                .toList();
+    }
+
+    public List<RoleAssignment> listRoleAssignments(List<String> path) {
+        String key = unitKey(path);
+        OrgUnit unit = getUnitList().units().get(key);
+        if (unit == null) {
+            throw new ResourceNotFoundException("No org unit: " + String.join("/", path));
+        }
+        return readPolicy(key, unit);
+    }
+
+    /**
+     * The unit's readable assignments for an access decision: a unit whose policy can't be read grants nothing.
+     */
+    public List<RoleAssignment> roleAssignmentsOf(String key, @Nullable OrgUnit unit) {
+        if (unit == null || key.equals(SHARED_SPACE_KEY)) {
+            return List.of();
+        }
+        try {
+            return readPolicy(key, unit);
+        } catch (IllegalStateException e) {
+            log.warn("The policy of org unit {} grants nothing until fixed: {}", key, e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * Every unit's readable assignments, read in one batch. Units whose policy can't be read are left out.
+     */
+    public Map<String, List<RoleAssignment>> roleAssignmentsOfAll(Map<String, OrgUnit> units) {
+        Map<String, List<String>> keysById = new HashMap<>();
+        List<ResourceItemMetadata> items = new ArrayList<>();
+        units.forEach((key, unit) -> {
+            if (!key.equals(SHARED_SPACE_KEY) && unit.id() != null && isPolicyId(unit.id())) {
+                if (!keysById.containsKey(unit.id())) {
+                    items.add(new ResourceItemMetadata(policy(unit.id())));
+                }
+                keysById.computeIfAbsent(unit.id(), id -> new ArrayList<>()).add(key);
+            }
+        });
+        List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
+        resources.load(items, loaded);
+
+        Map<String, List<RoleAssignment>> result = new HashMap<>();
+        for (Pair<ResourceItemMetadata, String> resource : loaded) {
+            String id = resource.getKey().getDescriptor().getName();
+            List<String> keys = keysById.get(id);
+            try {
+                List<RoleAssignment> assignments = decodePolicy(keys.get(0), id, resource.getKey().getEtag(), resource.getValue());
+                keys.forEach(key -> result.put(key, assignments));
+            } catch (IllegalStateException e) {
+                log.warn("The policy of org units {} grants nothing until fixed: {}", keys, e.getMessage());
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Gives the role to the subject at this unit only; units below don't inherit it. The same role for a subject that
+     * matches the same callers again answers the stored assignment and writes nothing.
+     *
+     * @param mayChange decides on the unit's readable assignments and the role name in the same write as the change,
+     *                  so a caller whose own roles change meanwhile is held to the new ones
+     */
+    public RoleAssignment addRoleAssignment(List<String> path, @Nullable String roleName, @Nullable Subject subject, OrgUnitRoles roles,
+                                            BiPredicate<List<RoleAssignment>, String> mayChange) {
+        String key = unitKey(path);
+        if (roleName == null || !roles.exists(roleName)) {
+            throw new IllegalArgumentException("roleName is one of " + String.join(", ", roles.roles().keySet()));
+        }
+        requireSubject(subject);
+
+        AtomicReference<RoleAssignment> result = new AtomicReference<>();
+        updateRoleAssignments(path, key, assignments -> {
+            result.set(null);
+            List<RoleAssignment> readable = readable(key, assignments);
+            if (!mayChange.test(readable, roleName)) {
+                throw new HttpException(HttpStatus.FORBIDDEN, "You can give only roles whose permissions you hold in this unit");
+            }
+            for (RoleAssignment existing : readable) {
+                if (existing.roleName().equals(roleName) && sameCallers(existing.subject(), subject)) {
+                    result.set(existing);
+                    return false;
+                }
+            }
+            RoleAssignment added = new RoleAssignment(ids.get(), roleName, subject);
+            assignments.add(ProxyUtil.MAPPER.valueToTree(added));
+            result.set(added);
+            return true;
+        });
+        return result.get();
+    }
+
+    /**
+     * The unit's readable assignments for deciding who may manage it; none when the path names no unit.
+     */
+    public List<RoleAssignment> roleAssignmentsAt(List<String> path) {
+        String key;
+        try {
+            key = unitKey(path);
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+        return roleAssignmentsOf(key, getUnitList().units().get(key));
+    }
+
+    /**
+     * Removes the assignment with the id, even one this node can't read: revoking must not depend on its format.
+     *
+     * @param mayChange decides on the unit's readable assignments and the stored role name, null when it can't be
+     *                  read, in the same write as the removal
+     */
+    public void removeRoleAssignment(List<String> path, String id, BiPredicate<List<RoleAssignment>, String> mayChange) {
+        String key = unitKey(path);
+        updateRoleAssignments(path, key, assignments -> {
+            List<RoleAssignment> readable = readable(key, assignments);
+            for (int i = 0; i < assignments.size(); i++) {
+                JsonNode storedId = assignments.get(i).get("id");
+                if (storedId != null && storedId.isTextual() && storedId.textValue().equals(id)) {
+                    JsonNode roleName = assignments.get(i).get("roleName");
+                    if (!mayChange.test(readable, roleName != null && roleName.isTextual() ? roleName.textValue() : null)) {
+                        throw new HttpException(HttpStatus.FORBIDDEN, "You can remove only assignments of roles whose permissions you hold in "
+                                + describe(key));
+                    }
+                    assignments.remove(i);
+                    return true;
+                }
+            }
+            throw new ResourceNotFoundException("No role assignment %s at %s".formatted(id, describe(key)));
+        });
+    }
+
+    /**
+     * Changes the unit's stored assignments in place, in its own policy document only, so the other assignments and
+     * fields stay as stored, including those this node can't read. The change returns false to write nothing. A unit
+     * removed meanwhile leaves at most an orphan policy, which nothing reads.
+     */
+    private void updateRoleAssignments(List<String> path, String key, Predicate<ArrayNode> change) {
+        OrgUnit unit = getUnitList().units().get(key);
+        if (unit == null) {
+            throw new ResourceNotFoundException("No org unit: " + String.join("/", path));
+        }
+        ResourceDescriptor policy = policy(requirePolicyId(key, unit));
+
+        resources.computeResource(policy, body -> {
+            ObjectNode document = parsePolicy(key, body);
+            JsonNode stored = document.get(ROLE_ASSIGNMENTS);
+            ArrayNode assignments = stored == null || stored.isNull() ? document.putArray(ROLE_ASSIGNMENTS) : (ArrayNode) stored;
+            return change.test(assignments) ? document.toString() : body;
+        });
+    }
+
+    private List<RoleAssignment> readable(String key, ArrayNode assignments) {
+        List<RoleAssignment> readable = new ArrayList<>();
+        for (JsonNode stored : assignments) {
+            RoleAssignment assignment = readRoleAssignment(key, stored);
+            if (assignment != null) {
+                readable.add(assignment);
+            }
+        }
+        return readable;
+    }
+
+    /**
+     * Whether two subjects match the same callers: a claims predicate's values compare ignoring case and order, as
+     * matching does.
+     */
+    private static boolean sameCallers(Subject stored, Subject subject) {
+        if (stored instanceof Subject.ClaimsPredicate a && subject instanceof Subject.ClaimsPredicate b) {
+            return a.source().equals(b.source()) && a.function() == b.function() && foldCase(a.targets()).equals(foldCase(b.targets()));
+        }
+        return stored.equals(subject);
+    }
+
+    /**
+     * Each value folded per code point the way {@link String#equalsIgnoreCase} compares it, so two values fold alike
+     * exactly when matching takes them for the same.
+     */
+    private static Set<String> foldCase(@Nullable List<String> values) {
+        Set<String> folded = new HashSet<>();
+        for (String value : values == null ? List.<String>of() : values) {
+            StringBuilder chars = new StringBuilder(value.length());
+            value.codePoints().forEach(codePoint -> chars.appendCodePoint(Character.toLowerCase(Character.toUpperCase(codePoint))));
+            folded.add(chars.toString());
+        }
+        return folded;
+    }
+
+    private List<RoleAssignment> readPolicy(String key, OrgUnit unit) {
+        String id = requirePolicyId(key, unit);
+        Pair<ResourceItemMetadata, String> resource = resources.getResourceWithMetadata(policy(id), EtagHeader.ANY);
+        if (resource == null) {
+            return List.of();
+        }
+        return decodePolicy(key, id, resource.getKey().getEtag(), resource.getValue());
+    }
+
+    private List<RoleAssignment> decodePolicy(String key, String id, String etag, String body) {
+        Pair<String, List<RoleAssignment>> current = cachedPolicies.get(id);
+        if (current != null && current.getKey().equals(etag)) {
+            return current.getValue();
+        }
+
+        ObjectNode document = parsePolicy(key, body);
+        List<RoleAssignment> assignments = new ArrayList<>();
+        JsonNode stored = document.get(ROLE_ASSIGNMENTS);
+        if (stored != null && stored.isArray()) {
+            for (JsonNode assignment : stored) {
+                RoleAssignment readable = readRoleAssignment(key, assignment);
+                if (readable != null) {
+                    assignments.add(readable);
+                }
+            }
+        }
+        List<RoleAssignment> decoded = List.copyOf(assignments);
+        cachedPolicies.put(id, Pair.of(etag, decoded));
+        return decoded;
+    }
+
+    /**
+     * Refuses a policy that isn't a JSON object, or whose assignments aren't a list, rather than reading it as empty.
+     */
+    private static ObjectNode parsePolicy(String key, @Nullable String body) {
+        if (body == null || body.isBlank()) {
+            return ProxyUtil.MAPPER.createObjectNode();
+        }
+
+        JsonNode node;
+        try {
+            node = ProxyUtil.MAPPER.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(body);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("The policy of %s can't be read: %s".formatted(describe(key), e.getOriginalMessage()));
+        }
+        if (!(node instanceof ObjectNode document)) {
+            throw new IllegalStateException("The policy of %s can't be read: it is not a JSON object".formatted(describe(key)));
+        }
+        JsonNode assignments = document.get(ROLE_ASSIGNMENTS);
+        if (assignments != null && !assignments.isNull() && !assignments.isArray()) {
+            throw new IllegalStateException("The role assignments of %s can't be read: not a list".formatted(describe(key)));
+        }
+        return document;
+    }
+
+    private void deletePolicy(String id) {
+        if (id == null || !isPolicyId(id)) {
+            return;
+        }
+        cachedPolicies.remove(id);
+        try {
+            resources.deleteResource(policy(id), EtagHeader.ANY);
+        } catch (RuntimeException e) {
+            log.warn("The policy {} of a removed org unit stays as an orphan, which nothing reads: {}", id, e.getMessage());
+        }
+    }
+
+    /**
+     * A unit id names its policy document only when it is a plain token, so a hand-edited tree can't point a policy
+     * write at the tree itself or anywhere else.
+     */
+    private static String requirePolicyId(String key, OrgUnit unit) {
+        if (unit.id() == null || !isPolicyId(unit.id())) {
+            throw new IllegalStateException("Org unit %s has no usable id, so it holds no role assignments".formatted(describe(key)));
+        }
+        return unit.id();
+    }
+
+    private static boolean isPolicyId(String id) {
+        return POLICY_ID.matcher(id).matches() && !id.equals(UNITS_NAME);
+    }
+
+    private static ResourceDescriptor policy(String id) {
+        return ResourceDescriptorFactory.fromDecoded(ResourceTypes.ORG_UNITS, ResourceDescriptor.PUBLIC_BUCKET,
+                ResourceDescriptor.PUBLIC_LOCATION, id);
+    }
+
+    @Nullable
+    private static RoleAssignment readRoleAssignment(String key, JsonNode assignment) {
+        try {
+            if (!assignment.isObject()) {
+                throw new IllegalArgumentException("not an object");
+            }
+            return ProxyUtil.MAPPER.treeToValue(assignment, RoleAssignment.class);
+        } catch (JsonProcessingException | RuntimeException e) {
+            log.warn("Ignoring a role assignment at {} this version can't read: {}", key, e.getMessage());
+            return null;
+        }
+    }
+
+    private static String unitKey(List<String> path) {
+        String key = keyOf(requireSharedSpace(path));
+        if (key.equals(SHARED_SPACE_KEY)) {
+            throw new IllegalArgumentException("The shared space is not a unit and holds no role assignments");
+        }
+        return key;
+    }
+
+    static boolean isClaimPath(String source) {
+        return CLAIM_PATH.matcher(source).matches();
+    }
+
+    private static void requireSubject(@Nullable Subject subject) {
+        if (!(subject instanceof Subject.ClaimsPredicate predicate)) {
+            throw new IllegalArgumentException("subject is a claimsPredicate, such as {\"type\": \"claimsPredicate\", "
+                    + "\"source\": \"email\", \"function\": \"EQUAL\", \"targets\": [\"jane@example.com\"]}");
+        }
+
+        if (predicate.function() == Rule.Function.TRUE) {
+            if (predicate.targets() != null && !predicate.targets().isEmpty()) {
+                throw new IllegalArgumentException("A TRUE subject takes no targets: it matches any caller whose token has the claim");
+            }
+        } else if (predicate.function() != Rule.Function.EQUAL) {
+            throw new IllegalArgumentException("Only the EQUAL and TRUE functions are supported in a subject for now");
+        } else if (predicate.targets() == null || predicate.targets().isEmpty()) {
+            throw new IllegalArgumentException("targets needs at least one value");
+        }
+        if (!isClaimPath(predicate.source())) {
+            throw new IllegalArgumentException("source is a claim name, or a dotted path of them, such as email or realm_access.roles");
+        }
+        for (String text : predicate.targets() == null ? List.<String>of() : predicate.targets()) {
+            if (text == null || text.isBlank() || text.length() > MAX_SUBJECT_TEXT || text.chars().anyMatch(Character::isISOControl)) {
+                throw new IllegalArgumentException("Subject values are not blank, have at most %d characters and no control characters"
+                        .formatted(MAX_SUBJECT_TEXT));
+            }
+        }
+    }
+
+    /**
+     * Changes what clients show for a unit; a blank display name falls back to the name, as on create. Only the
+     * stored entry's {@code displayName} changes, so fields this node doesn't know stay as stored. The unit's name and
+     * folder never change.
+     */
+    public OrgUnitData updateDisplayName(List<String> path, @Nullable String displayName) {
+        String key = keyOf(requireSharedSpace(path));
+        if (key.equals(SHARED_SPACE_KEY)) {
+            throw new IllegalArgumentException("The shared space is not a unit");
+        }
+        if (displayName == null) {
+            throw new IllegalArgumentException("displayName is required");
+        }
+        requireDisplayName(displayName);
+
+        String value = displayName.isBlank() ? lastSegment(key) : displayName;
+        resources.computeResource(UNITS, body -> {
+            ObjectNode document = parse(body);
+            ObjectNode units = units(document);
+            JsonNode stored = units.get(key);
+            if (stored == null) {
+                throw new ResourceNotFoundException("No org unit: " + String.join("/", path));
+            }
+            // an unreadable entry still counts as a unit, so the update repairs it
+            ObjectNode entry = stored instanceof ObjectNode object ? object : units.putObject(key);
+            entry.put("displayName", value);
+            return document.toString();
+        });
+        return read(path, false, null, true);
+    }
+
+    /**
+     * Removes an empty unit; with {@code recursive}, every unit below it too. A unit is empty when its folder holds
+     * nothing but empty-folder markers in the files tree and nothing at all in any other type tree, the subtree of its
+     * child units included. Its tree entries and the markers in its subtree go, and so do any read rules left in its
+     * subtree.
+     *
+     * @return the paths of the removed units, deepest first
+     */
+    public List<String> delete(List<String> path, boolean recursive) {
+        String key = keyOf(requireSharedSpace(path));
+        if (key.equals(SHARED_SPACE_KEY)) {
+            throw new IllegalArgumentException("The shared space is not a unit");
+        }
+
+        Map<String, String> removed = locks.underBucketLock(SHARED_SPACE_KEY, () -> deleteLocked(path, key, recursive));
+        removed.values().forEach(this::deletePolicy);
+        return removed.keySet().stream().map(OrgUnitService::path).toList();
+    }
+
+    /**
+     * Runs under the shared space's bucket lock, which create, moves and publication approvals into the shared space
+     * also take, so none of them puts anything into the unit between the emptiness check and the removal. A direct
+     * write doesn't take that lock: content it lands meanwhile ends up under no unit, where the read rules decide.
+     *
+     * <p>The markers go before the tree entries: until the entries are gone the unit still exists, so a removal that
+     * fails part way can be repeated, and once they are gone no marker is left to keep the name taken.
+     *
+     * <p>The policies go last, once the tree no longer names them: a policy the tree doesn't reference is never read.
+     *
+     * @return the removed units' ids by key, deepest first
+     */
+    private Map<String, String> deleteLocked(List<String> path, String key, boolean recursive) {
+        OrgUnitList list = getUnitList();
+        List<String> keys = new ArrayList<>(unitsBelow(list, key, path, recursive));
+        List<ResourceDescriptor> markers = requireEmpty(key, keys);
+        keys.add(key);
+        Map<String, String> removed = new LinkedHashMap<>();
+        keys.forEach(unit -> removed.put(unit, list.units().get(unit).id()));
+
+        for (ResourceDescriptor marker : markers) {
+            resources.deleteResource(marker, EtagHeader.ANY);
+        }
+        for (ResourceTypes type : CONTENT_TYPES) {
+            if (type.isComplex()) {
+                complexResources.deleteFoldersLocked(folder(type, key));
+            }
+        }
+        update(units -> keys.forEach(units.units()::remove));
+        removeRulesUnder(key);
+        return removed;
+    }
+
+    /**
+     * The unit is gone by now; rules inside a unit granted nothing, so a failure here only leaves stray rules behind.
+     */
+    private void removeRulesUnder(String key) {
+        try {
+            ruleService.removeRulesUnder(folder(ResourceTypes.FILE, key));
+        } catch (RuntimeException e) {
+            log.warn("The read rules of {} stay after its removal: {}", describe(key), e.getMessage());
+        }
+    }
+
+    /**
+     * The units below the key, deepest first; refuses them unless {@code recursive}.
+     */
+    private static List<String> unitsBelow(OrgUnitList list, String key, List<String> path, boolean recursive) {
+        if (!list.units().containsKey(key)) {
+            throw new ResourceNotFoundException("No org unit: " + String.join("/", path));
+        }
+
+        List<String> below = list.units().keySet().stream()
+                .filter(unit -> unit.startsWith(key) && !unit.equals(key))
+                .sorted(Comparator.comparingInt(OrgUnitService::depth).reversed().thenComparing(Comparator.naturalOrder()))
+                .toList();
+        if (!below.isEmpty() && !recursive) {
+            throw new HttpException(HttpStatus.CONFLICT, "%s has units below it: %s. Remove them first, or remove all with recursive=true"
+                    .formatted(describe(key), String.join(", ", below.stream().map(OrgUnitService::describe).toList())));
+        }
+        return below;
+    }
+
+    /**
+     * Refuses a unit whose subtree holds anything but empty-folder markers in the files tree and grouping folders in
+     * the skills and projects trees, naming up to three items.
+     *
+     * @return the files tree's markers to remove with it
+     */
+    private List<ResourceDescriptor> requireEmpty(String key, List<String> below) {
+        Subtree subtree = listSubtree(key);
+        List<String> content = subtree.content();
+        if (!content.isEmpty()) {
+            String units = below.isEmpty() ? describe(key) + " still holds" : describe(key) + " and the units below it still hold";
+            String shown = String.join(", ", content.subList(0, Math.min(3, content.size()))) + (content.size() > 3 ? ", …" : "");
+            throw new HttpException(HttpStatus.CONFLICT, "%s content: %s. Delete or move it first.".formatted(units, shown));
+        }
+        return subtree.markers();
+    }
+
+    /**
+     * The subtree's empty-folder markers in the files tree, and its other items in every type tree. The skills and
+     * projects trees are listed by {@link ComplexResourceService}, so a deleted resource there that the sweep hasn't
+     * reclaimed yet isn't content. Stops listing once more than three items are found: enough to name them.
+     */
+    private Subtree listSubtree(String key) {
+        List<ResourceDescriptor> markers = new ArrayList<>();
+        List<String> content = new ArrayList<>();
+        for (ResourceTypes type : CONTENT_TYPES) {
+            if (content.size() > 3) {
+                break;
+            }
+            String token = null;
+            do {
+                ResourceFolderMetadata page = type.isComplex()
+                        ? complexResources.listChildren(folder(type, key), token, LIST_PAGE, true)
+                        : resources.getFolderMetadata(folder(type, key), token, LIST_PAGE, true);
+                if (page == null) {
+                    break;
+                }
+                for (MetadataBase item : page.getItems()) {
+                    if (type.isComplex() && item.getNodeType() == NodeType.FOLDER) {
+                        continue;
+                    }
+                    if (type == ResourceTypes.FILE && FOLDER_MARKER.equals(item.getName())) {
+                        markers.add(((ResourceItemMetadata) item).getDescriptor());
+                    } else {
+                        content.add(item.getUrl());
+                    }
+                }
+                token = content.size() > 3 ? null : page.getNextToken();
+            } while (token != null);
+        }
+        return new Subtree(markers, content);
+    }
+
+    private record Subtree(List<ResourceDescriptor> markers, List<String> content) {
     }
 
     private void requireCreatable(OrgUnitList list, String parentKey, String name) {
@@ -290,7 +836,7 @@ public class OrgUnitService {
      * Refuses a document that isn't a JSON object rather than reading it as empty: an empty list would hand every
      * unit's content to the shared space.
      */
-    private static ObjectNode parse(@Nullable String body) {
+    static ObjectNode parse(@Nullable String body) {
         if (body == null || body.isBlank()) {
             return ProxyUtil.MAPPER.createObjectNode();
         }
@@ -307,7 +853,7 @@ public class OrgUnitService {
         throw new IllegalStateException("The org unit list can't be read: it is not a JSON object");
     }
 
-    private static ObjectNode units(ObjectNode document) {
+    static ObjectNode units(ObjectNode document) {
         JsonNode units = document.get("units");
         if (units == null || units.isNull()) {
             return document.putObject("units");
@@ -318,7 +864,7 @@ public class OrgUnitService {
         throw new IllegalStateException("The org unit list can't be read: units is not an object");
     }
 
-    private static OrgUnitList decode(ObjectNode raw) {
+    static OrgUnitList decode(ObjectNode raw) {
         Map<String, OrgUnit> units = new TreeMap<>();
         raw.fields().forEachRemaining(field -> units.put(field.getKey(), decodeUnit(field.getValue())));
         return new OrgUnitList(units);
@@ -411,16 +957,14 @@ public class OrgUnitService {
     }
 
     /**
-     * The units whose folder the read rules let the caller see, evaluated once over the list the request reads.
+     * The units the caller sees through their roles, evaluated once over the list the request reads.
      */
     private Predicate<String> visibleTo(ProxyContext context, OrgUnitList list) {
-        Map<ResourceDescriptor, String> keysByFolder = list.units().keySet().stream()
-                .filter(key -> !key.equals(SHARED_SPACE_KEY))
-                .collect(Collectors.toMap(key -> folder(ResourceTypes.FILE, key), key -> key));
-        Set<String> visible = ruleService.getAllowedPublicResources(context, keysByFolder.keySet()).stream()
-                .map(keysByFolder::get)
-                .collect(Collectors.toSet());
-        return visible::contains;
+        OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
+        Map<String, Set<String>> held = new HashMap<>();
+        roleAssignmentsOfAll(list.units()).forEach((key, assignments) -> held.put(key, OrgUnitSubjects.heldRoles(context, assignments)));
+        return key -> list.units().containsKey(key) && OrgUnitGrants.showsUnit(roles,
+                held.getOrDefault(key, Set.of()), held.getOrDefault(parentKey(key), Set.of()));
     }
 
     private static OrgUnitData toData(String key, OrgUnitList list, boolean recursive, Predicate<String> visible) {
@@ -483,6 +1027,15 @@ public class OrgUnitService {
                 key.substring(SHARED_SPACE_KEY.length()));
     }
 
+    static String keyOf(@Nullable ResourceDescriptor folder) {
+        if (folder == null) {
+            return SHARED_SPACE_KEY;
+        }
+
+        String url = folder.getDecodedUrl();
+        return url.substring(folder.getType().urlSegment().length() + 1);
+    }
+
     private static String keyOf(List<String> unitPath) {
         StringBuilder key = new StringBuilder(SHARED_SPACE_KEY);
         for (String segment : unitPath) {
@@ -498,7 +1051,7 @@ public class OrgUnitService {
         return RuleService.ruleUrl(folder(ResourceTypes.FILE, key));
     }
 
-    private static String parentKey(String key) {
+    public static String parentKey(String key) {
         int end = key.lastIndexOf('/', key.length() - 2);
         return key.substring(0, end + 1);
     }

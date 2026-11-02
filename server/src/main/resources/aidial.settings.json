@@ -82,7 +82,11 @@
     "activeBatches": 5,
     "gracePeriod": 3600000
   },
-  "adminExport": {
+  "budgetCounterSweep": {
+    "period": 300000,
+    "batch": 500
+  },
+  "adminSystemExport": {
     "stallTimeout": 60000
   },
   "clientChannel": {

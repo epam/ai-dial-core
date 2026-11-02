@@ -71,7 +71,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.withSettings;
 
-class AdminExportServiceTest {
+class AdminSystemExportServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-01-02T03:04:05.678Z");
     private static final String CORE_VERSION = "1.2.3";
@@ -81,7 +81,7 @@ class AdminExportServiceTest {
     private BlobStorage blobStorage;
     private Path testDir;
     private LockService lockService;
-    private AdminExportService service;
+    private AdminSystemExportService service;
 
     @BeforeEach
     void init() throws IOException {
@@ -99,7 +99,7 @@ class AdminExportServiceTest {
             config.useSingleServer().setAddress("redis://localhost:" + redisPort);
             redis = Redisson.create(config);
 
-            testDir = FileUtil.baseTestPath(AdminExportServiceTest.class);
+            testDir = FileUtil.baseTestPath(AdminSystemExportServiceTest.class);
             FileUtil.deleteDir(testDir);
             FileUtil.createDir(testDir.resolve("test"));
             String blobStorageConfig = """
@@ -117,7 +117,7 @@ class AdminExportServiceTest {
             blobStorage = new BlobStorage(mapper.readValue(blobStorageConfig, Storage.class));
 
             lockService = new LockService(redis, null);
-            service = new AdminExportService(blobStorage, lockService, NOW::toEpochMilli, CORE_VERSION);
+            service = new AdminSystemExportService(blobStorage, lockService, NOW::toEpochMilli, CORE_VERSION);
         } catch (Throwable e) {
             destroy();
             throw e;
@@ -155,8 +155,8 @@ class AdminExportServiceTest {
 
         Map<String, byte[]> entries = readEntries(export(service));
 
-        assertEquals(AdminExportService.MANIFEST_ENTRY, entries.keySet().iterator().next());
-        JsonNode manifest = json(entries.get(AdminExportService.MANIFEST_ENTRY));
+        assertEquals(AdminSystemExportService.MANIFEST_ENTRY, entries.keySet().iterator().next());
+        JsonNode manifest = json(entries.get(AdminSystemExportService.MANIFEST_ENTRY));
         assertEquals(1, manifest.get("formatVersion").asInt());
         assertEquals(CORE_VERSION, manifest.get("coreVersion").asText());
         assertEquals("2026-01-02T03:04:05Z", manifest.get("createdAt").asText());
@@ -173,14 +173,14 @@ class AdminExportServiceTest {
         assertArrayEquals("hello".getBytes(StandardCharsets.UTF_8), entries.get("public/files/user1/a.txt"));
         assertArrayEquals("bytes".getBytes(StandardCharsets.UTF_8), entries.get("platform/misc/b.bin"));
 
-        JsonNode metadata = json(entries.get(AdminExportService.METADATA_ENTRY_PREFIX + "public/files/user1/a.txt"));
+        JsonNode metadata = json(entries.get(AdminSystemExportService.METADATA_ENTRY_PREFIX + "public/files/user1/a.txt"));
         assertEquals("text/plain", metadata.get("contentType").asText());
         assertFalse(metadata.has("contentEncoding"));
         assertEquals(userMetadata, ProxyUtil.MAPPER.convertValue(metadata.get("userMetadata"), Map.class));
 
         List<String> names = new ArrayList<>(entries.keySet());
         for (String path : List.of("public/files/user1/a.txt", "platform/misc/b.bin")) {
-            assertEquals(names.indexOf(path) - 1, names.indexOf(AdminExportService.METADATA_ENTRY_PREFIX + path));
+            assertEquals(names.indexOf(path) - 1, names.indexOf(AdminSystemExportService.METADATA_ENTRY_PREFIX + path));
         }
     }
 
@@ -193,7 +193,7 @@ class AdminExportServiceTest {
 
         Map<String, byte[]> entries = readEntries(export(service));
 
-        JsonNode metadata = json(entries.get(AdminExportService.METADATA_ENTRY_PREFIX + path));
+        JsonNode metadata = json(entries.get(AdminSystemExportService.METADATA_ENTRY_PREFIX + path));
         assertEquals("gzip", metadata.get("contentEncoding").asText());
         assertEquals("application/json", metadata.get("contentType").asText());
         assertEquals("abc", metadata.get("userMetadata").get("etag").asText());
@@ -215,7 +215,7 @@ class AdminExportServiceTest {
 
         Map<String, byte[]> entries = readEntries(export(newService(storage)));
 
-        JsonNode metadata = json(entries.get(AdminExportService.METADATA_ENTRY_PREFIX + path));
+        JsonNode metadata = json(entries.get(AdminSystemExportService.METADATA_ENTRY_PREFIX + path));
         assertEquals("2025-03-04T05:06:07.123Z", metadata.get("creationDate").asText());
         assertEquals("2025-04-05T06:07:08.456Z", metadata.get("lastModified").asText());
         assertEquals("attachment; filename=a.txt", metadata.get("contentDisposition").asText());
@@ -254,7 +254,7 @@ class AdminExportServiceTest {
         Map<String, byte[]> entries = readEntries(export(service));
 
         assertTrue(entries.containsKey(path), entries.keySet()::toString);
-        assertTrue(entries.containsKey(AdminExportService.METADATA_ENTRY_PREFIX + path));
+        assertTrue(entries.containsKey(AdminSystemExportService.METADATA_ENTRY_PREFIX + path));
     }
 
     @Test
@@ -270,7 +270,7 @@ class AdminExportServiceTest {
         Map<String, byte[]> entries = readEntries(export(service));
 
         List<String> exported = entries.keySet().stream()
-                .filter(name -> !name.startsWith(".dial-export/"))
+                .filter(name -> !name.startsWith(".dial-system-export/"))
                 .toList();
         assertEquals(List.of("public/files/owner/credentials/notes.txt", "public/files/owner/encryption_keys/notes.txt", "public/models/m1"), exported);
         assertFalse(entries.keySet().stream().anyMatch(name -> name.contains("cred1") || name.contains("key1")));
@@ -285,7 +285,7 @@ class AdminExportServiceTest {
 
         for (String path : List.of("public/skills/folder/.dial-folder", "public/skills/folder/skill/.dial-resource")) {
             assertTrue(entries.containsKey(path), entries.keySet()::toString);
-            assertTrue(entries.containsKey(AdminExportService.METADATA_ENTRY_PREFIX + path));
+            assertTrue(entries.containsKey(AdminSystemExportService.METADATA_ENTRY_PREFIX + path));
         }
     }
 
@@ -311,7 +311,7 @@ class AdminExportServiceTest {
         stubList(storage, "public/", count, i -> "public/files/user1/f" + i);
         stubList(storage, "platform/", 0, i -> null);
         when(storage.load(anyString())).thenAnswer(invocation -> blob(invocation.getArgument(0), "c"));
-        AdminExportService exportService = newService(storage);
+        AdminSystemExportService exportService = newService(storage);
 
         Path file = testDir.resolve("export.zip");
         try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(file))) {
@@ -343,8 +343,8 @@ class AdminExportServiceTest {
 
         assertEquals(
                 List.of(
-                        AdminExportService.MANIFEST_ENTRY,
-                        AdminExportService.METADATA_ENTRY_PREFIX + "public/files/user1/kept.txt",
+                        AdminSystemExportService.MANIFEST_ENTRY,
+                        AdminSystemExportService.METADATA_ENTRY_PREFIX + "public/files/user1/kept.txt",
                         "public/files/user1/kept.txt"
                 ), new ArrayList<>(entries.keySet()));
         verify(storage, never()).load("public/files/user1/dir");
@@ -381,7 +381,7 @@ class AdminExportServiceTest {
             assertTrue(gatedOut.writing.await(10, TimeUnit.SECONDS));
 
             ByteArrayOutputStream rejectedOut = new ByteArrayOutputStream();
-            assertThrows(AdminExportBusyException.class, () -> service.export(rejectedOut, NOW));
+            assertThrows(AdminSystemExportBusyException.class, () -> service.export(rejectedOut, NOW));
             assertEquals(0, rejectedOut.size());
 
             gatedOut.proceed.countDown();
@@ -398,7 +398,7 @@ class AdminExportServiceTest {
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-            assertThrows(AdminExportBusyException.class, () -> service.export(out, NOW));
+            assertThrows(AdminSystemExportBusyException.class, () -> service.export(out, NOW));
 
             assertEquals(0, out.size());
             LockService.Lock publicLock = lockService.tryLock("public/");
@@ -451,7 +451,7 @@ class AdminExportServiceTest {
         ByteArrayOutputStream written = new ByteArrayOutputStream();
 
         UncheckedIOException e = assertThrows(UncheckedIOException.class, () ->
-                new AdminExportService(blobStorage, lockService, current::get, CORE_VERSION)
+                new AdminSystemExportService(blobStorage, lockService, current::get, CORE_VERSION)
                         .export(afterFirstWrite(written, () -> current.addAndGet(LockService.LOCK_PERIOD.plusSeconds(1).toMillis())), NOW));
 
         assertTrue(e.getCause().getMessage().contains("lock period"), e.getCause().getMessage());
@@ -469,7 +469,7 @@ class AdminExportServiceTest {
         AtomicLong current = new AtomicLong(NOW.toEpochMilli());
         ByteArrayOutputStream written = new ByteArrayOutputStream();
 
-        new AdminExportService(blobStorage, lockService, current::get, CORE_VERSION)
+        new AdminSystemExportService(blobStorage, lockService, current::get, CORE_VERSION)
                 .export(afterFirstWrite(written, () -> current.addAndGet(LockService.LOCK_PERIOD.toMillis())), NOW);
 
         assertTrue(readEntries(written.toByteArray()).containsKey("public/files/user1/a.txt"));
@@ -477,7 +477,7 @@ class AdminExportServiceTest {
 
     @Test
     void testStallTimeoutMustBePositiveAndBelowTheLockPeriod() {
-        AdminExportService.Settings settings = new AdminExportService.Settings();
+        AdminSystemExportService.Settings settings = new AdminSystemExportService.Settings();
         assertDoesNotThrow(settings::validate);
 
         settings.setStallTimeout(LockService.LOCK_PERIOD.toMillis() - 1);
@@ -491,7 +491,7 @@ class AdminExportServiceTest {
 
     @Test
     void testFailedExportLogsError() throws IOException {
-        Logger logger = (Logger) LoggerFactory.getLogger(AdminExportService.class);
+        Logger logger = (Logger) LoggerFactory.getLogger(AdminSystemExportService.class);
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
         appender.start();
         logger.addAppender(appender);
@@ -505,9 +505,9 @@ class AdminExportServiceTest {
 
             List<ILoggingEvent> errors = appender.list.stream().filter(event -> event.getLevel() == Level.ERROR).toList();
             assertEquals(1, errors.size());
-            assertTrue(errors.get(0).getFormattedMessage().startsWith("Admin export failed"));
+            assertTrue(errors.get(0).getFormattedMessage().startsWith("Admin system export failed"));
             assertNotNull(errors.get(0).getThrowableProxy());
-            assertTrue(appender.list.stream().noneMatch(event -> event.getFormattedMessage().startsWith("Admin export completed")));
+            assertTrue(appender.list.stream().noneMatch(event -> event.getFormattedMessage().startsWith("Admin system export completed")));
         } finally {
             logger.detachAppender(appender);
         }
@@ -516,7 +516,7 @@ class AdminExportServiceTest {
     @Test
     void testDiscardReleasesDeflaterWithoutFinishingArchive() throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        AdminExportService.DiscardableZipOutputStream zip = new AdminExportService.DiscardableZipOutputStream(out);
+        AdminSystemExportService.DiscardableZipOutputStream zip = new AdminSystemExportService.DiscardableZipOutputStream(out);
         zip.putNextEntry(new ZipEntry("a"));
         zip.write(new byte[100]);
 
@@ -545,8 +545,8 @@ class AdminExportServiceTest {
         };
     }
 
-    private AdminExportService newService(BlobStorage storage) {
-        return new AdminExportService(storage, lockService, NOW::toEpochMilli, CORE_VERSION);
+    private AdminSystemExportService newService(BlobStorage storage) {
+        return new AdminSystemExportService(storage, lockService, NOW::toEpochMilli, CORE_VERSION);
     }
 
     private static BlobStorage singleBlobStorage(String path, Blob blob) {
@@ -564,7 +564,7 @@ class AdminExportServiceTest {
         blobStorage.store(path, contentType, contentEncoding, userMetadata, body.getBytes(StandardCharsets.UTF_8));
     }
 
-    private static byte[] export(AdminExportService exportService) {
+    private static byte[] export(AdminSystemExportService exportService) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         exportService.export(out, NOW);
         return out.toByteArray();

@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service.resource;
 import com.epam.aidial.core.server.data.folder.ComplexResourceRef;
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.ComplexResourceItemMetadata;
@@ -36,6 +37,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -649,6 +651,40 @@ public class ComplexResourceService {
     }
 
     /**
+     * Deletes the grouping folder and every grouping folder below it, deepest first, for a caller that already
+     * holds the folder's bucket lock. A resource in the {@code deleting} state doesn't count, as in
+     * {@link #deleteFolder}; the sweep still reclaims it. Folders that don't exist are skipped.
+     *
+     * @throws HttpException CONFLICT if any folder below holds an active resource
+     */
+    public void deleteFoldersLocked(ResourceDescriptor folder) {
+        List<ResourceDescriptor> folders = new ArrayList<>();
+        String token = null;
+        do {
+            ResourceFolderMetadata page = listChildren(folder, token, PAGE_SIZE, true);
+            if (page == null) {
+                break;
+            }
+            for (MetadataBase item : page.getItems()) {
+                if (item.getNodeType() != NodeType.FOLDER) {
+                    throw new HttpException(HttpStatus.CONFLICT, "Folder is not empty: " + folder.getUrl());
+                }
+                folders.add(item.getDescriptor());
+            }
+            token = page.getNextToken();
+        } while (token != null);
+
+        folders.sort(Comparator.comparingInt((ResourceDescriptor child) -> child.getParentFolders().size()).reversed());
+        folders.add(folder);
+        for (ResourceDescriptor child : folders) {
+            ResourceDescriptor marker = folderMarkerDescriptor(child);
+            if (isActive(readMarker(marker, false))) {
+                resourceService.deleteResource(marker, EtagHeader.ANY);
+            }
+        }
+    }
+
+    /**
      * Resolves metadata for the v2 metadata route's target path. If the path is itself an active DIAL
      * resource (a skill), returns its metadata as a single {@code ITEM}; otherwise treats it as a grouping
      * level and lists its children via {@link #listChildren}.
@@ -1141,6 +1177,9 @@ public class ComplexResourceService {
     private static ResourceDescriptor subFolder(ResourceDescriptor versionFolder, String subPath) {
         List<String> segments = Arrays.asList(StringUtils.strip(subPath, ResourceDescriptor.PATH_SEPARATOR)
                 .split(ResourceDescriptor.PATH_SEPARATOR));
+        if (!segments.stream().allMatch(ResourceDescriptorFactory::isValidFilename)) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Invalid path provided: " + subPath);
+        }
         List<String> parentFolders = new ArrayList<>(versionFolder.getParentFolders());
         parentFolders.add(versionFolder.getName());
         parentFolders.addAll(segments.subList(0, segments.size() - 1));

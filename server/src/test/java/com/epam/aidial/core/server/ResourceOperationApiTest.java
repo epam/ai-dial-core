@@ -198,7 +198,7 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
                   "with": "me"
                 }
                 """, "Api-key", "proxyKey2");
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                   "resources" : [ {
                     "name" : "conversation2",
@@ -206,6 +206,8 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder2/conversation2",
                     "nodeType" : "ITEM",
+                    "createdAt" : "@ignore",
+                    "updatedAt" : "@ignore",
                     "resourceType" : "CONVERSATION",
                     "permissions" : [ "READ" ]
                     } ]
@@ -219,7 +221,7 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
                   "with": "others"
                 }
                 """);
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                   "resources" : [ {
                     "name" : "conversation2",
@@ -227,6 +229,8 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder2/conversation2",
                     "nodeType" : "ITEM",
+                    "createdAt" : "@ignore",
+                    "updatedAt" : "@ignore",
                     "resourceType" : "CONVERSATION",
                     "permissions" : [ "READ" ]
                     } ]

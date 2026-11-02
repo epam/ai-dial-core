@@ -1,11 +1,13 @@
 package com.epam.aidial.core.server.tracing;
 
+import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
 import io.opentelemetry.context.propagation.ContextPropagators;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.ReadableSpan;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.vertx.core.Context;
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
@@ -156,7 +158,7 @@ class DialVertxTracerTest {
 
     @Test
     void spanStaysCurrentAfterResponseEnd(VertxTestContext testContext) {
-        OpenTelemetryOptions options = new OpenTelemetryOptions(OpenTelemetrySdk.builder().build());
+        OpenTelemetryOptions options = new OpenTelemetryOptions(OpenTelemetrySdk.builder().setTracerProvider(tracerProvider()).build());
         options.setFactory(new DialTracingFactory(options.getFactory()));
         // closed in @AfterEach, once both checkpoints are flagged, so closing cannot race the server-side afterEnd
         tracedVertx = Vertx.vertx(new VertxOptions().setTracingOptions(options));
@@ -184,10 +186,16 @@ class DialVertxTracerTest {
     @SuppressWarnings("unchecked")
     private static DialVertxTracer<Object, Object> otelTracer() {
         OpenTelemetrySdk sdk = OpenTelemetrySdk.builder()
+                .setTracerProvider(tracerProvider())
                 .setPropagators(ContextPropagators.create(W3CTraceContextPropagator.getInstance()))
                 .build();
         VertxTracer<Object, Object> otel = (VertxTracer<Object, Object>) new OpenTelemetryTracingFactory(sdk).tracer(null);
         return new DialVertxTracer<>(otel);
+    }
+
+    // as core sets it up: a provider without a span processor hands out no-op tracers
+    private static SdkTracerProvider tracerProvider() {
+        return SdkTracerProvider.builder().addSpanProcessor(new PathNormalizerSpanProcessor()).build();
     }
 
     public static List<Arguments> receiveRequestDatasource() {

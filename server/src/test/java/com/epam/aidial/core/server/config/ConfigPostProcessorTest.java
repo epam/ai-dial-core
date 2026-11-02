@@ -8,6 +8,8 @@ import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Operator;
+import com.epam.aidial.core.config.OrgUnitPermission;
+import com.epam.aidial.core.config.OrgUnitRole;
 import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.PricingRate;
@@ -53,6 +55,15 @@ public class ConfigPostProcessorTest {
 
     // test-echo, from the test classpath
     private static final PluginRegistry PLUGINS = PluginRegistry.load(Path.of("no-plugins-dir"));
+
+    @Test
+    void testOrgUnitRolesCoreCannotEvaluateFailTheLoad() {
+        Config config = new Config();
+        config.setOrgUnitRoles(Map.of("auditor", new OrgUnitRole("x", List.of(new OrgUnitPermission(List.of("read"), "rules/**")))));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ConfigPostProcessor.process(config, null, PluginRegistry.EMPTY));
+        assertTrue(error.getMessage().startsWith("orgUnitRoles.auditor: pathPattern"), error.getMessage());
+    }
 
     @Test
     void testStructuralDropsSlashKeyedNamesAcrossAllTypes() {

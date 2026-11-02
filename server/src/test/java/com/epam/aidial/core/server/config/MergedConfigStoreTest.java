@@ -3,9 +3,12 @@ package com.epam.aidial.core.server.config;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.DeploymentInterface;
+import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.OrgUnitPermission;
+import com.epam.aidial.core.config.OrgUnitRole;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
@@ -151,6 +154,25 @@ public class MergedConfigStoreTest {
                 externalServiceService, resourceAuthSettingsEncryptionService, null));
 
         assertEquals("backgroundTracer must not be null", error.getMessage());
+    }
+
+    @Test
+    public void testOrgUnitRolesSurviveTheRebuildAndEveryWrite() {
+        Config fileConfig = new Config();
+        Map<String, OrgUnitRole> roles = Map.of("auditor",
+                new OrgUnitRole("Reads files", List.of(new OrgUnitPermission(List.of("read"), "files/**"))));
+        fileConfig.setOrgUnitRoles(roles);
+        when(fileConfigStore.get()).thenReturn(fileConfig);
+
+        MergedConfigStore store = new MergedConfigStore(
+                vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
+                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
+                externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
+        store.init(fileConfigStore);
+
+        assertEquals(roles, store.get().getOrgUnitRoles());
+        assertEquals(roles, store.applySettingsWrite(new GlobalSettings()).getOrgUnitRoles());
+        assertEquals(roles, store.applySettingsDelete().getOrgUnitRoles());
     }
 
     @Test
