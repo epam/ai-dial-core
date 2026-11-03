@@ -18378,6 +18378,8 @@ components:
             type: integer
         rateLimitSchedule:
           $ref: "#/components/schemas/RateLimitSchedule"
+        spendingLimits:
+          $ref: "#/components/schemas/SpendingLimits"
     HealthResponse:
       type: object
       properties:

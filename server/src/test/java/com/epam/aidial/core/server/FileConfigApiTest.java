@@ -138,6 +138,8 @@ public class FileConfigApiTest extends ResourceBaseTest {
         assertTrue(body.get("globalInterceptors").isArray());
         assertTrue(body.get("retriableErrorCodes").isArray());
         assertEquals("UTC", body.get("rateLimitSchedule").get("timezone").asText());
+        assertEquals("off", body.get("spendingLimits").get("mode").asText());
+        assertEquals("ORG", body.get("spendingLimits").get("defaultCostObject").asText());
         assertFalse(body.has("source"),
                 () -> "U.1: source field must not appear in any response: " + response.body());
     }

@@ -1319,7 +1319,8 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                     {
                       "kind": "Settings",
                       "name": "settings/platform/global",
-                      "spec": {"globalInterceptors": ["interceptor1"], "retriableErrorCodes": []}
+                      "spec": {"globalInterceptors": ["interceptor1"], "retriableErrorCodes": [],
+                               "spendingLimits": {"mode": "enforce"}}
                     }
                   ]
                 }
@@ -1340,6 +1341,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         assertNotNull(globalInterceptors);
         assertEquals(1, globalInterceptors.size());
         assertEquals("interceptor1", globalInterceptors.get(0).asText());
+        assertEquals("enforce", settings.get("spendingLimits").get("mode").asText());
     }
 
     @Test
