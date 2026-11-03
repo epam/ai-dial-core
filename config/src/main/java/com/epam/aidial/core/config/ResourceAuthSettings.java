@@ -57,6 +57,8 @@ public class ResourceAuthSettings {
     @JsonAlias({"tokenEndpoint", "token_endpoint"})
     private String tokenEndpoint;
 
+    private String resource;
+
     @JsonAlias({"redirectUri", "redirect_uri"})
     private String redirectUri;
 

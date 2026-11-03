@@ -19486,6 +19486,8 @@ components:
         client_secret_hint:
           type: string
           readOnly: true
+        resource:
+          type: string
     ResourceAuthSettingsData:
       type: object
       properties:
@@ -19515,6 +19517,8 @@ components:
           $ref: "#/components/schemas/ResourceAuthStatus"
         dynamically_registered:
           type: boolean
+        resource:
+          type: string
     ResourceAuthStatus:
       type: string
       enum:
