@@ -124,10 +124,10 @@
 
 ## 7. Measurement
 
-- [ ] 7.1 Run a same-day A/B of the routing-application perf scenario. Compare an application served by the HTTP router
+- [x] 7.1 Run a same-day A/B of the routing-application perf scenario. Compare an application served by the HTTP router
       against one embedded with the `forward` plugin, on an image built with `SAMPLE_PLUGINS=true`. Record Core CPU per
       user request for both in review.md, with the HTTP router's `/v1/user/info` call reported apart, against the
-      estimate of design D9 (deferred: needs the perf env)
+      estimate of design D9
 
 ## 8. Cancellation before the answer and Core's Vert.x
 

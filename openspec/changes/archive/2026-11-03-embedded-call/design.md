@@ -538,6 +538,6 @@ Where the implementation differs from the decisions above, or settles what they 
   - D2: `ResponseItemController` has its own `finalizeRequest`, which closes its child passes too.
   - D2: a child pass's log lines write no attributes onto the plugin's span: the log layout skips its span enrichment
     for one, as `GenAiTraceAttributes` does.
-- **Not run here.** Task 6.2 was checked by reading the `Dockerfile`; no image was built. Task 7.1, the perf A/B, is
-  open. `ResourceApiTest.testWorkflow` fails locally on Windows only, as before this change.
+- **Not run here.** Task 6.2 was checked by reading the `Dockerfile`; no image was built. Task 7.1, the perf A/B, ran
+  after the archive: review.md "Perf A/B". `ResourceApiTest.testWorkflow` fails locally on Windows only, as before this change.
 

@@ -144,10 +144,45 @@ Recorded, not changed:
 
 The two scenarios of the MODIFIED analytics-log requirement keep their existing `GfLogStoreTest` tests.
 
+## Perf A/B (task 7.1)
+
+Run on 2026-11-03 in the perf environment, both runs on one install: the Core image of this branch built with
+`SAMPLE_PLUGINS=true`, two Core pods. Anthropic Messages, streamed, 1,000 users, 383 KB requests, 343 max tokens,
+900 s of steady load per run, measured over 12 minutes of it. The environment declares its routing deployments as
+models, so both sides are models:
+
+- **A:** `auto-router-medium`, served by the HTTP router. Core, then the router, then Core again, then the OpenAI
+  adapter and the mock model.
+- **B:** `auto-router-medium-forward`, the same model with its three interfaces embedded in a `forward` plugin set
+  to the router's medium-tier deployment. Core runs the plugin's pass and a child pass, then the OpenAI adapter and
+  the mock model.
+
+| Per user request | A: HTTP router | B: `forward` plugin | Change |
+|---|---|---|---|
+| User requests per second | 119.7 | 119.9 | |
+| HTTP requests into Core | 3: two Messages, one `/v1/user/info` | 1 | |
+| Core CPU | 63.6 ms | 47.0 ms | -16.6 ms (-26%) |
+| Router CPU | 9.2 ms | 0 | |
+| Core and router CPU | 72.8 ms | 47.0 ms | -25.7 ms (-35%) |
+| Valkey commands | 141 | 139 | -2 |
+| OpenAI adapter CPU | 25.9 ms | 25.3 ms | |
+
+- **Against D9.** D9 expected 35-39 ms against 53.5 ms, a saving of 14.5-18.5 ms; the saving measured is 16.6 ms.
+  The levels sit about 10 ms above D9's: path A cost 53.5 ms on 2026-10-20 and 63.6 ms here, so the two paths are
+  compared within the day only.
+- **`/v1/user/info`.** Path A makes one per user request, path B none. Without a profile its CPU is not split from
+  the passes; the 2026-10-20 estimate is 3 ms, give or take 3. If the plugin's pass costs what the router's first
+  pass does, the child pass costs about 11-17 ms less than the HTTP pass it replaces.
+- **Latency.** Unchanged within what the run resolves: the mock model's streamed answer takes 6-7 s, the root
+  span's p50 is 6.07 s on both paths, and Core's mean server time is 7.34 s on both.
+- **Validity.** Equal throughput; no failed request on B, and 1 of 569,540 on A (a client timeout at 300 s, after
+  the load ended); Core throttled under 0.4% of periods; no scale-down, eviction or restart; the same Core pods in
+  both runs. The mock model's CPU per request differed by 8% between the runs, though neither path changes it;
+  Core's change is three times that.
+
 ## Open
 
-- **Task 7.1.** The same-day perf A/B of the routing-application scenario, the HTTP router against the `forward`
-  plugin on an image built with `SAMPLE_PLUGINS=true`, needs the perf env.
-- **Task 6.2** was checked by reading the `Dockerfile`; no image was built here.
+- **Task 6.2** was checked by reading the `Dockerfile`, and at run time by the image of task 7.1: its Core logged
+  `Loaded plugin provider ...ForwardOriginPluginProvider for type 'forward'`.
 - **Closing a replaced plugin instance** is left to a follow-up change: design.md "Open Questions".
-- CI must still confirm the full suite.
+- CI passed the full suite.
