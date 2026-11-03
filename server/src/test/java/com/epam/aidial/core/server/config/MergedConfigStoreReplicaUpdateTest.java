@@ -15,6 +15,7 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.Future;
@@ -108,7 +109,7 @@ public class MergedConfigStoreReplicaUpdateTest {
 
     @Test
     public void selfPodEventIsFiltered() {
-        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(newConfig(), OnInvalidEntity.ABORT);
         Mockito.reset(taskExecutor, resourceService);
 
         ResourceEvent event = new ResourceEvent()
@@ -123,7 +124,7 @@ public class MergedConfigStoreReplicaUpdateTest {
 
     @Test
     public void nonManagedFirehoseEventShortCircuitsBeforeParse() {
-        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(newConfig(), OnInvalidEntity.ABORT);
         Mockito.reset(taskExecutor, resourceService);
 
         ResourceEvent event = new ResourceEvent()
@@ -138,7 +139,7 @@ public class MergedConfigStoreReplicaUpdateTest {
 
     @Test
     public void publicBucketApplicationEventIsFilteredByBucket() {
-        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(newConfig(), OnInvalidEntity.ABORT);
         Mockito.reset(taskExecutor, resourceService);
 
         // APPLICATION is a MANAGED_TYPE and fromAnyUrl resolves the public bucket, so this passes the
@@ -156,7 +157,7 @@ public class MergedConfigStoreReplicaUpdateTest {
 
     @Test
     public void publicBucketToolSetEventIsFilteredByBucket() {
-        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(newConfig(), OnInvalidEntity.ABORT);
         Mockito.reset(taskExecutor, resourceService);
 
         ResourceEvent event = new ResourceEvent()
@@ -171,7 +172,7 @@ public class MergedConfigStoreReplicaUpdateTest {
 
     @Test
     public void platformBucketApplicationEventIsDispatched() {
-        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(newConfig(), OnInvalidEntity.ABORT);
         Mockito.reset(taskExecutor, resourceService);
         when(taskExecutor.submit(any())).thenReturn(Future.succeededFuture());
 
@@ -188,7 +189,7 @@ public class MergedConfigStoreReplicaUpdateTest {
 
     @Test
     public void platformBucketToolSetEventIsDispatched() {
-        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(newConfig(), OnInvalidEntity.ABORT);
         Mockito.reset(taskExecutor, resourceService);
         when(taskExecutor.submit(any())).thenReturn(Future.succeededFuture());
 
@@ -224,7 +225,7 @@ public class MergedConfigStoreReplicaUpdateTest {
     @Test
     public void projectKeyCreateFetchesDecryptsAndUpdatesKeyStoreBeforeApply() {
         Config seeded = newConfig();
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
         Mockito.reset(apiKeyStore);
 
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
@@ -243,7 +244,7 @@ public class MergedConfigStoreReplicaUpdateTest {
 
     @Test
     public void projectKeyUpdateBehavesAsCreate() {
-        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(newConfig(), OnInvalidEntity.ABORT);
         Mockito.reset(apiKeyStore);
 
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
@@ -262,7 +263,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         existing.setKey("secret-OLD");
         Config seeded = newConfig();
         seeded.setKeys(new HashMap<>(java.util.Map.of(KEY_ID, existing)));
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
         Mockito.reset(apiKeyStore, resourceService);
 
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
@@ -281,7 +282,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         existing.setKey("secret-A");
         Config seeded = newConfig();
         seeded.setKeys(new HashMap<>(java.util.Map.of(KEY_ID, existing)));
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
         Mockito.reset(apiKeyStore, resourceService);
 
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
@@ -300,7 +301,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         existing.setKey("secret-A");
         Config seeded = newConfig();
         seeded.setKeys(new HashMap<>(java.util.Map.of(KEY_ID, existing)));
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
         Mockito.reset(apiKeyStore, resourceService);
 
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
@@ -317,7 +318,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         seeded.setGlobalInterceptors(List.of("file-default"));
         seeded.setRetriableErrorCodes(Set.of(500));
         seeded.setSpendingLimits(spendingLimits(SpendingLimitMode.SHADOW, "FILE"));
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
 
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(SETTINGS_ID, null);
         when(resourceService.getResource(descriptor)).thenReturn(SETTINGS_JSON);
@@ -337,7 +338,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         seeded.setRetriableErrorCodes(Set.of(500));
         seeded.setSpendingLimits(spendingLimits(SpendingLimitMode.SHADOW, "FILE"));
         when(fileConfigStore.get()).thenReturn(seeded);
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
 
         // First overlay so the delete has something to revert
         GlobalSettings overlay = new GlobalSettings();
@@ -364,7 +365,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(SETTINGS_ID, null);
         lenient().when(resourceService.getResource(descriptor)).thenReturn(SETTINGS_JSON);
 
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
 
         assertEquals(spendingLimits(SpendingLimitMode.ENFORCE, "PERSONAL"), store.get().getSpendingLimits());
         assertTrue(store.isSettingsFromApi());
@@ -377,7 +378,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         existing.setKey("secret-A");
         Config seeded = newConfig();
         seeded.setKeys(new HashMap<>(java.util.Map.of(KEY_ID, existing)));
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
         Mockito.reset(apiKeyStore);
 
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
@@ -392,7 +393,7 @@ public class MergedConfigStoreReplicaUpdateTest {
 
     @Test
     public void modelCreateFetchesDecryptsAndAppliesEntity() {
-        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(newConfig(), OnInvalidEntity.ABORT);
         Mockito.reset(apiKeyStore);
 
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(MODEL_ID, null);
@@ -408,8 +409,23 @@ public class MergedConfigStoreReplicaUpdateTest {
     }
 
     @Test
+    public void replicaModelEventWithDanglingInterceptorIsRecordedInAbort() {
+        MergedConfigStore store = initStore(newConfig(), OnInvalidEntity.ABORT);
+
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(MODEL_ID, null);
+        when(resourceService.getResource(descriptor))
+                .thenReturn("{\"type\":\"chat\",\"interceptors\":[\"missing\"]}");
+
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.CREATE, null);
+
+        assertFalse(store.get().getModels().containsKey(descriptor.getName()));
+        InvalidEntityRecord record = store.getInvalidEntities().get(ResourceTypes.MODEL).get(MODEL_ID);
+        assertEquals("interceptors[0]", record.getValidationWarnings().get(0).getField());
+    }
+
+    @Test
     public void fetchExceptionFallsBackToRequestRebuild() {
-        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(newConfig(), OnInvalidEntity.ABORT);
         Mockito.reset(vertx);
 
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
@@ -429,7 +445,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         existing.setKey("secret-OLD");
         Config seeded = newConfig();
         seeded.setKeys(new HashMap<>(java.util.Map.of(KEY_ID, existing)));
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
         Mockito.reset(apiKeyStore, resourceService);
 
         boolean[] heldOnAdd = {false};
@@ -466,7 +482,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         existing.setKey("secret-A");
         Config seeded = newConfig();
         seeded.setKeys(new HashMap<>(java.util.Map.of(KEY_ID, existing)));
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
         Mockito.reset(apiKeyStore, resourceService);
 
         boolean[] heldOnRemove = {false};
@@ -483,7 +499,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         verify(resourceService, never()).getResource(any(ResourceDescriptor.class));
     }
 
-    private MergedConfigStore initStore(Config seeded, String onInvalidEntity) {
+    private MergedConfigStore initStore(Config seeded, OnInvalidEntity onInvalidEntity) {
         when(fileConfigStore.get()).thenReturn(seeded);
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),

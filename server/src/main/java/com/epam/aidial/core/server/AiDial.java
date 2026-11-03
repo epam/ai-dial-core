@@ -30,6 +30,7 @@ import com.epam.aidial.core.credentials.validation.AuthorizationServerMetadataVa
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.config.OnInvalidEntity;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
 import com.epam.aidial.core.server.config.PlatformEntityLocationStrategy;
 import com.epam.aidial.core.server.config.RouteNormalizingMeterFilter;
@@ -293,7 +294,7 @@ public class AiDial {
             ExternalServiceService externalServiceService = new ExternalServiceService(
                     resourceService, resourceAuthSettingsEncryptionService, resourceCredentialsService, secretFieldProcessor);
 
-            String onInvalidEntity = settings("config").getString("onInvalidEntity", MergedConfigStore.MODE_ABORT);
+            OnInvalidEntity onInvalidEntity = OnInvalidEntity.fromSetting(settings("config").getString("onInvalidEntity"));
             boolean softValidation = settings("config").getJsonObject("write", new JsonObject())
                     .getBoolean("softValidation", false);
             MergedConfigStore mergedConfigStore = new MergedConfigStore(

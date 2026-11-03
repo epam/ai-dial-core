@@ -1,0 +1,24 @@
+{
+  "models": {
+    "dangling-file-model": {
+      "type": "chat",
+      "endpoint": "http://localhost:7001/openai/deployments/dangling-file-model/chat/completions",
+      "interceptors": ["missing-interceptor"]
+    },
+    "valid-file-model": {
+      "type": "chat",
+      "endpoint": "http://localhost:7001/openai/deployments/valid-file-model/chat/completions"
+    }
+  },
+  "roles": {
+    "default": {
+      "limits": {}
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "default"
+    }
+  }
+}

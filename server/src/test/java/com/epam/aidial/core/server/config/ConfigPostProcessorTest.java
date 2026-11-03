@@ -95,7 +95,8 @@ public class ConfigPostProcessorTest {
         config.getApplications().put("shared", new Application());
 
         assertThrows(IllegalStateException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
     }
 
     @Test
@@ -107,7 +108,7 @@ public class ConfigPostProcessorTest {
         AtomicReference<ResourceTypes> capturedType = new AtomicReference<>();
         AtomicReference<String> capturedKey = new AtomicReference<>();
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), (type, error) -> {
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.SKIP, (type, error) -> {
             capturedType.set(type);
             capturedKey.set(error.getMapKey());
         });
@@ -126,7 +127,8 @@ public class ConfigPostProcessorTest {
         Config config = newMutableConfig();
         config.getToolsets().put("toolsets/platform/my-toolset", new ToolSet());
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID);
 
         assertTrue(config.getToolsets().isEmpty());
     }
@@ -136,7 +138,8 @@ public class ConfigPostProcessorTest {
         Config config = newMutableConfig();
         config.getToolsets().put("bad name", new ToolSet());
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID);
 
         assertTrue(config.getToolsets().isEmpty());
     }
@@ -152,7 +155,8 @@ public class ConfigPostProcessorTest {
         config.getModels().put("model", model);
 
         assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
     }
 
     @Test
@@ -168,7 +172,7 @@ public class ConfigPostProcessorTest {
         AtomicReference<ResourceTypes> capturedType = new AtomicReference<>();
         AtomicReference<String> capturedKey = new AtomicReference<>();
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), (type, error) -> {
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.SKIP, (type, error) -> {
             capturedType.set(type);
             capturedKey.set(error.getMapKey());
         });
@@ -189,7 +193,8 @@ public class ConfigPostProcessorTest {
         model.setPricing(pricing);
         config.getModels().put("model", model);
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID);
 
         assertTrue(config.getModels().containsKey("model"));
     }
@@ -205,7 +210,8 @@ public class ConfigPostProcessorTest {
         model.setPricing(pricing);
         config.getModels().put("model", model);
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID);
 
         assertTrue(config.getModels().containsKey("model"));
     }
@@ -221,7 +227,8 @@ public class ConfigPostProcessorTest {
         config.getModels().put("model", model);
 
         assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
     }
 
     @Test
@@ -237,7 +244,8 @@ public class ConfigPostProcessorTest {
         model.setPricing(pricing);
         config.getModels().put("model", model);
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID);
 
         assertTrue(config.getModels().containsKey("model"));
     }
@@ -253,7 +261,8 @@ public class ConfigPostProcessorTest {
         config.getRoutes().put("openrouter", route);
 
         assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
     }
 
     @Test
@@ -267,7 +276,8 @@ public class ConfigPostProcessorTest {
         route.setUpstreams(List.of(upstream));
         config.getRoutes().put("openrouter", route);
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID);
 
         assertTrue(config.getRoutes().containsKey("openrouter"));
     }
@@ -283,7 +293,8 @@ public class ConfigPostProcessorTest {
         config.getRoutes().put("custom", route);
 
         assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
     }
 
     @Test
@@ -297,7 +308,8 @@ public class ConfigPostProcessorTest {
         route.setUpstreams(List.of(upstream));
         config.getRoutes().put("custom", route);
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID);
 
         assertTrue(config.getRoutes().containsKey("custom"));
     }
@@ -313,7 +325,8 @@ public class ConfigPostProcessorTest {
         config.getModels().put("model", model);
 
         assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
     }
 
     @Test
@@ -330,7 +343,8 @@ public class ConfigPostProcessorTest {
         model.setUpstreams(List.of(explicit, derived));
         config.getModels().put("model", model);
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID);
 
         assertTrue(config.getModels().containsKey("model"));
     }
@@ -347,7 +361,8 @@ public class ConfigPostProcessorTest {
         config.getModels().put("model", model);
 
         assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
     }
 
     @Test
@@ -360,7 +375,8 @@ public class ConfigPostProcessorTest {
         model.setUpstreams(List.of(upstream));
         config.getModels().put("model", model);
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID);
 
         assertTrue(config.getModels().containsKey("model"));
     }
@@ -392,7 +408,8 @@ public class ConfigPostProcessorTest {
                 new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://translator/to-chat-completions")));
 
         assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
     }
 
     @Test
@@ -404,7 +421,7 @@ public class ConfigPostProcessorTest {
         AtomicReference<ResourceTypes> capturedType = new AtomicReference<>();
         AtomicReference<String> capturedKey = new AtomicReference<>();
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), (type, error) -> {
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.SKIP, (type, error) -> {
             capturedType.set(type);
             capturedKey.set(error.getMapKey());
         });
@@ -425,7 +442,8 @@ public class ConfigPostProcessorTest {
                 translated(TranslatorRef.named("anthropicMessagesToOpenaiChatCompletions"))));
         config.getModels().put("model", model);
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID);
 
         // nothing is materialized onto the model: the name stays a name and resolves against the live
         // registry when asked, so an edit to the registry entry needs no walk over the models naming it
@@ -446,7 +464,8 @@ public class ConfigPostProcessorTest {
         model.setInterfaces(Map.of("anthropicMessages", translated(TranslatorRef.named("missing"))));
         config.getModels().put("model", model);
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID);
 
         assertTrue(config.getModels().containsKey("model"));
         assertNull(model.getInterfaces().get("anthropicMessages").getTranslator().resolve(config.getTranslators()));
@@ -465,7 +484,8 @@ public class ConfigPostProcessorTest {
         config.getModels().put("model", model);
 
         assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
     }
 
     @Test
@@ -479,7 +499,8 @@ public class ConfigPostProcessorTest {
         config.getModels().put("model", model);
 
         assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
     }
 
     @Test
@@ -491,7 +512,8 @@ public class ConfigPostProcessorTest {
         config.getModels().put("model", model);
 
         assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
     }
 
     @Test
@@ -505,7 +527,8 @@ public class ConfigPostProcessorTest {
         config.getModels().put("model", model);
 
         assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
     }
 
     @Test
@@ -523,7 +546,8 @@ public class ConfigPostProcessorTest {
         config.getModels().put("model", model);
 
         InvalidEntityException error = assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
 
         // both ends of the cycle are reported, each as the translated interface its own output lands on
         assertEquals(2, error.getWarnings().size());
@@ -542,7 +566,8 @@ public class ConfigPostProcessorTest {
         config.getModels().put("model", model);
 
         InvalidEntityException error = assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
 
         // and it is reported as what it is, not as an interface the model fails to serve
         assertEquals(1, error.getWarnings().size());
@@ -560,7 +585,8 @@ public class ConfigPostProcessorTest {
         config.getModels().put("model", model);
 
         InvalidEntityException error = assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
 
         assertTrue(error.getMessage().contains("cannot convert 'anthropicMessages' to itself"), error.getMessage());
     }
@@ -573,7 +599,8 @@ public class ConfigPostProcessorTest {
         config.getModels().put("model", model);
 
         assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
     }
 
     @Test
@@ -586,7 +613,8 @@ public class ConfigPostProcessorTest {
                 "openaiResponses", new DeploymentInterface("http://model-responses")));
         config.getModels().put("model", model);
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID);
 
         assertTrue(config.getModels().containsKey("model"));
     }
@@ -607,7 +635,8 @@ public class ConfigPostProcessorTest {
         Config config = configWithOverridePaths("openaiChatCompletions", Map.of("postAnthropicMessages", "/v1/messages"));
 
         assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
     }
 
     @Test
@@ -616,7 +645,8 @@ public class ConfigPostProcessorTest {
         Config config = configWithOverridePaths("openaiChatCompletions",
                 Map.of("postAzureOpenaiChatCompletions", "/v1/{Id}/{nope}/{id"));
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID);
 
         assertTrue(config.getModels().containsKey("model"));
     }
@@ -626,7 +656,8 @@ public class ConfigPostProcessorTest {
         Config config = configWithOverridePaths("anthropicMessages", Map.of("postAnthropicMessages", "/v1/{id}/messages"));
 
         assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
     }
 
     @Test
@@ -643,7 +674,8 @@ public class ConfigPostProcessorTest {
         config.getModels().put("model", model);
 
         assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
     }
 
     @Test
@@ -664,7 +696,8 @@ public class ConfigPostProcessorTest {
                 "openaiResponses", responses));
         config.getModels().put("model", model);
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID);
 
         assertTrue(config.getModels().containsKey("model"));
     }
@@ -692,7 +725,8 @@ public class ConfigPostProcessorTest {
                 applicationWithOverridePaths("openaiResponses", Map.of("postOpenaiResponses", "/v1/{id}/responses")));
 
         assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
     }
 
     @Test
@@ -704,7 +738,7 @@ public class ConfigPostProcessorTest {
         AtomicReference<ResourceTypes> capturedType = new AtomicReference<>();
         AtomicReference<String> capturedKey = new AtomicReference<>();
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), (type, error) -> {
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.SKIP, (type, error) -> {
             capturedType.set(type);
             capturedKey.set(error.getMapKey());
         });
@@ -721,7 +755,8 @@ public class ConfigPostProcessorTest {
                 interceptorWithOverridePaths("openaiResponses", Map.of("postOpenaiResponses", "/v1/{id}/responses")));
 
         assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
     }
 
     @Test
@@ -732,7 +767,8 @@ public class ConfigPostProcessorTest {
         config.getInterceptors().put("interceptor",
                 interceptorWithOverridePaths("openaiChatCompletions", Map.of("postAzureOpenaiChatCompletions", "/v1/chat/completions")));
 
-        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID);
 
         assertTrue(config.getApplications().containsKey("app"));
         assertTrue(config.getInterceptors().containsKey("interceptor"));
@@ -745,7 +781,7 @@ public class ConfigPostProcessorTest {
                 applicationWithOverridePaths("openaiResponses", Map.of("postOpenaiResponses", "/v1/{id}/responses")));
 
         AtomicReference<ResourceTypes> capturedType = new AtomicReference<>();
-        ConfigPostProcessor.validateSingleApplication(config, "app", (type, error) -> capturedType.set(type));
+        ConfigPostProcessor.validateSingleApplication(config, "app", OnInvalidEntity.SKIP, (type, error) -> capturedType.set(type));
 
         assertEquals(ResourceTypes.APPLICATION, capturedType.get());
         assertFalse(config.getApplications().containsKey("app"));
@@ -758,7 +794,81 @@ public class ConfigPostProcessorTest {
                 interceptorWithOverridePaths("openaiResponses", Map.of("postOpenaiResponses", "/v1/{id}/responses")));
 
         assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.validateSingleInterceptor(config, "interceptor", null));
+                () -> ConfigPostProcessor.validateSingleInterceptor(config, "interceptor", OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
+    }
+
+    @Test
+    void testSemanticAbortRecordsModelWithDanglingInterceptor() {
+        Config config = newMutableConfig();
+        config.getInterceptors().put("known", new Interceptor());
+        config.getModels().put("dangling", modelWithInterceptors("missing"));
+        config.getModels().put("resolved", modelWithInterceptors("known"));
+        config.getModels().put("plain", new Model());
+
+        List<InvalidEntityException> recorded = new ArrayList<>();
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT, (type, error) -> recorded.add(error));
+
+        assertEquals(1, recorded.size());
+        assertEquals(ResourceTypes.MODEL, recorded.get(0).getType());
+        assertEquals("dangling", recorded.get(0).getMapKey());
+        assertEquals("interceptors[0]", recorded.get(0).getWarnings().get(0).getField());
+        assertFalse(config.getModels().containsKey("dangling"));
+        assertTrue(config.getModels().containsKey("resolved"));
+        assertTrue(config.getModels().containsKey("plain"));
+    }
+
+    @Test
+    void testSemanticAbortStillThrowsOnInvariantWithDanglingInterceptor() {
+        Config config = newMutableConfig();
+        Model model = modelWithInterceptors("missing");
+        Pricing pricing = new Pricing();
+        pricing.setUnit("char_without_whitespace");
+        pricing.setCacheRead(flatRate("0.01"));
+        model.setPricing(pricing);
+        config.getModels().put("model", model);
+
+        List<InvalidEntityException> recorded = new ArrayList<>();
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT, (type, e) -> recorded.add(e)));
+
+        assertTrue(recorded.isEmpty());
+        assertEquals(List.of("pricing"), error.getWarnings().stream().map(ValidationWarning::getField).toList());
+    }
+
+    @Test
+    void testProcessDoesNotCheckReferencesOfTheFileLoad() {
+        Config config = newMutableConfig();
+        config.getModels().put("dangling", modelWithInterceptors("missing"));
+
+        ConfigPostProcessor.process(config, null);
+
+        assertTrue(config.getModels().containsKey("dangling"));
+    }
+
+    @Test
+    void testSemanticSkipRecordsInvariantAndReferenceTogether() {
+        Config config = newMutableConfig();
+        Model model = modelWithInterceptors("missing");
+        Pricing pricing = new Pricing();
+        pricing.setUnit("char_without_whitespace");
+        pricing.setCacheRead(flatRate("0.01"));
+        model.setPricing(pricing);
+        config.getModels().put("model", model);
+
+        List<InvalidEntityException> recorded = new ArrayList<>();
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.SKIP, (type, error) -> recorded.add(error));
+
+        assertEquals(1, recorded.size());
+        assertEquals(List.of("pricing", "interceptors[0]"),
+                recorded.get(0).getWarnings().stream().map(ValidationWarning::getField).toList());
+        assertFalse(config.getModels().containsKey("model"));
+    }
+
+    private static Model modelWithInterceptors(String... interceptors) {
+        Model model = new Model();
+        model.setInterceptors(List.of(interceptors));
+        return model;
     }
 
     private static DeploymentInterface translated(TranslatorRef translator) {
@@ -827,7 +937,8 @@ public class ConfigPostProcessorTest {
         config.getModels().put("model", maximallyInvalidModel());
 
         InvalidEntityException rebuild = assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), OnInvalidEntity.ABORT,
+                        ConfigPostProcessor.NO_RECORDER_OF_INVALID));
 
         Model standalone = maximallyInvalidModel();
         standalone.setName("model");

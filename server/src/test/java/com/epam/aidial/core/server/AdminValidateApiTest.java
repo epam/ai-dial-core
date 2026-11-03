@@ -1252,4 +1252,42 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                     "authorization", "admin"), 404);
         }
     }
+
+    /** {@code softValidation: true} with {@code onInvalidEntity} left at its default, {@code abort}. */
+    public static class SoftValidationUnderAbort extends ResourceBaseTest {
+        @Override
+        protected JsonObject additionalSettingsOverrides() {
+            return new JsonObject()
+                    .put("config", new JsonObject()
+                            .put("write", new JsonObject().put("softValidation", true)));
+        }
+
+        @Test
+        @SneakyThrows
+        void testValidateSoftFailureIsValidUnderAbort() {
+            String body = """
+                    {
+                      "precheck": false,
+                      "manifests": [
+                        {
+                          "kind": "Model",
+                          "name": "models/platform/validate-soft-abort",
+                          "spec": {
+                            "type": "chat",
+                            "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                            "interceptors": ["does-not-exist"]
+                          }
+                        }
+                      ]
+                    }
+                    """;
+            Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+            verify(response, 200);
+            JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+            assertEquals("VALID", parsed.get("results").get(0).get("status").asText(),
+                    () -> "Body: " + response.body());
+            verify(send(HttpMethod.GET, "/v1/models/platform/validate-soft-abort", null, "",
+                    "authorization", "admin"), 404);
+        }
+    }
 }
