@@ -14,6 +14,7 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OauthAuthSettingsValidatorTest {
 
@@ -232,5 +233,52 @@ class OauthAuthSettingsValidatorTest {
                 () -> validator.validate(resourceAuthSettings, resourceAuthSettingsChangeMode)
         );
         assertEquals(expectedMessage, exception.getMessage());
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideValidResources")
+    void testValidate_AcceptsAbsoluteResourceIndicator(String resource) {
+        ResourceAuthSettings settings = staticSettingsWithResource(resource);
+        assertDoesNotThrow(() -> validator.validate(settings, ResourceAuthSettingsChangeMode.CREATE_STATIC_CLIENT));
+        assertDoesNotThrow(() -> validator.validate(settings, ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES));
+    }
+
+    static Stream<String> provideValidResources() {
+        return Stream.of("https://mcp.example.com/mcp", "https://api.example.com", "api://dial-mcp", "  ");
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideInvalidResources")
+    void testValidate_RejectsInvalidResourceIndicator(String resource) {
+        ResourceAuthSettings settings = staticSettingsWithResource(resource);
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> validator.validate(settings, ResourceAuthSettingsChangeMode.CREATE_STATIC_CLIENT));
+        assertTrue(exception.getMessage().startsWith("Field 'resource' must be"), exception.getMessage());
+    }
+
+    static Stream<String> provideInvalidResources() {
+        return Stream.of("/mcp", "mcp.example.com", "https://mcp.example.com/mcp#frag", "https://mcp.example.com/a b");
+    }
+
+    @Test
+    void testValidate_RejectsResourceForDynamicRegistration() {
+        ResourceAuthSettings settings = ResourceAuthSettings.builder()
+                .authenticationType(AuthenticationType.OAUTH)
+                .resource("https://mcp.example.com/mcp")
+                .build();
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> validator.validate(settings, ResourceAuthSettingsChangeMode.CREATE_DYNAMIC_CLIENT));
+        assertEquals("Field 'RESOURCE' is forbidden for OAUTH authentication.", exception.getMessage());
+    }
+
+    private static ResourceAuthSettings staticSettingsWithResource(String resource) {
+        return ResourceAuthSettings.builder()
+                .authenticationType(AuthenticationType.OAUTH)
+                .clientId("client123")
+                .clientSecret("secret123")
+                .authorizationEndpoint("authorizationEndpoint")
+                .tokenEndpoint("tokenEndpoint")
+                .resource(resource)
+                .build();
     }
 }
