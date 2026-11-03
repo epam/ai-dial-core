@@ -394,7 +394,7 @@ scenarios.
   stream callback.
 - No extra body copy or parse, and no extra Redis or blob round trip.
 - Nothing measurable is expected. A deferred A/B checks that: the perf scenario in which clients call a model
-  directly, `development` against this change.
+  directly, `development` against this change. It ran after the archive and found none: review.md "Perf A/B".
 
 **Embedded origins.**
 - Core takes no pooled connection, writes no request headers to a socket and parses no response headers.

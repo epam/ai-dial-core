@@ -131,9 +131,8 @@
 
 ## 4. Measurement
 
-- [ ] 4.1 Run a same-day A/B of the perf scenario in which clients call a model directly, `development` against this
+- [x] 4.1 Run a same-day A/B of the perf scenario in which clients call a model directly, `development` against this
       change. Expect Core CPU per request within run-to-run noise (design D11) and record both numbers in review.md
-      (deferred: needs the perf env)
 
 ## Workflow follow-up
 

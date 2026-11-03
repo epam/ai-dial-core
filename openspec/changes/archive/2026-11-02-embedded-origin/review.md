@@ -76,7 +76,7 @@ design.md "Apply notes" records each change:
 - Task 2.5's check that the doc examples load: both new examples parse as JSON, and their shapes are what
   `ConfigPostProcessorTest.testEmbeddedModelNeedsNoBaseUrl` and `testUnresolvedPluginNameAccepted` load. No test
   reads the doc files themselves.
-- The full suite was not run locally; CI runs it. The perf A/B (task 4.1) needs the perf env and is open.
+- The full suite was not run locally; CI runs it. The perf A/B (task 4.1) ran later: "Perf A/B" below.
 
 ## Review findings
 
@@ -168,12 +168,29 @@ Still open: none.
 
 The baseline scenarios carried in the MODIFIED requirements keep their existing tests.
 
+## Perf A/B (task 4.1)
+
+Run on 2026-11-03 in the perf environment, both runs on one install, two Core pods: clients call the model
+`llm-d-sim-via-openai` directly (Core, then the OpenAI adapter, then the mock model). Anthropic Messages, streamed,
+1,000 users, 383 KB requests, 343 max tokens, 900 s of steady load per run, measured over 12 minutes of it. The
+`development` image was two commits past this branch's last merge of it, neither on the request path. This branch's
+image is the one `embedded-call` task 7.1 used, so it carries that change too.
+
+| Per request | `development` | This branch | Change |
+|---|---|---|---|
+| Requests per second | 120.1 | 120.2 | |
+| Core CPU | 36.7 ms | 37.0 ms | +0.4 ms (+1.0%) |
+| Valkey commands | 76.8 | 76.7 | |
+| Core's mean server time | 7.32 s | 7.32 s | |
+| OpenAI adapter CPU | 24.8 ms | 25.7 ms | +3.7% |
+
+No change, as D11 expected: Core moved by 1.0%, less than the OpenAI adapter, which neither image changes, moved
+between the same two runs. No failed request in either run; no throttling, scale-down, eviction or restart.
+
 ## Open
 
-- **Task 4.1.** The same-day perf A/B on the scenario in which clients call a model directly, `development` against
-  this change, needs the perf env. The expected result is no change in Core CPU per request.
 - **Baseline spec drift.** The `deployment-origin` requirement "Connect failure" quotes `"code":"502"`; Core writes
   `"BAD_GATEWAY"`. That is a separate fix to the baseline spec.
 - **The next change.** `embedded-call` adds the in-process child call, its cheaper child pass and the CPU
   measurement on the path through a routing application.
-- CI must still confirm the full suite.
+- CI passed the full suite.
