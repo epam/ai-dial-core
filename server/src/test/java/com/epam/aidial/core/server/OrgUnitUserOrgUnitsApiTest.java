@@ -88,7 +88,7 @@ public class OrgUnitUserOrgUnitsApiTest extends ResourceBaseTest {
         key.setTraceId("trace-id");
         apiKeyStore.assignPerRequestApiKey(key);
 
-        Response response = send(HttpMethod.GET, "/v1/user/org-units", null, null, "api-key", key.getPerRequestKey());
+        Response response = send(HttpMethod.GET, "/v1/user/role-assignments", null, null, "api-key", key.getPerRequestKey());
         assertEquals(200, response.status(), response.body());
         JsonObject body = new JsonObject(response.body());
         assertEquals("NONE", body.getString("adminAccess"));
@@ -103,7 +103,7 @@ public class OrgUnitUserOrgUnitsApiTest extends ResourceBaseTest {
     }
 
     private JsonObject units(String authorization) {
-        Response response = send(HttpMethod.GET, "/v1/user/org-units", null, null, "authorization", authorization);
+        Response response = send(HttpMethod.GET, "/v1/user/role-assignments", null, null, "authorization", authorization);
         assertEquals(200, response.status(), response.body());
         return new JsonObject(response.body());
     }

@@ -24,7 +24,7 @@ public class OrgUnitSwitchedOffApiTest extends ResourceBaseTest {
         Response remove = send(HttpMethod.DELETE, "/v1/org-units/public/Risk", null, null, "authorization", "admin");
         assertEquals(404, remove.status());
         assertEquals("Route is not found", remove.body());
-        Response callerUnits = send(HttpMethod.GET, "/v1/user/org-units", null, null, "authorization", "admin");
+        Response callerUnits = send(HttpMethod.GET, "/v1/user/role-assignments", null, null, "authorization", "admin");
         assertEquals(404, callerUnits.status());
         assertEquals("Route is not found", callerUnits.body());
     }

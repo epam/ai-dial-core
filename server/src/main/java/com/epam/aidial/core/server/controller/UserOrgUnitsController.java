@@ -21,8 +21,8 @@ public class UserOrgUnitsController implements Controller {
 
     @ApiOperation(
             method = "GET",
-            path = "/v1/user/org-units",
-            operationId = "getUserOrgUnits",
+            path = "/v1/user/role-assignments",
+            operationId = "getUserRoleAssignments",
             tags = {"Org units"},
             responses = {
                     @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,

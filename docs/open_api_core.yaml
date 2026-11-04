@@ -14419,12 +14419,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
-  /v1/user/org-units:
+  /v1/user/role-assignments:
     get:
       tags:
       - Org units
-      summary: /v1/user/org-units
-      operationId: getUserOrgUnits
+      summary: /v1/user/role-assignments
+      operationId: getUserRoleAssignments
       responses:
         "200":
           description: Success

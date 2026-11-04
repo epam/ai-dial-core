@@ -80,7 +80,7 @@ configured, nobody creates units.
 | `POST /v1/org-units/public[/{unit}…]` `{"name": "US Risk", "displayName": "…"}` | admins | Creates a unit under the shared space or a unit; it needs no read rule, as rules grant nothing inside it, and removes the read rules on and under its folder. The body takes only `name` and `displayName`; any other field is refused with 400 naming it. A name follows core's folder-name rule (no control characters or `/ { } "`) and can't start with "." or end with a space or "."; it is unique among sibling units ignoring case; `roles`, `role-assignments` and `rate` are reserved (`rate` would clash with `/v1/{deployment}/rate`). `displayName` has at most 128 characters and no control characters; without one, the unit shows its name. The unit's folder path, with the marker, must fit core's path-size limit in every type tree (400 otherwise), and the parent must be the shared space or an existing unit (404 otherwise). Answers 200 with the unit. Units go at most 4 levels deep: organization, pillar, department, business unit. |
 | `PATCH /v1/org-units/public/{unit}…` `{"displayName": "US Risk Department"}` | admins | Changes what clients show for the unit and answers 200 with the unit, as `GET` does. `displayName` is the only field it takes, with the same limits as on create; a blank one falls back to the unit's name. The name and folder never change, so `name` and any other field are refused with 400 naming the field. |
 | `DELETE /v1/org-units/public/{unit}…[?recursive=true]` | admins | Removes an empty unit; with `recursive`, every unit below it too, deepest first, and they must all be empty. A unit is empty when its folder holds nothing but `.dial_folder` markers in the files tree, empty grouping folders in the skills and projects trees and nothing at all in the other type trees (a deleted skill or project no longer counts); otherwise 409 names up to three items it holds. Without `recursive`, a unit that has units below it is refused with 409. Answers 200 with `{"removed": [<paths, deepest first>]}`. The tree entries, their policies and the markers go, and so do any read rules left in the subtree. To remove a unit that holds content, delete or move the content first. |
-| `GET /v1/user/org-units` | anyone | The units the caller works in, with their roles and permissions in each, and whether they are an admin; see [The caller's units](#the-callers-units). |
+| `GET /v1/user/role-assignments` | anyone | The units the caller works in, with their roles and permissions in each, and whether they are an admin; see [The caller's units](#the-callers-units). |
 
 Each path segment is url-decoded on its own; a segment that decodes to a `/` is refused with 400, so an encoded
 separator never reaches another unit.
@@ -254,7 +254,7 @@ a role with only `write publications/**` there is refused. With org units switch
 
 ## The caller's units
 
-`GET /v1/user/org-units` tells a client such as the admin panel what the caller may do in units, so it can choose its
+`GET /v1/user/role-assignments` tells a client such as the admin panel what the caller may do in units, so it can choose its
 menus and buttons without trying calls:
 
 ```json

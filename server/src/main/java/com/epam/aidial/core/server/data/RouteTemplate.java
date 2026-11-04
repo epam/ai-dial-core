@@ -343,9 +343,9 @@ public enum RouteTemplate {
             "^/v1/user/info$",
             "/v1/user/info"
     ),
-    USER_ORG_UNITS(
-            "^/v1/user/org-units$",
-            "/v1/user/org-units"
+    USER_ROLE_ASSIGNMENTS(
+            "^/v1/user/role-assignments$",
+            "/v1/user/role-assignments"
     ),
     USER_LIMITS(
             "^/v1/user/limits$",
