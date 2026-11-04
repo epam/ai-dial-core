@@ -86,14 +86,47 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                     String model = request.getModel();
                     deploymentId = model;
                     return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(model)))
-                            .compose(ignore -> verifyLimit())
-                            .compose(ignore -> proxy.getTokenStatsTracker().startSpan(context)
-                                    .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request))))
+                            .compose(ignore -> decideIfRouter(InterfaceType.ANTHROPIC_MESSAGES,
+                                    Future.succeededFuture(context.getOriginalRequestBody())))
+                            .compose(decided -> decided ? serveCandidate(request) : proceedToDeployment(request))
                             .otherwise(error -> handleRequestError(model, error));
                 })
                 .onFailure(this::handleRequestBodyError);
 
         return Future.succeededFuture();
+    }
+
+    /**
+     * Serves the decision's current candidate as if the client had called it, with the body {@code model} set to
+     * its name so the chain applies its override name. A translator behind it calls the candidate back, not the
+     * router, so the candidate is also the id forwarded in {@link Proxy#HEADER_DEPLOYMENT_ID}.
+     */
+    private Future<Void> serveCandidate(MessagesApiRequest request) {
+        String candidate = context.getDecision().current();
+        deploymentId = candidate;
+        return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(candidate)))
+                .compose(ignore -> {
+                    request.setModel(candidate);
+                    return proceedToDeployment(request);
+                })
+                .otherwise(error -> handleRequestError(candidate, error));
+    }
+
+    @Override
+    protected void reenterWithCandidate() {
+        // the chain of the failed candidate rewrote the parsed request, so the fallback starts from the client's bytes
+        serveCandidate(parseBody(context.getOriginalRequestBody()));
+    }
+
+    private Future<Void> proceedToDeployment(MessagesApiRequest request) {
+        return verifyLimit()
+                .compose(ignore -> {
+                    if (context.getDecision() != null) {
+                        context.getDecision().setResolving(false);
+                    }
+                    return proxy.getTokenStatsTracker().startSpan(context);
+                })
+                .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request)));
     }
 
     /**
@@ -117,6 +150,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         log.info("Received body from client. Length: {}", body.length());
         try {
             context.setRequestBodyWithTimestamp(body);
+            context.setOriginalRequestBody(body);
             ObjectNode tree = ProxyUtil.parseObject(body);
             return new MessagesApiRequest(tree);
         } catch (IOException e) {
@@ -249,6 +283,10 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     protected abstract void processResponse(HttpClientResponse proxyResponse);
 
     protected Void handleRequestError(String deploymentId, Throwable error) {
+        error = nextCandidateOrError(error);
+        if (error == null) {
+            return null;
+        }
         if (error instanceof PermissionDeniedException) {
             respond(HttpStatus.FORBIDDEN, error.getMessage());
             log.warn("Forbidden deployment {}", deploymentId);

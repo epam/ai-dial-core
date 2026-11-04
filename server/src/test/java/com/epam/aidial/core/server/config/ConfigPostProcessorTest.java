@@ -846,6 +846,96 @@ public class ConfigPostProcessorTest {
     }
 
     @Test
+    void testDecisionModeOnModelRejected() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setInterfaces(Map.of("openaiChatCompletions", decision("http://r/decide")));
+        config.getModels().put("m", model);
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+        assertTrue(error.getMessage().contains("Mode 'decision' is allowed on a router only"), error.getMessage());
+    }
+
+    @Test
+    void testDecisionModeOnApplicationRejected() {
+        Config config = newMutableConfig();
+        Application application = new Application();
+        application.setEndpoint("http://app/chat");
+        application.setInterfaces(Map.of("openaiChatCompletions", decision("http://r/decide")));
+        config.getApplications().put("a", application);
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+        assertTrue(error.getMessage().contains("Mode 'decision' is allowed on a router only"), error.getMessage());
+    }
+
+    @Test
+    void testDecisionModeOnInterceptorRejected() {
+        Config config = newMutableConfig();
+        Interceptor interceptor = new Interceptor();
+        interceptor.setEndpoint("http://i/chat");
+        interceptor.setInterfaces(Map.of("openaiChatCompletions", decision("http://r/decide")));
+        config.getInterceptors().put("i", interceptor);
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+        assertTrue(error.getMessage().contains("Mode 'decision' is allowed on a router only"), error.getMessage());
+    }
+
+    @Test
+    void testDecisionEntryNeedsItsOwnUrl() {
+        Config config = newMutableConfig();
+        config.getRouters().put("r1", router("http://router", "openaiChatCompletions", decision(null)));
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+        assertTrue(error.getMessage().contains("Mode 'decision' requires base_url"), error.getMessage());
+    }
+
+    @Test
+    void testDecisionWithTranslatorRejected() {
+        Config config = newMutableConfig();
+        DeploymentInterface declared = decision("http://router/decide");
+        declared.setTranslator(TranslatorRef.inline(new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://t")));
+        config.getRouters().put("r1", router(null, "anthropicMessages", declared));
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+        assertTrue(error.getMessage().contains("Mode 'decision' excludes translator"), error.getMessage());
+    }
+
+    @Test
+    void testDecisionTimeoutMustBePositive() {
+        Config config = newMutableConfig();
+        DeploymentInterface declared = decision("http://router/decide");
+        declared.setDecisionTimeoutMs(0L);
+        config.getRouters().put("r1", router(null, "openaiChatCompletions", declared));
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+        assertTrue(error.getMessage().contains("decisionTimeoutMs must be positive"), error.getMessage());
+    }
+
+    @Test
+    void testValidDecisionEntryAccepted() {
+        Config config = newMutableConfig();
+        DeploymentInterface declared = decision("http://router/decide");
+        declared.setDecisionTimeoutMs(200L);
+        config.getRouters().put("r1", router(null, "openaiChatCompletions", declared));
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getRouters().containsKey("r1"));
+    }
+
+    @Test
+    void testDecisionModeKeepsTheLimitFlag() {
+        // a router is exempt as a router; the flag must not exempt another deployment kind
+        assertTrue(InterfaceMode.DECISION.isSubjectToLimits());
+    }
+
+    @Test
     void testModelInterfaceMessageUnchanged() {
         Config config = newMutableConfig();
         Model model = new Model();
@@ -861,6 +951,12 @@ public class ConfigPostProcessorTest {
         DeploymentInterface declared = new DeploymentInterface();
         declared.setMode(InterfaceMode.TRANSLATOR);
         declared.setTranslator(translator);
+        return declared;
+    }
+
+    private static DeploymentInterface decision(String baseUrl) {
+        DeploymentInterface declared = new DeploymentInterface(baseUrl);
+        declared.setMode(InterfaceMode.DECISION);
         return declared;
     }
 

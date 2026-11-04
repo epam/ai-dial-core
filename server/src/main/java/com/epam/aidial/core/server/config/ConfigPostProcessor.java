@@ -642,20 +642,21 @@ public final class ConfigPostProcessor {
             String field = "interfaces." + entry.getKey();
             if (declared.getMode() == InterfaceMode.TRANSLATOR) {
                 validateTranslatedInterface(deployment, entry.getKey(), declared, translators, field, warnings);
-            } else if (declared.getTranslator() != null) {
+            } else if (declared.getTranslator() != null && declared.getMode() != InterfaceMode.DECISION) {
+                // a decision entry reports its own translator warning in validateInterfaceEntry
                 warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), "A translator requires mode 'translator'")));
             } else if (declared.getBaseUrl() == null && deployment.getBaseUrl() == null) {
                 warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), "Interface '" + entry.getKey()
                         + "' declares no base_url and the " + entityLabel.toLowerCase(Locale.ROOT) + " declares no baseUrl")));
             }
-            validateOverridePaths(deployment, entry.getKey(), declared, field, warnings);
+            validateInterfaceEntry(deployment, entry.getKey(), declared, field, warnings);
         }
     }
 
     /**
-     * Validates every interface entry's {@code overridePaths} on a deployment whose interfaces get no
-     * other semantic validation — applications and interceptors. Models run the same per-entry check
-     * inside {@link #validateDeploymentInterfaces}. Shared by every write surface, each of which turns
+     * Validates every interface entry ({@code decision} mode, {@code overridePaths}) on a deployment whose
+     * interfaces get no other semantic validation — applications, interceptors and toolsets. Models and routers
+     * run the same per-entry check inside {@link #validateDeploymentInterfaces}. Shared by every write surface, each of which turns
      * the warnings into its own layer's failure: a result object for the admin services, a response
      * status for the controllers.
      */
@@ -669,7 +670,7 @@ public final class ConfigPostProcessor {
             if (declared == null) {
                 continue;
             }
-            validateOverridePaths(deployment, entry.getKey(), declared, "interfaces." + entry.getKey(), warnings);
+            validateInterfaceEntry(deployment, entry.getKey(), declared, "interfaces." + entry.getKey(), warnings);
         }
     }
 
@@ -703,6 +704,40 @@ public final class ConfigPostProcessor {
                 continue;
             }
             validateOverridePathTemplate(deployment, pathMapping, entry.getValue(), keyField, warnings);
+        }
+    }
+
+    /**
+     * Validates one interface entry the same way for every deployment kind: its {@code decision} mode and its
+     * {@code overridePaths}.
+     */
+    private static void validateInterfaceEntry(Deployment deployment, String type, DeploymentInterface declared, String field,
+                                               List<ValidationWarning> warnings) {
+        if (declared.getMode() == InterfaceMode.DECISION) {
+            validateDecisionEntry(deployment, declared, field, warnings);
+        }
+        validateOverridePaths(deployment, type, declared, field, warnings);
+    }
+
+    /**
+     * A decision entry's url is the decide endpoint, a different one from the proxy url, so it must be written on
+     * the entry: the deployment-level {@code baseUrl} does not stand in for it.
+     */
+    private static void validateDecisionEntry(Deployment deployment, DeploymentInterface declared, String field,
+                                              List<ValidationWarning> warnings) {
+        String entityLabel = deployment.getClass().getSimpleName();
+        if (!(deployment instanceof Router)) {
+            warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), "Mode 'decision' is allowed on a router only")));
+        }
+        if (declared.getBaseUrl() == null) {
+            warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), "Mode 'decision' requires base_url")));
+        }
+        if (declared.getTranslator() != null) {
+            warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), "Mode 'decision' excludes translator")));
+        }
+        if (declared.getDecisionTimeoutMs() != null && declared.getDecisionTimeoutMs() <= 0) {
+            warnings.add(new ValidationWarning(field + ".decisionTimeoutMs",
+                    messageWithEntityPrefix(entityLabel, deployment.getName(), "decisionTimeoutMs must be positive")));
         }
     }
 

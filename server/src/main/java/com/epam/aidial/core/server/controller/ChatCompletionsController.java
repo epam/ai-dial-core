@@ -86,6 +86,7 @@ public class ChatCompletionsController extends BaseChatCompletionController {
     private ChatCompletionRequest parseBody(Buffer body) {
         try {
             context.setRequestBodyWithTimestamp(body);
+            context.setOriginalRequestBody(body);
             return new ChatCompletionRequest(ProxyUtil.parseObject(body));
         } catch (IOException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
@@ -116,15 +117,48 @@ public class ChatCompletionsController extends BaseChatCompletionController {
                         context.setInitialDeployment(context.getDeployment().getName());
                         return handleInterceptor(0);
                     }
-                    return proceedToDeployment(request, deploymentName);
+                    return decideIfRouter(InterfaceType.OPENAI_CHAT_COMPLETIONS, Future.succeededFuture(context.getOriginalRequestBody()))
+                            .compose(decided -> decided ? serveCandidate(request) : proceedToDeployment(request, deploymentName, false));
                 })
                 .otherwise(error -> handleRequestError(deploymentName, error));
     }
 
-    private Future<Void> proceedToDeployment(ChatCompletionRequest request, String deploymentName) {
+    /**
+     * Serves the decision's current candidate as if the client had called it: its resolve, its interceptors and
+     * its limits, with the body {@code model} set to its name so the chain applies its override name.
+     */
+    private Future<Void> serveCandidate(ChatCompletionRequest request) {
+        String candidate = context.getDecision().current();
+        return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(candidate)))
+                .compose(ignore -> {
+                    request.setModel(candidate);
+                    if (context.hasNextInterceptor()) {
+                        context.getDecision().setResolving(false);
+                        context.getDecision().close();
+                        writeRequestBody(request);
+                        context.setInitialDeployment(candidate);
+                        return handleInterceptor(0);
+                    }
+                    return proceedToDeployment(request, candidate, true);
+                })
+                .otherwise(error -> handleRequestError(candidate, error));
+    }
+
+    @Override
+    protected void reenterWithCandidate() {
+        // the chain of the failed candidate rewrote the parsed request, so the fallback starts from the client's bytes
+        serveCandidate(parseBody(context.getOriginalRequestBody()));
+    }
+
+    private Future<Void> proceedToDeployment(ChatCompletionRequest request, String deploymentName, boolean modelChanged) {
         return verifyLimit()
-                .compose(ignore -> proxy.getTokenStatsTracker().startSpan(context)
-                        .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request))))
+                .compose(ignore -> {
+                    if (context.getDecision() != null) {
+                        context.getDecision().setResolving(false);
+                    }
+                    return proxy.getTokenStatsTracker().startSpan(context);
+                })
+                .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request, modelChanged)))
                 .otherwise(error -> handleRequestError(deploymentName, error));
     }
 
@@ -155,7 +189,7 @@ public class ChatCompletionsController extends BaseChatCompletionController {
 
         context.setTraceOperation("Send request to %s deployment".formatted(deployment.getName()));
         context.setDeployment(deployment);
-        context.setInterceptors(proxy.getDeploymentService().getInterceptors(context, deployment));
+        context.setInterceptors(resolveInterceptors(deployment));
         return null;
     }
 
@@ -167,16 +201,20 @@ public class ChatCompletionsController extends BaseChatCompletionController {
                 });
     }
 
-    private Void handleRequestBody(ChatCompletionRequest request) {
+    private Void handleRequestBody(ChatCompletionRequest request, boolean modelChanged) {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
 
-        processChatCompletionsRequestBody(request);
+        processChatCompletionsRequestBody(request, modelChanged);
         return null;
     }
 
     private Void handleRequestError(String deploymentId, Throwable error) {
+        error = nextCandidateOrError(error);
+        if (error == null) {
+            return null;
+        }
         if (error instanceof PermissionDeniedException) {
             respond(HttpStatus.FORBIDDEN, error.getMessage());
             log.warn("Forbidden deployment {}", deploymentId);

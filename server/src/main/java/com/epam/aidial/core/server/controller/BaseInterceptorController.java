@@ -60,6 +60,7 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
         proxyApiKeyData.setInterceptorIndex(interceptorIndex);
         proxyApiKeyData.setInterceptors(interceptors);
         proxyApiKeyData.setInitialDeployment(context.getInitialDeployment());
+        proxyApiKeyData.setDecision(context.getDecision() != null ? context.getDecision().toRow() : context.getApiKeyData().getDecision());
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
 

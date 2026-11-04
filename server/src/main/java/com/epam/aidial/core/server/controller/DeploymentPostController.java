@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
@@ -15,6 +16,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
+import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
@@ -40,6 +42,8 @@ import static com.epam.aidial.core.server.Proxy.HEADER_UPSTREAM_ID;
 
 @Slf4j
 public class DeploymentPostController extends BaseChatCompletionController {
+
+    private Future<Buffer> requestBodyFuture;
 
     public DeploymentPostController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
@@ -169,7 +173,7 @@ public class DeploymentPostController extends BaseChatCompletionController {
 
                     context.setTraceOperation("Send request to %s deployment".formatted(dep.getName()));
                     context.setDeployment(dep);
-                    List<String> interceptors = proxy.getDeploymentService().getInterceptors(context, dep);
+                    List<String> interceptors = resolveInterceptors(dep);
                     context.setInterceptors(interceptors);
                     return dep;
                 })
@@ -183,9 +187,30 @@ public class DeploymentPostController extends BaseChatCompletionController {
                 .compose(rateLimitResult -> {
                     Future<?> future;
                     if (rateLimitResult.status() == HttpStatus.OK) {
+                        RouterDecision decision = context.getDecision();
+                        if (decision != null) {
+                            decision.setResolving(false);
+                        }
                         if (context.hasNextInterceptor()) {
                             context.setInitialDeployment(deploymentId);
-                            future = handleInterceptor(0);
+                            if (decision != null) {
+                                decision.close();
+                                // the body is being read already: the interceptor finds it on the context
+                                future = readRequestBody().compose(ignore -> handleInterceptor(0));
+                            } else {
+                                future = handleInterceptor(0);
+                            }
+                        } else if (context.getDeployment() instanceof Router) {
+                            // the request stays paused until this future completes: the body read is registered
+                            // now and the decision runs outside it, or a decide waiting for the body never ends
+                            decideIfRouter(requestedInterface(), readRequestBody())
+                                    .compose(decided -> decided ? handleDeployment(context.getDecision().current()).mapEmpty()
+                                            : handleRateLimitSuccess().mapEmpty())
+                                    .otherwise(error -> {
+                                        handleRequestError(deploymentId, error);
+                                        return null;
+                                    });
+                            future = Future.succeededFuture();
                         } else {
                             future = handleRateLimitSuccess();
                         }
@@ -210,7 +235,16 @@ public class DeploymentPostController extends BaseChatCompletionController {
         }
     }
 
+    @Override
+    protected void reenterWithCandidate() {
+        handleDeployment(context.getDecision().current());
+    }
+
     private void handleRequestError(String deploymentId, Throwable error) {
+        error = nextCandidateOrError(error);
+        if (error == null) {
+            return;
+        }
         if (error instanceof PermissionDeniedException) {
             respond(HttpStatus.FORBIDDEN, error.getMessage());
             log.warn("Forbidden deployment {}", deploymentId);
@@ -218,7 +252,7 @@ public class DeploymentPostController extends BaseChatCompletionController {
             respond(HttpStatus.NOT_FOUND, error.getMessage());
             log.warn("Deployment not found {}", deploymentId, error);
         } else if (error instanceof HttpException e) {
-            respond(e.getStatus(), e.getMessage());
+            respond(e);
             log.warn("Deployment error {}", deploymentId, error);
         } else {
             respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process deployment: " + deploymentId);
@@ -233,7 +267,7 @@ public class DeploymentPostController extends BaseChatCompletionController {
 
         setupProxyApiKeyData(new ApiKeyData());
         return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
-            context.getRequest().body()
+            readRequestBody()
                     .onSuccess(body -> proxy.getTaskExecutor().submit(() -> {
                         handleRequestBody(body);
                         return null;
@@ -241,6 +275,23 @@ public class DeploymentPostController extends BaseChatCompletionController {
                     .onFailure(this::handleRequestBodyError);
             return null;
         });
+    }
+
+    /**
+     * The client's body, read from the request once. A request to a router keeps the bytes for the decide call
+     * and for each candidate it re-enters with.
+     */
+    private Future<Buffer> readRequestBody() {
+        if (requestBodyFuture == null) {
+            requestBodyFuture = context.getRequest().body().onSuccess(body -> {
+                if (context.getDecision() != null || context.getDeployment() instanceof Router) {
+                    context.setOriginalRequestBody(body);
+                    // an interceptor of the chosen deployment reads the body from the context
+                    context.setRequestBody(body);
+                }
+            });
+        }
+        return requestBodyFuture;
     }
 
     private void setupProxyApiKeyData(ApiKeyData proxyApiKeyData) {
@@ -252,8 +303,11 @@ public class DeploymentPostController extends BaseChatCompletionController {
         try {
             result.throwIfError();
         } catch (HttpException e) {
-            respond(e);
             log.warn("Rate limit error {}. Deployment: {}", result.errorMessage(), deploymentId);
+            Throwable error = nextCandidateOrError(e);
+            if (error != null) {
+                respond((HttpException) error);
+            }
         }
     }
 
@@ -281,7 +335,7 @@ public class DeploymentPostController extends BaseChatCompletionController {
             ObjectNode requestTree = ProxyUtil.parseObject(requestBody);
             RequestObject request = new ChatCompletionRequest(requestTree);
             GenAiTraceAttributes.setRequestAttributes(context, requestedInterface(), requestTree);
-            processChatCompletionsRequestBody(request);
+            processChatCompletionsRequestBody(request, false);
         } catch (Throwable e) {
             if (e instanceof HttpException httpException) {
                 respond(httpException.getStatus(), httpException.getMessage());

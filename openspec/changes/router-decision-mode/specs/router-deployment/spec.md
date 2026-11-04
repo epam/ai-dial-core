@@ -80,7 +80,7 @@ is a router SHALL be rejected.
   and `X-DIAL-DEPLOYMENT-ID: claude`
 
 #### Scenario: Chosen model's limits checked against the caller
-- **WHEN** the caller's role declares `limits.gpt-4.requestMinute: 1`, the caller has already used it this minute,
+- **WHEN** the caller's role declares `limits.gpt-4.requestHour: 1`, the caller has already used it this hour,
   and the router answers `{"candidates": ["gpt-4"]}`
 - **THEN** Core answers `429` and sends nothing to `gpt-4`
 
@@ -96,13 +96,13 @@ is a router SHALL be rejected.
 ### Requirement: Decision after the router's interceptors
 When the config declares `globalInterceptors`, Core SHALL send a request to a router through them first, as for any
 deployment, and SHALL run the decision in the pass that reaches the router after the chain; the chosen
-deployment's key path SHALL then be the interceptor chain's path followed by the chosen deployment.
+deployment's key path SHALL then be the interceptor chain's path followed by the router and the chosen deployment.
 
 #### Scenario: Global interceptor before the decision
 - **WHEN** the config declares `globalInterceptors: ["i1"]`, a client calls `r1` and the router answers
   `{"candidates": ["gpt-4"]}`
 - **THEN** `i1` receives the request first, the decide request is sent once, when `i1` calls Core back, and the key
-  `gpt-4` receives has `executionPath: ["r1", "i1", "gpt-4"]`
+  `gpt-4` receives has `executionPath: ["i1", "r1", "gpt-4"]`
 
 ### Requirement: Candidate walk
 Core SHALL try the candidates in order: one the caller may not use, whose limits are exhausted, that does not serve
@@ -156,13 +156,13 @@ case Core SHALL send nothing to any deployment and SHALL write no analytics row.
 
 ### Requirement: Decision record
 For a request served through a decision, other than a background Responses job, Core SHALL write one analytics
-row, for the deployment that served, with the router's name before it in `execution_path`, `parent_deployment` the
-router's name, and a `decision` object: `router`, `api`, `candidates`, `deployment` (the one that served),
-`decide_ms`, `attempts` (each `deployment`, `status`, `reason` of a candidate tried before it).
+row, for the deployment that served, with the router before it in `execution_path`, `parent_deployment` the
+router, and a `decision` object: `router`, `api`, `candidates`, `deployment` (the one that served), `decide_ms`
+and `attempts`, one `{deployment, status, reason}` per candidate tried before it, `status` being Core's answer for it.
 
 #### Scenario: Row of a decided request
 - **WHEN** the router `r1` answers `{"candidates": ["m1", "m2"]}`, `m1` is skipped for a `503` and `m2` serves
 - **THEN** the row has `deployment: "m2"`, `execution_path: ["r1", "m2"]`, `parent_deployment: "r1"` and
   `decision.router: "r1"`, `decision.api: "openaiChatCompletions"`, `decision.candidates: ["m1", "m2"]`,
   `decision.deployment: "m2"`, a numeric `decision.decide_ms` and
-  `decision.attempts: [{"deployment": "m1", "status": 503, "reason": "upstream"}]`
+  `decision.attempts: [{"deployment": "m1", "status": 502, "reason": "upstream"}]`

@@ -5,7 +5,7 @@ import lombok.Getter;
 
 /**
  * How a deployment serves one {@link InterfaceType}: the request is forwarded in the shape it arrived in,
- * or handed to a translator that converts it to an API the deployment does speak.
+ * handed to a translator that converts it to an API the deployment does speak, or, for a router, decided.
  */
 @Getter
 public enum InterfaceMode {
@@ -15,7 +15,13 @@ public enum InterfaceMode {
      * The translator calls Core back with the converted request, so the completion is served — and the
      * caller's limits both checked and charged — by that inner request rather than this one.
      */
-    TRANSLATOR("translator", false);
+    TRANSLATOR("translator", false),
+    /**
+     * Routers only: Core asks the entry's {@code base_url} which deployment serves the request and serves that
+     * one itself, so the client's request is never forwarded to the url. The flag stays true: a router is exempt
+     * from limits as a router, and the chosen deployment's limits are checked as for a direct call.
+     */
+    DECISION("decision", true);
 
     @JsonValue
     private final String value;

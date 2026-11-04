@@ -1,0 +1,27 @@
+{
+  "globalInterceptors": ["i1"],
+  "interceptors": {
+    "i1": {
+      "endpoint": "http://localhost:4848/openai/deployments/i1/chat/completions",
+      "interfaces": {"openaiResponses": {"base_url": "http://localhost:4848/i1"}}
+    }
+  },
+  "routers": {
+    "r1": {
+      "interfaces": {
+        "openaiChatCompletions": {"mode": "decision", "base_url": "http://localhost:4848/decide"},
+        "openaiResponses": {"mode": "decision", "base_url": "http://localhost:4848/decide"}
+      }
+    }
+  },
+  "models": {
+    "gpt-4": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "interfaces": {"openaiChatCompletions": {}, "openaiResponses": {}}
+    }
+  },
+  "keys": {
+    "proxyKey1": {"project": "p1", "role": "default"}
+  }
+}

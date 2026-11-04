@@ -4,7 +4,9 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
+import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
@@ -890,6 +892,36 @@ public class GfLogStoreTest {
         assertNull(store.admit(secured).getRequestBody());
         assertEquals(2000, pendingBodyBytes());
         assertEquals(0, bodiesSkipped());
+    }
+
+    @Test
+    public void testRowOfDecidedRequest() {
+        RouterDecision decision = new RouterDecision("r1", InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1", "m2"), 12);
+        decision.skip(502, "upstream");
+        AnalyticsLogContext context = row("m2", "{}")
+                .executionPath(List.of("r1", "m2"))
+                .parentDeployment("r1")
+                .decision(decision.toRow())
+                .build();
+
+        JsonNode log = logOf(context);
+
+        assertEquals("m2", log.get("deployment").asText());
+        assertEquals("r1", log.get("parent_deployment").asText());
+        assertEquals("[\"r1\",\"m2\"]", log.get("execution_path").toString());
+        assertEquals("{\"router\":\"r1\",\"api\":\"openaiChatCompletions\",\"candidates\":[\"m1\",\"m2\"],\"deployment\":\"m2\","
+                + "\"decide_ms\":12,\"attempts\":[{\"deployment\":\"m1\",\"status\":502,\"reason\":\"upstream\"}]}", log.get("decision").toString());
+    }
+
+    @Test
+    public void testBackgroundJobRowHasNoDecision() {
+        BackgroundJobRecord record = BackgroundJobRecord.builder()
+                .deploymentName("m2")
+                .requestMethod("POST")
+                .requestBody("{}")
+                .build();
+
+        assertFalse(logOf(AnalyticsLogContext.from(record, null, null)).has("decision"));
     }
 
     @Test

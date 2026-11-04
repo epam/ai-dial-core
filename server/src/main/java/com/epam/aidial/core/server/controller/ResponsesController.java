@@ -209,14 +209,45 @@ public class ResponsesController extends BaseDeploymentPostController {
                         context.setInitialDeployment(context.getDeployment().getName());
                         return handleInterceptor(0);
                     }
-                    return proceedToDeployment(request, deploymentName);
+                    return decideIfRouter(InterfaceType.OPENAI_RESPONSES, Future.succeededFuture(context.getOriginalRequestBody()))
+                            .compose(decided -> decided ? serveCandidate(request) : proceedToDeployment(request, deploymentName));
                 })
                 .otherwise(error -> handleRequestError(deploymentName, error));
+    }
+
+    /**
+     * Serves the decision's current candidate as if the client had called it: its resolve, its interceptors and
+     * its limits, with the body {@code model} set to its name so the chain applies its override name.
+     */
+    private Future<Void> serveCandidate(ResponsesApiRequest request) {
+        String candidate = context.getDecision().current();
+        return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(candidate)))
+                .compose(ignore -> {
+                    request.setModel(candidate);
+                    if (context.hasNextInterceptor()) {
+                        context.getDecision().setResolving(false);
+                        context.getDecision().close();
+                        writeRequestBody(request);
+                        context.setInitialDeployment(candidate);
+                        return handleInterceptor(0);
+                    }
+                    return proceedToDeployment(request, candidate);
+                })
+                .otherwise(error -> handleRequestError(candidate, error));
+    }
+
+    @Override
+    protected void reenterWithCandidate() {
+        // the chain of the failed candidate rewrote the parsed request, so the fallback starts from the client's bytes
+        serveCandidate(parseBody(context.getOriginalRequestBody()));
     }
 
     private Future<Void> proceedToDeployment(ResponsesApiRequest request, String deploymentName) {
         return verifyLimit()
                 .compose(ignore -> {
+                    if (context.getDecision() != null) {
+                        context.getDecision().setResolving(false);
+                    }
                     // set before startSpan: a trace rooted in a background job gets the longer usage record TTL
                     context.setBackgroundJob(request.isBackground());
                     return proxy.getTokenStatsTracker().startSpan(context);
@@ -253,7 +284,7 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         context.setTraceOperation("Send request to %s deployment".formatted(deployment.getName()));
         context.setDeployment(deployment);
-        List<String> interceptors = proxy.getDeploymentService().getInterceptors(context, deployment);
+        List<String> interceptors = resolveInterceptors(deployment);
         context.setInterceptors(interceptors);
 
         return null;
@@ -281,6 +312,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         log.info("Received body from client. Length: {}", body.length());
         try {
             context.setRequestBodyWithTimestamp(body);
+            context.setOriginalRequestBody(body);
             ObjectNode tree = ProxyUtil.parseObject(body);
             if (tree.has("previous_response_id")) {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "previous_response_id is not supported");
@@ -296,6 +328,10 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private Void handleRequestError(String deploymentId, Throwable error) {
+        error = nextCandidateOrError(error);
+        if (error == null) {
+            return null;
+        }
         if (error instanceof PermissionDeniedException) {
             respond(HttpStatus.FORBIDDEN, error.getMessage());
             log.warn("Forbidden deployment {}", deploymentId);

@@ -17997,6 +17997,15 @@ components:
           $ref: "#/components/schemas/Features"
         overridePaths:
           $ref: "#/components/schemas/MapStringString"
+        context:
+          $ref: "#/components/schemas/DeploymentInterfaceDecisionContext"
+        decisionTimeoutMs:
+          type: integer
+    DeploymentInterfaceDecisionContext:
+      type: object
+      properties:
+        body:
+          type: boolean
     DeploymentNameData:
       type: object
       properties:
@@ -18522,6 +18531,7 @@ components:
       enum:
       - passthrough
       - translator
+      - decision
     InterfaceType:
       type: string
       enum:

@@ -1,6 +1,8 @@
 package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.DeploymentInterface;
+import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import io.vertx.core.Handler;
@@ -27,6 +29,7 @@ import javax.annotation.Nullable;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -154,6 +157,23 @@ public class FileConfigStoreTest {
         assertEquals("r1", router.getName());
         assertEquals(Set.of("analysts"), router.getUserRoles());
         assertEquals(Set.of("openaiChatCompletions", "openaiEmbeddings", "anthropicMessages"), router.getInterfaces().keySet());
+    }
+
+    @Test
+    public void testLoad_RouterInDecisionMode() {
+        JsonObject settings = new JsonObject()
+                .put("files", new JsonArray().add("dial-config/router-decision.json"))
+                .put("reload", 1000);
+
+        Config config = new FileConfigStore(vertx, settings, apiKeyStore, List.of()).get();
+
+        DeploymentInterface chat = config.getRouters().get("r1").getInterfaces().get("openaiChatCompletions");
+        assertEquals(InterfaceMode.DECISION, chat.getMode());
+        assertEquals("http://localhost:4848/decide", chat.getBaseUrl());
+        assertNull(chat.getContext());
+        assertNull(chat.getDecisionTimeoutMs());
+        assertEquals(Boolean.TRUE, config.getRouters().get("r3").getInterfaces().get("openaiChatCompletions").getContext().getBody());
+        assertEquals(200L, config.getRouters().get("r-slow").getInterfaces().get("openaiChatCompletions").getDecisionTimeoutMs());
     }
 
     @Test

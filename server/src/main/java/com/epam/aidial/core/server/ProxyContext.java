@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.RouteType;
+import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
@@ -119,6 +120,10 @@ public class ProxyContext {
     private final Map<String, Object> tracingAttributes = new ConcurrentHashMap<>();
     // the merged chat completions body, or the terminal Responses frame - whichever surface streamed
     private String assembledStreamingResponse;
+    // the router's verdict when a router in decision mode chose the deployment of this pass
+    private RouterDecision decision;
+    // the client's body bytes as they arrived, kept while a decision may still fall back to another candidate
+    private Buffer originalRequestBody;
 
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {

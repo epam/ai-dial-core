@@ -1,0 +1,105 @@
+{
+  "routers": {
+    "r1": {
+      "defaultHeaders": {"X-DIAL-ROUTER-TIER": "medium"},
+      "interfaces": {
+        "openaiChatCompletions": {"mode": "decision", "base_url": "http://localhost:4848/decide"},
+        "openaiEmbeddings": {"mode": "decision", "base_url": "http://localhost:4848/decide"},
+        "anthropicMessages": {"mode": "decision", "base_url": "http://localhost:4848/decide"},
+        "openaiResponses": {"base_url": "http://localhost:4848"}
+      }
+    },
+    "r2": {
+      "baseUrl": "http://localhost:4848",
+      "interfaces": {"openaiChatCompletions": {}}
+    },
+    "r3": {
+      "interfaces": {
+        "openaiChatCompletions": {"mode": "decision", "base_url": "http://localhost:4848/decide-body", "context": {"body": true}},
+        "openaiResponses": {"mode": "decision", "base_url": "http://localhost:4848/decide"}
+      }
+    },
+    "r-slow": {
+      "interfaces": {
+        "openaiChatCompletions": {"mode": "decision", "base_url": "http://localhost:4848/decide-slow", "decisionTimeoutMs": 200}
+      }
+    },
+    "r-down": {
+      "interfaces": {
+        "openaiChatCompletions": {"mode": "decision", "base_url": "http://localhost:4849/decide"}
+      }
+    }
+  },
+  "models": {
+    "gpt-4": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "overrideName": "gpt-4-real",
+      "interfaces": {"openaiChatCompletions": {}, "openaiResponses": {}}
+    },
+    "claude": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "interfaces": {"anthropicMessages": {}}
+    },
+    "ada": {
+      "type": "embedding",
+      "baseUrl": "http://localhost:4848",
+      "interfaces": {"openaiEmbeddings": {}}
+    },
+    "m1": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "interfaces": {"openaiChatCompletions": {}, "anthropicMessages": {}}
+    },
+    "m2": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "interfaces": {"openaiChatCompletions": {}, "anthropicMessages": {}}
+    },
+    "m-int": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "interceptors": ["i2"],
+      "interfaces": {"openaiChatCompletions": {}}
+    },
+    "private-model": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "userRoles": ["nobody"],
+      "interfaces": {"openaiChatCompletions": {}, "anthropicMessages": {}}
+    },
+    "private-a": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "userRoles": ["nobody"],
+      "interfaces": {"openaiChatCompletions": {}, "anthropicMessages": {}}
+    },
+    "private-b": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "userRoles": ["nobody"],
+      "interfaces": {"openaiChatCompletions": {}, "anthropicMessages": {}}
+    }
+  },
+  "interceptors": {
+    "i2": {
+      "endpoint": "http://localhost:4848/openai/deployments/i2/chat/completions"
+    }
+  },
+  "applications": {
+    "app": {
+      "endpoint": "http://localhost:4848/openai/deployments/app/chat/completions"
+    }
+  },
+  "roles": {
+    "analysts": {
+      "limits": {
+        "gpt-4": {"requestHour": 1}
+      }
+    }
+  },
+  "keys": {
+    "proxyKey1": {"project": "p1", "role": "analysts"}
+  }
+}

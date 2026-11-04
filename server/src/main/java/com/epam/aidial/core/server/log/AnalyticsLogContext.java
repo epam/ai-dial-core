@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.RouteType;
+import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
@@ -55,6 +56,8 @@ public class AnalyticsLogContext {
     private final String deploymentName;
     private final String parentDeployment;
     private final List<String> executionPath;
+    // the router's verdict when a router in decision mode chose the deployment; null otherwise
+    private final RouterDecision.Row decision;
 
     private final String requestProtocol;
     private final String requestMethod;
@@ -105,9 +108,11 @@ public class AnalyticsLogContext {
                 .userClaims(context.getUserClaims())
                 .requestHeaders(toHeadersMap(context.getRequest().headers()))
                 .deploymentName(context.getDeployment() != null ? context.getDeployment().getName() : null)
-                .parentDeployment(getParentDeployment(
-                        context.getSourceDeployment(), context.getInterceptors(), context.getExecutionPath()))
+                .parentDeployment(context.getDecision() != null
+                        ? context.getDecision().getRouter()
+                        : getParentDeployment(context.getSourceDeployment(), context.getInterceptors(), context.getExecutionPath()))
                 .executionPath(context.getExecutionPath())
+                .decision(decisionRow(context))
                 .requestProtocol(context.getRequest().version().alpnName().toUpperCase())
                 .requestMethod(context.getRequest().method().name())
                 .requestUri(context.getRequest().uri())
@@ -178,6 +183,16 @@ public class AnalyticsLogContext {
             map.put(name, headers.getAll(name));
         }
         return map;
+    }
+
+    private static RouterDecision.Row decisionRow(ProxyContext context) {
+        if (context.getDecision() != null) {
+            return context.getDecision().toRow();
+        }
+        // a chosen deployment with interceptors is served in the pass its last interceptor calls back
+        RouterDecision.Row carried = context.getApiKeyData() == null ? null : context.getApiKeyData().getDecision();
+        return carried != null && context.getDeployment() != null && carried.deployment().equals(context.getDeployment().getName())
+                ? carried : null;
     }
 
     public static String getParentDeployment(String sourceDeployment, List<String> interceptors, List<String> executionPath) {

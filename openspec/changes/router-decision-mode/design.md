@@ -293,3 +293,79 @@ Conversation binding in Core (configured headers plus TTL, a Redis bucket, skipp
 outcome events to the router, a verdict `ttl`, a scoped per-request key for routers that call deployments while
 deciding, body field projection. The `router` field on `RouterDecision` and the `decision` row object are the
 points they attach to.
+
+## Implementation notes
+
+Compared with the code on `feat/router-deployment-type` after `router-entity` (43a5cbb5). The flows, line references
+and helpers D1-D6 cite are where they say, give or take a few lines. Drift found while implementing, and what the
+code does instead:
+
+- **Mode flag (D1 vs task 1.1).** Task 1.1 said `DECISION("decision", false)`; D1 and task 1.3 say `true`. The code
+  follows D1: `true`, with a unit test (`ConfigPostProcessorTest.testDecisionModeKeepsTheLimitFlag`).
+- **Translator on a decision entry (D1).** `validateDeploymentInterfaces` already warned `A translator requires mode
+  'translator'` for any non-translator entry with a translator, and the first warning is the one the config error
+  shows. That warning now skips decision entries, so a router shows `Mode 'decision' excludes translator`, as an
+  application does.
+- **Verdict type (D2).** No `Verdict` or `DecisionRejectedException` class: `RouterDecisionClient.decide` returns the
+  candidate list, and every failure is an `HttpException` carrying the status Core answers. A router `4xx` is an
+  `HttpException` with the router's body as message and its `Content-Type` in the headers, which
+  `respond(HttpException)` already writes. `DeploymentPostController.handleRequestError` now answers an
+  `HttpException` with `respond(e)` (headers included) instead of `respond(status, message)`, as the three other
+  controllers already did; no existing `HttpException` on that path carries headers. The client is a
+  `@UtilityClass` reading the proxy from `ProxyContext.getProxy()`, so `Proxy` gains no field. The one deadline is a
+  Vert.x timer of `decisionTimeoutMs`; connect and idle timeouts are set to the same bound.
+- **The request is paused until the controller future completes (D3, deployments-POST).** `Proxy.handleRequest`
+  pauses the client request and resumes it when the controller's future completes. A decide call waiting for the
+  body inside that future never ends, and a decide call outside it lets the resumed body be dropped before
+  `handleRateLimitSuccess` asks for it ("Request has already been read"). So for a router, `DeploymentPostController`
+  registers the body read (one cached `Future<Buffer>` per controller) before the decision, runs the decision and the
+  re-entry outside the returned future, and every later read (the decide body, the candidate, a fallback) uses that
+  cached future. The three body-addressed APIs have the body before the step, so they need none of this.
+- **Re-entry guard (D3).** The exception for "the router's own interceptor callback" is not needed and not coded: no
+  pass of the router's own interceptors has the router in its key path (an interceptor's key path starts at the
+  interceptor), so `path.contains(router)` is true only below the router's own decision.
+- **Key path with global interceptors (D5).** An interceptor's key carries `[i1]`, not `[r1, i1]`, so "add the router
+  only outside an interceptor callback" would lose it. The router is added before the receiver whenever a decision is
+  set: `[r1, gpt-4]` for a root call, `[i1, r1, gpt-4]` after a global interceptor. The spec scenario "Global
+  interceptor before the decision" is changed to that path. The row's `parent_deployment` is the router whenever a
+  decision is set, read from the decision rather than from the path walk (on Messages the context has no interceptor
+  list, which made the walk return the source deployment, null for a root call).
+- **Global interceptors run once (D3).** In the callback pass the chain hands to the router, the chosen deployment's
+  interceptor list would again start with the global ones, which `hasNextInterceptor` then sends to `i1` a second
+  time. `BaseDeploymentPostController.resolveInterceptors` drops the interceptors that chain already ran when a
+  decision is set in an interceptor callback pass; the chosen deployment's own interceptors still run.
+- **Attempt status (D4, spec "Row of a decided request").** The status recorded for a candidate skipped after its call
+  is the status Core would have answered for it: `502` for exhausted upstreams (`TieredBalancer.createUpstreamUnavailableException`
+  answers `502` `No route`, or `503` when every upstream is busy with `429`), `502` for a connect failure. The upstream's own `503` is not kept on the route, so
+  the scenario's `503` became `502` and the requirement says what `status` is.
+- **Pre-flight walk re-parses (D3/D4 cost).** One `reenterWithCandidate` serves both the pre-flight walk and the
+  fallback; on the three body-addressed APIs it re-parses the saved bytes in both cases. A pre-flight skip therefore
+  costs one body parse, like a fallback.
+- **Chat body model (D3).** `/openai/v1/chat/completions` re-serializes the body only when the chain changes the
+  request, so `ChatCompletionsController` sets `model` to the candidate and writes the body itself only when it hands
+  the request to an interceptor; otherwise it passes `changed = true` to `processChatCompletionsRequestBody`, which
+  then serializes once whether or not the chain changed the request (one serialization per decided request).
+  Responses writes it only when it hands the request to an interceptor; its chain always serializes. Messages always
+  serializes.
+- **Saved body release (D4).** Not done: the saved bytes stay referenced by the context until the request ends, not
+  only until the first response byte. On deployments-POST they are the same buffer as the request body the chain
+  starts from; elsewhere it is one more reference to the client's bytes for the request's lifetime. Add the release
+  in each `handleProxyResponse` if the memory shows in the measurement.
+- **Attempt reasons.** `forbidden`, `not_found`, `limit` (`429`), `unavailable` (any other `HttpException` in the
+  resolve or limit check), `connect`, `upstream`.
+- **Fallback state reset.** Besides the key invalidation, a fallback clears `proxyApiKeyData` and
+  `cacheBreakpointContext` and puts the client's bytes back as the request body, so the next candidate's chain and
+  interceptors start from the client's request.
+- **No fallback after an accepted answer (D4).** `handleProxyConnectionError` is also the failure handler of the
+  non-streaming body read (and of the Responses mapping save) after the origin's headers were accepted, so
+  `retryWithNextCandidate` returns false once `context.getProxyResponse()` is set: such a failure answers `502` as
+  before, and the candidate that answered is not retried (`RouterDecisionApiTest.bodyFailureAfterTheAnswerIsNotRetried`).
+- **Decision row behind the chosen deployment's interceptors (D5).** The pass that decides hands the request to the
+  interceptor chain and writes no row; the pass the last interceptor calls back serves the deployment without a
+  decision on its context. So the interceptor key carries the decision's row (`ApiKeyData.decision`, set in
+  `BaseInterceptorController` from the decision or from the previous interceptor's key, absent from the JSON
+  otherwise), and `AnalyticsLogContext` writes it on the row of the pass whose deployment is the one the row names
+  (`RouterDecisionApiTest.chosenDeploymentBehindAnInterceptorRecordsTheDecision`).
+- **OpenAPI.** `docs/open_api_core.yaml` changes: `InterfaceMode` gains `decision` and `DeploymentInterface` gains
+  `context` and `decisionTimeoutMs` (regenerated with `./gradlew :openapi-generator:replaceSpec`).
+- **D6 caller list (task 8.1).** `resolveServingEndpoint` has the same callers as listed (lines shifted); no new one.
