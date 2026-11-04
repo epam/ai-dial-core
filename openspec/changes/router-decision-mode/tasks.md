@@ -141,10 +141,10 @@ Prerequisite: change `router-entity` applied on the same branch (its `Router`, f
 - [x] 8.3 `./gradlew :server:test` (full module suite) passes locally, or the failures are shown unrelated with the
   output in review.md.
 - [x] 8.4 Compare design.md with the code as merged; record drift in design.md.
-- [ ] 8.5 Measure on the perf improvement initiative's environment: same-day direct, proxy-router and decision-mode
-  runs on the router path, with the router entries added beside the existing proxy entry (nothing replaced) and a
-  separate router release with `/decide`; Core CPU per user request, user-info calls per second, Redis commands per request, p50
-  overhead; record in review.md (deferred: needs the perf environment and a router image with `/decide`).
+- [x] 8.5 Measure on the perf improvement initiative's environment: same-day direct, proxy-router and decision-mode
+  runs on the router path, with the router entries added beside the existing proxy entry (nothing replaced) and the
+  existing router release, which serves `/decide` and trusts the user-info header Core sends to routers; Core CPU per
+  user request, user-info calls per second, Redis commands per request, p50 overhead; record in review.md.
 
 ## Workflow follow-up
 

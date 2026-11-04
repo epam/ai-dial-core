@@ -159,3 +159,41 @@ Left as reported:
 - simplicity, ChatCompletionsController.java:157: the `setResolving(false)` sites stay explicit. Each sits at a different point of its controller's flow, and a helper would hide which point clears it.
 
 Full suite after these fixes: `./gradlew :config:test :storage:test :openapi-generator:test :server:test` passed, with 3206 server tests, 0 failures and 2 skipped (existing @Disabled tests). Task 8.3 is ticked. Task 8.5 (perf measurement) is still deferred.
+
+## Perf measurement (task 8.5)
+
+Environment of the perf improvement initiative, 2026-11-04. All four runs used the same Core image (this PR's head) and the same two Core pods. They also shared one router pod (dial-llm-router-app with `/decide` and `DIAL_USER_INFO_HEADER_TRUSTED=true`), the mock, the adapter and the Valkey pods. The load was Anthropic Messages, streamed, 1,000 users, a 100 s ramp and a 10-minute steady phase, with 2 minutes between runs. Only the deployment changed between runs:
+
+- D: `llm-d-sim-via-openai`, the direct floor.
+- R: `auto-router-medium`, a model on proxy interfaces to the router (today's setup).
+- R2: `auto-router-medium-router`, the router type on proxy interfaces.
+- B: `auto-router-medium-decision`, the router type in decision mode on all three APIs.
+
+Before the runs, a 1-user smoke test of each deployment got 200s. B wrote one analytics row per request with the execution path `[auto-router-medium-decision, llm-d-sim-via-openai]` and a `decision` object (`router`, `api`, `candidates`, `deployment`, `decide_ms`, `attempts`). R and R2 wrote two rows per request.
+
+Per user request, from the 5-minute window of steady load before each profile capture:
+
+| | D | R | R2 | B |
+|---|---|---|---|---|
+| Core passes per user request | 1 | 3 (2 Messages, 1 user-info) | 2 | 1 |
+| Core CPU per user request | 53.6 ms | 96.9 ms | 93.7 ms | 60.7 ms (55.6 ms on the pod without the housekeeping scan) |
+| Core CPU over D | | +43.3 ms | +40.1 ms | +7.1 ms (+2.4 ms on that pod, against the same pod in D) |
+| Router CPU per user request | 0 | 15.5 ms | 14.8 ms | 1.1 ms |
+| `/v1/user/info` calls per second | 0 | 63.9 | 0 | 0 |
+| Redis commands per user request | 80 | 144 | 110 | 80 |
+| Client p50 / p95 | 9.12 / 34.0 s | 9.23 / 34.6 s | 9.07 / 33.8 s | 9.07 / 34.2 s |
+| Mock mean response time | 14.42 s | 14.55 s | 14.37 s | 14.37 s |
+| KO, Core non-2xx | 0 | 0 | 0 | 0 |
+
+- Against R, decision mode saves about 50 ms of CPU per user request: 36 ms in Core, 14 ms in the router. It also saves 64 Redis commands, the user-info call and one analytics row.
+- The router type on proxy interfaces (R2) saves only the user-info pass: 3.2 ms in Core and 0.7 ms in the router.
+- B costs 2 to 7 ms of Core CPU over the direct path.
+  - The range comes from one pod. During B's window it ran the daily response-mapping housekeeping (`ResponseMappingService.cleanExpiredMappings`, which lists the response-mappings bucket once a day per pod after a random start offset).
+  - That scan took 18% of that pod's CPU samples, so the two-pod figure (+7.1 ms) is an upper bound.
+  - On the other pod B was 2.4 ms above the same pod in D. That is within the 6% spread between the two pods of one run.
+- Latency: the client p50 deltas over D (+113, -50, -56 ms) follow the mock's own mean deltas (+133, -43, -47 ms) within 20 ms. No router latency can be resolved at this shape.
+
+Limits of the measurement:
+
+- The load generator sent a mix of request sizes: body median 374 KB, mean 650 KB; max tokens median 343, mean 767. The deltas hold because all four runs had the same mix, but the absolute numbers do not compare with earlier fixed-size runs.
+- The capture sat 7 minutes into steady load. Each variant ran once.
