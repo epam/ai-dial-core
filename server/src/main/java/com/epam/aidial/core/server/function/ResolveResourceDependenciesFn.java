@@ -9,7 +9,6 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AuthBucket;
 import com.epam.aidial.core.server.data.consent.Consent;
 import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
-import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.log.ResourceDependencyAuditLog;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ResourceDependencyValidator;
@@ -49,14 +48,20 @@ import javax.annotation.Nullable;
  * {@code AccessService.lookupOriginatingUserPermissions} — own bucket as the human, shared,
  * public — and never through rules that read the calling key's own grants (D-24).
  */
-public class ResolveResourceDependenciesFn extends BaseRequestFunction<RequestObject> {
+public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
+
+    private static final String UNDELIVERABLE_REASON = "dependency grants cannot be delivered: mcp.forwardPerRequestKey is false";
+    private static final String UNDELIVERABLE_MESSAGE = "dependency grants cannot be delivered to this application";
 
     public ResolveResourceDependenciesFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
     }
 
+    /**
+     * The argument is unused: resolution reads only {@code context}, so the function fits chains of any element type.
+     */
     @Override
-    public Boolean apply(RequestObject request) {
+    public Boolean apply(T ignored) {
         if (!(context.getDeployment() instanceof Application application)) {
             // Interceptor hop or a non-application deployment — dependencies resolve for the
             // application being called, nothing else.
@@ -72,9 +77,11 @@ public class ResolveResourceDependenciesFn extends BaseRequestFunction<RequestOb
 
     private void resolve(Application application, List<ResourceDependency> declaration) {
         String applicationId = application.getName();
+        // only an MCP app with forwardPerRequestKey=false gets no per-request key: grants can't be delivered, a required dependency fails
+        boolean hasKeyToBakeInto = context.getProxyApiKeyData() != null;
         // The consent record is content-bound to the whole declaration: any change since the grant
         // re-requires it, and until then nothing resolves. Checked before any resolution work.
-        boolean consented = proxy.getConsentService().isAdminConsented(applicationId, declaration);
+        boolean consented = hasKeyToBakeInto && proxy.getConsentService().isAdminConsented(applicationId, declaration);
         AuthBucket userBucket = BucketBuilder.buildBucket(context);
 
         List<Resolved> resolvedTargets = new ArrayList<>();
@@ -93,33 +100,45 @@ public class ResolveResourceDependenciesFn extends BaseRequestFunction<RequestOb
             }
         }
 
-        List<Consent.ResourceEntry> granted = new ArrayList<>();
-        if (!resolvedTargets.isEmpty()) {
-            // One batched walk of the permission chain for all resolved targets.
-            Set<ResourceDescriptor> targets = resolvedTargets.stream().map(Resolved::target).collect(Collectors.toSet());
-            Map<ResourceDescriptor, Set<ResourceAccessType>> userAccessByTarget =
-                    proxy.getAccessService().lookupOriginatingUserPermissions(targets, context);
-            for (Resolved resolved : resolvedTargets) {
-                Set<ResourceAccessType> userAccess = userAccessByTarget.getOrDefault(resolved.target(), Set.of());
-                if (userAccess.containsAll(resolved.access())) {
-                    bakeGrant(resolved.target(), resolved.access());
-                    granted.add(entryOf(resolved.dependency()));
-                } else {
-                    // The user cannot reach the target with the declared rights — the record simply
-                    // does not grant; it does not fail the call unless required.
-                    trackUnresolved(resolved.dependency(), unresolvedDeps, requiredFailures);
-                }
-            }
-        }
+        List<Consent.ResourceEntry> granted = bakeReachableGrants(resolvedTargets, unresolvedDeps, requiredFailures);
 
         ResourceDependencyAuditLog.grant(context, applicationId, granted);
         ResourceDependencyAuditLog.denial(context, applicationId, entriesOf(unresolvedDeps));
         if (!requiredFailures.isEmpty()) {
             // A required dependency is unresolvable — the application never half-works silently.
-            ResourceDependencyAuditLog.runtimeFail(context, applicationId, requiredFailures);
-            throw new HttpException(HttpStatus.FORBIDDEN,
-                    "Required resource dependencies are not accessible: " + String.join(", ", requiredFailures));
+            ResourceDependencyAuditLog.runtimeFail(context, applicationId, requiredFailures,
+                    hasKeyToBakeInto ? "required dependencies unresolvable" : UNDELIVERABLE_REASON);
+            String message = "Required resource dependencies are not accessible: " + String.join(", ", requiredFailures);
+            throw new HttpException(HttpStatus.FORBIDDEN, hasKeyToBakeInto ? message : message + " — " + UNDELIVERABLE_MESSAGE);
         }
+    }
+
+    /**
+     * Bakes the targets the originating user can reach with the declared rights; tracks the rest as unresolved.
+     */
+    private List<Consent.ResourceEntry> bakeReachableGrants(List<Resolved> resolvedTargets,
+                                                            List<ResourceDependency> unresolvedDeps,
+                                                            List<String> requiredFailures) {
+        List<Consent.ResourceEntry> granted = new ArrayList<>();
+        if (resolvedTargets.isEmpty()) {
+            return granted;
+        }
+        // One batched walk of the permission chain for all resolved targets.
+        Set<ResourceDescriptor> targets = resolvedTargets.stream().map(Resolved::target).collect(Collectors.toSet());
+        Map<ResourceDescriptor, Set<ResourceAccessType>> userAccessByTarget =
+                proxy.getAccessService().lookupOriginatingUserPermissions(targets, context);
+        for (Resolved resolved : resolvedTargets) {
+            Set<ResourceAccessType> userAccess = userAccessByTarget.getOrDefault(resolved.target(), Set.of());
+            if (userAccess.containsAll(resolved.access())) {
+                bakeGrant(resolved.target(), resolved.access());
+                granted.add(entryOf(resolved.dependency()));
+            } else {
+                // The user cannot reach the target with the declared rights — the record simply
+                // does not grant; it does not fail the call unless required.
+                trackUnresolved(resolved.dependency(), unresolvedDeps, requiredFailures);
+            }
+        }
+        return granted;
     }
 
     private record Resolved(ResourceDependency dependency, ResourceDescriptor target, Set<ResourceAccessType> access) {

@@ -16,6 +16,8 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -66,7 +68,7 @@ public class ResolveResourceDependenciesFnTest {
     private EncryptionService encryptionService;
 
     @InjectMocks
-    private ResolveResourceDependenciesFn fn;
+    private ResolveResourceDependenciesFn<RequestObject> fn;
 
     private final ApiKeyData proxyApiKeyData = new ApiKeyData();
     private Application application;
@@ -115,6 +117,31 @@ public class ResolveResourceDependenciesFnTest {
         when(context.getDeployment()).thenReturn(application);
 
         assertFalse(fn.apply(request));
+        verify(consentService, never()).isAdminConsented(anyString(), any());
+    }
+
+    @Test
+    void apply_isNoOpWithoutProxyApiKeyDataToBakeInto() {
+        // forwardPerRequestKey=false: no key to deliver grants into; an optional record neither grants nor fails
+        when(context.getDeployment()).thenReturn(application);
+        application.setResourceDependencies(List.of(dependency("skills/{current-user}/", false)));
+        when(context.getProxyApiKeyData()).thenReturn(null);
+
+        assertFalse(fn.apply(request));
+        verify(consentService, never()).isAdminConsented(anyString(), any());
+    }
+
+    @Test
+    void apply_failsRequiredDependencyWhenNoKeyToBakeInto() {
+        // no key to deliver grants into must not let a required dependency pass silently
+        when(context.getDeployment()).thenReturn(application);
+        application.setResourceDependencies(List.of(dependency("skills/{current-user}/", true)));
+        when(context.getProxyApiKeyData()).thenReturn(null);
+
+        HttpException error = assertThrows(HttpException.class, () -> fn.apply(request));
+        assertEquals(HttpStatus.FORBIDDEN, error.getStatus());
+        assertTrue(error.getMessage().contains("dependency grants cannot be delivered to this application"), error.getMessage());
+        assertFalse(error.getMessage().contains("forwardPerRequestKey"), error.getMessage());
         verify(consentService, never()).isAdminConsented(anyString(), any());
     }
 
@@ -172,6 +199,23 @@ public class ResolveResourceDependenciesFnTest {
         // The grant lands in the key's own shared map — the app's direct calls with this key are
         // served by it; the target is the user's skills ROOT folder, so the grant prefix-matches
         // everything under it (findFolderPermissions).
+        assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE),
+                proxyApiKeyData.getPerRequestSharedResources().get(userSkillsFolder().getUrl()).permissions());
+    }
+
+    @Test
+    void apply_isTypeAgnostic() {
+        // the argument is unread, so the same function works in the ObjectNode-typed MCP chain
+        when(context.getDeployment()).thenReturn(application);
+        application.setResourceDependencies(List.of(dependency("skills/{current-user}/", false)));
+        when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
+        when(accessService.lookupOriginatingUserPermissions(any(), eq(context)))
+                .thenReturn(Map.of(userSkillsFolder(), Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE)));
+
+        ResolveResourceDependenciesFn<ObjectNode> objectNodeFn = new ResolveResourceDependenciesFn<>(proxy, context);
+
+        assertFalse(objectNodeFn.apply(JsonNodeFactory.instance.objectNode()));
+
         assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE),
                 proxyApiKeyData.getPerRequestSharedResources().get(userSkillsFolder().getUrl()).permissions());
     }
