@@ -18,4 +18,14 @@ public interface OriginPlugin {
      * @param host calls other deployments for this request, see {@link OriginHost#call}
      */
     Future<OriginResponse> handle(OriginRequest request, OriginHost host);
+
+    /**
+     * Releases what this instance holds: its client pools, caches and timers. Core calls it once per instance: after
+     * the last request of an instance it replaced or whose entry was removed, and at shutdown, even under requests still
+     * in flight. It runs on a thread that may block, never on an event loop. An exception thrown here is logged and
+     * dropped. After it, Core calls the instance only to read or cancel an answer it holds already: one given after
+     * {@link OriginHost#cancelled()} completed, or one in flight at shutdown.
+     */
+    default void close() {
+    }
 }

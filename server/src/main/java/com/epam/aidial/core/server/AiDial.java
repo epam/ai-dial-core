@@ -180,6 +180,7 @@ public class AiDial {
     private volatile int serverPort;
     private HttpClient client;
     private WebSocketClient webSocketClient;
+    private EmbeddedOrigins embeddedOrigins;
 
     private RedissonClient redis;
     private Proxy proxy;
@@ -422,7 +423,8 @@ public class AiDial {
             budgetCounterSweepService = new BudgetCounterSweepService(timerService, resourceService, lockService, redis,
                     mergedConfigStore, budgetCounterSweepSettings, backgroundTracer);
 
-            OriginClient originClient = new OriginClient(client, vertx, new EmbeddedOrigins(pluginRegistry, vertx));
+            embeddedOrigins = new EmbeddedOrigins(pluginRegistry, vertx, taskExecutor);
+            OriginClient originClient = new OriginClient(client, vertx, embeddedOrigins);
             ResponsesApiClient responsesApiClient = new ResponsesApiClient(originClient, clientOptions);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(),
@@ -556,6 +558,8 @@ public class AiDial {
                 close(vertx, v -> v.undeploy(serverDeploymentId));
             }
             close(client, HttpClient::close);
+            // no request arrives now, and the plugins close their own Vert.x clients before Vert.x closes
+            close(embeddedOrigins, EmbeddedOrigins::close);
             close(resourceService);
             close(complexResourceSweepService);
             close(budgetCounterSweepService);

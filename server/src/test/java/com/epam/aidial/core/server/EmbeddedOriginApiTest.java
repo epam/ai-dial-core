@@ -3,6 +3,7 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.plugin.OriginRequest;
 import com.epam.aidial.core.server.config.TestEchoPluginProvider;
 import com.epam.aidial.core.server.config.TestOriginPluginProvider;
+import com.epam.aidial.core.server.config.TestOriginPluginProvider.Closed;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -431,6 +432,89 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
         assertConnectFailure(chat("/openai/deployments/app/chat/completions", CHAT_BODY));
     }
 
+    // plugin-registry "Closing an origin plugin"
+
+    @Test
+    void testReplacedInstanceClosed() {
+        plugin("p1", "{\"greeting\": \"hello\"}");
+        verify(adminPut("/v1/applications/platform/app", embeddedChat("p1")), 200);
+        verify(chat("/openai/deployments/app/chat/completions", CHAT_BODY), 200);
+
+        plugin("p1", "{\"greeting\": \"hi\"}");
+        Response hi = chat("/openai/deployments/app/chat/completions", CHAT_BODY);
+        assertTrue(hi.body().contains("\"content\":\"hi\""), hi.body());
+
+        awaitCondition(() -> !TestOriginPluginProvider.CLOSED.isEmpty());
+        assertEquals(List.of(new Closed("hello", false)), TestOriginPluginProvider.CLOSED);
+    }
+
+    @Test
+    @SneakyThrows
+    void testBusyInstanceClosedAfterItsAnswer() {
+        plugin("p1", "{\"greeting\": \"hello\"}");
+        verify(adminPut("/v1/applications/platform/app", embeddedChat("p1")), 200);
+
+        try (HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build()) {
+            try (InputStream held = heldStream(client, "app")) {
+                plugin("p1", "{\"greeting\": \"hi\"}");
+                Response hi = chat("/openai/deployments/app/chat/completions", CHAT_BODY);
+                assertTrue(hi.body().contains("\"content\":\"hi\""), hi.body());
+                Thread.sleep(200);
+                assertEquals(List.of(), TestOriginPluginProvider.CLOSED);
+            }
+        }
+
+        awaitCondition(() -> !TestOriginPluginProvider.CLOSED.isEmpty());
+        assertEquals(List.of(new Closed("hello", false)), TestOriginPluginProvider.CLOSED);
+    }
+
+    @Test
+    void testRemovedEntryClosed() {
+        servedApp("openaiChatCompletions");
+        verify(chat("/openai/deployments/app/chat/completions", CHAT_BODY), 200);
+
+        verify(send(HttpMethod.DELETE, "/v1/plugins/platform/p1", null, "", "authorization", "admin"), 204);
+        assertConnectFailure(chat("/openai/deployments/app/chat/completions", CHAT_BODY));
+
+        awaitCondition(() -> !TestOriginPluginProvider.CLOSED.isEmpty());
+        assertEquals(List.of(new Closed("ok", false)), TestOriginPluginProvider.CLOSED);
+    }
+
+    @Test
+    @SneakyThrows
+    void testClosedAtShutdown() {
+        plugin("p1", "{\"greeting\": \"one\"}");
+        plugin("p2", "{\"greeting\": \"two\"}");
+        verify(adminPut("/v1/applications/platform/app", embeddedChat("p1")), 200);
+        verify(adminPut("/v1/applications/platform/app2", embeddedChat("p2")), 200);
+        verify(chat("/openai/deployments/app2/chat/completions", CHAT_BODY), 200);
+
+        try (HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build()) {
+            try (InputStream held = heldStream(client, "app")) {
+                dial.stop();
+                // stopped here; the teardown must not stop it again, a closed Vert.x rejects a second close
+                dial = null;
+            }
+        }
+
+        assertEquals(List.of("one", "two"), TestOriginPluginProvider.CLOSED.stream().map(Closed::greeting).sorted().toList());
+    }
+
+    @Test
+    void testCloseFails() {
+        plugin("p1", "{\"greeting\": \"hello\", \"closeFails\": true}");
+        verify(adminPut("/v1/applications/platform/app", embeddedChat("p1")), 200);
+        verify(chat("/openai/deployments/app/chat/completions", CHAT_BODY), 200);
+        plugin("p1", "{\"greeting\": \"hi\"}");
+        verify(chat("/openai/deployments/app/chat/completions", CHAT_BODY), 200);
+        awaitCondition(() -> !TestOriginPluginProvider.CLOSED.isEmpty());
+
+        Response hi = chat("/openai/deployments/app/chat/completions", CHAT_BODY);
+
+        assertTrue(hi.body().contains("\"content\":\"hi\""), hi.body());
+        assertEquals(List.of(new Closed("hello", false)), TestOriginPluginProvider.CLOSED);
+    }
+
     @BeforeEach
     void resetTestOrigin() {
         TestOriginPluginProvider.reset();
@@ -459,6 +543,24 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
 
     private void putPlugin(String name, String body) {
         verify(adminPut("/v1/plugins/platform/" + name, body), 200);
+    }
+
+    /**
+     * The body of a chat completion streamed by {@code deployment} until the client closes it, its first bytes read.
+     */
+    @SneakyThrows
+    private InputStream heldStream(HttpClient client, String deployment) {
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + serverPort + "/openai/deployments/" + deployment + "/chat/completions"))
+                .header("api-key", "proxyKey1")
+                .header("content-type", "application/json")
+                .header("X-Test-Hold", "true")
+                .POST(HttpRequest.BodyPublishers.ofString(STREAM_BODY))
+                .build();
+        HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        assertEquals(200, response.statusCode());
+        InputStream body = response.body();
+        assertTrue(body.read(new byte[16]) > 0);
+        return body;
     }
 
     private Response chat(String path, String body) {

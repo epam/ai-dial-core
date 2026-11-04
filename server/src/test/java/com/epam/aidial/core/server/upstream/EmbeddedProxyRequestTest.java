@@ -3,7 +3,9 @@ package com.epam.aidial.core.server.upstream;
 import com.epam.aidial.core.plugin.OriginPlugin;
 import com.epam.aidial.core.plugin.OriginRequest;
 import com.epam.aidial.core.plugin.OriginResponse;
+import com.epam.aidial.core.server.ChildPass;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.EmbeddedOrigins.Lease;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -17,22 +19,38 @@ import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.streams.ReadStream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class EmbeddedProxyRequestTest {
 
     private static Vertx vertx;
+
+    private final ProxyContext pass = mock(ProxyContext.class);
+    // the attempts the pass registered
+    private final List<ChildPass> attempts = new CopyOnWriteArrayList<>();
+    private final AtomicInteger released = new AtomicInteger();
+    private ContextInternal context;
 
     @BeforeAll
     static void startVertx() {
@@ -42,6 +60,11 @@ class EmbeddedProxyRequestTest {
     @AfterAll
     static void stopVertx() {
         vertx.close();
+    }
+
+    @BeforeEach
+    void recordAttempts() {
+        doAnswer(invocation -> attempts.add(invocation.getArgument(0))).when(pass).addChildPass(any());
     }
 
     @Test
@@ -118,20 +141,133 @@ class EmbeddedProxyRequestTest {
         assertEquals("answer", await(response.body()).toString());
     }
 
-    private static void assertSendFails(OriginPlugin plugin, Class<? extends Throwable> cause) {
+    @Test
+    void testSendAcquiresBeforeTheCall() throws Exception {
+        AtomicInteger acquired = new AtomicInteger();
+        AtomicInteger acquiredAtCall = new AtomicInteger(-1);
+        OriginPlugin plugin = (call, host) -> {
+            acquiredAtCall.set(acquired.get());
+            return Future.succeededFuture(new Answer(stream(false)));
+        };
+
+        await(request(() -> {
+            acquired.incrementAndGet();
+            return new Lease(plugin, released::incrementAndGet);
+        }, mock(HttpServerResponse.class)).send(Buffer.buffer("{}")));
+
+        assertEquals(1, acquiredAtCall.get());
+        assertEquals(0, released.get());
+    }
+
+    @Test
+    void testFailedAcquireFailsTheSend() {
+        EmbeddedProxyRequest request = request(() -> {
+            throw new IllegalStateException("Core is shutting down");
+        }, mock(HttpServerResponse.class));
+
+        ExecutionException error = assertThrows(ExecutionException.class, () -> await(request.send(Buffer.buffer("{}"))));
+
+        assertInstanceOf(IllegalStateException.class, error.getCause());
+        assertEquals(0, released.get());
+    }
+
+    @Test
+    void testReleasedOnceTheAttemptCloses() throws Exception {
+        await(request((call, host) -> Future.succeededFuture(new Answer(stream(false)))).send(Buffer.buffer("{}")));
+        assertEquals(0, released.get());
+
+        attempts.forEach(ChildPass::close);
+
+        awaitCondition(() -> released.get() == 1);
+    }
+
+    @Test
+    void testReleasedAfterThrowingCall() throws Exception {
+        assertSendFails((call, host) -> {
+            throw new IllegalStateException("plugin defect");
+        }, IllegalStateException.class);
+
+        attempts.forEach(ChildPass::close);
+
+        awaitCondition(() -> released.get() == 1);
+    }
+
+    @Test
+    void testClientGoneBeforeTheSendReleasesAfterTheAnswer() throws Exception {
+        HttpServerResponse closed = mock(HttpServerResponse.class);
+        when(closed.closed()).thenReturn(true);
+        Promise<OriginResponse> answer = Promise.promise();
+        EmbeddedProxyRequest request = request((call, host) -> answer.future(), closed);
+
+        // on the request's context, as in Core: the attempt closes there at once
+        onContext(() -> request.send(Buffer.buffer("{}")));
+        assertEquals(0, released.get());
+
+        onContext(() -> answer.tryFail("stopped"));
+        assertEquals(1, released.get());
+    }
+
+    @Test
+    void testResetCancelsTheAnswerBeforeTheRelease() throws Exception {
+        Answer answer = new Answer(stream(false));
+        AtomicInteger releasedAtCancel = new AtomicInteger(-1);
+        answer.onCancel = () -> releasedAtCancel.set(released.get());
+        EmbeddedProxyRequest request = request((call, host) -> Future.succeededFuture(answer));
+        await(onContext(() -> request.send(Buffer.buffer("{}"))));
+
+        onContext(request::reset);
+
+        assertEquals(0, releasedAtCancel.get());
+        assertEquals(1, released.get());
+    }
+
+    @Test
+    void testClientGoneAndPluginFailedClosesEveryAttempt() {
+        HttpServerResponse closed = mock(HttpServerResponse.class);
+        when(closed.closed()).thenReturn(true);
+
+        request((call, host) -> Future.failedFuture(new IllegalStateException("stopped")), closed).send(Buffer.buffer("{}"));
+
+        verify(pass).closeChildPasses();
+    }
+
+    private void assertSendFails(OriginPlugin plugin, Class<? extends Throwable> cause) {
         ExecutionException error = assertThrows(ExecutionException.class, () -> await(request(plugin).send(Buffer.buffer("{}"))));
         assertInstanceOf(cause, error.getCause());
     }
 
-    private static EmbeddedProxyRequest request(OriginPlugin plugin) {
+    private EmbeddedProxyRequest request(OriginPlugin plugin) {
         return request(plugin, mock(HttpServerResponse.class));
     }
 
-    private static EmbeddedProxyRequest request(OriginPlugin plugin, HttpServerResponse client) {
-        ContextInternal context = (ContextInternal) vertx.getOrCreateContext();
-        ProxyContext pass = mock(ProxyContext.class);
+    private EmbeddedProxyRequest request(OriginPlugin plugin, HttpServerResponse client) {
+        return request(() -> new Lease(plugin, released::incrementAndGet), client);
+    }
+
+    private EmbeddedProxyRequest request(Supplier<Lease> lease, HttpServerResponse client) {
+        context = (ContextInternal) vertx.getOrCreateContext();
         when(pass.getResponse()).thenReturn(client);
-        return new EmbeddedProxyRequest(context, pass, plugin, HttpMethod.POST, "plugin://p1", "plugin://p1/openai/v1/responses?x=1");
+        return new EmbeddedProxyRequest(context, pass, lease, HttpMethod.POST, "plugin://p1", "plugin://p1/openai/v1/responses?x=1");
+    }
+
+    private <T> T onContext(Supplier<T> action) throws Exception {
+        CompletableFuture<T> result = new CompletableFuture<>();
+        context.runOnContext(ignored -> {
+            try {
+                result.complete(action.get());
+            } catch (Throwable e) {
+                result.completeExceptionally(e);
+            }
+        });
+        return result.get(5, TimeUnit.SECONDS);
+    }
+
+    private static void awaitCondition(BooleanSupplier condition) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 5000;
+        while (!condition.getAsBoolean()) {
+            assertTrue(System.currentTimeMillis() < deadline, "condition not met in 5 s");
+            Thread.sleep(10);
+        }
     }
 
     private static <T> T await(Future<T> future) throws Exception {
@@ -146,6 +282,8 @@ class EmbeddedProxyRequestTest {
 
         private final ReadStream<Buffer> body;
         private final AtomicInteger cancelled = new AtomicInteger();
+        private Runnable onCancel = () -> {
+        };
 
         Answer(ReadStream<Buffer> body) {
             this.body = body;
@@ -168,6 +306,7 @@ class EmbeddedProxyRequestTest {
 
         @Override
         public void cancel() {
+            onCancel.run();
             cancelled.incrementAndGet();
         }
     }

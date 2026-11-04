@@ -1,10 +1,10 @@
 package com.epam.aidial.core.server.upstream;
 
 import com.epam.aidial.core.plugin.OriginCaller;
-import com.epam.aidial.core.plugin.OriginPlugin;
 import com.epam.aidial.core.plugin.OriginRequest;
 import com.epam.aidial.core.server.ChildPass;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.EmbeddedOrigins.Lease;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -17,6 +17,7 @@ import io.vertx.core.impl.ContextInternal;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * A {@link ProxyRequest} answered by a plugin running in Core. Its futures complete on the request's Vert.x context,
@@ -31,7 +32,7 @@ final class EmbeddedProxyRequest implements ProxyRequest {
 
     private final ContextInternal context;
     private final ProxyContext proxyContext;
-    private final OriginPlugin plugin;
+    private final Supplier<Lease> lease;
     private final HttpMethod method;
     private final String baseUrl;
     private final String absoluteUri;
@@ -46,14 +47,15 @@ final class EmbeddedProxyRequest implements ProxyRequest {
 
     /**
      * @param proxyContext the pass the plugin answers
+     * @param lease        takes the plugin for one attempt
      * @param baseUrl      the {@code plugin://<name>} url the interface resolves to
      * @param absoluteUri  that url with the path and query, the plugin getting the path and query
      */
-    EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, OriginPlugin plugin, HttpMethod method,
+    EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<Lease> lease, HttpMethod method,
                          String baseUrl, String absoluteUri) {
         this.context = context;
         this.proxyContext = proxyContext;
-        this.plugin = plugin;
+        this.lease = lease;
         this.method = method;
         this.baseUrl = baseUrl;
         this.absoluteUri = absoluteUri;
@@ -89,13 +91,28 @@ final class EmbeddedProxyRequest implements ProxyRequest {
             // a close handler set on a closed connection never fires: a client gone during the parse or a retry
             onClientGone(attempt);
         }
+        Lease taken;
         try {
-            plugin.handle(request, attempt).onComplete(result -> {
+            taken = lease.get();
+        } catch (RuntimeException e) {
+            // Core is shutting down, the plugin closed twice while the attempt started, or creating it again failed:
+            // the attempt fails as a plugin that throws does
+            settled = true;
+            promise.fail(e);
+            return promise.future();
+        }
+        try {
+            taken.plugin().handle(request, attempt).onComplete(result -> {
                 settled = true;
+                // given back once the attempt has closed too: the plugin is closed neither before its answer nor
+                // under its calls
+                attempt.whenClosed(taken.onDone());
                 if (result.failed()) {
                     if (clientGone) {
                         // ponytail: the pass ends here, as after a client gone from an application: no retry, no
-                        // row, no finalize, the per-request key expiring by its TTL
+                        // row, no finalize, the per-request key expiring by its TTL. Its attempts close, so that an
+                        // earlier one gives its plugin back too
+                        proxyContext.closeChildPasses();
                         return;
                     }
                     promise.fail(result.cause());
@@ -113,6 +130,7 @@ final class EmbeddedProxyRequest implements ProxyRequest {
         } catch (RuntimeException | LinkageError e) {
             // plugin code: a jar missing a class throws NoClassDefFoundError on first use
             settled = true;
+            attempt.whenClosed(taken.onDone());
             promise.fail(e);
         }
         return promise.future();
@@ -151,11 +169,12 @@ final class EmbeddedProxyRequest implements ProxyRequest {
     @Override
     public boolean reset() {
         reset = true;
+        if (response != null) {
+            // first: the answer is cancelled before its attempt closes and may give the plugin back
+            response.discard();
+        }
         if (host != null) {
             host.cancel();
-        }
-        if (response != null) {
-            response.discard();
         }
         return true;
     }

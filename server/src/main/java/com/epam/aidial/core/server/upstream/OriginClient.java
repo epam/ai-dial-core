@@ -2,7 +2,6 @@ package com.epam.aidial.core.server.upstream;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.plugin.OriginPlugin;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.EmbeddedOrigins;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
@@ -49,9 +48,11 @@ public class OriginClient {
             if (context.getDeployment() instanceof Application application && !isPlatform(config, application)) {
                 throw new IllegalStateException("Mode 'embedded' is reserved for platform deployments: " + application.getName());
             }
-            OriginPlugin origin = embeddedOrigins.resolve(config, plugin);
+            // fails here, for an entry that cannot serve; each attempt takes the plugin when it is sent
+            embeddedOrigins.resolve(config, plugin);
             String baseUrl = DeploymentEndpointUtil.PLUGIN_URL_PREFIX + plugin;
-            return vertxContext.succeededFuture(new EmbeddedProxyRequest(vertxContext, context, origin, method, baseUrl, absoluteUri));
+            return vertxContext.succeededFuture(new EmbeddedProxyRequest(vertxContext, context,
+                    () -> embeddedOrigins.acquire(config, plugin), method, baseUrl, absoluteUri));
         } catch (RuntimeException e) {
             return vertxContext.failedFuture(e);
         }

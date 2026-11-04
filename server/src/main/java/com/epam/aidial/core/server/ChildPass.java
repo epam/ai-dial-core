@@ -43,6 +43,7 @@ public final class ChildPass implements OriginHost {
     // touched on the plugin's context only
     private final List<ChildServerResponse> responses = new ArrayList<>();
     private boolean closed;
+    private Runnable onClose;
 
     /**
      * @param parent        the pass whose plugin makes the calls
@@ -125,6 +126,23 @@ public final class ChildPass implements OriginHost {
             closed = true;
             responses.forEach(ChildServerResponse::cancel);
             responses.clear();
+            if (onClose != null) {
+                onClose.run();
+            }
+        });
+    }
+
+    /**
+     * Runs {@code action} once the attempt closes, or at once when it has closed already. Takes one action. Safe to
+     * call from any thread.
+     */
+    public void whenClosed(Runnable action) {
+        pluginContext.emit(null, ignored -> {
+            if (closed) {
+                action.run();
+            } else {
+                onClose = action;
+            }
         });
     }
 

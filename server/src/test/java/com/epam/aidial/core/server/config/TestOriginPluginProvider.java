@@ -44,7 +44,9 @@ import java.util.concurrent.atomic.AtomicReference;
  *   <li>{@code X-Test-Await-Cancel} answers nothing until the host says the request is cancelled, then counts it in
  *   {@link #TOLD_CANCELLED} and fails the call.</li>
  * </ul>
- * The setting {@code failCreate: true} makes {@link #create} throw. Tests clear the recorded state with {@link #reset}.
+ * The setting {@code failCreate: true} makes {@link #create} throw, and {@code closeFails: true} makes the plugin's
+ * {@link OriginPlugin#close} throw once it is recorded in {@link #CLOSED}. Tests clear the recorded state with
+ * {@link #reset}.
  */
 public class TestOriginPluginProvider implements OriginPluginProvider {
 
@@ -71,6 +73,10 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
      * How many requests the host told it were cancelled before it answered.
      */
     public static final AtomicInteger TOLD_CANCELLED = new AtomicInteger();
+    /**
+     * Every plugin closed, oldest first.
+     */
+    public static final List<Closed> CLOSED = new CopyOnWriteArrayList<>();
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -80,6 +86,7 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
         CANCELLED_BEFORE.clear();
         HOSTS.clear();
         TOLD_CANCELLED.set(0);
+        CLOSED.clear();
     }
 
     @Override
@@ -99,8 +106,23 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
         if (settings.path("failCreate").asBoolean()) {
             throw new IllegalStateException("test-origin was told not to start");
         }
-        String greeting = settings.path("greeting").asText("ok");
-        return (request, host) -> answer(request, host, greeting);
+        return new TestPlugin(settings.path("greeting").asText("ok"), settings.path("closeFails").asBoolean());
+    }
+
+    private record TestPlugin(String greeting, boolean closeFails) implements OriginPlugin {
+
+        @Override
+        public Future<OriginResponse> handle(OriginRequest request, OriginHost host) {
+            return answer(request, host, greeting);
+        }
+
+        @Override
+        public void close() {
+            CLOSED.add(new Closed(greeting, Context.isOnEventLoopThread()));
+            if (closeFails) {
+                throw new IllegalStateException("test-origin was told not to close");
+            }
+        }
     }
 
     private static Future<OriginResponse> answer(OriginRequest request, OriginHost host, String greeting) {
@@ -242,6 +264,12 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
     }
 
     public record Host(OriginHost host, Context context) {
+    }
+
+    /**
+     * A closed plugin: its {@code greeting}, and whether it was closed on an event loop.
+     */
+    public record Closed(String greeting, boolean onEventLoop) {
     }
 
     /**
