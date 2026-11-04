@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.config;
 
+import com.epam.aidial.core.config.Alias;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
@@ -30,6 +31,7 @@ import com.epam.aidial.core.config.policy.PolicyAssignmentValidator;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
+import com.epam.aidial.core.server.alias.AliasTargets;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.OrgUnitRoles;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
@@ -105,6 +107,7 @@ public final class ConfigPostProcessor {
         rejectSlashKeyedNames(config.getRoles(), "roles");
         rejectSlashKeyedNames(config.getRoutes(), "routes");
         rejectSlashKeyedNames(config.getToolsets(), "toolsets");
+        rejectSlashKeyedNames(config.getAliases(), "aliases");
     }
 
     /**
@@ -124,6 +127,7 @@ public final class ConfigPostProcessor {
         processRoles(config);
         processInterceptors(config, deploymentIds, onSkip);
         processToolSets(config, deploymentIds, onSkip);
+        processAliases(config, deploymentIds, onSkip);
         OrgUnitRoles.validate(config.getOrgUnitRoles());
 
         if (apiKeyStore != null) {
@@ -907,6 +911,52 @@ public final class ConfigPostProcessor {
     }
 
     /**
+     * Runs after every other deployment type, so the name check sees all of them and a target is looked up in maps
+     * already cleared of invalid entries. A target the config does not have is only a warning: one broken alias must
+     * not stop the config from loading, and calls of it answer 503.
+     */
+    private static void processAliases(Config config, Set<String> deploymentIds,
+                                       @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Iterator<Map.Entry<String, Alias>> iterator = config.getAliases().entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, Alias> entry = iterator.next();
+            String name = entry.getKey();
+            if (skipOnDuplicate(name, ResourceTypes.ALIAS, deploymentIds, onSkip, iterator)) {
+                continue;
+            }
+            Alias alias = entry.getValue();
+            alias.setName(name);
+            List<ValidationWarning> warnings = AliasTargets.validate(alias, config);
+            if (!warnings.isEmpty()) {
+                if (onSkip == null) {
+                    throw new InvalidEntityException(ResourceTypes.ALIAS, name, warnings);
+                }
+                iterator.remove();
+                onSkip.accept(ResourceTypes.ALIAS, new InvalidEntityException(ResourceTypes.ALIAS, name, warnings));
+                continue;
+            }
+            if (AliasTargets.isTargetMissing(alias, config)) {
+                log.warn("Alias {} points to a missing deployment {}", name, alias.getTarget().getPath());
+            }
+            warnOnLimitsUnderAliasName(config, name);
+            log.debug("Loading {}", alias);
+        }
+    }
+
+    /**
+     * A call through an alias is limited under its target's name, so a role limit keyed by the alias's name has no
+     * effect; it is most likely a mistake.
+     */
+    private static void warnOnLimitsUnderAliasName(Config config, String aliasName) {
+        config.getRoles().forEach((roleName, role) -> {
+            if (role != null && role.getLimits() != null && role.getLimits().containsKey(aliasName)) {
+                log.warn("Role {} defines a limit under alias {}, which has no effect: define it under the alias's target",
+                        roleName, aliasName);
+            }
+        });
+    }
+
+    /**
      * Returns true and removes the offending entry when the name was already seen.
      * Abort mode ({@code onSkip == null}) preserves {@link FileConfigStore}'s today-behavior:
      * throw {@link IllegalStateException} and roll back the load.
@@ -929,7 +979,7 @@ public final class ConfigPostProcessor {
 
     /**
      * Returns {@code true} if {@code shortName} is already claimed by a MODEL, APPLICATION,
-     * TOOL_SET, or INTERCEPTOR other than {@code type} — those four entity types share one
+     * TOOL_SET, INTERCEPTOR or ALIAS other than {@code type} — those five entity types share one
      * flat deployment-id namespace.
      */
     public static boolean isDeploymentIdTakenByAnotherDeploymentType(Config config,
@@ -939,7 +989,8 @@ public final class ConfigPostProcessor {
                 ResourceTypes.MODEL, config.getModels(),
                 ResourceTypes.APPLICATION, config.getApplications(),
                 ResourceTypes.TOOL_SET, config.getToolsets(),
-                ResourceTypes.INTERCEPTOR, config.getInterceptors());
+                ResourceTypes.INTERCEPTOR, config.getInterceptors(),
+                ResourceTypes.ALIAS, config.getAliases());
         if (!deploymentIdSpaces.containsKey(type)) {
             throw new IllegalArgumentException("Not a deployment type: " + type);
         }

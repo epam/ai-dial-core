@@ -1,9 +1,15 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.Alias;
+import com.epam.aidial.core.config.AliasPresentation;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.RoleBasedEntity;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasPass;
+import com.epam.aidial.core.server.alias.AliasService;
+import com.epam.aidial.core.server.alias.AliasTargets;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ListSharedResourcesRequest;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
 import com.epam.aidial.core.server.security.AccessService;
@@ -28,6 +34,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.storage.resource.ResourceTypes.APPLICATION;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.TOOL_SET;
@@ -49,21 +56,24 @@ public class DeploymentService {
 
     private final ApplicationSchemaService applicationSchemaService;
 
+    private final AliasService aliasService;
+
     public DeploymentService(EncryptionService encryptionService, ApplicationService applicationService,
                              AccessService accessService, ToolSetService toolSetService, ResourceService resourceService,
-                             ApplicationSchemaService applicationSchemaService) {
+                             ApplicationSchemaService applicationSchemaService, AliasService aliasService) {
         this.encryptionService = encryptionService;
         this.applicationService = applicationService;
         this.toolSetService = toolSetService;
         this.accessService = accessService;
         this.resourceService = resourceService;
         this.applicationSchemaService = applicationSchemaService;
+        this.aliasService = aliasService;
     }
 
     public Deployment findDeployment(ProxyContext context, String id) {
         Deployment deployment = context.getConfig().selectDeployment(id);
         if (deployment != null) {
-            if (!deployment.hasAccess(context.getUserRoles())) {
+            if (!deployment.hasAccess(context.getUserRoles()) && !isLent(context, deployment)) {
                 throwForbiddenDeploymentError(id);
             }
             return deployment;
@@ -75,6 +85,94 @@ public class DeploymentService {
             case TOOL_SET -> toolSetService.getToolSet(deploymentDescriptor).getValue();
             default -> throw new IllegalArgumentException("Unknown resource type: " + resourceType);
         };
+    }
+
+    /**
+     * {@link #findDeployment} for a request that calls the deployment: an {@link Alias} becomes the pass that forwards
+     * the call to its target, see {@link AliasService#toPass}.
+     */
+    public Deployment findCallableDeployment(ProxyContext context, String id) {
+        Deployment deployment = findDeployment(context, id);
+        return deployment instanceof Alias alias ? aliasService.toPass(context, alias) : deployment;
+    }
+
+    /**
+     * Whether the request is the target pass of an alias call for {@code deployment}: its per-request key was made by
+     * the alias pass, which lends the right to call the target. The key is kept by Core and sent only to Core itself.
+     */
+    public static boolean isLent(ProxyContext context, RoleBasedEntity deployment) {
+        ApiKeyData apiKeyData = context.getApiKeyData();
+        String lentDeployment = apiKeyData.getLentDeployment();
+        return apiKeyData.getPerRequestKey() != null && lentDeployment != null && lentDeployment.equals(deployment.getName());
+    }
+
+    /**
+     * The listing views of the config aliases shown as {@code presentation} that the caller may call. Reads no
+     * storage for an alias to a config deployment. An alias whose target is missing or does not fit is left out.
+     */
+    public List<Deployment> listAliasViews(ProxyContext context, AliasPresentation presentation) {
+        return listConfigAliasViews(context, presentation, true);
+    }
+
+    private List<Deployment> listConfigAliasViews(ProxyContext context, AliasPresentation presentation, boolean inMemory) {
+        List<Deployment> views = new ArrayList<>();
+        for (Alias alias : context.getConfig().getAliases().values()) {
+            if (alias.getEffectivePresentation() == presentation && alias.hasAccess(context.getUserRoles())) {
+                Deployment view = aliasService.toView(context, alias, inMemory);
+                if (view != null) {
+                    views.add(view);
+                }
+            }
+        }
+        return views;
+    }
+
+    /**
+     * {@link #listAliasViews} with each application target's schema resolved, for the listings on the task executor.
+     */
+    public List<Deployment> listAllAliasViews(ProxyContext context, AliasPresentation presentation) {
+        return listConfigAliasViews(context, presentation, false);
+    }
+
+    /**
+     * The names of the aliases shown as {@code presentation} the caller may call, leaving out those whose config target
+     * is missing or no longer fits. A resource target is not read, so an alias to a missing resource is named.
+     */
+    public List<RoleBasedEntity> listAliasNames(ProxyContext context, AliasPresentation presentation) {
+        List<RoleBasedEntity> names = new ArrayList<>();
+        for (Alias alias : context.getConfig().getAliases().values()) {
+            if (alias.getEffectivePresentation() == presentation && alias.hasAccess(context.getUserRoles())
+                    && !AliasTargets.isTargetMissing(alias, context.getConfig())
+                    && !AliasTargets.isTargetIncompatible(alias, context.getConfig())) {
+                names.add(alias);
+            }
+        }
+        return names;
+    }
+
+    /**
+     * The listing view of the config alias named {@code id} when it is shown as {@code presentation}, or null. The
+     * caller checks access on the view, which carries the alias's {@code userRoles}.
+     */
+    @Nullable
+    public Deployment findAliasView(ProxyContext context, String id, AliasPresentation presentation) {
+        Alias alias = context.getConfig().getAliases().get(id);
+        if (alias == null || alias.getEffectivePresentation() != presentation) {
+            return null;
+        }
+        return aliasService.toView(context, alias, true);
+    }
+
+    /**
+     * The listing view of an alias {@link #findDeployment} returned, or null when its target is missing.
+     */
+    @Nullable
+    public Deployment toAliasView(ProxyContext context, Alias alias) {
+        return aliasService.toView(context, alias);
+    }
+
+    public AliasService getAliasService() {
+        return aliasService;
     }
 
     public  <T extends Deployment> List<T> listDeployments(ProxyContext context, ResourceTypes resourceType, DeploymentExtractor extractor) {
@@ -286,6 +384,10 @@ public class DeploymentService {
     }
 
     public List<String> getInterceptors(ProxyContext context, Deployment deployment) {
+        if (deployment instanceof AliasPass) {
+            // global and target interceptors run in the target pass, once
+            return List.of();
+        }
         List<String> result = new ArrayList<>(context.getConfig().getGlobalInterceptors());
         if (deployment instanceof Application application) {
             List<String> appTypeInterceptors = applicationSchemaService.getInterceptors(application);

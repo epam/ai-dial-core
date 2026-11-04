@@ -176,12 +176,15 @@ alone still refuses it `429` when the initiator's day, week or month cost limit 
 Core SHALL answer `403` `Deployment <id> is not accessible by <sourceDeployment>` to a deployments-POST,
 `/openai/v1/chat/completions`, `/openai/v1/responses` or `/anthropic/v1/messages` request with a per-request key
 for a deployment whose features resolved for the interface have `accessibleByPerRequestKey: false`. The last
-interceptor's call to the initial deployment and a translator's call back carry such a key, so a deployment with
-interceptors, or a translated interface, is refused there.
+interceptor's call and a translator's call back carry such a key, so they are refused; an alias's target pass is not.
 
 #### Scenario: Application call refused
 - **WHEN** `gpt-4` declares `features.accessibleByPerRequestKey: false` and `app` calls it with its key
 - **THEN** Core answers `403` with body `Deployment gpt-4 is not accessible by app`
+
+#### Scenario: Alias call accepted
+- **WHEN** `gpt-4` declares `features.accessibleByPerRequestKey: false` and a caller calls an alias that targets it
+- **THEN** Core answers `200` with the model's answer
 
 ### Requirement: Consent along the call tree
 For a deployment whose resolved features have `consentRequired: true`, Core SHALL read the consent stored under the

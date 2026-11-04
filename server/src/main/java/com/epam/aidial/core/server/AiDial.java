@@ -28,6 +28,7 @@ import com.epam.aidial.core.credentials.util.TimeProvider;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.credentials.validation.AuthorizationServerMetadataValidator;
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
+import com.epam.aidial.core.server.alias.AliasService;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
@@ -383,8 +384,9 @@ public class AiDial {
                     ruleService, notificationService, applicationService, toolSetService, resourceOperationService,
                     complexResourceService, orgUnitService, orgUnitApprovals, generator, clock);
 
+            AliasService aliasService = new AliasService(applicationService, toolSetService, applicationSchemaService, encryptionService);
             DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
-                    toolSetService, resourceService, applicationSchemaService);
+                    toolSetService, resourceService, applicationSchemaService, aliasService);
 
             ConsentService consentService = new ConsentService(deploymentService, resourceService);
 
@@ -454,7 +456,9 @@ public class AiDial {
                 }
             }, new DeploymentOptions().setInstances(serverInstances)));
             String localBaseUrl = backgroundJobSettings.getLocalBaseUrl();
-            backgroundJobService.setLocalBaseUrl(localBaseUrl != null ? localBaseUrl : "http://localhost:" + serverPort);
+            String resolvedLocalBaseUrl = localBaseUrl != null ? localBaseUrl : "http://localhost:" + serverPort;
+            backgroundJobService.setLocalBaseUrl(resolvedLocalBaseUrl);
+            deploymentService.getAliasService().setLocalBaseUrl(resolvedLocalBaseUrl);
             backgroundJobService.init();
             log.info("Proxy started on {} with {} server instance(s)", serverPort, serverInstances);
         } catch (Throwable e) {

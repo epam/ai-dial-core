@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.FeaturesData;
@@ -465,6 +466,10 @@ public class BaseDeploymentPostController {
     }
 
     protected boolean isRetriableError(int statusCode) {
+        if (context.getDeployment() instanceof AliasPass) {
+            // the target pass has already retried its own upstreams; the alias relays its answer
+            return false;
+        }
         return DEFAULT_RETRIABLE_HTTP_CODES.contains(statusCode)
                 || context.getConfig().getRetriableErrorCodes().contains(statusCode);
     }

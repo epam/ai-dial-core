@@ -1,5 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Alias;
+import com.epam.aidial.core.config.AliasPresentation;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ToolSet;
@@ -66,6 +68,12 @@ public class ToolSetController {
     public Future<?> getToolSet(String toolSetId) {
         taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
+            if (deployment instanceof Alias alias) {
+                deployment = alias.getEffectivePresentation() == AliasPresentation.TOOLSET ? deploymentService.toAliasView(context, alias) : null;
+                if (deployment != null) {
+                    return (ToolSet) deployment;
+                }
+            }
             if (deployment instanceof ToolSet toolSet) {
                 new ResourceAuthStatusEnricher(context, context.getProxy().getResourceAuthSettingsService())
                         .enrichToolSet(toolSetId, toolSet);
@@ -112,6 +120,9 @@ public class ToolSetController {
             }
         }
         list.addAll(resourceToolsets);
+        for (Deployment view : deploymentService.listAllAliasViews(context, AliasPresentation.TOOLSET)) {
+            list.add((ToolSet) view);
+        }
         return list;
     }
 

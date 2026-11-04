@@ -1,6 +1,8 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.AliasPresentation;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.LocalizedValue;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
@@ -49,6 +51,9 @@ public class ModelController {
     public Future<?> getModel(String modelId) {
         Config config = context.getConfig();
         Model model = config.getModels().get(modelId);
+        if (model == null) {
+            model = (Model) context.getProxy().getDeploymentService().findAliasView(context, modelId, AliasPresentation.MODEL);
+        }
 
         if (model == null) {
             return context.respond(HttpStatus.NOT_FOUND);
@@ -80,6 +85,9 @@ public class ModelController {
                 ModelData data = createModel(model);
                 models.add(data);
             }
+        }
+        for (Deployment view : context.getProxy().getDeploymentService().listAliasViews(context, AliasPresentation.MODEL)) {
+            models.add(createModel((Model) view));
         }
 
         ListData<ModelData> list = new ListData<>();
