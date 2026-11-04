@@ -1171,6 +1171,37 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                 "authorization", "admin"), 404);
     }
 
+    @Test
+    @SneakyThrows
+    void testValidateRouteUpstreamWithoutKey() {
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {
+                      "kind": "Route",
+                      "name": "routes/platform/validate-route-nokey",
+                      "spec": {
+                        "paths": ["/validate-route-nokey"],
+                        "methods": ["GET"],
+                        "upstreams": [{"endpoint": "http://localhost:9876", "authType": "BEARER"}]
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt());
+        JsonNode result = parsed.get("results").get(0);
+        assertEquals("FAILED", result.get("status").asText());
+        assertTrue(result.get("error").asText().contains("requires a key"), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/routes/platform/validate-route-nokey", null, "",
+                "authorization", "admin"), 404);
+    }
+
     public static class SoftValidation extends ResourceBaseTest {
         @Override
         protected JsonObject additionalSettingsOverrides() {

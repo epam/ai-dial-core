@@ -49,9 +49,9 @@ import java.util.Map;
  *
  * <p>Singleton settings: {@code GET /v1/admin/config/file/settings/global} returns the
  * file-defined (or schema-default) values for {@code globalInterceptors},
- * {@code retriableErrorCodes} and {@code rateLimitSchedule} regardless of whether an API blob
- * exists — this surface is the file/default view; the blob projection lives on
- * {@code /v1/settings/platform/global}.
+ * {@code retriableErrorCodes}, {@code rateLimitSchedule} and {@code spendingLimits} regardless
+ * of whether an API blob exists — this surface is the file/default view; the blob projection
+ * lives on {@code /v1/settings/platform/global}.
  *
  * <p>Read-only by design — {@code aidial.config.json} remains the operator-managed source of
  * truth for file entries. {@code POST}/{@code PUT}/{@code DELETE} are wired through the router
@@ -606,6 +606,7 @@ public class FileConfigController implements Controller {
         body.set("globalInterceptors", ProxyUtil.MAPPER.valueToTree(fileConfig.getGlobalInterceptors()));
         body.set("retriableErrorCodes", ProxyUtil.MAPPER.valueToTree(fileConfig.getRetriableErrorCodes()));
         body.set("rateLimitSchedule", ProxyUtil.MAPPER.valueToTree(fileConfig.getRateLimitSchedule()));
+        body.set("spendingLimits", ProxyUtil.MAPPER.valueToTree(fileConfig.getSpendingLimits()));
         body.put("name", SETTINGS_SINGLETON_NAME);
         body.put("status", "valid");
         context.respond(HttpStatus.OK, body);

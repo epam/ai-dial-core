@@ -384,6 +384,29 @@ class ResourceAuthSettingsServiceTest {
         assertEquals("none", updatedToolSet.getAuthSettings().getTokenEndpointAuthMethod());
     }
 
+    @ParameterizedTest
+    @MethodSource("provideResourceOnUpdateCases")
+    void testProcessResourceAuthSettings_OauthUpdate_Resource(String requested, String stored, String expected) {
+        ToolSet updatedToolSet = createOauthToolSetWithResource(requested);
+        ToolSet existingToolSet = createOauthToolSetWithResource(stored);
+
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+
+        verifyNoInteractions(resourceRegistrationService);
+        assertEquals(expected, updatedToolSet.getAuthSettings().getResource());
+    }
+
+    private static Stream<Arguments> provideResourceOnUpdateCases() {
+        return Stream.of(
+                // omitted by a client that does not know the field: keep what registration stored
+                Arguments.of(null, "https://mcp.example.com/mcp", "https://mcp.example.com/mcp"),
+                Arguments.of("https://api.example.com", "https://mcp.example.com/mcp", "https://api.example.com"),
+                Arguments.of("", "https://mcp.example.com/mcp", null),
+                Arguments.of(null, null, null));
+    }
+
     @Test
     void testProcessResourceAuthSettings_UpdatedApiKeyToolSet() {
         // Given
@@ -563,6 +586,15 @@ class ResourceAuthSettingsServiceTest {
         authSettings.setClientId(clientId);
         authSettings.setClientSecret(clientSecret);
         authSettings.setTokenEndpointAuthMethod(tokenEndpointAuthMethod);
+        return createToolSet(authSettings);
+    }
+
+    private static ToolSet createOauthToolSetWithResource(String resource) {
+        ResourceAuthSettings authSettings = new ResourceAuthSettings();
+        authSettings.setAuthenticationType(AuthenticationType.OAUTH);
+        authSettings.setClientId("clientId");
+        authSettings.setClientSecret("clientSecret");
+        authSettings.setResource(resource);
         return createToolSet(authSettings);
     }
 

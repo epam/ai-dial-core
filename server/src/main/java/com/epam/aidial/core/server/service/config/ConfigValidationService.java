@@ -119,7 +119,13 @@ public class ConfigValidationService {
                     }
                 }
                 case AdminRoleManifest roleManifest -> { }
-                case AdminRouteManifest routeManifest -> { }
+                case AdminRouteManifest routeManifest -> {
+                    List<ValidationWarning> warnings = new ArrayList<>();
+                    ConfigPostProcessor.validateRouteInvariants(routeManifest.spec(), warnings);
+                    if (!warnings.isEmpty()) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+                    }
+                }
                 case AdminKeyManifest keyManifest -> {
                     Key key = keyManifest.spec();
                     String error = KeyValidator.validateRequiredFields(key);

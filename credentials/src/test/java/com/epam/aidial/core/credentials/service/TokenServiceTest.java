@@ -537,4 +537,110 @@ class TokenServiceTest {
         String body = "{\"error\":\"%s\",\"error_description\":\"%s\"}".formatted(error, description);
         return new HttpException(status, "Authorization server returns error code", Map.of(), body);
     }
+
+    /**
+     * RFC 8707: the token must be audience-bound to the MCP server it will be used against, so the
+     * resource indicator travels on the exchange. Authorization servers that enforce this reject an
+     * exchange without it, or issue a token the MCP server then refuses.
+     */
+    @Test
+    void testGetToken_sendsResourceIndicator() {
+        TokenService tokenService = new TokenService(resourceAuthorizationClient, List.of("http://admin/callback"));
+
+        ResourceAuthSettings authSettings = ResourceAuthSettings.builder()
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .tokenEndpoint("http://auth-server/token")
+                .redirectUri("http://admin/callback")
+                .resource("https://mcp.example.com/mcp/productA")
+                .build();
+
+        when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
+                .thenReturn(TokenResponse.builder().accessToken("access").refreshToken("refresh").expiresIn(3600L).build());
+
+        tokenService.getToken("resource-1", authSettings,
+                ResourceSignInRequest.builder().code("auth-code").build());
+
+        assertTrue(capturedFormData().contains("resource=https%3A%2F%2Fmcp.example.com%2Fmcp%2FproductA"),
+                "Expected the resource indicator on the token exchange, got: " + capturedFormData());
+    }
+
+    @Test
+    void testRefreshToken_sendsResourceIndicator() {
+        TokenService tokenService = new TokenService(resourceAuthorizationClient, List.of("http://admin/callback"));
+
+        ResourceAuthSettings authSettings = ResourceAuthSettings.builder()
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .tokenEndpoint("http://auth-server/token")
+                .resource("https://mcp.example.com/mcp/productA")
+                .build();
+
+        when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
+                .thenReturn(TokenResponse.builder().accessToken("access").refreshToken("refresh").expiresIn(3600L).build());
+
+        tokenService.getToken("resource-1", authSettings, "refresh-token");
+
+        assertTrue(capturedFormData().contains("resource=https%3A%2F%2Fmcp.example.com%2Fmcp%2FproductA"),
+                "Expected the resource indicator on the refresh, got: " + capturedFormData());
+    }
+
+    /** Settings registered before the indicator existed carry no resource; the request must stay valid. */
+    @Test
+    void testGetToken_omitsResourceIndicatorWhenUnknown() {
+        TokenService tokenService = new TokenService(resourceAuthorizationClient, List.of("http://admin/callback"));
+
+        ResourceAuthSettings authSettings = ResourceAuthSettings.builder()
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .tokenEndpoint("http://auth-server/token")
+                .redirectUri("http://admin/callback")
+                .build();
+
+        when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
+                .thenReturn(TokenResponse.builder().accessToken("access").refreshToken("refresh").expiresIn(3600L).build());
+
+        tokenService.getToken("resource-1", authSettings,
+                ResourceSignInRequest.builder().code("auth-code").build());
+
+        assertFalse(capturedFormData().contains("resource="),
+                "Expected no resource indicator when none is known, got: " + capturedFormData());
+    }
+
+    // External services and config-file toolsets store the field as written, so a blank value reaches here.
+    @Test
+    void testBlankResourceIndicatorIsOmitted() {
+        TokenService tokenService = new TokenService(resourceAuthorizationClient, List.of("http://admin/callback"));
+
+        ResourceAuthSettings authSettings = ResourceAuthSettings.builder()
+                .clientId("client-id")
+                .clientSecret("client-secret")
+                .tokenEndpoint("http://auth-server/token")
+                .redirectUri("http://admin/callback")
+                .resource(" ")
+                .build();
+
+        when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
+                .thenReturn(TokenResponse.builder().accessToken("access").refreshToken("refresh").expiresIn(3600L).build());
+
+        tokenService.getToken("resource-1", authSettings,
+                ResourceSignInRequest.builder().code("auth-code").build());
+        tokenService.getToken("resource-1", authSettings, "refresh-token");
+
+        ArgumentCaptor<String> formDataCaptor = ArgumentCaptor.forClass(String.class);
+        verify(resourceAuthorizationClient, times(2)).executePost(
+                eq("http://auth-server/token"), formDataCaptor.capture(),
+                eq("application/x-www-form-urlencoded"), any(), eq(TokenResponse.class));
+        for (String formData : formDataCaptor.getAllValues()) {
+            assertFalse(formData.contains("resource="), "Expected no resource indicator, got: " + formData);
+        }
+    }
+
+    private String capturedFormData() {
+        ArgumentCaptor<String> formDataCaptor = ArgumentCaptor.forClass(String.class);
+        verify(resourceAuthorizationClient).executePost(
+                eq("http://auth-server/token"), formDataCaptor.capture(),
+                eq("application/x-www-form-urlencoded"), any(), eq(TokenResponse.class));
+        return formDataCaptor.getValue();
+    }
 }
