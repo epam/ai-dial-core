@@ -364,6 +364,44 @@ public class AdminApplyApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testApplyRouteUpstreamWithoutKeyFails() {
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {
+                      "kind": "Interceptor",
+                      "name": "interceptors/platform/apply-route-nokey-int",
+                      "spec": {"endpoint": "http://localhost:7001/forward"}
+                    },
+                    {
+                      "kind": "Route",
+                      "name": "routes/platform/apply-route-nokey",
+                      "spec": {
+                        "paths": ["/v1/apply-route-nokey"],
+                        "methods": ["GET"],
+                        "upstreams": [{"endpoint": "http://localhost:9876", "authType": "BEARER"}]
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt());
+        JsonNode routeResult = parsed.get("results").get(1);
+        assertEquals("FAILED", routeResult.get("status").asText(), () -> "Body: " + response.body());
+        assertTrue(routeResult.get("error").asText().contains("requires a key"), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/interceptors/platform/apply-route-nokey-int", null, "",
+                "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/routes/platform/apply-route-nokey", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
     void testApplyPrecheckFalseRejectsExtraDataOverlap() {
         // precheck=false must still reject an upstream whose extraData/secretExtraData share a
         // top-level key — overlap is a hard 422, never silently merged (no silent precedence).

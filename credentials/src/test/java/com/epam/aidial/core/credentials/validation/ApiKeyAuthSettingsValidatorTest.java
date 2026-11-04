@@ -30,6 +30,18 @@ class ApiKeyAuthSettingsValidatorTest {
     }
 
     @Test
+    void testValidate_RejectsResource() {
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> validator.validate(
+                ResourceAuthSettings.builder()
+                        .authenticationType(AuthenticationType.API_KEY)
+                        .apiKeyHeader("Api-Key")
+                        .resource("https://mcp.example.com/mcp")
+                        .build(),
+                ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES));
+        assertEquals("Field 'RESOURCE' is forbidden for API_KEY authentication.", exception.getMessage());
+    }
+
+    @Test
     void testValidateCreate_BlankForbiddenFieldsAreTreatedAsNotProvided() {
         assertDoesNotThrow(() -> validator.validate(
                 ResourceAuthSettings.builder()
