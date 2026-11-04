@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.CredentialsLevel;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
@@ -35,6 +36,8 @@ import static com.epam.aidial.core.storage.resource.ResourceTypes.TOOL_SET;
 public class ResourceOperationService {
     private static final Set<ResourceTypes> ALLOWED_RESOURCES = Set.of(FILE, CONVERSATION,
             PROMPT, APPLICATION, TOOL_SET, SKILL, PROJECT);
+    private static final Consumer<Deployment> NO_CHECK = deployment -> {
+    };
 
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
@@ -51,6 +54,21 @@ public class ResourceOperationService {
 
     public void moveResource(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
                              boolean overwriteIfExists) {
+        move(context, source, destination, overwriteIfExists, NO_CHECK, false);
+    }
+
+    /**
+     * For a caller that holds the source's and destination's bucket locks.
+     *
+     * @param check runs on the application or toolset being moved, in the copy itself, before anything is written
+     */
+    public void moveResourceLocked(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
+                                   boolean overwriteIfExists, Consumer<Deployment> check) {
+        move(context, source, destination, overwriteIfExists, check, true);
+    }
+
+    private void move(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
+                      boolean overwriteIfExists, Consumer<Deployment> check, boolean bucketsLocked) {
         if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Moving folders is not supported");
         }
@@ -71,6 +89,7 @@ public class ResourceOperationService {
                 if (ApplicationService.isActive(app)) {
                     throw new HttpException(HttpStatus.CONFLICT, "Application must be stopped: " + source.getUrl());
                 }
+                check.accept(app);
             });
         } else if (destination.getType() == TOOL_SET) {
             Map<CredentialsLevel, Boolean> credentialsToCopy = Map.of(
@@ -79,9 +98,13 @@ public class ResourceOperationService {
             );
             // TODO: support move for USER and APP credentials for public toolsets
             // TODO: support move for USER and APP credentials for shared toolsets (?)
-            toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, credentialsToCopy);
+            toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, credentialsToCopy, check::accept);
         } else if (destination.getType().isComplex()) {
-            if (!complexResourceService.copyResource(source, destination, null, overwriteIfExists)) {
+            // taking a bucket lock the caller holds would spin until it expires
+            boolean copied = bucketsLocked
+                    ? complexResourceService.copyResourceLocked(source, destination, null, overwriteIfExists)
+                    : complexResourceService.copyResource(source, destination, null, overwriteIfExists);
+            if (!copied) {
                 throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
                         .formatted(sourceResourceUrl, destinationResourceUrl));
             }
@@ -121,6 +144,14 @@ public class ResourceOperationService {
 
     public void copyResource(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
                              boolean overwriteIfExists) {
+        copyResource(context, source, destination, overwriteIfExists, NO_CHECK);
+    }
+
+    /**
+     * @param check runs on the application or toolset being copied, in the copy itself, before anything is written
+     */
+    public void copyResource(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
+                             boolean overwriteIfExists, Consumer<Deployment> check) {
         if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Copying folders is not supported");
         }
@@ -141,11 +172,9 @@ public class ResourceOperationService {
         }
 
         if (destination.getType() == APPLICATION) {
-            applicationService.copyApplication(source, destination, null, overwriteIfExists, app -> {
-                // do nothing
-            });
+            applicationService.copyApplication(source, destination, null, overwriteIfExists, check::accept);
         } else if (destination.getType() == TOOL_SET) {
-            toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, Map.of());
+            toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, Map.of(), check::accept);
         } else if (destination.getType().isComplex()) {
             if (!complexResourceService.copyResource(source, destination, null, overwriteIfExists)) {
                 throw new IllegalArgumentException("Can't copy resource %s to %s, because destination resource already exists"

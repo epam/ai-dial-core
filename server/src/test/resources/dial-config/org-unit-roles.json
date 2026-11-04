@@ -1,0 +1,63 @@
+{
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "default"
+    }
+  },
+  "roles": {
+    "default": {
+      "limits": {}
+    }
+  },
+  "orgUnitRoles": {
+    "editor": {
+      "description": "Changes files only",
+      "permissions": [
+        {
+          "actions": [
+            "read",
+            "write"
+          ],
+          "pathPattern": "files/**"
+        }
+      ]
+    },
+    "auditor": {
+      "description": "Reads everything in the unit",
+      "permissions": [
+        {
+          "actions": [
+            "read"
+          ],
+          "pathPattern": "files/**"
+        },
+        {
+          "actions": [
+            "read"
+          ],
+          "pathPattern": "prompts/**"
+        }
+      ]
+    },
+    "manager": {
+      "description": "Manages assignments and files",
+      "permissions": [
+        {
+          "actions": [
+            "read",
+            "write"
+          ],
+          "pathPattern": "role-assignments/**"
+        },
+        {
+          "actions": [
+            "read",
+            "write"
+          ],
+          "pathPattern": "files/**"
+        }
+      ]
+    }
+  }
+}

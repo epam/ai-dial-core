@@ -55,6 +55,8 @@ public class ConfigSettingsTest extends ResourceBaseTest {
         assertEquals("UTC", body.get("rateLimitSchedule").get("timezone").asText());
         assertEquals("Mon", body.get("rateLimitSchedule").get("weekStartDay").asText());
         assertEquals("00:00", body.get("rateLimitSchedule").get("resetTime").asText());
+        assertEquals("off", body.get("spendingLimits").get("mode").asText());
+        assertEquals("ORG", body.get("spendingLimits").get("defaultCostObject").asText());
     }
 
     @Test
@@ -93,7 +95,8 @@ public class ConfigSettingsTest extends ResourceBaseTest {
                 {
                   "globalInterceptors": ["interceptor1"],
                   "retriableErrorCodes": [502, 503],
-                  "rateLimitSchedule": {"timezone": "Europe/Warsaw", "weekStartDay": "Sun", "resetTime": "09:00"}
+                  "rateLimitSchedule": {"timezone": "Europe/Warsaw", "weekStartDay": "Sun", "resetTime": "09:00"},
+                  "spendingLimits": {"mode": "shadow", "defaultCostObject": "PERSONAL"}
                 }
                 """;
         Response put = send(HttpMethod.PUT, SETTINGS_URL, null, body,
@@ -115,6 +118,8 @@ public class ConfigSettingsTest extends ResourceBaseTest {
         assertEquals("Europe/Warsaw", getBody.get("rateLimitSchedule").get("timezone").asText());
         assertEquals("Sun", getBody.get("rateLimitSchedule").get("weekStartDay").asText());
         assertEquals("09:00", getBody.get("rateLimitSchedule").get("resetTime").asText());
+        assertEquals("shadow", getBody.get("spendingLimits").get("mode").asText());
+        assertEquals("PERSONAL", getBody.get("spendingLimits").get("defaultCostObject").asText());
     }
 
     @Test
@@ -212,6 +217,8 @@ public class ConfigSettingsTest extends ResourceBaseTest {
         assertEquals(0, body.get("globalInterceptors").size());
         assertEquals(0, body.get("retriableErrorCodes").size());
         assertEquals("UTC", body.get("rateLimitSchedule").get("timezone").asText());
+        assertEquals("off", body.get("spendingLimits").get("mode").asText());
+        assertEquals("ORG", body.get("spendingLimits").get("defaultCostObject").asText());
     }
 
     @Test
@@ -225,6 +232,20 @@ public class ConfigSettingsTest extends ResourceBaseTest {
     void testPutInvalidResetTimeReturns400() {
         verify(send(HttpMethod.PUT, SETTINGS_URL, null, """
                 {"rateLimitSchedule": {"resetTime": "9am"}}
+                """, "authorization", "admin"), 400);
+    }
+
+    @Test
+    void testPutUnknownSpendingLimitModeReturns400() {
+        verify(send(HttpMethod.PUT, SETTINGS_URL, null, """
+                {"spendingLimits": {"mode": "strict"}}
+                """, "authorization", "admin"), 400);
+    }
+
+    @Test
+    void testPutInvalidDefaultCostObjectReturns400() {
+        verify(send(HttpMethod.PUT, SETTINGS_URL, null, """
+                {"spendingLimits": {"defaultCostObject": "a/b"}}
                 """, "authorization", "admin"), 400);
     }
 

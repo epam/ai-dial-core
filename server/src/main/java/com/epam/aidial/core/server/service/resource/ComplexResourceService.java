@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service.resource;
 import com.epam.aidial.core.server.data.folder.ComplexResourceRef;
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.ComplexResourceItemMetadata;
@@ -30,6 +31,7 @@ import lombok.NoArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -579,6 +581,30 @@ public class ComplexResourceService {
             return null;
         }
         return marker;
+    }
+
+    /**
+     * Loads the active {@code .dial-resource} markers of the resources in Redis batches, keyed by resource URL.
+     * A resource without an active marker is omitted.
+     */
+    public Map<String, FolderResourceMarker> loadMarkers(List<ResourceDescriptor> resources) {
+        Map<String, String> resourceUrlByMarkerUrl = new HashMap<>();
+        List<ResourceItemMetadata> markers = new ArrayList<>();
+        for (ResourceDescriptor resource : resources) {
+            ResourceDescriptor marker = markerDescriptor(resource);
+            resourceUrlByMarkerUrl.put(marker.getUrl(), resource.getUrl());
+            markers.add(new ResourceItemMetadata(marker));
+        }
+        List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
+        resourceService.load(markers, loaded);
+        Map<String, FolderResourceMarker> markersByResourceUrl = new HashMap<>();
+        for (Pair<ResourceItemMetadata, String> entry : loaded) {
+            FolderResourceMarker marker = ProxyUtil.convertToObject(entry.getRight(), FolderResourceMarker.class);
+            if (isActive(marker)) {
+                markersByResourceUrl.put(resourceUrlByMarkerUrl.get(entry.getLeft().getUrl()), marker);
+            }
+        }
+        return markersByResourceUrl;
     }
 
     /**
@@ -1176,6 +1202,9 @@ public class ComplexResourceService {
     private static ResourceDescriptor subFolder(ResourceDescriptor versionFolder, String subPath) {
         List<String> segments = Arrays.asList(StringUtils.strip(subPath, ResourceDescriptor.PATH_SEPARATOR)
                 .split(ResourceDescriptor.PATH_SEPARATOR));
+        if (!segments.stream().allMatch(ResourceDescriptorFactory::isValidFilename)) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Invalid path provided: " + subPath);
+        }
         List<String> parentFolders = new ArrayList<>(versionFolder.getParentFolders());
         parentFolders.add(versionFolder.getName());
         parentFolders.addAll(segments.subList(0, segments.size() - 1));
