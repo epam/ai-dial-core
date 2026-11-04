@@ -54,7 +54,8 @@ public final class ResourceDependencyAuditLog {
 
     /**
      * One event per run listing declared targets that did not resolve — the originating user
-     * cannot reach them with the declared rights, or the declaration is not admin-consented.
+     * cannot reach them with the declared rights, the declaration is not admin-consented, or
+     * there is no per-request key to deliver grants into (MCP app with forwardPerRequestKey=false).
      * No grant, no failure (unless a required record failed — see {@link #runtimeFail}).
      */
     public static void denial(ProxyContext context, String applicationId, List<Consent.ResourceEntry> unresolved) {
@@ -68,14 +69,14 @@ public final class ResourceDependencyAuditLog {
     }
 
     /** One event when a required dependency failed to resolve and the call is rejected. */
-    public static void runtimeFail(ProxyContext context, String applicationId, List<String> requiredFailures) {
+    public static void runtimeFail(ProxyContext context, String applicationId, List<String> requiredFailures, String reason) {
         AUDIT.info("event=resource_dependency_runtime_fail outcome=RUNTIME_FAIL actor={} user_id={} "
-                        + "application_id={} source_deployment={} targets={} trace_id={} reason=\"required dependencies unresolvable\"",
+                        + "application_id={} source_deployment={} targets={} trace_id={} reason=\"{}\"",
                 actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
                 sourceDeployment(context),
                 requiredFailures.stream().map(AuditLogSanitizer::sanitizeToken)
                         .collect(Collectors.joining(",")),
-                context.getTraceId());
+                context.getTraceId(), reason);
     }
 
     private static String targetsOf(List<Consent.ResourceEntry> entries) {

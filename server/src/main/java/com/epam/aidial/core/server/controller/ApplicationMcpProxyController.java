@@ -95,7 +95,7 @@ public class ApplicationMcpProxyController extends McpProxyController {
     }
 
     @Override
-    protected boolean preAssignsPerRequestKey() {
+    protected boolean isPerRequestKeyEnrichedByChain() {
         return application.getMcp().isForwardPerRequestKey();
     }
 

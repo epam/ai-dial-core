@@ -16,6 +16,8 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -120,10 +122,7 @@ public class ResolveResourceDependenciesFnTest {
 
     @Test
     void apply_isNoOpWithoutProxyApiKeyDataToBakeInto() {
-        // An MCP application with forwardPerRequestKey disabled never gets a per-request key at
-        // all, so context.getProxyApiKeyData() is null when this function runs — nowhere to bake
-        // a grant into regardless of consent or reach. Treated as unconsented: no NPE, and (since
-        // this record is optional) no failure either — see the next test for the required case.
+        // forwardPerRequestKey=false: no key to deliver grants into; an optional record neither grants nor fails
         when(context.getDeployment()).thenReturn(application);
         application.setResourceDependencies(List.of(dependency("skills/{current-user}/", false)));
         when(context.getProxyApiKeyData()).thenReturn(null);
@@ -134,16 +133,15 @@ public class ResolveResourceDependenciesFnTest {
 
     @Test
     void apply_failsRequiredDependencyWhenNoKeyToBakeInto() {
-        // The bug a naive null-guard would reintroduce: an app that promises a required dependency
-        // must not have that promise silently ignored just because there is nowhere to bake the
-        // grant — an app that can never receive its required access must fail loudly, not pretend
-        // to work. Same "never half-works silently" rule the resolver applies everywhere else.
+        // no key to deliver grants into must not let a required dependency pass silently
         when(context.getDeployment()).thenReturn(application);
         application.setResourceDependencies(List.of(dependency("skills/{current-user}/", true)));
         when(context.getProxyApiKeyData()).thenReturn(null);
 
         HttpException error = assertThrows(HttpException.class, () -> fn.apply(request));
         assertEquals(HttpStatus.FORBIDDEN, error.getStatus());
+        assertTrue(error.getMessage().contains("dependency grants cannot be delivered to this application"), error.getMessage());
+        assertFalse(error.getMessage().contains("forwardPerRequestKey"), error.getMessage());
         verify(consentService, never()).isAdminConsented(anyString(), any());
     }
 
@@ -207,19 +205,16 @@ public class ResolveResourceDependenciesFnTest {
 
     @Test
     void apply_isTypeAgnostic() {
-        // The unit-level pin for D-25a: the argument is genuinely unread, so the same
-        // implementation joins a chain of any element type — RequestObject on the conversation
-        // mint sites, ObjectNode on the MCP proxy.
+        // the argument is unread, so the same function works in the ObjectNode-typed MCP chain
         when(context.getDeployment()).thenReturn(application);
         application.setResourceDependencies(List.of(dependency("skills/{current-user}/", false)));
         when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
         when(accessService.lookupOriginatingUserPermissions(any(), eq(context)))
                 .thenReturn(Map.of(userSkillsFolder(), Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE)));
 
-        ResolveResourceDependenciesFn<com.fasterxml.jackson.databind.node.ObjectNode> objectNodeFn =
-                new ResolveResourceDependenciesFn<>(proxy, context);
+        ResolveResourceDependenciesFn<ObjectNode> objectNodeFn = new ResolveResourceDependenciesFn<>(proxy, context);
 
-        assertFalse(objectNodeFn.apply(com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode()));
+        assertFalse(objectNodeFn.apply(JsonNodeFactory.instance.objectNode()));
 
         assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE),
                 proxyApiKeyData.getPerRequestSharedResources().get(userSkillsFolder().getUrl()).permissions());

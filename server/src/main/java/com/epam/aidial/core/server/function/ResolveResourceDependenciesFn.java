@@ -50,15 +50,15 @@ import javax.annotation.Nullable;
  */
 public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
 
+    private static final String UNDELIVERABLE_REASON = "dependency grants cannot be delivered: mcp.forwardPerRequestKey is false";
+    private static final String UNDELIVERABLE_MESSAGE = "dependency grants cannot be delivered to this application";
+
     public ResolveResourceDependenciesFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
     }
 
     /**
-     * The request body is not an input here — resolution reads only {@code context}. The type
-     * parameter exists solely so this function can join chains of either element type
-     * ({@code RequestObject} on the conversation mint sites, {@code ObjectNode} on the MCP
-     * proxy); see D-25a.
+     * The argument is unused: resolution reads only {@code context}, so the function fits chains of any element type.
      */
     @Override
     public Boolean apply(T ignored) {
@@ -77,11 +77,7 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
 
     private void resolve(Application application, List<ResourceDependency> declaration) {
         String applicationId = application.getName();
-        // Nowhere to bake a grant into — e.g. an MCP application with forwardPerRequestKey
-        // disabled never gets a per-request key at all, so it can never receive one regardless of
-        // consent or reach. Treated exactly like "not consented": every declared dependency is
-        // unresolved, so a required one still hard-fails the call instead of silently succeeding
-        // for an app that was promised access it can never actually receive.
+        // only an MCP app with forwardPerRequestKey=false gets no per-request key: grants can't be delivered, a required dependency fails
         boolean hasKeyToBakeInto = context.getProxyApiKeyData() != null;
         // The consent record is content-bound to the whole declaration: any change since the grant
         // re-requires it, and until then nothing resolves. Checked before any resolution work.
@@ -104,33 +100,45 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
             }
         }
 
-        List<Consent.ResourceEntry> granted = new ArrayList<>();
-        if (!resolvedTargets.isEmpty()) {
-            // One batched walk of the permission chain for all resolved targets.
-            Set<ResourceDescriptor> targets = resolvedTargets.stream().map(Resolved::target).collect(Collectors.toSet());
-            Map<ResourceDescriptor, Set<ResourceAccessType>> userAccessByTarget =
-                    proxy.getAccessService().lookupOriginatingUserPermissions(targets, context);
-            for (Resolved resolved : resolvedTargets) {
-                Set<ResourceAccessType> userAccess = userAccessByTarget.getOrDefault(resolved.target(), Set.of());
-                if (userAccess.containsAll(resolved.access())) {
-                    bakeGrant(resolved.target(), resolved.access());
-                    granted.add(entryOf(resolved.dependency()));
-                } else {
-                    // The user cannot reach the target with the declared rights — the record simply
-                    // does not grant; it does not fail the call unless required.
-                    trackUnresolved(resolved.dependency(), unresolvedDeps, requiredFailures);
-                }
-            }
-        }
+        List<Consent.ResourceEntry> granted = bakeReachableGrants(resolvedTargets, unresolvedDeps, requiredFailures);
 
         ResourceDependencyAuditLog.grant(context, applicationId, granted);
         ResourceDependencyAuditLog.denial(context, applicationId, entriesOf(unresolvedDeps));
         if (!requiredFailures.isEmpty()) {
             // A required dependency is unresolvable — the application never half-works silently.
-            ResourceDependencyAuditLog.runtimeFail(context, applicationId, requiredFailures);
-            throw new HttpException(HttpStatus.FORBIDDEN,
-                    "Required resource dependencies are not accessible: " + String.join(", ", requiredFailures));
+            ResourceDependencyAuditLog.runtimeFail(context, applicationId, requiredFailures,
+                    hasKeyToBakeInto ? "required dependencies unresolvable" : UNDELIVERABLE_REASON);
+            String message = "Required resource dependencies are not accessible: " + String.join(", ", requiredFailures);
+            throw new HttpException(HttpStatus.FORBIDDEN, hasKeyToBakeInto ? message : message + " — " + UNDELIVERABLE_MESSAGE);
         }
+    }
+
+    /**
+     * Bakes the targets the originating user can reach with the declared rights; tracks the rest as unresolved.
+     */
+    private List<Consent.ResourceEntry> bakeReachableGrants(List<Resolved> resolvedTargets,
+                                                            List<ResourceDependency> unresolvedDeps,
+                                                            List<String> requiredFailures) {
+        List<Consent.ResourceEntry> granted = new ArrayList<>();
+        if (resolvedTargets.isEmpty()) {
+            return granted;
+        }
+        // One batched walk of the permission chain for all resolved targets.
+        Set<ResourceDescriptor> targets = resolvedTargets.stream().map(Resolved::target).collect(Collectors.toSet());
+        Map<ResourceDescriptor, Set<ResourceAccessType>> userAccessByTarget =
+                proxy.getAccessService().lookupOriginatingUserPermissions(targets, context);
+        for (Resolved resolved : resolvedTargets) {
+            Set<ResourceAccessType> userAccess = userAccessByTarget.getOrDefault(resolved.target(), Set.of());
+            if (userAccess.containsAll(resolved.access())) {
+                bakeGrant(resolved.target(), resolved.access());
+                granted.add(entryOf(resolved.dependency()));
+            } else {
+                // The user cannot reach the target with the declared rights — the record simply
+                // does not grant; it does not fail the call unless required.
+                trackUnresolved(resolved.dependency(), unresolvedDeps, requiredFailures);
+            }
+        }
+        return granted;
     }
 
     private record Resolved(ResourceDependency dependency, ResourceDescriptor target, Set<ResourceAccessType> access) {
