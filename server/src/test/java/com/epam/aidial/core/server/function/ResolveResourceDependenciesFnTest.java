@@ -260,10 +260,7 @@ public class ResolveResourceDependenciesFnTest {
 
     @Test
     void apply_neverResolvesInternalEngineTypesAsPersonalTargets() {
-        // ResourceTypes.of() maps internal engine types (credentials, keys, models…) — a
-        // credentials/{current-user}/ declaration must never reach the user's secret-bearing blobs,
-        // whoever authored the app (config-file apps bypass the write-time ceiling). The same
-        // vocabulary gates concrete paths too, not only placeholder ones.
+        // internal engine types never resolve, in either form — config-file apps bypass write-time validation
         when(context.getDeployment()).thenReturn(application);
         application.setResourceDependencies(List.of(
                 dependency("credentials/{current-user}/", false),
@@ -358,6 +355,56 @@ public class ResolveResourceDependenciesFnTest {
         assertFalse(fn.apply(request));
         assertTrue(proxyApiKeyData.getPerRequestReceivers().isEmpty());
         verify(accessService, never()).lookupInitiatorPermissions(any(), any());
+    }
+
+    @Test
+    void apply_neverResolvesEncodedSlashTraversal() {
+        // config-file apps bypass write-time validation: "..%2F.." must not become relative segments in the user's bucket
+        when(context.getDeployment()).thenReturn(application);
+        application.setResourceDependencies(List.of(dependency("files/{current-user}/..%2F..%2Fx/", false),
+                dependency("files/public/..%2Fx/", false), dependency("files/{current-user}/a%0Ab/", false)));
+        when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
+
+        assertFalse(fn.apply(request));
+        assertTrue(proxyApiKeyData.getPerRequestSharedResources().isEmpty());
+        verify(accessService, never()).lookupInitiatorPermissions(any(), any());
+    }
+
+    @Test
+    void apply_resolvesPercentEncodedPlaceholderToTheUsersBucket() {
+        when(context.getDeployment()).thenReturn(application);
+        application.setResourceDependencies(List.of(dependency("skills/%7Bcurrent-user%7D/", false)));
+        when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
+        when(accessService.lookupInitiatorPermissions(any(), eq(context)))
+                .thenReturn(Map.of(userSkillsFolder(), Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE)));
+
+        assertFalse(fn.apply(request));
+        assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE),
+                proxyApiKeyData.getPerRequestSharedResources().get(userSkillsFolder().getUrl()).permissions());
+    }
+
+    @Test
+    void apply_neverResolvesTypeRootOrBucketLevelPathWithoutSlash() {
+        when(context.getDeployment()).thenReturn(application);
+        application.setResourceDependencies(List.of(
+                dependency("files/", false), dependency("skills/{current-user}", false), dependency("files/public", false)));
+        when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
+
+        assertFalse(fn.apply(request));
+        assertTrue(proxyApiKeyData.getPerRequestSharedResources().isEmpty());
+        verify(accessService, never()).lookupInitiatorPermissions(any(), any());
+    }
+
+    @Test
+    void apply_neverResolvesMalformedConcreteBucket() {
+        // a bucket no request could resolve is rejected before any decrypt is attempted
+        when(context.getDeployment()).thenReturn(application);
+        application.setResourceDependencies(List.of(dependency("files/%0A/x/", false)));
+        when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
+
+        assertFalse(fn.apply(request));
+        assertTrue(proxyApiKeyData.getPerRequestSharedResources().isEmpty());
+        verify(encryptionService, never()).decrypt(any());
     }
 
     private ResourceDescriptor userSkillsFolder() {

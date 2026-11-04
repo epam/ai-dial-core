@@ -12,16 +12,11 @@ import com.epam.aidial.core.server.log.ResourceDependencyAuditLog;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.util.BucketBuilder;
-import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.resource.ResourceType;
-import com.epam.aidial.core.storage.resource.ResourceTypes;
-import com.epam.aidial.core.storage.util.UrlUtil;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -207,44 +202,10 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
         if (dependency.getTarget() == null || dependency.getTarget().getPath() == null) {
             return null;
         }
-        String path = dependency.getTarget().getPath().trim();
-        if (path.isEmpty()) {
-            return null;
-        }
-        boolean folder = path.endsWith("/");
         try {
-            String[] segments = decodedSegments(path, folder);
-            if (segments.length < 2) {
-                return null;                                   // {type}/{bucket} is the minimum
-            }
-            if (!ResourceDependencyValidator.DECLARABLE_TYPE_ROOTS.contains(segments[0])) {
-                // ResourceTypes.of() also maps internal engine types (credentials, keys, models, …).
-                // Config-file apps bypass write-time validation, so the read side enforces the same
-                // closed vocabulary — for concrete paths too, not only placeholder ones.
-                return null;
-            }
-            if (ResourceDependencyValidator.CURRENT_USER_PLACEHOLDER.equals(segments[1])) {
-                // {type}/{current-user}/{path…}. Two segments target the type's root folder in the
-                // user's bucket — the skill-creator shape.
-                ResourceType type = ResourceTypes.of(segments[0]);
-                String relativePath = segments.length == 2
-                        ? "" : String.join("/", Arrays.asList(segments).subList(2, segments.length));
-                if (folder && !relativePath.isEmpty()) {
-                    relativePath += "/";
-                }
-                return ResourceDescriptorFactory.fromDecoded(
-                        type, userBucket.getUserBucket(), userBucket.getUserBucketLocation(), relativePath);
-            }
-            return ResourceDescriptorFactory.fromAnyUrl(path, proxy.getEncryptionService());
-        } catch (RuntimeException e) {
-            // fromAnyUrl wraps URISyntaxException in a plain RuntimeException — malformed means
-            // unresolvable, whatever the exception shape.
-            return null;
+            return ResourceDependencyValidator.resolveTarget(dependency.getTarget().getPath().trim(), userBucket, proxy.getEncryptionService());
+        } catch (IllegalArgumentException e) {
+            return null;                                       // config-file apps bypass write-time validation
         }
-    }
-
-    private static String[] decodedSegments(String path, boolean folder) {
-        String trimmed = folder ? path.substring(0, path.length() - 1) : path;
-        return Arrays.stream(trimmed.split("/")).map(UrlUtil::tryDecodePath).toArray(String[]::new);
     }
 }

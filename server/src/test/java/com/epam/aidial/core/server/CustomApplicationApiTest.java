@@ -1776,8 +1776,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
 
     @Test
     void testResourceDependenciesSectionWriteTimeValidation() {
-        // Admin-authored (public bucket): a valid section is accepted, root-level personal target included —
-        // the typed-root restriction belongs to the user-authored ceiling, not to shape.
+        // Admin-authored (public bucket): a valid section is accepted.
         Response response = send(HttpMethod.PUT, "/v1/applications/public/resource-dependency-app", null,
                 dependencyAppBody("""
                         {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "skills/{current-user}/"}, "access": ["write"], "required": true},
@@ -1842,12 +1841,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         return new JsonObject(response.body()).getString("bucket");
     }
 
-    /**
-     * The governance flag on: user-authored apps may declare dependencies. No further per-path
-     * ceiling applies — the grammar itself already requires segment 0 to be a declarable type, so
-     * a root-level "write everything personal" declaration is not expressible under
-     * {type}/{bucket}/… at all (shape rejects it with 400, not the ceiling with 403).
-     */
+    /** The governance flag on: user-authored apps may declare dependencies; malformed shapes are still a 400. */
     public static class AllowUserResourceDependenciesOn extends ResourceBaseTest {
 
         @Override
@@ -1862,14 +1856,13 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "skills/{current-user}/"}, "access": ["write"], "required": true}"""));
             verify(response, 200);
 
-            // The old root-level personal shape ({current-user}/ alone) fails shape validation now —
-            // 400, not the 403 ceiling: the token is out of position and segment 0 is not a type.
+            // {current-user}/ alone is not a typed target: 400
             response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
                     dependencyAppBody("""
                             {"kind": "dial.resourceLink", "link_id": "lnk_root", "target": {"path": "{current-user}/"}, "access": ["write"]}"""));
             verify(response, 400);
 
-            // The old shipped spelling fails loudly too — current-user is not a declarable type.
+            // the old current-user/… spelling: 400
             response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
                     dependencyAppBody("""
                             {"kind": "dial.resourceLink", "link_id": "lnk_untyped", "target": {"path": "current-user/rootstuff/"}, "access": ["write"]}"""));
