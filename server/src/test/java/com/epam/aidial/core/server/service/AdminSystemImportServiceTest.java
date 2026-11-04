@@ -735,7 +735,10 @@ class AdminSystemImportServiceTest {
     @Test
     void testSlowReplaceIsNotAborted() {
         AdminSystemImportService.StagedImport staged = service.stage(stream(archiveOf(CORE_VERSION, entry("public/models/m1", "{}"))));
-        clock.addAndGet(LockService.LOCK_PERIOD.plusSeconds(10).toMillis());
+        when(mergedConfigStore.rebuildNowUnderBucketLocks()).thenAnswer(invocation -> {
+            clock.addAndGet(LockService.LOCK_PERIOD.plusSeconds(10).toMillis());
+            return null;
+        });
 
         AdminSystemImportService.ImportResult result = service.replace(staged, new AdminSystemImportService.Progress());
 

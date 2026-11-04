@@ -20,6 +20,7 @@ import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.domain.StorageType;
 
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -55,6 +56,7 @@ public class AdminSystemImportService {
     public static final String STAGING_FOLDER = ".dial-system-import-tmp";
 
     private static final int PAGE_SIZE = 1000;
+    private static final long NANOS_PER_MILLI = 1_000_000L;
     private static final int MAX_NAME_BYTES = 1024;
     private static final int MAX_METADATA_BYTES = 64 * 1024;
     private static final Pattern LEADING_VERSION = Pattern.compile("^(\\d+(?:\\.\\d+)*)");
@@ -130,23 +132,33 @@ public class AdminSystemImportService {
      * than abort with the blobs already replaced.
      */
     public ImportResult replace(StagedImport staged, Progress progress) {
-        return lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> replaceUnderLocks(staged, progress));
+        long requestedAt = System.nanoTime();
+        return lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> replaceUnderLocks(staged, progress, requestedAt));
     }
 
-    private ImportResult replaceUnderLocks(StagedImport staged, Progress progress) {
-        long deadlineMillis = clock.getAsLong() + LockService.LOCK_PERIOD.toMillis();
+    private ImportResult replaceUnderLocks(StagedImport staged, Progress progress, long requestedAt) {
+        long lockWaitMillis = elapsedMillis(requestedAt);
+        long startedAtMillis = clock.getAsLong();
+        long deadlineMillis = startedAtMillis + LockService.LOCK_PERIOD.toMillis();
+        long startedAt = System.nanoTime();
         List<String> warnings = new ArrayList<>();
 
         progress.setPhase(Progress.Phase.WIPE);
         long deleted = wipeBuckets(progress);
+        long wipeMillis = elapsedMillis(startedAt);
 
+        long copyStartedAt = System.nanoTime();
         progress.setPhase(Progress.Phase.COPY);
         progress.setTotal(staged.blobCount());
         long copied = promoteStagedBlobs(staged.stagingPrefix(), progress);
+        long copyMillis = elapsedMillis(copyStartedAt);
 
+        long invalidateStartedAt = System.nanoTime();
         progress.setPhase(Progress.Phase.INVALIDATE);
         resourceService.invalidate(MergedConfigStore.ADMIN_BUCKET_LOCATIONS);
+        long invalidateMillis = elapsedMillis(invalidateStartedAt);
 
+        long rebuildStartedAt = System.nanoTime();
         progress.setPhase(Progress.Phase.REBUILD);
         try {
             mergedConfigStore.rebuildNowUnderBucketLocks();
@@ -155,12 +167,24 @@ public class AdminSystemImportService {
                     + "periodic rebuild", e);
             warnings.add("Merged config rebuild failed; this pod's config may be stale until the next periodic rebuild.");
         }
+        long rebuildMillis = elapsedMillis(rebuildStartedAt);
 
-        if (clock.getAsLong() > deadlineMillis) {
-            log.warn("System import replace ran longer than the lock period of {}s", LockService.LOCK_PERIOD.toSeconds());
+        log.info("System import replace finished: lockWait={}ms, wipe={}ms ({} blobs), copy={}ms ({} blobs), invalidate={}ms, "
+                        + "rebuild={}ms, total={}ms", lockWaitMillis, wipeMillis, deleted, copyMillis, copied, invalidateMillis,
+                rebuildMillis, elapsedMillis(startedAt));
+
+        long endedAtMillis = clock.getAsLong();
+        long overMillis = endedAtMillis - deadlineMillis;
+        if (overMillis > 0) {
+            log.warn("System import replace took {}s, {}s longer than the lock period of {}s, so the bucket locks lapsed before it ended",
+                    (endedAtMillis - startedAtMillis) / 1000, overMillis / 1000, LockService.LOCK_PERIOD.toSeconds());
         }
 
         return new ImportResult(copied, deleted, warnings);
+    }
+
+    private static long elapsedMillis(long sinceNanos) {
+        return (System.nanoTime() - sinceNanos) / NANOS_PER_MILLI;
     }
 
     private long wipeBuckets(Progress progress) {
@@ -206,7 +230,9 @@ public class AdminSystemImportService {
     }
 
     private long stageArchive(InputStream archive, String stagingPrefix) throws IOException {
-        ZipInputStream zip = new ZipInputStream(archive, StandardCharsets.UTF_8);
+        long startedAt = System.nanoTime();
+        TimedInputStream timed = new TimedInputStream(archive);
+        ZipInputStream zip = new ZipInputStream(timed, StandardCharsets.UTF_8);
         ZipEntry first = zip.getNextEntry();
         if (first == null || !AdminSystemExportService.MANIFEST_ENTRY.equals(first.getName())) {
             throw rejected("Archive must start with " + AdminSystemExportService.MANIFEST_ENTRY);
@@ -265,6 +291,8 @@ public class AdminSystemImportService {
         if (blobCount == 0) {
             throw rejected("Archive has no blob entries");
         }
+        log.info("System import stage finished: blobs={}, bytes={}, duration={}ms, waitingForClient={}ms",
+                blobCount, timed.bytes, elapsedMillis(startedAt), timed.waitNanos / NANOS_PER_MILLI);
         return blobCount;
     }
 
@@ -524,6 +552,43 @@ public class AdminSystemImportService {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record Manifest(Integer formatVersion, String coreVersion) {
+    }
+
+    private static final class TimedInputStream extends FilterInputStream {
+        private long bytes;
+        private long waitNanos;
+
+        private TimedInputStream(InputStream in) {
+            super(in);
+        }
+
+        @Override
+        public int read() throws IOException {
+            long startedAt = System.nanoTime();
+            try {
+                int value = in.read();
+                if (value >= 0) {
+                    bytes++;
+                }
+                return value;
+            } finally {
+                waitNanos += System.nanoTime() - startedAt;
+            }
+        }
+
+        @Override
+        public int read(byte[] buffer, int offset, int length) throws IOException {
+            long startedAt = System.nanoTime();
+            try {
+                int read = in.read(buffer, offset, length);
+                if (read > 0) {
+                    bytes += read;
+                }
+                return read;
+            } finally {
+                waitNanos += System.nanoTime() - startedAt;
+            }
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
