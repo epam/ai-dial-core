@@ -3,15 +3,22 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceDependency;
+import com.epam.aidial.core.server.data.AuthBucket;
+import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.RequiredArgsConstructor;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.storage.http.HttpStatus.FORBIDDEN;
@@ -29,20 +36,20 @@ public class ResourceDependencyValidator {
     /** A declaration larger than this is wrong-shaped; it should be folder-scoped links, not a file inventory. */
     public static final int MAX_DECLARED_DEPENDENCIES = 100;
 
-    public static final String CURRENT_USER_PLACEHOLDER = "current-user";
-
-    /** Global-view roots a concrete path may address. The personal root is reachable only via the placeholder. */
-    private static final Set<String> GLOBAL_VIEW_ROOTS =
-            Set.of("files", "public", "prompts", "conversations", "applications", "toolsets", "skills");
+    /**
+     * Stands for the initiator's bucket; valid only as the bucket segment. Braces cannot occur in a real bucket
+     * (Base58) or a stored name (ResourceDescriptorFactory rejects them), so the token never collides with either.
+     */
+    public static final String CURRENT_USER_PLACEHOLDER = "{current-user}";
 
     /**
-     * Resource-type folders a {@code current-user/…} path must be rooted in for user-authored apps —
-     * a root-level {@code current-user/} declaration ("write everything personal") is not declarable.
-     * Also enforced by the resolver on the read side: ResourceTypes.of() maps internal engine types
-     * (credentials, keys, models, …) that must never be declarable as personal targets.
+     * The resource types a declaration may address (segment 0); ResourceTypes.of() also maps internal
+     * engine types (credentials, keys, models, …), which are never declarable.
      */
-    public static final Set<String> PERSONAL_TYPED_ROOTS =
+    public static final Set<String> DECLARABLE_RESOURCE_TYPES =
             Set.of("files", "prompts", "conversations", "applications", "toolsets", "skills");
+
+    private static final String DECLARABLE_TYPES_LIST = String.join(", ", new TreeSet<>(DECLARABLE_RESOURCE_TYPES));
 
     private final boolean allowUserResourceDependencies;
 
@@ -54,11 +61,7 @@ public class ResourceDependencyValidator {
         }
     }
 
-    /**
-     * Governance ceiling for user-authored apps: with the flag off (the default) they may not declare
-     * dependencies at all; with it on, personal targets must be typed — never the personal root.
-     * Admin-authored writes (public bucket by an admin, the platform bucket) are not gated here.
-     */
+    /** User-authored apps may declare dependencies only while allowUserResourceDependencies is on; admin-authored writes are not gated here. */
     public void validateUserAuthored(Application application) {
         List<ResourceDependency> section = application.getResourceDependencies();
         if (section == null || section.isEmpty()) {
@@ -67,17 +70,6 @@ public class ResourceDependencyValidator {
         if (!allowUserResourceDependencies) {
             throw new HttpException(FORBIDDEN,
                     "User-authored applications may not declare resource dependencies (allowUserResourceDependencies is disabled)");
-        }
-        for (ResourceDependency dependency : section) {
-            String path = pathOf(dependency);
-            if (path == null) {
-                continue;
-            }
-            String[] segments = decodedSegments(path);
-            if (segments.length > 0 && CURRENT_USER_PLACEHOLDER.equals(segments[0]) && !isTypedPersonalPath(segments)) {
-                throw new HttpException(FORBIDDEN, "Root-level current-user dependency is not declarable: "
-                        + "personal targets must be rooted in a resource-type folder: " + path);
-            }
         }
     }
 
@@ -124,58 +116,100 @@ public class ResourceDependencyValidator {
     }
 
     private static List<String> pathIssues(String at, ResourceDependency dependency) {
-        List<String> issues = new ArrayList<>();
         String path = pathOf(dependency);
-        if (path == null) {
-            issues.add(at + ": target.path is required");
-            return issues;
+        if (path == null || path.replace(ResourceDescriptor.PATH_SEPARATOR, "").isEmpty()) {
+            return List.of(at + ": target.path is required");
         }
-        // Token rules run on decoded segments, mirroring ResourceDescriptorFactory's single tryDecodePath
-        // pass — the platform canonicalizes declared paths through that decode, so validating the raw
-        // string would let %2e%2e / %2a / %63urrent-user smuggle banned tokens past the bans.
-        String[] segments = decodedSegments(path);
-        // A path of slashes only splits to zero segments; treat it as a missing path, not a crash.
-        if (segments.length == 0) {
-            issues.add(at + ": target.path is required");
-            return issues;
+        try {
+            validateTarget(path);
+            return List.of();
+        } catch (IllegalArgumentException e) {
+            return List.of(at + ": " + e.getMessage() + ": " + path);
         }
-        String root = segments[0];
-        // Token rules on every segment after the root; the root itself is governed by the form checks below.
-        for (int i = 1; i < segments.length; i++) {
-            String segment = segments[i];
-            if (CURRENT_USER_PLACEHOLDER.equals(segment)) {
-                issues.add(at + ": the current-user placeholder is valid only as the root segment: " + path);
-            }
-            if (segment.isEmpty()) {
-                issues.add(at + ": path must not contain empty segments: " + path);
-            }
-            if (segment.contains("*")) {
-                issues.add(at + ": wildcards are not allowed: " + path);
-            }
-            if (".".equals(segment) || "..".equals(segment)) {
-                issues.add(at + ": relative path segments are not allowed: " + path);
-            }
-        }
-        if (CURRENT_USER_PLACEHOLDER.equals(root)) {
-            // Placeholder-rooted form; the typed-root restriction is the governance ceiling's, not shape's.
-            return issues;
-        }
-        if ("users".equals(root)) {
-            // Personal targets are declared only via the placeholder — a concrete users/… path resolves for
-            // no one but that user and is rejected at write time as a shape error.
-            issues.add(at + ": personal targets must use the current-user placeholder, not a concrete users/… path: " + path);
-        } else if (!GLOBAL_VIEW_ROOTS.contains(root)) {
-            issues.add(at + ": target must be a global-view path or current-user rooted: " + path);
-        } else if (segments.length < 2) {
-            // A bare type root addresses the whole global view of that type — as over-broad as the
-            // personal root the governance ceiling bans. Declarations must be folder- or file-scoped.
-            issues.add(at + ": target must address a folder or resource within " + root + "/, not the type root: " + path);
-        }
-        return issues;
     }
 
-    private static boolean isTypedPersonalPath(String[] segments) {
-        return segments.length > 1 && PERSONAL_TYPED_ROOTS.contains(segments[1]);
+    /** Write side: throws {@link IllegalArgumentException} unless {@code path} is a declarable target. */
+    public static void validateTarget(String path) {
+        checkTarget(path);
+    }
+
+    /**
+     * Read side: the descriptor {@code path} names, {@code {current-user}} standing for the initiator's bucket.
+     *
+     * @throws IllegalArgumentException when {@code path} is not a declarable target
+     */
+    public static ResourceDescriptor resolveTarget(String path, AuthBucket initiator, EncryptionService encryption) {
+        String[] segments = checkTarget(path);
+        return parsed(() -> isPlaceholder(segments[1])
+                ? ResourceDescriptorFactory.fromEncoded(ResourceTypes.of(UrlUtil.tryDecodePath(segments[0])),
+                        initiator.getUserBucket(), initiator.getUserBucketLocation(), restOf(path, segments))
+                : ResourceDescriptorFactory.fromAnyUrl(path, encryption));
+    }
+
+    /**
+     * The write-side rules, also applied first on the read side. The bucket is opaque at write time — whose it is,
+     * and whether it is reachable, is a request-time question — so it is parsed as an ordinary element under public,
+     * which still puts it through the factory's decoding and name rules.
+     */
+    private static String[] checkTarget(String path) {
+        String[] segments = path.split(ResourceDescriptor.PATH_SEPARATOR, -1);
+        for (int i = 2; i < segments.length; i++) {
+            if (isPlaceholder(segments[i])) {
+                throw new IllegalArgumentException("the " + CURRENT_USER_PLACEHOLDER
+                        + " placeholder is valid only as the bucket segment (the second segment)");
+            }
+        }
+        String type = UrlUtil.tryDecodePath(segments[0]);
+        if ("users".equals(type)) {
+            throw new IllegalArgumentException("personal targets are declared as {type}/" + CURRENT_USER_PLACEHOLDER
+                    + "/…, not as a concrete users/… path");
+        }
+        if (!DECLARABLE_RESOURCE_TYPES.contains(type)) {
+            throw new IllegalArgumentException("target must start with a declarable resource type (" + DECLARABLE_TYPES_LIST + ")");
+        }
+        if (segments.length < 3) {
+            throw new IllegalArgumentException(
+                    "target must address a folder or resource within a bucket ({type}/{bucket}/…), not the type root");
+        }
+        if (path.contains("//")) {
+            throw new IllegalArgumentException("path must not contain empty segments");
+        }
+        String bucketElement = isPlaceholder(segments[1]) ? "" : segments[1] + ResourceDescriptor.PATH_SEPARATOR;
+        parsed(() -> ResourceDescriptorFactory.fromAnyUrl(segments[0] + ResourceDescriptor.PATH_SEPARATOR
+                + ResourceDescriptor.PUBLIC_LOCATION + bucketElement + restOf(path, segments), null));
+        return segments;
+    }
+
+    /** Runs the factory call; its failure is reported as not a valid url, then the declaration's element rules apply. */
+    private static ResourceDescriptor parsed(Supplier<ResourceDescriptor> factoryCall) {
+        ResourceDescriptor target;
+        try {
+            target = factoryCall.get();
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("target is not a valid resource url", e);
+        }
+        List<String> elements = new ArrayList<>(target.getParentFolders());
+        if (target.getName() != null) {
+            elements.add(target.getName());
+        }
+        for (String element : elements) {
+            if (element.contains("*")) {
+                throw new IllegalArgumentException("wildcards are not allowed");
+            }
+            if (".".equals(element) || "..".equals(element)) {
+                throw new IllegalArgumentException("relative path segments are not allowed");
+            }
+        }
+        return target;
+    }
+
+    private static boolean isPlaceholder(String segment) {
+        return CURRENT_USER_PLACEHOLDER.equals(UrlUtil.tryDecodePath(segment));
+    }
+
+    /** The relative path after {type}/{bucket}/. */
+    private static String restOf(String path, String[] segments) {
+        return path.substring(segments[0].length() + segments[1].length() + 2);
     }
 
     private static String pathOf(ResourceDependency dependency) {
@@ -184,15 +218,5 @@ public class ResourceDependencyValidator {
         }
         String path = dependency.getTarget().getPath().trim();
         return path.isEmpty() ? null : path;
-    }
-
-    /** Splits off a single trailing slash (folder targets end with one) before splitting into segments. */
-    private static String[] splitPath(String path) {
-        String trimmed = path.endsWith("/") ? path.substring(0, path.length() - 1) : path;
-        return trimmed.split("/");
-    }
-
-    private static String[] decodedSegments(String path) {
-        return Arrays.stream(splitPath(path)).map(UrlUtil::tryDecodePath).toArray(String[]::new);
     }
 }
