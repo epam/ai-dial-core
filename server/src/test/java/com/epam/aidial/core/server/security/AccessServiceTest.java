@@ -5,6 +5,8 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
@@ -19,6 +21,7 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -26,6 +29,9 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
@@ -424,6 +430,15 @@ public class AccessServiceTest {
         }
     }
 
+    private void chainedHop() {
+        ApiKeyData chained = new ApiKeyData();
+        chained.setPerRequestKey("prk");
+        chained.setSourceDeployment("app1");
+        lenient().when(context.getApiKeyData()).thenReturn(chained);
+        lenient().when(context.getSourceDeployment()).thenReturn("app1");
+        when(context.getUserId()).thenReturn("user-sub");
+    }
+
     private AccessService accessService(ApplicationSchemaService applicationSchemaService) {
         return new AccessService(encryptionService, shareService, ruleService, applicationSchemaService,
                 new JsonObject("""
@@ -675,5 +690,197 @@ public class AccessServiceTest {
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getGlobalReaderAccess(Set.of(resource), context);
 
         assertTrue(result.isEmpty());
+    }
+
+    // ---- lookupInitiatorPermissions ----
+
+    @Test
+    public void testLookupInitiatorPermissions_ResolvesOwnBucketAtAnyChainDepth() {
+        // on a chained hop the human's own bucket grants ALL
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user-sub/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        chainedHop();
+        AccessService accessService = accessService(applicationSchemaService);
+
+        assertEquals(ResourceAccessType.ALL, accessService.lookupInitiatorPermissions(Set.of(resource), context).get(resource));
+        // control: the general chain asks for the key holder's sandbox and finds nothing here
+        assertTrue(accessService.lookupPermissions(Set.of(resource), context).get(resource).isEmpty());
+    }
+
+    @Test
+    public void testLookupInitiatorPermissions_ExcludesTheCallingAppsOwnSandbox() {
+        // on a chained hop the calling app's own sandbox (Keys/app1/) is not the human's bucket
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Keys/app1/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        chainedHop();
+        AccessService accessService = accessService(applicationSchemaService);
+
+        assertTrue(accessService.lookupInitiatorPermissions(Set.of(resource), context).get(resource).isEmpty());
+        // control: in the general chain the key holder owns its sandbox
+        assertEquals(ResourceAccessType.ALL, accessService.lookupPermissions(Set.of(resource), context).get(resource));
+    }
+
+    @Test
+    public void testLookupInitiatorPermissions_ExcludesTheCallingKeysOwnGrants() {
+        // grants held by the calling key (per-request, attached file, attached folder) must not satisfy the reach check
+        ResourceDescriptor perRequest = new ResourceDescriptor(ResourceTypes.FILE, "secret.json", List.of(), "bucket", "Users/other-user/", false);
+        ResourceDescriptor attachedFile = new ResourceDescriptor(ResourceTypes.FILE, "attached.json", List.of(), "bucket", "Users/other-user/", false);
+        ResourceDescriptor inAttachedFolder = new ResourceDescriptor(ResourceTypes.FILE, "inside.json", List.of("shared-folder"), "bucket", "Users/other-user/", false);
+        Set<ResourceDescriptor> resources = Set.of(perRequest, attachedFile, inAttachedFolder);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("prk");
+        apiKeyData.setSourceDeployment("app1");
+        apiKeyData.getPerRequestSharedResources().put(perRequest.getUrl(),
+                new PerRequestSharedData(new HashSet<>(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE))));
+        apiKeyData.getAttachedFiles().put(attachedFile.getUrl(), new AutoSharedData(ResourceAccessType.READ_ONLY));
+        apiKeyData.getAttachedFolders().put("files/bucket/shared-folder/", new AutoSharedData(ResourceAccessType.READ_ONLY));
+        lenient().when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(context.getUserId()).thenReturn("user-sub");
+        AccessService accessService = accessService(applicationSchemaService);
+
+        Map<ResourceDescriptor, Set<ResourceAccessType>> generalChain = accessService.lookupPermissions(resources, context);
+        Map<ResourceDescriptor, Set<ResourceAccessType>> initiator =
+                accessService.lookupInitiatorPermissions(resources, context);
+
+        for (ResourceDescriptor resource : resources) {
+            assertFalse(generalChain.get(resource).isEmpty(), () -> "the general chain must see the key's grant on " + resource.getUrl());
+            assertTrue(initiator.get(resource).isEmpty(), () -> "no key-held grant may count for " + resource.getUrl());
+        }
+    }
+
+    @Test
+    public void testLookupInitiatorPermissions_GrantsWhatIsSharedWithTheUser() {
+        // on a chained hop a resource shared with the human resolves with the shared rights (asked for the human's bucket)
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "report.json", List.of(), "bucket", "Users/alice/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        chainedHop();
+        when(shareService.getPermissions(any(), eq("Users/user-sub/"), any()))
+                .thenReturn(Map.of(resource, Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE)));
+        AccessService accessService = accessService(applicationSchemaService);
+
+        assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE),
+                accessService.lookupInitiatorPermissions(Set.of(resource), context).get(resource));
+    }
+
+    @Test
+    public void testLookupInitiatorPermissions_GrantsOnlyReadOnPublicResources() {
+        // public resources allowed by the rules resolve READ only; others nothing — a WRITE dependency on public never grants
+        ResourceDescriptor allowed = new ResourceDescriptor(ResourceTypes.FILE, "doc.json", List.of("open"), "public", "public/", false);
+        ResourceDescriptor restricted = new ResourceDescriptor(ResourceTypes.FILE, "doc.json", List.of("finance"), "public", "public/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        chainedHop();
+        when(ruleService.getAllowedPublicResources(eq(context), any())).thenReturn(Set.of(allowed));
+        AccessService accessService = accessService(applicationSchemaService);
+
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result =
+                accessService.lookupInitiatorPermissions(Set.of(allowed, restricted), context);
+
+        assertEquals(ResourceAccessType.READ_ONLY, result.get(allowed));
+        assertTrue(result.get(restricted).isEmpty());
+    }
+
+    @Test
+    public void testLookupPermissions_PerRequestGrantsUnionAcrossCoveringEntries() {
+        // rights from every covering entry count, not only the first one the map yields
+        ResourceDescriptor inNestedFolder = new ResourceDescriptor(ResourceTypes.FILE, "r.json", List.of("docs", "out"), "bucket", "Users/other-user/", false);
+        ResourceDescriptor exactAndFolder = new ResourceDescriptor(ResourceTypes.FILE, "x.json", List.of("docs"), "bucket", "Users/other-user/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("prk");
+        apiKeyData.setSourceDeployment("app1");
+        apiKeyData.getPerRequestSharedResources().put("files/bucket/docs/", new PerRequestSharedData(new HashSet<>(Set.of(ResourceAccessType.READ))));
+        apiKeyData.getPerRequestSharedResources().put("files/bucket/docs/out/", new PerRequestSharedData(new HashSet<>(Set.of(ResourceAccessType.WRITE))));
+        apiKeyData.getPerRequestSharedResources().put(exactAndFolder.getUrl(), new PerRequestSharedData(new HashSet<>(Set.of(ResourceAccessType.WRITE))));
+        lenient().when(context.getApiKeyData()).thenReturn(apiKeyData);
+        lenient().when(context.getSourceDeployment()).thenReturn("app1");
+        when(context.getUserId()).thenReturn("user-sub");
+        AccessService accessService = accessService(applicationSchemaService);
+
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.lookupPermissions(Set.of(inNestedFolder, exactAndFolder), context);
+
+        assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE), result.get(inNestedFolder));
+        assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE), result.get(exactAndFolder));
+    }
+
+    @Test
+    public void testLookupPermissions_UnaffectedByTheNewRuleList() {
+        // the general chain still grants own-bucket access via buildUserBucket
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user-sub/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getUserId()).thenReturn("user-sub");
+        AccessService accessService = accessService(applicationSchemaService);
+
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result =
+                accessService.lookupPermissions(Set.of(resource), context);
+
+        assertEquals(ResourceAccessType.ALL, result.get(resource));
+    }
+
+    @Test
+    public void testLookupInitiatorPermissions_AdminStandingDoesNotCount() {
+        // deliberate narrowing: an admin gets ALL on a public resource in the general chain, only public READ here
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "doc.json", List.of("policies"), "public", "public/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        lenient().when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.getUserId()).thenReturn("admin-sub");
+        lenient().when(context.getUserRoles()).thenReturn(List.of("admin"));
+        lenient().when(ruleService.getAllowedPublicResources(eq(context), any())).thenReturn(Set.of(resource));
+        AccessService accessService = accessService(applicationSchemaService);
+
+        assertEquals(ResourceAccessType.ALL, accessService.lookupPermissions(Set.of(resource), context).get(resource));
+        assertEquals(ResourceAccessType.READ_ONLY,
+                accessService.lookupInitiatorPermissions(Set.of(resource), context).get(resource));
+    }
+
+    @Test
+    public void testLookupInitiatorPermissions_ReviewStandingDoesNotCount() {
+        // deliberate narrowing: a reviewer may READ a publication under review in the general chain, not here
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "draft.json", List.of(), "bucket", "Users/user-sub/publications/pub1/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        chainedHop();
+        AccessService accessService = accessService(applicationSchemaService);
+
+        assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(Set.of(resource), context).get(resource));
+        assertTrue(accessService.lookupInitiatorPermissions(Set.of(resource), context).get(resource).isEmpty());
+    }
+
+    @Test
+    public void testLookupInitiatorPermissions_ExcludesTheCallingAppsSelfAccess() {
+        // on a chained hop the calling app may read its own definition; that must not count as the human's reach
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.APPLICATION, "app1", List.of(), "bucket", "Users/other-user/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        chainedHop();
+        lenient().when(context.getDecodedSourceDeployment()).thenReturn(resource.getDecodedUrl());
+        AccessService accessService = accessService(applicationSchemaService);
+
+        assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(Set.of(resource), context).get(resource));
+        assertTrue(accessService.lookupInitiatorPermissions(Set.of(resource), context).get(resource).isEmpty());
+    }
+
+    @Test
+    public void testLookupInitiatorPermissions_GlobalReaderStandingDoesNotCount() {
+        // deliberate narrowing: a global reader may READ another user's bucket in the general chain, not here
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "report.json", List.of(), "bucket", "Users/alice/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        lenient().when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.getUserId()).thenReturn("reader-sub");
+        lenient().when(context.getUserRoles()).thenReturn(List.of("global-reader"));
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
+                {
+                 "admin": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
+                 },
+                 "globalReader": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["global-reader"]}]
+                 }
+                }
+                """));
+
+        assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(Set.of(resource), context).get(resource));
+        assertTrue(accessService.lookupInitiatorPermissions(Set.of(resource), context).get(resource).isEmpty());
     }
 }

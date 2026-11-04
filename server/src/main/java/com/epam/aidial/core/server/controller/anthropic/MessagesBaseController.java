@@ -74,7 +74,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
                 new CollectDeploymentsFn(proxy, context),
-                new ResolveResourceDependenciesFn(proxy, context));
+                new ResolveResourceDependenciesFn<>(proxy, context));
     }
 
     public Future<?> handle() {
