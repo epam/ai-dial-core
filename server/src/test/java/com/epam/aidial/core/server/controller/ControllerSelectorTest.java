@@ -4,6 +4,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.controller.route.GlobalRouteController;
+import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import io.vertx.core.Context;
@@ -24,8 +25,10 @@ import java.lang.reflect.Method;
 import javax.annotation.Nullable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -98,6 +101,34 @@ public class ControllerSelectorTest {
         Object arg1 = lambda.getCapturedArg(0);
         assertInstanceOf(ModelController.class, arg1);
         assertEquals("getModels", lambda.getImplMethodName());
+    }
+
+    @Test
+    public void testSelectGetRoutersController() {
+        when(request.path()).thenReturn("/v1/routers");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        assertInstanceOf(RouterController.class, lambda.getCapturedArg(0));
+        assertEquals("getRouters", lambda.getImplMethodName());
+    }
+
+    @Test
+    public void testSelectGetRouterControllerDecodesTheId() {
+        when(request.path()).thenReturn("/v1/routers/my%20router");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        assertInstanceOf(RouterController.class, lambda.getCapturedArg(0));
+        assertEquals("my router", lambda.getCapturedArg(1));
+    }
+
+    @Test
+    public void testRouterRouteTakesOneSegment() {
+        assertFalse(RouteTemplate.ROUTER.getPattern().matcher("/v1/routers/platform/x").matches());
+        assertTrue(RouteTemplate.ROUTER.getPattern().matcher("/v1/routers/r1").matches());
     }
 
     @Test

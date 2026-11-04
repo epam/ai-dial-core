@@ -2,13 +2,16 @@ package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.Proxy;
+import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.json.JsonWriteFeature;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -44,6 +47,9 @@ public class ProxyUtil {
     public static final JsonMapper MAPPER = JsonMapper.builder()
             .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
             .build();
+
+    // a header value is sent as ISO-8859-1: a non-ASCII user id has to travel as a JSON escape
+    private static final ObjectWriter USER_INFO_WRITER = MAPPER.writer().with(JsonWriteFeature.ESCAPE_NON_ASCII);
 
     private static final MultiMap TRACE_HEADERS = MultiMap.caseInsensitiveMultiMap()
             .add("traceparent", "whatever")
@@ -178,6 +184,25 @@ public class ProxyUtil {
             return MAPPER.readValue(payload, clazz);
         } catch (IOException e) {
             throw new IllegalArgumentException(e);
+        }
+    }
+
+    /**
+     * The {@code X-DIAL-USER-INFO} value for a request to a router: the caller's identity as
+     * {@code GET /v1/user/info} answers it, without the claims and the display name.
+     */
+    public static String buildUserInfoHeader(ProxyContext context) {
+        ObjectNode userInfo = MAPPER.createObjectNode();
+        userInfo.putPOJO("roles", context.getUserRoles());
+        if (context.getKey() != null) {
+            userInfo.put("project", context.getKey().getProject());
+        } else {
+            userInfo.put("userId", context.getExtractedClaims().userId());
+        }
+        try {
+            return USER_INFO_WRITER.writeValueAsString(userInfo);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(e);
         }
     }
 

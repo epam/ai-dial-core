@@ -27,8 +27,9 @@ already declare routers as what they are.
   extends the existing rule that deployments-POST limit-checks only a model to the three `/v1`-style APIs for routers.
 - Core adds one identity header, `X-DIAL-USER-INFO`, to every request it forwards to a router (the JSON
   `roles`, `project`, `userId` that `GET /v1/user/info` answers), set after the client's headers are copied so a client
-  cannot forge it, and drops a client-sent header of that name from every origin request it forwards (an
-  interceptor call copies headers on its own path and is unchanged).
+  cannot forge it, and drops a client-sent header of that name from the chat completions, completions, embeddings, Responses,
+  Messages and deployment feature requests it forwards (the interceptor and MCP proxy paths copy headers on their own
+  and are unchanged; neither reaches a router).
 - New read-only endpoints `GET /v1/routers` (routers the caller's roles allow) and `GET /v1/routers/{id}`. Routers do
   not appear in `GET /openai/models`, `/openai/deployments`, `/openai/applications`, `/v1/deployments`,
   `/v1/deployment-names` or `/anthropic/v1/models`, so existing clients see no change.

@@ -19,26 +19,36 @@ import io.vertx.core.http.RequestOptions;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 
+import javax.annotation.Nullable;
+
 @RequiredArgsConstructor
 public class ResponsesApiClient {
     private final HttpClient httpClient;
     private final HttpClientOptions clientOptions;
 
-    public Future<HttpClientResponse> send(String url, HttpMethod method, Upstream upstream, String apiKey) {
+    /**
+     * @param userInfo the {@code X-DIAL-USER-INFO} value to send, or {@code null} to send none (only a router gets one)
+     */
+    public Future<HttpClientResponse> send(String url, HttpMethod method, Upstream upstream, String apiKey, @Nullable String userInfo) {
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(url)
                 .setMethod(method)
                 .setConnectTimeout(clientOptions.getConnectTimeout())
                 .setIdleTimeout(clientOptions.getIdleTimeout());
         return httpClient.request(options)
-                .compose(request -> request.putHeader(Proxy.HEADER_API_KEY, apiKey)
+                .compose(request -> {
+                    if (userInfo != null) {
+                        request.putHeader(Proxy.HEADER_USER_INFO, userInfo);
+                    }
+                    return request.putHeader(Proxy.HEADER_API_KEY, apiKey)
                             .putHeader(Proxy.HEADER_UPSTREAM_KEY,
                                     UpstreamInterfaceUtil.resolveKey(upstream, InterfaceType.OPENAI_RESPONSES))
                             .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT,
                                     UpstreamInterfaceUtil.resolveEndpoint(upstream, InterfaceType.OPENAI_RESPONSES))
                             .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA,
                                     UpstreamExtraDataMerger.merge(upstream, InterfaceType.OPENAI_RESPONSES))
-                            .send());
+                            .send();
+                });
     }
 
     private static boolean isTerminal(String status) {

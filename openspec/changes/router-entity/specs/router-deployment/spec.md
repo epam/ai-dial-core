@@ -116,8 +116,8 @@ name are ignored, and the models the router calls back through Core are checked 
 as app-to-model-accounting states.
 
 #### Scenario: Exhausted request limit on the router does not refuse
-- **WHEN** the caller's role declares `limits.r1.requestMinute: 1` and the caller sends two
-  `POST /openai/v1/chat/completions` requests with `{"model": "r1", ...}` within one minute
+- **WHEN** the caller's role declares `limits.r1.requestHour: 1` and the caller sends two
+  `POST /openai/v1/chat/completions` requests with `{"model": "r1", ...}` within one hour
 - **THEN** Core forwards both to the router
 
 #### Scenario: Model called back is still charged

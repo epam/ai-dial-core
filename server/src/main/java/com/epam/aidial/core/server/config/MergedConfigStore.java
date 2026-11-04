@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.SpendingLimitMode;
 import com.epam.aidial.core.config.SpendingLimits;
 import com.epam.aidial.core.config.ToolSet;
@@ -1024,6 +1025,7 @@ public final class MergedConfigStore implements ConfigStore {
         next.setCatalogSchemas(base.getCatalogSchemas());
         next.setApplications(base.getApplications());
         next.setToolsets(base.getToolsets());
+        next.setRouters(base.getRouters());
         next.setRetriableErrorCodes(base.getRetriableErrorCodes());
         next.setGlobalInterceptors(base.getGlobalInterceptors());
         next.setRateLimitSchedule(base.getRateLimitSchedule());
@@ -1223,6 +1225,8 @@ public final class MergedConfigStore implements ConfigStore {
         Map<String, String> catalogSchemas = new LinkedHashMap<>(base.getCatalogSchemas());
         Map<String, Application> applications = new LinkedHashMap<>(base.getApplications());
         Map<String, ToolSet> toolsets = new LinkedHashMap<>(base.getToolsets());
+        // file-only for now: no blob scan adds to it, but processRouters removes a skipped router
+        Map<String, Router> routers = new LinkedHashMap<>(base.getRouters());
         Map<String, Translator> translators = new LinkedHashMap<>(base.getTranslators());
         Map<String, Policy> policies = new HashMap<>();
         Map<String, PolicyAssignment> policyAssignments = new HashMap<>();
@@ -1245,6 +1249,7 @@ public final class MergedConfigStore implements ConfigStore {
         merged.setCatalogSchemas(catalogSchemas);
         merged.setApplications(applications);
         merged.setToolsets(toolsets);
+        merged.setRouters(routers);
         merged.setPolicies(policies);
         merged.setPolicyAssignments(policyAssignments);
 

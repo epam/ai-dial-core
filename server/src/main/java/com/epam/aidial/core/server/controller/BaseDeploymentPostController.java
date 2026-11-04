@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -56,6 +57,7 @@ import java.util.function.Supplier;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
+import static com.epam.aidial.core.server.Proxy.HEADER_USER_INFO;
 
 @Slf4j
 @AllArgsConstructor
@@ -242,7 +244,8 @@ public class BaseDeploymentPostController {
     }
 
     protected boolean isSubjectToLimits(Deployment deployment) {
-        return DeploymentEndpointUtil.resolveMode(deployment, interfaceType()).isSubjectToLimits();
+        // a router has no limits of its own: the deployments it calls back through Core are checked and charged
+        return !(deployment instanceof Router) && DeploymentEndpointUtil.resolveMode(deployment, interfaceType()).isSubjectToLimits();
     }
 
     /**
@@ -413,6 +416,7 @@ public class BaseDeploymentPostController {
         }
         excludeHeaders.add(HEADER_APPLICATION_PROPERTIES, "whatever");
         excludeHeaders.add(HEADER_APPLICATION_ID, "whatever");
+        excludeHeaders.add(HEADER_USER_INFO, "whatever");
 
         ProxyUtil.copyHeaders(context.getRequest().headers(), proxyRequest.headers(), excludeHeaders);
         ProxyUtil.setOverrideNameHeader(proxyRequest, context.getDeployment());
@@ -440,6 +444,10 @@ public class BaseDeploymentPostController {
                     proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, propsString);
                 }
             });
+        }
+
+        if (context.getDeployment() instanceof Router) {
+            proxyRequest.putHeader(HEADER_USER_INFO, ProxyUtil.buildUserInfoHeader(context));
         }
 
         // a translator has to know which deployment to call Core back for, and by the time it reads the body

@@ -10,6 +10,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
@@ -357,6 +358,24 @@ public class MergedConfigStorePartialUpdateTest {
         assertNotSame(before, store.get(), "volatile Config reference swapped");
         assertSame(before.getApplications(), store.get().getApplications(),
                 "untouched maps reference-shared with previous Config");
+    }
+
+    @Test
+    public void modelWriteKeepsFileRouters() {
+        Router router = new Router();
+        router.setBaseUrl("http://router");
+        router.setInterfaces(Map.of("openaiChatCompletions", new DeploymentInterface()));
+        Config seeded = newConfig();
+        seeded.setRouters(mutable("r1", router));
+        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        assertSame(router, store.get().getRouters().get("r1"), "rebuild copies the file routers");
+
+        Model model = new Model();
+        model.setEndpoint("http://model/chat");
+        Config result = store.applyEntityWrite(ResourceTypes.MODEL, MODEL_ID, model);
+
+        assertTrue(result.getModels().containsKey(MODEL_ID));
+        assertSame(router, result.getRouters().get("r1"), "partial update keeps the file routers");
     }
 
     private MergedConfigStore initStore(Config seeded, String onInvalidEntity) {

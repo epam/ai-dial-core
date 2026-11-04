@@ -108,6 +108,15 @@ public class ControllerSelector {
             ModelController controller = new ModelController(context);
             return controller::getModels;
         });
+        get(RouteTemplate.ROUTER, (proxy, context, pathMatcher) -> {
+            RouterController controller = new RouterController(context);
+            String routerId = UrlUtil.decodePath(pathMatcher.group(1));
+            return () -> controller.getRouter(routerId);
+        });
+        get(RouteTemplate.ROUTERS, (proxy, context, pathMatcher) -> {
+            RouterController controller = new RouterController(context);
+            return controller::getRouters;
+        });
         get(RouteTemplate.LLM_ANTHROPIC_MODEL, (proxy, context, pathMatcher) -> {
             AnthropicModelController controller = new AnthropicModelController(context);
             String modelId = UrlUtil.decodePath(pathMatcher.group(1));

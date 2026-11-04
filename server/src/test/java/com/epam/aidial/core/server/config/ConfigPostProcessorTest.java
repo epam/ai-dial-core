@@ -14,6 +14,7 @@ import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.PricingRate;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
@@ -761,6 +762,101 @@ public class ConfigPostProcessorTest {
                 () -> ConfigPostProcessor.validateSingleInterceptor(config, "interceptor", null));
     }
 
+    @Test
+    void testRouterWithInterceptorsRejected() {
+        Config config = newMutableConfig();
+        Router router = router("http://router", "openaiChatCompletions", new DeploymentInterface());
+        router.setInterceptors(List.of("i1"));
+        config.getRouters().put("r1", router);
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+        assertTrue(error.getMessage().contains("A router declares no interceptors"), error.getMessage());
+    }
+
+    @Test
+    void testRouterWithNullInterceptorsLoadsWithEmptyList() {
+        Config config = newMutableConfig();
+        Router router = router("http://router", "openaiChatCompletions", new DeploymentInterface());
+        router.setInterceptors(null);
+        config.getRouters().put("r1", router);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertEquals(List.of(), config.getRouters().get("r1").getInterceptors());
+    }
+
+    @Test
+    void testRouterWithLegacyEndpointRejected() {
+        Config config = newMutableConfig();
+        Router router = router(null, "openaiChatCompletions", new DeploymentInterface());
+        router.setEndpoint("http://router/chat");
+        config.getRouters().put("r1", router);
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+        assertTrue(error.getMessage().contains("A router declares interfaces, not endpoint"), error.getMessage());
+    }
+
+    @Test
+    void testRouterPassThroughEntryWithNoUrlAnywhereRejected() {
+        Config config = newMutableConfig();
+        config.getRouters().put("r1", router(null, "openaiChatCompletions", new DeploymentInterface()));
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+        assertEquals("Router 'r1': Interface 'openaiChatCompletions' declares no base_url and the router declares no baseUrl", error.getMessage());
+    }
+
+    @Test
+    void testRouterTranslatorWithoutModeRejected() {
+        Config config = newMutableConfig();
+        DeploymentInterface anthropic = new DeploymentInterface();
+        anthropic.setTranslator(TranslatorRef.inline(new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://t")));
+        config.getRouters().put("r1", router("http://router", "anthropicMessages", anthropic));
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+        assertTrue(error.getMessage().contains("Router 'r1': A translator requires mode 'translator'"), error.getMessage());
+    }
+
+    @Test
+    void testRouterSkippedUnderSkipModeAndValidRouterNamed() {
+        Config config = newMutableConfig();
+        config.getRouters().put("bad", router(null, "openaiChatCompletions", new DeploymentInterface()));
+        config.getRouters().put("good", router("http://router", "openaiChatCompletions", new DeploymentInterface()));
+        AtomicReference<ResourceTypes> capturedType = new AtomicReference<>();
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), (type, error) -> capturedType.set(type));
+
+        assertEquals(ResourceTypes.ROUTER, capturedType.get());
+        assertFalse(config.getRouters().containsKey("bad"));
+        assertEquals("good", config.getRouters().get("good").getName());
+        assertTrue(ConfigPostProcessor.isDeploymentIdTakenByAnotherDeploymentType(config, ResourceTypes.MODEL, "good"));
+    }
+
+    @Test
+    void testStructuralDropsSlashKeyedRouter() {
+        Config config = newMutableConfig();
+        config.getRouters().put("bad/router", new Router());
+
+        ConfigPostProcessor.processStructural(config);
+
+        assertTrue(config.getRouters().isEmpty());
+    }
+
+    @Test
+    void testModelInterfaceMessageUnchanged() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        model.setInterfaces(Map.of("openaiChatCompletions", new DeploymentInterface()));
+        config.getModels().put("m", model);
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+        assertEquals("Model 'm': Interface 'openaiChatCompletions' declares no base_url and the model declares no baseUrl", error.getMessage());
+    }
+
     private static DeploymentInterface translated(TranslatorRef translator) {
         DeploymentInterface declared = new DeploymentInterface();
         declared.setMode(InterfaceMode.TRANSLATOR);
@@ -774,7 +870,15 @@ public class ConfigPostProcessorTest {
         config.setApplications(new HashMap<>());
         config.setInterceptors(new HashMap<>());
         config.setToolsets(new LinkedHashMap<>());
+        config.setRouters(new LinkedHashMap<>());
         return config;
+    }
+
+    private static Router router(String baseUrl, String interfaceType, DeploymentInterface declared) {
+        Router router = new Router();
+        router.setBaseUrl(baseUrl);
+        router.setInterfaces(Map.of(interfaceType, declared));
+        return router;
     }
 
     private static PricingRate flatRate(String rate) {

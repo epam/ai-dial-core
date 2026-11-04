@@ -18,6 +18,7 @@ import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.RoleBasedEntity;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
@@ -43,6 +44,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
@@ -105,6 +107,7 @@ public final class ConfigPostProcessor {
         rejectSlashKeyedNames(config.getRoles(), "roles");
         rejectSlashKeyedNames(config.getRoutes(), "routes");
         rejectSlashKeyedNames(config.getToolsets(), "toolsets");
+        rejectSlashKeyedNames(config.getRouters(), "routers");
     }
 
     /**
@@ -124,6 +127,7 @@ public final class ConfigPostProcessor {
         processRoles(config);
         processInterceptors(config, deploymentIds, onSkip);
         processToolSets(config, deploymentIds, onSkip);
+        processRouters(config, deploymentIds, onSkip);
         OrgUnitRoles.validate(config.getOrgUnitRoles());
 
         if (apiKeyStore != null) {
@@ -622,9 +626,10 @@ public final class ConfigPostProcessor {
      * Named translator references are resolved against {@code translators} — the registry of the config the
      * model is entering — exactly as the request path resolves them.
      */
-    private static void validateDeploymentInterfaces(Model model, Map<String, Translator> translators,
+    private static void validateDeploymentInterfaces(Deployment deployment, Map<String, Translator> translators,
                                                     List<ValidationWarning> warnings) {
-        Map<String, DeploymentInterface> interfaces = model.getInterfaces();
+        String entityLabel = deployment.getClass().getSimpleName();
+        Map<String, DeploymentInterface> interfaces = deployment.getInterfaces();
         if (interfaces == null) {
             return;
         }
@@ -636,14 +641,14 @@ public final class ConfigPostProcessor {
             }
             String field = "interfaces." + entry.getKey();
             if (declared.getMode() == InterfaceMode.TRANSLATOR) {
-                validateTranslatedInterface(model, entry.getKey(), declared, translators, field, warnings);
+                validateTranslatedInterface(deployment, entry.getKey(), declared, translators, field, warnings);
             } else if (declared.getTranslator() != null) {
-                warnings.add(new ValidationWarning(field, messageWithEntityPrefix("Model", model.getName(), "A translator requires mode 'translator'")));
-            } else if (declared.getBaseUrl() == null && model.getBaseUrl() == null) {
-                warnings.add(new ValidationWarning(field,
-                        messageWithEntityPrefix("Model", model.getName(), "Interface '" + entry.getKey() + "' declares no base_url and the model declares no baseUrl")));
+                warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), "A translator requires mode 'translator'")));
+            } else if (declared.getBaseUrl() == null && deployment.getBaseUrl() == null) {
+                warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), "Interface '" + entry.getKey()
+                        + "' declares no base_url and the " + entityLabel.toLowerCase(Locale.ROOT) + " declares no baseUrl")));
             }
-            validateOverridePaths(model, entry.getKey(), declared, field, warnings);
+            validateOverridePaths(deployment, entry.getKey(), declared, field, warnings);
         }
     }
 
@@ -713,16 +718,17 @@ public final class ConfigPostProcessor {
         }
     }
 
-    private static void validateTranslatedInterface(Model model, String type, DeploymentInterface declared,
+    private static void validateTranslatedInterface(Deployment deployment, String type, DeploymentInterface declared,
                                                     Map<String, Translator> translators,
                                                     String field, List<ValidationWarning> warnings) {
+        String entityLabel = deployment.getClass().getSimpleName();
         if (declared.getBaseUrl() != null) {
             warnings.add(new ValidationWarning(field,
-                    messageWithEntityPrefix("Model", model.getName(), "An interface is served either by a translator or by a base_url, not by both")));
+                    messageWithEntityPrefix(entityLabel, deployment.getName(), "An interface is served either by a translator or by a base_url, not by both")));
         }
         TranslatorRef translator = declared.getTranslator();
         if (translator == null) {
-            warnings.add(new ValidationWarning(field, messageWithEntityPrefix("Model", model.getName(), "Mode 'translator' requires a translator")));
+            warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), "Mode 'translator' requires a translator")));
             return;
         }
         // a name with no entry to resolve to leaves the interface unserved rather than the model invalid:
@@ -736,17 +742,17 @@ public final class ConfigPostProcessor {
         }
         if (definition.getIn() != null && definition.getIn() != InterfaceType.find(type)) {
             warnings.add(new ValidationWarning(field,
-                    messageWithEntityPrefix("Model", model.getName(), "Translator converts from '" + definition.getIn().getValue() + "', not from '" + type + "'")));
+                    messageWithEntityPrefix(entityLabel, deployment.getName(), "Translator converts from '" + definition.getIn().getValue() + "', not from '" + type + "'")));
         }
         // a definition written inline names no in: the interface it sits under is what it converts from
         String in = definition.getIn() != null ? definition.getIn().getValue() : type;
         if (in.equals(definition.getOut().getValue())) {
             warnings.add(new ValidationWarning(field,
-                    messageWithEntityPrefix("Model", model.getName(), "A translator cannot convert '" + in
+                    messageWithEntityPrefix(entityLabel, deployment.getName(), "A translator cannot convert '" + in
                             + "' to itself: its output would arrive back on the interface it came from")));
             return;
         }
-        validateTranslatorOutput(model, definition, translators, field, warnings);
+        validateTranslatorOutput(deployment, definition, translators, field, warnings);
     }
 
     /**
@@ -759,19 +765,21 @@ public final class ConfigPostProcessor {
      * would have to be the second hop of a chain this rule already refuses. Which leaves the one-interface
      * cycle, a translator converting an interface to itself, rejected by the caller.
      */
-    private static void validateTranslatorOutput(Model model, Translator definition, Map<String, Translator> translators,
+    private static void validateTranslatorOutput(Deployment deployment, Translator definition, Map<String, Translator> translators,
                                                  String field, List<ValidationWarning> warnings) {
+        String entityLabel = deployment.getClass().getSimpleName();
+        String kind = entityLabel.toLowerCase(Locale.ROOT);
         InterfaceType out = definition.getOut();
-        if (DeploymentEndpointUtil.resolveMode(model, out) == InterfaceMode.TRANSLATOR) {
+        if (DeploymentEndpointUtil.resolveMode(deployment, out) == InterfaceMode.TRANSLATOR) {
             warnings.add(new ValidationWarning(field,
-                    messageWithEntityPrefix("Model", model.getName(), "The model serves '" + out.getValue()
+                    messageWithEntityPrefix(entityLabel, deployment.getName(), "The " + kind + " serves '" + out.getValue()
                             + "' through a translator of its own, which the translator here converts to: "
                             + "the callback would arrive on a translated interface and be handed to a translator again")));
             return;
         }
-        if (DeploymentEndpointUtil.resolveServingEndpoint(model, out, translators) == null) {
+        if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, out, translators) == null) {
             warnings.add(new ValidationWarning(field,
-                    messageWithEntityPrefix("Model", model.getName(), "The model does not serve '" + out.getValue() + "', which the translator converts to")));
+                    messageWithEntityPrefix(entityLabel, deployment.getName(), "The " + kind + " does not serve '" + out.getValue() + "', which the translator converts to")));
         }
     }
 
@@ -886,6 +894,40 @@ public final class ConfigPostProcessor {
         }
     }
 
+    private static void processRouters(Config config, Set<String> deploymentIds,
+                                       @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Iterator<Map.Entry<String, Router>> iterator = config.getRouters().entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, Router> entry = iterator.next();
+            String name = entry.getKey();
+            if (skipOnDuplicate(name, ResourceTypes.ROUTER, deploymentIds, onSkip, iterator)) {
+                continue;
+            }
+            Router router = entry.getValue();
+            router.setName(name);
+            List<ValidationWarning> warnings = new ArrayList<>();
+            // an explicit "interceptors": null binds null, which the request path would iterate
+            if (router.getInterceptors() == null) {
+                router.setInterceptors(List.of());
+            } else if (!router.getInterceptors().isEmpty()) {
+                warnings.add(new ValidationWarning("interceptors", messageWithEntityPrefix("Router", name, "A router declares no interceptors")));
+            }
+            if (router.getEndpoint() != null || router.getResponsesEndpoint() != null) {
+                warnings.add(new ValidationWarning("endpoint", messageWithEntityPrefix("Router", name, "A router declares interfaces, not endpoint")));
+            }
+            validateDeploymentInterfaces(router, config.getTranslators(), warnings);
+            if (!warnings.isEmpty()) {
+                if (onSkip == null) {
+                    throw new InvalidEntityException(ResourceTypes.ROUTER, name, warnings);
+                }
+                iterator.remove();
+                onSkip.accept(ResourceTypes.ROUTER, new InvalidEntityException(ResourceTypes.ROUTER, name, warnings));
+                continue;
+            }
+            log.debug("Loading {}", router);
+        }
+    }
+
     private static void processToolSets(Config config, Set<String> deploymentIds,
                                         @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
         Iterator<Map.Entry<String, ToolSet>> iterator = config.getToolsets().entrySet().iterator();
@@ -929,7 +971,7 @@ public final class ConfigPostProcessor {
 
     /**
      * Returns {@code true} if {@code shortName} is already claimed by a MODEL, APPLICATION,
-     * TOOL_SET, or INTERCEPTOR other than {@code type} — those four entity types share one
+     * TOOL_SET, INTERCEPTOR or ROUTER other than {@code type} — those five entity types share one
      * flat deployment-id namespace.
      */
     public static boolean isDeploymentIdTakenByAnotherDeploymentType(Config config,
@@ -939,7 +981,8 @@ public final class ConfigPostProcessor {
                 ResourceTypes.MODEL, config.getModels(),
                 ResourceTypes.APPLICATION, config.getApplications(),
                 ResourceTypes.TOOL_SET, config.getToolsets(),
-                ResourceTypes.INTERCEPTOR, config.getInterceptors());
+                ResourceTypes.INTERCEPTOR, config.getInterceptors(),
+                ResourceTypes.ROUTER, config.getRouters());
         if (!deploymentIdSpaces.containsKey(type)) {
             throw new IllegalArgumentException("Not a deployment type: " + type);
         }

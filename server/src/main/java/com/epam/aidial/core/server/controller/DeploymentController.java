@@ -279,7 +279,7 @@ public class DeploymentController {
             case Model model -> to(model);
             case Application application -> to(resolveLocalApplication(application));
             case ToolSet toolSet -> to(toolSet);
-            // interceptors are deployments as well, but the deployment listing never exposes them
+            // interceptors and routers are deployments as well, but the deployment listing never exposes them
             default -> throw new ResourceNotFoundException("Deployment is not found: " + deployment.getName());
         };
     }

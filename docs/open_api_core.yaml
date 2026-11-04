@@ -12342,6 +12342,51 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/routers:
+    get:
+      tags:
+      - Deployment listing
+      summary: /v1/routers
+      operationId: getRouters
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDataRouterData"
+  /v1/routers/{router_name}:
+    get:
+      tags:
+      - Deployment listing
+      summary: "/v1/routers/{router_name}"
+      operationId: getRouter
+      parameters:
+      - name: router_name
+        in: path
+        description: Router name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RouterData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/routes/{bucket}/{path}:
     get:
       tags:
@@ -17606,6 +17651,8 @@ components:
           $ref: "#/components/schemas/MapStringOrgUnitRole"
         spendingLimits:
           $ref: "#/components/schemas/SpendingLimits"
+        routers:
+          $ref: "#/components/schemas/MapStringRouter"
     ConfigFileMigrateRequest:
       type: object
       properties:
@@ -18636,6 +18683,15 @@ components:
             $ref: "#/components/schemas/ModelData"
         object:
           type: string
+    ListDataRouterData:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/RouterData"
+        object:
+          type: string
     ListDataToolSetData:
       type: object
       properties:
@@ -18762,6 +18818,10 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/Route"
+    MapStringRouter:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/Router"
     MapStringShareResourceLimit:
       type: object
       additionalProperties:
@@ -19725,6 +19785,7 @@ components:
       - APP_TYPE_SCHEMA
       - CATALOG_SCHEMA
       - INTERCEPTOR
+      - ROUTER
       - TRANSLATOR
       - ROLE
       - PROJECT_KEY
@@ -19885,6 +19946,142 @@ components:
         body:
           type: string
         status:
+          type: integer
+    Router:
+      type: object
+      properties:
+        author:
+          type: string
+        baseUrl:
+          type: string
+        catalogProperties:
+          $ref: "#/components/schemas/MapStringObject"
+        catalogSchemaId:
+          type: string
+          format: uri
+        createdAt:
+          type: integer
+        defaultHeaders:
+          $ref: "#/components/schemas/MapStringString"
+        defaults:
+          $ref: "#/components/schemas/MapStringObject"
+        dependencies:
+          type: array
+          items:
+            type: string
+        description:
+          $ref: "#/components/schemas/LocalizedValue"
+        descriptionKeywords:
+          type: array
+          items:
+            type: string
+        displayName:
+          $ref: "#/components/schemas/LocalizedValue"
+        displayVersion:
+          type: string
+        endpoint:
+          type: string
+        features:
+          $ref: "#/components/schemas/Features"
+        forwardAuthToken:
+          type: boolean
+        iconUrl:
+          type: string
+        inputAttachmentTypes:
+          type: array
+          items:
+            type: string
+        interceptors:
+          type: array
+          items:
+            type: string
+        interfaces:
+          $ref: "#/components/schemas/MapStringDeploymentInterface"
+        intro:
+          $ref: "#/components/schemas/LocalizedValue"
+        maxInputAttachments:
+          type: integer
+        maxRetryAttempts:
+          type: integer
+        name:
+          type: string
+        overrideName:
+          type: string
+        reference:
+          type: string
+        responsesDefaults:
+          $ref: "#/components/schemas/MapStringObject"
+        responsesEndpoint:
+          type: string
+        updatedAt:
+          type: integer
+        userRoles:
+          type: array
+          items:
+            type: string
+    RouterData:
+      type: object
+      properties:
+        application:
+          type: string
+        catalog_properties:
+          $ref: "#/components/schemas/MapStringObject"
+        catalog_schema_id:
+          type: string
+          format: uri
+        created_at:
+          type: integer
+        defaults:
+          $ref: "#/components/schemas/MapStringObject"
+        description:
+          $ref: "#/components/schemas/LocalizedValue"
+        description_keywords:
+          type: array
+          items:
+            type: string
+        display_name:
+          $ref: "#/components/schemas/LocalizedValue"
+        display_version:
+          type: string
+        features:
+          $ref: "#/components/schemas/FeaturesData"
+        icon_url:
+          type: string
+        id:
+          type: string
+        input_attachment_types:
+          type: array
+          items:
+            type: string
+        interface_configs:
+          $ref: "#/components/schemas/MapStringInterfaceConfigData"
+        interfaces:
+          type: array
+          items:
+            type: string
+        intro:
+          $ref: "#/components/schemas/LocalizedValue"
+        max_input_attachments:
+          type: integer
+        max_retry_attempts:
+          type: integer
+        model:
+          type: string
+        object:
+          type: string
+        owner:
+          type: string
+        reference:
+          type: string
+        responses_defaults:
+          $ref: "#/components/schemas/MapStringObject"
+        scale_settings:
+          $ref: "#/components/schemas/ScaleSettingsData"
+        status:
+          type: string
+        toolset:
+          type: string
+        updated_at:
           type: integer
     RpcRequest:
       type: object

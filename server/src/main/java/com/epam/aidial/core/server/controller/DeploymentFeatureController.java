@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
@@ -43,6 +44,7 @@ import java.util.function.Function;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
+import static com.epam.aidial.core.server.Proxy.HEADER_USER_INFO;
 
 @Slf4j
 public class DeploymentFeatureController {
@@ -235,9 +237,13 @@ public class DeploymentFeatureController {
         }
         excludeHeaders.add(HEADER_APPLICATION_PROPERTIES, "whatever");
         excludeHeaders.add(HEADER_APPLICATION_ID, "whatever");
+        excludeHeaders.add(HEADER_USER_INFO, "whatever");
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
         ProxyUtil.setOverrideNameHeader(proxyRequest, deployment);
+        if (deployment instanceof Router) {
+            proxyRequest.putHeader(HEADER_USER_INFO, ProxyUtil.buildUserInfoHeader(context));
+        }
 
         if ((deployment instanceof Application application && application.hasApplicationTypeSchemaId())) {
             try {

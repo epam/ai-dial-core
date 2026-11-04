@@ -211,6 +211,37 @@ none. A config without `routers` behaves as before. Rolling back to the previous
 the config is safe: `Config` ignores unknown top-level keys (`Config.java:28`), so the file loads and the routers
 are absent, which means requests to them answer `404` until the release is restored.
 
+## Implementation notes
+
+Compared with the code on 2026-11-04 before coding: the cited lines (`processInterceptors` 864,
+`validateDeploymentInterfaces` 625, `isDeploymentIdTakenByAnotherDeploymentType` 935, `shallowClone` 1016,
+`rebuildMergedConfig` 1209, `UpstreamRouteProvider.getKey` 169, `isSubjectToLimits` 244, `sendProxyRequest` 405)
+still hold. Drift and adjustments:
+
+- D2: no kind-name parameter. `validateDeploymentInterfaces`, `validateTranslatedInterface` and
+  `validateTranslatorOutput` take a `Deployment` and use `getClass().getSimpleName()` as the message prefix, which is
+  what `validateOverridePaths` in the same class already does; the lower-cased name fills "the model declares no
+  baseUrl" and the two "The model serves / does not serve" messages. Every `Model` message is unchanged
+  (`ConfigPostProcessorTest.testModelInterfaceMessageUnchanged`).
+- `Limit` has no `requestMinute` (only `minute`, `day`, `week`, `month`, `requestHour`, `requestDay`), and the config
+  mapper rejects an unknown field. The fixture uses `requestHour: 1` / `requestDay: 1`, and the router-deployment
+  scenario "Exhausted request limit on the router does not refuse" now says `requestHour` and "within one hour".
+- D6: the header is built by `ProxyUtil.buildUserInfoHeader(ProxyContext)`, used by `sendProxyRequest` and by
+  `DeploymentFeatureController` (`/v1/{id}/rate`, `/tokenize`, `/truncate_prompt`, `/configuration`), which also
+  forwards to a router and copies client headers on its own path. Both now drop a client `X-DIAL-USER-INFO` for every
+  deployment and add Core's for a router (`RouterApiTest.featureEndpointCallCarriesTheIdentityHeader`).
+  Response-item operations (`GET`, `DELETE`, `cancel`, `input_items` on `/openai/v1/responses/{id}`) go through
+  `ResponsesApiClient.send`, which builds a fresh request and copies no client header; it takes the header value as a
+  nullable argument, and `ResponseItemController` passes one for a router
+  (`RouterApiTest.responseItemCallCarriesTheIdentityHeader`).
+- Task 2.5 sweep of `server/src/main`: the only `switch` over a deployment kind without a default a router reaches is
+  `UpstreamRouteProvider.getKey` (D5). `DeploymentController.toDeploymentData` has a `default` that answers `404`,
+  which is the wanted result for a router; its comment now names routers.
+- The JWT scenario test uses roles `["analysts", "b"]`, since the fixture's `r1` admits only `analysts`.
+- OpenAPI: besides the two router paths, `RouterData` and `ListDataRouterData`, the regenerated
+  `docs/open_api_core.yaml` gains `routers` / `MapStringRouter` / `Router` under the documented `Config` schema and
+  `ROUTER` in the resource-type enum. Both follow from the change; nothing was hand-edited.
+
 ## Follow-up: the admin-API change (not in this change)
 
 From the code map taken for this design, adding routers to the Configuration API touches: `MergedConfigStore`

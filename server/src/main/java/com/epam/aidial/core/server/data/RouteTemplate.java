@@ -74,6 +74,15 @@ public enum RouteTemplate {
             "^/+openai/models$",
             "/openai/models"
     ),
+    // one segment: /v1/routers/platform/{path} stays free for the Configuration API
+    ROUTER(
+            "^/+v1/routers/(?<id>[^/]+)$",
+            "/v1/routers/{id}"
+    ),
+    ROUTERS(
+            "^/+v1/routers$",
+            "/v1/routers"
+    ),
 
     APPLICATION(
             "^/+openai/applications/(?<id>.+?)$",
