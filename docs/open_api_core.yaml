@@ -18406,6 +18406,8 @@ components:
             type: integer
         rateLimitSchedule:
           $ref: "#/components/schemas/RateLimitSchedule"
+        spendingLimits:
+          $ref: "#/components/schemas/SpendingLimits"
     HealthResponse:
       type: object
       properties:
@@ -19518,6 +19520,8 @@ components:
         client_secret_hint:
           type: string
           readOnly: true
+        resource:
+          type: string
     ResourceAuthSettingsData:
       type: object
       properties:
@@ -19547,6 +19551,8 @@ components:
           $ref: "#/components/schemas/ResourceAuthStatus"
         dynamically_registered:
           type: boolean
+        resource:
+          type: string
     ResourceAuthStatus:
       type: string
       enum:

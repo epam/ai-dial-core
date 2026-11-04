@@ -10,5 +10,6 @@ public enum ResourceAuthSettingsField {
     CODE_VERIFIER,
     CODE_CHALLENGE_METHOD,
     SCOPES_SUPPORTED,
-    API_KEY_HEADER
+    API_KEY_HEADER,
+    RESOURCE
 }

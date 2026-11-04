@@ -114,18 +114,33 @@ those types SHALL keep its file key (the key secret, the route name) and a blob 
 
 ### Requirement: Settings overlay
 When the blob `settings/platform/global` exists and parses, Core SHALL take `globalInterceptors`,
-`retriableErrorCodes` and `rateLimitSchedule` from it, a missing field reading as empty (`rateLimitSchedule`
-defaulting to timezone `UTC`), instead of from the file. Deleting the blob SHALL restore the file values.
+`retriableErrorCodes`, `rateLimitSchedule` and `spendingLimits` from it, a missing field reading as empty
+(`rateLimitSchedule` defaulting to timezone `UTC`, `spendingLimits` to mode `off` and default cost object `ORG`),
+instead of from the file. Deleting the blob SHALL restore the file values.
 
 #### Scenario: Empty settings blob
 - **WHEN** an admin sends `PUT /v1/settings/platform/global` with `{}`
-- **THEN** `GET /v1/settings/platform/global` answers `globalInterceptors: []`, `retriableErrorCodes: []` and
-  `rateLimitSchedule.timezone: "UTC"`
+- **THEN** `GET /v1/settings/platform/global` answers `globalInterceptors: []`, `retriableErrorCodes: []`,
+  `rateLimitSchedule.timezone: "UTC"` and `spendingLimits` with `mode: "off"` and `defaultCostObject: "ORG"`
 
 #### Scenario: Delete reverts to the file
 - **WHEN** an admin sends `DELETE /v1/settings/platform/global` after a `PUT`
 - **THEN** Core answers `204`, `GET /v1/settings/platform/global` answers `404`, and the effective settings are the
   file's
+
+#### Scenario: Spending limits from the blob
+- **WHEN** an admin sends `PUT /v1/settings/platform/global` with
+  `{"spendingLimits": {"mode": "shadow", "defaultCostObject": "PERSONAL"}}`
+- **THEN** `GET /v1/settings/platform/global` answers `spendingLimits` with `mode: "shadow"` and
+  `defaultCostObject: "PERSONAL"`
+
+#### Scenario: Blob replaces the file's spending limits
+- **WHEN** the file sets `spendingLimits.mode` to `shadow` and the settings blob sets `enforce`
+- **THEN** the effective mode is `enforce`, on a config rebuild and on a replica event for the blob
+
+#### Scenario: Delete restores the file's spending limits
+- **WHEN** the file sets `spendingLimits.mode` to `shadow`, the settings blob sets `enforce`, and the blob is deleted
+- **THEN** the effective mode is `shadow`
 
 ### Requirement: Write visible on return
 Core SHALL apply a successful Configuration API write or delete to the merged config before answering, so the
@@ -357,6 +372,36 @@ Rebuild invariants SHALL still answer `422`.
 - **THEN** Core answers `422` with a body containing `interfaces.openaiChatCompletions` and `declares no base_url`,
   and nothing is written
 
+### Requirement: Route upstream key on write
+A route upstream whose `authType` is not `API_KEY` SHALL have a `key`. A route `PUT`, and a `Route` entry of
+`/v1/admin/validate` or `/v1/admin/apply`, that breaks this SHALL be refused and write nothing. A `PUT` that replaces a
+stored route and omits the key keeps the stored one (see Omitted secret preserved) and passes.
+
+#### Scenario: Bearer route without a key
+- **WHEN** an admin sends `PUT /v1/routes/platform/bearer-nokey` with `If-None-Match: *` and
+  `upstreams: [{"endpoint": "http://localhost:7001", "authType": "BEARER"}]`
+- **THEN** Core answers `422` with one warning, `field: "upstreams[0].authType"`, whose `message` contains
+  `requires a key`, and `GET` on the route answers `404`; the same `PUT` with a `key` added then answers `200`
+
+#### Scenario: Custom header route without a key
+- **WHEN** the upstream declares `authType: {"type": "CUSTOM_HEADER", "headerName": "X-Api-Token"}` and no `key`
+- **THEN** Core answers `422` with the same warning field
+
+#### Scenario: Update without the key
+- **WHEN** a route with a `BEARER` upstream and a `key` is stored and an admin sends a `PUT` for it that omits the `key`
+- **THEN** Core answers `200` and `GET` on the route answers `200`
+
+#### Scenario: Validate
+- **WHEN** an admin validates a `Route` with a `BEARER` upstream and no `key`, with `"precheck": false`
+- **THEN** Core answers `200` with `valid: 0`, `failed: 1`, that result `FAILED` with an `error` containing
+  `requires a key`, and the route is not written
+
+#### Scenario: Apply
+- **WHEN** an admin applies with `"precheck": false` a valid `Interceptor` and a `Route` with a `BEARER` upstream and
+  no `key`
+- **THEN** Core answers `200` with `applied: 1`, `failed: 1`, the route result `FAILED`, the interceptor answers `200`
+  on `GET` and the route answers `404`
+
 ### Requirement: POST and DELETE on entity URLs
 `POST` on a config entity URL SHALL, once the caller is authorized, answer `405` with body `Not implemented` and
 `Allow: GET, PUT, DELETE`; an unauthorized `POST` gets `403`. `DELETE` SHALL answer `204` after removing the blob,
@@ -382,12 +427,21 @@ Rebuild invariants SHALL still answer `422`.
 ### Requirement: Settings singleton URL
 `/v1/settings/platform/global` SHALL be the only settings entity: another name SHALL answer `404` on `GET`, `PUT` and
 `DELETE`, and `POST` SHALL answer `405`.
-`GET` SHALL answer `404` while no settings blob exists, else `200` with the three fields, `name: "global"` and
-`status: "valid"`. A `PUT` SHALL drop unknown fields and answer `400` on an invalid `rateLimitSchedule`.
+`GET` SHALL answer `404` while no settings blob exists, else `200` with the four fields, `name: "global"` and
+`status: "valid"`. A `PUT` SHALL drop unknown fields and answer `400` on an invalid `rateLimitSchedule` or
+`spendingLimits`, writing nothing.
 
 #### Scenario: Unknown field dropped
 - **WHEN** an admin sends `PUT /v1/settings/platform/global` with `{"globalInterceptors": ["q"], "extraField": "ignored"}`
 - **THEN** Core answers `200` and the GET has one global interceptor and no `extraField`
+
+#### Scenario: Unknown spending limit mode
+- **WHEN** an admin sends `PUT /v1/settings/platform/global` with `{"spendingLimits": {"mode": "strict"}}`
+- **THEN** Core answers `400`
+
+#### Scenario: Invalid default cost object
+- **WHEN** an admin sends `PUT /v1/settings/platform/global` with `{"spendingLimits": {"defaultCostObject": "a/b"}}`
+- **THEN** Core answers `400`
 
 ### Requirement: Metadata listing
 `GET /v1/metadata/{type}/platform/{path}` SHALL list the stored blobs only, as the Resource API folder metadata
