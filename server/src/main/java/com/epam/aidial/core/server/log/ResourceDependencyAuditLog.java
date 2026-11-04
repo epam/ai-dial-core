@@ -104,7 +104,9 @@ public final class ResourceDependencyAuditLog {
         };
     }
 
-    /** The deployment that made this call — the immediate caller. "root" on the user's own call. */
+    /**
+     * The immediate caller: "root" when no deployment is calling; on an intercepted call, the last interceptor.
+     */
     private static String sourceDeployment(ProxyContext context) {
         String deployment = context.getSourceDeployment();
         return deployment == null ? "root" : AuditLogSanitizer.sanitizeToken(deployment);

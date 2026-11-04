@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.ResourceDependency;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.security.AccessService;
@@ -25,6 +26,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -80,8 +82,7 @@ public class ResolveResourceDependenciesFnTest {
         application.setName("app");
         request = new ChatCompletionRequest(com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode());
 
-        // The resolution window: the context still carries the originating user (no per-request key),
-        // and the proxy key data the grants are baked into.
+        // the request's own key data (root call by default) and the proxy key data the grants are baked into
         lenient().when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         lenient().when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
         lenient().when(context.getUserId()).thenReturn("user-sub");
@@ -147,10 +148,7 @@ public class ResolveResourceDependenciesFnTest {
 
     @Test
     void apply_resolvesOnChainedHop() {
-        // The guard this replaces was not an identity limitation: extractedClaims and originalKey
-        // propagate at every depth, so the originating user's reach is evaluable here. Reach is
-        // asked of lookupOriginatingUserPermissions, whose own-bucket rule uses
-        // buildInitiatorBucket — never the calling key's Keys/<app>/ sandbox.
+        // identity propagates down the chain, so the initiator's reach is evaluable on a chained hop
         when(context.getDeployment()).thenReturn(application);
         application.setResourceDependencies(List.of(dependency("skills/{current-user}/", false)));
         ApiKeyData chained = new ApiKeyData();
@@ -159,7 +157,7 @@ public class ResolveResourceDependenciesFnTest {
         when(context.getApiKeyData()).thenReturn(chained);
         when(context.getSourceDeployment()).thenReturn("app1");
         when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
-        when(accessService.lookupOriginatingUserPermissions(any(), eq(context)))
+        when(accessService.lookupInitiatorPermissions(any(), eq(context)))
                 .thenReturn(Map.of(userSkillsFolder(), Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE)));
 
         assertFalse(fn.apply(request));
@@ -170,8 +168,7 @@ public class ResolveResourceDependenciesFnTest {
 
     @Test
     void apply_failsChainedHopWhenRequiredDependencyDoesNotResolve() {
-        // The new failure mode this PR introduces: a required dependency that does not resolve on
-        // a chained hop now hard-fails that call, the same as it always has at the root.
+        // a required dependency that does not resolve on a chained hop fails the call, as at the root
         when(context.getDeployment()).thenReturn(application);
         application.setResourceDependencies(List.of(dependency("skills/{current-user}/", true)));
         ApiKeyData chained = new ApiKeyData();
@@ -180,7 +177,7 @@ public class ResolveResourceDependenciesFnTest {
         when(context.getApiKeyData()).thenReturn(chained);
         when(context.getSourceDeployment()).thenReturn("app1");
         when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
-        when(accessService.lookupOriginatingUserPermissions(any(), eq(context))).thenReturn(Map.of());
+        when(accessService.lookupInitiatorPermissions(any(), eq(context))).thenReturn(Map.of());
 
         HttpException error = assertThrows(HttpException.class, () -> fn.apply(request));
         assertEquals(HttpStatus.FORBIDDEN, error.getStatus());
@@ -191,7 +188,7 @@ public class ResolveResourceDependenciesFnTest {
         when(context.getDeployment()).thenReturn(application);
         application.setResourceDependencies(List.of(dependency("skills/{current-user}/", false)));
         when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
-        when(accessService.lookupOriginatingUserPermissions(any(), eq(context)))
+        when(accessService.lookupInitiatorPermissions(any(), eq(context)))
                 .thenReturn(Map.of(userSkillsFolder(), Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE)));
 
         assertFalse(fn.apply(request));
@@ -209,7 +206,7 @@ public class ResolveResourceDependenciesFnTest {
         when(context.getDeployment()).thenReturn(application);
         application.setResourceDependencies(List.of(dependency("skills/{current-user}/", false)));
         when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
-        when(accessService.lookupOriginatingUserPermissions(any(), eq(context)))
+        when(accessService.lookupInitiatorPermissions(any(), eq(context)))
                 .thenReturn(Map.of(userSkillsFolder(), Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE)));
 
         ResolveResourceDependenciesFn<ObjectNode> objectNodeFn = new ResolveResourceDependenciesFn<>(proxy, context);
@@ -218,6 +215,24 @@ public class ResolveResourceDependenciesFnTest {
 
         assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE),
                 proxyApiKeyData.getPerRequestSharedResources().get(userSkillsFolder().getUrl()).permissions());
+    }
+
+    @Test
+    void apply_doesNotMutateGrantsSharedFromTheCallingKey() {
+        // an entry copied from the caller's receivers is the caller's object: baking must not write through it
+        when(context.getDeployment()).thenReturn(application);
+        application.setResourceDependencies(List.of(dependency("skills/{current-user}/", false)));
+        when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
+        when(accessService.lookupInitiatorPermissions(any(), eq(context)))
+                .thenReturn(Map.of(userSkillsFolder(), Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE)));
+        PerRequestSharedData sharedByCaller = new PerRequestSharedData(new HashSet<>(Set.of(ResourceAccessType.READ)));
+        proxyApiKeyData.getPerRequestSharedResources().put(userSkillsFolder().getUrl(), sharedByCaller);
+
+        fn.apply(request);
+
+        assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE),
+                proxyApiKeyData.getPerRequestSharedResources().get(userSkillsFolder().getUrl()).permissions());
+        assertEquals(Set.of(ResourceAccessType.READ), sharedByCaller.permissions());
     }
 
     @Test
@@ -234,7 +249,7 @@ public class ResolveResourceDependenciesFnTest {
         when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
         ResourceDescriptor target = com.epam.aidial.core.server.util.ResourceDescriptorFactory
                 .fromAnyUrl("files/public/p/", encryptionService);
-        when(accessService.lookupOriginatingUserPermissions(any(), eq(context)))
+        when(accessService.lookupInitiatorPermissions(any(), eq(context)))
                 .thenReturn(Map.of(target, Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE)));
 
         assertFalse(fn.apply(request));
@@ -257,10 +272,8 @@ public class ResolveResourceDependenciesFnTest {
         when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
 
         assertFalse(fn.apply(request));
-        // Pins that the resolver no longer reaches the general chain at all, alongside the
-        // narrower reach check it now uses instead.
         verify(accessService, never()).lookupPermissions(any(), any());
-        verify(accessService, never()).lookupOriginatingUserPermissions(any(), any());
+        verify(accessService, never()).lookupInitiatorPermissions(any(), any());
         assertTrue(proxyApiKeyData.getPerRequestSharedResources().isEmpty());
     }
 
@@ -271,7 +284,7 @@ public class ResolveResourceDependenciesFnTest {
         when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
         ResourceDescriptor target = com.epam.aidial.core.server.util.ResourceDescriptorFactory
                 .fromAnyUrl("files/public/policies/", encryptionService);
-        when(accessService.lookupOriginatingUserPermissions(any(), eq(context)))
+        when(accessService.lookupInitiatorPermissions(any(), eq(context)))
                 .thenReturn(Map.of(target, Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE)));
 
         assertFalse(fn.apply(request));
@@ -286,7 +299,7 @@ public class ResolveResourceDependenciesFnTest {
         when(context.getDeployment()).thenReturn(application);
         application.setResourceDependencies(List.of(dependency("files/public/policies/", false)));
         when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
-        when(accessService.lookupOriginatingUserPermissions(any(), eq(context))).thenReturn(Map.of());
+        when(accessService.lookupInitiatorPermissions(any(), eq(context))).thenReturn(Map.of());
 
         assertFalse(fn.apply(request));
         assertTrue(proxyApiKeyData.getPerRequestReceivers().isEmpty());
@@ -299,7 +312,7 @@ public class ResolveResourceDependenciesFnTest {
         when(consentService.isAdminConsented(eq("app"), any())).thenReturn(false);
 
         assertFalse(fn.apply(request));
-        verify(accessService, never()).lookupOriginatingUserPermissions(any(), any());
+        verify(accessService, never()).lookupInitiatorPermissions(any(), any());
         assertTrue(proxyApiKeyData.getPerRequestReceivers().isEmpty());
     }
 
@@ -308,7 +321,7 @@ public class ResolveResourceDependenciesFnTest {
         when(context.getDeployment()).thenReturn(application);
         application.setResourceDependencies(List.of(dependency("files/public/policies/", true)));
         when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
-        when(accessService.lookupOriginatingUserPermissions(any(), eq(context))).thenReturn(Map.of());
+        when(accessService.lookupInitiatorPermissions(any(), eq(context))).thenReturn(Map.of());
 
         HttpException error = assertThrows(HttpException.class, () -> fn.apply(request));
         assertEquals(HttpStatus.FORBIDDEN, error.getStatus());
@@ -344,7 +357,7 @@ public class ResolveResourceDependenciesFnTest {
 
         assertFalse(fn.apply(request));
         assertTrue(proxyApiKeyData.getPerRequestReceivers().isEmpty());
-        verify(accessService, never()).lookupOriginatingUserPermissions(any(), any());
+        verify(accessService, never()).lookupInitiatorPermissions(any(), any());
     }
 
     private ResourceDescriptor userSkillsFolder() {

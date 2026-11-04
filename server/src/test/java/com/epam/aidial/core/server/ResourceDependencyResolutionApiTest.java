@@ -1,21 +1,18 @@
 package com.epam.aidial.core.server;
 
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
-import org.slf4j.LoggerFactory;
 
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -25,10 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The v1 happy path, end to end on the chat-completions mint site: an admin-authored app
- * declares a typed personal dependency, an admin grants, a user chats — and the per-request key
- * the app's upstream receives carries the grant, verified by exercising the user's folder with
- * that key. The full six-scenario suite lands with the resolution-coverage PR.
+ * Dependency resolution end to end: grants baked into the per-request key on the chat and MCP mint sites,
+ * at the root call and on chained hops.
  */
 public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
 
@@ -86,13 +81,8 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testChainedHopResolvesItsOwnDeclarationAgainstTheOriginatingUser() {
-        // The rewritten successor of the removed root-call-only test (design §7.1, D-24):
-        // createAppKey puts the user's ExtractedClaims on the chained key, so ProxyContext.userId
-        // is still "user", buildInitiatorBucket is still Users/user/, and
-        // lookupOriginatingUserPermissions's own-bucket rule grants ALL — whereas the general
-        // chain would have asked whether Keys/testapp/ (the orchestrator's own sandbox) owns the
-        // prompt folder, and answered no.
+    void testChainedHopResolvesItsOwnDeclarationAgainstTheInitiator() {
+        // the chained key carries the user's claims, so the user's own folder resolves, not the orchestrator's sandbox
         Response response = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "user");
         String userBucket = new JsonObject(response.body()).getString("bucket");
         String appUrl = "applications/public/dep-chained-app";
@@ -126,22 +116,66 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                         "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"choices\":[]}",
                         "Content-Type", "application/json");
             });
+            List<String> events = captureAuditEvents(appUrl, () -> {
+                Response completion = send(HttpMethod.POST, "/openai/deployments/%s/chat/completions".formatted(appUrl), null, """
+                        {"messages":[{"role":"user","content":"how are you?"}]}
+                        """, "api-key", orchestratorKey.getPerRequestKey(), "Content-Type", "application/json");
+                assertEquals(200, completion.status(), () -> "Body: " + completion.body());
+            });
+            assertEquals(1, events.size(), () -> "Events: " + events);
+            assertTrue(events.get(0).startsWith("event=resource_dependency_grant"), events.get(0));
+            assertTrue(events.get(0).contains("source_deployment=testapp"), events.get(0));
+        }
+
+        assertEquals(200, targetStatus.get(),
+                "a chained hop must resolve its own declaration against the initiator");
+    }
+
+    @Test
+    void testChainedHopFailsWhenRequiredDependencyIsUnreachable() {
+        // a required dependency the initiator cannot reach fails the chained call before the app is invoked
+        String adminBucket = new JsonObject(
+                send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "admin").body()).getString("bucket");
+        String appUrl = "applications/public/dep-chained-required-app";
+
+        verify(send(HttpMethod.PUT, "/v1/applications/public/dep-chained-required-app", null, """
+                {
+                  "endpoint": "http://localhost:4835/chat/completions",
+                  "display_name": "Dependency Chained Required App",
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk",
+                     "target": {"path": "files/%s/secret.txt"}, "access": ["read"], "required": true}
+                  ]
+                }
+                """.formatted(adminBucket), "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/consent/" + appUrl + "/admin-consent", null, "",
+                "authorization", "admin"), 200);
+
+        ApiKeyData orchestratorKey = createAppKey("user", Map.of());
+        orchestratorKey.setExecutionPath(List.of("orchestrator"));
+        apiKeyStore.assignPerRequestApiKey(orchestratorKey);
+
+        AtomicInteger upstreamHits = new AtomicInteger();
+        try (TestWebServer server = new TestWebServer(4835)) {
+            server.map(HttpMethod.POST, "/chat/completions", request -> {
+                upstreamHits.incrementAndGet();
+                return TestWebServer.createResponse(200,
+                        "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"choices\":[]}",
+                        "Content-Type", "application/json");
+            });
             Response completion = send(HttpMethod.POST, "/openai/deployments/%s/chat/completions".formatted(appUrl), null, """
                     {"messages":[{"role":"user","content":"how are you?"}]}
                     """, "api-key", orchestratorKey.getPerRequestKey(), "Content-Type", "application/json");
-            assertEquals(200, completion.status(), () -> "Body: " + completion.body());
+            assertEquals(403, completion.status(), () -> "Body: " + completion.body());
+            assertTrue(completion.body().contains("Required resource dependencies are not accessible"), completion.body());
         }
 
-        // Before this PR: 200 and 403 (the guard skipped resolution on this hop). After: 200 and 200.
-        assertEquals(200, targetStatus.get(),
-                "a chained hop must resolve its own declaration against the originating user");
+        assertEquals(0, upstreamHits.get(), "the declaring app must not be invoked when its required dependency fails");
     }
 
     @Test
     void testChainedHopIsSandboxedFromTheCallersOwnGrants() {
-        // The single most important assertion in this PR, end to end (D-24): a grant already
-        // baked into the CALLING app's own per-request key must not satisfy the CALLED app's
-        // independent reach check — otherwise app1 could launder its own grants into app2.
+        // a grant held by the calling app must not satisfy the called app's reach check
         String adminBucket = new JsonObject(
                 send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "admin").body()).getString("bucket");
         String targetPath = "files/" + adminBucket + "/secret.txt";
@@ -177,14 +211,18 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                         "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"choices\":[]}",
                         "Content-Type", "application/json");
             });
-            Response completion = send(HttpMethod.POST, "/openai/deployments/%s/chat/completions".formatted(appUrl), null, """
-                    {"messages":[{"role":"user","content":"how are you?"}]}
-                    """, "api-key", orchestratorKey.getPerRequestKey(), "Content-Type", "application/json");
-            assertEquals(200, completion.status(), () -> "Body: " + completion.body());
+            List<String> events = captureAuditEvents(appUrl, () -> {
+                Response completion = send(HttpMethod.POST, "/openai/deployments/%s/chat/completions".formatted(appUrl), null, """
+                        {"messages":[{"role":"user","content":"how are you?"}]}
+                        """, "api-key", orchestratorKey.getPerRequestKey(), "Content-Type", "application/json");
+                assertEquals(200, completion.status(), () -> "Body: " + completion.body());
+            });
+            assertEquals(1, events.size(), () -> "Events: " + events);
+            assertTrue(events.get(0).startsWith("event=resource_dependency_denial"), events.get(0));
+            assertTrue(events.get(0).contains("targets=" + targetPath), events.get(0));
+            assertTrue(events.get(0).contains("source_deployment=testapp"), events.get(0));
         }
 
-        // Without D-24's exclusions this test's write would pass at 200 — the orchestrator's own
-        // grant laundered straight through into the declaring app's key.
         assertEquals(403, targetStatus.get(),
                 "a grant already held by the calling app must not satisfy the called app's reach check");
     }
@@ -470,7 +508,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
         }
 
         assertEquals(200, targetStatus.get(),
-                "a chained MCP hop must resolve its own declaration against the originating user");
+                "a chained MCP hop must resolve its own declaration against the initiator");
     }
 
     @Test
@@ -508,30 +546,19 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                 return TestWebServer.createResponse(200, "{\"result\":\"ok\"}", "Content-Type", "application/json");
             });
 
-            Response completion = send(HttpMethod.POST, "/v1/deployments/" + appUrl + "/mcp", null, """
-                    {"payload":"foo"}
-                    """, "api-key", orchestratorKey.getPerRequestKey(), "Content-type", "application/json");
-            assertEquals(200, completion.status(), () -> "Body: " + completion.body());
+            List<String> events = captureAuditEvents(appUrl, () -> {
+                Response completion = send(HttpMethod.POST, "/v1/deployments/" + appUrl + "/mcp", null, """
+                        {"payload":"foo"}
+                        """, "api-key", orchestratorKey.getPerRequestKey(), "Content-type", "application/json");
+                assertEquals(200, completion.status(), () -> "Body: " + completion.body());
+            });
+            assertEquals(1, events.size(), () -> "Events: " + events);
+            assertTrue(events.get(0).startsWith("event=resource_dependency_denial"), events.get(0));
+            assertTrue(events.get(0).contains("targets=" + targetPath), events.get(0));
+            assertTrue(events.get(0).contains("source_deployment=testapp"), events.get(0));
         }
 
         assertEquals(403, targetStatus.get(),
                 "a grant already held by the calling app must not satisfy the called app's reach check over MCP");
-    }
-
-    private static List<String> captureAuditEvents(String appUrl, Runnable action) {
-        Logger auditLogger = (Logger) LoggerFactory.getLogger("DIAL_RESOURCE_DEPS_AUDIT");
-        ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        auditLogger.addAppender(appender);
-        try {
-            action.run();
-        } finally {
-            auditLogger.detachAppender(appender);
-        }
-        return appender.list.stream()
-                .map(ILoggingEvent::getFormattedMessage)
-                .filter(message -> message.startsWith("event=resource_dependency_")
-                        && message.contains("application_id=" + appUrl + " "))
-                .toList();
     }
 }

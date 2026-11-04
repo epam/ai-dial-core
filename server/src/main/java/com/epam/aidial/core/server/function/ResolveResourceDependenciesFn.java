@@ -5,7 +5,6 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceDependency;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AuthBucket;
 import com.epam.aidial.core.server.data.consent.Consent;
 import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
@@ -31,22 +30,13 @@ import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 /**
- * Request-start resolution of the called application's declared resource dependencies (design
- * §7.1): resolve each declared target, verify it fresh against the originating user's reach,
- * intersect with the content-bound admin-consent record, and bake the passing grants into the
- * per-request key the application will hold — the app never asks for a credential; the key it
- * already holds gets richer. A record is a request, not a grant: nothing here widens anything
- * the user cannot already reach.
+ * Request-start resolution of the called application's declared resource dependencies: resolve
+ * each declared target, verify it against the request initiator's reach, intersect with the
+ * admin-consent record, and bake the passing grants into the per-request key the application will
+ * hold. A record is a request, not a grant: nothing here widens anything the user cannot reach.
  *
- * <p><b>Every hop, one rule.</b> Resolution runs identically on the root user call and on any
- * chained or interceptor hop. Identity is not the obstacle it was once thought to be:
- * {@code ApiKeyData.initFromContext} propagates {@code extractedClaims} and {@code originalKey}
- * at every depth, so {@code ProxyContext.userId} is always the originating human — which is why
- * placeholder targets resolve correctly through {@code BucketBuilder.buildInitiatorBucket} at
- * any depth. Only the reach check needed care: the general permission chain's own-bucket rule
- * deliberately flips to the per-request key holder's sandbox, so reach is evaluated through
- * {@code AccessService.lookupOriginatingUserPermissions} — own bucket as the human, shared,
- * public — and never through rules that read the calling key's own grants (D-24).
+ * <p>Runs on every hop of a call chain; reach is evaluated by
+ * {@code AccessService.lookupInitiatorPermissions}, never against the calling key's own grants.
  */
 public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
 
@@ -114,7 +104,7 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
     }
 
     /**
-     * Bakes the targets the originating user can reach with the declared rights; tracks the rest as unresolved.
+     * Bakes the targets the initiator can reach with the declared rights; tracks the rest as unresolved.
      */
     private List<Consent.ResourceEntry> bakeReachableGrants(List<Resolved> resolvedTargets,
                                                             List<ResourceDependency> unresolvedDeps,
@@ -125,11 +115,11 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
         }
         // One batched walk of the permission chain for all resolved targets.
         Set<ResourceDescriptor> targets = resolvedTargets.stream().map(Resolved::target).collect(Collectors.toSet());
-        Map<ResourceDescriptor, Set<ResourceAccessType>> userAccessByTarget =
-                proxy.getAccessService().lookupOriginatingUserPermissions(targets, context);
+        Map<ResourceDescriptor, Set<ResourceAccessType>> initiatorAccessByTarget =
+                proxy.getAccessService().lookupInitiatorPermissions(targets, context);
         for (Resolved resolved : resolvedTargets) {
-            Set<ResourceAccessType> userAccess = userAccessByTarget.getOrDefault(resolved.target(), Set.of());
-            if (userAccess.containsAll(resolved.access())) {
+            Set<ResourceAccessType> initiatorAccess = initiatorAccessByTarget.getOrDefault(resolved.target(), Set.of());
+            if (initiatorAccess.containsAll(resolved.access())) {
                 bakeGrant(resolved.target(), resolved.access());
                 granted.add(entryOf(resolved.dependency()));
             } else {
@@ -145,12 +135,14 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
     }
 
     private void bakeGrant(ResourceDescriptor target, Set<ResourceAccessType> requestedAccess) {
-        // Union semantics, like every other grant writer: two records targeting the same URL
-        // with different rights must combine, not overwrite each other.
-        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
-        proxyApiKeyData.getPerRequestSharedResources()
-                .computeIfAbsent(target.getUrl(), key -> new PerRequestSharedData(new HashSet<>()))
-                .permissions().addAll(requestedAccess);
+        // Union with any existing entry, copy-on-write: the entry may be shared with the calling key's receivers
+        context.getProxyApiKeyData().getPerRequestSharedResources().merge(target.getUrl(),
+                new PerRequestSharedData(new HashSet<>(requestedAccess)),
+                (existing, added) -> {
+                    Set<ResourceAccessType> union = new HashSet<>(existing.permissions());
+                    union.addAll(added.permissions());
+                    return new PerRequestSharedData(union);
+                });
     }
 
     private static void trackUnresolved(@Nullable ResourceDependency dependency,
@@ -207,7 +199,7 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
 
     /**
      * Resolves a declared target path to a descriptor: a {@code {type}/{current-user}/<path…>}
-     * path against the originating user's own bucket, a concrete {@code {type}/{bucket}/<path…>}
+     * path against the initiator's own bucket, a concrete {@code {type}/{bucket}/<path…>}
      * path as-is. Null when the record is malformed — an unresolvable record, never a crash.
      */
     @Nullable

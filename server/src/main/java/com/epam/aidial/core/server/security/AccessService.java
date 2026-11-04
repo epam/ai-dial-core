@@ -37,7 +37,6 @@ import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import javax.annotation.Nullable;
 
 
 @Slf4j
@@ -71,16 +70,11 @@ public class AccessService {
             this::getOwnResourcesAccessForChainedSchemaRichApplication);
 
     /**
-     * Reach as the <b>originating human</b>, independent of how deep in a call chain the request
-     * is. Three rules, and deliberately only three (D-24): the human's own bucket via
-     * {@link BucketBuilder#buildInitiatorBucket} (never the PRK holder's sandbox), what has been
-     * shared with the human, and what is public to the human's roles. Every rule that reads the
-     * <i>current per-request key holder's</i> state is excluded — otherwise a calling app could
-     * launder grants it already holds into satisfying the next app's independent reach check.
-     * Used by resource-dependency resolution only; the general chain is {@link #permissionRules}.
+     * Reach of the request initiator at any call-chain depth: own bucket, shared, public. Rules that read
+     * the calling per-request key's grants are excluded, so a calling app cannot launder them.
      */
-    private final List<PermissionRule> originatingUserPermissionRules = List.of(
-            (resources, context) -> ownBucketAccess(resources, BucketBuilder.buildInitiatorBucket(context)),
+    private final List<PermissionRule> initiatorPermissionRules = List.of(
+            AccessService::getInitiatorResourcesAccess,
             this::getSharedAccess,
             this::getPublicAccess);
 
@@ -203,16 +197,11 @@ public class AccessService {
     }
 
     /**
-     * Permissions the <b>originating user</b> holds on {@code resources}, evaluated identically at
-     * the root call and at any depth in a chain. Not a variant of {@link #lookupPermissions}: it
-     * answers a narrower question — "what can the human behind this request reach on their own
-     * standing" — over a purpose-built rule set (see {@link #originatingUserPermissionRules}).
-     * Resource-dependency resolution is the only caller; do not widen it into a general-purpose
-     * permission API without revisiting D-24's exclusions.
+     * Permissions the request initiator holds on {@code resources} on their own standing; used by resource-dependency resolution.
      */
-    public Map<ResourceDescriptor, Set<ResourceAccessType>> lookupOriginatingUserPermissions(
+    public Map<ResourceDescriptor, Set<ResourceAccessType>> lookupInitiatorPermissions(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        return lookupPermissions(resources, context, ResourceAccessType.ALL, originatingUserPermissionRules);
+        return lookupPermissions(resources, context, ResourceAccessType.ALL, initiatorPermissionRules);
     }
 
     @VisibleForTesting
@@ -305,30 +294,27 @@ public class AccessService {
         Map<String, PerRequestSharedData> perRequestSharedResources = context.getApiKeyData().getPerRequestSharedResources();
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         for (ResourceDescriptor resource : resources) {
-            String resourceUrl = resource.getUrl();
-            PerRequestSharedData data = perRequestSharedResources.get(resourceUrl);
-            if (data != null) {
-                result.put(resource, data.permissions());
-                continue;
-            }
-            Set<ResourceAccessType> folderPermissions = findFolderPermissions(perRequestSharedResources, resourceUrl);
-            if (folderPermissions != null) {
-                result.put(resource, folderPermissions);
+            Set<ResourceAccessType> permissions = findPermissions(perRequestSharedResources, resource.getUrl());
+            if (!permissions.isEmpty()) {
+                result.put(resource, permissions);
             }
         }
         return result;
     }
 
-    @Nullable
-    private static Set<ResourceAccessType> findFolderPermissions(Map<String, PerRequestSharedData> perRequestSharedResources,
-                                                                 String resourceUrl) {
+    /**
+     * Union of the rights of every entry covering {@code resourceUrl}: the exact URL and each folder above it.
+     */
+    private static Set<ResourceAccessType> findPermissions(Map<String, PerRequestSharedData> perRequestSharedResources,
+                                                           String resourceUrl) {
+        Set<ResourceAccessType> result = new HashSet<>();
         for (Map.Entry<String, PerRequestSharedData> entry : perRequestSharedResources.entrySet()) {
             String permittedUrl = entry.getKey();
-            if (ResourceUtil.isFolder(permittedUrl) && resourceUrl.startsWith(permittedUrl)) {
-                return entry.getValue().permissions();
+            if (permittedUrl.equals(resourceUrl) || (ResourceUtil.isFolder(permittedUrl) && resourceUrl.startsWith(permittedUrl))) {
+                result.addAll(entry.getValue().permissions());
             }
         }
-        return null;
+        return result;
     }
 
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getOwnResourcesAccess(
@@ -336,11 +322,13 @@ public class AccessService {
         return ownBucketAccess(resources, BucketBuilder.buildUserBucket(context));
     }
 
+    private static Map<ResourceDescriptor, Set<ResourceAccessType>> getInitiatorResourcesAccess(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
+        return ownBucketAccess(resources, BucketBuilder.buildInitiatorBucket(context));
+    }
+
     /**
-     * Resources living in {@code bucketLocation}, with full rights. The caller picks whose bucket
-     * that is: {@link BucketBuilder#buildUserBucket} — the PRK holder's own sandbox under a
-     * per-request key — for the general chain, {@link BucketBuilder#buildInitiatorBucket} — always
-     * the originating human — for {@link #lookupOriginatingUserPermissions}.
+     * Full rights on the resources in {@code bucketLocation}; callers pass the key holder's or the initiator's bucket.
      */
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> ownBucketAccess(
             Set<ResourceDescriptor> resources, String bucketLocation) {
