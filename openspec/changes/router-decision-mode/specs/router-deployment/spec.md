@@ -10,13 +10,15 @@ accounted, whether the router proxies the request itself or answers Core's decid
 ### Requirement: Decision interface mode
 Core SHALL read `interfaces.<type>.mode: decision` on a router, with the entry's own `base_url` as the URL of the
 decide request, an optional `context.body` (default `false`) and an optional `decisionTimeoutMs` (default 5000,
-must be positive). Core SHALL reject `decision` on a model or application (`Mode 'decision' is allowed on a router
-only`), a decision entry without its own `base_url` (`Mode 'decision' requires base_url`) and one declaring a
+must be positive). Core SHALL reject `decision` on any deployment that is not a router (`Mode 'decision' is allowed on a
+router only`), a decision entry without its own `base_url` (`Mode 'decision' requires base_url`) and one declaring a
 `translator`.
 
-#### Scenario: Decision mode on a model rejected
-- **WHEN** the config declares `models.m` with `interfaces.openaiChatCompletions: {"mode": "decision", "base_url": "http://r/decide"}`
-- **THEN** the config is rejected with a message containing `Mode 'decision' is allowed on a router only`
+#### Scenario: Decision mode on a model or application rejected
+- **WHEN** the config declares `models.m` with `interfaces.openaiChatCompletions: {"mode": "decision", "base_url": "http://r/decide"}`,
+  or `applications.a` with the same entry
+- **THEN** the config is rejected with a message containing `Mode 'decision' is allowed on a router only`, and an
+  admin `PUT /v1/applications/platform/a` with that entry is answered `422` with the same message
 
 #### Scenario: Decision entry needs its own url
 - **WHEN** the config declares `routers.r1` with `baseUrl: http://router` and `interfaces.openaiChatCompletions: {"mode": "decision"}`
@@ -37,11 +39,10 @@ empty body, or the client's request bytes unchanged when `context.body` is `true
 #### Scenario: Headers and empty body
 - **WHEN** `routers.r1` declares `defaultHeaders: {"X-DIAL-ROUTER-TIER": "medium"}` and
   `interfaces.openaiChatCompletions: {"mode": "decision", "base_url": "http://router/decide"}`, and a client with
-  project key `p1` sends `POST /openai/deployments/r1/chat/completions` with `X-CONVERSATION-ID: c1` and
-  `Authorization: Bearer t`
+  project key `p1` sends `POST /openai/deployments/r1/chat/completions` with `X-CONVERSATION-ID: c1`
 - **THEN** the router receives `POST http://router/decide` with `X-CONVERSATION-ID: c1`, `X-DIAL-ROUTER-TIER: medium`,
-  `X-DIAL-ROUTER: r1`, `X-DIAL-API: openaiChatCompletions`, `X-DIAL-USER-INFO` with `project: "p1"`, no
-  `Authorization`, no `API-KEY`, and an empty body
+  `X-DIAL-ROUTER: r1`, `X-DIAL-API: openaiChatCompletions`, `X-DIAL-USER-INFO` with `project: "p1"`, no `API-KEY`,
+  and an empty body, and the model that serves the request receives no `X-DIAL-ROUTER-TIER` header
 
 #### Scenario: Body on request
 - **WHEN** the same interface declares `context: {"body": true}` and the client sends body `{"model":"r1","messages":[]}`
@@ -76,6 +77,7 @@ is a router SHALL be rejected.
 #### Scenario: Messages body model rewritten
 - **WHEN** a client sends `POST /anthropic/v1/messages` with `{"model": "r1", ...}` and the router answers `{"candidates": ["claude"]}`
 - **THEN** the model's origin receives a body whose `model` is `claude` (or `claude`'s `overrideName` when it has one)
+  and `X-DIAL-DEPLOYMENT-ID: claude`
 
 #### Scenario: Chosen model's limits checked against the caller
 - **WHEN** the caller's role declares `limits.gpt-4.requestMinute: 1`, the caller has already used it this minute,
@@ -85,6 +87,22 @@ is a router SHALL be rejected.
 #### Scenario: Candidate is a router
 - **WHEN** the router answers `{"candidates": ["r2"]}` and `r2` is a router
 - **THEN** Core answers `502` and sends nothing to `r2`
+
+#### Scenario: Embeddings decided and served
+- **WHEN** `r1` serves `openaiEmbeddings` in decision mode, a client sends `POST /openai/deployments/r1/embeddings`
+  and the router answers `{"candidates": ["ada"]}`
+- **THEN** `ada`'s origin receives `POST .../openai/deployments/ada/embeddings` and the client receives its answer
+
+### Requirement: Decision after the router's interceptors
+When the config declares `globalInterceptors`, Core SHALL send a request to a router through them first, as for any
+deployment, and SHALL run the decision in the pass that reaches the router after the chain; the chosen
+deployment's key path SHALL then be the interceptor chain's path followed by the chosen deployment.
+
+#### Scenario: Global interceptor before the decision
+- **WHEN** the config declares `globalInterceptors: ["i1"]`, a client calls `r1` and the router answers
+  `{"candidates": ["gpt-4"]}`
+- **THEN** `i1` receives the request first, the decide request is sent once, when `i1` calls Core back, and the key
+  `gpt-4` receives has `executionPath: ["r1", "i1", "gpt-4"]`
 
 ### Requirement: Candidate walk
 Core SHALL try the candidates in order: one the caller may not use, whose limits are exhausted, that does not serve
@@ -110,9 +128,10 @@ Core SHALL answer the last failure. No fallback after a non-retriable answer or 
 - **THEN** the client receives that `400` and nothing is sent to `m2`
 
 ### Requirement: Decision failures
-Core SHALL answer `504` when the decide request exceeds `decisionTimeoutMs`, `502` when the router is unreachable or
-answers `5xx`, and SHALL relay a router `4xx` status and body to the client. In every case Core SHALL send nothing
-to any deployment and SHALL write no analytics row.
+Core SHALL answer `504` when the decide request exceeds `decisionTimeoutMs` (connecting included), `502` when the
+router is unreachable, answers `5xx`, or names a candidate that does not exist or is a router, or when the router is
+re-entered through a deployment it chose, and SHALL relay a router `4xx` status and body to the client. In every
+case Core SHALL send nothing to any deployment and SHALL write no analytics row.
 
 #### Scenario: Slow router
 - **WHEN** `decisionTimeoutMs: 200` and the router takes 2 s to answer
@@ -126,13 +145,24 @@ to any deployment and SHALL write no analytics row.
 - **WHEN** nothing listens on the decide URL
 - **THEN** Core answers `502`
 
+#### Scenario: Unknown last candidate
+- **WHEN** the router answers `{"candidates": ["private-a", "no-such-model"]}` and the caller may not use `private-a`
+- **THEN** Core answers `502`
+
+#### Scenario: Router re-entered through an application
+- **WHEN** the router answers `{"candidates": ["app"]}` and `app` calls `POST /openai/deployments/r1/chat/completions`
+  back with its per-request key
+- **THEN** that call is answered `502` and no second decide request is sent
+
 ### Requirement: Decision record
-For a request served through a decision, Core SHALL write one analytics row, for the deployment that served, with
-`execution_path` starting with the router's name, `parent_deployment` the router's name, and a `decision` object:
-`router`, `api`, `candidates`, `deployment` (the one that served), `decide_ms`, `attempts` (candidates tried
-before it, with their reasons).
+For a request served through a decision, other than a background Responses job, Core SHALL write one analytics
+row, for the deployment that served, with the router's name before it in `execution_path`, `parent_deployment` the
+router's name, and a `decision` object: `router`, `api`, `candidates`, `deployment` (the one that served),
+`decide_ms`, `attempts` (each `deployment`, `status`, `reason` of a candidate tried before it).
 
 #### Scenario: Row of a decided request
 - **WHEN** the router `r1` answers `{"candidates": ["m1", "m2"]}`, `m1` is skipped for a `503` and `m2` serves
 - **THEN** the row has `deployment: "m2"`, `execution_path: ["r1", "m2"]`, `parent_deployment: "r1"` and
-  `decision.candidates: ["m1", "m2"]`, `decision.deployment: "m2"`, `decision.attempts: [{"deployment": "m1", "status": 503}]`
+  `decision.router: "r1"`, `decision.api: "openaiChatCompletions"`, `decision.candidates: ["m1", "m2"]`,
+  `decision.deployment: "m2"`, a numeric `decision.decide_ms` and
+  `decision.attempts: [{"deployment": "m1", "status": 503, "reason": "upstream"}]`

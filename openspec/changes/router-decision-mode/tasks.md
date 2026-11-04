@@ -1,9 +1,11 @@
 # Tasks
 
-Spec scenario to test. `router-deployment`: "Decision mode on a model rejected", "Decision entry needs its own url":
-`ConfigPostProcessorTest`; "Decision for one interface, proxy for another", "Headers and empty body", "Body on
+Spec scenario to test. `router-deployment`: "Decision mode on a model or application rejected" (file and `PUT`), "Decision entry needs its own url":
+`ConfigPostProcessorTest` and `ConfigEntityWriteApiTest`; "Decision for one interface, proxy for another", "Headers and empty body", "Body on
 request", "Shorthand accepted", "Schema mismatch", "Deployments-POST served by the chosen model", "Messages body
-model rewritten", "Chosen model's limits checked against the caller", "Candidate is a router", "Forbidden first
+model rewritten", "Chosen model's limits checked against the caller", "Candidate is a router", "Embeddings decided
+and served", "Global interceptor before the decision", "Unknown last candidate", "Router re-entered through an
+application", "Forbidden first
 candidate skipped", "Failing first candidate skipped", "Every candidate forbidden", "Non-retriable answer relayed",
 "Slow router", "Router rejects the request", "Router down": `RouterDecisionApiTest` (new, integration); "Row of a
 decided request": `GfLogStoreTest` plus the row assertion in `RouterDecisionApiTest` "Failing first candidate
@@ -23,27 +25,31 @@ Prerequisite: change `router-entity` applied on the same branch (its `Router`, f
   `/decide`, `openaiResponses` proxied, `defaultHeaders: {"X-DIAL-ROUTER-TIER": "medium"}`; router `r2`; models
   `gpt-4` (with `overrideName: gpt-4-real`), `claude`, `m1`, `m2`, `private-a`, `private-b` (roles the test key
   lacks); a role with `limits.gpt-4.requestMinute: 1`; verify it loads in a `FileConfigStoreTest` case.
-- [ ] 1.3 Tests first in `ConfigPostProcessorTest`: "Decision mode on a model rejected", "Decision entry needs its
-  own url", decision with a translator rejected, `decisionTimeoutMs: 0` rejected, a valid router entry accepted;
-  then the `DECISION` branch in `validateDeploymentInterfaces` (design D1).
+- [ ] 1.3 Tests first in `ConfigPostProcessorTest` (file) and `ConfigEntityWriteApiTest` (`PUT` of an application
+  with a decision entry answers `422`): "Decision mode on a model or application rejected", "Decision entry needs
+  its own url", decision with a translator rejected, `decisionTimeoutMs: 0` rejected, an interceptor with a
+  decision entry rejected, a valid router entry accepted; then the checks in the per-entry loop (design D1).
+  `InterfaceMode.DECISION` keeps `subjectToLimits` true: a unit test asserts it.
 - [ ] 1.4 `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests
   "com.epam.aidial.core.server.config.ConfigPostProcessorTest" --tests
-  "com.epam.aidial.core.server.config.FileConfigStoreTest"` pass.
+  "com.epam.aidial.core.server.config.FileConfigStoreTest" --tests
+  "com.epam.aidial.core.server.ConfigEntityWriteApiTest"` pass.
 
 ## 2. Decide client
 
 - [ ] 2.1 Write the failing `RouterDecisionApiTest` cases (new class, `extends ResourceBaseTest`,
   `@DialConfigLocation("dial-config/router-decision.json")`, one `TestWebServer` serving `/decide` and the model
-  paths, capturing the decide request): "Headers and empty body", "Body on request", "Shorthand accepted",
-  "Schema mismatch" (three bodies), "Slow router" (`decisionTimeoutMs: 200`, handler sleeps 2 s, assert `504` and
+  paths, capturing the decide request): "Headers and empty body" and "Body on request" (asserting the decide request
+  only; the served answer is group 3's), "Schema mismatch" (three bodies), "Slow router" (`decisionTimeoutMs: 200`, handler sleeps 2 s, assert `504` and
   elapsed under 1 s), "Router rejects the request" (`400` body relayed byte for byte), "Router down" (decide URL on
   a closed port, `502`).
-- [ ] 2.2 Extract the shared helpers design D2 names: the exclude-list builder out of `sendProxyRequest` and the
-  default-headers loop out of `ApplyDefaultDeploymentSettingsFn`; verify `./gradlew :server:test --tests
-  "com.epam.aidial.core.server.DeploymentApiTest" --tests "com.epam.aidial.core.server.RouterApiTest"` still pass.
-- [ ] 2.3 `RouterDecisionClient` with `Verdict` and `DecisionRejectedException` (design D2), `ProxyContext.decision`
-  and `originalRequestBody`; `decideIfRouter` on `BaseDeploymentPostController` wired into
-  `DeploymentPostController.handleDeployment` only, so the 2.1 cases run on deployments-POST; verify they pass.
+- [ ] 2.2 `RouterDecisionClient` with `Verdict` and `DecisionRejectedException` (design D2: router default headers
+  and the three exclusions written on the decide request, no shared helper), `ProxyContext.decision` and
+  `originalRequestBody`; `decideIfRouter` on `BaseDeploymentPostController` with its two guards, wired into
+  `DeploymentPostController.handleDeployment` only; verify the failure cases of 2.1 pass (the two request-shape
+  cases pass once group 3 serves the answer).
+- [ ] 2.3 Unit test for the verdict parser and the status mapping (timeout `504`, `5xx` `502`, `4xx` relayed, bad
+  JSON `502`) against a `MockWebServer`, in a new `RouterDecisionClientTest`; verify it passes.
 - [ ] 2.4 `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests
   "com.epam.aidial.core.server.RouterDecisionApiTest"` pass.
 
@@ -52,10 +58,12 @@ Prerequisite: change `router-entity` applied on the same branch (its `Router`, f
 - [ ] 3.1 Tests first in `RouterDecisionApiTest`: "Deployments-POST served by the chosen model" (origin path with
   `gpt-4-real`, per-request `API-KEY`, `X-DIAL-OVERRIDE-NAME`), "Chosen model's limits checked against the caller"
   (second request `429`, nothing sent), "Candidate is a router" (`502`), "Decision interface is not proxied" (the
-  decide handler never sees a chat completion body), and an embeddings call to `r1` decided and served.
-- [ ] 3.2 Re-entry in `DeploymentPostController`: `handleDeployment(candidate)` after the decision, the router
-  guard, `handleRateLimitSuccess` reading the saved body when present, `nextCandidateOrFalse` at the top of
-  `handleRequestError` and `handleRateLimitHit` (design D3); verify the 3.1 cases pass.
+  decide handler never sees a chat completion body), "Shorthand accepted", "Embeddings decided and served",
+  "Unknown last candidate", and an unparsable body after the decision answers one `400` with no second decide call.
+- [ ] 3.2 Re-entry in `DeploymentPostController`: `handleDeployment(candidate)` after the decision,
+  `handleRateLimitSuccess` reading the saved body when present, `nextCandidateOrFalse` at the top of
+  `handleRequestError` and `handleRateLimitHit`, `resolving` cleared before `handleRateLimitSuccess` (design D3);
+  verify the 3.1 cases pass.
 - [ ] 3.3 `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests
   "com.epam.aidial.core.server.RouterDecisionApiTest" --tests
   "com.epam.aidial.core.server.controller.DeploymentPostControllerTest"` pass.
@@ -63,19 +71,20 @@ Prerequisite: change `router-entity` applied on the same branch (its `Router`, f
 ## 4. Serving the chosen deployment on the body-addressed APIs
 
 - [ ] 4.1 Tests first in `RouterDecisionApiTest`: "Messages body model rewritten" (origin body `model` is the
-  candidate's override name, `X-DIAL-DEPLOYMENT-ID` names the candidate), the same shape for
+  candidate's override name, `X-DIAL-DEPLOYMENT-ID` names the candidate), "Global interceptor before the decision"
+  on deployments-POST and `/openai/v1/chat/completions` (a fixture variant with `globalInterceptors: ["i1"]`), the same shape for
   `/openai/v1/chat/completions` and `/openai/v1/responses`, "Decision for one interface, proxy for another"
   (Responses to `r1` lands on `/openai/v1/responses` of the router, no decide call), and `count_tokens` for `r1`
   decided and counted on the chosen model.
 - [ ] 4.2 The D3 sequence in `ChatCompletionsController.dispatch`, `ResponsesController.dispatch` and
   `MessagesBaseController.handle` (`originalRequestBody` in each `parseBody`, `decideIfRouter`,
-  `setupDeployment(candidate)`, `setModel`, the `deploymentId` field in Messages, `nextCandidateOrFalse` in each
-  `handleRequestError`); verify the 4.1 cases pass.
+  `setupDeployment(candidate)`, `setModel`, the interceptor branch for the candidate, the `deploymentId` field in
+  Messages, `nextCandidateOrFalse` in each `handleRequestError`, `resolving` cleared before `proceedToDeployment`);
+  verify the 4.1 cases pass.
 - [ ] 4.3 `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests
   "com.epam.aidial.core.server.RouterDecisionApiTest" --tests
   "com.epam.aidial.core.server.controller.ChatCompletionsControllerTest" --tests
-  "com.epam.aidial.core.server.ResponsesApiTest" --tests "com.epam.aidial.core.server.AnthropicMessagesApiTest"` pass
-  (use the existing Responses and Messages API test class names if they differ).
+  "com.epam.aidial.core.server.ResponsesApiTest" --tests "com.epam.aidial.core.server.MessagesApiTest"` pass.
 
 ## 5. Candidate walk
 
@@ -83,7 +92,9 @@ Prerequisite: change `router-entity` applied on the same branch (its `Router`, f
   "Forbidden first candidate skipped" (nothing sent to `private-model`), "Failing first candidate skipped" (`m1`'s
   upstream answers `503`, `m2` serves, exactly one `API-KEY` remains valid: the failed attempt's key answers `401`
   or `403` on a call back), "Every candidate forbidden" (`403`), "Non-retriable answer relayed" (`m1` answers
-  `400`, nothing sent to `m2`), and a chosen deployment with an interceptor whose model then fails is not retried.
+  `400`, nothing sent to `m2`), "Router re-entered through an application" (the application stub calls `r1` back
+  with its per-request key and receives `502`; one decide request in total), and a chosen deployment with an
+  interceptor whose model then fails is not retried.
 - [ ] 5.2 `retryWithNextCandidate` in `BaseDeploymentPostController` hooked into `nextUpstream()` exhaustion and
   `handleProxyConnectionError`, the per-controller `reenterWithCandidate`, key invalidation of the failed attempt,
   closing the decision when the chosen deployment has interceptors, releasing the saved body at the first response
@@ -94,11 +105,13 @@ Prerequisite: change `router-entity` applied on the same branch (its `Router`, f
 ## 6. Accounting
 
 - [ ] 6.1 Tests first: `GfLogStoreTest` "Row of a decided request" (an `AnalyticsLogContext` with a decision writes
-  `execution_path`, `parent_deployment` and the `decision` object as the scenario states); in
+  `execution_path`, `parent_deployment` and the `decision` object with exactly the snake_case fields the scenario
+  states, and a background job row writes none); in
   `RouterDecisionApiTest` "Root key record after a decision" (read the key record the model received, as the
   existing per-request-key tests do) and "One row for a decided request" plus the row assertion of "Failing first
   candidate skipped" (through the analytics log capture the existing row tests use).
-- [ ] 6.2 `ApiKeyData.initFromContext` adds the router before the receiver when a decision is set;
+- [ ] 6.2 `ApiKeyData.initFromContext` adds the router before the receiver when a decision is set and the pass is
+  not an interceptor callback;
   `AnalyticsLogContext.decision` and the `GfLogStore` block (design D5); verify the 6.1 tests pass.
 - [ ] 6.3 `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests
   "com.epam.aidial.core.server.log.GfLogStoreTest" --tests "com.epam.aidial.core.server.RouterDecisionApiTest"` pass.
@@ -116,9 +129,8 @@ Prerequisite: change `router-entity` applied on the same branch (its `Router`, f
 
 ## 8. Integration checks
 
-- [ ] 8.1 Grep `server/src/main` for every `resolveServingEndpoint` caller and every path that forwards a client
-  body to an interface url; list each in design.md with whether the decision step guards it. Expected: the four
-  flows of design D3.
+- [ ] 8.1 Re-check the `resolveServingEndpoint` caller list in design D6 against the code as merged; record any
+  new caller and whether the step or the retarget covers it.
 - [ ] 8.2 `npx -y @fission-ai/openspec@1.14.3 validate router-decision-mode --strict` passes and every scenario at
   the top of this file names a test that exists and passes.
 - [ ] 8.3 `./gradlew :server:test` (full module suite) passes locally, or the failures are shown unrelated with the

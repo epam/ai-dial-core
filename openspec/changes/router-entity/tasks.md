@@ -1,12 +1,12 @@
 # Tasks
 
 Spec scenario to test: `router-deployment` "Router loads with interfaces", "Chat completion proxied to the router",
-"Messages request proxied to the router", "Interface the router does not declare", "Listing filtered by role",
+"Messages request proxied to the router", "Embeddings proxied to the router", "Interface the router does not declare", "Listing filtered by role",
 "Single router by role", "Router hidden from the model and deployment listings", "Exhausted request limit on the
 router does not refuse", "Model called back is still charged", "JWT caller", "Project-key caller", "Not added for
 an application": `RouterApiTest` (new, integration). "Router with upstreams rejected", "Router name taken by a
-model": `FileConfigStoreTest`. "Router with interceptors rejected", "Pass-through entry with no url anywhere",
-"Translator without mode": `ConfigPostProcessorTest`. `request-routing` "Router listing", "Single router":
+model": `FileConfigStoreTest`. "Router with interceptors rejected", "Router with a legacy endpoint rejected", "Pass-through entry with no url
+anywhere", "Translator without mode": `ConfigPostProcessorTest`. `request-routing` "Router listing", "Single router":
 `ControllerSelectorTest`. `app-to-model-accounting` "Router not checked on the Messages API": `RouterApiTest`.
 `deployment-origin` "Client identity header dropped for a model", "Router identity header": `RouterApiTest`.
 
@@ -14,7 +14,7 @@ model": `FileConfigStoreTest`. "Router with interceptors rejected", "Pass-throug
 
 - [ ] 1.1 Add `config/.../Router.java` (`extends Deployment`, design D1), `Config.routers` with the namespace comment,
   and `Config.selectDeployment` looking routers up before interceptors; verify `./gradlew :config:compileJava`.
-- [ ] 1.2 Add `ResourceTypes.ROUTER("routers", true, 30 days)` to the enum, `EVENT_TYPES` and `of()` (design D4);
+- [ ] 1.2 Add `ResourceTypes.ROUTER("routers", true, 30 days)` to the enum and `EVENT_TYPES`, not to `of()` (design D4);
   verify the existing `storage` tests still pass with `./gradlew :storage:test`.
 - [ ] 1.3 Add the test fixture `server/src/test/resources/dial-config/routers.json`: routers `r1` (roles
   `analysts`, `baseUrl` on the test server port, `openaiChatCompletions` and `anthropicMessages` interfaces) and
@@ -22,10 +22,11 @@ model": `FileConfigStoreTest`. "Router with interceptors rejected", "Pass-throug
   `limits.r1.requestMinute: 1`, `limits.r1.requestHour: 1`; verify it loads in a `FileConfigStoreTest` case.
 - [ ] 1.4 `ConfigPostProcessor`: `rejectSlashKeyedNames` for routers in `processStructural`; `processRouters` in
   `processSemantic` after `processToolSets` (dedupe, `setName`, interfaces validation, `A router declares no
-  interceptors`); `ROUTER` in `isDeploymentIdTakenByAnotherDeploymentType`; widen `validateDeploymentInterfaces`
+  interceptors`, `A router declares interfaces, not endpoint`); `ROUTER` in `isDeploymentIdTakenByAnotherDeploymentType`; widen `validateDeploymentInterfaces`
   and `validateTranslatedInterface` to `Deployment` with a kind name (design D2). Tests first in
-  `ConfigPostProcessorTest`: "Router with interceptors rejected", "Pass-through entry with no url anywhere",
-  "Translator without mode", and a model case asserting the `Model 'm': ...` prefix is unchanged.
+  `ConfigPostProcessorTest`: "Router with interceptors rejected", "Router with a legacy endpoint rejected", "Pass-through entry with no
+  url anywhere" (asserting the `Router 'r1'` prefix and the `router declares no baseUrl` tail), "Translator
+  without mode", and a model case asserting the `Model 'm': ...` message is unchanged.
 - [ ] 1.5 `FileConfigStoreTest`: "Router with upstreams rejected" (config with `routers.r1.upstreams` fails to
   load) and "Router name taken by a model" (`models.x` plus `routers.x` fails under the default policy); verify
   both fail before 1.4 and pass after.
@@ -41,7 +42,8 @@ model": `FileConfigStoreTest`. "Router with interceptors rejected", "Pass-throug
 - [ ] 2.1 Write the failing `RouterApiTest` cases (new class, `extends ResourceBaseTest`,
   `@DialConfigLocation("dial-config/routers.json")`, a `TestWebServer` as the router and the model): "Chat
   completion proxied to the router" (asserts the origin path, a per-request `API-KEY`, the features header),
-  "Messages request proxied to the router", "Interface the router does not declare" (`503`, no origin call).
+  "Messages request proxied to the router", "Embeddings proxied to the router", "Interface the router does not
+  declare" (`503`, no origin call).
 - [ ] 2.2 `UpstreamRouteProvider.getKey`: `case Router ignored -> "router"` (design D5); verify the three 2.1 cases pass.
 - [ ] 2.3 `BaseDeploymentPostController.isSubjectToLimits`: false for a `Router` (design D5). Tests first in
   `RouterApiTest`: "Exhausted request limit on the router does not refuse" (`/openai/v1/chat/completions`,
@@ -81,9 +83,10 @@ model": `FileConfigStoreTest`. "Router with interceptors rejected", "Pass-throug
 
 ## 4. Docs
 
-- [ ] 4.1 Write `docs/dynamic-settings/routers.md` (design D8): the map and its fields, the pointer to
-  `models.md#interfaces`, no upstreams / limits / interceptors, `GET /v1/routers[/{id}]`, the `X-DIAL-USER-INFO`
-  header with its JSON shape and the header-size ceiling, with a JSON example that is the 1.3 fixture's `r1`;
+- [ ] 4.1 Write `docs/dynamic-settings/routers.md` (design D8): the map and its fields, a link to the `interfaces`
+  section of `models.md` (check the rendered anchor), no upstreams / limits / interceptors / legacy endpoint, what
+  `GET /v1/deployments/<router>/limits` shows, `GET /v1/routers[/{id}]`, the `X-DIAL-USER-INFO` header with its JSON
+  shape and the header-size ceiling, with a JSON example that is the 1.3 fixture's `r1`;
   verify the example loads by pasting it into a `FileConfigStoreTest` case or the fixture itself.
 - [ ] 4.2 Add the `routers` row to the README dynamic-settings table and the word `routers` to CLAUDE.md's
   dynamic-config line; verify both render with the links resolving.

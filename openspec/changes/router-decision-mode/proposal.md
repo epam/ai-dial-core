@@ -13,13 +13,16 @@ mechanism the perf improvement initiative measures against the in-process altern
 
 - A new interface mode `decision` for a router's `interfaces.<type>`: the entry's `base_url` is the URL Core POSTs
   the decide request to. Optional on the entry: `context.body` (default `false`, send the client's request body
-  with the decide request) and `decisionTimeoutMs` (default 5000). Config validation rejects `decision` on a model
-  or application, a decision entry without its own `base_url`, and one with a `translator`.
+  with the decide request) and `decisionTimeoutMs` (default 5000). Config validation rejects `decision` on any
+  deployment that is not a router, a decision entry without its own `base_url`, and one with a `translator`.
 - The decide request: the client's headers as Core forwards them to any origin, the router's `defaultHeaders`
   for the interface, `X-DIAL-USER-INFO` (change `router-entity`), `X-DIAL-ROUTER` and `X-DIAL-API`; an empty body
   unless `context.body` is true, then the client's bytes unchanged. No per-request key.
 - The verdict: `{"candidates": ["a", "b"]}` in order of preference, or `{"deployment": "a"}`. Unknown fields are
-  ignored. A candidate that is a router is rejected, so a router cannot chain to another.
+  ignored. A candidate that is a router is rejected, so a router cannot chain to another, and a router re-entered
+  through a deployment it chose (an application calling it back) answers `502`, which bounds that loop.
+- The decision runs in the pass that reaches the router after its global interceptors, on every interface type
+  the router declares, embeddings included.
 - Core serves the first usable candidate as if the client had called it: the caller's access, consent and
   per-request-key rules for that deployment, its limits against the caller, one per-request key, one span, the
   enhancement chain and the forward. On the body-addressed APIs (`/openai/v1/chat/completions`,
@@ -60,11 +63,12 @@ Out of scope, each a change of its own:
 Depends on change `router-entity` (same series, applied first): `Router`, `Config.routers`, the identity header
 and the router exemption from limits. Motivated by the router resource design, documentation MR 211
 (`design/router_resource.md`, "LLM routing protocol"). Of that section this change covers the opt-in mode, the
-flow, the verdict with Core ignoring unknown fields, the failure table and "no limits of its own". It changes four
+flow, the verdict with Core ignoring unknown fields, the failure table and "no limits of its own". It changes five
 things against MR 211, each recorded in design.md: the decide request carries headers and an optional raw body
 instead of the original request wrapped in an envelope; no scoped per-request key is sent; the verdict is an
 ordered candidate list because today's proxy router already falls back across candidates; the decision is a field
-on the chosen deployment's row rather than a simulated hop with its own row. It leaves out the delegation
+on the chosen deployment's row rather than a simulated hop with its own row; the decide call has its own timeout
+(`decisionTimeoutMs`) instead of Core's global client timeouts, whose 300 s idle bound is no bound for a decision. It leaves out the delegation
 mechanism, feedback to the router, request-parameter patches and the response `model` question.
 
 Code: module `config` (`InterfaceMode`, `DeploymentInterface`), the config validation, the three deployment
@@ -72,4 +76,4 @@ controllers and their shared base (the decision step, the re-entry with a candid
 points where a call is given up on), `ProxyContext`, the per-request key path, the analytics row, and a small
 decide client on the proxy's HTTP client. Docs: `docs/dynamic-settings/routers.md` (the mode, its fields, the
 decide contract and failure table), `docs/open_api_core.yaml` only if a schema changes (none expected). No new
-dependency, no migration.
+dependency; the rollback order is in design.md, Migration Plan.

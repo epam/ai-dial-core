@@ -13,6 +13,6 @@ kind, except a router, which is never checked or charged on any API (see router-
 - **THEN** Core forwards the request to `app`
 
 #### Scenario: Router not checked on the Messages API
-- **WHEN** user `u1`'s role declares `limits.r1.requestHour: 1` and `u1` has already sent one request to router `r1`
-  this hour, and `u1` sends `POST /anthropic/v1/messages` with `{"model": "r1", ...}`
-- **THEN** Core forwards the request to `r1`
+- **WHEN** user `u1`'s role declares `limits.r1.requestHour: 1` and `u1` sends two `POST /anthropic/v1/messages`
+  requests with `{"model": "r1", ...}` within one hour
+- **THEN** Core forwards both to `r1`

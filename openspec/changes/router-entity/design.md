@@ -26,8 +26,8 @@ What exists today, and what this change builds on:
 - `MergedConfigStore.rebuildMergedConfig` (1209-1395) copies every file map into the merged config (1217-1249) and
   `shallowClone` (1016-1037) copies every map on a partial update; a map left out of either is dropped silently.
 - Every listing iterates a named map, never "all deployments": `ModelController.getModels` (74-89),
-  `DeploymentController.getModels`/`listDeployments` (440, 153), `ApplicationController.getApplications` (147-166),
-  `ToolSetController.getToolSets` (130), `AnthropicModelController.getModels` (94-100), `LimitController.getUserLimits`
+  `DeploymentController.getModels`/`listDeployments` (440, 153), `ApplicationController.getApplications` (141),
+  `ToolSetController.getToolSets` (94), `AnthropicModelController.getModels` (94-100), `LimitController.getUserLimits`
   (126). `DeploymentController.getDeploymentInfo` (268) resolves any deployment and answers `404` for a kind its
   switch (277-284) does not know.
 - The POST paths treat an unknown `Deployment` subclass as an application everywhere but one place:
@@ -74,9 +74,10 @@ Reference: documentation MR 211, `design/router_resource.md`, sections "Resource
 
 `config/.../Router.java` is `public class Router extends Deployment {}` plus the Lombok annotations `Application`
 uses (`@Data @EqualsAndHashCode(callSuper = true)`). `upstreams`, `limits`, `pricing` and the application fields are
-rejected because the class does not declare them and the config mapper fails on unknown properties. The one field
-`Deployment` carries that a router must not use, `interceptors`, is rejected in `processRouters` with
-`A router declares no interceptors`.
+rejected because the class does not declare them and the config mapper fails on unknown properties. The `Deployment`
+fields a router must not use are rejected in `processRouters`: `interceptors` (`A router declares no
+interceptors`) and the legacy `endpoint` / `responsesEndpoint` (`A router declares interfaces, not endpoint`),
+which would otherwise serve the deployments-POST family through the legacy rule MR 211 excludes for routers.
 
 Rejected: a `Router` with explicit `@JsonIgnoreProperties(ignoreUnknown = false)` or hand-written field checks. The
 mapper default already does it; the integration test "Router with upstreams rejected" pins the behaviour so a later
@@ -86,7 +87,8 @@ mapper change cannot loosen it unnoticed.
 
 `validateDeploymentInterfaces(Model, ...)` and the `validateTranslatedInterface` it calls use only `Deployment`
 getters; the `Model` type appears in the signature and in the `"Model"` prefix of `messageWithEntityPrefix`. Change
-the parameter to `Deployment` and pass the kind name (`"Model"` / `"Router"`), and call it from `processRouters`.
+the parameter to `Deployment` and pass the kind name (`"Model"` / `"Router"`), used both as the message prefix and
+in the tail of `declares no base_url and the model declares no baseUrl`, and call it from `processRouters`.
 `validateModelInvariants` keeps its signature and semantics for the write paths. This keeps the
 `validate-config-on-every-write` rule trivially true for routers in this change, because routers have no write path
 yet; the follow-up admin change calls the same method from its PUT, validate and apply paths.
@@ -104,13 +106,13 @@ routers are file-only here, so no `routers/` blob is listed, parsed or decrypted
 
 ### D4. `ResourceTypes.ROUTER` is registered now, used later
 
-`ROUTER("routers", true, TimeUnit.DAYS.toMillis(30))`, added to `EVENT_TYPES` and to `of()`. `processRouters` needs
-the enum constant for `skipOnDuplicate` and `InvalidEntityException`, and the event-type rollout rule in the enum's
-Javadoc means listing it one release before the admin change is what lets that change rely on replica events at
-once. No URL reaches `of("routers")`: the resource and config-entity route regexes are closed lists that do not
-include `routers`, and `MergedConfigStore.isManagedEventUrl` (347) ignores a `routers/` event because
-`MANAGED_URL_SEGMENTS` does not list it. `AiDial.java:470` adds a `resourceTypesExpiration.ROUTER` default, which is
-harmless.
+`ROUTER("routers", true, TimeUnit.DAYS.toMillis(30))`, added to `EVENT_TYPES` but not to `of()`. `processRouters`
+needs the enum constant for `skipOnDuplicate` and `InvalidEntityException`, and the event-type rollout rule in the
+enum's Javadoc means listing it one release before the admin change is what lets that change rely on replica
+events at once. `of("routers")` stays unknown on purpose: it is what makes a `routers/...` URL parse in the share,
+publication and invitation services, and nothing in this change serves such a URL; the admin change adds it with
+the routes. `MergedConfigStore.isManagedEventUrl` (347) ignores a `routers/` event because `MANAGED_URL_SEGMENTS`
+does not list it. `AiDial.java:470` adds a `resourceTypesExpiration.ROUTER` default, which is harmless.
 
 Rejected: leaving the enum out and writing a router-specific duplicate check. More code, and the admin change
 would then span two releases.
@@ -131,14 +133,18 @@ non-`Model` (`collectTokenUsage` to `trackDeploymentStats`), and the analytics r
 column (`AnalyticsLogContext.from`, `GfLogStore:247-262`).
 
 Difference from today's behaviour, deliberate: a role's `limits.<router>` entry is ignored on the three APIs that
-would check it for an application. MR 211: "A router has no limits of its own."
+would check it for an application. MR 211: "A router has no limits of its own." `GET /v1/deployments/<router>/limits`
+(`LimitController.getDeploymentLimits:66`) still resolves the router and answers the role's figures, which never
+move; routers are not listed, so no client discovers that URL, and `routers.md` says what it shows. Not changed.
 
 ### D6. One identity header, the user-info JSON
 
 `X-DIAL-USER-INFO` carries one JSON object built from the same three values `UserInfoController.handle` answers:
 `roles` always, `project` for a project-key caller, `userId` for a JWT caller. Added in `sendProxyRequest` under
 `context.getDeployment() instanceof Router`, after `copyHeaders`; the header name joins the exclude list next to
-`HEADER_APPLICATION_ID` (414-415) for every deployment, so no origin can receive a client-written value. The constant
+`HEADER_APPLICATION_ID` (414-415), so no origin request sent through `sendProxyRequest` carries a client-written
+value. The interceptor path (`BaseInterceptorController:127`) copies client headers with no exclude list and is
+left as it is: an interceptor is a trusted component, and the router forward after the chain rebuilds the header. The constant
 lives in `Proxy.java` with the other `HEADER_*` names. Serialized with `ProxyUtil.MAPPER`; enable
 `JsonWriteFeature.ESCAPE_NON_ASCII` on that one write so a non-ASCII user id stays a valid header value.
 
@@ -155,7 +161,8 @@ Not sent: `userClaims` and `userDisplayName` (user-info returns them; they can b
 
 `RouteTemplate.ROUTERS` (`^/+v1/routers$`) and `ROUTER` (`^/+v1/routers/(?<id>[^/]+)$`), registered in
 `ControllerSelector` next to `MODELS`/`MODEL` (102-109) and before the resource routes. The one-segment id keeps the
-future admin route `/v1/routers/platform/{path}` disjoint. `RouterController.getRouters` loops `config.getRouters()`
+future admin route `/v1/routers/platform/{path}` disjoint; a router named `platform` is served by the single GET
+today and the admin change reserves the name when it adds the route. `RouterController.getRouters` loops `config.getRouters()`
 filtered by `hasAccess` into a `ListData<RouterData>`; `getRouter` is `getRouters().get(id)`, `404`, `403`, `200`
 in that order, as `ModelController.getModel` (49-63). `RouterData extends DeploymentData` with
 `object = "router"`, `scaleSettings = null`, filled by a `toData(Router)` like `ToolSetData.toData` (31): id, display
@@ -200,9 +207,9 @@ effect and carries no measurement task.
 
 ## Migration Plan
 
-none. A config without `routers` behaves as before. Roll back by reverting the release; a config with `routers`
-then fails to load on the old release (unknown top-level key is ignored by `Config`, so it loads and the routers
-are simply absent).
+none. A config without `routers` behaves as before. Rolling back to the previous release with `routers` still in
+the config is safe: `Config` ignores unknown top-level keys (`Config.java:28`), so the file loads and the routers
+are absent, which means requests to them answer `404` until the release is restored.
 
 ## Follow-up: the admin-API change (not in this change)
 

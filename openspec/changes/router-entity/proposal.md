@@ -15,19 +15,20 @@ already declare routers as what they are.
 - A new dynamic-config map `routers`, each entry a deployment with the common deployment fields (`baseUrl`,
   `interfaces`, `userRoles`, display and feature fields, `defaultHeaders`, `defaults`, `overridePaths`) and
   nothing model- or application-specific: no `upstreams`, `limits`, `pricing`, `interceptors`, runner or
-  app-type schema. Router names share the one deployment-id namespace with models, applications, toolsets and
+  app-type schema, and no legacy `endpoint` or `responsesEndpoint`: a router declares `interfaces`. Router names share the one deployment-id namespace with models, applications, toolsets and
   interceptors.
 - A router's `interfaces` are validated by the same rules as a model's (base url or translator decided by mode,
   pass-through entry needs a url, translator matches the interface, override paths).
-- A router is invoked wherever a model id is accepted: `POST /openai/deployments/{id}/chat/completions`,
-  `/openai/v1/chat/completions`, `/openai/v1/responses` and `/anthropic/v1/messages`, and is served in the existing
+- A router is invoked wherever a model id is accepted: `POST /openai/deployments/{id}/chat/completions` (and
+  `/embeddings`, `/completions` on the same route), `/openai/v1/chat/completions`, `/openai/v1/responses` and `/anthropic/v1/messages`, and is served in the existing
   `passthrough` and `translator` modes exactly like an application: a per-request key is minted, the router calls
   back through Core, cost rolls up through the call stack.
 - A router is never limit-checked or charged itself, on any API; the deployments it calls and the caller are. This
   extends the existing rule that deployments-POST limit-checks only a model to the three `/v1`-style APIs for routers.
 - Core adds one identity header, `X-DIAL-USER-INFO`, to every request it forwards to a router (the JSON
   `roles`, `project`, `userId` that `GET /v1/user/info` answers), set after the client's headers are copied so a client
-  cannot forge it, and drops a client-sent header of that name on every forwarded request.
+  cannot forge it, and drops a client-sent header of that name from every origin request it forwards (an
+  interceptor call copies headers on its own path and is unchanged).
 - New read-only endpoints `GET /v1/routers` (routers the caller's roles allow) and `GET /v1/routers/{id}`. Routers do
   not appear in `GET /openai/models`, `/openai/deployments`, `/openai/applications`, `/v1/deployments`,
   `/v1/deployment-names` or `/anthropic/v1/models`, so existing clients see no change.

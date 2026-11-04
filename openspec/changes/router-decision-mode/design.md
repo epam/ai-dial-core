@@ -16,8 +16,8 @@ How the four POST paths resolve a deployment and when the body is in hand:
   deployment is known. The interceptor chain already re-enters this method with another id
   (`handleInterceptor`, 204-211, calls `handleDeployment(initialDeployment)`), so a re-entry with a chosen candidate
   is a pattern the controller has.
-- `/openai/v1/chat/completions` (`ChatCompletionsController.handle:60-66`, `dispatch:77-103`), `/openai/v1/responses`
-  (`ResponsesController.handle:150-159`, `dispatch:161-183`) and `/anthropic/v1/messages`
+- `/openai/v1/chat/completions` (`ChatCompletionsController.handle:74`, `dispatch:95`), `/openai/v1/responses`
+  (`ResponsesController.handle:180`, `dispatch:192`) and `/anthropic/v1/messages`
   (`MessagesBaseController.handle:76-93`): `request.body()`, `parseBody` (stores the bytes with
   `setRequestBodyWithTimestamp` and parses the tree), `setupDeployment(model)` on a virtual thread, `verifyLimit`,
   `startSpan`, `handleRequestBody(tree)`. The body is parsed before the deployment is known; the tree is the
@@ -28,7 +28,7 @@ How the four POST paths resolve a deployment and when the body is in hand:
   (`ApplyDefaultDeploymentSettingsFn.applyDefaultHeaders`, 71-85), so they reach the origin through the same copy as
   client headers. Both read `context.getDeployment()`.
 - A call is given up on in two places of `BaseDeploymentPostController`: `nextUpstream()` (`route.next()` throws
-  when the upstreams are exhausted, answered with `respond(e)`, 556-566) and `handleProxyConnectionError` (144-154,
+  when the upstreams are exhausted, answered with `respond(e)`, 472-481) and `handleProxyConnectionError` (144-154,
   `502`). A retriable status goes back through `sendRequest()` to `nextUpstream()`
   (`BaseChatCompletionController.handleProxyResponse:161-165`, `MessagesBaseController.handleProxyResponse`,
   `ResponsesController` alike). Response headers reach the client only after a non-retriable answer
@@ -39,10 +39,15 @@ How the four POST paths resolve a deployment and when the body is in hand:
   `AnalyticsLogContext.getParentDeployment` (nearest preceding path entry that is not an interceptor);
   `GfLogStore` writes each field by hand (247-275) and JSON lists with `ProxyUtil.MAPPER`. The key of a pass is
   deleted in `finalizeRequest` (`BaseDeploymentPostController:132`).
+- `DeploymentService.getInterceptors` (288-296) prepends the config's `globalInterceptors` to every deployment's
+  own list, routers included; the deployments-POST, v1 chat and Responses flows hand the request to the chain
+  before anything else (`DeploymentPostController:186-188`, `ChatCompletionsController.dispatch:115-118`,
+  `ResponsesController:208`), and the callback pass (`apiKeyData.isInterceptor()`) resolves the initial deployment
+  again. Messages has no interceptors.
 - Consent for a root call reads the consent of the deployment itself; for a child, of the first `executionPath`
   entry (`ConsentService.getRootDeploymentId`, 111-120).
 - Origin requests are created with `RequestOptions` carrying the client's connect and idle timeouts
-  (`BaseDeploymentPostController.createProxyRequest(String)`, 352-363); the client idle timeout is 300 s
+  (`BaseDeploymentPostController.createProxyRequest(String)`, 380-391); the client idle timeout is 300 s
   (`aidial.settings.json` `client.idleTimeout`).
 - The decide-side reference: today's Go proxy router walks all candidates on any connect failure or any non-2xx,
   `400` included (`dial-llm-router-optimized/internal/relay/relay.go`, `Transport.Open`, 113-163), and answers
@@ -68,14 +73,21 @@ Reference: documentation MR 211, `design/router_resource.md`, "LLM routing proto
 
 ### D1. Config: a mode value, two entry fields, validation in the widened interfaces check
 
-`InterfaceMode.DECISION("decision", false)`: not subject to limits, as `TRANSLATOR`, and for the same reason (the
-completion is served, checked and charged by another step; here the same pass, after the retarget).
+`InterfaceMode.DECISION("decision", true)`: the flag stays `true` because a router is already exempt through
+`instanceof Router` (`router-entity` D5) and a `false` here would exempt any other deployment kind that managed to
+declare the mode. The retarget is what moves the limit check to the chosen deployment, not the mode's flag.
 `DeploymentInterface` gains `context` (a small class with one field, `Boolean body`) and `Long decisionTimeoutMs`,
 both `@JsonInclude(NON_NULL)`. The default timeout is a constant in the decide client, `5000` ms; there is no static
 setting for it, because the entry field is the knob and a second, global one would be a value nobody changes.
 
-Validation lives in `ConfigPostProcessor.validateDeploymentInterfaces`, which `router-entity` widened to
-`Deployment`: a `DECISION` branch warns `Mode 'decision' is allowed on a router only` unless
+Validation lives in the per-entry loop every deployment kind and every write surface already runs,
+`ConfigPostProcessor.validateOverridePaths(Deployment, List)` (657-668, called by `processApplications`,
+`processInterceptors`, `processToolSets`, `processRouters`, the single-entity validators and, through
+`validateModelInvariants`, by models), not in `validateDeploymentInterfaces`, which only models and routers run: a
+decision entry on an application or interceptor must be rejected on the config file, on `PUT`, on
+`/v1/admin/validate` and on `/v1/admin/apply` alike, and that loop is the one place all of them share. The per-entry
+method gains the checks and a name that says so (`validateInterfaceEntry`), the public wrapper keeps its callers. A
+`DECISION` entry warns `Mode 'decision' is allowed on a router only` unless
 `deployment instanceof Router`, `Mode 'decision' requires base_url` when the entry has none (the deployment-level
 `baseUrl` does not count: the decide URL is a different endpoint from the proxy one and must be written out),
 `Mode 'decision' excludes translator` when one is declared, and `decisionTimeoutMs must be positive`.
@@ -86,7 +98,8 @@ that url, because the decision step runs before any forward (D3) and the spec sa
 (deployment-interfaces-config, "Interface mode").
 
 Rejected: a `decision` object on the entry holding url, body and timeout. The existing shape puts the url in
-`base_url` and MR 211 writes it that way.
+`base_url` and MR 211 writes it that way. Rejected: `subjectToLimits = false` on the mode, as `TRANSLATOR` has; see
+above.
 
 ### D2. The decide client: one class, headers only, raw body optional
 
@@ -94,22 +107,22 @@ Rejected: a `decision` object on the entry holding url, body and timeout. The ex
 `Future<Verdict> decide(ProxyContext context, Router router, DeploymentInterface entry, InterfaceType type,
 @Nullable Buffer body)`. It runs on the event loop, no blocking:
 
-1. Lay the router's `defaultHeaders` for the interface onto the inbound request as
-   `ApplyDefaultDeploymentSettingsFn.applyDefaultHeaders` does (extract that loop into a static helper both call).
-   The chain will do it again for the chosen deployment and skip the names already present, which is today's
-   precedence rule (the first deployment's headers win).
+1. The router's `defaultHeaders` for the interface (`router.resolveDefaultHeaders(type)`) go onto the decide request
+   only, under every name the client did not send. They do not touch the inbound request, so the chosen
+   deployment receives the client's headers and its own defaults, as a direct call would.
 2. `proxy.getClient().request(new RequestOptions().setAbsoluteURI(entry.getBaseUrl()).setMethod(POST)
-   .setConnectTimeout(min(client connect timeout, timeout)).setIdleTimeout(timeout).setTraceOperation("Decide ..."))`.
-3. Headers: `ProxyUtil.copyHeaders(request.headers(), decide.headers(), excludes)` with the exclude list
-   `sendProxyRequest` builds (`Authorization` unless `forwardAuthToken`, the application headers, `X-DIAL-USER-INFO`);
-   extract that construction into a helper the two share. Then `X-DIAL-USER-INFO` from `router-entity`'s builder,
+   .setConnectTimeout(min(client connect timeout, timeout)).setIdleTimeout(timeout).setTraceOperation("Decide ..."))`,
+   with one deadline around the whole call: whichever timer fires, the answer is `504`.
+3. Headers: `ProxyUtil.copyHeaders(request.headers(), decide.headers(), excludes)` with the same three exclusions
+   `sendProxyRequest` makes (`Authorization` unless `forwardAuthToken`, the application headers, `X-DIAL-USER-INFO`),
+   written out again rather than extracted: three lines, and the integration tests pin both lists. Then `X-DIAL-USER-INFO` from `router-entity`'s builder,
    `X-DIAL-ROUTER`, `X-DIAL-API`. No `API-KEY`: nothing is minted for this call.
 4. `send(body)` with `Content-Type: application/json` and `Content-Length` when `body` is given, else `send()`.
 5. `200`: `response.body()`, `ProxyUtil.MAPPER.readTree`, `candidates` (non-empty array of non-blank strings) or
    `deployment` (one string); anything else fails with `502` `Router answered an invalid decision`. `4xx`: fail
-   with `DecisionRejectedException(status, body, contentType)`, relayed by the controller. `5xx`: `502`. A
-   `TimeoutException` from the idle timeout: `504`. Any other failure (connect refused, connect timeout, reset):
-   `502`. `decide_ms` is measured around the call.
+   with `DecisionRejectedException(status, body, contentType)`, relayed by the controller. `5xx`: `502`. Any
+   timeout (connect or idle, both bounded by `decisionTimeoutMs`): `504`. Any other failure (connection refused,
+   reset, closed): `502`. `decide_ms` is measured around the call.
 
 Why headers and a raw body rather than MR 211's envelope wrapping the original request: the router reads steering
 headers in proxy mode already, so the decide request is the proxy request without a body, and when a router wants
@@ -125,11 +138,16 @@ One shared method on `BaseDeploymentPostController`:
 protected Future<Void> decideIfRouter(InterfaceType type, Supplier<Future<Buffer>> bodyIfWanted)
 ```
 
-It is a no-op unless `context.getDeployment()` is a `Router` and `resolveMode(router, type) == DECISION`. Then it
-guards against a second decision (a candidate that is a `Router` fails with `502`
-`A router cannot be a routing candidate`), reads the body first only when `context.body` is set, calls the client,
-stores a `RouterDecision` on the context (router name, interface, candidates, current index, `decideMs`, the
-attempts so far) and completes. The controller then re-enters its own flow with `decision.current()`:
+It is a no-op unless `context.getDeployment()` is a `Router` and `resolveMode(router, type) == DECISION`. It runs
+after the router's interceptors: the flows hand a deployment with interceptors to the chain first, and the
+callback pass resolves the router again and reaches the step with `apiKeyData.isInterceptor()` set. Two guards
+before the call: a candidate that is a `Router` fails with `502` `A router cannot be a routing candidate`, and a
+router whose name is already in `apiKeyData.getExecutionPath()` fails with `502` `Router <name> re-entered`, unless
+this is the router's own interceptor callback (`isInterceptor()` and `initialDeployment` equal to the router).
+That second guard is what bounds an application candidate calling the router back, which no call-depth rule in
+Core bounds today. Then it reads the body first only when `context.body` is set, calls the client, stores a
+`RouterDecision` on the context (router name, interface, candidates, current index, `decideMs`, the attempts so
+far, and a `resolving` flag) and completes. The controller then re-enters its own flow with `decision.current()`:
 
 - `DeploymentPostController`: `handleDeployment(candidate)`. Its `.map` step runs the full resolve for the
   candidate (roles, consent, per-request-key access, `503`, interceptors) and `checkLimits` for a model, exactly
@@ -137,11 +155,13 @@ attempts so far) and completes. The controller then re-enters its own flow with 
   read for `context.body`, or this is a fallback) instead of `request.body()`, and stores the bytes there
   otherwise. No body `model` rewrite: the deployments-POST origin path carries the name.
 - `ChatCompletionsController.dispatch`, `ResponsesController.dispatch`, `MessagesBaseController.handle`: after
-  `setupDeployment(model)` completes, `decideIfRouter(type, () -> succeeded(context.getOriginalRequestBody()))`,
-  then `setupDeployment(candidate)` and `request.setModel(candidate)` (so `EnhanceDeploymentRequestFn` then applies
-  the candidate's `overrideName`), then the existing `verifyLimit`, `startSpan`, `handleRequestBody(request)`.
-  `MessagesBaseController` also sets its `deploymentId` field to the candidate so `X-DIAL-DEPLOYMENT-ID` names the
-  served model. `parseBody` in these three stores the client bytes in `context.originalRequestBody` as well as
+  `setupDeployment(model)` completes and the interceptor branch did not take the request,
+  `decideIfRouter(type, () -> succeeded(context.getOriginalRequestBody()))`, then `setupDeployment(candidate)` and
+  `request.setModel(candidate)` (so `EnhanceDeploymentRequestFn` then applies the candidate's `overrideName`), then
+  the same `hasNextInterceptor()` branch for the candidate, then the existing `verifyLimit`, `startSpan`,
+  `handleRequestBody(request)`. `MessagesBaseController` also sets its `deploymentId` field to the candidate, a
+  deliberate difference from today's "the id the client wrote" (`MessagesBaseController:203-211`): a translator
+  behind the candidate must call the candidate back, not the router. `parseBody` in these three stores the client bytes in `context.originalRequestBody` as well as
   `requestBody`.
 - `MessagesCountTokensController` inherits the step through `MessagesBaseController`: a `count_tokens` for a
   router in decision mode asks the router and counts on the chosen model. Consistent, and free.
@@ -149,9 +169,12 @@ attempts so far) and completes. The controller then re-enters its own flow with 
 Pre-flight failures during the candidate's resolve (a `PermissionDeniedException`, a `ResourceNotFoundException`,
 an `HttpException` `503`, a `RateLimitResult` other than `OK`) reach each controller's `handleRequestError` /
 `handleRateLimitHit`. Each of those gains one line at the top: `if (nextCandidateOrFalse(error)) return;`, a base
-method that, when a decision is in progress and a candidate is left, records the attempt (name, status, reason)
+method that, while `decision.resolving` is set and a candidate is left, records the attempt (name, status, reason)
 and re-enters with the next one, else maps a `ResourceNotFoundException` to `502` (an unknown candidate is the
-router's fault, not the caller's) and lets the normal answer proceed.
+router's fault, not the caller's) and lets the normal answer proceed. `resolving` is set when the step completes
+and cleared by the controller once the candidate's resolve and limit check have passed (just before
+`handleRateLimitSuccess` / `proceedToDeployment`), because the same error handlers also serve a body-read or
+parse failure after that point, which must answer the client and never walk.
 
 Why re-enter rather than a candidate loop of its own: the resolve is the access check, the consent check, the
 `503` rule and the limit check in the order the spec already pins, and re-entering is how interceptors already
@@ -172,8 +195,8 @@ pass that gives up without answering would otherwise leave it to its TTL), and c
 
 `startSpan` runs again on re-entry and overwrites the span's `deploymentName` under the same span id: one span per
 pass, one extra Redis write per fallback. The decision is closed (no further fallback) as soon as the chosen
-deployment has interceptors (`context.hasNextInterceptor()` after its resolve), because the model is then called
-from another pass. The saved body is released at the first response byte (`handleProxyResponse` once the answer is
+deployment has interceptors (`context.hasNextInterceptor()` after its resolve, the branch the re-entry goes
+through in every flow), because the model is then called from another pass. The saved body is released at the first response byte (`handleProxyResponse` once the answer is
 non-retriable), so a decided request holds the client's bytes twice only until then.
 
 Retry set, deliberate difference from the Go router: Core skips a candidate for a connect failure and for the
@@ -185,7 +208,9 @@ call.
 ### D5. Accounting: the router rides in the key's path
 
 `ApiKeyData.initFromContext` adds the router's name to `currentPath` before the receiver when
-`context.getDecision()` is set. That gives, with no other change: `execution_path: [router, chosen]` in the row,
+`context.getDecision()` is set and the pass is not an interceptor callback (`apiKeyData.isInterceptor()` false):
+in the callback pass the parent path already holds the router (`[r1, i1]`), so the chosen deployment's path is
+`[r1, i1, gpt-4]`. That gives, with no other change: `execution_path: [router, chosen]` in the row,
 `parent_deployment: router` through `getParentDeployment`, `sourceDeployment: chosen`, and children of the chosen
 deployment (an application's model calls) seeing the router as the root of their consent check, which is the
 deployment the user called. The router gets no span, so no `<router>/aggregated-costs` record; that is MR 211's
@@ -193,7 +218,12 @@ deployment the user called. The router gets no span, so no `<router>/aggregated-
 
 `ProxyContext.decision` (`RouterDecision`: router, api, candidates, index, decideMs, attempts of
 `{deployment, status, reason}`) is snapshotted into `AnalyticsLogContext.decision` and written by `GfLogStore` as
-`"decision": {...}` through `ProxyUtil.MAPPER`, next to `usage_per_model`. A decision failure answers from Core
+`"decision": {...}` next to `usage_per_model`, in the row shape the spec fixes: `router`, `api`, `candidates`,
+`deployment` (`candidates[index]`), `decide_ms`, `attempts[{deployment, status, reason}]`, snake_case, written
+through a small `@JsonNaming(SnakeCase)` record rather than the context class. A background Responses job's row
+is built from the job record without the context (`AnalyticsLogContext.from(BackgroundJobRecord, ...)`, 131) and
+carries no `decision` object; the spec scopes it out, and carrying the decision into the job record is a
+follow-up. A decision failure answers from Core
 itself and writes no row, as every other refusal (app-to-model-accounting, "Passes without an analytics row").
 
 Rejected: a second row for the router. It is the cost this change removes, and the one-row shape is what the
@@ -203,7 +233,12 @@ A/B compares against the proxy router's two rows.
 
 `UpstreamRouteProvider` (a router in decision mode never gets a route), `ApplicationSchemaService`, the interceptor
 controllers, `TokenStatsTracker` (one span, D4), `RateLimiter` (called with the chosen deployment as for a direct
-call), `DeploymentEndpointUtil` (D1), `/v1/routers` (change `router-entity`).
+call), `DeploymentEndpointUtil` (D1), `/v1/routers` (change `router-entity`), and `ResponseItemController`: the
+item operations resolve the deployment from the response mapping, which `ResponsesController:506` saves as the
+context's deployment after the retarget, so a decided response's items address the chosen model and never the
+decide URL. `resolveServingEndpoint` callers (`DeploymentPostController:165`, `ChatCompletionsController:151`,
+`ResponsesController:246, 342`, `MessagesBaseController:141, 175`, `BaseChatCompletionController:114`,
+`ResponseItemController:161, 199`, `ConfigPostProcessor:772`) are all behind the step or behind the retarget.
 
 ## Per-request cost
 
@@ -226,12 +261,16 @@ commands per request, p50 overhead over the direct run. The measurement task is 
 - [A re-entry path that answers twice or never: a pre-flight failure both re-entering and responding] → the
   `nextCandidateOrFalse` return value is the only switch; the integration test "Forbidden first candidate skipped"
   and "Every candidate forbidden" cover both branches on all three body-addressed APIs and on deployments-POST.
+- [The same `handleRequestError` serves a body or parse failure after the candidate is chosen] → the walk is armed
+  by `decision.resolving` only between the verdict and the end of the candidate's resolve (D3); a test sends an
+  unparsable body to a decided deployments-POST and asserts one `400` and no second decide call.
 - [`request.body()` cannot be read twice] → the client bytes are kept in `context.originalRequestBody` from the
   first read; the fallback never calls `body()` again.
 - [The chain mutated the tree before a fallback] → the fallback re-parses the saved bytes, never reuses the tree.
-- [A decision entry's url reachable by some proxy path the step does not guard] → the step is in all four flows
-  (`MessagesCountTokensController` included) and the spec scenario "Decision interface is not proxied" pins
-  deployments-POST; the apply step greps `resolveServingEndpoint` callers and lists each in design.md.
+- [A decision entry's url reachable by some proxy path the step does not guard] → the step is in the four request
+  flows (`MessagesCountTokensController` included), the item operations address the chosen model (D6), the spec
+  scenario "Decision interface is not proxied" pins deployments-POST; the apply step re-checks the
+  `resolveServingEndpoint` caller list in D6.
 - [A background Responses request through a router: the retarget happens before `setBackgroundJob`, so it should
   work by construction, and it is not in the test plan] → stated as untested; the operator keeps background
   Responses off a router until a test exists.
@@ -242,9 +281,11 @@ commands per request, p50 overhead over the direct run. The measurement task is 
 
 ## Migration Plan
 
-Deploy Core, then add `mode: decision` entries. Rolling back Core while such entries exist makes the config fail
-to load on the old release (the enum value is unknown), so a rollback reverts the router entries to proxy mode
-first, which the same router serves.
+Deploy Core, then add `mode: decision` entries. Rolling back one release, to the `router-entity` release, while
+such entries exist makes the whole config file fail to load (the enum value is unknown to Jackson, and the file is
+bound as one tree, so `config.onInvalidEntity: skip` does not help), so that rollback reverts the decision entries
+to proxy mode first, which the same router serves. Rolling back past `router-entity` loads the file with the
+`routers` map ignored.
 
 ## Follow-ups (not in this change)
 

@@ -12,7 +12,8 @@ verdict and serves the chosen deployment, joins this capability in a later chang
 Core SHALL read `routers` in the dynamic config as a map of deployments keyed by name, each accepting the common
 deployment fields (`baseUrl`, `interfaces`, `userRoles`, display and feature fields, `defaults`, `defaultHeaders`,
 `overridePaths`, `forwardAuthToken`, `overrideName`) and SHALL reject a config whose router declares a field of
-another deployment kind (such as `upstreams`, `limits`, `pricing`) or declares `interceptors`.
+another deployment kind (such as `upstreams`, `limits`, `pricing`), or declares `interceptors`, `endpoint` or
+`responsesEndpoint`.
 
 #### Scenario: Router loads with interfaces
 - **WHEN** the config declares `routers.r1` with `baseUrl: http://router`, `userRoles: ["analysts"]` and
@@ -27,6 +28,10 @@ another deployment kind (such as `upstreams`, `limits`, `pricing`) or declares `
 - **WHEN** the config declares `routers.r1` with `baseUrl: http://router`, `interfaces.openaiChatCompletions: {}` and
   `interceptors: ["i1"]`
 - **THEN** the config is rejected with a message containing `A router declares no interceptors`
+
+#### Scenario: Router with a legacy endpoint rejected
+- **WHEN** the config declares `routers.r1` with `endpoint: http://router/chat` and `interfaces.openaiChatCompletions: {}`
+- **THEN** the config is rejected with a message containing `A router declares interfaces, not endpoint`
 
 ### Requirement: Router name in the deployment namespace
 A router name SHALL share the one deployment-id namespace with models, applications, toolsets and interceptors: a
@@ -56,8 +61,7 @@ pass-through, and override path validation; the rejection message names the rout
 `GET /v1/routers` SHALL answer `200` with `{"data": [...]}` holding one entry per router whose `userRoles` admit the
 caller, and `GET /v1/routers/{id}` SHALL answer `200` with that entry, `404` for an unknown name and `403` for a
 router the caller's roles do not admit. An entry carries `id`, `object: "router"`, `display_name`,
-`display_version`, `icon_url`, `description`, `features`, `defaults`, `description_keywords`, `created_at`,
-`updated_at` and no url.
+`display_version`, `icon_url`, `description`, `features`, `defaults`, `description_keywords` and no url.
 
 #### Scenario: Listing filtered by role
 - **WHEN** the config declares `routers.r1` with `userRoles: ["analysts"]` and `routers.r2` without `userRoles`, and a
@@ -96,6 +100,11 @@ the url the interface resolves to.
   `POST /anthropic/v1/messages` with `{"model": "r1", ...}`
 - **THEN** the router receives `POST http://router/anthropic/v1/messages` and the client receives its answer
 
+#### Scenario: Embeddings proxied to the router
+- **WHEN** `routers.r1` declares `baseUrl: http://router` and `interfaces.openaiEmbeddings: {}`, and a client sends
+  `POST /openai/deployments/r1/embeddings`
+- **THEN** the router receives `POST http://router/openai/deployments/r1/embeddings` and the client receives its answer
+
 #### Scenario: Interface the router does not declare
 - **WHEN** `routers.r1` declares only `interfaces.openaiChatCompletions: {}` and a client sends `POST /openai/v1/responses`
   with `{"model": "r1"}`
@@ -107,9 +116,9 @@ name are ignored, and the models the router calls back through Core are checked 
 as app-to-model-accounting states.
 
 #### Scenario: Exhausted request limit on the router does not refuse
-- **WHEN** the caller's role declares `limits.r1.requestMinute: 1`, the caller has already sent one request to `r1`
-  this minute, and sends `POST /openai/v1/chat/completions` with `{"model": "r1", ...}`
-- **THEN** Core forwards the request to the router
+- **WHEN** the caller's role declares `limits.r1.requestMinute: 1` and the caller sends two
+  `POST /openai/v1/chat/completions` requests with `{"model": "r1", ...}` within one minute
+- **THEN** Core forwards both to the router
 
 #### Scenario: Model called back is still charged
 - **WHEN** the router answers a client's request by calling `POST /openai/deployments/gpt-4/chat/completions` back
