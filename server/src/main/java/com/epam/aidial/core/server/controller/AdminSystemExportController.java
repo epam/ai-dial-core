@@ -92,7 +92,7 @@ public class AdminSystemExportController implements Controller {
 
         List<String> bucketLocations;
         try {
-            bucketLocations = AdminSystemExportService.resolveBucketLocations(context.getRequest().getParam("scope"));
+            bucketLocations = AdminSystemExportService.resolveBucketLocations(context.getRequest().params().getAll("scope"));
         } catch (IllegalArgumentException e) {
             context.respond(HttpStatus.BAD_REQUEST, e.getMessage());
             return Future.succeededFuture();

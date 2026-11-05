@@ -16,10 +16,12 @@ never exports `encryption_keys`. Two follow-ups came out of using it:
 
 - `POST /v1/admin/system-export` takes an optional query parameter `scope`: a comma-separated list of the buckets to
   export, `public` and `platform`, case-insensitive. Without it the export covers every exportable bucket, as today.
-  An empty value, an empty element or an unknown name is answered `400`, before any lock is taken and before the archive
-  starts. The archive holds, and the export locks, only the selected buckets.
+  The parameter can be repeated and the lists are combined. An empty value, an empty element or an unknown name, in any
+  repetition, is answered `400`, before any lock is taken and before the archive starts. The archive holds, and the export locks, only the selected buckets.
 - When a KMS provider is configured (`toolsets.security.kms.provider` is `aws`, `azure` or `gcp`), the export
-  includes the `encryption_keys` blobs of the selected buckets, such as `platform/encryption_keys/cek`. When KMS is off,
+  includes the `encryption_keys` blobs of the selected buckets, such as `platform/encryption_keys/cek`, except a blob that
+  cannot be a wrapped key: empty, or with no content encoding and no longer than a plaintext key. It is skipped with a
+  warning. When KMS is off,
   `encryption_keys` stays excluded, because the CEK is stored in plaintext then. `credentials` stays excluded in both
   cases.
 - The manifest is unchanged.
@@ -37,9 +39,9 @@ Out of scope:
 
 - `public/credentials` and `platform/credentials` stay excluded (the open question in the same note).
 - Importing an archive. How an importer decides which buckets to replace is for its own change.
-- Verifying that a CEK blob is KMS-wrapped before exporting it. The setting is trusted. A blob written before a switch
-  from `unencrypted` to a KMS provider, or one not yet synced from the write queue, can still be a plaintext CEK. A
-  provider switch already invalidates existing encrypted values, so it is an operator event.
+- Verifying with the KMS (a decrypt call) that a CEK blob is wrapped. The length guard above skips the plaintext key left
+  from before a switch to a KMS provider and the empty placeholder of a key not yet synced. It does not catch a plaintext
+  key stored with a content encoding, which needs `resources.compressionMinSize` at or below the key size (default 256).
 - An opt-out for including CEKs when KMS is on.
 - Exporting user buckets.
 

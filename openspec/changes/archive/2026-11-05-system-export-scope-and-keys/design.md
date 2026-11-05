@@ -57,7 +57,7 @@ list answers "which two of three" without a new parameter when a bucket is added
 ### 2. Parse and validate in the controller, before anything starts
 
 `handle` reads `scope` right after the admin check, so a non-admin gets `403` first. It calls a static
-`AdminSystemExportService.resolveBucketLocations(String scope)`, which returns the selected locations and throws
+`AdminSystemExportService.resolveBucketLocations(List<String> scopes)`, which returns the selected locations and throws
 `IllegalArgumentException` for an empty value, an empty element or an unknown name; the controller answers that with
 `context.respond(HttpStatus.BAD_REQUEST, message)` and returns, like the admin check, so the `400` goes through the same
 funnel as the `403`, `409` and `500`. The message lists the valid names. This happens before the chunked
@@ -72,8 +72,9 @@ Rejected: lenient parsing that ignores unknown or empty names. A typo such as `s
 archive of a backup that the operator believes complete. Rejected: an `all` value. Omitting `scope` already means that,
 and `all` would need a rule for mixing it with names.
 
-Assumption: a repeated `scope=a&scope=b` is read as the first value, which is what `getParam` returns. No spec states
-it.
+A repeated `scope=a&scope=b` is read with `request.params().getAll("scope")` and the lists are combined: a client may send
+the list either way, and reading only the first value (`getParam`) would silently drop the rest, which is the partial
+archive the strict parsing is meant to prevent (found in review of the PR). An empty value in any repetition is a `400`.
 
 ### 3. The service takes the selected locations
 
@@ -106,8 +107,20 @@ every provider, and it ties the export to a class.
 
 `EXCLUDED_GROUPS` becomes an instance field: `credentials/` always, `encryption_keys/` when KMS is off. `shouldExport`
 stays a prefix test on `bucketLocation + group`, so a deeper `encryption_keys` segment is still exported, as before. The
-service constructor gets a `boolean kmsEnabled`. With KMS on, a CEK blob is exported like any other blob: metadata entry
-first, then bytes as stored.
+service constructor gets a `boolean kmsEnabled` and the length of a plaintext key in bytes (`EncryptionSettings.keySize / 8`,
+read by `AiDial.readEncryptionSettings()`). With KMS on, a CEK blob is exported like any other blob: metadata entry first,
+then bytes as stored.
+
+One exception, found in review of the PR: an `encryption_keys` blob at the type position with no content encoding that is not
+longer than the plaintext key is skipped, and a warning with its path is logged. A plaintext key is exactly `keySize / 8`
+bytes and, with `resources.compressionMinSize` at 256, is stored raw. A wrapped key is always longer. A new resource is
+stored as an empty blob until its first sync (`ResourceService.putResourceTraced` writes `result.toStub()`), so the same
+rule skips the empty placeholder of a key that has not synced yet. The export reads `keyLength + 1` bytes of such a blob and
+streams them back in front of the rest, so a key is never read whole into memory.
+
+Rejected: a KMS `decrypt` call per key. It is exact, but it costs two KMS calls per export while the bucket locks are held and
+ties the export to the availability of the KMS. Not caught by the length rule: a plaintext key stored with a content
+encoding (needs `resources.compressionMinSize` at or below the key size).
 
 ### 6. Documentation
 
@@ -119,10 +132,10 @@ usable, and why this matters (Risks). The parameter is added to the `@ApiOperati
 
 ## Risks / Trade-offs
 
-- **A plaintext CEK in the archive while KMS is on.** The export trusts the setting. A blob written while KMS was off, or
-  a new wrapped CEK still in the write queue (`ResourceTypes.ENCRYPTION_KEYS` is cached and synced like other resources),
-  can be a plaintext CEK in blob storage. → Accepted and stated in the proposal: switching providers already invalidates
-  existing encrypted values, so it is an operator event. The docs state that the export trusts the setting.
+- **A plaintext CEK in the archive while KMS is on.** A key written while KMS was off stays plaintext in blob storage until
+  its bucket key is next read (`ContentEncryptionKeyManagerImpl.getOrCreateKey` replaces it). → The length guard of decision 5
+  skips it. Left open: a plaintext key stored with a content encoding, which needs `resources.compressionMinSize` at or
+  below the key size.
 - **Restoring a wrapped CEK without its KMS key destroys the secrets.** `ContentEncryptionKeyManagerImpl.getOrCreateKey`
   generates and stores a new CEK when `decrypt` fails, so a restored CEK that the target's KMS cannot decrypt is
   replaced, and every restored `ENC[...]` value becomes unreadable. → Documented. The import design has to check this.

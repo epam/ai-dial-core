@@ -53,6 +53,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class AdminSystemExportApiTest extends ResourceBaseTest {
 
     private static final DateTimeFormatter FILE_NAME_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC);
+    private static final String WRAPPED_KEY = "w".repeat(60);
+    private static final String PLAIN_KEY = "p".repeat(32);
     private static final int LARGE_BLOBS = 32;
     private static final int LARGE_BLOB_SIZE = 2 * 1024 * 1024;
 
@@ -75,7 +77,7 @@ public class AdminSystemExportApiTest extends ResourceBaseTest {
         BlobStorage storage = dial.getStorage();
         storage.store("public/files/user1/a.txt", "text/plain", null, Map.of("k", "v"), "alpha".getBytes(StandardCharsets.UTF_8));
         storage.store("platform/models/m1", "application/json", null, Map.of(), "{}".getBytes(StandardCharsets.UTF_8));
-        storage.store("public/encryption_keys/key1", "application/json", null, Map.of(), "secret".getBytes(StandardCharsets.UTF_8));
+        storage.store("public/encryption_keys/key1", "application/json", null, Map.of(), WRAPPED_KEY.getBytes(StandardCharsets.UTF_8));
         storage.store("platform/credentials/cred1", "application/json", null, Map.of(), "secret".getBytes(StandardCharsets.UTF_8));
 
         Download download = export("admin");
@@ -100,8 +102,8 @@ public class AdminSystemExportApiTest extends ResourceBaseTest {
     @Test
     void testEncryptionKeysOfTheSelectedBucketsAreExported() throws Exception {
         BlobStorage storage = dial.getStorage();
-        storage.store("public/encryption_keys/cek", "application/octet-stream", null, Map.of(), "public-key".getBytes(StandardCharsets.UTF_8));
-        storage.store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), "platform-key".getBytes(StandardCharsets.UTF_8));
+        storage.store("public/encryption_keys/cek", "application/octet-stream", null, Map.of(), WRAPPED_KEY.getBytes(StandardCharsets.UTF_8));
+        storage.store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), WRAPPED_KEY.getBytes(StandardCharsets.UTF_8));
 
         assertEquals(List.of("public/encryption_keys/cek", "platform/encryption_keys/cek"), contentEntries(export("admin", null)));
         assertEquals(List.of("platform/encryption_keys/cek"), contentEntries(export("admin", "scope=platform")));
@@ -117,6 +119,8 @@ public class AdminSystemExportApiTest extends ResourceBaseTest {
         assertEquals(List.of("public/files/user1/a.txt"), contentEntries(export("admin", "scope=PUBLIC")));
         assertEquals(List.of("public/files/user1/a.txt"), contentEntries(export("admin", "scope=%20PUBLIC%20,%20public")));
         assertEquals(List.of("public/files/user1/a.txt", "platform/models/m1"), contentEntries(export("admin", "scope=platform,public")));
+        assertEquals(List.of("public/files/user1/a.txt", "platform/models/m1"), contentEntries(export("admin", "scope=platform&scope=public")));
+        assertEquals(List.of("platform/models/m1"), contentEntries(export("admin", "scope=platform&scope=PLATFORM")));
         assertEquals(List.of("public/files/user1/a.txt", "platform/models/m1"), contentEntries(export("admin", null)));
 
         Download platformOnly = export("admin", "scope=platform");
@@ -126,10 +130,10 @@ public class AdminSystemExportApiTest extends ResourceBaseTest {
 
     @Test
     void testInvalidScopeIsRejected() throws Exception {
-        for (String scope : List.of("org", "all", "", "public,", ",platform")) {
-            Download rejected = export("admin", "scope=" + scope);
+        for (String query : List.of("scope=org", "scope=all", "scope=", "scope=public,", "scope=,platform", "scope=public&scope=", "scope=public&scope=org")) {
+            Download rejected = export("admin", query);
 
-            assertEquals(400, rejected.status(), "scope '" + scope + "'");
+            assertEquals(400, rejected.status(), query);
             assertNull(rejected.contentDisposition());
         }
 
@@ -154,6 +158,15 @@ public class AdminSystemExportApiTest extends ResourceBaseTest {
 
         assertEquals(200, scoped.status());
         assertEquals(409, unscoped.status());
+    }
+
+    @Test
+    void testEncryptionKeyThatCannotBeWrappedIsNotExported() throws Exception {
+        BlobStorage storage = dial.getStorage();
+        storage.store("public/encryption_keys/cek", "application/octet-stream", null, Map.of(), WRAPPED_KEY.getBytes(StandardCharsets.UTF_8));
+        storage.store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), PLAIN_KEY.getBytes(StandardCharsets.UTF_8));
+
+        assertEquals(List.of("public/encryption_keys/cek"), contentEntries(export("admin", null)));
     }
 
     @Test

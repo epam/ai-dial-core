@@ -10,7 +10,8 @@
   pipe, the task and the locks exist.
 - `AdminSystemExportService.export(out, start, bucketLocations)` locks and walks only the selected buckets.
 - With a KMS provider (`aws`, `azure`, `gcp`), `encryption_keys` blobs of the selected buckets are exported like any other
-  blob. Without one they are still excluded. `credentials` is excluded in both cases. The service gets `kmsEnabled` from
+  blob, except one with no content encoding that is empty or not longer than a plaintext key (`keySize / 8`), which is
+  skipped with a warning. Without a KMS provider they are still excluded. `credentials` is excluded in both cases. The service gets `kmsEnabled` from
   `AiDial` (`readKmsSettings().isEnabled()`); the per-instance `excludedGroups` replaces the static list.
 - `KmsSettings.isUnencrypted()` (the factory's old early-return test) and `KmsSettings.isEnabled()` (true only for `aws`,
   `azure`, `gcp`, case-insensitive). `KeyManagementServiceFactory.create` uses `isUnencrypted()`, so an unsupported provider
@@ -63,17 +64,34 @@ All run locally on JDK 21 (from the Gradle cache; the default `JAVA_HOME` is JDK
 
 ## Known limits
 
-- With KMS on, the export trusts the setting. A key written before the provider was switched on, or one not yet synced from
-  the write queue, can be a plaintext key in blob storage and would be exported.
+- A plaintext key stored with a content encoding would still be exported, since the length guard looks only at keys with no
+  encoding. That needs `resources.compressionMinSize` at or below the key size; its default is 256.
+- A key that is longer than a plaintext key is exported without asking the KMS whether it is wrapped.
+- A new resource is stored as an empty blob until its first sync, for every resource type. The export now documents that, and
+  skips such a placeholder only for `encryption_keys`.
 - An archive with wrapped keys restores only where the same KMS key is usable. Core replaces a key it cannot decrypt
   (`ContentEncryptionKeyManagerImpl.getOrCreateKey`), so restoring without the matching KMS key makes the restored secrets
   unreadable. Documented; the import design has to handle it.
 - No HTTP test covers the KMS-off wiring (`AiDial` passing `false`). A wiring bug that passed `true` with KMS off would export
   plaintext keys and only the service-level tests exist for the flag itself.
-- A repeated `scope=a&scope=b` is read as the first value (`getParam`); no spec states it.
 - The manifest does not record the scope or whether keys are included. An importer decides which buckets to replace from the
   entries present; a bucket exported empty is therefore not cleared on restore.
 
 ## Review
 
 Not independently reviewed. The author read the final production diff once; no finding is open.
+
+## Review round on PR #2237
+
+Four comments from a reviewer, each verified against the code:
+
+- **Manifest does not record the buckets.** Not changed. The archive is unsigned, so a manifest field or the entries are not a
+  control against a crafted archive; they only guard against an operator mistake, and an import can infer the buckets from the
+  entries. If an explicit record is added later, an archive without it must be read as "infer from entries".
+- **Repeated `scope` returned only the first value.** Fixed: all values are read and combined (spec: Scope parameter, Invalid
+  scope; tests `testScopeSelectsTheBuckets`, `testInvalidScopeIsRejected`, `testResolveBucketLocations`).
+- **Plaintext key exported with KMS on.** Fixed with the length guard (spec: Encryption keys with KMS; tests
+  `testEncryptionKeyThatCannotBeWrappedIsNotExported` in the service and API test classes).
+- **0-byte placeholder key.** Covered by the same guard. The "Not yet synced" scenario of the spec was wrong for a new
+  resource, which appears as an empty entry, and was replaced (test `testEmptyBlobIsExportedAsEmptyEntry`). Skipping empty
+  blobs of other types, or flushing the write queue before the export (rejected in #2118), is not done here.

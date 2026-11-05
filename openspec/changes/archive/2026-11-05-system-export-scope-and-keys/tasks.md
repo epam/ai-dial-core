@@ -26,6 +26,12 @@
 - [x] 4.1 Update `docs/admin-system-export.md`: the `scope` parameter with examples and the `400` row of the responses table; replace "`encryption_keys/` and `credentials/` are never exported" and the final operational note with the KMS rule (keys exported when a KMS provider is set, `credentials/` never); say that a restored archive needs the same KMS key and that Core replaces a key it cannot decrypt, so secrets restored without that key become unreadable; say that the export trusts the setting. Verify that the text matches the specs. Running the `curl` examples against a local Core is not part of this change.
 - [x] 4.2 In `README.md` line 361, change "streams the `public` and `platform` buckets" to mention the optional `scope`. Verify by reading the rendered section.
 
+## 5. Review follow-up (PR #2237)
+
+- [x] 5.1 Read every `scope` value and combine them; an empty value in any repetition is a `400`. Verified by `testResolveBucketLocations`, `testInvalidScopeIsRejected` (service) and `testScopeSelectsTheBuckets`, `testInvalidScopeIsRejected` (API).
+- [x] 5.2 Skip an `encryption_keys` blob with no content encoding that is empty or not longer than `keySize / 8`, with a warning, and pass the key length from `AiDial`. Verified by `testEncryptionKeyThatCannotBeWrappedIsNotExported` (service and API).
+- [x] 5.3 Correct the "not yet synced" requirement and docs: a new resource is an empty entry. Verified by `testEmptyBlobIsExportedAsEmptyEntry`.
+
 ## Workflow follow-up
 
 - Archive the change with `npx -y @fission-ai/openspec@1.14.3 archive system-export-scope-and-keys -y` after review, then run `validate --specs --strict`.

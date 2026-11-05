@@ -19,9 +19,11 @@ import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.domain.StorageType;
 import org.jclouds.io.ContentMetadata;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.SequenceInputStream;
 import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.time.Instant;
@@ -43,7 +45,7 @@ import java.util.zip.ZipOutputStream;
  * <p>Layout: {@code .dial-system-export/manifest.json} first; then, for every blob, {@code .dial-system-export/metadata/<path>}
  * (content headers, blob timestamps and user metadata) immediately followed by the entry {@code <path>} holding the
  * bytes exactly as stored. Credentials are not exported. Encryption keys are exported only when a KMS provider is
- * configured, because without one they are stored in plaintext.
+ * configured, because without one they are stored in plaintext, and then only a blob that can be a KMS-wrapped key.
  *
  * <p>The archive is read from blob storage, so a resource written within the sync delay of the resource service
  * may not be in it yet.
@@ -65,36 +67,45 @@ public class AdminSystemExportService {
     private final LongSupplier clock;
     private final String coreVersion;
     private final List<String> excludedGroups;
+    private final int encryptionKeyLength;
 
+    /**
+     * @param encryptionKeyLength length in bytes of a plaintext content encryption key; an encryption key blob with no content
+     *                            encoding that is not longer than this cannot be a KMS-wrapped key, so it is not exported
+     */
     public AdminSystemExportService(BlobStorage blobStorage, LockService lockService, LongSupplier clock, String coreVersion,
-                                    boolean kmsEnabled) {
+                                    boolean kmsEnabled, int encryptionKeyLength) {
         this.blobStorage = blobStorage;
         this.lockService = lockService;
         this.clock = clock;
         this.coreVersion = coreVersion;
         this.excludedGroups = kmsEnabled ? List.of(CREDENTIALS_GROUP) : List.of(CREDENTIALS_GROUP, ENCRYPTION_KEYS_GROUP);
+        this.encryptionKeyLength = encryptionKeyLength;
     }
 
     /**
      * Resolves the {@code scope} request parameter to bucket locations, in the order of
      * {@link MergedConfigStore#ADMIN_BUCKET_LOCATIONS}. A scope name is a bucket location without the trailing separator.
      *
-     * @param scope comma-separated bucket names, compared case-insensitively; {@code null} selects every bucket
-     * @throws IllegalArgumentException if the scope is empty, has an empty element or names an unknown bucket
+     * @param scopes the values of the {@code scope} parameter, each a comma-separated list of bucket names compared
+     *               case-insensitively; no value selects every bucket
+     * @throws IllegalArgumentException if a value is empty, has an empty element or names an unknown bucket
      */
-    public static List<String> resolveBucketLocations(String scope) {
-        if (scope == null) {
+    public static List<String> resolveBucketLocations(List<String> scopes) {
+        if (scopes.isEmpty()) {
             return MergedConfigStore.ADMIN_BUCKET_LOCATIONS;
         }
 
         List<String> validNames = MergedConfigStore.ADMIN_BUCKET_LOCATIONS.stream().map(AdminSystemExportService::toScopeName).toList();
         Set<String> requestedNames = new HashSet<>();
-        for (String name : scope.split(",", -1)) {
-            String normalized = name.trim().toLowerCase(Locale.ROOT);
-            if (!validNames.contains(normalized)) {
-                throw new IllegalArgumentException("scope must be a comma-separated list of: " + String.join(", ", validNames));
+        for (String scope : scopes) {
+            for (String name : scope.split(",", -1)) {
+                String normalized = name.trim().toLowerCase(Locale.ROOT);
+                if (!validNames.contains(normalized)) {
+                    throw new IllegalArgumentException("scope must be a comma-separated list of: " + String.join(", ", validNames));
+                }
+                requestedNames.add(normalized);
             }
-            requestedNames.add(normalized);
         }
         return MergedConfigStore.ADMIN_BUCKET_LOCATIONS.stream().filter(location -> requestedNames.contains(toScopeName(location))).toList();
     }
@@ -159,7 +170,7 @@ public class AdminSystemExportService {
             PageSet<? extends StorageMetadata> page = blobStorage.list(bucketLocation, marker, PAGE_SIZE, true);
             for (StorageMetadata meta : page) {
                 if (meta.getType() == StorageType.BLOB && shouldExport(bucketLocation, meta.getName())) {
-                    exportBlob(zip, meta.getName(), stats);
+                    exportBlob(zip, bucketLocation, meta.getName(), stats);
                 }
             }
             marker = page.getNextMarker();
@@ -170,7 +181,7 @@ public class AdminSystemExportService {
         return excludedGroups.stream().noneMatch(group -> path.startsWith(bucketLocation + group));
     }
 
-    private void exportBlob(ZipOutputStream zip, String path, ExportStats stats) throws IOException {
+    private void exportBlob(ZipOutputStream zip, String bucketLocation, String path, ExportStats stats) throws IOException {
         Blob blob = blobStorage.loadWithoutTranscoding(path);
         if (blob == null) {
             log.debug("Skipping blob deleted during the system export: {}", path);
@@ -178,9 +189,19 @@ public class AdminSystemExportService {
         }
 
         MutableBlobMetadata meta = blob.getMetadata();
+        String contentEncoding = meta.getContentMetadata().getContentEncoding();
         try (InputStream payload = blob.getPayload().openStream()) {
+            InputStream content = payload;
+            if (path.startsWith(bucketLocation + ENCRYPTION_KEYS_GROUP) && !isEncoded(contentEncoding)) {
+                byte[] head = payload.readNBytes(encryptionKeyLength + 1);
+                if (head.length <= encryptionKeyLength) {
+                    log.warn("Skipping encryption key that cannot be KMS-wrapped, it is empty or as short as a plaintext key: {}", path);
+                    return;
+                }
+                content = new SequenceInputStream(new ByteArrayInputStream(head), payload);
+            }
             writeJsonEntry(zip, METADATA_ENTRY_PREFIX + path, toBlobMetadata(meta), stats);
-            writeBlobContent(zip, path, meta.getContentMetadata().getContentEncoding(), payload, stats);
+            writeBlobContent(zip, path, contentEncoding, content, stats);
         }
     }
 
@@ -204,8 +225,11 @@ public class AdminSystemExportService {
     }
 
     private static int compressionLevel(String contentEncoding) {
-        boolean encoded = !StringUtils.isBlank(contentEncoding) && !IDENTITY_ENCODING.equalsIgnoreCase(contentEncoding.trim());
-        return encoded ? Deflater.NO_COMPRESSION : Deflater.DEFAULT_COMPRESSION;
+        return isEncoded(contentEncoding) ? Deflater.NO_COMPRESSION : Deflater.DEFAULT_COMPRESSION;
+    }
+
+    private static boolean isEncoded(String contentEncoding) {
+        return !StringUtils.isBlank(contentEncoding) && !IDENTITY_ENCODING.equalsIgnoreCase(contentEncoding.trim());
     }
 
     private static BlobMetadata toBlobMetadata(MutableBlobMetadata meta) {

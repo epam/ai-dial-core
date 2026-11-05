@@ -78,6 +78,9 @@ class AdminSystemExportServiceTest {
     private static final Instant NOW = Instant.parse("2026-01-02T03:04:05.678Z");
     private static final String CORE_VERSION = "1.2.3";
     private static final List<String> ALL_BUCKETS = MergedConfigStore.ADMIN_BUCKET_LOCATIONS;
+    private static final int KEY_LENGTH = 32;
+    private static final String PLAIN_KEY = "p".repeat(KEY_LENGTH);
+    private static final String WRAPPED_KEY = "w".repeat(KEY_LENGTH + 28);
 
     private RedisServer redisServer;
     private RedissonClient redis;
@@ -120,7 +123,7 @@ class AdminSystemExportServiceTest {
             blobStorage = new BlobStorage(mapper.readValue(blobStorageConfig, Storage.class));
 
             lockService = new LockService(redis, null);
-            service = new AdminSystemExportService(blobStorage, lockService, NOW::toEpochMilli, CORE_VERSION, false);
+            service = new AdminSystemExportService(blobStorage, lockService, NOW::toEpochMilli, CORE_VERSION, false, KEY_LENGTH);
         } catch (Throwable e) {
             destroy();
             throw e;
@@ -281,18 +284,23 @@ class AdminSystemExportServiceTest {
 
     @Test
     void testResolveBucketLocations() {
-        assertEquals(List.of("public/", "platform/"), AdminSystemExportService.resolveBucketLocations(null));
-        assertEquals(List.of("platform/"), AdminSystemExportService.resolveBucketLocations("platform"));
-        assertEquals(List.of("public/"), AdminSystemExportService.resolveBucketLocations(" PUBLIC , public"));
-        assertEquals(List.of("public/", "platform/"), AdminSystemExportService.resolveBucketLocations("platform,public"));
+        assertEquals(List.of("public/", "platform/"), AdminSystemExportService.resolveBucketLocations(List.of()));
+        assertEquals(List.of("platform/"), AdminSystemExportService.resolveBucketLocations(List.of("platform")));
+        assertEquals(List.of("public/"), AdminSystemExportService.resolveBucketLocations(List.of(" PUBLIC , public")));
+        assertEquals(List.of("public/", "platform/"), AdminSystemExportService.resolveBucketLocations(List.of("platform,public")));
+        assertEquals(List.of("public/", "platform/"), AdminSystemExportService.resolveBucketLocations(List.of("platform", "PUBLIC")));
+        assertEquals(List.of("platform/"), AdminSystemExportService.resolveBucketLocations(List.of("platform", "platform")));
     }
 
     @Test
     void testInvalidScopeIsRejected() {
         for (String scope : List.of("org", "all", "", " ", "public,", ",platform", "public,,platform", "public;platform")) {
             IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                    () -> AdminSystemExportService.resolveBucketLocations(scope), "scope '" + scope + "'");
+                    () -> AdminSystemExportService.resolveBucketLocations(List.of(scope)), "scope '" + scope + "'");
             assertTrue(e.getMessage().contains("public, platform"), e.getMessage());
+        }
+        for (List<String> scopes : List.of(List.of("public", ""), List.of("", "platform"), List.of("public", "org"))) {
+            assertThrows(IllegalArgumentException.class, () -> AdminSystemExportService.resolveBucketLocations(scopes), "scopes " + scopes);
         }
     }
 
@@ -337,19 +345,19 @@ class AdminSystemExportServiceTest {
 
     @Test
     void testEncryptionKeysAreExportedWhenKmsIsEnabled() throws IOException {
-        store("public/encryption_keys/cek", "application/octet-stream", null, Map.of(), "public-key");
-        store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), "platform-key");
+        store("public/encryption_keys/cek", "application/octet-stream", null, Map.of(), WRAPPED_KEY);
+        store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), WRAPPED_KEY);
         store("public/credentials/cred1", "application/json", null, Map.of(), "secret");
         store("platform/credentials/cred2", "application/json", null, Map.of(), "secret");
         store("public/files/owner/encryption_keys/notes.txt", "text/plain", null, Map.of(), "notes");
-        AdminSystemExportService kmsService = new AdminSystemExportService(blobStorage, lockService, NOW::toEpochMilli, CORE_VERSION, true);
+        AdminSystemExportService kmsService = new AdminSystemExportService(blobStorage, lockService, NOW::toEpochMilli, CORE_VERSION, true, KEY_LENGTH);
 
         byte[] archive = export(kmsService);
         Map<String, byte[]> entries = readEntries(archive);
 
         assertEquals(List.of("public/encryption_keys/cek", "public/files/owner/encryption_keys/notes.txt", "platform/encryption_keys/cek"),
                 contentEntries(archive));
-        assertArrayEquals("platform-key".getBytes(StandardCharsets.UTF_8), entries.get("platform/encryption_keys/cek"));
+        assertArrayEquals(WRAPPED_KEY.getBytes(StandardCharsets.UTF_8), entries.get("platform/encryption_keys/cek"));
         assertTrue(entries.containsKey(AdminSystemExportService.METADATA_ENTRY_PREFIX + "public/encryption_keys/cek"));
         assertTrue(entries.containsKey(AdminSystemExportService.METADATA_ENTRY_PREFIX + "platform/encryption_keys/cek"));
         assertFalse(entries.keySet().stream().anyMatch(name -> name.contains("cred1") || name.contains("cred2")));
@@ -357,11 +365,46 @@ class AdminSystemExportServiceTest {
 
     @Test
     void testEncryptionKeysOfOnlyTheSelectedBucketAreExportedWhenKmsIsEnabled() throws IOException {
-        store("public/encryption_keys/cek", "application/octet-stream", null, Map.of(), "public-key");
-        store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), "platform-key");
-        AdminSystemExportService kmsService = new AdminSystemExportService(blobStorage, lockService, NOW::toEpochMilli, CORE_VERSION, true);
+        store("public/encryption_keys/cek", "application/octet-stream", null, Map.of(), WRAPPED_KEY);
+        store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), WRAPPED_KEY);
+        AdminSystemExportService kmsService = new AdminSystemExportService(blobStorage, lockService, NOW::toEpochMilli, CORE_VERSION, true, KEY_LENGTH);
 
         assertEquals(List.of("platform/encryption_keys/cek"), contentEntries(export(kmsService, List.of("platform/"))));
+    }
+
+    @Test
+    void testEncryptionKeyThatCannotBeWrappedIsNotExported() throws IOException {
+        store("public/encryption_keys/cek", "application/octet-stream", null, Map.of(), PLAIN_KEY);
+        store("public/encryption_keys/longer", "application/octet-stream", null, Map.of(), PLAIN_KEY + "x");
+        store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), "");
+        store("platform/encryption_keys/encoded", "application/octet-stream", "gzip", Map.of(), "short");
+        AdminSystemExportService kmsService = new AdminSystemExportService(blobStorage, lockService, NOW::toEpochMilli, CORE_VERSION, true, KEY_LENGTH);
+        Logger logger = (Logger) LoggerFactory.getLogger(AdminSystemExportService.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            byte[] archive = export(kmsService);
+
+            assertEquals(List.of("public/encryption_keys/longer", "platform/encryption_keys/encoded"), contentEntries(archive));
+            assertArrayEquals((PLAIN_KEY + "x").getBytes(StandardCharsets.UTF_8), readEntries(archive).get("public/encryption_keys/longer"));
+            List<String> warnings = appender.list.stream().filter(event -> event.getLevel() == Level.WARN).map(ILoggingEvent::getFormattedMessage).toList();
+            assertEquals(2, warnings.size(), warnings.toString());
+            assertTrue(warnings.stream().anyMatch(message -> message.endsWith("public/encryption_keys/cek")), warnings.toString());
+            assertTrue(warnings.stream().anyMatch(message -> message.endsWith("platform/encryption_keys/cek")), warnings.toString());
+        } finally {
+            logger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    void testEmptyBlobIsExportedAsEmptyEntry() throws IOException {
+        store("public/models/m1", "application/json", null, Map.of(), "");
+
+        Map<String, byte[]> entries = readEntries(export(service));
+
+        assertEquals(0, entries.get("public/models/m1").length);
+        assertTrue(entries.containsKey(AdminSystemExportService.METADATA_ENTRY_PREFIX + "public/models/m1"));
     }
 
     @Test
@@ -539,7 +582,7 @@ class AdminSystemExportServiceTest {
         ByteArrayOutputStream written = new ByteArrayOutputStream();
 
         UncheckedIOException e = assertThrows(UncheckedIOException.class, () ->
-                new AdminSystemExportService(blobStorage, lockService, current::get, CORE_VERSION, false)
+                new AdminSystemExportService(blobStorage, lockService, current::get, CORE_VERSION, false, KEY_LENGTH)
                         .export(afterFirstWrite(written, () -> current.addAndGet(LockService.LOCK_PERIOD.plusSeconds(1).toMillis())), NOW, ALL_BUCKETS));
 
         assertTrue(e.getCause().getMessage().contains("lock period"), e.getCause().getMessage());
@@ -557,7 +600,7 @@ class AdminSystemExportServiceTest {
         AtomicLong current = new AtomicLong(NOW.toEpochMilli());
         ByteArrayOutputStream written = new ByteArrayOutputStream();
 
-        new AdminSystemExportService(blobStorage, lockService, current::get, CORE_VERSION, false)
+        new AdminSystemExportService(blobStorage, lockService, current::get, CORE_VERSION, false, KEY_LENGTH)
                 .export(afterFirstWrite(written, () -> current.addAndGet(LockService.LOCK_PERIOD.toMillis())), NOW, ALL_BUCKETS);
 
         assertTrue(readEntries(written.toByteArray()).containsKey("public/files/user1/a.txt"));
@@ -634,7 +677,7 @@ class AdminSystemExportServiceTest {
     }
 
     private AdminSystemExportService newService(BlobStorage storage) {
-        return new AdminSystemExportService(storage, lockService, NOW::toEpochMilli, CORE_VERSION, false);
+        return new AdminSystemExportService(storage, lockService, NOW::toEpochMilli, CORE_VERSION, false, KEY_LENGTH);
     }
 
     private static BlobStorage singleBlobStorage(String path, Blob blob) {
