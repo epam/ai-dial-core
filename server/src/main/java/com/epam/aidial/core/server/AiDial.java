@@ -436,7 +436,7 @@ public class AiDial {
                     mergedConfigStore, command -> taskExecutor.submit(() -> {
                         command.run();
                         return null;
-                    }), adminSystemImportSettings.getParallelism(), clock, version(), generator);
+                    }), adminSystemImportSettings, clock, version(), generator);
             TempFolderCleaner systemImportStagingCleaner = new TempFolderCleaner(
                     storage, AdminSystemImportService.STAGING_FOLDER, Duration.ofHours(24));
             long systemImportStagingCleanupPeriodMs = Duration.ofHours(24).toMillis();

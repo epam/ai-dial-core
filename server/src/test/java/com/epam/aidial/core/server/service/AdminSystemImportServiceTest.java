@@ -139,12 +139,12 @@ class AdminSystemImportServiceTest {
     }
 
     private AdminSystemImportService newService(String coreVersion) {
-        return newService(new AdminSystemImportService.Settings().getParallelism(), coreVersion);
+        return newService(new AdminSystemImportService.Settings(), coreVersion);
     }
 
-    private AdminSystemImportService newService(int parallelism, String coreVersion) {
+    private AdminSystemImportService newService(AdminSystemImportService.Settings settings, String coreVersion) {
         return new AdminSystemImportService(storage, lockService, resourceService, mergedConfigStore,
-                command -> Thread.ofVirtual().start(command), parallelism,
+                command -> Thread.ofVirtual().start(command), settings,
                 clock::get, coreVersion, () -> "import-" + idCounter.incrementAndGet());
     }
 
@@ -811,7 +811,9 @@ class AdminSystemImportServiceTest {
             storeOld("public/models/old" + i);
             entries[i] = entry("public/models/n" + i, "{}");
         }
-        AdminSystemImportService parallelService = newService(2, CORE_VERSION);
+        AdminSystemImportService.Settings settings = new AdminSystemImportService.Settings();
+        settings.setParallelism(2);
+        AdminSystemImportService parallelService = newService(settings, CORE_VERSION);
         probe.delayMs = 20;
 
         AdminSystemImportService.StagedImport staged = parallelService.stage(stream(archiveOf(CORE_VERSION, entries)));

@@ -73,20 +73,20 @@ public class AdminSystemImportService {
     private final ResourceService resourceService;
     private final MergedConfigStore mergedConfigStore;
     private final Executor executor;
-    private final int parallelism;
+    private final Settings settings;
     private final LongSupplier clock;
     private final String coreVersion;
     private final Supplier<String> idGenerator;
 
     public AdminSystemImportService(BlobStorage blobStorage, LockService lockService, ResourceService resourceService,
-                                    MergedConfigStore mergedConfigStore, Executor executor, int parallelism,
+                                    MergedConfigStore mergedConfigStore, Executor executor, Settings settings,
                                     LongSupplier clock, String coreVersion, Supplier<String> idGenerator) {
         this.blobStorage = blobStorage;
         this.lockService = lockService;
         this.resourceService = resourceService;
         this.mergedConfigStore = mergedConfigStore;
         this.executor = executor;
-        this.parallelism = parallelism;
+        this.settings = settings;
         this.clock = clock;
         this.coreVersion = coreVersion;
         this.idGenerator = idGenerator;
@@ -262,7 +262,7 @@ public class AdminSystemImportService {
     }
 
     private BlobCalls newCalls() {
-        return new BlobCalls(executor, parallelism);
+        return new BlobCalls(executor, settings.getParallelism());
     }
 
     private long stageArchive(InputStream archive, String stagingPrefix, BlobCalls uploads) throws IOException {
