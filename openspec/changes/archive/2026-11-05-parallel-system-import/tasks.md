@@ -22,4 +22,4 @@
 
 - [x] 3.1 `README.md`: `adminSystemImport.parallelism` row; `docs/admin-system-import.md`: parallelism and `http.maxConnections`
 - [x] 3.2 `npx -y @fission-ai/openspec@1.14.3 validate parallel-system-import --strict`
-- [ ] 3.3 (deferred: needs the review environment) Re-run the 3,584-blob import and compare the phase timings
+- [x] 3.3 Re-run the 3,584-blob import on the review environment and compare the phase timings (see `review.md`)
