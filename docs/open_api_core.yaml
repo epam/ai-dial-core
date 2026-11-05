@@ -4345,6 +4345,43 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+    get:
+      tags:
+      - User Consent
+      summary: "/v1/consent/{deployment_id}/admin-consent"
+      operationId: getApplicationAdminConsentStatus
+      parameters:
+      - name: deployment_id
+        in: path
+        description: The unique identifier of the deployment.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminConsentStatus"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/conversations/{bucket}/{conversation_path}:
     get:
       tags:
@@ -13603,6 +13640,21 @@ components:
       - APPLIED_INVALID
       - FAILED
       - SKIPPED
+    AdminConsentStatus:
+      type: object
+      properties:
+        consented:
+          type: boolean
+        grantedAt:
+          type: integer
+        grantedBy:
+          type: string
+        grantedResources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConsentResourceEntry"
+        stale:
+          type: boolean
     AdminManifest:
       type: object
       properties:

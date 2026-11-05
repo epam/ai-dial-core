@@ -3,14 +3,24 @@ package com.epam.aidial.core.server;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.consent.AdminConsentStatus;
+import com.epam.aidial.core.server.data.consent.Consent;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.JsonArray;
+import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -29,7 +39,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
               "endpoint": "http://application1/v1/completions",
               "display_name": "Dependency Consent App",
               "resource_dependencies": [
-                {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "current-user/skills/"}, "access": ["write"], "required": true}
+                {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "skills/{current-user}/"}, "access": ["write"], "required": true}
               ]
             }
             """;
@@ -48,7 +58,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         // consentRequired flag anywhere — consent is never author-controlled (§6.1).
         Response consent = send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP, null, "", "authorization", "admin");
         verify(consent, 200);
-        assertTrue(consent.body().contains("current-user/skills/"), () -> "Body: " + consent.body());
+        assertTrue(consent.body().contains("skills/{current-user}/"), () -> "Body: " + consent.body());
 
         verify(send(HttpMethod.DELETE, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
                 "authorization", "admin"), 200);
@@ -77,6 +87,106 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
     void testUnknownDeploymentIsNotFound() {
         verify(send(HttpMethod.POST, "/v1/consent/unknown-app/admin-consent", null, "",
                 "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/consent/unknown-app/admin-consent", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    void testAdminConsentStatusReadsTheTriState() {
+        // Never granted: consented false, nothing else — no stale, no provenance.
+        verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null,
+                DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        Response neverGranted = send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+                "authorization", "admin");
+        verify(neverGranted, 200);
+        assertEquals("{\"consented\":false}", neverGranted.body(), () -> "Body: " + neverGranted.body());
+
+        // Granted: consented true, stale false, provenance and the approved snapshot present.
+        verify(send(HttpMethod.POST, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+                "authorization", "admin"), 200);
+        Response granted = send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+                "authorization", "admin");
+        verify(granted, 200);
+        AdminConsentStatus live = ProxyUtil.convertToObject(granted.body(), AdminConsentStatus.class);
+        assertTrue(live.isConsented());
+        assertEquals(Boolean.FALSE, live.getStale());
+        assertEquals("admin", live.getGrantedBy());
+        assertNotNull(live.getGrantedAt());
+        assertEquals(List.of(entry("skills/{current-user}/", ResourceAccessType.WRITE)), live.getGrantedResources());
+
+        // Declaration changed since the grant: not consented, stale — and the last approval stays
+        // visible for the panel's re-approve view.
+        verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null, """
+                {
+                  "endpoint": "http://application1/v1/completions",
+                  "display_name": "Dependency Consent App",
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk_extra", "target": {"path": "files/{current-user}/dep-extra/"}, "access": ["read"]}
+                  ]
+                }
+                """, "authorization", "admin"), 200);
+        Response stale = send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+                "authorization", "admin");
+        verify(stale, 200);
+        AdminConsentStatus staleStatus = ProxyUtil.convertToObject(stale.body(), AdminConsentStatus.class);
+        assertFalse(staleStatus.isConsented());
+        assertEquals(Boolean.TRUE, staleStatus.getStale());
+        assertEquals(live.getGrantedBy(), staleStatus.getGrantedBy(), "the last approval's provenance survives the stale transition");
+        assertEquals(live.getGrantedAt(), staleStatus.getGrantedAt());
+        assertEquals(live.getGrantedResources(), staleStatus.getGrantedResources(),
+                "the approved snapshot, not the current declaration, is shown for the re-approve view");
+
+        // Withdrawn: back to the clean never-granted shape.
+        verify(send(HttpMethod.DELETE, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+                "authorization", "admin"), 200);
+        Response withdrawn = send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+                "authorization", "admin");
+        verify(withdrawn, 200);
+        assertEquals("{\"consented\":false}", withdrawn.body(), () -> "Body: " + withdrawn.body());
+    }
+
+    @Test
+    void testAdminConsentStatusForNonDeclarersAndNonAdmins() {
+        // A non-declaring app is a legitimate "nothing consented" answer, not an error.
+        verify(send(HttpMethod.PUT, "/v1/applications/public/plain-consent-app", null, """
+                {
+                  "endpoint": "http://application1/v1/completions",
+                  "display_name": "Plain App"
+                }
+                """, "authorization", "admin", "If-None-Match", "*"), 200);
+        Response status = send(HttpMethod.GET, "/v1/consent/applications/public/plain-consent-app/admin-consent",
+                null, "", "authorization", "admin");
+        verify(status, 200);
+        assertEquals("{\"consented\":false}", status.body(), () -> "Body: " + status.body());
+
+        // The status read is gated exactly like the writers — fail-closed for non-admins.
+        verify(send(HttpMethod.GET, "/v1/consent/applications/public/plain-consent-app/admin-consent",
+                null, ""), 403);
+    }
+
+    @Test
+    void testAdminConsentIsRefusedToPerRequestKeys() {
+        // an application holding an admin user's per-request key is still not an administrator
+        ApiKeyData perRequestKey = createAppKey("admin", Map.of());
+        apiKeyStore.assignPerRequestApiKey(perRequestKey);
+        String key = perRequestKey.getPerRequestKey();
+
+        verify(send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "", "api-key", key), 403);
+        verify(send(HttpMethod.POST, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "", "api-key", key), 403);
+        verify(send(HttpMethod.DELETE, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "", "api-key", key), 403);
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/admin-api-key-config.json")
+    void testApiKeyAdminGrantIsStampedWithTheKeysProject() {
+        verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null,
+                DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+
+        verify(send(HttpMethod.POST, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "", "api-key", "adminKey1"), 200);
+
+        Response status = send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "", "api-key", "adminKey1");
+        verify(status, 200);
+        assertTrue(status.body().contains("\"grantedBy\":\"AdminTest\""), status.body());
     }
 
     /**
@@ -118,14 +228,38 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
 
             assertEquals(3, events.size(), () -> "Events: " + events);
             assertTrue(events.get(0).contains("action=GRANT") && events.get(0).contains("outcome=SUCCESS")
-                    && events.get(0).contains("targets=current-user/skills/"), () -> "Events: " + events);
+                    && events.get(0).contains("targets=skills/{current-user}/"), () -> "Events: " + events);
             assertTrue(events.get(1).contains("action=GRANT") && events.get(1).contains("outcome=DENIED"),
                     () -> "Events: " + events);
             assertTrue(events.get(2).contains("action=WITHDRAW") && events.get(2).contains("outcome=SUCCESS")
-                    && events.get(2).contains("targets=current-user/skills/"), () -> "Events: " + events);
+                    && events.get(2).contains("targets=skills/{current-user}/"), () -> "Events: " + events);
             assertFalse(events.stream().anyMatch(message -> message.contains("lnk_")));
         } finally {
             auditLogger.detachAppender(appender);
+        }
+    }
+
+    private static Consent.ResourceEntry entry(String url, ResourceAccessType... access) {
+        Consent.ResourceEntry entry = new Consent.ResourceEntry();
+        entry.setUrl(url);
+        entry.setAccess(Set.of(access));
+        return entry;
+    }
+
+    /** Admin rules unconfigured: admin consent is refused to everyone, a matching role included. */
+    public static class AdminRulesUnconfigured extends ResourceBaseTest {
+
+        @Override
+        protected JsonObject additionalSettingsOverrides() {
+            return new JsonObject().put("access", new JsonObject().put("admin", new JsonObject().put("rules", new JsonArray())));
+        }
+
+        @Test
+        void testAdminConsentIsRefusedWithoutAdminRules() {
+            // refused before the application is looked up: 403, not 404
+            for (HttpMethod method : List.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.DELETE)) {
+                verify(send(method, "/v1/consent/unknown-app/admin-consent", null, "", "authorization", "admin"), 403);
+            }
         }
     }
 }

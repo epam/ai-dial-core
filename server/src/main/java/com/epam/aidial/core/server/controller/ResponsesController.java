@@ -74,7 +74,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 new CollectRequestApplicationFilesFn(proxy, context),
                 new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_RESPONSES),
                 new CollectDeploymentsFn(proxy, context),
-                new ResolveResourceDependenciesFn(proxy, context));
+                new ResolveResourceDependenciesFn<>(proxy, context));
     }
 
     @Override

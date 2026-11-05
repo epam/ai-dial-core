@@ -4,7 +4,9 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ResourceDependency;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.consent.AdminConsentStatus;
 import com.epam.aidial.core.server.data.consent.Consent;
+import com.epam.aidial.core.server.data.consent.ConsentGrant;
 import com.epam.aidial.core.server.data.consent.ReviewConsentResponse;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -23,6 +25,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.LongSupplier;
 
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 
@@ -35,9 +38,12 @@ public class ConsentService {
 
     private final ResourceService resourceService;
 
-    public ConsentService(DeploymentService deploymentService, ResourceService resourceService) {
+    private final LongSupplier clock;
+
+    public ConsentService(DeploymentService deploymentService, ResourceService resourceService, LongSupplier clock) {
         this.deploymentService = deploymentService;
         this.resourceService = resourceService;
+        this.clock = clock;
     }
 
     public ReviewConsentResponse buildConsent(ProxyContext context, String deploymentId) {
@@ -117,38 +123,64 @@ public class ConsentService {
 
     /**
      * The v1 gate: an administrator approves the application's declared resource dependencies.
-     * The stored record is the approved snapshot — only the consent endpoint reaches this type
-     * (ADMIN_CONSENT is unmapped in ResourceTypes.of()), and any declaration change re-requires
-     * the grant because {@link #isAdminConsented} compares snapshots. The record is keyed by the
+     * The stored record is the {@link ConsentGrant} envelope — the approved snapshot plus
+     * server-stamped provenance (who granted, when) — and only the consent endpoint reaches this
+     * type (ADMIN_CONSENT is unmapped in ResourceTypes.of()). Any declaration change re-requires
+     * the grant because the status check compares snapshots. The record is keyed by the
      * RESOLVED application's canonical name — the same identity the resolver reads — never by the
      * raw request id, so the two sides cannot diverge for names that carry percent-sequences.
      */
-    public Consent grantAdminConsent(ProxyContext context, String deploymentId) {
+    public ConsentGrant grantAdminConsent(ProxyContext context, String deploymentId) {
         Application application = requireDeclaringApplication(context, deploymentId);
-        Consent approval = adminConsentOf(application.getResourceDependencies());
+        ConsentGrant grant = new ConsentGrant()
+                .setConsent(adminConsentOf(application.getResourceDependencies()))
+                .setGrantedBy(context.getInitiatorId())
+                .setGrantedAt(clock.getAsLong());
         resourceService.putResource(getAdminConsentDescription(application.getName()),
-                ProxyUtil.convertToString(approval), EtagHeader.ANY);
-        return approval;
+                ProxyUtil.convertToString(grant), EtagHeader.ANY);
+        return grant;
     }
 
     /**
      * Withdraws the approval — the application stops resolving dependencies for every user
-     * immediately. Returns the withdrawn record (null when absent) so the audit event can carry
+     * immediately. Returns the withdrawn grant (null when absent) so the audit event can carry
      * exactly what was withdrawn. Resolves the application first, for the same key-identity
      * reason as the grant.
      */
-    public Consent withdrawAdminConsent(ProxyContext context, String deploymentId) {
+    public ConsentGrant withdrawAdminConsent(ProxyContext context, String deploymentId) {
         Application application = requireApplication(context, deploymentId);
         ResourceDescriptor descriptor = getAdminConsentDescription(application.getName());
-        Consent withdrawn = readAdminConsent(descriptor);
+        ConsentGrant withdrawn = readAdminConsent(descriptor);
         resourceService.deleteResource(descriptor, EtagHeader.ANY);
         return withdrawn;
     }
 
-    /** Content-bound check: the stored snapshot must deep-equal the declaration's current snapshot. */
+    /** Admin-consent status of the application; {@code consented} is what the request-time gate enforces. */
+    public AdminConsentStatus describeAdminConsent(ProxyContext context, String deploymentId) {
+        Application application = requireApplication(context, deploymentId);
+        ConsentGrant stored = readAdminConsent(getAdminConsentDescription(application.getName()));
+        if (stored == null) {
+            return new AdminConsentStatus().setConsented(false);
+        }
+        boolean matches = matches(stored, application.getResourceDependencies());
+        return new AdminConsentStatus()
+                .setConsented(matches)
+                .setStale(!matches)
+                .setGrantedBy(stored.getGrantedBy())
+                .setGrantedAt(stored.getGrantedAt())
+                .setGrantedResources(stored.getConsent() == null ? List.of() : stored.getConsent().getResources());
+    }
+
+    /** The request-time gate: the stored snapshot equals the declaration's current one. */
     public boolean isAdminConsented(String applicationId, List<ResourceDependency> declaration) {
-        Consent stored = readAdminConsent(getAdminConsentDescription(applicationId));
-        return stored != null && Objects.equals(stored.getResources(), resourceEntriesOf(declaration));
+        return matches(readAdminConsent(getAdminConsentDescription(applicationId)), declaration);
+    }
+
+    /** The one predicate both the gate and the status read enforce — provenance never participates. */
+    private static boolean matches(ConsentGrant stored, List<ResourceDependency> declaration) {
+        // fail closed on a record without a snapshot
+        return stored != null && stored.getConsent() != null
+                && Objects.equals(stored.getConsent().getResources(), resourceEntriesOf(declaration));
     }
 
     private Application requireDeclaringApplication(ProxyContext context, String deploymentId) {
@@ -206,9 +238,9 @@ public class ConsentService {
                 ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, deploymentId);
     }
 
-    private Consent readAdminConsent(ResourceDescriptor descriptor) {
-        String consent = resourceService.getResource(descriptor);
-        return ProxyUtil.convertToObject(consent, Consent.class);
+    private ConsentGrant readAdminConsent(ResourceDescriptor descriptor) {
+        String grant = resourceService.getResource(descriptor);
+        return ProxyUtil.convertToObject(grant, ConsentGrant.class);
     }
 
     private String getRootDeploymentId(ProxyContext context, Deployment current) {
