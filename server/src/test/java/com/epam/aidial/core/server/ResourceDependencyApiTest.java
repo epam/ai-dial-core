@@ -44,7 +44,7 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
     }
 
     private Response grantConsent() {
-        return send(HttpMethod.POST, "/v1/consent/applications/public/dep-e2e-app/admin-consent", null, "",
+        return send(HttpMethod.POST, "/v1/admin-consent/applications/public/dep-e2e-app", null, "",
                 "authorization", "admin");
     }
 
@@ -160,7 +160,7 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
         assertEquals(200, completion.status());
         assertEquals(200, grantedStatus.get(), "the consented target must be writable by the app's key");
 
-        verify(send(HttpMethod.DELETE, "/v1/consent/applications/public/dep-e2e-app/admin-consent", null, "",
+        verify(send(HttpMethod.DELETE, "/v1/admin-consent/applications/public/dep-e2e-app", null, "",
                 "authorization", "admin"), 200);
 
         AtomicReference<Integer> withdrawnStatus = new AtomicReference<>();

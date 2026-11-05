@@ -291,11 +291,9 @@ public enum RouteTemplate {
             "^/v1/ops/config/reload$",
             "/v1/ops/config/reload"
     ),
-    // Registered BEFORE USER_CONSENT for POST/DELETE: the USER_CONSENT pattern is anchored and
-    // would otherwise swallow "/v1/consent/{id}/admin-consent" whole as a deployment id.
     ADMIN_CONSENT(
-            "^/v1/consent/(?<id>.+?)/admin-consent$",
-            "/v1/consent/{id}/admin-consent"
+            "^/v1/admin-consent/(?<id>.+)$",
+            "/v1/admin-consent/{id}"
     ),
     USER_CONSENT(
             "^/v1/consent/(?<id>.+?)$",

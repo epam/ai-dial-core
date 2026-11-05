@@ -24,8 +24,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The admin-consent gate on the existing consent API: grant/withdraw via
- * {@code POST/DELETE /v1/consent/{id}/admin-consent}, the error taxonomy, the typed record's
+ * The admin-consent gate: grant/withdraw via
+ * {@code POST/DELETE /v1/admin-consent/{id}}, the error taxonomy, the typed record's
  * invisibility to the generic Resource API, and the audit stream. Content binding (declaration
  * change ⇒ grant invalid) is proven at unit level in {@code ConsentServiceTest} and end to end
  * in the resolution PR's tests.
@@ -49,9 +49,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null,
                 DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
 
-        // POST without a body reaching grantAdminConsent (acceptConsent would demand one) also pins
-        // the route order: USER_CONSENT's anchored pattern must not swallow the admin-consent path.
-        verify(send(HttpMethod.POST, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + DECLARING_APP, null, "",
                 "authorization", "admin"), 200);
 
         // The consent document now carries the resource half (§6.5), for a declaring app with no
@@ -60,7 +58,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         verify(consent, 200);
         assertTrue(consent.body().contains("skills/{current-user}/"), () -> "Body: " + consent.body());
 
-        verify(send(HttpMethod.DELETE, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+        verify(send(HttpMethod.DELETE, "/v1/admin-consent/" + DECLARING_APP, null, "",
                 "authorization", "admin"), 200);
 
         // A plain app never declares: consent is not applicable.
@@ -70,8 +68,22 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
                   "display_name": "Plain App"
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
-        verify(send(HttpMethod.POST, "/v1/consent/applications/public/plain-consent-app/admin-consent", null, "",
+        verify(send(HttpMethod.POST, "/v1/admin-consent/applications/public/plain-consent-app", null, "",
                 "authorization", "admin"), 400);
+    }
+
+    @Test
+    void testAdminConsentSuffixOnTheUserConsentPathIsUserConsent() {
+        verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null,
+                DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+
+        // an id ending in /admin-consent is an ordinary user-consent id: the user-consent POST demands a body
+        verify(send(HttpMethod.POST, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+                "authorization", "admin"), 400);
+
+        Response status = send(HttpMethod.GET, "/v1/admin-consent/" + DECLARING_APP, null, "", "authorization", "admin");
+        verify(status, 200);
+        assertEquals("{\"consented\":false}", status.body(), () -> "Body: " + status.body());
     }
 
     @Test
@@ -79,15 +91,15 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null,
                 DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
 
-        verify(send(HttpMethod.POST, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, ""), 403);
-        verify(send(HttpMethod.DELETE, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, ""), 403);
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + DECLARING_APP, null, ""), 403);
+        verify(send(HttpMethod.DELETE, "/v1/admin-consent/" + DECLARING_APP, null, ""), 403);
     }
 
     @Test
     void testUnknownDeploymentIsNotFound() {
-        verify(send(HttpMethod.POST, "/v1/consent/unknown-app/admin-consent", null, "",
+        verify(send(HttpMethod.POST, "/v1/admin-consent/unknown-app", null, "",
                 "authorization", "admin"), 404);
-        verify(send(HttpMethod.GET, "/v1/consent/unknown-app/admin-consent", null, "",
+        verify(send(HttpMethod.GET, "/v1/admin-consent/unknown-app", null, "",
                 "authorization", "admin"), 404);
     }
 
@@ -96,15 +108,15 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         // Never granted: consented false, nothing else — no stale, no provenance.
         verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null,
                 DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
-        Response neverGranted = send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+        Response neverGranted = send(HttpMethod.GET, "/v1/admin-consent/" + DECLARING_APP, null, "",
                 "authorization", "admin");
         verify(neverGranted, 200);
         assertEquals("{\"consented\":false}", neverGranted.body(), () -> "Body: " + neverGranted.body());
 
         // Granted: consented true, stale false, provenance and the approved snapshot present.
-        verify(send(HttpMethod.POST, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + DECLARING_APP, null, "",
                 "authorization", "admin"), 200);
-        Response granted = send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+        Response granted = send(HttpMethod.GET, "/v1/admin-consent/" + DECLARING_APP, null, "",
                 "authorization", "admin");
         verify(granted, 200);
         AdminConsentStatus live = ProxyUtil.convertToObject(granted.body(), AdminConsentStatus.class);
@@ -125,7 +137,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
                   ]
                 }
                 """, "authorization", "admin"), 200);
-        Response stale = send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+        Response stale = send(HttpMethod.GET, "/v1/admin-consent/" + DECLARING_APP, null, "",
                 "authorization", "admin");
         verify(stale, 200);
         AdminConsentStatus staleStatus = ProxyUtil.convertToObject(stale.body(), AdminConsentStatus.class);
@@ -137,9 +149,9 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
                 "the approved snapshot, not the current declaration, is shown for the re-approve view");
 
         // Withdrawn: back to the clean never-granted shape.
-        verify(send(HttpMethod.DELETE, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+        verify(send(HttpMethod.DELETE, "/v1/admin-consent/" + DECLARING_APP, null, "",
                 "authorization", "admin"), 200);
-        Response withdrawn = send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+        Response withdrawn = send(HttpMethod.GET, "/v1/admin-consent/" + DECLARING_APP, null, "",
                 "authorization", "admin");
         verify(withdrawn, 200);
         assertEquals("{\"consented\":false}", withdrawn.body(), () -> "Body: " + withdrawn.body());
@@ -154,13 +166,13 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
                   "display_name": "Plain App"
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
-        Response status = send(HttpMethod.GET, "/v1/consent/applications/public/plain-consent-app/admin-consent",
+        Response status = send(HttpMethod.GET, "/v1/admin-consent/applications/public/plain-consent-app",
                 null, "", "authorization", "admin");
         verify(status, 200);
         assertEquals("{\"consented\":false}", status.body(), () -> "Body: " + status.body());
 
         // The status read is gated exactly like the writers — fail-closed for non-admins.
-        verify(send(HttpMethod.GET, "/v1/consent/applications/public/plain-consent-app/admin-consent",
+        verify(send(HttpMethod.GET, "/v1/admin-consent/applications/public/plain-consent-app",
                 null, ""), 403);
     }
 
@@ -171,9 +183,9 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         apiKeyStore.assignPerRequestApiKey(perRequestKey);
         String key = perRequestKey.getPerRequestKey();
 
-        verify(send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "", "api-key", key), 403);
-        verify(send(HttpMethod.POST, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "", "api-key", key), 403);
-        verify(send(HttpMethod.DELETE, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "", "api-key", key), 403);
+        verify(send(HttpMethod.GET, "/v1/admin-consent/" + DECLARING_APP, null, "", "api-key", key), 403);
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + DECLARING_APP, null, "", "api-key", key), 403);
+        verify(send(HttpMethod.DELETE, "/v1/admin-consent/" + DECLARING_APP, null, "", "api-key", key), 403);
     }
 
     @Test
@@ -182,9 +194,9 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null,
                 DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
 
-        verify(send(HttpMethod.POST, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "", "api-key", "adminKey1"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + DECLARING_APP, null, "", "api-key", "adminKey1"), 200);
 
-        Response status = send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "", "api-key", "adminKey1");
+        Response status = send(HttpMethod.GET, "/v1/admin-consent/" + DECLARING_APP, null, "", "api-key", "adminKey1");
         verify(status, 200);
         assertTrue(status.body().contains("\"grantedBy\":\"AdminTest\""), status.body());
     }
@@ -198,7 +210,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
     void testAdminConsentRecordIsUnreachableViaTheResourceApi() {
         verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null,
                 DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
-        verify(send(HttpMethod.POST, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + DECLARING_APP, null, "",
                 "authorization", "admin"), 200);
 
         Response response = send(HttpMethod.GET, "/v1/admin_consent/public/" + DECLARING_APP, null, "",
@@ -215,10 +227,10 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         try {
             verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null,
                     DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
-            verify(send(HttpMethod.POST, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+            verify(send(HttpMethod.POST, "/v1/admin-consent/" + DECLARING_APP, null, "",
                     "authorization", "admin"), 200);
-            verify(send(HttpMethod.POST, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, ""), 403);
-            verify(send(HttpMethod.DELETE, "/v1/consent/" + DECLARING_APP + "/admin-consent", null, "",
+            verify(send(HttpMethod.POST, "/v1/admin-consent/" + DECLARING_APP, null, ""), 403);
+            verify(send(HttpMethod.DELETE, "/v1/admin-consent/" + DECLARING_APP, null, "",
                     "authorization", "admin"), 200);
 
             List<String> events = appender.list.stream()
@@ -258,7 +270,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         void testAdminConsentIsRefusedWithoutAdminRules() {
             // refused before the application is looked up: 403, not 404
             for (HttpMethod method : List.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.DELETE)) {
-                verify(send(method, "/v1/consent/unknown-app/admin-consent", null, "", "authorization", "admin"), 403);
+                verify(send(method, "/v1/admin-consent/unknown-app", null, "", "authorization", "admin"), 403);
             }
         }
     }

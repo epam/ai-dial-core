@@ -249,8 +249,6 @@ public class ControllerSelector {
                 default -> null;
             };
         });
-        // Registered BEFORE USER_CONSENT for GET, as for POST/DELETE: USER_CONSENT's anchored
-        // pattern would otherwise swallow "/v1/consent/{id}/admin-consent" whole as a deployment id.
         get(RouteTemplate.ADMIN_CONSENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             ConsentController controller = new ConsentController(context, proxy);

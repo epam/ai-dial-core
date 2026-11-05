@@ -104,9 +104,9 @@ public class ConsentController {
 
     @ApiOperation(
             method = "GET",
-            path = "/v1/consent/{deployment_id}/admin-consent",
+            path = "/v1/admin-consent/{deployment_id}",
             operationId = "getApplicationAdminConsentStatus",
-            tags = {"User Consent"},
+            tags = {"Admin Consent"},
             parameters = {
                     @ApiParameter(name = "deployment_id", in = ParameterIn.PATH, required = true,
                             description = OpenApiDescriptions.DEPLOYMENT_ID)
@@ -129,9 +129,9 @@ public class ConsentController {
 
     @ApiOperation(
             method = "POST",
-            path = "/v1/consent/{deployment_id}/admin-consent",
+            path = "/v1/admin-consent/{deployment_id}",
             operationId = "grantApplicationAdminConsent",
-            tags = {"User Consent"},
+            tags = {"Admin Consent"},
             parameters = {
                     @ApiParameter(name = "deployment_id", in = ParameterIn.PATH, required = true,
                             description = OpenApiDescriptions.DEPLOYMENT_ID)
@@ -151,9 +151,9 @@ public class ConsentController {
 
     @ApiOperation(
             method = "DELETE",
-            path = "/v1/consent/{deployment_id}/admin-consent",
+            path = "/v1/admin-consent/{deployment_id}",
             operationId = "withdrawApplicationAdminConsent",
-            tags = {"User Consent"},
+            tags = {"Admin Consent"},
             parameters = {
                     @ApiParameter(name = "deployment_id", in = ParameterIn.PATH, required = true,
                             description = OpenApiDescriptions.DEPLOYMENT_ID)

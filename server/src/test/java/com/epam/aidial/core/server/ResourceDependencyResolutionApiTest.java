@@ -44,7 +44,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
 
-        verify(send(HttpMethod.POST, "/v1/consent/" + appUrl + "/admin-consent", null, "",
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + appUrl, null, "",
                 "authorization", "admin"), 200);
 
         AtomicReference<String> appKey = new AtomicReference<>();
@@ -97,7 +97,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   ]
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
-        verify(send(HttpMethod.POST, "/v1/consent/" + appUrl + "/admin-consent", null, "",
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + appUrl, null, "",
                 "authorization", "admin"), 200);
 
         // The key an orchestrator would hold when delegating to the declaring app — a chained hop.
@@ -148,7 +148,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   ]
                 }
                 """.formatted(adminBucket), "authorization", "admin", "If-None-Match", "*"), 200);
-        verify(send(HttpMethod.POST, "/v1/consent/" + appUrl + "/admin-consent", null, "",
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + appUrl, null, "",
                 "authorization", "admin"), 200);
 
         ApiKeyData orchestratorKey = createAppKey("user", Map.of());
@@ -191,7 +191,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   ]
                 }
                 """.formatted(targetPath), "authorization", "admin", "If-None-Match", "*"), 200);
-        verify(send(HttpMethod.POST, "/v1/consent/" + appUrl + "/admin-consent", null, "",
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + appUrl, null, "",
                 "authorization", "admin"), 200);
 
         // The orchestrator holds a grant on this exact target already — the plain "user" role has
@@ -245,7 +245,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   ]
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
-        verify(send(HttpMethod.POST, "/v1/consent/" + appUrl + "/admin-consent", null, "",
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + appUrl, null, "",
                 "authorization", "admin"), 200);
 
         AtomicReference<Integer> inScopeStatus = new AtomicReference<>();
@@ -291,7 +291,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   ]
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
-        verify(send(HttpMethod.POST, "/v1/consent/" + appUrl + "/admin-consent", null, "",
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + appUrl, null, "",
                 "authorization", "admin"), 200);
 
         List<String> observedKeys = new CopyOnWriteArrayList<>();
@@ -370,7 +370,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   ]
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
-        verify(send(HttpMethod.POST, "/v1/consent/" + appUrl + "/admin-consent", null, "",
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + appUrl, null, "",
                 "authorization", "admin"), 200);
 
         AtomicReference<String> observedKey = new AtomicReference<>();
@@ -407,7 +407,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   ]
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
-        verify(send(HttpMethod.POST, "/v1/consent/" + appUrl + "/admin-consent", null, "",
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + appUrl, null, "",
                 "authorization", "admin"), 200);
 
         List<String> events = captureAuditEvents(appUrl, () -> {
@@ -483,7 +483,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   ]
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
-        verify(send(HttpMethod.POST, "/v1/consent/" + appUrl + "/admin-consent", null, "",
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + appUrl, null, "",
                 "authorization", "admin"), 200);
 
         // The key an orchestrator would hold when delegating to the declaring app over MCP.
@@ -529,7 +529,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   ]
                 }
                 """.formatted(targetPath), "authorization", "admin", "If-None-Match", "*"), 200);
-        verify(send(HttpMethod.POST, "/v1/consent/" + appUrl + "/admin-consent", null, "",
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + appUrl, null, "",
                 "authorization", "admin"), 200);
 
         ApiKeyData orchestratorKey = createAppKey("user", Map.of());
