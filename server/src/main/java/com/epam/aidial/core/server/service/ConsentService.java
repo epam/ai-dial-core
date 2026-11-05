@@ -134,7 +134,7 @@ public class ConsentService {
         Application application = requireDeclaringApplication(context, deploymentId);
         ConsentGrant grant = new ConsentGrant()
                 .setConsent(adminConsentOf(application.getResourceDependencies()))
-                .setGrantedBy(context.getUserId())
+                .setGrantedBy(context.getInitiatorId())
                 .setGrantedAt(clock.getAsLong());
         resourceService.putResource(getAdminConsentDescription(application.getName()),
                 ProxyUtil.convertToString(grant), EtagHeader.ANY);
@@ -155,49 +155,30 @@ public class ConsentService {
         return withdrawn;
     }
 
-    /**
-     * The admin-consent status read: everything the panel needs in one call. {@code consented}
-     * means live right now — a record exists and its snapshot equals the current declaration —
-     * exactly what {@link #isAdminConsented} (and thus the request-time gate) enforces. Provenance
-     * and the approved snapshot are present whenever a record exists, including the stale case.
-     */
+    /** Admin-consent status of the application; {@code consented} is what the request-time gate enforces. */
     public AdminConsentStatus describeAdminConsent(ProxyContext context, String deploymentId) {
         Application application = requireApplication(context, deploymentId);
-        return describeAdminConsent(application.getName(), application.getResourceDependencies());
-    }
-
-    /** Shared by the status read and the request-time gate — the two cannot drift. */
-    public AdminConsentStatus describeAdminConsent(String applicationId, List<ResourceDependency> declaration) {
-        ConsentGrant stored = readAdminConsent(getAdminConsentDescription(applicationId));
+        ConsentGrant stored = readAdminConsent(getAdminConsentDescription(application.getName()));
         if (stored == null) {
             return new AdminConsentStatus().setConsented(false);
         }
-        List<Consent.ResourceEntry> grantedResources =
-                stored.getConsent() == null ? List.of() : stored.getConsent().getResources();
-        // The shared predicate: the same comparison the request-time gate runs, so the status
-        // read reports exactly what the gate enforces.
-        boolean matches = matches(stored, declaration);
+        boolean matches = matches(stored, application.getResourceDependencies());
         return new AdminConsentStatus()
                 .setConsented(matches)
                 .setStale(!matches)
                 .setGrantedBy(stored.getGrantedBy())
                 .setGrantedAt(stored.getGrantedAt())
-                .setGrantedResources(grantedResources);
+                .setGrantedResources(stored.getConsent() == null ? List.of() : stored.getConsent().getResources());
     }
 
-    /**
-     * Content-bound check: the stored snapshot must deep-equal the declaration's current snapshot.
-     * Zero-allocation on the request-time hot path — no presentation DTO is built, and the gate
-     * never depends on fields the status read adds.
-     */
+    /** The request-time gate: the stored snapshot equals the declaration's current one. */
     public boolean isAdminConsented(String applicationId, List<ResourceDependency> declaration) {
         return matches(readAdminConsent(getAdminConsentDescription(applicationId)), declaration);
     }
 
     /** The one predicate both the gate and the status read enforce — provenance never participates. */
     private static boolean matches(ConsentGrant stored, List<ResourceDependency> declaration) {
-        // Fail closed on a consent-less envelope (a legacy bare-Consent body reads as consent==null):
-        // nothing matches, so the record reads as stale rather than consented.
+        // fail closed on a record without a snapshot
         return stored != null && stored.getConsent() != null
                 && Objects.equals(stored.getConsent().getResources(), resourceEntriesOf(declaration));
     }

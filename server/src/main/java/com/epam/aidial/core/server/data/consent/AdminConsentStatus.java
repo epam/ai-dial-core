@@ -6,27 +6,24 @@ import lombok.experimental.Accessors;
 
 import java.util.List;
 
-/**
- * The admin-consent status read (GET /v1/consent/{id}/admin-consent). {@code consented} means
- * live right now — a record exists AND its snapshot equals the current declaration — exactly
- * what the request-time gate enforces; a stale record never reports consented. Provenance and
- * the approved snapshot are present whenever a record exists, including the stale case ("last
- * approved by X at T — re-approve"). The current declaration is deliberately not duplicated
- * here — it lives in the app definition and the user-consent document.
- */
+/** Admin-consent status of an application; the grant fields are present whenever a record exists, stale or not. */
 @Data
 @Accessors(chain = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class AdminConsentStatus {
 
+    /** The approval is live: a record exists and matches the current declaration. */
     private boolean consented;
 
-    /** True when a record exists but no longer matches the current declaration. */
+    /** A record exists but no longer matches the current declaration; absent when there is no record. */
     private Boolean stale;
 
+    /** Who granted: the admin's user id, or the API key's project. */
     private String grantedBy;
 
+    /** When it was granted, epoch milliseconds. */
     private Long grantedAt;
 
+    /** The approved snapshot, as declared at grant time. */
     private List<Consent.ResourceEntry> grantedResources;
 }

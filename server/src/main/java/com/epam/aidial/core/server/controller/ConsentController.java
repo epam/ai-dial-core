@@ -112,20 +112,13 @@ public class ConsentController {
                             description = OpenApiDescriptions.DEPLOYMENT_ID)
             },
             responses = {
-                    @ApiResponse(code = 200,
-                            description = "Success — consented (live right now: grant exists AND matches the "
-                                    + "current declaration, exactly what request-time resolution enforces), "
-                                    + "stale, grantedBy, grantedAt, grantedResources (present when a grant exists, "
-                                    + "including the stale case)",
-                            body = @ApiSchema(implementation = AdminConsentStatus.class)),
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = AdminConsentStatus.class)),
                     @ApiResponse(code = 403),
                     @ApiResponse(code = 404),
                     @ApiResponse(code = 500)
             }
     )
     public Future<?> getAdminConsentStatus(String deploymentId) {
-        // Not audited: reads are not consent decisions (no read path in the codebase audits);
-        // the gate runs before any resolution, so a refusal leaks nothing.
         proxy.getTaskExecutor().submit(() -> {
             requireAdmin();
             return proxy.getConsentService().describeAdminConsent(context, deploymentId);
@@ -210,7 +203,7 @@ public class ConsentController {
         // consent that reaches every user, the same class of power the platform-bucket admin API
         // gates with hasExplicitAdminAccess (empty/unconfigured admin rules deny, not allow-all).
         if (!proxy.getAccessService().hasExplicitAdminAccess(context)) {
-            throw new PermissionDeniedException("Only administrators may consent to application resource dependencies");
+            throw new PermissionDeniedException("Only administrators may manage application admin consent");
         }
     }
 

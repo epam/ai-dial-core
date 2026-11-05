@@ -5,17 +5,8 @@ import lombok.Data;
 import lombok.experimental.Accessors;
 
 /**
- * The stored admin-consent record: the approved {@link Consent} snapshot plus its provenance —
- * who granted it and when, server-stamped at grant time. The envelope lives on the admin record
- * only; the user record stays bare (its who/when are structural: the record's bucket is the
- * consenting user, the blob metadata is the when). Because the provenance fields sit outside the
- * echoed {@link Consent} document, nothing on the client round-trip path is stampable, and the
- * content-binding compare (on {@link #consent}) is untouched by them.
- *
- * <p>{@code ignoreUnknown}: records written by the pre-envelope commits of this branch store a
- * bare {@code Consent} body at the same key — lenient reading turns those into {@code consent ==
- * null}, which flows into the already-built fail-closed path (stale, nothing resolves); without
- * it, the strict mapper throws and even withdraw cannot delete the record.
+ * The stored admin-consent record: the approved {@link Consent} snapshot plus who granted it and when,
+ * server-stamped at grant time. The provenance never takes part in the content binding.
  */
 @Data
 @Accessors(chain = true)

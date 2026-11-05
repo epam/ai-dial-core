@@ -616,7 +616,7 @@ public class ConsentServiceTest {
     @Test
     public void testGrantAdminConsent_StoresTheEnvelopeWithProvenanceInPublicAdminConsentRecord() {
         when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(declaringApplication());
-        when(context.getUserId()).thenReturn("admin-sub");
+        when(context.getInitiatorId()).thenReturn("admin-sub");
         when(clock.getAsLong()).thenReturn(1788394665564L);
 
         ConsentGrant grant = service.grantAdminConsent(context, "app");
@@ -633,6 +633,16 @@ public class ConsentServiceTest {
         // The stored body round-trips as the envelope — the snapshot sits inside it, stamps survive.
         ConsentGrant stored = ProxyUtil.convertToObject(bodyCaptor.getValue(), ConsentGrant.class);
         assertEquals(grant, stored);
+    }
+
+    @Test
+    public void testGrantAdminConsent_StampsTheApiKeyProjectForAnApiKeyAdmin() {
+        when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(declaringApplication());
+        when(context.getInitiatorId()).thenReturn("automation-project");
+
+        ConsentGrant grant = service.grantAdminConsent(context, "app");
+
+        assertEquals("automation-project", grant.getGrantedBy());
     }
 
     @Test
@@ -674,7 +684,8 @@ public class ConsentServiceTest {
     public void testDescribeAdminConsent_NeverGranted() {
         when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn(null);
 
-        AdminConsentStatus status = service.describeAdminConsent("app", declaration("skills/{current-user}/"));
+        when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(declaringApplication("skills/{current-user}/"));
+        AdminConsentStatus status = service.describeAdminConsent(context, "app");
 
         assertFalse(status.isConsented());
         assertNull(status.getStale(), "stale is meaningless without a record");
@@ -690,7 +701,8 @@ public class ConsentServiceTest {
                  "grantedBy": "admin-sub", "grantedAt": 1788394665564}
                 """);
 
-        AdminConsentStatus status = service.describeAdminConsent("app", declaration("skills/{current-user}/"));
+        when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(declaringApplication("skills/{current-user}/"));
+        AdminConsentStatus status = service.describeAdminConsent(context, "app");
 
         assertTrue(status.isConsented(), "consented means live right now — exactly what the resolver enforces");
         assertFalse(status.getStale());
@@ -708,7 +720,8 @@ public class ConsentServiceTest {
 
         // the declaration changed since the grant — nothing resolves at runtime, and the status
         // must not report consented; the last approval stays visible for the panel's re-approve view
-        AdminConsentStatus status = service.describeAdminConsent("app", declaration("files/public/p/"));
+        when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(declaringApplication("files/public/p/"));
+        AdminConsentStatus status = service.describeAdminConsent(context, "app");
 
         assertFalse(status.isConsented(), "a stale record never reports consented — the runtime resolves nothing");
         assertTrue(status.getStale());
@@ -732,21 +745,22 @@ public class ConsentServiceTest {
     }
 
     @Test
-    public void testDescribeAdminConsent_LegacyBareConsentRecordFailsClosedWithoutThrowing() {
-        // Records written by the pre-envelope commits of this branch store a bare Consent body at
-        // the same key. Lenient reading must turn those into consent==null -> the fail-closed
-        // stale path — never a throw, which would break the resolver (400 on every user call) and
-        // make the record un-withdrawable.
+    public void testRecordWithoutSnapshotFailsClosedAndCanBeWithdrawn() {
+        // a stored record without a snapshot is never consented, reads as stale, and can still be withdrawn
         when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn("""
                 {"resources": [{"url": "skills/{current-user}/", "access": ["WRITE"]}]}
                 """);
 
-        AdminConsentStatus status = service.describeAdminConsent("app", declaration("skills/{current-user}/"));
+        when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(declaringApplication("skills/{current-user}/"));
+        AdminConsentStatus status = service.describeAdminConsent(context, "app");
 
-        assertFalse(status.isConsented(), "a legacy record never reads as consented — fail closed");
+        assertFalse(status.isConsented(), "a record without a snapshot never reads as consented — fail closed");
         assertTrue(status.getStale());
         assertEquals(List.of(), status.getGrantedResources());
         assertFalse(service.isAdminConsented("app", declaration("skills/{current-user}/")));
+
+        assertNull(service.withdrawAdminConsent(context, "app").getConsent());
+        verify(resourceService).deleteResource(any(ResourceDescriptor.class), eq(EtagHeader.ANY));
     }
 
     @Test
@@ -773,7 +787,7 @@ public class ConsentServiceTest {
         application.setName("applications/public/gpt-helpe%2572");
         when(deploymentService.findDeployment(eq(context), eq("applications/public/gpt-helpe%2572")))
                 .thenReturn(application);
-        when(context.getUserId()).thenReturn("admin-sub");
+        when(context.getInitiatorId()).thenReturn("admin-sub");
         when(clock.getAsLong()).thenReturn(1L);
 
         service.grantAdminConsent(context, "applications/public/gpt-helpe%2572");
@@ -784,9 +798,13 @@ public class ConsentServiceTest {
     }
 
     private static Application declaringApplication() {
+        return declaringApplication("skills/{current-user}/");
+    }
+
+    private static Application declaringApplication(String... paths) {
         Application application = new Application();
         application.setName("app");
-        application.setResourceDependencies(declaration("skills/{current-user}/"));
+        application.setResourceDependencies(declaration(paths));
         return application;
     }
 
