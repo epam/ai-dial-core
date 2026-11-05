@@ -294,7 +294,7 @@ class RouterApiTest extends ResourceBaseTest {
 
     private void stubJwt(String token, String userId) {
         ExtractedClaims claims = new ExtractedClaims(userId, List.of("analysts", "b"), userId,
-                ProxyUtil.MAPPER.createObjectNode(), null, null);
+                ProxyUtil.MAPPER.createObjectNode(), null, null, null);
         Mockito.doReturn(Future.succeededFuture(claims)).when(validator).extractClaims(token);
     }
 
