@@ -429,13 +429,16 @@ public class AiDial {
             AdminSystemExportService.Settings adminSystemExportSettings = Json.decodeValue(settings("adminSystemExport").toBuffer(), AdminSystemExportService.Settings.class);
             adminSystemExportSettings.validate();
 
-            TempFolderCleaner systemImportStagingCleaner = new TempFolderCleaner(
-                    storage, AdminSystemImportService.STAGING_FOLDER, Duration.ofHours(24));
-            AdminSystemImportService adminSystemImportService = new AdminSystemImportService(storage, lockService, resourceService,
-                    mergedConfigStore, systemImportStagingCleaner, clock, version(), generator);
             AdminSystemImportService.Settings adminSystemImportSettings = Json.decodeValue(
                     settings("adminSystemImport").toBuffer(), AdminSystemImportService.Settings.class);
             adminSystemImportSettings.validate();
+            AdminSystemImportService adminSystemImportService = new AdminSystemImportService(storage, lockService, resourceService,
+                    mergedConfigStore, command -> taskExecutor.submit(() -> {
+                        command.run();
+                        return null;
+                    }), adminSystemImportSettings.getParallelism(), clock, version(), generator);
+            TempFolderCleaner systemImportStagingCleaner = new TempFolderCleaner(
+                    storage, AdminSystemImportService.STAGING_FOLDER, Duration.ofHours(24));
             long systemImportStagingCleanupPeriodMs = Duration.ofHours(24).toMillis();
             systemImportStagingCleanupTimer = timerService.scheduleWithFixedDelay(
                     systemImportStagingCleanupPeriodMs, systemImportStagingCleanupPeriodMs, systemImportStagingCleaner::cleanup);

@@ -20,9 +20,11 @@ import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.domain.StorageType;
 
+import java.io.ByteArrayInputStream;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.SequenceInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -30,6 +32,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -59,25 +65,28 @@ public class AdminSystemImportService {
     private static final long NANOS_PER_MILLI = 1_000_000L;
     private static final int MAX_NAME_BYTES = 1024;
     private static final int MAX_METADATA_BYTES = 64 * 1024;
+    private static final int MAX_BUFFERED_BLOB_BYTES = 5 * 1024 * 1024;
     private static final Pattern LEADING_VERSION = Pattern.compile("^(\\d+(?:\\.\\d+)*)");
 
     private final BlobStorage blobStorage;
     private final LockService lockService;
     private final ResourceService resourceService;
     private final MergedConfigStore mergedConfigStore;
-    private final TempFolderCleaner stagingCleaner;
+    private final Executor executor;
+    private final int parallelism;
     private final LongSupplier clock;
     private final String coreVersion;
     private final Supplier<String> idGenerator;
 
     public AdminSystemImportService(BlobStorage blobStorage, LockService lockService, ResourceService resourceService,
-                                    MergedConfigStore mergedConfigStore, TempFolderCleaner stagingCleaner,
+                                    MergedConfigStore mergedConfigStore, Executor executor, int parallelism,
                                     LongSupplier clock, String coreVersion, Supplier<String> idGenerator) {
         this.blobStorage = blobStorage;
         this.lockService = lockService;
         this.resourceService = resourceService;
         this.mergedConfigStore = mergedConfigStore;
-        this.stagingCleaner = stagingCleaner;
+        this.executor = executor;
+        this.parallelism = parallelism;
         this.clock = clock;
         this.coreVersion = coreVersion;
         this.idGenerator = idGenerator;
@@ -101,12 +110,14 @@ public class AdminSystemImportService {
         String timestamp = LocalDateTime.now().format(TempFolderCleaner.FOLDER_FORMATTER);
         String stagingPrefix = STAGING_FOLDER + ResourceDescriptor.PATH_SEPARATOR + timestamp
                 + ResourceDescriptor.PATH_SEPARATOR + idGenerator.get() + ResourceDescriptor.PATH_SEPARATOR;
+        BlobCalls uploads = newCalls();
         try {
-            long blobCount = stageArchive(archive, stagingPrefix);
+            long blobCount = stageArchive(archive, stagingPrefix, uploads);
             return new StagedImport(stagingPrefix, blobCount);
         } catch (Throwable e) {
+            uploads.awaitQuietly();
             try {
-                stagingCleaner.deleteFolder(stagingPrefix);
+                deletePrefix(stagingPrefix);
             } catch (Throwable cleanupFailure) {
                 log.warn("Failed to delete system import staging: {}", stagingPrefix, cleanupFailure);
             }
@@ -120,7 +131,7 @@ public class AdminSystemImportService {
      */
     public void deleteStaging(StagedImport staged) {
         try {
-            stagingCleaner.deleteFolder(staged.stagingPrefix());
+            deletePrefix(staged.stagingPrefix());
         } catch (Throwable e) {
             log.warn("Failed to delete system import staging: {}", staged.stagingPrefix(), e);
         }
@@ -178,6 +189,7 @@ public class AdminSystemImportService {
     }
 
     private long wipeBuckets(Progress progress) {
+        BlobCalls deletes = newCalls();
         long deleted = 0;
         for (String bucketLocation : MergedConfigStore.ADMIN_BUCKET_LOCATIONS) {
             String marker = null;
@@ -185,14 +197,18 @@ public class AdminSystemImportService {
                 PageSet<? extends StorageMetadata> page = blobStorage.list(bucketLocation, marker, PAGE_SIZE, true);
                 for (StorageMetadata meta : page) {
                     if (meta.getType() == StorageType.BLOB && !isUnderEncryptionKeys(bucketLocation, meta.getName())) {
-                        blobStorage.delete(meta.getName());
+                        String path = meta.getName();
+                        deletes.submit(() -> {
+                            blobStorage.delete(path);
+                            progress.addDeleted();
+                        });
                         deleted++;
-                        progress.setDeleted(deleted);
                     }
                 }
                 marker = page.getNextMarker();
             } while (marker != null);
         }
+        deletes.awaitAll();
         return deleted;
     }
 
@@ -201,6 +217,7 @@ public class AdminSystemImportService {
     }
 
     private long promoteStagedBlobs(String stagingPrefix, Progress progress) {
+        BlobCalls copies = newCalls();
         long copied = 0;
         String marker = null;
         do {
@@ -209,17 +226,46 @@ public class AdminSystemImportService {
                 if (meta.getType() == StorageType.BLOB) {
                     String stagedPath = meta.getName();
                     String realPath = stagedPath.substring(stagingPrefix.length());
-                    blobStorage.copy(stagedPath, realPath, null);
+                    copies.submit(() -> {
+                        blobStorage.copy(stagedPath, realPath, null);
+                        progress.addCopied();
+                    });
                     copied++;
-                    progress.setCopied(copied);
                 }
             }
             marker = page.getNextMarker();
         } while (marker != null);
+        copies.awaitAll();
         return copied;
     }
 
-    private long stageArchive(InputStream archive, String stagingPrefix) throws IOException {
+    private void deletePrefix(String prefix) {
+        BlobCalls deletes = newCalls();
+        String marker = null;
+        do {
+            PageSet<? extends StorageMetadata> page = blobStorage.list(prefix, marker, PAGE_SIZE, true);
+            for (StorageMetadata meta : page) {
+                if (meta.getType() == StorageType.BLOB) {
+                    String path = meta.getName();
+                    deletes.submit(() -> {
+                        try {
+                            blobStorage.delete(path);
+                        } catch (Throwable e) {
+                            log.warn("Failed to delete staged blob: {}", path, e);
+                        }
+                    });
+                }
+            }
+            marker = page.getNextMarker();
+        } while (marker != null);
+        deletes.awaitAll();
+    }
+
+    private BlobCalls newCalls() {
+        return new BlobCalls(executor, parallelism);
+    }
+
+    private long stageArchive(InputStream archive, String stagingPrefix, BlobCalls uploads) throws IOException {
         long startedAt = clock.getAsLong();
         TimedInputStream timed = new TimedInputStream(archive);
         ZipInputStream zip = new ZipInputStream(timed, StandardCharsets.UTF_8);
@@ -268,7 +314,7 @@ public class AdminSystemImportService {
             validateBlobName(name);
             checkNotExcluded(name);
 
-            uploadStagedBlob(stagingPrefix, name, pendingMetadata, zip);
+            uploadStagedBlob(stagingPrefix, name, pendingMetadata, zip, uploads);
             blobCount++;
             pendingMetadata = null;
             pendingMetadataName = null;
@@ -281,16 +327,24 @@ public class AdminSystemImportService {
         if (blobCount == 0) {
             throw rejected("Archive has no blob entries");
         }
+        uploads.awaitAll();
         log.info("System import stage finished: blobs={}, bytes={}, duration={}ms, waitingForClient={}ms",
                 blobCount, timed.bytes, clock.getAsLong() - startedAt, timed.waitNanos / NANOS_PER_MILLI);
         return blobCount;
     }
 
-    private void uploadStagedBlob(String stagingPrefix, String name, SidecarMetadata metadata, ZipInputStream zip) throws IOException {
+    private void uploadStagedBlob(String stagingPrefix, String name, SidecarMetadata metadata, ZipInputStream zip,
+                                  BlobCalls uploads) throws IOException {
         Map<String, String> userMetadata = metadata.userMetadata() == null ? Map.of() : metadata.userMetadata();
         BlobAttributes attributes = new BlobAttributes(metadata.contentType(), metadata.contentEncoding(),
                 metadata.contentDisposition(), metadata.contentLanguage(), metadata.cacheControl(), userMetadata);
-        blobStorage.upload(stagingPrefix + name, attributes, zip);
+        String path = stagingPrefix + name;
+        byte[] head = zip.readNBytes(MAX_BUFFERED_BLOB_BYTES + 1);
+        if (head.length <= MAX_BUFFERED_BLOB_BYTES) {
+            uploads.submit(() -> blobStorage.upload(path, attributes, new ByteArrayInputStream(head)));
+        } else {
+            blobStorage.upload(path, attributes, new SequenceInputStream(new ByteArrayInputStream(head), new UnclosableInputStream(zip)));
+        }
         zip.closeEntry();
     }
 
@@ -493,8 +547,7 @@ public class AdminSystemImportService {
 
     /**
      * Shared, mutable progress of a running replace phase: the controller's periodic timer reads it on the event
-     * loop while {@link #replace} updates it on a task thread. Plain volatile fields are enough: each is written
-     * and read as a whole value, never combined with another read.
+     * loop while {@link #replace} updates it, the counters from the workers that run its blob calls.
      */
     public static final class Progress {
 
@@ -503,8 +556,8 @@ public class AdminSystemImportService {
         }
 
         private volatile Phase phase = Phase.WIPE;
-        private volatile long deleted;
-        private volatile long copied;
+        private final AtomicLong deleted = new AtomicLong();
+        private final AtomicLong copied = new AtomicLong();
         private volatile long total;
 
         public Phase getPhase() {
@@ -512,11 +565,11 @@ public class AdminSystemImportService {
         }
 
         public long getDeleted() {
-            return deleted;
+            return deleted.get();
         }
 
         public long getCopied() {
-            return copied;
+            return copied.get();
         }
 
         public long getTotal() {
@@ -527,12 +580,12 @@ public class AdminSystemImportService {
             this.phase = phase;
         }
 
-        void setDeleted(long deleted) {
-            this.deleted = deleted;
+        void addDeleted() {
+            deleted.incrementAndGet();
         }
 
-        void setCopied(long copied) {
-            this.copied = copied;
+        void addCopied() {
+            copied.incrementAndGet();
         }
 
         void setTotal(long total) {
@@ -586,6 +639,80 @@ public class AdminSystemImportService {
                                     String contentLanguage, String cacheControl, Map<String, String> userMetadata) {
     }
 
+    private static final class UnclosableInputStream extends FilterInputStream {
+        private UnclosableInputStream(InputStream in) {
+            super(in);
+        }
+
+        @Override
+        public void close() {
+        }
+    }
+
+    @FunctionalInterface
+    private interface BlobCall {
+        void run() throws Exception;
+    }
+
+    /**
+     * Runs blob calls on the executor, at most {@code limit} at a time. After the first failure no further call starts,
+     * and {@link #submit} and {@link #awaitAll} throw it only once every call in flight has ended.
+     */
+    private static final class BlobCalls {
+        private final Executor executor;
+        private final int limit;
+        private final Semaphore permits;
+        private final AtomicReference<Throwable> failure = new AtomicReference<>();
+
+        private BlobCalls(Executor executor, int limit) {
+            this.executor = executor;
+            this.limit = limit;
+            this.permits = new Semaphore(limit);
+        }
+
+        void submit(BlobCall call) {
+            permits.acquireUninterruptibly();
+            if (failure.get() != null) {
+                permits.release();
+                awaitAll();
+            }
+            try {
+                executor.execute(() -> {
+                    try {
+                        call.run();
+                    } catch (Throwable e) {
+                        failure.compareAndSet(null, e);
+                    } finally {
+                        permits.release();
+                    }
+                });
+            } catch (RuntimeException e) {
+                permits.release();
+                failure.compareAndSet(null, e);
+                awaitAll();
+            }
+        }
+
+        void awaitAll() {
+            awaitQuietly();
+            Throwable error = failure.get();
+            if (error instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            if (error instanceof Error fatal) {
+                throw fatal;
+            }
+            if (error != null) {
+                throw new RuntimeException(error.getMessage(), error);
+            }
+        }
+
+        void awaitQuietly() {
+            permits.acquireUninterruptibly(limit);
+            permits.release(limit);
+        }
+    }
+
     @Data
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Settings {
@@ -597,6 +724,10 @@ public class AdminSystemImportService {
          * Milliseconds between progress lines while the replace phase runs.
          */
         private long progressInterval = 15_000;
+        /**
+         * Blob storage calls a system import runs at a time.
+         */
+        private int parallelism = 4;
 
         public void validate() {
             if (stallTimeout <= 0) {
@@ -604,6 +735,9 @@ public class AdminSystemImportService {
             }
             if (progressInterval <= 0) {
                 throw new IllegalArgumentException("adminSystemImport.progressInterval must be positive, but got: " + progressInterval);
+            }
+            if (parallelism < 1) {
+                throw new IllegalArgumentException("adminSystemImport.parallelism must be at least 1, but got: " + parallelism);
             }
         }
     }

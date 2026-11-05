@@ -101,18 +101,4 @@ class TempFolderCleanerTest {
 
         assertTrue(storage.exists(badFile), "an unparseable folder is left alone, not deleted");
     }
-
-    @Test
-    void testDeleteFolderRemovesOnlyThatPrefix() {
-        TempFolderCleaner cleaner = new TempFolderCleaner(storage, ".dial-system-import-tmp", Duration.ofHours(24));
-        String ownFolder = ".dial-system-import-tmp/2026-01-01 00-00-00/own";
-        String otherFolder = ".dial-system-import-tmp/2026-01-01 00-00-00/other";
-        storage.store(ownFolder + "/public/a", "application/octet-stream", null, Map.of(), BODY);
-        storage.store(otherFolder + "/public/b", "application/octet-stream", null, Map.of(), BODY);
-
-        cleaner.deleteFolder(ownFolder);
-
-        assertFalse(storage.exists(ownFolder + "/public/a"));
-        assertTrue(storage.exists(otherFolder + "/public/b"), "a sibling staging folder must survive");
-    }
 }

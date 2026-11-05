@@ -6,7 +6,6 @@ import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
-import com.epam.aidial.core.storage.service.TempFolderCleaner;
 import com.epam.aidial.core.storage.service.TimerService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jclouds.blobstore.domain.Blob;
@@ -30,14 +29,17 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.NavigableSet;
-import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -80,6 +82,7 @@ class AdminSystemImportServiceTest {
      * but {@link #testFolderListingEntriesAreSkippedDuringWipeAndPromote}.
      */
     private NavigableSet<String> folderEntries;
+    private CallProbe probe;
     private BlobStorage storage;
     private LockService lockService;
     private ResourceService resourceService;
@@ -98,9 +101,10 @@ class AdminSystemImportServiceTest {
             redissonConfig.useSingleServer().setAddress("redis://localhost:" + redisPort);
             redis = Redisson.create(redissonConfig);
 
-            blobs = new TreeMap<>();
-            folderEntries = new TreeSet<>();
-            storage = fakeBlobStorage(blobs, folderEntries);
+            blobs = new ConcurrentSkipListMap<>();
+            folderEntries = new ConcurrentSkipListSet<>();
+            probe = new CallProbe();
+            storage = fakeBlobStorage(blobs, folderEntries, probe);
 
             lockService = new LockService(redis, null);
             TimerService timerService = fakeTimerService();
@@ -131,9 +135,17 @@ class AdminSystemImportServiceTest {
     }
 
     private AdminSystemImportService newService() {
+        return newService(CORE_VERSION);
+    }
+
+    private AdminSystemImportService newService(String coreVersion) {
+        return newService(new AdminSystemImportService.Settings().getParallelism(), coreVersion);
+    }
+
+    private AdminSystemImportService newService(int parallelism, String coreVersion) {
         return new AdminSystemImportService(storage, lockService, resourceService, mergedConfigStore,
-                new TempFolderCleaner(storage, AdminSystemImportService.STAGING_FOLDER, Duration.ofHours(24)),
-                clock::get, CORE_VERSION, () -> "import-" + idCounter.incrementAndGet());
+                command -> Thread.ofVirtual().start(command), parallelism,
+                clock::get, coreVersion, () -> "import-" + idCounter.incrementAndGet());
     }
 
     private static int freePort() throws IOException {
@@ -162,12 +174,12 @@ class AdminSystemImportServiceTest {
     }
 
     /**
-     * A plain in-memory stand-in for {@link BlobStorage}, covering only the operations
-     * {@link AdminSystemImportService} and {@link TempFolderCleaner} use: list, delete, copy, upload, load, exists.
-     * {@code folders} lists additionally as {@link StorageType#FOLDER} entries (not real blobs, and not stored in
-     * {@code blobs}), the way blob storage lists a folder marker next to the blobs under it.
+     * A plain in-memory stand-in for {@link BlobStorage}, covering only the operations {@link AdminSystemImportService}
+     * uses: list, delete, copy, upload, load, exists. {@code folders} lists additionally as {@link StorageType#FOLDER}
+     * entries (not real blobs, and not stored in {@code blobs}), the way blob storage lists a folder marker next to the
+     * blobs under it. Delete, copy and upload go through {@code probe}; the maps must be safe for concurrent use.
      */
-    private static BlobStorage fakeBlobStorage(NavigableMap<String, StoredBlob> blobs, NavigableSet<String> folders)
+    private static BlobStorage fakeBlobStorage(NavigableMap<String, StoredBlob> blobs, NavigableSet<String> folders, CallProbe probe)
             throws IOException {
         BlobStorage storage = mock(BlobStorage.class);
 
@@ -201,10 +213,14 @@ class AdminSystemImportServiceTest {
                     return new PageSetImpl<>(page, nextMarker);
                 });
 
-        doAnswer(invocation -> {
-            blobs.remove((String) invocation.getArgument(0));
+        doAnswer(invocation -> probe.call("delete", () -> {
+            String path = invocation.getArgument(0);
+            if (path.equals(probe.failingDelete)) {
+                throw new IllegalStateException("delete failed: " + path);
+            }
+            blobs.remove(path);
             return null;
-        }).when(storage).delete(anyString());
+        })).when(storage).delete(anyString());
 
         when(storage.exists(anyString())).thenAnswer(invocation -> blobs.containsKey((String) invocation.getArgument(0)));
 
@@ -213,7 +229,7 @@ class AdminSystemImportServiceTest {
             return stored == null ? null : stored.toBlob((String) invocation.getArgument(0));
         });
 
-        when(storage.copy(anyString(), anyString(), isNull())).thenAnswer(invocation -> {
+        when(storage.copy(anyString(), anyString(), isNull())).thenAnswer(invocation -> probe.call("copy", () -> {
             String from = invocation.getArgument(0);
             String to = invocation.getArgument(1);
             StoredBlob source = blobs.get(from);
@@ -222,16 +238,16 @@ class AdminSystemImportServiceTest {
             }
             blobs.put(to, source.copy());
             return true;
-        });
+        }));
 
-        doAnswer(invocation -> {
+        doAnswer(invocation -> probe.call("upload", () -> {
             String path = invocation.getArgument(0);
             BlobAttributes attributes = invocation.getArgument(1);
             InputStream data = invocation.getArgument(2);
             byte[] bytes = data.readAllBytes();
             blobs.put(path, StoredBlob.of(attributes, bytes));
             return null;
-        }).when(storage).upload(anyString(), any(BlobAttributes.class), any());
+        })).when(storage).upload(anyString(), any(BlobAttributes.class), any());
 
         doAnswer(invocation -> {
             String path = invocation.getArgument(0);
@@ -252,6 +268,32 @@ class AdminSystemImportServiceTest {
         metadata.setType(type);
         metadata.setName(name);
         return metadata;
+    }
+
+    /**
+     * Records the fake's delete, copy and upload calls: how many run at once, the most that ever did, and the order
+     * they start and end in. {@code delayMs} makes each call last long enough to overlap with the next.
+     */
+    private static final class CallProbe {
+        private final AtomicInteger inFlight = new AtomicInteger();
+        private final AtomicInteger maxInFlight = new AtomicInteger();
+        private final List<String> events = Collections.synchronizedList(new ArrayList<>());
+        private volatile long delayMs;
+        private volatile String failingDelete;
+
+        <T> T call(String name, Callable<T> body) throws Exception {
+            maxInFlight.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
+            events.add(name + ":start");
+            try {
+                if (delayMs > 0) {
+                    Thread.sleep(delayMs);
+                }
+                return body.call();
+            } finally {
+                events.add(name + ":end");
+                inFlight.decrementAndGet();
+            }
+        }
     }
 
     private record StoredBlob(byte[] data, BlobAttributes attributes) {
@@ -295,6 +337,7 @@ class AdminSystemImportServiceTest {
 
         assertEquals(60_000, settings.getStallTimeout());
         assertEquals(15_000, settings.getProgressInterval());
+        assertEquals(4, settings.getParallelism());
         assertDoesNotThrow(settings::validate);
     }
 
@@ -310,6 +353,12 @@ class AdminSystemImportServiceTest {
         for (long invalid : new long[] {0, -1}) {
             progressInterval.setProgressInterval(invalid);
             assertThrows(IllegalArgumentException.class, progressInterval::validate, "progressInterval=" + invalid);
+        }
+
+        AdminSystemImportService.Settings parallelism = new AdminSystemImportService.Settings();
+        for (int invalid : new int[] {0, -1}) {
+            parallelism.setParallelism(invalid);
+            assertThrows(IllegalArgumentException.class, parallelism::validate, "parallelism=" + invalid);
         }
     }
 
@@ -383,9 +432,7 @@ class AdminSystemImportServiceTest {
 
     @Test
     void testDevelopmentBuildAcceptsReleaseArchive() {
-        AdminSystemImportService devService = new AdminSystemImportService(storage, lockService, resourceService, mergedConfigStore,
-                new TempFolderCleaner(storage, AdminSystemImportService.STAGING_FOLDER, Duration.ofHours(24)),
-                clock::get, "0.0.0", () -> "id-" + idCounter.incrementAndGet());
+        AdminSystemImportService devService = newService("0.0.0");
         byte[] archive = archiveOf("0.50.0", entry("public/models/m1", "{}"));
         AdminSystemImportService.StagedImport staged = devService.stage(stream(archive));
         assertEquals(1, staged.blobCount());
@@ -399,18 +446,14 @@ class AdminSystemImportServiceTest {
 
     @Test
     void testDevelopmentArchiveIsAcceptedByDevelopmentBuild() {
-        AdminSystemImportService devService = new AdminSystemImportService(storage, lockService, resourceService, mergedConfigStore,
-                new TempFolderCleaner(storage, AdminSystemImportService.STAGING_FOLDER, Duration.ofHours(24)),
-                clock::get, "0.0.0", () -> "id-" + idCounter.incrementAndGet());
+        AdminSystemImportService devService = newService("0.0.0");
         byte[] archive = archiveOf("0.0.0", entry("public/models/m1", "{}"));
         assertEquals(1, devService.stage(stream(archive)).blobCount());
     }
 
     @Test
     void testUnreadableVersionCountsAsDevelopmentBuild() {
-        AdminSystemImportService devService = new AdminSystemImportService(storage, lockService, resourceService, mergedConfigStore,
-                new TempFolderCleaner(storage, AdminSystemImportService.STAGING_FOLDER, Duration.ofHours(24)),
-                clock::get, "undefined", () -> "id-" + idCounter.incrementAndGet());
+        AdminSystemImportService devService = newService("undefined");
         byte[] accepted = archiveOf("0.50.0", entry("public/models/m1", "{}"));
         assertEquals(1, devService.stage(stream(accepted)).blobCount());
 
@@ -757,6 +800,60 @@ class AdminSystemImportServiceTest {
 
         assertArrayEquals(firstBlob, secondBlob);
         assertTrue(storage.exists("public/models/m1"));
+    }
+
+    // ---- bounded parallel storage calls ----
+
+    @Test
+    void testStorageCallsRunInParallelUpToTheLimit() {
+        Entry[] entries = new Entry[6];
+        for (int i = 0; i < entries.length; i++) {
+            storeOld("public/models/old" + i);
+            entries[i] = entry("public/models/n" + i, "{}");
+        }
+        AdminSystemImportService parallelService = newService(2, CORE_VERSION);
+        probe.delayMs = 20;
+
+        AdminSystemImportService.StagedImport staged = parallelService.stage(stream(archiveOf(CORE_VERSION, entries)));
+        parallelService.replace(staged, new AdminSystemImportService.Progress());
+
+        assertEquals(2, probe.maxInFlight.get());
+    }
+
+    @Test
+    void testCopyStartsAfterTheLastDelete() {
+        for (int i = 0; i < 4; i++) {
+            storeOld("public/models/old" + i);
+        }
+        AdminSystemImportService.StagedImport staged = service.stage(stream(archiveOf(CORE_VERSION,
+                entry("public/models/n1", "{}"), entry("public/models/n2", "{}"))));
+        probe.events.clear();
+        probe.delayMs = 20;
+
+        service.replace(staged, new AdminSystemImportService.Progress());
+
+        List<String> events = List.copyOf(probe.events);
+        assertTrue(events.lastIndexOf("delete:end") < events.indexOf("copy:start"), events::toString);
+    }
+
+    @Test
+    void testFailedDeleteFailsTheReplaceAfterCallsInFlight() {
+        for (int i = 0; i < 4; i++) {
+            storeOld("public/models/old" + i);
+        }
+        AdminSystemImportService.StagedImport staged = service.stage(stream(archiveOf(CORE_VERSION, entry("public/models/n1", "{}"))));
+        probe.events.clear();
+        probe.delayMs = 20;
+        probe.failingDelete = "public/models/old0";
+
+        assertThrows(RuntimeException.class, () -> service.replace(staged, new AdminSystemImportService.Progress()));
+
+        assertEquals(0, probe.inFlight.get(), "every call in flight ends before the replace fails");
+        assertFalse(probe.events.contains("copy:start"));
+    }
+
+    private void storeOld(String path) {
+        storage.store(path, "application/json", null, Map.of(), "{}".getBytes(StandardCharsets.UTF_8));
     }
 
     // ---- guard ----

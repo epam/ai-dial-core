@@ -79,27 +79,6 @@ public class TempFolderCleaner {
         }
     }
 
-    /**
-     * Deletes every blob under {@code prefix}, regardless of age. A per-blob failure is logged and does not stop
-     * the rest of the deletion.
-     */
-    public void deleteFolder(String prefix) {
-        String token = null;
-        do {
-            PageSet<? extends StorageMetadata> set = blobStorage.list(prefix, token, PAGE_SIZE, true);
-            for (StorageMetadata meta : set) {
-                if (meta.getType() == StorageType.BLOB) {
-                    try {
-                        blobStorage.delete(meta.getName());
-                    } catch (Throwable e) {
-                        log.warn("Failed to delete staged blob: {}", meta.getName(), e);
-                    }
-                }
-            }
-            token = set.getNextMarker();
-        } while (token != null);
-    }
-
     private boolean isExpired(String path, LocalDateTime now) {
         String folderPrefix = folder + ResourceDescriptor.PATH_SEPARATOR;
         if (!path.startsWith(folderPrefix)) {
