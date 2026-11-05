@@ -151,6 +151,8 @@ public class AnalyticsLogContext {
                 .requestHeaders(record.requestHeaders())
                 .deploymentName(record.deploymentName())
                 .parentDeployment(record.parentDeployment())
+                .executionPath(record.executionPath())
+                .decision(record.decision())
                 .requestProtocol(record.requestProtocol())
                 .requestMethod(record.requestMethod())
                 .requestUri(record.requestUri())
@@ -185,7 +187,11 @@ public class AnalyticsLogContext {
         return map;
     }
 
-    private static RouterDecision.Row decisionRow(ProxyContext context) {
+    /**
+     * The {@code decision} object of this pass's row: the verdict on the context, or the one carried to the pass
+     * that serves the chosen deployment behind its interceptors.
+     */
+    public static RouterDecision.Row decisionRow(ProxyContext context) {
         if (context.getDecision() != null) {
             return context.getDecision().toRow();
         }

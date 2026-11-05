@@ -342,8 +342,14 @@ public class ProxyContext {
         return assembledStreamingResponse;
     }
 
+    /**
+     * Sets the body and, on the first call only, the time it was read: a re-parse of the saved bytes (a fallback to
+     * a router's next candidate, a pre-flight skip) is not a second read.
+     */
     public void setRequestBodyWithTimestamp(Buffer body) {
         requestBody = body;
-        requestBodyTimestamp = System.currentTimeMillis();
+        if (requestBodyTimestamp == 0) {
+            requestBodyTimestamp = System.currentTimeMillis();
+        }
     }
 }

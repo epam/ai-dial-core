@@ -37,6 +37,9 @@ public record BackgroundJobRecord(
         Map<String, List<String>> requestHeaders,
         String deploymentName,
         String parentDeployment,
+        List<String> executionPath,
+        // the router's verdict when a router in decision mode chose the deployment; null otherwise
+        RouterDecision.Row decision,
         String requestProtocol,
         String requestMethod,
         String requestUri,
@@ -63,8 +66,12 @@ public record BackgroundJobRecord(
                 .userClaims(context.getUserClaims())
                 .requestHeaders(AnalyticsLogContext.toHeadersMap(context.getRequest().headers()))
                 .deploymentName(context.getDeployment() != null ? context.getDeployment().getName() : null)
-                .parentDeployment(AnalyticsLogContext.getParentDeployment(
-                        context.getSourceDeployment(), context.getInterceptors(), context.getExecutionPath()))
+                .parentDeployment(context.getDecision() != null
+                        ? context.getDecision().getRouter()
+                        : AnalyticsLogContext.getParentDeployment(
+                                context.getSourceDeployment(), context.getInterceptors(), context.getExecutionPath()))
+                .executionPath(context.getExecutionPath())
+                .decision(AnalyticsLogContext.decisionRow(context))
                 .requestProtocol(context.getRequest().version().alpnName().toUpperCase())
                 .requestMethod(context.getRequest().method().name())
                 .requestUri(context.getRequest().uri())

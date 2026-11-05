@@ -914,7 +914,27 @@ public class GfLogStoreTest {
     }
 
     @Test
-    public void testBackgroundJobRowHasNoDecision() {
+    public void testBackgroundJobRowCarriesTheDecision() {
+        RouterDecision decision = new RouterDecision("r3", InterfaceType.OPENAI_RESPONSES, List.of("gpt-4"), 7);
+        BackgroundJobRecord record = BackgroundJobRecord.builder()
+                .deploymentName("gpt-4")
+                .parentDeployment("r3")
+                .executionPath(List.of("r3", "gpt-4"))
+                .decision(decision.toRow())
+                .requestMethod("POST")
+                .requestBody("{}")
+                .build();
+
+        JsonNode log = logOf(AnalyticsLogContext.from(record, null, null));
+
+        assertEquals("r3", log.get("parent_deployment").asText());
+        assertEquals("[\"r3\",\"gpt-4\"]", log.get("execution_path").toString());
+        assertEquals("{\"router\":\"r3\",\"api\":\"openaiResponses\",\"candidates\":[\"gpt-4\"],\"deployment\":\"gpt-4\","
+                + "\"decide_ms\":7,\"attempts\":[]}", log.get("decision").toString());
+    }
+
+    @Test
+    public void testBackgroundJobRowWithoutDecision() {
         BackgroundJobRecord record = BackgroundJobRecord.builder()
                 .deploymentName("m2")
                 .requestMethod("POST")

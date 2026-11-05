@@ -4,8 +4,10 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.log.LogStore;
+import com.epam.aidial.core.server.service.BackgroundJobService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -42,6 +44,9 @@ class RouterDecisionApiTest extends ResourceBaseTest {
             + "\"content\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}";
     private static final String EMBEDDINGS = "{\"object\":\"list\",\"data\":[],\"usage\":{\"prompt_tokens\":1,\"total_tokens\":1}}";
     private static final String RESPONSE = "{\"id\":\"resp_1\",\"object\":\"response\",\"output\":[],"
+            + "\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}";
+    private static final String QUEUED = "{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"queued\",\"output\":[]}";
+    private static final String COMPLETED = "{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"completed\",\"output\":[],"
             + "\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}";
     private static final String DEPLOYMENT_ID = "X-DIAL-DEPLOYMENT-ID";
 
@@ -170,6 +175,32 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         RecordedRequest model = single(request -> !isDecide(request));
         assertEquals("/openai/v1/responses", model.getPath());
         assertEquals("gpt-4-real", ProxyUtil.MAPPER.readTree(model.getBody().readUtf8()).get("model").asText());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void backgroundResponsesJobDecidedAndRecorded() throws Exception {
+        List<AnalyticsLogContext> rows = captureRows();
+        try (TestWebServer server = server()) {
+            Response response = send(HttpMethod.POST, "/openai/v1/responses", null,
+                    "{\"model\":\"r3\",\"background\":true,\"input\":\"hi\"}", "content-type", "application/json");
+            verify(response, 200);
+            assertEquals("queued", ProxyUtil.MAPPER.readTree(response.body()).get("status").asText());
+            RecordedRequest create = single(request -> !isDecide(request) && "POST".equals(request.getMethod()));
+            assertEquals("gpt-4-real", ProxyUtil.MAPPER.readTree(create.getBody().readUtf8()).get("model").asText());
+
+            // the job's row is written when the poll, through Core, finds the origin's answer terminal
+            for (int i = 0; i < 100 && rows.isEmpty(); i++) {
+                Thread.sleep(50);
+            }
+        }
+        AnalyticsLogContext row = singleRow(rows);
+        assertEquals("gpt-4", row.getDeploymentName());
+        assertEquals(List.of("r3", "gpt-4"), row.getExecutionPath());
+        assertEquals("r3", row.getParentDeployment());
+        assertEquals("r3", row.getDecision().router());
+        assertEquals("openaiResponses", row.getDecision().api());
+        assertEquals("gpt-4", row.getDecision().deployment());
     }
 
     @Test
@@ -566,6 +597,12 @@ class RouterDecisionApiTest extends ResourceBaseTest {
                 "content-type", "application/json");
     }
 
+    @Override
+    protected JsonObject additionalSettingsOverrides() {
+        // a decided background job is polled soon enough for a test to see its row
+        return new JsonObject().put("backgroundJob", new JsonObject().put("initialPollIntervalMs", 300));
+    }
+
     private TestWebServer server() {
         return new TestWebServer(4848, request -> {
             received.add(request);
@@ -583,7 +620,9 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         } else if (path.endsWith("/embeddings")) {
             body = EMBEDDINGS;
         } else if (path.startsWith("/openai/v1/responses")) {
-            body = RESPONSE;
+            // a background create is accepted as queued; the poll that follows finds it completed
+            body = "GET".equals(request.getMethod()) ? COMPLETED
+                    : request.getBody().clone().readUtf8().contains("\"background\":true") ? QUEUED : RESPONSE;
         } else {
             body = COMPLETION;
         }
@@ -619,6 +658,10 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         Field field = Proxy.class.getDeclaredField("logStore");
         field.setAccessible(true);
         field.set(dial.getProxy(), store);
+        // a background job's row is written by the job service, which holds its own reference
+        Field jobField = BackgroundJobService.class.getDeclaredField("logStore");
+        jobField.setAccessible(true);
+        jobField.set(dial.getProxy().getBackgroundJobService(), store);
         return rows;
     }
 

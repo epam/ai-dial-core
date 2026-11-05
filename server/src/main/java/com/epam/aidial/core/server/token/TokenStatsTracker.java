@@ -158,6 +158,13 @@ public class TokenStatsTracker {
             String spanId = context.getSpanId();
             String parentSpanId = context.getParentSpanId();
             String deploymentName = context.getDeployment() == null ? null : context.getDeployment().getName();
+            TokenStats existing = spans.get(spanId);
+            if (existing != null) {
+                // the pass is re-entered with a router's next candidate: what the failed candidate's children
+                // rolled up stays, and later reports credit the new candidate
+                existing.deploymentName = deploymentName;
+                return;
+            }
             TokenStats tokenStats = new TokenStats(new TokenUsage(), parentSpanId, deploymentName);
             spans.put(spanId, tokenStats);
         }

@@ -157,6 +157,6 @@ A decided request is one pass: one analytics row, for the deployment that served
 }
 ```
 
-`attempts` lists each candidate tried before the one that served: `status` is what DIAL Core would have answered for it, `reason` one of `forbidden`, `not_found`, `limit`, `unavailable` (skipped before the call), `connect` or `upstream` (skipped after the call). A background Responses job's row carries no `decision` object.
+`attempts` lists each candidate tried before the one that served: `status` is what DIAL Core would have answered for it, `reason` one of `forbidden`, `not_found`, `limit`, `unavailable` (skipped before the call), `connect` or `upstream` (skipped after the call). A background Responses job served through a decision carries the same `execution_path`, `parent_deployment` and `decision` on the row DIAL Core writes when the job ends.
 
 Rolling back to a DIAL Core release without decision mode while a `mode: decision` entry exists makes the whole config file fail to load: switch those entries back to proxy mode first.

@@ -35,6 +35,19 @@ public class ProxyContextTest {
     }
 
     @Test
+    public void testRequestBodyTimestampIsTheFirstRead() throws Exception {
+        ProxyContext context = context(null);
+        context.setRequestBodyWithTimestamp(Buffer.buffer("a"));
+        long first = context.getRequestBodyTimestamp();
+        Thread.sleep(5);
+        // a fallback re-parses the saved bytes: not a second read
+        context.setRequestBodyWithTimestamp(Buffer.buffer("a"));
+
+        assertEquals(first, context.getRequestBodyTimestamp());
+        assertEquals("a", context.getRequestBody().toString());
+    }
+
+    @Test
     public void testOperationDurationWhenResponseBodyTimestampNotSet() {
         // e.g. a deployment without an endpoint, which responds without ever producing a response body
         ProxyContext context = context(null);
