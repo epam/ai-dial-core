@@ -2,8 +2,10 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
@@ -12,6 +14,7 @@ import com.epam.aidial.core.server.service.AdminSystemExportService;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.server.vertx.stream.BoundedPipe;
 import com.epam.aidial.core.server.vertx.stream.InputStreamReader;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -24,9 +27,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 /**
  * Admin-only system export of the {@code public} and {@code platform} buckets at {@code POST /v1/admin/system-export}.
+ * The optional {@code scope} query parameter selects the buckets, see {@link AdminSystemExportService#resolveBucketLocations}.
  *
  * <p>The archive is streamed while it is built: {@link AdminSystemExportService} writes it on a task thread into a
  * {@link BoundedPipe}, and {@link InputStreamReader} feeds the response from the pipe, so a slow client slows
@@ -63,9 +68,15 @@ public class AdminSystemExportController implements Controller {
             path = "/v1/admin/system-export",
             operationId = "systemExport",
             tags = {"Admin"},
+            parameters = {
+                    @ApiParameter(name = "scope", in = ParameterIn.QUERY,
+                            description = "Comma-separated, case-insensitive list of the buckets to export: public, platform. "
+                                    + "All buckets when omitted.")
+            },
             responses = {
                     @ApiResponse(code = 200, description = "ZIP archive of the public and platform buckets",
                             body = @ApiSchema(implementation = byte[].class), contentTypes = {"application/zip"}),
+                    @ApiResponse(code = 400, description = "The scope is empty, has an empty element or names an unknown bucket"),
                     @ApiResponse(code = 403),
                     @ApiResponse(code = 409, description = "Another system export or a write holds a bucket lock, retry later"),
                     @ApiResponse(code = 500)
@@ -79,6 +90,8 @@ public class AdminSystemExportController implements Controller {
             context.respond(HttpStatus.FORBIDDEN, "Forbidden");
             return Future.succeededFuture();
         }
+
+        List<String> bucketLocations = resolveBucketLocations();
 
         Instant start = Instant.now();
         HttpServerResponse response = context.getResponse().setChunked(true);
@@ -104,7 +117,7 @@ public class AdminSystemExportController implements Controller {
         taskExecutor.submit(() -> {
             // not in try-with-resources: closing the stream on a failure would end the response cleanly
             try {
-                exportService.export(pipe.getOutput(), start);
+                exportService.export(pipe.getOutput(), start, bucketLocations);
             } catch (Throwable e) {
                 pipe.closeExceptionally(e);
                 throw e;
@@ -125,5 +138,13 @@ public class AdminSystemExportController implements Controller {
         });
 
         return Future.succeededFuture();
+    }
+
+    private List<String> resolveBucketLocations() {
+        try {
+            return AdminSystemExportService.resolveBucketLocations(context.getRequest().getParam("scope"));
+        } catch (IllegalArgumentException e) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
     }
 }

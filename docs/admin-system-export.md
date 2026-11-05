@@ -7,6 +7,20 @@ endpoint (`x-preview`), and it is meant for backups and migrations.
 curl -X POST -H "Authorization: Bearer <admin token>" -o dial-system-export.zip https://<core>/v1/admin/system-export
 ```
 
+## Choosing the buckets
+
+The optional query parameter `scope` is a comma-separated list of the buckets to export: `public`, `platform`. Names are
+case-insensitive. Without `scope` every bucket is exported.
+
+```bash
+# only the admin configuration
+curl -X POST -H "Authorization: Bearer <admin token>" -o dial-platform-export.zip "https://<core>/v1/admin/system-export?scope=platform"
+```
+
+An empty `scope`, an empty element (`public,`) or an unknown name (`org`, `all`) is answered `400`, so a typo never produces
+an archive that looks complete. Only the selected buckets are locked during the export, so writes to the other bucket
+(for example publication approval during a `platform` export) are not held off.
+
 ## Archive layout
 
 | Entry                                       | Content                                                                                           |
@@ -16,7 +30,9 @@ curl -X POST -H "Authorization: Bearer <admin token>" -o dial-system-export.zip 
 | `<path>`                                    | The blob bytes exactly as stored, so a blob with `contentEncoding: gzip` stays gzip-compressed.   |
 
 `<path>` is the blob path inside the storage bucket, for example `public/files/<bucket>/report.pdf`.
-`encryption_keys/` and `credentials/` are never exported.
+`credentials/` is never exported. `encryption_keys/` is exported only when a KMS provider is configured
+(`toolsets.security.kms.provider` is `aws`, `azure` or `gcp`): the keys are then wrapped by the KMS key, so the archive
+does not expose them. Without a KMS provider the keys are stored in plaintext and are not exported.
 
 Entry names are blob paths, so they can contain characters that Windows does not allow in file names, such as `:` in
 `platform/models/openai.gpt-oss-120b-1:0`, or `?` and `*` in the names of conversations, which are taken from chat titles.
@@ -32,6 +48,7 @@ cannot be restored.
 | Status | Meaning                                                                                                             |
 |--------|---------------------------------------------------------------------------------------------------------------------|
 | `200`  | The archive is streamed with `Content-Type: application/zip` and a `Content-Disposition` file name with a UTC timestamp. |
+| `400`  | `scope` is empty, has an empty element or names an unknown bucket.                                                  |
 | `403`  | The caller is not an admin.                                                                                         |
 | `409`  | Another export or a write to the `public` or `platform` bucket holds a bucket lock. Retry later.                    |
 | `500`  | The export failed before the archive started.                                                                       |
@@ -48,6 +65,11 @@ central directory, so it is not a valid ZIP. Always check that the download comp
 - The archive is built from blob storage. A resource written within the resource sync delay (`resources.syncDelay`)
   may not be in it yet.
 - Memory per export is bounded to a few MiB regardless of the archive size: a slow client slows the export down instead.
-- Blobs are exported exactly as stored, so secret fields stay encrypted as they are in storage. The encryption keys are not
-  exported (`encryption_keys/` is excluded), so keep the key material separately if the archive has to be restored.
-  The archive still holds the full content of both buckets, so treat it as confidential.
+- Blobs are exported exactly as stored, so secret fields stay encrypted as they are in storage. With a KMS provider the
+  encryption keys are exported too, wrapped by the KMS key. Without one they are stored in plaintext and are not exported,
+  so keep the key material separately if the archive has to be restored.
+- Core trusts the KMS setting and does not check that a stored key is wrapped. A key written before a KMS provider was
+  enabled, or one not yet synced from the write queue, can still be plaintext in blob storage.
+- An archive with wrapped keys can be restored only into an environment that can use the same KMS key. Core replaces a key it
+  cannot decrypt with a new one, so secrets restored without the matching KMS key become unreadable.
+- The archive still holds the full content of the selected buckets, so treat it as confidential.
