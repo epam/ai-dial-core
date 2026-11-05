@@ -54,6 +54,7 @@ import com.epam.aidial.core.server.controller.ToolSetRepairController;
 import com.epam.aidial.core.server.controller.ToolSetToolsController;
 import com.epam.aidial.core.server.controller.UploadFileController;
 import com.epam.aidial.core.server.controller.UserInfoController;
+import com.epam.aidial.core.server.controller.UserOrgUnitsController;
 import com.epam.aidial.core.server.controller.anthropic.AnthropicModelController;
 import com.epam.aidial.core.server.controller.anthropic.AnthropicUsageController;
 import com.epam.aidial.core.server.controller.anthropic.MessagesController;
@@ -122,7 +123,8 @@ public final class AnnotationEndpointCollector {
             ToolSetRepairController.class,
             ToolSetToolsController.class,
             UploadFileController.class,
-            UserInfoController.class
+            UserInfoController.class,
+            UserOrgUnitsController.class
     );
 
     private AnnotationEndpointCollector() {
