@@ -62,9 +62,8 @@ import javax.annotation.Nullable;
  *       key by canonical id legitimately.</li>
  *   <li><b>Semantic</b> — name back-fill, deployment-id uniqueness, ToolSet
  *       resource-key validation, route ordering, {@link ApiKeyStore} hookup.
- *       Each per-entity violation either throws (default {@code abort} mode,
- *       {@code onSkip == null}) or is routed via {@code onSkip} after removing
- *       the entry from the map ({@code skip} mode).</li>
+ *       Each per-entity violation either throws ({@link OnInvalidEntity#ABORT}) or is passed to the
+ *       {@code recorderOfInvalid} after removing the entry from the map ({@link OnInvalidEntity#SKIP}).</li>
  * </ul>
  *
  * <p>Entry point {@link #process(Config, ApiKeyStore)} is retained for
@@ -73,6 +72,9 @@ import javax.annotation.Nullable;
  */
 @Slf4j
 public final class ConfigPostProcessor {
+
+    /** For a caller that aborts on every violation, so nothing is ever recorded. */
+    static final BiConsumer<ResourceTypes, InvalidEntityException> NO_RECORDER_OF_INVALID = (type, error) -> { };
 
     // Allowed characters for a client-chosen entity short name, applied to the URL-decoded segment.
     // Shared by every write surface that accepts one — the single-entity PUT/DELETE endpoints
@@ -86,9 +88,13 @@ public final class ConfigPostProcessor {
     private ConfigPostProcessor() {
     }
 
+    /**
+     * The file load: sees the file alone, so an interceptor defined in a blob is not visible and interceptor
+     * references are not checked; every violation aborts.
+     */
     public static void process(Config config, @Nullable ApiKeyStore apiKeyStore) {
         processStructural(config);
-        processSemantic(config, apiKeyStore, config.getKeys(), Map.of(), null);
+        processSemantic(config, apiKeyStore, config.getKeys(), Map.of(), OnInvalidEntity.ABORT, NO_RECORDER_OF_INVALID, false);
     }
 
     /**
@@ -109,21 +115,32 @@ public final class ConfigPostProcessor {
 
     /**
      * Runs name back-fill, deployment-id uniqueness, toolset key validation,
-     * route ordering, and {@link ApiKeyStore} hookup. Per-entity violations
-     * route through {@code onSkip} when non-null; otherwise they throw.
+     * route ordering, and {@link ApiKeyStore} hookup. A per-entity violation throws under
+     * {@link OnInvalidEntity#ABORT} and is dropped and passed to {@code recorderOfInvalid} under
+     * {@link OnInvalidEntity#SKIP}. A model's dangling interceptor reference is the exception: it is dropped and
+     * passed to {@code recorderOfInvalid} in either mode.
      */
     public static void processSemantic(Config config, @Nullable ApiKeyStore apiKeyStore,
                                        Map<String, Key> fileKeysBySecret, Map<String, Key> apiKeysByCanonicalId,
-                                       @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+                                       OnInvalidEntity mode,
+                                       BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid) {
+        processSemantic(config, apiKeyStore, fileKeysBySecret, apiKeysByCanonicalId, mode, recorderOfInvalid, true);
+    }
+
+    private static void processSemantic(Config config, @Nullable ApiKeyStore apiKeyStore,
+                                        Map<String, Key> fileKeysBySecret, Map<String, Key> apiKeysByCanonicalId,
+                                        OnInvalidEntity mode,
+                                        BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid,
+                                        boolean checkReferences) {
         Set<String> deploymentIds = new HashSet<>();
         sortRoutes(config);
-        processRoutes(config, onSkip);
-        processTranslators(config, onSkip);
-        processModels(config, deploymentIds, onSkip);
-        processApplications(config, deploymentIds, onSkip);
+        processRoutes(config, mode, recorderOfInvalid);
+        processTranslators(config, mode, recorderOfInvalid);
+        processModels(config, deploymentIds, mode, recorderOfInvalid, checkReferences);
+        processApplications(config, deploymentIds, mode, recorderOfInvalid);
         processRoles(config);
-        processInterceptors(config, deploymentIds, onSkip);
-        processToolSets(config, deploymentIds, onSkip);
+        processInterceptors(config, deploymentIds, mode, recorderOfInvalid);
+        processToolSets(config, deploymentIds, mode, recorderOfInvalid);
         OrgUnitRoles.validate(config.getOrgUnitRoles());
 
         if (apiKeyStore != null) {
@@ -154,32 +171,24 @@ public final class ConfigPostProcessor {
 
     /**
      * Targeted per-type helper for {@link MergedConfigStore} partial-update path (slice 4S.4).
-     * Sets {@code model.name} from the map key, runs cross-reference check against the
-     * supplied {@link Config}'s current interceptor map. On warning, removes the model from
-     * {@code config.getModels()} and routes the violation through {@code onSkip}. Skip-mode
-     * only — {@code onSkip == null} means cross-refs are not validated (matches file-loaded
-     * abort path in {@link #processModels}).
+     * Sets {@code model.name} from the map key and validates the model like {@link #processModels}: a
+     * hard failure throws under {@link OnInvalidEntity#ABORT}, and a model that fails (a dangling
+     * interceptor reference included) is removed from {@code config.getModels()} and passed to
+     * {@code recorderOfInvalid}.
      */
-    static void validateSingleModel(Config config, String mapKey,
-                                    @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+    static void validateSingleModel(Config config, String mapKey, OnInvalidEntity mode,
+                                    BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid) {
         Model model = config.getModels().get(mapKey);
         if (model == null) {
             return;
         }
         model.setName(mapKey);
-        List<ValidationWarning> warnings = new ArrayList<>();
-        validateModelInvariants(model, config.getTranslators(), warnings);
-        if (onSkip != null) {
-            validateCrossReferences(model, config, warnings);
-        }
+        List<ValidationWarning> warnings = checkModel(model, mapKey, config, mode, true);
         if (warnings.isEmpty()) {
             return;
         }
-        if (onSkip == null) {
-            throw new InvalidEntityException(ResourceTypes.MODEL, mapKey, warnings);
-        }
         config.getModels().remove(mapKey);
-        onSkip.accept(ResourceTypes.MODEL, new InvalidEntityException(ResourceTypes.MODEL, mapKey, warnings));
+        recorderOfInvalid.accept(ResourceTypes.MODEL, new InvalidEntityException(ResourceTypes.MODEL, mapKey, warnings));
     }
 
     /**
@@ -188,7 +197,7 @@ public final class ConfigPostProcessor {
      * back-fill, unlike Interceptor/Role/Application.
      */
     static void validateSingleTranslator(Config config, String mapKey,
-                                         @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+                                         OnInvalidEntity mode, BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid) {
         Translator translator = config.getTranslators().get(mapKey);
         if (translator == null) {
             return;
@@ -198,28 +207,28 @@ public final class ConfigPostProcessor {
         if (warnings.isEmpty()) {
             return;
         }
-        if (onSkip == null) {
+        if (mode == OnInvalidEntity.ABORT) {
             throw new InvalidEntityException(ResourceTypes.TRANSLATOR, mapKey, warnings);
         }
         config.getTranslators().remove(mapKey);
-        onSkip.accept(ResourceTypes.TRANSLATOR, new InvalidEntityException(ResourceTypes.TRANSLATOR, mapKey, warnings));
+        recorderOfInvalid.accept(ResourceTypes.TRANSLATOR, new InvalidEntityException(ResourceTypes.TRANSLATOR, mapKey, warnings));
     }
 
     /**
      * Validates every policy and assignment of the rebuilt {@link Config}: policies first, so that an
      * assignment of a policy dropped here is dropped as dangling.
      */
-    static void processPolicies(Config config, @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+    static void processPolicies(Config config, OnInvalidEntity mode, BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid) {
         for (String path : List.copyOf(config.getPolicies().keySet())) {
-            validateSinglePolicy(config, path, onSkip);
+            validateSinglePolicy(config, path, mode, recorderOfInvalid);
         }
         for (String path : List.copyOf(config.getPolicyAssignments().keySet())) {
-            validateSingleAssignment(config, path, onSkip);
+            validateSingleAssignment(config, path, mode, recorderOfInvalid);
         }
     }
 
     static void validateSinglePolicy(Config config, String mapKey,
-                                     @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+                                     OnInvalidEntity mode, BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid) {
         Policy policy = config.getPolicies().get(mapKey);
         if (policy == null) {
             return;
@@ -229,7 +238,7 @@ public final class ConfigPostProcessor {
             error = "A policy that pins both subject and costObject applies by itself and must live in the folder of its cost object";
         }
         if (error != null) {
-            rejectPolicyRecord(ResourceTypes.POLICY, config.getPolicies(), mapKey, error, onSkip);
+            rejectPolicyRecord(ResourceTypes.POLICY, config.getPolicies(), mapKey, error, mode, recorderOfInvalid);
         }
     }
 
@@ -237,7 +246,7 @@ public final class ConfigPostProcessor {
      * Besides the record's own checks, an assignment whose policy is missing is invalid.
      */
     static void validateSingleAssignment(Config config, String mapKey,
-                                         @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+                                         OnInvalidEntity mode, BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid) {
         PolicyAssignment assignment = config.getPolicyAssignments().get(mapKey);
         if (assignment == null) {
             return;
@@ -247,18 +256,18 @@ public final class ConfigPostProcessor {
             error = "Policy '" + assignment.getPolicy() + "' does not exist";
         }
         if (error != null) {
-            rejectPolicyRecord(ResourceTypes.POLICY_ASSIGNMENT, config.getPolicyAssignments(), mapKey, error, onSkip);
+            rejectPolicyRecord(ResourceTypes.POLICY_ASSIGNMENT, config.getPolicyAssignments(), mapKey, error, mode, recorderOfInvalid);
         }
     }
 
     private static void rejectPolicyRecord(ResourceTypes type, Map<String, ?> records, String mapKey, String error,
-                                           @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+                                           OnInvalidEntity mode, BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid) {
         InvalidEntityException exception = new InvalidEntityException(type, mapKey, List.of(new ValidationWarning("body", error)));
-        if (onSkip == null) {
+        if (mode == OnInvalidEntity.ABORT) {
             throw exception;
         }
         records.remove(mapKey);
-        onSkip.accept(type, exception);
+        recorderOfInvalid.accept(type, exception);
     }
 
     /**
@@ -267,7 +276,7 @@ public final class ConfigPostProcessor {
      * write cannot accept an entity the next full rebuild would reject.
      */
     static void validateSingleApplication(Config config, String mapKey,
-                                          @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+                                          OnInvalidEntity mode, BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid) {
         Application application = config.getApplications().get(mapKey);
         if (application == null) {
             return;
@@ -278,15 +287,15 @@ public final class ConfigPostProcessor {
         if (warnings.isEmpty()) {
             return;
         }
-        if (onSkip == null) {
+        if (mode == OnInvalidEntity.ABORT) {
             throw new InvalidEntityException(ResourceTypes.APPLICATION, mapKey, warnings);
         }
         config.getApplications().remove(mapKey);
-        onSkip.accept(ResourceTypes.APPLICATION, new InvalidEntityException(ResourceTypes.APPLICATION, mapKey, warnings));
+        recorderOfInvalid.accept(ResourceTypes.APPLICATION, new InvalidEntityException(ResourceTypes.APPLICATION, mapKey, warnings));
     }
 
     static void validateSingleInterceptor(Config config, String mapKey,
-                                          @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+                                          OnInvalidEntity mode, BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid) {
         Interceptor interceptor = config.getInterceptors().get(mapKey);
         if (interceptor == null) {
             return;
@@ -297,11 +306,11 @@ public final class ConfigPostProcessor {
         if (warnings.isEmpty()) {
             return;
         }
-        if (onSkip == null) {
+        if (mode == OnInvalidEntity.ABORT) {
             throw new InvalidEntityException(ResourceTypes.INTERCEPTOR, mapKey, warnings);
         }
         config.getInterceptors().remove(mapKey);
-        onSkip.accept(ResourceTypes.INTERCEPTOR, new InvalidEntityException(ResourceTypes.INTERCEPTOR, mapKey, warnings));
+        recorderOfInvalid.accept(ResourceTypes.INTERCEPTOR, new InvalidEntityException(ResourceTypes.INTERCEPTOR, mapKey, warnings));
     }
 
     /**
@@ -310,7 +319,7 @@ public final class ConfigPostProcessor {
      * already runs for every ROUTE write ({@link #sortRoutesInPlace}).
      */
     static void validateSingleRoute(Config config, String mapKey,
-                                    @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+                                    OnInvalidEntity mode, BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid) {
         Route route = config.getRoutes().get(mapKey);
         if (route == null) {
             return;
@@ -320,11 +329,11 @@ public final class ConfigPostProcessor {
         if (warnings.isEmpty()) {
             return;
         }
-        if (onSkip == null) {
+        if (mode == OnInvalidEntity.ABORT) {
             throw new InvalidEntityException(ResourceTypes.ROUTE, mapKey, warnings);
         }
         config.getRoutes().remove(mapKey);
-        onSkip.accept(ResourceTypes.ROUTE, new InvalidEntityException(ResourceTypes.ROUTE, mapKey, warnings));
+        recorderOfInvalid.accept(ResourceTypes.ROUTE, new InvalidEntityException(ResourceTypes.ROUTE, mapKey, warnings));
     }
 
     static <T extends RoleBasedEntity> void setNameAsMapKey(Map<String, T> entities, String mapKey) {
@@ -348,15 +357,11 @@ public final class ConfigPostProcessor {
     /**
      * Targeted per-type helper for {@link MergedConfigStore} partial-update path (slice 4S.4).
      * After an {@code INTERCEPTOR} delete that may have orphaned model chains, walks the
-     * model map and routes any model with a now-missing interceptor reference through
-     * {@code onSkip} after removing it from the map. Skip-mode only — {@code onSkip == null}
-     * is a no-op (matches {@link #processModels}'s abort-mode behavior).
+     * model map and passes any model with a now-missing interceptor reference to
+     * {@code recorderOfInvalid} after removing it from the map.
      */
     static void cascadeInterceptorDelete(Config config,
-                                         @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
-        if (onSkip == null) {
-            return;
-        }
+                                         BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid) {
         Iterator<Map.Entry<String, Model>> iterator = config.getModels().entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<String, Model> entry = iterator.next();
@@ -366,7 +371,7 @@ public final class ConfigPostProcessor {
             if (!warnings.isEmpty()) {
                 String mapKey = entry.getKey();
                 iterator.remove();
-                onSkip.accept(ResourceTypes.MODEL,
+                recorderOfInvalid.accept(ResourceTypes.MODEL,
                         new InvalidEntityException(ResourceTypes.MODEL, mapKey, warnings));
             }
         }
@@ -401,7 +406,7 @@ public final class ConfigPostProcessor {
      * dedupe (the config map key is already unique), so unlike {@link #processModels} this only
      * runs {@link #validateRouteInvariants}.
      */
-    private static void processRoutes(Config config, @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+    private static void processRoutes(Config config, OnInvalidEntity mode, BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid) {
         Iterator<Map.Entry<String, Route>> iterator = config.getRoutes().entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<String, Route> entry = iterator.next();
@@ -412,11 +417,11 @@ public final class ConfigPostProcessor {
             if (warnings.isEmpty()) {
                 continue;
             }
-            if (onSkip == null) {
+            if (mode == OnInvalidEntity.ABORT) {
                 throw new InvalidEntityException(ResourceTypes.ROUTE, name, warnings);
             }
             iterator.remove();
-            onSkip.accept(ResourceTypes.ROUTE, new InvalidEntityException(ResourceTypes.ROUTE, name, warnings));
+            recorderOfInvalid.accept(ResourceTypes.ROUTE, new InvalidEntityException(ResourceTypes.ROUTE, name, warnings));
         }
     }
 
@@ -449,35 +454,43 @@ public final class ConfigPostProcessor {
         }
     }
 
-    private static void processModels(Config config, Set<String> deploymentIds,
-                                      @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+    private static void processModels(Config config, Set<String> deploymentIds, OnInvalidEntity mode,
+                                      BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid,
+                                      boolean checkReferences) {
         Iterator<Map.Entry<String, Model>> iterator = config.getModels().entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<String, Model> entry = iterator.next();
             String name = entry.getKey();
-            if (skipOnDuplicate(name, ResourceTypes.MODEL, deploymentIds, onSkip, iterator)) {
+            if (skipOnDuplicate(name, ResourceTypes.MODEL, deploymentIds, mode, recorderOfInvalid, iterator)) {
                 continue;
             }
             Model model = entry.getValue();
             model.setName(name);
             log.debug("Loading {}", model);
-            List<ValidationWarning> warnings = new ArrayList<>();
-            validateModelInvariants(model, config.getTranslators(), warnings);
-            // Cross-ref check is skip-mode-only — file-loaded abort-mode path (onSkip == null)
-            // preserves design 02 §4.2's allowance for pre-existing file-side inconsistency.
-            // Strict-mode 422 is enforced at the write controller, not here. Pricing validation
-            // has no such excuse (it's self-contained to this model) so it runs unconditionally.
-            if (onSkip != null) {
-                validateCrossReferences(model, config, warnings);
-            }
+            List<ValidationWarning> warnings = checkModel(model, name, config, mode, checkReferences);
             if (!warnings.isEmpty()) {
-                if (onSkip == null) {
-                    throw new InvalidEntityException(ResourceTypes.MODEL, name, warnings);
-                }
                 iterator.remove();
-                onSkip.accept(ResourceTypes.MODEL, new InvalidEntityException(ResourceTypes.MODEL, name, warnings));
+                recorderOfInvalid.accept(ResourceTypes.MODEL, new InvalidEntityException(ResourceTypes.MODEL, name, warnings));
             }
         }
+    }
+
+    /**
+     * Rebuild invariants first: under {@link OnInvalidEntity#ABORT} they throw, under
+     * {@link OnInvalidEntity#SKIP} they are collected. Then the interceptor references, when
+     * {@code checkReferences}. The returned warnings are what the caller records.
+     */
+    private static List<ValidationWarning> checkModel(Model model, String name, Config config, OnInvalidEntity mode,
+                                                      boolean checkReferences) {
+        List<ValidationWarning> warnings = new ArrayList<>();
+        validateModelInvariants(model, config.getTranslators(), warnings);
+        if (mode == OnInvalidEntity.ABORT && !warnings.isEmpty()) {
+            throw new InvalidEntityException(ResourceTypes.MODEL, name, warnings);
+        }
+        if (checkReferences) {
+            validateCrossReferences(model, config, warnings);
+        }
+        return warnings;
     }
 
     /**
@@ -580,7 +593,7 @@ public final class ConfigPostProcessor {
     }
 
     private static void processTranslators(Config config,
-                                           @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+                                           OnInvalidEntity mode, BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid) {
         Iterator<Map.Entry<String, Translator>> iterator = config.getTranslators().entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<String, Translator> entry = iterator.next();
@@ -590,11 +603,11 @@ public final class ConfigPostProcessor {
             if (warnings.isEmpty()) {
                 continue;
             }
-            if (onSkip == null) {
+            if (mode == OnInvalidEntity.ABORT) {
                 throw new InvalidEntityException(ResourceTypes.TRANSLATOR, name, warnings);
             }
             iterator.remove();
-            onSkip.accept(ResourceTypes.TRANSLATOR, new InvalidEntityException(ResourceTypes.TRANSLATOR, name, warnings));
+            recorderOfInvalid.accept(ResourceTypes.TRANSLATOR, new InvalidEntityException(ResourceTypes.TRANSLATOR, name, warnings));
         }
     }
 
@@ -776,12 +789,12 @@ public final class ConfigPostProcessor {
     }
 
     private static void processApplications(Config config, Set<String> deploymentIds,
-                                            @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+                                            OnInvalidEntity mode, BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid) {
         Iterator<Map.Entry<String, Application>> iterator = config.getApplications().entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<String, Application> entry = iterator.next();
             String name = entry.getKey();
-            if (skipOnDuplicate(name, ResourceTypes.APPLICATION, deploymentIds, onSkip, iterator)) {
+            if (skipOnDuplicate(name, ResourceTypes.APPLICATION, deploymentIds, mode, recorderOfInvalid, iterator)) {
                 continue;
             }
             Application application = entry.getValue();
@@ -790,11 +803,11 @@ public final class ConfigPostProcessor {
             List<ValidationWarning> warnings = new ArrayList<>();
             validateOverridePaths(application, warnings);
             if (!warnings.isEmpty()) {
-                if (onSkip == null) {
+                if (mode == OnInvalidEntity.ABORT) {
                     throw new InvalidEntityException(ResourceTypes.APPLICATION, name, warnings);
                 }
                 iterator.remove();
-                onSkip.accept(ResourceTypes.APPLICATION, new InvalidEntityException(ResourceTypes.APPLICATION, name, warnings));
+                recorderOfInvalid.accept(ResourceTypes.APPLICATION, new InvalidEntityException(ResourceTypes.APPLICATION, name, warnings));
                 continue;
             }
             log.debug("Loading {}", application);
@@ -862,12 +875,12 @@ public final class ConfigPostProcessor {
     }
 
     private static void processInterceptors(Config config, Set<String> deploymentIds,
-                                            @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+                                            OnInvalidEntity mode, BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid) {
         Iterator<Map.Entry<String, Interceptor>> iterator = config.getInterceptors().entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<String, Interceptor> entry = iterator.next();
             String name = entry.getKey();
-            if (skipOnDuplicate(name, ResourceTypes.INTERCEPTOR, deploymentIds, onSkip, iterator)) {
+            if (skipOnDuplicate(name, ResourceTypes.INTERCEPTOR, deploymentIds, mode, recorderOfInvalid, iterator)) {
                 continue;
             }
             Interceptor interceptor = entry.getValue();
@@ -875,11 +888,11 @@ public final class ConfigPostProcessor {
             List<ValidationWarning> warnings = new ArrayList<>();
             validateOverridePaths(interceptor, warnings);
             if (!warnings.isEmpty()) {
-                if (onSkip == null) {
+                if (mode == OnInvalidEntity.ABORT) {
                     throw new InvalidEntityException(ResourceTypes.INTERCEPTOR, name, warnings);
                 }
                 iterator.remove();
-                onSkip.accept(ResourceTypes.INTERCEPTOR, new InvalidEntityException(ResourceTypes.INTERCEPTOR, name, warnings));
+                recorderOfInvalid.accept(ResourceTypes.INTERCEPTOR, new InvalidEntityException(ResourceTypes.INTERCEPTOR, name, warnings));
                 continue;
             }
             log.debug("Loading {}", interceptor);
@@ -887,12 +900,12 @@ public final class ConfigPostProcessor {
     }
 
     private static void processToolSets(Config config, Set<String> deploymentIds,
-                                        @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+                                        OnInvalidEntity mode, BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid) {
         Iterator<Map.Entry<String, ToolSet>> iterator = config.getToolsets().entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<String, ToolSet> entry = iterator.next();
             String name = entry.getKey();
-            if (skipOnDuplicate(name, ResourceTypes.TOOL_SET, deploymentIds, onSkip, iterator)) {
+            if (skipOnDuplicate(name, ResourceTypes.TOOL_SET, deploymentIds, mode, recorderOfInvalid, iterator)) {
                 continue;
             }
             if (isValidToolSetKey(name)) {
@@ -908,20 +921,20 @@ public final class ConfigPostProcessor {
 
     /**
      * Returns true and removes the offending entry when the name was already seen.
-     * Abort mode ({@code onSkip == null}) preserves {@link FileConfigStore}'s today-behavior:
+     * Abort mode ({@link OnInvalidEntity#ABORT}) preserves {@link FileConfigStore}'s today-behavior:
      * throw {@link IllegalStateException} and roll back the load.
      */
     private static boolean skipOnDuplicate(String name, ResourceTypes type, Set<String> deploymentIds,
-                                           @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip,
+                                           OnInvalidEntity mode, BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid,
                                            Iterator<?> iterator) {
         if (deploymentIds.add(name)) {
             return false;
         }
-        if (onSkip == null) {
+        if (mode == OnInvalidEntity.ABORT) {
             throw new IllegalStateException("Deployment uniqueness is violated: duplicate is found " + name);
         }
         log.warn("Skipping {} '{}' due to duplicate deployment ID", type, name);
-        onSkip.accept(type, new InvalidEntityException(type, name,
+        recorderOfInvalid.accept(type, new InvalidEntityException(type, name,
                 List.of(new ValidationWarning("name", "Duplicate deployment ID: " + name))));
         iterator.remove();
         return true;

@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.config.OnInvalidEntity;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -143,7 +144,7 @@ public class InvalidEntityApiTest extends ResourceBaseTest {
     @Test
     void testConfiguredModeIsAbortByDefault() {
         MergedConfigStore store = (MergedConfigStore) dial.getProxy().getConfigStore();
-        assertEquals(MergedConfigStore.MODE_ABORT, store.getOnInvalidEntity());
+        assertEquals(OnInvalidEntity.ABORT, store.getOnInvalidEntity());
     }
 
     @Test

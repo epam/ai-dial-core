@@ -1496,4 +1496,45 @@ public class AdminApplyApiTest extends ResourceBaseTest {
             assertTrue(warnings.isArray() && warnings.size() >= 1);
         }
     }
+
+    /** {@code softValidation: true} with {@code onInvalidEntity} left at its default, {@code abort}. */
+    public static class SoftValidationUnderAbort extends ResourceBaseTest {
+        @Override
+        protected JsonObject additionalSettingsOverrides() {
+            return new JsonObject()
+                    .put("config", new JsonObject()
+                            .put("write", new JsonObject().put("softValidation", true)));
+        }
+
+        @Test
+        @SneakyThrows
+        void testApplyAdmitsInvalidUnderAbortWithSoftWrites() {
+            String body = """
+                    {
+                      "precheck": false,
+                      "manifests": [
+                        {
+                          "kind": "Model",
+                          "name": "models/platform/apply-soft-abort-invalid",
+                          "spec": {
+                            "type": "chat",
+                            "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                            "interceptors": ["does-not-exist"]
+                          }
+                        }
+                      ]
+                    }
+                    """;
+            Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+            verify(response, 200);
+            JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+            assertEquals("APPLIED_INVALID", parsed.get("results").get(0).get("status").asText(),
+                    () -> "Body: " + response.body());
+
+            Response get = send(HttpMethod.GET, "/v1/models/platform/apply-soft-abort-invalid", null, "",
+                    "authorization", "admin");
+            verify(get, 200);
+            assertEquals("invalid", ProxyUtil.MAPPER.readTree(get.body()).get("status").asText());
+        }
+    }
 }

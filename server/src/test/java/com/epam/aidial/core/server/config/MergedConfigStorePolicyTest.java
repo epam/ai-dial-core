@@ -95,7 +95,7 @@ class MergedConfigStorePolicyTest {
 
     @Test
     void testReplicaEventsOfOnePodBecomeVisibleOnAnother() {
-        MergedConfigStore store = initStore(MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(OnInvalidEntity.ABORT);
 
         applyReplica(store, ResourceTypes.POLICY, "grant", ResourceEvent.Action.CREATE, GRANT);
         applyReplica(store, ResourceTypes.POLICY_ASSIGNMENT, "IMF/a-1", ResourceEvent.Action.CREATE, ASSIGNMENT.formatted("grant", "IMF"));
@@ -112,7 +112,7 @@ class MergedConfigStorePolicyTest {
 
     @Test
     void testUpdateOfPolicyReachesItsInstances() {
-        MergedConfigStore store = initStore(MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(OnInvalidEntity.ABORT);
         applyReplica(store, ResourceTypes.POLICY, "grant", ResourceEvent.Action.CREATE, GRANT);
         applyReplica(store, ResourceTypes.POLICY_ASSIGNMENT, "IMF/a-1", ResourceEvent.Action.CREATE, ASSIGNMENT.formatted("grant", "IMF"));
 
@@ -123,7 +123,7 @@ class MergedConfigStorePolicyTest {
 
     @Test
     void testEqualIdsInDifferentFoldersCoexist() {
-        MergedConfigStore store = initStore(MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(OnInvalidEntity.ABORT);
         applyReplica(store, ResourceTypes.POLICY, "grant", ResourceEvent.Action.CREATE, GRANT);
 
         applyReplica(store, ResourceTypes.POLICY_ASSIGNMENT, "IMF/a-1", ResourceEvent.Action.CREATE, ASSIGNMENT.formatted("grant", "IMF"));
@@ -136,7 +136,7 @@ class MergedConfigStorePolicyTest {
 
     @Test
     void testGlobalAndProjectPolicyOfTheSameNameResolveSeparately() {
-        MergedConfigStore store = initStore(MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(OnInvalidEntity.ABORT);
         applyReplica(store, ResourceTypes.POLICY, "grant", ResourceEvent.Action.CREATE, GRANT);
         applyReplica(store, ResourceTypes.POLICY, "IMF/grant", ResourceEvent.Action.CREATE, GRANT_PRIORITY_20);
 
@@ -152,7 +152,7 @@ class MergedConfigStorePolicyTest {
 
     @Test
     void testAssignmentBeforeItsPolicyLeavesConfigUnchangedAndRequestsRebuild() {
-        MergedConfigStore store = initStore(MergedConfigStore.MODE_SKIP);
+        MergedConfigStore store = initStore(OnInvalidEntity.SKIP);
 
         applyReplica(store, ResourceTypes.POLICY_ASSIGNMENT, "IMF/a-1", ResourceEvent.Action.CREATE, ASSIGNMENT.formatted("grant", "IMF"));
 
@@ -167,7 +167,7 @@ class MergedConfigStorePolicyTest {
         stubStored(ResourceTypes.POLICY_ASSIGNMENT, "IMF/a-1", ASSIGNMENT.formatted("grant", "IMF"));
         stubStored(ResourceTypes.POLICY_ASSIGNMENT, "ORG/a-1", ASSIGNMENT.formatted("grant", "ORG"));
 
-        MergedConfigStore store = initStore(MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(OnInvalidEntity.ABORT);
 
         assertEquals(List.of("IMF/a-1", "ORG/a-1"), store.get().getPolicyAssignments().keySet().stream().sorted().toList());
         assertEquals(List.of("IMF/a-1"), instanceIds(store.get(), "IMF"));
@@ -178,7 +178,7 @@ class MergedConfigStorePolicyTest {
     void testDanglingAssignmentAbortsRebuildInAbortMode() {
         stubStored(ResourceTypes.POLICY_ASSIGNMENT, "IMF/a-1", ASSIGNMENT.formatted("gone", "IMF"));
 
-        InvalidEntityException error = assertThrows(InvalidEntityException.class, () -> initStore(MergedConfigStore.MODE_ABORT));
+        InvalidEntityException error = assertThrows(InvalidEntityException.class, () -> initStore(OnInvalidEntity.ABORT));
 
         assertEquals(ResourceTypes.POLICY_ASSIGNMENT, error.getType());
         assertEquals("IMF/a-1", error.getMapKey());
@@ -190,7 +190,7 @@ class MergedConfigStorePolicyTest {
         stubStored(ResourceTypes.POLICY_ASSIGNMENT, "IMF/a-1", ASSIGNMENT.formatted("grant", "IMF"));
         stubStored(ResourceTypes.POLICY_ASSIGNMENT, "IMF/a-2", ASSIGNMENT.formatted("gone", "IMF"));
 
-        MergedConfigStore store = initStore(MergedConfigStore.MODE_SKIP);
+        MergedConfigStore store = initStore(OnInvalidEntity.SKIP);
 
         assertEquals(List.of("IMF/a-1"), List.copyOf(store.get().getPolicyAssignments().keySet()));
         assertEquals(List.of("IMF/a-1"), instanceIds(store.get(), "IMF"));
@@ -206,7 +206,7 @@ class MergedConfigStorePolicyTest {
         stubStored(ResourceTypes.POLICY, "grant", GRANT.replace("\"kind\": \"budget\"", "\"kind\": \"budget\", \"harness\": {}"));
         stubStored(ResourceTypes.POLICY_ASSIGNMENT, "IMF/a-1", ASSIGNMENT.formatted("grant", "IMF"));
 
-        MergedConfigStore store = initStore(MergedConfigStore.MODE_SKIP);
+        MergedConfigStore store = initStore(OnInvalidEntity.SKIP);
 
         assertTrue(store.get().getPolicies().isEmpty());
         assertTrue(store.get().getPolicyAssignments().isEmpty());
@@ -219,7 +219,7 @@ class MergedConfigStorePolicyTest {
         stubStored(ResourceTypes.POLICY, "loose", GRANT.replace("\"per\"",
                 "\"costObject\": \"IMF\", \"subject\": [ { \"source\": \"sub\", \"function\": \"TRUE\" } ], \"per\""));
 
-        MergedConfigStore store = initStore(MergedConfigStore.MODE_SKIP);
+        MergedConfigStore store = initStore(OnInvalidEntity.SKIP);
 
         assertTrue(store.get().getPolicies().isEmpty());
         assertTrue(store.getInvalidEntities().get(ResourceTypes.POLICY).containsKey("policies/platform/loose"));
@@ -229,7 +229,7 @@ class MergedConfigStorePolicyTest {
     void testRebuildLeavesOtherManagedTypesEmptyWhenNoneStored() {
         stubStored(ResourceTypes.POLICY, "grant", GRANT);
 
-        MergedConfigStore store = initStore(MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(OnInvalidEntity.ABORT);
 
         assertTrue(store.get().getModels().isEmpty());
         assertTrue(store.get().getRoles().isEmpty());
@@ -243,7 +243,7 @@ class MergedConfigStorePolicyTest {
                 .thenReturn(items);
     }
 
-    private MergedConfigStore initStore(String onInvalidEntity) {
+    private MergedConfigStore initStore(OnInvalidEntity onInvalidEntity) {
         Config file = new Config();
         file.setModels(new LinkedHashMap<>());
         file.setInterceptors(new LinkedHashMap<>());
