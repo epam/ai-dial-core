@@ -24,6 +24,7 @@ import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.ResolveResourceDependenciesFn;
 import com.epam.aidial.core.server.function.StripUsagePerModelFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
@@ -78,7 +79,8 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
                 new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_CHAT_COMPLETIONS),
-                new CollectDeploymentsFn(proxy, context));
+                new CollectDeploymentsFn(proxy, context),
+                new ResolveResourceDependenciesFn<>(proxy, context));
     }
 
     @ApiOperation(
@@ -326,20 +328,30 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         context.setRequestBody(requestBody);
         context.setRequestBodyTimestamp(System.currentTimeMillis());
 
+        RequestObject request;
         try {
-            RequestObject request = new ChatCompletionRequest(ProxyUtil.parseObject(requestBody));
+            request = new ChatCompletionRequest(ProxyUtil.parseObject(requestBody));
+        } catch (Throwable e) {
+            respond(HttpStatus.BAD_REQUEST);
+            log.warn("Can't process JSON request body. Error:", e);
+            return;
+        }
+        try {
             context.setStreamingRequest(request.isStreaming());
             if (ProxyUtil.processChain(request, buildEnhancementFunctions())) {
                 context.setRequestBody(Buffer.buffer(request.serialize()));
             }
             proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
+        } catch (HttpException e) {
+            respond(e.getStatus(), e.getMessage());
+            log.warn("Request to {} rejected: {} {}", deployment.getName(), e.getStatus(), e.getMessage());
+            return;
+        } catch (IllegalArgumentException e) {
+            respond(HttpStatus.BAD_REQUEST);
+            log.warn("Invalid request to {}: {}", deployment.getName(), e.getMessage());
+            return;
         } catch (Throwable e) {
-            if (e instanceof HttpException httpException) {
-                respond(httpException.getStatus(), httpException.getMessage());
-            } else {
-                respond(HttpStatus.BAD_REQUEST);
-            }
-            log.warn("Can't process JSON request body. Error:", e);
+            handleRequestError(deployment.getName(), e);
             return;
         }
 

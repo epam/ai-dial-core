@@ -24,6 +24,7 @@ import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
 import com.epam.aidial.core.server.function.ExtractTerminalResponseFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
+import com.epam.aidial.core.server.function.ResolveResourceDependenciesFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
@@ -72,7 +73,8 @@ public class ResponsesController extends BaseDeploymentPostController {
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
                 new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_RESPONSES),
-                new CollectDeploymentsFn(proxy, context));
+                new CollectDeploymentsFn(proxy, context),
+                new ResolveResourceDependenciesFn<>(proxy, context));
     }
 
     @Override
@@ -145,7 +147,7 @@ public class ResponsesController extends BaseDeploymentPostController {
     private Future<Void> proceedToDeployment(ResponsesApiRequest request, String deploymentName) {
         return verifyLimit()
                 .compose(ignore -> proxy.getTokenStatsTracker().startSpan(context)
-                        .map(ignored -> handleRequestBody(request)))
+                        .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request))))
                 .otherwise(error -> handleRequestError(deploymentName, error));
     }
 

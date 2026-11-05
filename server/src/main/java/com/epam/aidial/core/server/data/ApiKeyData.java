@@ -76,6 +76,16 @@ public class ApiKeyData {
     public ApiKeyData() {
     }
 
+    /**
+     * Creates the proxy key data for the current request and sets it on the context.
+     */
+    public static ApiKeyData createProxyApiKeyData(ProxyContext context) {
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        context.setProxyApiKeyData(proxyApiKeyData);
+        initFromContext(proxyApiKeyData, context);
+        return proxyApiKeyData;
+    }
+
     public static void initFromContext(ApiKeyData proxyApiKeyData, ProxyContext context) {
         ApiKeyData apiKeyData = context.getApiKeyData();
         List<String> currentPath;
