@@ -9,11 +9,11 @@ the chosen deployment.
 ## Requirements
 
 ### Requirement: Router config entry
-Core SHALL read `routers` in the dynamic config as a map of deployments keyed by name, each accepting the common
-deployment fields (`baseUrl`, `interfaces`, `userRoles`, display and feature fields, `defaults`, `defaultHeaders`,
-`overridePaths`, `forwardAuthToken`, `overrideName`) and SHALL reject a config whose router declares a field of
-another deployment kind (such as `upstreams`, `limits`, `pricing`), or declares `interceptors`, `endpoint` or
-`responsesEndpoint`.
+Core SHALL read `routers` in the dynamic config (files or the `platform` bucket) as a map of deployments keyed by
+name, each accepting the common deployment fields (`baseUrl`, `interfaces`, `userRoles`, display and feature
+fields, `defaults`, `defaultHeaders`, `overridePaths`, `forwardAuthToken`, `overrideName`) and SHALL reject, on load
+and on a Configuration API write, one with a field of another kind (`upstreams`, `limits`, `pricing`) or
+with `interceptors`, `endpoint` or `responsesEndpoint`.
 
 #### Scenario: Router loads with interfaces
 - **WHEN** the config declares `routers.r1` with `baseUrl: http://router`, `userRoles: ["analysts"]` and
@@ -32,6 +32,17 @@ another deployment kind (such as `upstreams`, `limits`, `pricing`), or declares 
 #### Scenario: Router with a legacy endpoint rejected
 - **WHEN** the config declares `routers.r1` with `endpoint: http://router/chat` and `interfaces.openaiChatCompletions: {}`
 - **THEN** the config is rejected with a message containing `A router declares interfaces, not endpoint`
+
+#### Scenario: Router with upstreams rejected on write
+- **WHEN** an admin sends `PUT /v1/routers/platform/r-bad` with `{"baseUrl": "http://router", "upstreams":
+  [{"endpoint": "http://x"}]}`
+- **THEN** Core answers `400` and writes nothing
+
+#### Scenario: Blob router read back
+- **WHEN** an admin sends `PUT /v1/routers/platform/r-blob` with `{"baseUrl": "http://router", "userRoles":
+  ["analysts"], "interfaces": {"openaiChatCompletions": {}}}`
+- **THEN** Core answers `200` `{"name": "r-blob"}` with an `ETag`, and `GET /v1/routers/platform/r-blob` answers
+  `200` with those fields plus `name: "r-blob"` and `status: "valid"`
 
 ### Requirement: Router name in the deployment namespace
 A router name SHALL share the one deployment-id namespace with models, applications, toolsets and interceptors: a

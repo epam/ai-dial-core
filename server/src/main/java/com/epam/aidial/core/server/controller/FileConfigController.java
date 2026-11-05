@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
@@ -249,6 +250,43 @@ public class FileConfigController implements Controller {
                     },
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Interceptor.class, EntityMetadata.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/routers",
+                    operationId = "listFileConfigRouters",
+                    tags = {"Admin"},
+                    responses = {
+                            @ApiResponse(code = 200, description = "List of file-sourced routers",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/routers/{name}",
+                    operationId = "getFileConfigRouter",
+                    tags = {"Admin"},
+                    parameters = {
+                            @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Router name")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Router.class, EntityMetadata.class})),
                             @ApiResponse(code = 403),
                             @ApiResponse(code = 404),
                             @ApiResponse(code = 405),
@@ -617,6 +655,7 @@ public class FileConfigController implements Controller {
         return switch (resourceType) {
             case MODEL -> config.getModels();
             case INTERCEPTOR -> config.getInterceptors();
+            case ROUTER -> config.getRouters();
             case TRANSLATOR -> config.getTranslators();
             case ROLE -> config.getRoles();
             case PROJECT_KEY -> config.getKeys();

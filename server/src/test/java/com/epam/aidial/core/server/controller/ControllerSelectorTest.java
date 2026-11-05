@@ -22,6 +22,7 @@ import java.io.Serializable;
 import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.regex.Matcher;
 import javax.annotation.Nullable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -507,6 +508,39 @@ public class ControllerSelectorTest {
         Object arg2 = lambda.getCapturedArg(1);
         assertInstanceOf(ResourceController.class, arg1);
         assertEquals("/v1/toolsets/public/my-toolset", arg2);
+    }
+
+    @Test
+    public void testSelectGetPlatformRouterRoutesToConfigResourceController() {
+        when(request.path()).thenReturn("/v1/routers/platform/r1");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        stubConfigResourceControllerDependencies();
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        assertInstanceOf(ConfigResourceController.class, controller);
+    }
+
+    @Test
+    public void testSelectGetPlatformRouterMetadataRoutesToConfigResourceMetadataController() {
+        when(request.path()).thenReturn("/v1/metadata/routers/platform/");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        when(proxy.getAccessService()).thenReturn(mock(AccessService.class));
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        assertInstanceOf(ConfigResourceMetadataController.class, controller);
+    }
+
+    @Test
+    public void testFileRouterEntryRoutesToTheFileConfigApi() {
+        Matcher matcher = RouteTemplate.ADMIN_FILE_CONFIG.getPattern().matcher("/v1/admin/config/file/routers/r1");
+        assertTrue(matcher.matches());
+        assertEquals("routers", matcher.group("type"));
+        assertEquals("r1", matcher.group("name"));
+        when(request.path()).thenReturn("/v1/admin/config/file/routers/r1");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        stubConfigResourceControllerDependencies();
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        assertInstanceOf(FileConfigController.class, lambda.getCapturedArg(0));
     }
 
     private void stubConfigResourceControllerDependencies() {

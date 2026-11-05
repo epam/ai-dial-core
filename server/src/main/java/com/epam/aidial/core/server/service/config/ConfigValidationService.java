@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.data.config.manifest.AdminPolicyAssignmentMan
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRoleManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRouteManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminRouterManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminSchemaManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminSettingsManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminToolSetManifest;
@@ -106,6 +107,19 @@ public class ConfigValidationService {
                     }
                     String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
                             scratch, ResourceTypes.INTERCEPTOR, parsed.name());
+                    if (dupError != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, dupError);
+                    }
+                }
+                case AdminRouterManifest routerManifest -> {
+                    List<ValidationWarning> warnings = new ArrayList<>();
+                    ConfigPostProcessor.validateRouterInvariants(parsed.name().name(), routerManifest.spec(),
+                            scratch.getTranslators(), warnings);
+                    if (!warnings.isEmpty()) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+                    }
+                    String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
+                            scratch, ResourceTypes.ROUTER, parsed.name());
                     if (dupError != null) {
                         return new ValidationResult(id, ValidationStatus.FAILED, dupError);
                     }

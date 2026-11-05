@@ -1202,6 +1202,83 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                 "authorization", "admin"), 404);
     }
 
+    @Test
+    @SneakyThrows
+    void testValidateRouterManifestValidAndNotWritten() {
+        JsonNode result = validateOne("""
+                {"precheck": false, "manifests": [{"kind": "Router", "name": "routers/platform/validate-router",
+                  "spec": {"baseUrl": "http://localhost:4848", "interfaces": {"openaiChatCompletions": {}}}}]}
+                """);
+        assertEquals("VALID", result.get("status").asText(), result::toString);
+        verify(send(HttpMethod.GET, "/v1/routers/platform/validate-router", null, "", "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateRouterManifestWithLegacyEndpointFails() {
+        JsonNode result = validateOne("""
+                {"precheck": false, "manifests": [{"kind": "Router", "name": "routers/platform/r-bad",
+                  "spec": {"endpoint": "http://router/chat", "interfaces": {"openaiChatCompletions": {}}}}]}
+                """);
+        assertEquals("FAILED", result.get("status").asText());
+        assertTrue(result.get("error").asText().contains("A router declares interfaces, not endpoint"), result::toString);
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateRouterManifestWithUpstreamsFails() {
+        JsonNode result = validateOne("""
+                {"precheck": false, "manifests": [{"kind": "Router", "name": "routers/platform/r-bad",
+                  "spec": {"baseUrl": "http://router", "upstreams": [{"endpoint": "http://x"}]}}]}
+                """);
+        assertEquals("FAILED", result.get("status").asText());
+        assertTrue(result.get("error").asText().contains("upstreams"), result::toString);
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateRouterManifestInThePublicBucketFails() {
+        JsonNode result = validateOne("""
+                {"precheck": false, "manifests": [{"kind": "Router", "name": "routers/public/r",
+                  "spec": {"baseUrl": "http://router", "interfaces": {"openaiChatCompletions": {}}}}]}
+                """);
+        assertEquals("FAILED", result.get("status").asText());
+        assertEquals("'name' bucket segment must be 'platform', got 'public'", result.get("error").asText());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/routers.json")
+    @SneakyThrows
+    void testValidateModelManifestNamedAfterFileRouterFails() {
+        JsonNode result = validateOne("""
+                {"precheck": false, "manifests": [{"kind": "Model", "name": "models/platform/r1",
+                  "spec": {"type": "chat", "endpoint": "http://localhost:4848/chat"}}]}
+                """);
+        assertEquals("FAILED", result.get("status").asText());
+        assertEquals("Deployment ID 'r1' is already used by a different entity", result.get("error").asText());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/routers.json")
+    @SneakyThrows
+    void testValidateRouterManifestNamedAfterModelFails() {
+        JsonNode result = validateOne("""
+                {"precheck": false, "manifests": [{"kind": "Router", "name": "routers/platform/gpt-4",
+                  "spec": {"baseUrl": "http://localhost:4848", "interfaces": {"openaiChatCompletions": {}}}}]}
+                """);
+        assertEquals("FAILED", result.get("status").asText());
+        assertEquals("Deployment ID 'gpt-4' is already used by a different entity", result.get("error").asText());
+    }
+
+    @SneakyThrows
+    private JsonNode validateOne(String body) {
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+        assertEquals(1, results.size(), response::body);
+        return results.get(0);
+    }
+
     public static class SoftValidation extends ResourceBaseTest {
         @Override
         protected JsonObject additionalSettingsOverrides() {

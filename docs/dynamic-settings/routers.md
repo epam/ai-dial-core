@@ -34,7 +34,45 @@ An object containing the routers and their [parameters](#routersrouter_name). Ro
 * `displayName`, `displayVersion`, `iconUrl`, `description`, `intro`, `reference`, `descriptionKeywords`, `author`, `createdAt`, `updatedAt`: Display fields, as for a model.
 * `features`, `defaults`, `defaultHeaders`, `overrideName`, `forwardAuthToken`, `maxRetryAttempts`: As for a model.
 
-A router declares nothing of another deployment kind. DIAL Core rejects the config when a router has `upstreams`, `limits`, `pricing`, any application field, `interceptors` (`A router declares no interceptors`), or `endpoint` / `responsesEndpoint` (`A router declares interfaces, not endpoint`).
+A router declares nothing of another deployment kind. DIAL Core rejects the config when a router has `upstreams`, `limits`, `pricing`, any application field, `interceptors` (`A router declares no interceptors`), or `endpoint` / `responsesEndpoint` (`A router declares interfaces, not endpoint`). A [Configuration API](#configuration-api) write of such a router is rejected the same way.
+
+## Configuration API
+
+Administrators can also manage routers at run time, in the `platform` bucket, like models, interceptors and translators. A router written there is a deployment as soon as the write returns.
+
+* `PUT /v1/routers/platform/{router_name}` creates or replaces a router; the body is a [router entry](#routersrouter_name). It answers `200` with `{"name": "<router_name>"}` and an `ETag`, and honours `If-Match` and `If-None-Match: *`. A router that breaks a rule above answers `422` with `validationWarnings`; a field of another deployment kind answers `400`; a name already used by a model, application, toolset or interceptor answers `409`.
+* `GET /v1/routers/platform/{router_name}` returns the stored router with `name` and `status`; `DELETE` removes it. Both see only routers written through the API: a router from the config files answers `404` here.
+* `GET /v1/metadata/routers/platform/` lists the stored routers.
+* `POST /v1/admin/validate` and `POST /v1/admin/apply` accept the manifest kind `Router`, named `routers/platform/{router_name}`. In a batch, routers are processed after translators and interceptors and before models, so a router may use a translator from the same batch:
+
+```json
+{
+  "manifests": [
+    {
+      "kind": "Router",
+      "name": "routers/platform/r-batch",
+      "spec": {
+        "baseUrl": "http://localhost:4848",
+        "interfaces": {
+          "openaiChatCompletions": {},
+          "anthropicMessages": {"mode": "translator", "translator": "t-batch"}
+        }
+      }
+    },
+    {
+      "kind": "Translator",
+      "name": "translators/platform/t-batch",
+      "spec": {"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl": "http://localhost:4848/translate"}
+    }
+  ]
+}
+```
+
+* `GET /v1/admin/config/file/routers[/{router_name}]` shows the routers of the config files, and `POST /v1/admin/config/file/migrate` with `{"types": ["routers"]}` copies them into the `platform` bucket.
+
+A router written through the API replaces, as a whole, the router of the same name from the config files. Under `config.onInvalidEntity: skip` a stored router that breaks a rule is left out and reported by `GET /v1/admin/health/config`.
+
+A router's `defaultHeaders` are stored and returned as written, as an interceptor's are: they must not carry a secret.
 
 ## Limits
 
@@ -160,3 +198,5 @@ A decided request is one pass: one analytics row, for the deployment that served
 `attempts` lists each candidate tried before the one that served: `status` is what DIAL Core would have answered for it, `reason` one of `forbidden`, `not_found`, `limit`, `unavailable` (skipped before the call), `connect` or `upstream` (skipped after the call). A background Responses job served through a decision carries the same `execution_path`, `parent_deployment` and `decision` on the row DIAL Core writes when the job ends.
 
 Rolling back to a DIAL Core release without decision mode while a `mode: decision` entry exists makes the whole config file fail to load: switch those entries back to proxy mode first.
+
+A DIAL Core release without the router Configuration API ignores routers stored in the `platform` bucket: they stay in storage, are not deployments on that release, and serve again after the upgrade. While pods of both releases run, a stored router answers `404` on the older pods; routers from the config files behave the same on every pod.

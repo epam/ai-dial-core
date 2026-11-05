@@ -929,6 +929,48 @@ public final class ConfigPostProcessor {
         }
     }
 
+    /**
+     * The rules a router must satisfy wherever it enters the config: the file load, a Configuration API write, a
+     * validate or apply manifest and a replica event. Names the router (the messages carry its name, and a request
+     * body or manifest spec has none) and turns an explicit {@code "interceptors": null} into an empty list, which
+     * the request path iterates. Duplicate ids are checked by the callers against the namespace they see.
+     */
+    public static void validateRouterInvariants(String name, Router router, Map<String, Translator> translators,
+                                                List<ValidationWarning> warnings) {
+        router.setName(name);
+        if (router.getInterceptors() == null) {
+            router.setInterceptors(List.of());
+        } else if (!router.getInterceptors().isEmpty()) {
+            warnings.add(new ValidationWarning("interceptors", messageWithEntityPrefix("Router", name, "A router declares no interceptors")));
+        }
+        if (router.getEndpoint() != null || router.getResponsesEndpoint() != null) {
+            warnings.add(new ValidationWarning("endpoint", messageWithEntityPrefix("Router", name, "A router declares interfaces, not endpoint")));
+        }
+        validateDeploymentInterfaces(router, translators, warnings);
+    }
+
+    /**
+     * Targeted per-type helper for {@link MergedConfigStore}'s partial-update path: validates the single written
+     * router with {@link #validateRouterInvariants}.
+     */
+    static void validateSingleRouter(Config config, String mapKey,
+                                     @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Router router = config.getRouters().get(mapKey);
+        if (router == null) {
+            return;
+        }
+        List<ValidationWarning> warnings = new ArrayList<>();
+        validateRouterInvariants(mapKey, router, config.getTranslators(), warnings);
+        if (warnings.isEmpty()) {
+            return;
+        }
+        if (onSkip == null) {
+            throw new InvalidEntityException(ResourceTypes.ROUTER, mapKey, warnings);
+        }
+        config.getRouters().remove(mapKey);
+        onSkip.accept(ResourceTypes.ROUTER, new InvalidEntityException(ResourceTypes.ROUTER, mapKey, warnings));
+    }
+
     private static void processRouters(Config config, Set<String> deploymentIds,
                                        @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
         Iterator<Map.Entry<String, Router>> iterator = config.getRouters().entrySet().iterator();
@@ -939,18 +981,8 @@ public final class ConfigPostProcessor {
                 continue;
             }
             Router router = entry.getValue();
-            router.setName(name);
             List<ValidationWarning> warnings = new ArrayList<>();
-            // an explicit "interceptors": null binds null, which the request path would iterate
-            if (router.getInterceptors() == null) {
-                router.setInterceptors(List.of());
-            } else if (!router.getInterceptors().isEmpty()) {
-                warnings.add(new ValidationWarning("interceptors", messageWithEntityPrefix("Router", name, "A router declares no interceptors")));
-            }
-            if (router.getEndpoint() != null || router.getResponsesEndpoint() != null) {
-                warnings.add(new ValidationWarning("endpoint", messageWithEntityPrefix("Router", name, "A router declares interfaces, not endpoint")));
-            }
-            validateDeploymentInterfaces(router, config.getTranslators(), warnings);
+            validateRouterInvariants(name, router, config.getTranslators(), warnings);
             if (!warnings.isEmpty()) {
                 if (onSkip == null) {
                     throw new InvalidEntityException(ResourceTypes.ROUTER, name, warnings);

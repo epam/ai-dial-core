@@ -836,6 +836,43 @@ public class ConfigPostProcessorTest {
     }
 
     @Test
+    void testValidateSingleRouterDropsAnInvalidRouterUnderSkip() {
+        Config config = newMutableConfig();
+        config.getRouters().put("bad", router(null, "openaiChatCompletions", new DeploymentInterface()));
+        AtomicReference<ResourceTypes> capturedType = new AtomicReference<>();
+
+        ConfigPostProcessor.validateSingleRouter(config, "bad", (type, error) -> capturedType.set(type));
+
+        assertEquals(ResourceTypes.ROUTER, capturedType.get());
+        assertFalse(config.getRouters().containsKey("bad"));
+    }
+
+    @Test
+    void testValidateSingleRouterThrowsInAbortMode() {
+        Config config = newMutableConfig();
+        Router router = router("http://router", "openaiChatCompletions", new DeploymentInterface());
+        router.setInterceptors(List.of("i1"));
+        config.getRouters().put("r1", router);
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.validateSingleRouter(config, "r1", null));
+        assertTrue(error.getMessage().contains("Router 'r1': A router declares no interceptors"), error.getMessage());
+    }
+
+    @Test
+    void testValidateRouterInvariantsNamesTheRouterAndEmptiesNullInterceptors() {
+        Router router = router("http://router", "openaiChatCompletions", new DeploymentInterface());
+        router.setInterceptors(null);
+        List<ValidationWarning> warnings = new ArrayList<>();
+
+        ConfigPostProcessor.validateRouterInvariants("r1", router, Map.of(), warnings);
+
+        assertTrue(warnings.isEmpty(), warnings.toString());
+        assertEquals("r1", router.getName());
+        assertEquals(List.of(), router.getInterceptors());
+    }
+
+    @Test
     void testStructuralDropsSlashKeyedRouter() {
         Config config = newMutableConfig();
         config.getRouters().put("bad/router", new Router());

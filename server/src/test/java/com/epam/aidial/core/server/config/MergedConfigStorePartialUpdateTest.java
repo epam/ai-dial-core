@@ -378,6 +378,53 @@ public class MergedConfigStorePartialUpdateTest {
         assertSame(router, result.getRouters().get("r1"), "partial update keeps the file routers");
     }
 
+    @Test
+    public void routerWriteIsVisibleAndDeleteRemovesIt() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        Router router = router();
+        router.setInterceptors(null);
+
+        Config written = store.applyEntityWrite(ResourceTypes.ROUTER, "r-blob", router);
+
+        assertSame(router, written.getRouters().get("r-blob"));
+        assertEquals("r-blob", router.getName());
+        assertEquals(List.of(), router.getInterceptors(), "a null interceptor list never reaches the request path");
+
+        Config deleted = store.applyEntityDelete(ResourceTypes.ROUTER, "r-blob");
+        assertFalse(deleted.getRouters().containsKey("r-blob"));
+    }
+
+    @Test
+    public void invalidRouterWriteUnderSkipIsRecordedAsInvalid() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_SKIP);
+        Router router = router();
+        router.setInterceptors(List.of("i1"));
+
+        Config result = store.applyEntityWrite(ResourceTypes.ROUTER, "r-bad", router);
+
+        assertFalse(result.getRouters().containsKey("r-bad"));
+        Map<String, InvalidEntityRecord> invalid = store.getInvalidEntities().get(ResourceTypes.ROUTER);
+        assertNotNull(invalid, "the skipped router is recorded");
+        assertEquals(1, invalid.size());
+    }
+
+    @Test
+    public void invalidRouterWriteUnderAbortThrows() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        Router router = router();
+        router.setEndpoint("http://router/chat");
+
+        assertThrows(InvalidEntityException.class, () -> store.applyEntityWrite(ResourceTypes.ROUTER, "r-bad", router));
+        assertFalse(store.get().getRouters().containsKey("r-bad"));
+    }
+
+    private static Router router() {
+        Router router = new Router();
+        router.setBaseUrl("http://router");
+        router.setInterfaces(Map.of("openaiChatCompletions", new DeploymentInterface()));
+        return router;
+    }
+
     private MergedConfigStore initStore(Config seeded, String onInvalidEntity) {
         when(fileConfigStore.get()).thenReturn(seeded);
         MergedConfigStore store = new MergedConfigStore(
