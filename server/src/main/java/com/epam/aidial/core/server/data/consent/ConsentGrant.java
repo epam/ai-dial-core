@@ -4,10 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
-/**
- * The stored admin-consent record: the approved {@link Consent} snapshot plus who granted it and when,
- * server-stamped at grant time. The provenance never takes part in the content binding.
- */
+/** The stored admin-consent record; {@code grantedBy}/{@code grantedAt} are server-stamped and never part of the content binding. */
 @Data
 @Accessors(chain = true)
 @JsonIgnoreProperties(ignoreUnknown = true)

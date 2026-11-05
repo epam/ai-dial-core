@@ -170,11 +170,7 @@ public class ConsentController {
                 () -> proxy.getConsentService().withdrawAdminConsent(context, deploymentId));
     }
 
-    /**
-     * Both admin-consent mutations are the same act with a different verb: admin only (checked
-     * before any resolution, so a refusal leaks nothing), audited either way — the grant line
-     * carries the approved snapshot, the withdraw line what was withdrawn.
-     */
+    /** Admin only, checked before the deployment is resolved; audited on success and on failure. */
     private Future<?> adminConsentOperation(String deploymentId, String action, Supplier<ConsentGrant> operation) {
         proxy.getTaskExecutor().submit(() -> {
             requireAdmin();
@@ -199,9 +195,8 @@ public class ConsentController {
     }
 
     private void requireAdmin() {
-        // Fail-closed, unlike ResourceController's hasAdminAccess: this endpoint mints an app-level
-        // consent that reaches every user, the same class of power the platform-bucket admin API
-        // gates with hasExplicitAdminAccess (empty/unconfigured admin rules deny, not allow-all).
+        // hasExplicitAdminAccess, not hasAdminAccess: unconfigured admin rules must deny, since this consent
+        // reaches every user (as the platform-bucket admin API does).
         if (!proxy.getAccessService().hasExplicitAdminAccess(context)) {
             throw new PermissionDeniedException("Only administrators may manage application admin consent");
         }

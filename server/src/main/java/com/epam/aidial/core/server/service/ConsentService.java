@@ -122,13 +122,8 @@ public class ConsentService {
     }
 
     /**
-     * The v1 gate: an administrator approves the application's declared resource dependencies.
-     * The stored record is the {@link ConsentGrant} envelope — the approved snapshot plus
-     * server-stamped provenance (who granted, when) — and only the consent endpoint reaches this
-     * type (ADMIN_CONSENT is unmapped in ResourceTypes.of()). Any declaration change re-requires
-     * the grant because the status check compares snapshots. The record is keyed by the
-     * RESOLVED application's canonical name — the same identity the resolver reads — never by the
-     * raw request id, so the two sides cannot diverge for names that carry percent-sequences.
+     * Approves the application's current declaration for every user. The record is keyed by the resolved
+     * application's name, the identity the resolver reads, so a percent-encoded name cannot land on another app's record.
      */
     public ConsentGrant grantAdminConsent(ProxyContext context, String deploymentId) {
         Application application = requireDeclaringApplication(context, deploymentId);
@@ -141,12 +136,7 @@ public class ConsentService {
         return grant;
     }
 
-    /**
-     * Withdraws the approval — the application stops resolving dependencies for every user
-     * immediately. Returns the withdrawn grant (null when absent) so the audit event can carry
-     * exactly what was withdrawn. Resolves the application first, for the same key-identity
-     * reason as the grant.
-     */
+    /** Deletes the record; returns the withdrawn grant (null when absent) for the audit event. */
     public ConsentGrant withdrawAdminConsent(ProxyContext context, String deploymentId) {
         Application application = requireApplication(context, deploymentId);
         ResourceDescriptor descriptor = getAdminConsentDescription(application.getName());
@@ -155,7 +145,7 @@ public class ConsentService {
         return withdrawn;
     }
 
-    /** Admin-consent status of the application; {@code consented} is what the request-time gate enforces. */
+    /** {@code consented} is exactly what the request-time gate enforces. */
     public AdminConsentStatus describeAdminConsent(ProxyContext context, String deploymentId) {
         Application application = requireApplication(context, deploymentId);
         ConsentGrant stored = readAdminConsent(getAdminConsentDescription(application.getName()));
@@ -171,14 +161,12 @@ public class ConsentService {
                 .setGrantedResources(stored.getConsent() == null ? List.of() : stored.getConsent().getResources());
     }
 
-    /** The request-time gate: the stored snapshot equals the declaration's current one. */
     public boolean isAdminConsented(String applicationId, List<ResourceDependency> declaration) {
         return matches(readAdminConsent(getAdminConsentDescription(applicationId)), declaration);
     }
 
-    /** The one predicate both the gate and the status read enforce — provenance never participates. */
+    /** Exact snapshot equality, shared by the gate and the status read; provenance never participates. */
     private static boolean matches(ConsentGrant stored, List<ResourceDependency> declaration) {
-        // fail closed on a record without a snapshot
         return stored != null && stored.getConsent() != null
                 && Objects.equals(stored.getConsent().getResources(), Consent.toResourceEntries(declaration));
     }
@@ -209,11 +197,7 @@ public class ConsentService {
         return deployment instanceof Application application ? Consent.toResourceEntries(application.getResourceDependencies()) : List.of();
     }
 
-    /**
-     * One record per application, always in the public bucket, keyed by deployment id — the
-     * admin's yes (the user's yes lives in USER_CONSENT, per user). A moved app is a new key,
-     * hence effectively unconsented: fail-closed.
-     */
+    /** One record per application in the public bucket; a moved app gets a new key and is unconsented. */
     private static ResourceDescriptor getAdminConsentDescription(String deploymentId) {
         return ResourceDescriptorFactory.fromEntityPath(ResourceTypes.ADMIN_CONSENT,
                 ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, deploymentId);

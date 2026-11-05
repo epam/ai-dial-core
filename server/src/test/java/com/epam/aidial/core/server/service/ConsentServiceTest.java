@@ -573,7 +573,6 @@ public class ConsentServiceTest {
         return captor.getValue();
     }
 
-    // ---- admin consent: the v1 gate ----
 
     @Test
     public void testBuildConsent_IncludesDeclaredResourcesRegardlessOfConsentRequiredFlag() {
@@ -630,7 +629,6 @@ public class ConsentServiceTest {
         ResourceDescriptor descriptor = captor.getValue();
         assertEquals(ResourceTypes.ADMIN_CONSENT, descriptor.getType());
         assertTrue(descriptor.isPublic(), "the admin's yes is one record per app, always in the public bucket");
-        // The stored body round-trips as the envelope — the snapshot sits inside it, stamps survive.
         ConsentGrant stored = ProxyUtil.convertToObject(bodyCaptor.getValue(), ConsentGrant.class);
         assertEquals(grant, stored);
     }
@@ -661,11 +659,10 @@ public class ConsentServiceTest {
                 """);
 
         assertTrue(service.isAdminConsented("app", declaration("skills/{current-user}/")));
-        // any declaration change re-requires the grant — an extra entry, a reordered section
+        // an extra entry or a reordered section re-requires the grant
         assertFalse(service.isAdminConsented("app", declaration("skills/{current-user}/", "files/public/p/")));
         assertFalse(service.isAdminConsented("app", declaration("files/public/p/", "skills/{current-user}/")));
-        // the grant's own provenance never participates in the binding — the same snapshot under a
-        // different who/when still stands
+        // provenance is not part of the binding: the same snapshot under another who/when still stands
         when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn("""
                 {"consent": {"resources": [{"url": "skills/{current-user}/", "access": ["WRITE"]}]},
                  "grantedBy": "another-admin", "grantedAt": 9999999999999}
@@ -718,8 +715,7 @@ public class ConsentServiceTest {
                  "grantedBy": "admin-sub", "grantedAt": 1788394665564}
                 """);
 
-        // the declaration changed since the grant — nothing resolves at runtime, and the status
-        // must not report consented; the last approval stays visible for the panel's re-approve view
+        // declaration changed since the grant: not consented, the last approval still shown
         when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(declaringApplication("files/public/p/"));
         AdminConsentStatus status = service.describeAdminConsent(context, "app");
 
@@ -732,7 +728,7 @@ public class ConsentServiceTest {
 
     @Test
     public void testDescribeAdminConsent_ResolvesTheApplicationAndReportsNonDeclarers() {
-        // A non-declaring app is a legitimate "nothing consented" answer, not an error — reads inform.
+        // a non-declaring app is a "nothing consented" answer, not an error
         Application plain = new Application();
         plain.setName("app");
         when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(plain);
@@ -791,9 +787,7 @@ public class ConsentServiceTest {
 
     @Test
     public void testAdminConsentRecordIsKeyedByTheResolvedApplicationsCanonicalName() {
-        // The resolver reads the record by the resolved application's name; the grant must write it
-        // under the same identity — never the raw request id, or names with percent-sequences could
-        // land one app's approval on another app's record.
+        // keyed by the application's name, as the resolver reads it, never by the raw request id
         Application application = declaringApplication();
         application.setName("applications/public/gpt-helpe%2572");
         when(deploymentService.findDeployment(eq(context), eq("applications/public/gpt-helpe%2572")))

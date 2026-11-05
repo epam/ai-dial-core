@@ -26,9 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * The admin-consent gate: grant/withdraw via
  * {@code POST/DELETE /v1/admin-consent/{id}}, the error taxonomy, the typed record's
- * invisibility to the generic Resource API, and the audit stream. Content binding (declaration
- * change ⇒ grant invalid) is proven at unit level in {@code ConsentServiceTest} and end to end
- * in the resolution PR's tests.
+ * invisibility to the generic Resource API, and the audit stream.
  */
 public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
 
@@ -61,7 +59,6 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         verify(send(HttpMethod.DELETE, "/v1/admin-consent/" + DECLARING_APP, null, "",
                 "authorization", "admin"), 200);
 
-        // A plain app never declares: consent is not applicable.
         verify(send(HttpMethod.PUT, "/v1/applications/public/plain-consent-app", null, """
                 {
                   "endpoint": "http://application1/v1/completions",
@@ -105,7 +102,6 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
 
     @Test
     void testAdminConsentStatusReadsTheTriState() {
-        // Never granted: consented false, nothing else — no stale, no provenance.
         verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null,
                 DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
         Response neverGranted = send(HttpMethod.GET, "/v1/admin-consent/" + DECLARING_APP, null, "",
@@ -113,7 +109,6 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         verify(neverGranted, 200);
         assertEquals("{\"consented\":false}", neverGranted.body(), () -> "Body: " + neverGranted.body());
 
-        // Granted: consented true, stale false, provenance and the approved snapshot present.
         verify(send(HttpMethod.POST, "/v1/admin-consent/" + DECLARING_APP, null, "",
                 "authorization", "admin"), 200);
         Response granted = send(HttpMethod.GET, "/v1/admin-consent/" + DECLARING_APP, null, "",
@@ -126,8 +121,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         assertNotNull(live.getGrantedAt());
         assertEquals(List.of(entry("skills/{current-user}/", ResourceAccessType.WRITE)), live.getGrantedResources());
 
-        // Declaration changed since the grant: not consented, stale — and the last approval stays
-        // visible for the panel's re-approve view.
+        // declaration changed since the grant
         verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null, """
                 {
                   "endpoint": "http://application1/v1/completions",
@@ -148,7 +142,6 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         assertEquals(live.getGrantedResources(), staleStatus.getGrantedResources(),
                 "the approved snapshot, not the current declaration, is shown for the re-approve view");
 
-        // Withdrawn: back to the clean never-granted shape.
         verify(send(HttpMethod.DELETE, "/v1/admin-consent/" + DECLARING_APP, null, "",
                 "authorization", "admin"), 200);
         Response withdrawn = send(HttpMethod.GET, "/v1/admin-consent/" + DECLARING_APP, null, "",
@@ -171,7 +164,6 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         verify(status, 200);
         assertEquals("{\"consented\":false}", status.body(), () -> "Body: " + status.body());
 
-        // The status read is gated exactly like the writers — fail-closed for non-admins.
         verify(send(HttpMethod.GET, "/v1/admin-consent/applications/public/plain-consent-app",
                 null, ""), 403);
     }
@@ -201,11 +193,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         assertTrue(status.body().contains("\"grantedBy\":\"AdminTest\""), status.body());
     }
 
-    /**
-     * The typed record is unreachable through the generic Resource API: ADMIN_CONSENT is
-     * deliberately unmapped in ResourceTypes.of(), and no resource route serves the type —
-     * only the consent endpoint can address it.
-     */
+    /** ADMIN_CONSENT is unmapped in ResourceTypes.of(): no Resource API route serves the record. */
     @Test
     void testAdminConsentRecordIsUnreachableViaTheResourceApi() {
         verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null,
