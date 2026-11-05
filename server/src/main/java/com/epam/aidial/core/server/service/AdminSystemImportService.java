@@ -132,33 +132,27 @@ public class AdminSystemImportService {
      * than abort with the blobs already replaced.
      */
     public ImportResult replace(StagedImport staged, Progress progress) {
-        long requestedAt = System.nanoTime();
+        long requestedAt = clock.getAsLong();
         return lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> replaceUnderLocks(staged, progress, requestedAt));
     }
 
     private ImportResult replaceUnderLocks(StagedImport staged, Progress progress, long requestedAt) {
-        long lockWaitMillis = elapsedMillis(requestedAt);
-        long startedAtMillis = clock.getAsLong();
-        long deadlineMillis = startedAtMillis + LockService.LOCK_PERIOD.toMillis();
-        long startedAt = System.nanoTime();
+        long startedAt = clock.getAsLong();
         List<String> warnings = new ArrayList<>();
 
         progress.setPhase(Progress.Phase.WIPE);
         long deleted = wipeBuckets(progress);
-        long wipeMillis = elapsedMillis(startedAt);
+        long wipeEndedAt = clock.getAsLong();
 
-        long copyStartedAt = System.nanoTime();
         progress.setPhase(Progress.Phase.COPY);
         progress.setTotal(staged.blobCount());
         long copied = promoteStagedBlobs(staged.stagingPrefix(), progress);
-        long copyMillis = elapsedMillis(copyStartedAt);
+        long copyEndedAt = clock.getAsLong();
 
-        long invalidateStartedAt = System.nanoTime();
         progress.setPhase(Progress.Phase.INVALIDATE);
         resourceService.invalidate(MergedConfigStore.ADMIN_BUCKET_LOCATIONS);
-        long invalidateMillis = elapsedMillis(invalidateStartedAt);
+        long invalidateEndedAt = clock.getAsLong();
 
-        long rebuildStartedAt = System.nanoTime();
         progress.setPhase(Progress.Phase.REBUILD);
         try {
             mergedConfigStore.rebuildNowUnderBucketLocks();
@@ -167,24 +161,20 @@ public class AdminSystemImportService {
                     + "periodic rebuild", e);
             warnings.add("Merged config rebuild failed; this pod's config may be stale until the next periodic rebuild.");
         }
-        long rebuildMillis = elapsedMillis(rebuildStartedAt);
+        long endedAt = clock.getAsLong();
 
+        long totalMillis = endedAt - startedAt;
         log.info("System import replace finished: lockWait={}ms, wipe={}ms ({} blobs), copy={}ms ({} blobs), invalidate={}ms, "
-                        + "rebuild={}ms, total={}ms", lockWaitMillis, wipeMillis, deleted, copyMillis, copied, invalidateMillis,
-                rebuildMillis, elapsedMillis(startedAt));
+                        + "rebuild={}ms, total={}ms", startedAt - requestedAt, wipeEndedAt - startedAt, deleted, copyEndedAt - wipeEndedAt,
+                copied, invalidateEndedAt - copyEndedAt, endedAt - invalidateEndedAt, totalMillis);
 
-        long endedAtMillis = clock.getAsLong();
-        long overMillis = endedAtMillis - deadlineMillis;
+        long overMillis = totalMillis - LockService.LOCK_PERIOD.toMillis();
         if (overMillis > 0) {
-            log.warn("System import replace took {}s, {}s longer than the lock period of {}s, so the bucket locks lapsed before it ended",
-                    (endedAtMillis - startedAtMillis) / 1000, overMillis / 1000, LockService.LOCK_PERIOD.toSeconds());
+            log.warn("System import replace exceeded the lock period of {}s by {}ms, so the bucket locks lapsed before it ended",
+                    LockService.LOCK_PERIOD.toSeconds(), overMillis);
         }
 
         return new ImportResult(copied, deleted, warnings);
-    }
-
-    private static long elapsedMillis(long sinceNanos) {
-        return (System.nanoTime() - sinceNanos) / NANOS_PER_MILLI;
     }
 
     private long wipeBuckets(Progress progress) {
@@ -230,7 +220,7 @@ public class AdminSystemImportService {
     }
 
     private long stageArchive(InputStream archive, String stagingPrefix) throws IOException {
-        long startedAt = System.nanoTime();
+        long startedAt = clock.getAsLong();
         TimedInputStream timed = new TimedInputStream(archive);
         ZipInputStream zip = new ZipInputStream(timed, StandardCharsets.UTF_8);
         ZipEntry first = zip.getNextEntry();
@@ -292,7 +282,7 @@ public class AdminSystemImportService {
             throw rejected("Archive has no blob entries");
         }
         log.info("System import stage finished: blobs={}, bytes={}, duration={}ms, waitingForClient={}ms",
-                blobCount, timed.bytes, elapsedMillis(startedAt), timed.waitNanos / NANOS_PER_MILLI);
+                blobCount, timed.bytes, clock.getAsLong() - startedAt, timed.waitNanos / NANOS_PER_MILLI);
         return blobCount;
     }
 
