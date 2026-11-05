@@ -38,7 +38,7 @@ public final class ResourceDependencyAuditLog {
         AUDIT.info("event=resource_dependency_consent action={} outcome={} actor={} admin_user_id={} "
                         + "application_id={} targets={} access_types={} trace_id={}{}",
                 AuditLogSanitizer.sanitizeToken(action), outcomeOf(error), actorEvidence(context),
-                AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
+                AuditLogSanitizer.sanitizeToken(context.getInitiatorId()), AuditLogSanitizer.sanitizeToken(applicationId),
                 targets, accessTypes, context.getTraceId(), AuditLogSanitizer.reasonOf(error));
     }
 

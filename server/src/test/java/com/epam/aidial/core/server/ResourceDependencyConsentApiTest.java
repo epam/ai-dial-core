@@ -182,11 +182,25 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation("dial-config/admin-api-key-config.json")
-    void testApiKeyAdminGrantIsStampedWithTheKeysProject() {
+    void testApiKeyAdminGrantIsStampedAndAuditedWithTheKeysProject() {
         verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null,
                 DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
 
-        verify(send(HttpMethod.POST, "/v1/admin-consent/" + DECLARING_APP, null, "", "api-key", "adminKey1"), 200);
+        Logger auditLogger = (Logger) LoggerFactory.getLogger("DIAL_RESOURCE_DEPS_AUDIT");
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        auditLogger.addAppender(appender);
+        try {
+            verify(send(HttpMethod.POST, "/v1/admin-consent/" + DECLARING_APP, null, "", "api-key", "adminKey1"), 200);
+        } finally {
+            auditLogger.detachAppender(appender);
+        }
+        List<String> grants = appender.list.stream()
+                .map(ILoggingEvent::getFormattedMessage)
+                .filter(message -> message.startsWith("event=resource_dependency_consent action=GRANT"))
+                .toList();
+        assertEquals(1, grants.size(), () -> "Events: " + grants);
+        assertTrue(grants.getFirst().contains(" admin_user_id=AdminTest "), () -> "Events: " + grants);
 
         Response status = send(HttpMethod.GET, "/v1/admin-consent/" + DECLARING_APP, null, "", "api-key", "adminKey1");
         verify(status, 200);
