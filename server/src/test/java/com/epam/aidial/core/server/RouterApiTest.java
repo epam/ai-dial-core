@@ -34,6 +34,8 @@ class RouterApiTest extends ResourceBaseTest {
     private static final String MESSAGE = "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\","
             + "\"content\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}";
     private static final String USER_INFO = "X-DIAL-USER-INFO";
+    private static final String TYPED = "dial-config/routers-typed.json";
+    private static final String PROPERTIES = "X-DIAL-APPLICATION-PROPERTIES";
 
     @Test
     @DialConfigLocation(CONFIG)
@@ -245,6 +247,96 @@ class RouterApiTest extends ResourceBaseTest {
                     USER_INFO, "{\"roles\": [\"admin\"]}", "content-type", "application/json"), 200);
         }
         assertNull(received.getFirst().getHeaders().get(USER_INFO));
+    }
+
+    @Test
+    @DialConfigLocation(TYPED)
+    void typedRouterLoads() throws Exception {
+        Response response = send(HttpMethod.GET, "/v1/routers/r3", null, null, "api-key", "proxyKey1");
+
+        verify(response, 200);
+        JsonNode r3 = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals("r3", r3.get("id").asText());
+        assertFalse(r3.has("application_properties"), response.body());
+        assertFalse(r3.has("applicationProperties"), response.body());
+    }
+
+    @Test
+    @DialConfigLocation(TYPED)
+    void typedRouterReceivesItsDeclaredProperties() throws Exception {
+        List<RecordedRequest> received = Collections.synchronizedList(new ArrayList<>());
+        try (TestWebServer server = new TestWebServer(4848, recording(received, COMPLETION))) {
+            verify(send(HttpMethod.POST, "/openai/deployments/r3/chat/completions", null, CHAT_BODY,
+                    "content-type", "application/json"), 200);
+        }
+        RecordedRequest request = received.getFirst();
+        assertEquals(ProxyUtil.MAPPER.readTree("{\"tier\": \"medium\", \"preferredModels\": [\"gpt-4\"]}"),
+                ProxyUtil.MAPPER.readTree(request.getHeader(PROPERTIES)));
+        assertNull(request.getHeader("X-DIAL-APPLICATION-ID"));
+    }
+
+    @Test
+    @DialConfigLocation(TYPED)
+    void typedRouterFeatureEndpointReceivesTheProperties() throws Exception {
+        List<RecordedRequest> received = Collections.synchronizedList(new ArrayList<>());
+        try (TestWebServer server = new TestWebServer(4848, recording(received, "{}"))) {
+            verify(send(HttpMethod.POST, "/v1/r3/rate", null, "{}", "content-type", "application/json"), 200);
+        }
+        assertEquals("/rate", received.getFirst().getPath());
+        assertEquals("medium", ProxyUtil.MAPPER.readTree(received.getFirst().getHeader(PROPERTIES)).get("tier").asText());
+    }
+
+    @Test
+    @DialConfigLocation(TYPED)
+    void schemaThatTurnsTheHeaderOffAndUntypedRouterSendNoProperties() {
+        List<RecordedRequest> received = Collections.synchronizedList(new ArrayList<>());
+        try (TestWebServer server = new TestWebServer(4848, recording(received, COMPLETION))) {
+            for (String router : List.of("r5", "r1")) {
+                verify(send(HttpMethod.POST, "/openai/deployments/" + router + "/chat/completions", null, CHAT_BODY,
+                        "content-type", "application/json"), 200);
+            }
+        }
+        assertEquals(2, received.size());
+        received.forEach(request -> assertNull(request.getHeader(PROPERTIES), request.getPath()));
+    }
+
+    @Test
+    @DialConfigLocation(TYPED)
+    void translatorInFrontOfTypedRouterGetsNoProperties() {
+        List<RecordedRequest> received = Collections.synchronizedList(new ArrayList<>());
+        try (TestWebServer server = new TestWebServer(4848, recording(received, MESSAGE))) {
+            verify(send(HttpMethod.POST, "/anthropic/v1/messages", null,
+                    "{\"model\":\"r6\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+                    "content-type", "application/json"), 200);
+        }
+        assertEquals(1, received.size(), received.toString());
+        assertNull(received.getFirst().getHeader(PROPERTIES));
+        assertEquals("r6", received.getFirst().getHeader("X-DIAL-DEPLOYMENT-ID"));
+    }
+
+    @Test
+    @DialConfigLocation(TYPED)
+    void schemaChangedUnderStoredRouterAnswers502() {
+        String schema = "{\"$schema\": \"https://dial.epam.com/application_type_schemas/schema#\", \"$id\": \"https://dial.test/changing\","
+                + " \"dial:applicationTypeDisplayName\": \"Changing\", \"properties\": {%s}, \"required\": [%s]}";
+        String tier = "\"tier\": {\"type\": \"string\", \"dial:meta\": {\"dial:propertyKind\": \"server\", \"dial:propertyOrder\": 1}}";
+        String extra = "\"extra\": {\"type\": \"string\", \"dial:meta\": {\"dial:propertyKind\": \"server\", \"dial:propertyOrder\": 2}}";
+        verify(send(HttpMethod.PUT, "/v1/schemas/platform/changing", null, schema.formatted(tier, "\"tier\""),
+                "authorization", "admin"), 200);
+        verify(send(HttpMethod.PUT, "/v1/routers/platform/r-changing", null, "{\"baseUrl\": \"http://localhost:4848\","
+                + " \"applicationTypeSchemaId\": \"https://dial.test/changing\", \"applicationProperties\": {\"tier\": \"medium\"},"
+                + " \"interfaces\": {\"openaiChatCompletions\": {}}}", "authorization", "admin"), 200);
+        verify(send(HttpMethod.PUT, "/v1/schemas/platform/changing", null, schema.formatted(tier + ", " + extra, "\"tier\", \"extra\""),
+                "authorization", "admin"), 200);
+
+        List<RecordedRequest> received = Collections.synchronizedList(new ArrayList<>());
+        try (TestWebServer server = new TestWebServer(4848, recording(received, COMPLETION))) {
+            Response response = send(HttpMethod.POST, "/openai/deployments/r-changing/chat/completions", null, CHAT_BODY,
+                    "content-type", "application/json");
+            verify(response, 502);
+            assertTrue(response.body().contains("Router r-changing properties do not match its schema"), response.body());
+        }
+        assertTrue(received.isEmpty(), received.toString());
     }
 
     @Test

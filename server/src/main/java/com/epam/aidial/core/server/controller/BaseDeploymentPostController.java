@@ -460,6 +460,11 @@ public class BaseDeploymentPostController {
 
         if (context.getDeployment() instanceof Router) {
             proxyRequest.putHeader(HEADER_USER_INFO, ProxyUtil.buildUserInfoHeader(context));
+            // a translator calls Core back on the router's own interface, and that pass carries the properties
+            if (context.getRouterPropertiesHeader() != null
+                    && DeploymentEndpointUtil.resolveMode(context.getDeployment(), type) != InterfaceMode.TRANSLATOR) {
+                proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, context.getRouterPropertiesHeader());
+            }
         }
 
         // a translator has to know which deployment to call Core back for, and by the time it reads the body
@@ -512,8 +517,15 @@ public class BaseDeploymentPostController {
      * @param body the client's body bytes, read only when the entry asks for them
      */
     protected Future<Boolean> decideIfRouter(InterfaceType type, Future<Buffer> body) {
-        if (!(context.getDeployment() instanceof Router router)
-                || DeploymentEndpointUtil.resolveMode(router, type) != InterfaceMode.DECISION) {
+        if (!(context.getDeployment() instanceof Router router)) {
+            return Future.succeededFuture(false);
+        }
+        try {
+            context.setRouterPropertiesHeader(proxy.getApplicationSchemaService().routerPropertiesHeader(router));
+        } catch (HttpException e) {
+            return Future.failedFuture(e);
+        }
+        if (DeploymentEndpointUtil.resolveMode(router, type) != InterfaceMode.DECISION) {
             return Future.succeededFuture(false);
         }
         // only a pass below this router's own decision has it in its path: a deployment it chose calls it back

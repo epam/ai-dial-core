@@ -276,6 +276,29 @@ public class AdminApplyApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testApplyTypedRouterWithItsInBatchSchema() {
+        String body = """
+                {"manifests": [
+                  {"kind": "Router", "name": "routers/platform/r-typed-batch",
+                   "spec": {"baseUrl": "http://localhost:4848", "applicationTypeSchemaId": "https://dial.test/batch-type",
+                     "applicationProperties": {"tier": "medium"}, "interfaces": {"openaiChatCompletions": {}}}},
+                  {"kind": "Schema", "name": "schemas/platform/batch-type",
+                   "spec": {"$schema": "https://dial.epam.com/application_type_schemas/schema#", "$id": "https://dial.test/batch-type",
+                     "dial:applicationTypeDisplayName": "Batch router type",
+                     "properties": {"tier": {"type": "string", "dial:meta": {"dial:propertyKind": "server", "dial:propertyOrder": 1}}},
+                     "required": ["tier"]}}
+                ]}
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        for (JsonNode result : ProxyUtil.MAPPER.readTree(response.body()).get("results")) {
+            assertEquals("APPLIED", result.get("status").asText(), response::body);
+        }
+        verify(send(HttpMethod.GET, "/v1/routers/platform/r-typed-batch", null, "", "authorization", "admin"), 200);
+    }
+
+    @Test
+    @SneakyThrows
     void testApplyRouterWithLegacyEndpointFailsWithoutPrecheck() {
         String body = """
                 {"precheck": false, "manifests": [{"kind": "Router", "name": "routers/platform/r-bad",

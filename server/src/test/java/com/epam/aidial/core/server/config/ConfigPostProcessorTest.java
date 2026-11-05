@@ -25,6 +25,7 @@ import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import org.junit.jupiter.api.Test;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -870,6 +871,45 @@ public class ConfigPostProcessorTest {
         assertTrue(warnings.isEmpty(), warnings.toString());
         assertEquals("r1", router.getName());
         assertEquals(List.of(), router.getInterceptors());
+    }
+
+    @Test
+    void testRouterPropertiesWithoutSchemaRejected() {
+        Router router = router("http://router", "openaiChatCompletions", new DeploymentInterface());
+        router.setApplicationProperties(Map.of("tier", "medium"));
+        List<ValidationWarning> warnings = new ArrayList<>();
+
+        ConfigPostProcessor.validateRouterInvariants("r1", router, Map.of(), warnings);
+
+        assertEquals(1, warnings.size(), warnings.toString());
+        assertEquals("applicationProperties", warnings.getFirst().getField());
+        assertTrue(warnings.getFirst().getMessage().contains(
+                "A router declares applicationTypeSchemaId and applicationProperties together"), warnings.toString());
+    }
+
+    @Test
+    void testRouterSchemaWithoutPropertiesRejected() {
+        Router router = router("http://router", "openaiChatCompletions", new DeploymentInterface());
+        router.setApplicationTypeSchemaId(URI.create("https://dial.test/router-type"));
+        List<ValidationWarning> warnings = new ArrayList<>();
+
+        ConfigPostProcessor.validateRouterInvariants("r1", router, Map.of(), warnings);
+
+        assertEquals(1, warnings.size(), warnings.toString());
+        assertEquals("applicationTypeSchemaId", warnings.getFirst().getField());
+    }
+
+    @Test
+    void testRouterWithSchemaAndEmptyPropertiesPasses() {
+        // {} counts as set: the pairing rule is about presence, the schema decides what the properties must hold
+        Router router = router("http://router", "openaiChatCompletions", new DeploymentInterface());
+        router.setApplicationTypeSchemaId(URI.create("https://dial.test/router-type"));
+        router.setApplicationProperties(Map.of());
+        List<ValidationWarning> warnings = new ArrayList<>();
+
+        ConfigPostProcessor.validateRouterInvariants("r1", router, Map.of(), warnings);
+
+        assertTrue(warnings.isEmpty(), warnings.toString());
     }
 
     @Test

@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.config.ConfigStore;
+import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
@@ -25,6 +26,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -35,6 +37,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -927,5 +931,118 @@ public class ApplicationSchemaServiceTest {
         Assertions.assertEquals("{\"a\":1}", result1);
         Assertions.assertEquals("{\"b\":2}", result2);
         Assertions.assertEquals(2, service.schemaCacheSize());
+    }
+
+    private static final String ROUTER_SCHEMA = """
+            {
+              "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+              "$id": "https://dial.test/router-type",
+              "dial:applicationTypeDisplayName": "Router type",
+              "properties": {
+                "tier": {"type": "string", "dial:meta": {"dial:propertyKind": "server", "dial:propertyOrder": 1}},
+                "preferredModels": {"type": "array", "items": {"type": "string"},
+                  "dial:meta": {"dial:propertyKind": "client", "dial:propertyOrder": 2}}
+              },
+              "required": ["tier"]
+            }
+            """;
+    private static final URI ROUTER_SCHEMA_ID = URI.create("https://dial.test/router-type");
+
+    @Test
+    public void validateProperties_unknownSchema() {
+        List<ValidationWarning> warnings = new ArrayList<>();
+
+        service.validateProperties(new Config(), ROUTER_SCHEMA_ID, Map.of("tier", "medium"), warnings);
+
+        Assertions.assertEquals(1, warnings.size());
+        Assertions.assertEquals("applicationTypeSchemaId", warnings.getFirst().getField());
+        Assertions.assertEquals("Unknown application type schema: https://dial.test/router-type", warnings.getFirst().getMessage());
+    }
+
+    @Test
+    public void validateProperties_invalidPropertiesJoinTheMessages() {
+        List<ValidationWarning> warnings = new ArrayList<>();
+
+        service.validateProperties(routerSchemaConfig(), ROUTER_SCHEMA_ID, Map.of("tier", 5, "preferredModels", "x"), warnings);
+
+        Assertions.assertEquals(1, warnings.size());
+        Assertions.assertEquals("applicationProperties", warnings.getFirst().getField());
+        String message = warnings.getFirst().getMessage();
+        Assertions.assertTrue(message.contains("tier") && message.contains("preferredModels") && message.contains(", "), message);
+    }
+
+    @Test
+    public void validateProperties_validPropertiesLeaveTheCacheUntouched() {
+        List<ValidationWarning> warnings = new ArrayList<>();
+
+        service.validateProperties(routerSchemaConfig(), ROUTER_SCHEMA_ID, Map.of("tier", "medium"), warnings);
+
+        Assertions.assertTrue(warnings.isEmpty(), warnings.toString());
+        Assertions.assertEquals(0, service.schemaCacheSize());
+    }
+
+    @Test
+    public void consumeMetadataProperties_bySchemaIdReturnsTheDeclaredPropertiesOnly() throws Exception {
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(ROUTER_SCHEMA_ID)).thenReturn(ROUTER_SCHEMA);
+        Map<String, Object> received = new HashMap<>();
+        boolean[] append = {false};
+
+        service.consumeMetadataProperties(ROUTER_SCHEMA_ID,
+                Map.of("tier", "medium", "preferredModels", List.of("gpt-4"), "undeclared", 1), (properties, header) -> {
+                    received.putAll(properties);
+                    append[0] = header;
+                });
+
+        Assertions.assertEquals(Map.of("tier", "medium", "preferredModels", List.of("gpt-4")), received);
+        Assertions.assertTrue(append[0]);
+    }
+
+    @Test
+    public void resolveSchema_changedTextInTheConfigRebuildsTheEntry() {
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(ROUTER_SCHEMA_ID)).thenReturn(ROUTER_SCHEMA);
+        Assertions.assertEquals(ROUTER_SCHEMA, service.getSchema(ROUTER_SCHEMA_ID, false));
+
+        String changed = ROUTER_SCHEMA.replace("\"Router type\"", "\"Router type v2\"");
+        when(config.getCustomApplicationSchema(ROUTER_SCHEMA_ID)).thenReturn(changed);
+
+        Assertions.assertEquals(changed, service.getSchema(ROUTER_SCHEMA_ID, false));
+        Assertions.assertEquals(1, service.schemaCacheSize());
+    }
+
+    @Test
+    public void resolveSchema_deletedSchemaDropsTheEntry() {
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(ROUTER_SCHEMA_ID)).thenReturn(ROUTER_SCHEMA);
+        service.getSchema(ROUTER_SCHEMA_ID, false);
+
+        when(config.getCustomApplicationSchema(ROUTER_SCHEMA_ID)).thenReturn(null);
+
+        Assertions.assertNull(service.getSchema(ROUTER_SCHEMA_ID, false));
+        Assertions.assertEquals(0, service.schemaCacheSize());
+    }
+
+    @Test
+    public void resolveSchema_unchangedTextDoesNotDownloadAgain() throws Exception {
+        when(configStore.get()).thenReturn(config);
+        String withEndpoint = ROUTER_SCHEMA.replace("\"dial:applicationTypeDisplayName\"",
+                "\"dial:applicationTypeSchemaEndpoint\": \"http://runner/schema\", \"dial:applicationTypeDisplayName\"");
+        when(config.getCustomApplicationSchema(ROUTER_SCHEMA_ID)).thenReturn(withEndpoint);
+        HttpResponse<String> response = mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(200);
+        when(response.body()).thenReturn("{\"properties\": {}}");
+        when(httpClient.send(any(HttpRequest.class), eq(HttpResponse.BodyHandlers.ofString()))).thenReturn(response);
+
+        service.getSchema(ROUTER_SCHEMA_ID, false);
+        service.getSchema(ROUTER_SCHEMA_ID, false);
+
+        verify(httpClient, times(1)).send(any(HttpRequest.class), eq(HttpResponse.BodyHandlers.ofString()));
+    }
+
+    private static Config routerSchemaConfig() {
+        Config config = new Config();
+        config.setApplicationTypeSchemas(Map.of(ROUTER_SCHEMA_ID.toString(), ROUTER_SCHEMA));
+        return config;
     }
 }

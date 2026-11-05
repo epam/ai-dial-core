@@ -35,6 +35,7 @@ import com.epam.aidial.core.server.data.config.manifest.AdminToolSetManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminTranslatorManifest;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.ToolSetService;
@@ -75,6 +76,7 @@ public class ConfigApplyService {
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
     private final CatalogSchemaService catalogSchemaService;
+    private final ApplicationSchemaService applicationSchemaService;
     private final PolicyService policyService;
 
     public ConfigApplyService(MergedConfigStore mergedConfigStore,
@@ -84,7 +86,8 @@ public class ConfigApplyService {
                               ApiKeyStore apiKeyStore,
                               ApplicationService applicationService,
                               ToolSetService toolSetService,
-                              CatalogSchemaService catalogSchemaService) {
+                              CatalogSchemaService catalogSchemaService,
+                              ApplicationSchemaService applicationSchemaService) {
         this.mergedConfigStore = mergedConfigStore;
         this.resourceService = resourceService;
         this.secretFieldProcessor = secretFieldProcessor;
@@ -93,6 +96,7 @@ public class ConfigApplyService {
         this.applicationService = applicationService;
         this.toolSetService = toolSetService;
         this.catalogSchemaService = catalogSchemaService;
+        this.applicationSchemaService = applicationSchemaService;
         this.policyService = new PolicyService(resourceService);
     }
 
@@ -242,7 +246,12 @@ public class ConfigApplyService {
         }
         if (type == ResourceTypes.ROUTER) {
             List<ValidationWarning> warnings = new ArrayList<>();
-            ConfigPostProcessor.validateRouterInvariants(parsed.name(), (Router) entity, scratch.getTranslators(), warnings);
+            Router router = (Router) entity;
+            ConfigPostProcessor.validateRouterInvariants(parsed.name(), router, scratch.getTranslators(), warnings);
+            if (warnings.isEmpty() && router.getApplicationTypeSchemaId() != null) {
+                applicationSchemaService.validateProperties(scratch, router.getApplicationTypeSchemaId(),
+                        router.getApplicationProperties(), warnings);
+            }
             if (!warnings.isEmpty()) {
                 return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
             }

@@ -20431,6 +20431,11 @@ components:
           type: array
           items:
             type: string
+        applicationProperties:
+          $ref: "#/components/schemas/MapStringObject"
+        applicationTypeSchemaId:
+          type: string
+          format: uri
     RouterData:
       type: object
       properties:

@@ -375,9 +375,8 @@ changes the `$id` of an existing blob or uses a `$id` another schema of that typ
 ### Requirement: Write rejected with 422
 A config `PUT` SHALL answer `422` `{"validationWarnings": [{"field": ..., "message": ...}]}` and write nothing when a
 model breaks a rebuild invariant (pricing, interfaces, translator refs, catalog properties) or, unless soft mode is
-on, references an interceptor absent from the merged config; when a router breaks one of its rebuild invariants
-(router-deployment, "Router config entry"); and when a translator or an `overridePaths` entry is invalid, whatever
-the mode.
+on, references an interceptor absent from the merged config; when a router breaks a write rule of router-deployment;
+and when a translator or an `overridePaths` entry is invalid, whatever the mode.
 
 #### Scenario: Unknown interceptor
 - **WHEN** an admin sends `PUT /v1/models/platform/cr-unknown` with `interceptors: ["unknown-interceptor"]` and no
@@ -400,6 +399,11 @@ the mode.
   {"openaiChatCompletions": {}, "anthropicMessages": {"translator": {"out": "openaiChatCompletions", "baseUrl":
   "http://t"}}}}`
 - **THEN** Core answers `422` with a body containing `requires mode 'translator'`
+
+#### Scenario: Typed router properties rejected on write
+- **WHEN** an admin sends a typed router whose `applicationProperties` break its schema while
+  `config.write.softValidation` is `true`
+- **THEN** Core answers `422` and writes nothing
 
 ### Requirement: Soft validation
 With `config.write.softValidation: true` (default `false`), a model write whose only failure is a dangling reference

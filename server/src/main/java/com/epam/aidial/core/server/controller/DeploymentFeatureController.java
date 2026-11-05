@@ -190,6 +190,14 @@ public class DeploymentFeatureController {
 
     @SneakyThrows
     private void sendRequest(String endpoint) {
+        if (context.getDeployment() instanceof Router router) {
+            try {
+                context.setRouterPropertiesHeader(proxy.getApplicationSchemaService().routerPropertiesHeader(router));
+            } catch (HttpException e) {
+                respond(e.getStatus(), e.getMessage());
+                return;
+            }
+        }
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(new URL(endpoint))
                 .setMethod(context.getRequest().method())
@@ -243,6 +251,9 @@ public class DeploymentFeatureController {
         ProxyUtil.setOverrideNameHeader(proxyRequest, deployment);
         if (deployment instanceof Router) {
             proxyRequest.putHeader(HEADER_USER_INFO, ProxyUtil.buildUserInfoHeader(context));
+            if (context.getRouterPropertiesHeader() != null) {
+                proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, context.getRouterPropertiesHeader());
+            }
         }
 
         if ((deployment instanceof Application application && application.hasApplicationTypeSchemaId())) {

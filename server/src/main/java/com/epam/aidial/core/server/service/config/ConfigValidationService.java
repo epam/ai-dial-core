@@ -25,6 +25,7 @@ import com.epam.aidial.core.server.data.config.manifest.AdminToolSetManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminTranslatorManifest;
 import com.epam.aidial.core.server.data.config.manifest.ValidationResult;
 import com.epam.aidial.core.server.data.config.manifest.ValidationStatus;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.policy.PolicyAssignmentPrecheck;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
@@ -48,12 +49,14 @@ public class ConfigValidationService {
     private final ResourceService resourceService;
     private final boolean softValidation;
     private final CatalogSchemaService catalogSchemaService;
+    private final ApplicationSchemaService applicationSchemaService;
 
     public ConfigValidationService(ResourceService resourceService, boolean softValidation,
-                                   CatalogSchemaService catalogSchemaService) {
+                                   CatalogSchemaService catalogSchemaService, ApplicationSchemaService applicationSchemaService) {
         this.resourceService = resourceService;
         this.softValidation = softValidation;
         this.catalogSchemaService = catalogSchemaService;
+        this.applicationSchemaService = applicationSchemaService;
     }
 
     public PolicyAssignmentPrecheck newPolicyPrecheck() {
@@ -115,6 +118,10 @@ public class ConfigValidationService {
                     List<ValidationWarning> warnings = new ArrayList<>();
                     ConfigPostProcessor.validateRouterInvariants(parsed.name().name(), routerManifest.spec(),
                             scratch.getTranslators(), warnings);
+                    if (warnings.isEmpty() && routerManifest.spec().getApplicationTypeSchemaId() != null) {
+                        applicationSchemaService.validateProperties(scratch, routerManifest.spec().getApplicationTypeSchemaId(),
+                                routerManifest.spec().getApplicationProperties(), warnings);
+                    }
                     if (!warnings.isEmpty()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }

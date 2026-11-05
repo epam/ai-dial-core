@@ -1270,6 +1270,19 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         assertEquals("Deployment ID 'gpt-4' is already used by a different entity", result.get("error").asText());
     }
 
+    @Test
+    @DialConfigLocation("dial-config/routers-typed.json")
+    @SneakyThrows
+    void testValidateTypedRouterManifestWithBreakingPropertiesFails() {
+        JsonNode result = validateOne("""
+                {"precheck": false, "manifests": [{"kind": "Router", "name": "routers/platform/r-bad",
+                  "spec": {"baseUrl": "http://localhost:4848", "applicationTypeSchemaId": "https://dial.test/router-type",
+                    "applicationProperties": {"tier": 5}, "interfaces": {"openaiChatCompletions": {}}}}]}
+                """);
+        assertEquals("FAILED", result.get("status").asText());
+        assertTrue(result.get("error").asText().contains("tier"), result::toString);
+    }
+
     @SneakyThrows
     private JsonNode validateOne(String body) {
         Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
@@ -1286,6 +1299,14 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                     .put("config", new JsonObject()
                             .put("write", new JsonObject().put("softValidation", true))
                             .put("onInvalidEntity", "skip"));
+        }
+
+        @Test
+        @DialConfigLocation("dial-config/routers-typed.json")
+        void testSoftValidationStillRejectsTypedRouterProperties() {
+            verify(send(HttpMethod.PUT, "/v1/routers/platform/r-soft", null, ConfigRouterTest.TYPED_ROUTER.formatted("{\"tier\": 5}"),
+                    "authorization", "admin"), 422);
+            verify(send(HttpMethod.GET, "/v1/routers/platform/r-soft", null, "", "authorization", "admin"), 404);
         }
 
         @Test

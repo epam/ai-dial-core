@@ -103,6 +103,20 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    @DialConfigLocation("dial-config/routers-typed.json")
+    void testMigrateTypedFileRouter() {
+        Response response = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, "{\"types\": [\"routers\"]}",
+                "authorization", "admin");
+        verify(response, 200);
+        JsonNode r3 = findByResourceUrl(ProxyUtil.MAPPER.readTree(response.body()).get("results"), "routers/platform/r3");
+        assertEquals("migrated", r3.get("status").asText(), () -> "Body: " + response.body());
+        Response migrated = send(HttpMethod.GET, "/v1/routers/platform/r3", null, "", "authorization", "admin");
+        verify(migrated, 200);
+        assertEquals("medium", ProxyUtil.MAPPER.readTree(migrated.body()).get("applicationProperties").get("tier").asText());
+    }
+
+    @Test
+    @SneakyThrows
     @DialConfigLocation("dial-config/config-file-migrate.json")
     void testMigrateModelPreservesUpstreamSecrets() {
         String body = """

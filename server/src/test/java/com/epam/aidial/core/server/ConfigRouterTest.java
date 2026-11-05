@@ -30,6 +30,9 @@ class ConfigRouterTest extends ResourceBaseTest {
     private static final String ROUTER_URL = "/v1/routers/platform/";
     private static final String VALID = "{\"baseUrl\": \"http://localhost:4848\", \"userRoles\": [\"analysts\"],"
             + " \"interfaces\": {\"openaiChatCompletions\": {}}}";
+    private static final String TYPED = "dial-config/routers-typed.json";
+    static final String TYPED_ROUTER = "{\"baseUrl\": \"http://localhost:4848\", \"applicationTypeSchemaId\": \"https://dial.test/router-type\","
+                + " \"applicationProperties\": %s, \"interfaces\": {\"openaiChatCompletions\": {}}}";
     private static final String COMPLETION = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\","
             + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}],"
             + "\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":10,\"total_tokens\":15}}";
@@ -240,6 +243,70 @@ class ConfigRouterTest extends ResourceBaseTest {
         Response get = admin(HttpMethod.GET, ROUTER_URL + "r-bad", null);
         verify(get, 200);
         assertEquals("invalid", ProxyUtil.MAPPER.readTree(get.body()).get("status").asText());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    @SneakyThrows
+    void routerPropertiesWithoutSchemaRejected() {
+        Response response = admin(HttpMethod.PUT, ROUTER_URL + "r-bad", "{\"baseUrl\": \"http://localhost:4848\","
+                + " \"applicationProperties\": {\"tier\": \"medium\"}, \"interfaces\": {\"openaiChatCompletions\": {}}}");
+
+        verify(response, 422);
+        assertTrue(response.body().contains("A router declares applicationTypeSchemaId and applicationProperties together"), response.body());
+        verify(admin(HttpMethod.GET, ROUTER_URL + "r-bad", null), 404);
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    @SneakyThrows
+    void untypedRouterStoredWithoutTheFields() {
+        verify(admin(HttpMethod.PUT, ROUTER_URL + "r-plain", VALID), 200);
+
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROUTER,
+                ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, "r-plain");
+        JsonNode blob = ProxyUtil.MAPPER.readTree(dial.getProxy().getResourceService().getResource(descriptor));
+        assertFalse(blob.has("applicationTypeSchemaId"), blob.toString());
+        assertFalse(blob.has("applicationProperties"), blob.toString());
+    }
+
+    @Test
+    @DialConfigLocation(TYPED)
+    @SneakyThrows
+    void typedRouterWithUnknownSchemaRejected() {
+        Response response = admin(HttpMethod.PUT, ROUTER_URL + "r-bad", "{\"baseUrl\": \"http://localhost:4848\","
+                + " \"applicationTypeSchemaId\": \"https://dial.test/none\", \"applicationProperties\": {\"tier\": \"medium\"},"
+                + " \"interfaces\": {\"openaiChatCompletions\": {}}}");
+
+        verify(response, 422);
+        JsonNode warning = ProxyUtil.MAPPER.readTree(response.body()).get("validationWarnings").get(0);
+        assertEquals("applicationTypeSchemaId", warning.get("field").asText(), response.body());
+        verify(admin(HttpMethod.GET, ROUTER_URL + "r-bad", null), 404);
+    }
+
+    @Test
+    @DialConfigLocation(TYPED)
+    @SneakyThrows
+    void typedRouterWhosePropertiesBreakTheSchemaRejected() {
+        Response response = admin(HttpMethod.PUT, ROUTER_URL + "r-bad", TYPED_ROUTER.formatted("{\"tier\": 5}"));
+
+        verify(response, 422);
+        JsonNode warning = ProxyUtil.MAPPER.readTree(response.body()).get("validationWarnings").get(0);
+        assertEquals("applicationProperties", warning.get("field").asText(), response.body());
+        verify(admin(HttpMethod.GET, ROUTER_URL + "r-bad", null), 404);
+    }
+
+    @Test
+    @DialConfigLocation(TYPED)
+    @SneakyThrows
+    void typedRouterWrittenAndReadBack() {
+        verify(admin(HttpMethod.PUT, ROUTER_URL + "r-typed", TYPED_ROUTER.formatted("{\"tier\": \"medium\"}")), 200);
+
+        Response get = admin(HttpMethod.GET, ROUTER_URL + "r-typed", null);
+        verify(get, 200);
+        JsonNode body = ProxyUtil.MAPPER.readTree(get.body());
+        assertEquals("https://dial.test/router-type", body.get("applicationTypeSchemaId").asText(), get.body());
+        assertEquals("medium", body.get("applicationProperties").get("tier").asText(), get.body());
     }
 
     private Response admin(HttpMethod method, String path, String body) {

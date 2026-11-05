@@ -38,6 +38,7 @@ import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EntityBucketBinding;
 import com.epam.aidial.core.server.security.Operation;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
@@ -106,6 +107,7 @@ public class ConfigResourceController implements Controller {
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
     private final CatalogSchemaService catalogSchemaService;
+    private final ApplicationSchemaService applicationSchemaService;
     private final ResourceAuthSettingsService resourceAuthSettingsService;
     private final String entityType;
     private final String bucket;
@@ -128,6 +130,7 @@ public class ConfigResourceController implements Controller {
         this.applicationService = proxy.getApplicationService();
         this.toolSetService = proxy.getToolSetService();
         this.catalogSchemaService = proxy.getCatalogSchemaService();
+        this.applicationSchemaService = proxy.getApplicationSchemaService();
         this.resourceAuthSettingsService = proxy.getResourceAuthSettingsService();
         this.entityType = entityType;
         this.bucket = bucket;
@@ -2057,6 +2060,10 @@ public class ConfigResourceController implements Controller {
         Map<String, Translator> translators = snapshot != null ? snapshot.getTranslators() : Map.of();
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validateRouterInvariants(path, entity, translators, warnings);
+        if (warnings.isEmpty() && entity.getApplicationTypeSchemaId() != null) {
+            applicationSchemaService.validateProperties(snapshot != null ? snapshot : new Config(),
+                    entity.getApplicationTypeSchemaId(), entity.getApplicationProperties(), warnings);
+        }
         if (!warnings.isEmpty()) {
             rejectWithValidationWarnings(warnings);
         }

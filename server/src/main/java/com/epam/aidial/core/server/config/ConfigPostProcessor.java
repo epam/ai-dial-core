@@ -946,6 +946,11 @@ public final class ConfigPostProcessor {
         if (router.getEndpoint() != null || router.getResponsesEndpoint() != null) {
             warnings.add(new ValidationWarning("endpoint", messageWithEntityPrefix("Router", name, "A router declares interfaces, not endpoint")));
         }
+        if ((router.getApplicationTypeSchemaId() == null) != (router.getApplicationProperties() == null)) {
+            String field = router.getApplicationTypeSchemaId() == null ? "applicationProperties" : "applicationTypeSchemaId";
+            warnings.add(new ValidationWarning(field, messageWithEntityPrefix("Router", name,
+                    "A router declares applicationTypeSchemaId and applicationProperties together")));
+        }
         validateDeploymentInterfaces(router, translators, warnings);
     }
 

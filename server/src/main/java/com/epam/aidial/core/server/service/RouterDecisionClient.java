@@ -106,6 +106,9 @@ public class RouterDecisionClient {
             }
         });
         headers.set(HEADER_USER_INFO, ProxyUtil.buildUserInfoHeader(context));
+        if (context.getRouterPropertiesHeader() != null) {
+            headers.set(HEADER_APPLICATION_PROPERTIES, context.getRouterPropertiesHeader());
+        }
         headers.set(Proxy.HEADER_ROUTER, router.getName());
         headers.set(Proxy.HEADER_API, type.getValue());
         if (body == null) {

@@ -122,6 +122,8 @@ public class ProxyContext {
     private String assembledStreamingResponse;
     // the router's verdict when a router in decision mode chose the deployment of this pass
     private RouterDecision decision;
+    // X-DIAL-APPLICATION-PROPERTIES for a typed router, built once in the pass that reaches it, before any connection
+    private String routerPropertiesHeader;
     // the client's body bytes as they arrived, kept while a decision may still fall back to another candidate
     private Buffer originalRequestBody;
 

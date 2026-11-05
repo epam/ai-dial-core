@@ -33,8 +33,46 @@ An object containing the routers and their [parameters](#routersrouter_name). Ro
 * `userRoles`: The roles allowed to call and list the router. Empty means everyone.
 * `displayName`, `displayVersion`, `iconUrl`, `description`, `intro`, `reference`, `descriptionKeywords`, `author`, `createdAt`, `updatedAt`: Display fields, as for a model.
 * `features`, `defaults`, `defaultHeaders`, `overrideName`, `forwardAuthToken`, `maxRetryAttempts`: As for a model.
+* `applicationTypeSchemaId`, `applicationProperties`: An app-type schema and the properties it validates, as for a schema-rich application. Set both or neither. See [Type schema and properties](#type-schema-and-properties).
 
-A router declares nothing of another deployment kind. DIAL Core rejects the config when a router has `upstreams`, `limits`, `pricing`, any application field, `interceptors` (`A router declares no interceptors`), or `endpoint` / `responsesEndpoint` (`A router declares interfaces, not endpoint`). A [Configuration API](#configuration-api) write of such a router is rejected the same way.
+A router declares nothing of another deployment kind. DIAL Core rejects the config when a router has `upstreams`, `limits`, `pricing`, any other application field, `interceptors` (`A router declares no interceptors`), or `endpoint` / `responsesEndpoint` (`A router declares interfaces, not endpoint`). A [Configuration API](#configuration-api) write of such a router is rejected the same way.
+
+## Type schema and properties
+
+One router service can sit behind several router entries, each with its own typed settings. The entry names an app-type schema in `applicationTypeSchemaId` and holds the values in `applicationProperties`, as a schema-rich application does:
+
+```json
+{
+  "applicationTypeSchemas": [
+    {
+      "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+      "$id": "https://dial.test/router-type",
+      "dial:applicationTypeDisplayName": "Router type",
+      "properties": {
+        "tier": {"type": "string", "dial:meta": {"dial:propertyKind": "server", "dial:propertyOrder": 1}}
+      },
+      "required": ["tier"]
+    }
+  ],
+  "routers": {
+    "r3": {
+      "baseUrl": "http://localhost:4848",
+      "applicationTypeSchemaId": "https://dial.test/router-type",
+      "applicationProperties": {"tier": "medium"},
+      "interfaces": {"openaiChatCompletions": {}}
+    }
+  }
+}
+```
+
+* A router that sets one of the two fields without the other is rejected (`A router declares applicationTypeSchemaId and applicationProperties together`).
+* The properties are validated against the schema when the config files load, against the files' schemas, as for applications. A [Configuration API](#configuration-api) write validates them against the stored and file schemas, plus the batch's earlier `Schema` entries on validate and apply. An unknown schema or properties that break it answer `422`, whatever `config.write.softValidation` says.
+* DIAL Core sends `X-DIAL-APPLICATION-PROPERTIES`, the JSON of the properties the schema declares, to the router on its interfaces, on its feature endpoints (rate, tokenize, truncate prompt, configuration) and on decide requests. Properties the schema does not declare are left out. A schema with `dial:appendApplicationPropertiesHeader: false` turns the header off.
+* The header does not go to a translator in front of a router interface, to Responses retrieve, cancel or delete calls, or to the deployment a decision chose. A client-sent header of that name is dropped.
+* DIAL Core builds the header before it connects. When the schema is gone, or has changed so that the stored properties no longer match it, a request to the router answers `502` (`Router <name> properties do not match its schema`) and nothing reaches the router. A schema change takes effect on the next request on every pod.
+* The schema contributes nothing else to a router: no endpoints, routes, MCP settings, files, prompts or skills. A router keeps `baseUrl` and `interfaces`.
+* A router schema is still an app-type schema, so `GET /v1/application_type_schemas/schemas` lists it. An application of that type cannot be created, because it declares no completion or MCP endpoint.
+* Properties are not secret. They are stored and exported in plain text, returned by `GET /v1/routers/platform/{router_name}`, sent to the router and written to the debug log when a router loads. Keep credentials out of them.
 
 ## Configuration API
 
@@ -200,3 +238,5 @@ A decided request is one pass: one analytics row, for the deployment that served
 Rolling back to a DIAL Core release without decision mode while a `mode: decision` entry exists makes the whole config file fail to load: switch those entries back to proxy mode first.
 
 A DIAL Core release without the router Configuration API ignores routers stored in the `platform` bucket: they stay in storage, are not deployments on that release, and serve again after the upgrade. While pods of both releases run, a stored router answers `404` on the older pods; routers from the config files behave the same on every pod.
+
+A DIAL Core release without router type schemas rejects a router that sets `applicationTypeSchemaId` or `applicationProperties`: such a file router stops the config files from loading, and such a stored router is skipped. Remove the two fields from those routers before rolling back. Routers without them are stored exactly as before and are not affected.

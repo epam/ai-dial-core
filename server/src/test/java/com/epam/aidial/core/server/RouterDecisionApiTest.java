@@ -76,6 +76,20 @@ class RouterDecisionApiTest extends ResourceBaseTest {
     }
 
     @Test
+    @DialConfigLocation("dial-config/routers-typed.json")
+    void typedRouterDecideRequestCarriesTheProperties() throws Exception {
+        try (TestWebServer server = server()) {
+            verify(send(HttpMethod.POST, "/openai/deployments/r4/chat/completions", null, CHAT_BODY,
+                    "content-type", "application/json"), 200);
+        }
+        RecordedRequest decide = single(this::isDecide);
+        assertEquals(ProxyUtil.MAPPER.readTree("{\"tier\": \"medium\", \"preferredModels\": [\"gpt-4\"]}"),
+                ProxyUtil.MAPPER.readTree(decide.getHeader("X-DIAL-APPLICATION-PROPERTIES")));
+        RecordedRequest model = single(request -> request.getPath().startsWith("/openai/deployments/gpt-4/"));
+        assertNull(model.getHeader("X-DIAL-APPLICATION-PROPERTIES"));
+    }
+
+    @Test
     @DialConfigLocation(CONFIG)
     void bodyOnRequest() {
         verdict.set("{\"candidates\": [\"m1\"]}");
