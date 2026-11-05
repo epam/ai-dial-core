@@ -986,7 +986,7 @@ class OrgUnitServiceTest {
     private static ProxyContext caller(String perRequestKey) {
         ProxyContext bob = mock(ProxyContext.class);
         ObjectNode claims = ProxyUtil.MAPPER.createObjectNode().put("email", "bob@acme.com");
-        when(bob.getExtractedClaims()).thenReturn(new ExtractedClaims("bob", List.of(), "bob", claims, null, "Bob"));
+        when(bob.getExtractedClaims()).thenReturn(new ExtractedClaims("bob", List.of(), "bob", claims, null, "Bob", "bob@acme.com"));
         ApiKeyData key = new ApiKeyData();
         key.setPerRequestKey(perRequestKey);
         when(bob.getApiKeyData()).thenReturn(key);
