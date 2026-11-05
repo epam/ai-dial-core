@@ -11,15 +11,19 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.log.otl.OtelLogRecord;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
+import org.slf4j.event.KeyValuePair;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -86,6 +90,9 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
             attributes.putAll(proxyContext.getTracingAttributes());
         }
 
+        // last and log line only: a plugin's fields never overwrite Core's attributes nor reach the span
+        enrichKeyValuePairs(event, attributes);
+
         Map<String, Object> resource = new HashMap<>();
         resource.put("service.name", serviceName);
         resource.put("service.version", serviceVersion);
@@ -141,6 +148,24 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
             attributes.put("exception.type", throwableProxy.getClassName());
             attributes.put("exception.message", throwableProxy.getMessage());
             attributes.put("exception.stacktrace", stacktrace);
+        }
+    }
+
+    /**
+     * The record's SLF4J key-value pairs, as an origin plugin writes its fields: under their keys, after Core's own
+     * attributes, which a pair cannot replace. A value Jackson has no form for is written as its text, so it never
+     * sends the line to the fallback.
+     */
+    private static void enrichKeyValuePairs(ILoggingEvent event, Map<String, Object> attributes) {
+        List<KeyValuePair> pairs = event.getKeyValuePairs();
+        if (pairs == null) {
+            return;
+        }
+        for (KeyValuePair pair : pairs) {
+            Object value = pair.value;
+            boolean json = value == null || value instanceof String || value instanceof Number || value instanceof Boolean
+                    || value instanceof Collection<?> || value instanceof Map<?, ?> || value instanceof JsonNode;
+            attributes.putIfAbsent(pair.key, json ? value : String.valueOf(value));
         }
     }
 
