@@ -15,4 +15,6 @@ public class GlobalSettings {
     private Set<@NotNull Integer> retriableErrorCodes = Set.of();
     @Valid
     private RateLimitSchedule rateLimitSchedule = new RateLimitSchedule();
+    @Valid
+    private SpendingLimits spendingLimits = new SpendingLimits();
 }

@@ -6,8 +6,11 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
 
+/**
+ * @param userEmail the user's address from the provider's {@code userEmailPath}; what a rule on {@code email} matches
+ */
 public record ExtractedClaims(String userId, List<String> userRoles, String userHash,
-                              ObjectNode userClaims, String project, String userDisplayName) {
+                              ObjectNode userClaims, String project, String userDisplayName, String userEmail) {
 
     /**
      * The token's authorized party — the calling workload's client id from the {@code azp} claim, or {@code null}

@@ -58,7 +58,7 @@ public class ProxyContextTest {
     public void testUserClaims() {
         ObjectNode claims = ProxyUtil.MAPPER.createObjectNode().put("email", "jane.doe@example.com");
 
-        assertEquals(claims, context(new ExtractedClaims("sub", List.of("role"), "hash", claims, null, "Jane Doe"))
+        assertEquals(claims, context(new ExtractedClaims("sub", List.of("role"), "hash", claims, null, "Jane Doe", null))
                 .getUserClaims());
     }
 

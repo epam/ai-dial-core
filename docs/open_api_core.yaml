@@ -14459,6 +14459,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /v1/user/role-assignments:
+    get:
+      tags:
+      - Org units
+      summary: /v1/user/role-assignments
+      operationId: getUserRoleAssignments
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserOrgUnits"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/user/usage:
     get:
       tags:
@@ -18418,6 +18446,8 @@ components:
             type: integer
         rateLimitSchedule:
           $ref: "#/components/schemas/RateLimitSchedule"
+        spendingLimits:
+          $ref: "#/components/schemas/SpendingLimits"
     HealthResponse:
       type: object
       properties:
@@ -18800,6 +18830,12 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/Route"
+    MapStringSet:
+      type: object
+      additionalProperties:
+        type: array
+        items:
+          type: string
     MapStringShareResourceLimit:
       type: object
       additionalProperties:
@@ -19524,6 +19560,8 @@ components:
         client_secret_hint:
           type: string
           readOnly: true
+        resource:
+          type: string
     ResourceAuthSettingsData:
       type: object
       properties:
@@ -19553,6 +19591,8 @@ components:
           $ref: "#/components/schemas/ResourceAuthStatus"
         dynamically_registered:
           type: boolean
+        resource:
+          type: string
     ResourceAuthStatus:
       type: string
       enum:
@@ -20555,6 +20595,39 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/BudgetStats"
+    UserOrgUnits:
+      type: object
+      properties:
+        adminAccess:
+          $ref: "#/components/schemas/UserOrgUnitsAdminAccess"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserOrgUnitsUnit"
+    UserOrgUnitsAdminAccess:
+      type: string
+      enum:
+      - FULL
+      - NONE
+    UserOrgUnitsUnit:
+      type: object
+      properties:
+        displayName:
+          type: string
+        folder:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        path:
+          type: string
+        permissions:
+          $ref: "#/components/schemas/MapStringSet"
+        roles:
+          type: array
+          items:
+            type: string
     ValidationResult:
       type: object
       properties:

@@ -112,6 +112,8 @@ public class ConfigManifestSupport {
             scratch.getRoutes().putAll(live.getRoutes());
             scratch.setGlobalInterceptors(live.getGlobalInterceptors());
             scratch.setRetriableErrorCodes(live.getRetriableErrorCodes());
+            scratch.setRateLimitSchedule(live.getRateLimitSchedule());
+            scratch.setSpendingLimits(live.getSpendingLimits());
         }
         return scratch;
     }
@@ -123,6 +125,8 @@ public class ConfigManifestSupport {
                 case AdminSettingsManifest settings -> {
                     scratch.setGlobalInterceptors(settings.spec().getGlobalInterceptors());
                     scratch.setRetriableErrorCodes(settings.spec().getRetriableErrorCodes());
+                    scratch.setRateLimitSchedule(settings.spec().getRateLimitSchedule());
+                    scratch.setSpendingLimits(settings.spec().getSpendingLimits());
                 }
                 case AdminInterceptorManifest interceptor ->
                         scratch.getInterceptors().put(parsed.name().name(), interceptor.spec());

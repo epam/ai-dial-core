@@ -124,7 +124,7 @@ public class AccessTokenValidatorTest {
         when(provider2.match(any(DecodedJWT.class))).thenReturn(true);
         when(provider2.extractClaimsFromJwt(any(DecodedJWT.class))).thenReturn(Future
                 .succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash",
-                        ProxyUtil.MAPPER.createObjectNode(), null, null)));
+                        ProxyUtil.MAPPER.createObjectNode(), null, null, null)));
         List<IdentityProvider> providerList = List.of(provider1, provider2);
         validator.setProviders(providerList);
         KeyPair keyPair = generateRsa256Pair();
@@ -149,7 +149,7 @@ public class AccessTokenValidatorTest {
         when(provider.hasUserinfoUrl()).thenReturn(false);
         when(provider.extractClaimsFromJwt(any(DecodedJWT.class))).thenReturn(Future
                 .succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash",
-                        ProxyUtil.MAPPER.createObjectNode(), null, null)));
+                        ProxyUtil.MAPPER.createObjectNode(), null, null, null)));
         List<IdentityProvider> providerList = List.of(provider);
         validator.setProviders(providerList);
         KeyPair keyPair = generateRsa256Pair();
@@ -188,7 +188,7 @@ public class AccessTokenValidatorTest {
         IdentityProvider provider = mock(IdentityProvider.class);
         when(provider.hasUserinfoUrl()).thenReturn(true);
         ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash",
-                ProxyUtil.MAPPER.createObjectNode(), null, null);
+                ProxyUtil.MAPPER.createObjectNode(), null, null, null);
         when(provider.extractClaimsFromUserInfo(anyString())).thenReturn(Future.succeededFuture(extractedClaims));
         List<IdentityProvider> providerList = List.of(provider);
         validator.setProviders(providerList);
@@ -207,7 +207,7 @@ public class AccessTokenValidatorTest {
         IdentityProvider provider = mock(IdentityProvider.class);
         when(provider.hasUserinfoUrl()).thenReturn(true);
         ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash",
-                ProxyUtil.MAPPER.createObjectNode(), "project1", null);
+                ProxyUtil.MAPPER.createObjectNode(), "project1", null, null);
         when(provider.extractClaimsFromUserInfo(anyString())).thenReturn(Future.succeededFuture(extractedClaims));
         List<IdentityProvider> providerList = List.of(provider);
         validator.setProviders(providerList);
@@ -289,7 +289,7 @@ public class AccessTokenValidatorTest {
             first.runOnContext(v -> validator.extractClaims(header));
             second.runOnContext(v -> validator.extractClaims(header).onComplete(res -> continuedOn.complete(Vertx.currentContext())));
             first.runOnContext(v -> userInfo.complete(new ExtractedClaims("sub", List.of(), "hash",
-                    ProxyUtil.MAPPER.createObjectNode(), null, null)));
+                    ProxyUtil.MAPPER.createObjectNode(), null, null, null)));
 
             // the second request continues on its own context, not on the first request's which completed the lookup
             assertSame(second, continuedOn.get(5, TimeUnit.SECONDS));
