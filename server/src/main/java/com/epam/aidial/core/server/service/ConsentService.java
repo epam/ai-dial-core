@@ -221,7 +221,12 @@ public class ConsentService {
 
     private ConsentGrant readAdminConsent(ResourceDescriptor descriptor) {
         String grant = resourceService.getResource(descriptor);
-        return ProxyUtil.convertToObject(grant, ConsentGrant.class);
+        try {
+            return ProxyUtil.convertToObject(grant, ConsentGrant.class);
+        } catch (IllegalArgumentException e) {
+            log.error("Unreadable admin consent record {}, treated as absent", descriptor.getUrl(), e);
+            return null;
+        }
     }
 
     private String getRootDeploymentId(ProxyContext context, Deployment current) {

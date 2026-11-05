@@ -764,6 +764,17 @@ public class ConsentServiceTest {
     }
 
     @Test
+    public void testUnreadableAdminConsentRecordFailsClosedAndCanBeWithdrawn() {
+        when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn("{not json");
+        when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(declaringApplication("skills/{current-user}/"));
+
+        assertFalse(service.isAdminConsented("app", declaration("skills/{current-user}/")));
+        assertFalse(service.describeAdminConsent(context, "app").isConsented());
+        assertNull(service.withdrawAdminConsent(context, "app"));
+        verify(resourceService).deleteResource(any(ResourceDescriptor.class), eq(EtagHeader.ANY));
+    }
+
+    @Test
     public void testWithdrawAdminConsent_ReturnsTheWithdrawnGrantForTheAudit() {
         when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(declaringApplication());
         when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn("""

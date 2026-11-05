@@ -61,7 +61,6 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
         String applicationId = application.getName();
         // only an MCP app with forwardPerRequestKey=false gets no per-request key: grants can't be delivered, a required dependency fails
         boolean hasKeyToBakeInto = context.getProxyApiKeyData() != null;
-        // consent is content-bound to the whole declaration: any change re-requires the grant
         boolean consented = hasKeyToBakeInto && proxy.getConsentService().isAdminConsented(applicationId, declaration);
         AuthBucket userBucket = BucketBuilder.buildBucket(context);
 
@@ -73,7 +72,6 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
             Set<ResourceAccessType> requestedAccess = consented ? requestedAccessOf(dependency) : null;
             ResourceDescriptor target = requestedAccess == null ? null : resolveTarget(dependency, userBucket);
             if (target == null) {
-                // malformed or unconsented: unresolved, and fails the call only when required
                 trackUnresolved(dependency, unresolvedDeps, requiredFailures);
             } else {
                 resolvedTargets.add(new ResolvedTarget(dependency, target, requestedAccess));
@@ -147,13 +145,11 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
     @Nullable
     private static Set<ResourceAccessType> requestedAccessOf(@Nullable ResourceDependency dependency) {
         if (dependency == null || !ResourceDependency.KIND.equals(dependency.getKind())) {
-            // a wrong kind is not a resource link
             return null;
         }
         if (dependency.getAccess() == null || dependency.getAccess().isEmpty()) {
             return null;
         }
-        // only READ and WRITE are dependency rights
         for (ResourceAccessType access : dependency.getAccess()) {
             if (access != ResourceAccessType.READ && access != ResourceAccessType.WRITE) {
                 return null;
@@ -165,7 +161,7 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
     /**
      * Resolves a declared target path to a descriptor: a {@code {type}/{current-user}/<path…>}
      * path against the initiator's own bucket, a concrete {@code {type}/{bucket}/<path…>}
-     * path as-is. Null when the record is malformed — an unresolvable record, never a crash.
+     * path as-is. Null when the record is malformed — config-file apps bypass write-time validation.
      */
     @Nullable
     private ResourceDescriptor resolveTarget(ResourceDependency dependency, AuthBucket userBucket) {
@@ -175,7 +171,7 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
         try {
             return ResourceDependencyValidator.resolveTarget(dependency.getTarget().getPath().trim(), userBucket, proxy.getEncryptionService());
         } catch (IllegalArgumentException e) {
-            return null;                                       // config-file apps bypass write-time validation
+            return null;
         }
     }
 }

@@ -172,8 +172,15 @@ public class McpProxyController implements Controller {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
         if (Strings.CI.contains(contentType, HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
 
+            JsonNode tree;
             try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
-                JsonNode tree = ProxyUtil.MAPPER.readTree(stream);
+                tree = ProxyUtil.MAPPER.readTree(stream);
+            } catch (Throwable e) {
+                respond(HttpStatus.BAD_REQUEST, "Invalid JSON request body");
+                log.warn("Can't process JSON request body. Error:", e);
+                return;
+            }
+            try {
                 if (tree.has("method")) {
                     mcpMethodName = tree.get("method").asText();
                 }
@@ -185,12 +192,7 @@ public class McpProxyController implements Controller {
                     context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
                 }
             } catch (Throwable e) {
-                if (e instanceof HttpException httpException) {
-                    respond(httpException.getStatus(), httpException.getMessage());
-                } else {
-                    respond(HttpStatus.BAD_REQUEST, "Invalid JSON request body");
-                }
-                log.warn("Can't process JSON request body. Error:", e);
+                handleError(e);
                 return;
             }
         }
