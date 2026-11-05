@@ -42,7 +42,7 @@ public class ResourceDependency {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class Target {
 
-        // Two forms only, nothing else: a concrete global-view path, or a current-user placeholder rooted path.
+        /** A DIAL resource url, {@code {type}/{bucket}/{path…}}; {@code {current-user}} as the bucket stands for the initiator's bucket. */
         private String path;
     }
 }

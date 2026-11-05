@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -47,14 +48,15 @@ public final class ResourceDependencyAuditLog {
             return;
         }
         AUDIT.info("event=resource_dependency_grant outcome=SUCCESS actor={} user_id={} application_id={} "
-                        + "targets={} access_types={} trace_id={}",
+                        + "source_deployment={} targets={} access_types={} trace_id={}",
                 actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
-                targetsOf(granted), accessTypesOf(granted), context.getTraceId());
+                sourceDeployment(context), targetsOf(granted), accessTypesOf(granted), context.getTraceId());
     }
 
     /**
      * One event per run listing declared targets that did not resolve — the originating user
-     * cannot reach them with the declared rights, or the declaration is not admin-consented.
+     * cannot reach them with the declared rights, the declaration is not admin-consented, or
+     * there is no per-request key to deliver grants into (MCP app with forwardPerRequestKey=false).
      * No grant, no failure (unless a required record failed — see {@link #runtimeFail}).
      */
     public static void denial(ProxyContext context, String applicationId, List<Consent.ResourceEntry> unresolved) {
@@ -62,19 +64,20 @@ public final class ResourceDependencyAuditLog {
             return;
         }
         AUDIT.info("event=resource_dependency_denial outcome=DENIED actor={} user_id={} application_id={} "
-                        + "targets={} trace_id={}",
+                        + "source_deployment={} targets={} access_types={} trace_id={}",
                 actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
-                targetsOf(unresolved), context.getTraceId());
+                sourceDeployment(context), targetsOf(unresolved), accessTypesOf(unresolved), context.getTraceId());
     }
 
     /** One event when a required dependency failed to resolve and the call is rejected. */
-    public static void runtimeFail(ProxyContext context, String applicationId, List<String> requiredFailures) {
+    public static void runtimeFail(ProxyContext context, String applicationId, List<String> requiredFailures, String reason) {
         AUDIT.info("event=resource_dependency_runtime_fail outcome=RUNTIME_FAIL actor={} user_id={} "
-                        + "application_id={} targets={} trace_id={} reason=\"required dependencies unresolvable\"",
+                        + "application_id={} source_deployment={} targets={} trace_id={} reason=\"{}\"",
                 actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
+                sourceDeployment(context),
                 requiredFailures.stream().map(AuditLogSanitizer::sanitizeToken)
                         .collect(Collectors.joining(",")),
-                context.getTraceId());
+                context.getTraceId(), reason);
     }
 
     private static String targetsOf(List<Consent.ResourceEntry> entries) {
@@ -87,6 +90,7 @@ public final class ResourceDependencyAuditLog {
     private static String accessTypesOf(List<Consent.ResourceEntry> entries) {
         return entries.stream()
                 .flatMap(entry -> entry.getAccess().stream())
+                .filter(Objects::nonNull)
                 .map(Enum::name)
                 .distinct()
                 .collect(Collectors.joining(","));
@@ -99,6 +103,14 @@ public final class ResourceDependencyAuditLog {
             case ResourceNotFoundException ignored -> "NOT_FOUND";
             default -> "ERROR";
         };
+    }
+
+    /**
+     * The immediate caller: "root" when no deployment is calling; on an intercepted call, the last interceptor.
+     */
+    private static String sourceDeployment(ProxyContext context) {
+        String deployment = context.getSourceDeployment();
+        return deployment == null ? "root" : AuditLogSanitizer.sanitizeToken(deployment);
     }
 
     // Non-secret evidence of the calling actor: the DIAL key's project and/or the workload JWT's azp.

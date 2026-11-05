@@ -444,7 +444,7 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
                   "endpoint": "http://application1/v1/completions",
                   "display_name": "Platform App",
                   "resource_dependencies": [
-                    {"kind": "dial.resourceLink", "link_id": "lnk_1", "target": {"path": "current-user/skills/"}, "access": ["write"]}
+                    {"kind": "dial.resourceLink", "link_id": "lnk_1", "target": {"path": "skills/{current-user}/"}, "access": ["write"]}
                   ]
                 }
                 """;
