@@ -16,10 +16,17 @@ import okhttp3.mockwebserver.SocketPolicy;
 import org.junit.jupiter.api.Test;
 import org.redisson.api.RedissonClient;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -27,6 +34,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -401,8 +409,12 @@ class RouterDecisionApiTest extends ResourceBaseTest {
             });
             verify(sendChat("r1"), 502);
         }
+        // the nested call is refused without a decide request of its own; the outer request decides again with
+        // app's 502 in the history until no decision is left
         assertEquals(502, callbackStatus.get());
-        assertEquals(1, received.stream().filter(this::isDecide).count());
+        assertEquals(3, received.stream().filter(this::isDecide).count());
+        assertTrue(received.stream().filter(this::isDecide).skip(1)
+                .allMatch(decide -> decide.getHeader("X-DIAL-ROUTER-ATTEMPTS").contains("\"deployment\":\"app\",\"status\":502")));
     }
 
     @Test
@@ -480,6 +492,8 @@ class RouterDecisionApiTest extends ResourceBaseTest {
             verify(sendChat("r1"), 403);
             verify(sendMessages("r1"), 403);
         }
+        // three decisions per request, the router asked again after each forbidden list
+        assertEquals(6, received.size());
         assertTrue(received.stream().allMatch(this::isDecide));
     }
 
@@ -550,7 +564,8 @@ class RouterDecisionApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void bodyFailureAfterTheAnswerIsNotRetried() {
+    void brokenBodyBeforeTheClientGotByte() {
+        List<AnalyticsLogContext> rows = captureRows();
         verdict.set("{\"candidates\": [\"m1\", \"m2\"]}");
         try (TestWebServer server = server()) {
             server.map(HttpMethod.POST, "/openai/deployments/m1/chat/completions", request -> {
@@ -558,10 +573,276 @@ class RouterDecisionApiTest extends ResourceBaseTest {
                 return TestWebServer.createResponse(200, COMPLETION, "content-type", "application/json")
                         .setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY);
             });
-            verify(sendChat("r1"), 502);
+            verify(sendChat("r1"), 200, COMPLETION);
         }
         single(request -> request.getPath().equals("/openai/deployments/m1/chat/completions"));
-        assertTrue(received.stream().noneMatch(request -> request.getPath().contains("/m2/")));
+        single(request -> request.getPath().equals("/openai/deployments/m2/chat/completions"));
+        assertEquals(List.of(new RouterDecision.Attempt("m1", 502, "body", true, false)), singleRow(rows).getDecision().attempts());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void brokenMessagesBodyFallsBack() {
+        verdict.set("{\"candidates\": [\"m1\", \"m2\"]}");
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if (isDecide(request)) {
+                return answer(request);
+            }
+            MockResponse message = TestWebServer.createResponse(200, MESSAGE, "content-type", "application/json");
+            return "m1".equals(request.getHeader(DEPLOYMENT_ID)) ? message.setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY) : message;
+        })) {
+            verify(sendMessages("r1"), 200);
+        }
+        assertEquals(1, received.stream().filter(request -> "m2".equals(request.getHeader(DEPLOYMENT_ID))).count());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void brokenResponsesBodyFallsBack() {
+        try (TestWebServer server = brokenGpt4Responses()) {
+            verify(send(HttpMethod.POST, "/openai/v1/responses", null, "{\"model\":\"r3\",\"input\":\"hi\"}",
+                    "content-type", "application/json"), 200);
+        }
+        assertEquals(1, received.stream().filter(request -> !isDecide(request) && request.getBody().clone().readUtf8().contains("\"m3\"")).count());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void brokenBackgroundCreateIsNotCreatedAgainElsewhere() {
+        // the accepted job may be running on the first candidate, so a second one is not started on another
+        try (TestWebServer server = brokenGpt4Responses()) {
+            verify(send(HttpMethod.POST, "/openai/v1/responses", null, "{\"model\":\"r3\",\"background\":true,\"input\":\"hi\"}",
+                    "content-type", "application/json"), 502);
+        }
+        assertTrue(received.stream().noneMatch(request -> !isDecide(request) && request.getBody().clone().readUtf8().contains("\"m3\"")));
+    }
+
+    private TestWebServer brokenGpt4Responses() {
+        verdict.set("{\"candidates\": [\"gpt-4\", \"m3\"]}");
+        return new TestWebServer(4848, request -> {
+            received.add(request);
+            if (isDecide(request)) {
+                return answer(request);
+            }
+            String body = request.getBody().clone().readUtf8();
+            MockResponse response = TestWebServer.createResponse(200, body.contains("\"background\":true") ? QUEUED : RESPONSE,
+                    "content-type", "application/json");
+            return body.contains("gpt-4-real") ? response.setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY) : response;
+        });
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    @SneakyThrows
+    void brokenStreamBeforeItsFirstChunk() {
+        verdict.set("{\"candidates\": [\"m1\", \"m2\"]}");
+        String stream = "data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n";
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if (isDecide(request)) {
+                return answer(request);
+            }
+            if (request.getPath().contains("/m1/")) {
+                // headers promise a body that never comes
+                return new MockResponse().setResponseCode(200).setBody("").setHeader("content-type", "text/event-stream")
+                        .setHeader("Content-Length", "1000").setSocketPolicy(SocketPolicy.DISCONNECT_AT_END);
+            }
+            return TestWebServer.createResponse(200, stream, "content-type", "text/event-stream");
+        })) {
+            HttpResponse<String> response = rawStream("r1");
+            assertEquals(200, response.statusCode(), response.body());
+            assertEquals(1, response.headers().allValues("content-type").size(), response.headers().map().toString());
+            assertTrue(response.body().contains("[DONE]"), response.body());
+        }
+        single(request -> request.getPath().contains("/m2/"));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    @SneakyThrows
+    void streamBrokenAfterTheFirstChunkNoticesTheRouter() {
+        verdict.set("{\"candidates\": [\"m1\"]}");
+        StringBuilder stream = new StringBuilder("data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n");
+        for (int i = 0; i < 50; i++) {
+            stream.append("data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"x\"}}]}\n\n");
+        }
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if (isDecide(request)) {
+                return answer(request);
+            }
+            // half of the chunked body arrives, the first event included, then the connection drops
+            return new MockResponse().setResponseCode(200).setHeader("content-type", "text/event-stream")
+                    .setChunkedBody(stream.toString(), 64).setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY);
+        })) {
+            try {
+                HttpResponse<String> response = rawStream("r1");
+                assertTrue(response.body().contains("\"content\":\"hi\""), response.body());
+            } catch (IOException expected) {
+                // the client sees its connection broken after the first chunk
+            }
+            RecordedRequest notice = awaitDecide(request -> "true".equals(request.getHeader("X-DIAL-ROUTER-NOTICE")));
+            assertNull(notice.getHeader("api-key"));
+            assertEquals(0, notice.getBodySize());
+            assertTrue(notice.getHeader("X-DIAL-ROUTER-ATTEMPTS").endsWith(
+                    "{\"deployment\":\"m1\",\"status\":200,\"reason\":\"stream\",\"received\":true,\"partial\":true}]"),
+                    notice.getHeader("X-DIAL-ROUTER-ATTEMPTS"));
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    @SneakyThrows
+    void clientGoneSendsNoNotice() {
+        verdict.set("{\"candidates\": [\"m1\"]}");
+        StringBuilder stream = new StringBuilder();
+        for (int i = 0; i < 200; i++) {
+            stream.append("data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"x\"}}]}\n\n");
+        }
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if (isDecide(request)) {
+                return answer(request);
+            }
+            return new MockResponse().setResponseCode(200).setHeader("content-type", "text/event-stream")
+                    .setChunkedBody(stream.toString(), 128).throttleBody(256, 100, TimeUnit.MILLISECONDS);
+        })) {
+            HttpResponse<InputStream> response = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build().send(streamRequest("r1"),
+                    HttpResponse.BodyHandlers.ofInputStream());
+            try (InputStream body = response.body()) {
+                assertTrue(body.read(new byte[64]) > 0);
+            }
+            Thread.sleep(1500);
+        }
+        assertEquals(1, received.stream().filter(this::isDecide).count(), "no notice and no second decide request");
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    @SneakyThrows
+    void routerDecidesAgainWithTheHistory() {
+        List<AnalyticsLogContext> rows = captureRows();
+        List<String> verdicts = new ArrayList<>(List.of("{\"candidates\": [\"m1\"]}", "{\"candidates\": [\"m2\"]}"));
+        List<ApiKeyData> keys = Collections.synchronizedList(new ArrayList<>());
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if (isDecide(request)) {
+                keys.add(readKey(request.getHeader("api-key")));
+                return TestWebServer.createResponse(200, verdicts.removeFirst(), "content-type", "application/json");
+            }
+            if (request.getPath().contains("/m1/")) {
+                return TestWebServer.createResponse(503, "{}", "content-type", "application/json");
+            }
+            return answer(request);
+        })) {
+            verify(sendChat("r1"), 200, COMPLETION);
+        }
+        List<RecordedRequest> decides = received.stream().filter(this::isDecide).toList();
+        assertEquals(2, decides.size());
+        assertNull(decides.getFirst().getHeader("X-DIAL-ROUTER-ATTEMPTS"));
+        assertEquals("[{\"deployment\":\"m1\",\"status\":502,\"reason\":\"upstream\"}]", decides.get(1).getHeader("X-DIAL-ROUTER-ATTEMPTS"));
+        assertNotEquals(decides.getFirst().getHeader("api-key"), decides.get(1).getHeader("api-key"));
+        assertEquals(List.of("r1"), keys.get(1).getExecutionPath());
+        assertEquals("r1", keys.get(1).getSourceDeployment());
+
+        RouterDecision.Row row = singleRow(rows).getDecision();
+        assertEquals(2, row.decisions());
+        assertEquals(List.of("m1", "m2"), row.candidates());
+        assertEquals("m2", row.deployment());
+        assertEquals(List.of(new RouterDecision.Attempt("m1", 502, "upstream")), row.attempts());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void limitReached() {
+        verdict.set("{\"candidates\": [\"m1\"]}");
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if (isDecide(request)) {
+                return answer(request);
+            }
+            return TestWebServer.createResponse(503, "{}", "content-type", "application/json");
+        })) {
+            verify(sendChat("r-two"), 502);
+        }
+        assertEquals(2, received.stream().filter(this::isDecide).count());
+        assertEquals(2, received.stream().filter(request -> request.getPath().contains("/m1/")).count());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void redecideFailureAnswersTheCandidatesFailure() {
+        AtomicInteger decides = new AtomicInteger();
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if (isDecide(request)) {
+                return decides.incrementAndGet() == 1
+                        ? TestWebServer.createResponse(200, "{\"candidates\": [\"m1\"]}", "content-type", "application/json")
+                        : TestWebServer.createResponse(500, "router broke", "content-type", "text/plain");
+            }
+            return TestWebServer.createResponse(503, "{}", "content-type", "application/json");
+        })) {
+            Response response = sendChat("r1");
+            verify(response, 502);
+            assertFalse(response.body().contains("decide"), response.body());
+        }
+        assertEquals(2, decides.get());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void refusalInTheSecondVerdictSkipped() {
+        List<String> verdicts = new ArrayList<>(List.of("{\"candidates\": [\"m1\"]}", "{\"candidates\": [\"private-model\", \"m2\"]}"));
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if (isDecide(request)) {
+                return TestWebServer.createResponse(200, verdicts.removeFirst(), "content-type", "application/json");
+            }
+            if (request.getPath().contains("/m1/")) {
+                return TestWebServer.createResponse(503, "{}", "content-type", "application/json");
+            }
+            return answer(request);
+        })) {
+            verify(sendChat("r1"), 200, COMPLETION);
+        }
+        assertTrue(received.stream().noneMatch(request -> request.getPath().contains("/private-model/")));
+        single(request -> request.getPath().contains("/m2/"));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void bodySentAgainOnRedecide() {
+        List<String> verdicts = new ArrayList<>(List.of("{\"candidates\": [\"m1\"]}", "{\"candidates\": [\"m2\"]}"));
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if (isDecide(request)) {
+                return TestWebServer.createResponse(200, verdicts.removeFirst(), "content-type", "application/json");
+            }
+            if (request.getPath().contains("/m1/")) {
+                return TestWebServer.createResponse(503, "{}", "content-type", "application/json");
+            }
+            return answer(request);
+        })) {
+            verify(sendChat("r3"), 200, COMPLETION);
+        }
+        List<RecordedRequest> decides = received.stream().filter(this::isDecide).toList();
+        assertEquals(2, decides.size());
+        decides.forEach(decide -> assertEquals(CHAT_BODY, decide.getBody().clone().readUtf8()));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void forgedRouterHeadersDropped() {
+        verdict.set("{\"candidates\": [\"gpt-4\"]}");
+        try (TestWebServer server = server()) {
+            verify(send(HttpMethod.POST, "/openai/deployments/r1/chat/completions", null, CHAT_BODY,
+                    "X-DIAL-ROUTER-ATTEMPTS", "[{\"deployment\":\"x\"}]", "X-DIAL-ROUTER-NOTICE", "true",
+                    "content-type", "application/json"), 200);
+        }
+        RecordedRequest decide = single(this::isDecide);
+        assertNull(decide.getHeader("X-DIAL-ROUTER-ATTEMPTS"));
+        assertNull(decide.getHeader("X-DIAL-ROUTER-NOTICE"));
     }
 
     @Test
@@ -725,6 +1006,33 @@ class RouterDecisionApiTest extends ResourceBaseTest {
             received.add(request);
             return TestWebServer.createResponse(200, body, "content-type", "application/json");
         };
+    }
+
+    @SneakyThrows
+    private RecordedRequest awaitDecide(Predicate<RecordedRequest> filter) {
+        // Core does not wait for the notice, so it may trail the client's answer
+        for (int i = 0; i < 100; i++) {
+            Optional<RecordedRequest> found = received.stream().filter(this::isDecide).filter(filter).findFirst();
+            if (found.isPresent()) {
+                return found.get();
+            }
+            Thread.sleep(20);
+        }
+        throw new AssertionError("no such decide request: " + received.stream().map(RecordedRequest::getPath).toList());
+    }
+
+    private HttpRequest streamRequest(String router) {
+        return HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + serverPort + "/openai/deployments/" + router + "/chat/completions"))
+                .header("api-key", "proxyKey1").header("content-type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"))
+                .build();
+    }
+
+    /**
+     * A streamed chat completion read with a client that keeps every header, so duplicates show.
+     */
+    private HttpResponse<String> rawStream(String router) throws IOException, InterruptedException {
+        return HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build().send(streamRequest(router), HttpResponse.BodyHandlers.ofString());
     }
 
     private boolean isDecide(RecordedRequest request) {

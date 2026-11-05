@@ -283,7 +283,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     protected abstract void processResponse(HttpClientResponse proxyResponse);
 
     protected Void handleRequestError(String deploymentId, Throwable error) {
-        error = nextCandidateOrError(error);
+        error = nextCandidateOrError(error, e -> handleRequestError(deploymentId, e));
         if (error == null) {
             return null;
         }

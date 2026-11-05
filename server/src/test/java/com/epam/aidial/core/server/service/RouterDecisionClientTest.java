@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.storage.http.HttpException;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Vertx;
@@ -143,7 +144,7 @@ class RouterDecisionClientTest {
                 .add("X-CONVERSATION-ID", "c1").add("X-DIAL-ROUTER-TIER", "high");
         Router router = router(Map.of("X-DIAL-ROUTER-TIER", "medium", "X-DEFAULT", "d"));
 
-        RouterDecisionClient.decide(context, router, entry(null), InterfaceType.ANTHROPIC_MESSAGES, null, "decide-key")
+        RouterDecisionClient.decide(context, router, entry(null), InterfaceType.ANTHROPIC_MESSAGES, null, "decide-key", List.of())
                 .toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
 
         RecordedRequest request = server.takeRequest(5, TimeUnit.SECONDS);
@@ -160,8 +161,55 @@ class RouterDecisionClientTest {
         assertEquals(0, request.getBodySize());
     }
 
+    @Test
+    void attemptsSentAndClientRouterHeadersDropped() throws Exception {
+        server.enqueue(json(200, "{\"candidates\": [\"b\"]}"));
+        clientHeaders.add("X-DIAL-ROUTER-ATTEMPTS", "forged").add("X-DIAL-ROUTER-NOTICE", "true");
+
+        RouterDecisionClient.decide(context, router(Map.of()), entry(null), InterfaceType.OPENAI_CHAT_COMPLETIONS, null, "decide-key",
+                        List.of(new RouterDecision.Attempt("a", 502, "body", true, false)))
+                .toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
+
+        RecordedRequest request = server.takeRequest(5, TimeUnit.SECONDS);
+        assertEquals("[{\"deployment\":\"a\",\"status\":502,\"reason\":\"body\",\"received\":true}]",
+                request.getHeader("X-DIAL-ROUTER-ATTEMPTS"));
+        assertNull(request.getHeader("X-DIAL-ROUTER-NOTICE"));
+    }
+
+    @Test
+    void noticeCarriesTheAttemptsAndNoKey() throws Exception {
+        server.enqueue(json(200, "{}"));
+        clientHeaders.add("X-CONVERSATION-ID", "c1").add("X-DIAL-ROUTER-NOTICE", "false");
+
+        RouterDecisionClient.notice(context, router(Map.of("X-DEFAULT", "d")), entry(null), InterfaceType.OPENAI_CHAT_COMPLETIONS,
+                List.of(new RouterDecision.Attempt("a", 200, "stream", true, true)));
+
+        RecordedRequest request = server.takeRequest(5, TimeUnit.SECONDS);
+        assertEquals("POST", request.getMethod());
+        assertEquals("/decide", request.getPath());
+        assertEquals("true", request.getHeader("X-DIAL-ROUTER-NOTICE"));
+        assertEquals("[{\"deployment\":\"a\",\"status\":200,\"reason\":\"stream\",\"received\":true,\"partial\":true}]",
+                request.getHeader("X-DIAL-ROUTER-ATTEMPTS"));
+        assertEquals("c1", request.getHeader("X-CONVERSATION-ID"));
+        assertEquals("d", request.getHeader("X-DEFAULT"));
+        assertEquals("r1", request.getHeader("X-DIAL-ROUTER"));
+        assertNull(request.getHeader("api-key"));
+        assertEquals(0, request.getBodySize());
+    }
+
+    @Test
+    void nonAsciiDeploymentNamesEscaped() throws Exception {
+        server.enqueue(json(200, "{\"candidates\": [\"b\"]}"));
+
+        RouterDecisionClient.decide(context, router(Map.of()), entry(null), InterfaceType.OPENAI_CHAT_COMPLETIONS, null, "decide-key",
+                        List.of(new RouterDecision.Attempt("modèle", 502, "upstream")))
+                .toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
+
+        assertTrue(server.takeRequest(5, TimeUnit.SECONDS).getHeader("X-DIAL-ROUTER-ATTEMPTS").contains("mod\\u00E8le"));
+    }
+
     private List<String> decide(DeploymentInterface entry, Buffer body) throws Exception {
-        return RouterDecisionClient.decide(context, router(Map.of()), entry, InterfaceType.OPENAI_CHAT_COMPLETIONS, body, "decide-key")
+        return RouterDecisionClient.decide(context, router(Map.of()), entry, InterfaceType.OPENAI_CHAT_COMPLETIONS, body, "decide-key", List.of())
                 .toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
     }
 

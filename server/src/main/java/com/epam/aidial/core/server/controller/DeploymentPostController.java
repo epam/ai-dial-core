@@ -241,7 +241,7 @@ public class DeploymentPostController extends BaseChatCompletionController {
     }
 
     private void handleRequestError(String deploymentId, Throwable error) {
-        error = nextCandidateOrError(error);
+        error = nextCandidateOrError(error, e -> handleRequestError(deploymentId, e));
         if (error == null) {
             return;
         }
@@ -304,7 +304,7 @@ public class DeploymentPostController extends BaseChatCompletionController {
             result.throwIfError();
         } catch (HttpException e) {
             log.warn("Rate limit error {}. Deployment: {}", result.errorMessage(), deploymentId);
-            Throwable error = nextCandidateOrError(e);
+            Throwable error = nextCandidateOrError(e, failure -> respond((HttpException) failure));
             if (error != null) {
                 respond((HttpException) error);
             }

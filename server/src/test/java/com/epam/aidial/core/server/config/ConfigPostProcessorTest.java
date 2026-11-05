@@ -983,6 +983,32 @@ public class ConfigPostProcessorTest {
     }
 
     @Test
+    void testMaxDecisionsOutOfRangeRejected() {
+        for (int value : new int[] {0, 11}) {
+            Config config = newMutableConfig();
+            DeploymentInterface declared = decision("http://router/decide");
+            declared.setMaxDecisions(value);
+            config.getRouters().put("r1", router(null, "openaiChatCompletions", declared));
+
+            InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                    () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+            assertTrue(error.getMessage().contains("maxDecisions must be between 1 and 10"), error.getMessage());
+        }
+    }
+
+    @Test
+    void testMaxDecisionsAtTheCapAccepted() {
+        Config config = newMutableConfig();
+        DeploymentInterface declared = decision("http://router/decide");
+        declared.setMaxDecisions(10);
+        config.getRouters().put("r1", router(null, "openaiChatCompletions", declared));
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getRouters().containsKey("r1"));
+    }
+
+    @Test
     void testDecisionTimeoutMustBePositive() {
         Config config = newMutableConfig();
         DeploymentInterface declared = decision("http://router/decide");

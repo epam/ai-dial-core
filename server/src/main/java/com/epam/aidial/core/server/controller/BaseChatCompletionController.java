@@ -181,6 +181,7 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
         // the client as they arrive.
         if (isChatCompletionsPath() && !isEventStreamContentType(proxyResponse)) {
             proxyResponse.body()
+                    .onSuccess(ignore -> context.setUpstreamBodyReceived(true))
                     .compose(body -> handleNonStreamingChatCompletionResponse(proxyResponse, body))
                     .onFailure(this::handleProxyConnectionError);
             return;

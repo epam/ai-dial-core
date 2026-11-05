@@ -80,6 +80,12 @@ public class DeploymentInterface {
      */
     private Long decisionTimeoutMs;
 
+    /**
+     * How many decide requests one client request may need, the first included, from 1 to 10, when {@link #mode} is
+     * {@link InterfaceMode#DECISION}. Absent means 3.
+     */
+    private Integer maxDecisions;
+
     public DeploymentInterface(String baseUrl) {
         this.baseUrl = baseUrl;
     }

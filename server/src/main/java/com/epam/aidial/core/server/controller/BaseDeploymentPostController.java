@@ -60,6 +60,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
@@ -151,7 +152,8 @@ public class BaseDeploymentPostController {
      * Called when proxy failed to connect to the origin.
      */
     protected void handleProxyConnectionError(Throwable error) {
-        if (retryWithNextCandidate(HttpStatus.BAD_GATEWAY.getCode(), "connect")) {
+        String reason = context.getProxyResponse() != null ? "body" : "connect";
+        if (retryWithNextCandidate(HttpStatus.BAD_GATEWAY.getCode(), reason, () -> handleProxyConnectionError(error))) {
             log.warn("Can't connect to origin, trying the next candidate. Deployment: {}. Address: {}. Error: {}",
                     context.getDeployment().getName(), context.getProxyRequestUri(), error.getMessage());
             return;
@@ -176,6 +178,20 @@ public class BaseDeploymentPostController {
      * Called when proxy failed to send response to the client.
      */
     protected void handleResponseError(Throwable error, BufferingReadStream responseStream) {
+        RouterDecision decision = context.getDecision();
+        // the client is still there, so the upstream broke: fall back while the client saw nothing, else tell the router
+        if (decision != null && !context.getResponse().closed()) {
+            if (!context.getResponse().headWritten()) {
+                if (retryWithNextCandidate(HttpStatus.BAD_GATEWAY.getCode(), "stream",
+                        () -> respond(HttpStatus.BAD_GATEWAY, "The upstream answer broke"))) {
+                    log.warn("Answer of {} broke before reaching the client, trying the next candidate: {}",
+                            context.getDeployment().getName(), error.getMessage());
+                    return;
+                }
+            } else if (!decision.isClosed()) {
+                noticeRouter();
+            }
+        }
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
         log.warn("Can't send response to client. Error:", error);
         Deployment deployment = context.getDeployment();
@@ -195,6 +211,19 @@ public class BaseDeploymentPostController {
             // drop connection to stop application responding
             context.getProxyRequest().reset();
         }
+    }
+
+    /**
+     * The chosen deployment's answer broke after bytes of it reached the client: it cannot be replaced, so the router
+     * only learns of it.
+     */
+    private void noticeRouter() {
+        RouterDecision decision = context.getDecision();
+        HttpClientResponse answered = context.getProxyResponse();
+        List<RouterDecision.Attempt> attempts = new ArrayList<>(decision.getAttempts());
+        attempts.add(new RouterDecision.Attempt(decision.current(), answered == null ? HttpStatus.BAD_GATEWAY.getCode() : answered.statusCode(),
+                "stream", true, true));
+        RouterDecisionClient.notice(context, decision.getRouterConfig(), decision.getEntry(), decision.getApi(), attempts);
     }
 
     protected Future<Void> collectTokenUsage(Buffer responseBody) {
@@ -500,7 +529,7 @@ public class BaseDeploymentPostController {
             return true;
         } catch (HttpException e) {
             log.warn("No route. Deployment: {}", context.getDeployment().getName());
-            if (!retryWithNextCandidate(e.getStatus().getCode(), "upstream")) {
+            if (!retryWithNextCandidate(e.getStatus().getCode(), "upstream", () -> respond(e))) {
                 respond(e);
             }
         }
@@ -554,7 +583,23 @@ public class BaseDeploymentPostController {
 
     private Future<Boolean> decide(Router router, DeploymentInterface entry, InterfaceType type, Buffer bytes, ApiKeyData key) {
         long start = System.currentTimeMillis();
-        return RouterDecisionClient.decide(context, router, entry, type, bytes, key.getPerRequestKey())
+        return askRouter(router, entry, type, bytes, key, List.of())
+                .map(candidates -> {
+                    RouterDecision decision = new RouterDecision(router.getName(), type, candidates, System.currentTimeMillis() - start);
+                    decision.setRouterConfig(router);
+                    decision.setEntry(entry);
+                    decision.setKeyTemplate(key);
+                    context.setDecision(decision);
+                    return true;
+                });
+    }
+
+    /**
+     * One decide request with its own key, invalidated when the call ends; a router named as a candidate fails it.
+     */
+    private Future<List<String>> askRouter(Router router, DeploymentInterface entry, InterfaceType type, Buffer bytes, ApiKeyData key,
+                                           List<RouterDecision.Attempt> attempts) {
+        return RouterDecisionClient.decide(context, router, entry, type, bytes, key.getPerRequestKey(), attempts)
                 .onComplete(ignore -> proxy.getApiKeyStore().invalidatePerRequestApiKey(key)
                         .onFailure(error -> log.error("error occurred on invalidating the decide request key", error)))
                 .map(candidates -> {
@@ -563,9 +608,50 @@ public class BaseDeploymentPostController {
                             throw new HttpException(HttpStatus.BAD_GATEWAY, "A router cannot be a routing candidate: " + candidate);
                         }
                     }
-                    context.setDecision(new RouterDecision(router.getName(), type, candidates, System.currentTimeMillis() - start));
-                    return true;
+                    return candidates;
                 });
+    }
+
+    /**
+     * Every candidate so far failed: asks the router again with the attempts, and re-enters with the new verdict's
+     * first candidate. When no new verdict can be had (the router fails, answers no usable verdict, or the client
+     * left), marks the decision exhausted and runs {@code whenExhausted}, which answers the last failure.
+     */
+    private void redecide(Runnable whenExhausted) {
+        RouterDecision decision = context.getDecision();
+        DeploymentInterface entry = decision.getEntry();
+        boolean withBody = entry.getContext() != null && Boolean.TRUE.equals(entry.getContext().getBody());
+        Buffer bytes = withBody ? context.getOriginalRequestBody() : null;
+        long start = System.currentTimeMillis();
+        proxy.getTaskExecutor().submit(() -> mintKeyLike(decision.getKeyTemplate(), entry))
+                .compose(key -> askRouter(decision.getRouterConfig(), entry, decision.getApi(), bytes, key, decision.getAttempts()))
+                .onComplete(result -> {
+                    if (result.succeeded() && !context.getResponse().closed()) {
+                        decision.redecided(result.result(), System.currentTimeMillis() - start);
+                        reenterWithCandidate();
+                        return;
+                    }
+                    if (result.failed()) {
+                        log.warn("Router {} failed to decide again: {}", decision.getRouter(), result.cause().getMessage());
+                    }
+                    decision.exhaust();
+                    whenExhausted.run();
+                });
+    }
+
+    /**
+     * A new decide request key with the first one's identity, path and grants: the context now names the failed
+     * candidate, so building the key from it again would put the candidate after the router.
+     */
+    private ApiKeyData mintKeyLike(ApiKeyData template, DeploymentInterface entry) {
+        ApiKeyData key = ProxyUtil.convertToObject(ProxyUtil.convertToString(template), ApiKeyData.class);
+        key.setPerRequestKey(null);
+        proxy.getApiKeyStore().assignPerRequestApiKey(key, RouterDecisionClient.keyTtl(entry));
+        return key;
+    }
+
+    private boolean canRedecide(RouterDecision decision) {
+        return decision.canRedecide(RouterDecisionClient.maxDecisions(decision.getEntry()));
     }
 
     @SneakyThrows
@@ -594,11 +680,12 @@ public class BaseDeploymentPostController {
     }
 
     /**
-     * A refusal of the candidate being resolved, before anything was sent to it, skips to the next candidate:
-     * answers null once re-entered with it. Otherwise answers the error to respond with; an unknown last
-     * candidate is the router's fault, not the caller's, and is answered 502.
+     * A refusal of the candidate being resolved, before anything was sent to it, skips to the next candidate, or
+     * after the last one asks the router again: answers null then, and {@code answer} gets the error if no new
+     * verdict can be had. Otherwise answers the error to respond with; an unknown last candidate is the router's
+     * fault, not the caller's, and is answered 502.
      */
-    protected Throwable nextCandidateOrError(Throwable error) {
+    protected Throwable nextCandidateOrError(Throwable error, Consumer<Throwable> answer) {
         RouterDecision decision = context.getDecision();
         if (decision == null || !decision.isResolving()) {
             return error;
@@ -617,11 +704,19 @@ public class BaseDeploymentPostController {
         } else {
             return error;
         }
-        if (decision.hasNext()) {
-            log.warn("Candidate {} of router {} skipped: {}", decision.current(), decision.getRouter(), error.getMessage());
-            decision.skip(status, reason);
-            reenterWithCandidate();
-            return null;
+        if (!context.getResponse().closed()) {
+            if (decision.hasNext()) {
+                log.warn("Candidate {} of router {} skipped: {}", decision.current(), decision.getRouter(), error.getMessage());
+                decision.skip(status, reason);
+                reenterWithCandidate();
+                return null;
+            }
+            if (canRedecide(decision)) {
+                log.warn("Candidate {} of router {} skipped, deciding again: {}", decision.current(), decision.getRouter(), error.getMessage());
+                decision.fail(status, reason, false);
+                redecide(() -> answer.accept(error));
+                return null;
+            }
         }
         return error instanceof ResourceNotFoundException
                 ? new HttpException(HttpStatus.BAD_GATEWAY, "Router %s chose an unknown deployment".formatted(decision.getRouter()))
@@ -629,16 +724,36 @@ public class BaseDeploymentPostController {
     }
 
     /**
-     * After the current candidate's call failed (a connect failure, or a retriable status once its own upstreams
-     * are exhausted), re-enters with the next candidate while no byte has reached the client. True when it did.
+     * After the current candidate's call failed (a connect failure, a retriable status once its own upstreams are
+     * exhausted, or a 200 answer that broke before the whole of it arrived), re-enters with the next candidate, or
+     * after the last one asks the router again, while no byte has reached the client and the client is still there.
+     * True when it did; {@code answerOriginal} then answers the failure if no new verdict can be had.
      */
-    protected boolean retryWithNextCandidate(int status, String reason) {
+    protected boolean retryWithNextCandidate(int status, String reason, Runnable answerOriginal) {
         RouterDecision decision = context.getDecision();
-        // an accepted origin response (its body read failing after) is an answer: the candidate is not retried
-        if (decision == null || !decision.hasNext() || context.getProxyResponse() != null || context.getResponse().headWritten()) {
+        HttpServerResponse response = context.getResponse();
+        if (decision == null || response.headWritten() || response.closed()) {
             return false;
         }
-        decision.skip(status, reason);
+        HttpClientResponse answered = context.getProxyResponse();
+        // an answer counts as broken only when its 200 body never fully arrived; a background job's accepted job,
+        // or a response mapping already saved, would keep running beside the next candidate's
+        if (answered != null && (answered.statusCode() != HttpStatus.OK.getCode()
+                || context.isUpstreamBodyReceived() || context.isBackgroundJob())) {
+            return false;
+        }
+        boolean next = decision.hasNext();
+        if (!next && !canRedecide(decision)) {
+            return false;
+        }
+        boolean received = answered != null;
+        if (received) {
+            // drop the half-read upstream and the headers its answer already copied to the client response
+            context.getProxyRequest().reset();
+            context.setProxyResponse(null);
+            response.headers().clear();
+            response.setChunked(false);
+        }
         // the failed pass ends without answering, so its key would otherwise live until its TTL
         ApiKeyData failedKey = context.getProxyApiKeyData();
         if (failedKey != null && failedKey.getPerRequestKey() != null) {
@@ -647,8 +762,15 @@ public class BaseDeploymentPostController {
         }
         context.setProxyApiKeyData(null);
         context.setCacheBreakpointContext(null);
+        context.setUpstreamBodyReceived(false);
         context.setRequestBody(context.getOriginalRequestBody());
-        reenterWithCandidate();
+        if (next) {
+            decision.skip(status, reason, received);
+            reenterWithCandidate();
+        } else {
+            decision.fail(status, reason, received);
+            redecide(answerOriginal);
+        }
         return true;
     }
 }

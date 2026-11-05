@@ -186,6 +186,7 @@ public class MessagesController extends MessagesBaseController {
     protected void processResponse(HttpClientResponse proxyResponse) {
         if (!context.isStreamingRequest()) {
             proxyResponse.body()
+                    .onSuccess(ignore -> context.setUpstreamBodyReceived(true))
                     .compose(body -> handleNonStreamingResponse(proxyResponse, body))
                     .onFailure(this::handleProxyConnectionError);
             return;

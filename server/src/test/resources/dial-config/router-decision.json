@@ -28,6 +28,11 @@
       "interfaces": {
         "openaiChatCompletions": {"mode": "decision", "base_url": "http://localhost:4849/decide"}
       }
+    },
+    "r-two": {
+      "interfaces": {
+        "openaiChatCompletions": {"mode": "decision", "base_url": "http://localhost:4848/decide", "maxDecisions": 2}
+      }
     }
   },
   "models": {
@@ -51,6 +56,11 @@
       "type": "chat",
       "baseUrl": "http://localhost:4848",
       "interfaces": {"openaiChatCompletions": {}, "anthropicMessages": {}}
+    },
+    "m3": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "interfaces": {"openaiResponses": {}}
     },
     "m-closed": {
       "type": "chat",

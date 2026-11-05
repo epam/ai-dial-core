@@ -147,6 +147,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_USER_INFO = "X-DIAL-USER-INFO";
     public static final String HEADER_ROUTER = "X-DIAL-ROUTER";
     public static final String HEADER_API = "X-DIAL-API";
+    public static final String HEADER_ROUTER_ATTEMPTS = "X-DIAL-ROUTER-ATTEMPTS";
+    public static final String HEADER_ROUTER_NOTICE = "X-DIAL-ROUTER-NOTICE";
 
     public static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT,
             HttpMethod.DELETE, HttpMethod.HEAD, HttpMethod.PATCH);

@@ -5,10 +5,14 @@ import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.json.JsonWriteFeature;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectWriter;
 import io.netty.channel.ConnectTimeoutException;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
@@ -44,14 +48,24 @@ import static com.epam.aidial.core.server.Proxy.HEADER_USER_INFO;
 public class RouterDecisionClient {
 
     static final long DEFAULT_TIMEOUT_MS = 5000;
+    static final int DEFAULT_MAX_DECISIONS = 3;
     // a decide key outlives its call only when Core dies before invalidating it: then it expires soon after
     private static final long KEY_TTL_SLACK_MS = 60_000;
+    // header values are ISO-8859-1: deployment names the router chose are sent escaped
+    private static final ObjectWriter ATTEMPTS_WRITER = ProxyUtil.MAPPER.writer().with(JsonWriteFeature.ESCAPE_NON_ASCII);
 
     /**
      * The TTL of the decide request's key: the decision budget plus a minute.
      */
     public Duration keyTtl(DeploymentInterface entry) {
         return Duration.ofMillis(timeoutMs(entry) + KEY_TTL_SLACK_MS);
+    }
+
+    /**
+     * How many decide requests one client request may need on this entry, the first included.
+     */
+    public int maxDecisions(DeploymentInterface entry) {
+        return entry.getMaxDecisions() == null ? DEFAULT_MAX_DECISIONS : entry.getMaxDecisions();
     }
 
     private long timeoutMs(DeploymentInterface entry) {
@@ -66,9 +80,10 @@ public class RouterDecisionClient {
      *
      * @param body the client's body bytes to send, or null to send an empty body
      * @param apiKey the decide request's per-request key, sent as {@code API-KEY}
+     * @param attempts what was tried so far, sent as {@code X-DIAL-ROUTER-ATTEMPTS} when not empty
      */
     public Future<List<String>> decide(ProxyContext context, Router router, DeploymentInterface entry, InterfaceType type,
-                                       @Nullable Buffer body, String apiKey) {
+                                       @Nullable Buffer body, String apiKey, List<RouterDecision.Attempt> attempts) {
         Proxy proxy = context.getProxy();
         long timeoutMs = timeoutMs(entry);
         RequestOptions options = new RequestOptions()
@@ -86,7 +101,9 @@ public class RouterDecisionClient {
                 .compose(request -> {
                     // past the deadline the client has its 504: the router's connection is not kept open
                     verdict.future().onFailure(ignore -> request.reset());
-                    return send(context, router, type, request, body, apiKey);
+                    MultiMap headers = routerHeaders(context, router, type, attempts);
+                    headers.set(Proxy.HEADER_API_KEY, apiKey);
+                    return send(request, headers, body);
                 })
                 .compose(response -> response.body().map(answer -> parseVerdict(response, answer)))
                 .onComplete(result -> {
@@ -101,9 +118,37 @@ public class RouterDecisionClient {
         return verdict.future();
     }
 
-    private Future<HttpClientResponse> send(ProxyContext context, Router router, InterfaceType type, HttpClientRequest request,
-                                            @Nullable Buffer body, String apiKey) {
-        // the exclusions sendProxyRequest makes for every origin
+    /**
+     * Tells the router that the answer of the deployment it chose broke after bytes of it reached the client, so it
+     * cannot be replaced. Fire and forget: the headers are taken now, the answer is read only to release the
+     * connection, and a failure is only logged.
+     *
+     * @param attempts every attempt, the broken one last
+     */
+    public void notice(ProxyContext context, Router router, DeploymentInterface entry, InterfaceType type,
+                       List<RouterDecision.Attempt> attempts) {
+        Proxy proxy = context.getProxy();
+        long timeoutMs = timeoutMs(entry);
+        MultiMap headers = routerHeaders(context, router, type, attempts);
+        headers.set(Proxy.HEADER_ROUTER_NOTICE, "true");
+        RequestOptions options = new RequestOptions()
+                .setAbsoluteURI(entry.getBaseUrl())
+                .setMethod(HttpMethod.POST)
+                .setTraceOperation("Tell %s router about a broken answer".formatted(router.getName()))
+                .setConnectTimeout(Math.min(proxy.getClientOptions().getConnectTimeout(), timeoutMs))
+                .setIdleTimeout(timeoutMs);
+        proxy.getClient().request(options)
+                .compose(request -> send(request, headers, null))
+                .compose(HttpClientResponse::body)
+                .onFailure(error -> log.warn("Notice to router {} failed: {}", router.getName(), error.getMessage()));
+    }
+
+    /**
+     * The headers every request to the router carries: the client's as Core forwards them to any origin, without the
+     * ones only Core may set, the router's default headers where the client sent none, and Core's own.
+     */
+    private MultiMap routerHeaders(ProxyContext context, Router router, InterfaceType type, List<RouterDecision.Attempt> attempts) {
+        // the exclusions sendProxyRequest makes for every origin, and the router headers Core alone sets
         MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
         if (!router.isForwardAuthToken()) {
             excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
@@ -111,8 +156,10 @@ public class RouterDecisionClient {
         excludeHeaders.add(HEADER_APPLICATION_PROPERTIES, "whatever");
         excludeHeaders.add(HEADER_APPLICATION_ID, "whatever");
         excludeHeaders.add(HEADER_USER_INFO, "whatever");
+        excludeHeaders.add(Proxy.HEADER_ROUTER_ATTEMPTS, "whatever");
+        excludeHeaders.add(Proxy.HEADER_ROUTER_NOTICE, "whatever");
 
-        MultiMap headers = request.headers();
+        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
         ProxyUtil.copyHeaders(context.getRequest().headers(), headers, excludeHeaders);
         // on the decide request only: the chosen deployment gets its own defaults, as on a direct call
         router.resolveDefaultHeaders(type).forEach((name, value) -> {
@@ -123,14 +170,25 @@ public class RouterDecisionClient {
         if (context.getRouterPropertiesHeader() != null) {
             headers.set(HEADER_APPLICATION_PROPERTIES, context.getRouterPropertiesHeader());
         }
-        headers.set(Proxy.HEADER_API_KEY, apiKey);
         headers.set(Proxy.HEADER_ROUTER, router.getName());
         headers.set(Proxy.HEADER_API, type.getValue());
+        if (!attempts.isEmpty()) {
+            try {
+                headers.set(Proxy.HEADER_ROUTER_ATTEMPTS, ATTEMPTS_WRITER.writeValueAsString(attempts));
+            } catch (JsonProcessingException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+        return headers;
+    }
+
+    private Future<HttpClientResponse> send(HttpClientRequest request, MultiMap headers, @Nullable Buffer body) {
+        request.headers().addAll(headers);
         if (body == null) {
             return request.send();
         }
-        headers.set(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
-        headers.set(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
+        request.headers().set(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        request.headers().set(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
         return request.send(body);
     }
 

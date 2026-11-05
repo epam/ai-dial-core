@@ -328,7 +328,7 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private Void handleRequestError(String deploymentId, Throwable error) {
-        error = nextCandidateOrError(error);
+        error = nextCandidateOrError(error, e -> handleRequestError(deploymentId, e));
         if (error == null) {
             return null;
         }
@@ -440,6 +440,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         if (!context.isStreamingRequest()) {
             // Read the entire response to replace the response ID with the DIAL ID
             proxyResponse.body()
+                    .onSuccess(ignore -> context.setUpstreamBodyReceived(true))
                     .compose(body -> handleNonStreamingResponse(proxyResponse, body))
                     .onFailure(this::handleProxyConnectionError);
             return;

@@ -739,6 +739,10 @@ public final class ConfigPostProcessor {
             warnings.add(new ValidationWarning(field + ".decisionTimeoutMs",
                     messageWithEntityPrefix(entityLabel, deployment.getName(), "decisionTimeoutMs must be positive")));
         }
+        if (declared.getMaxDecisions() != null && (declared.getMaxDecisions() < 1 || declared.getMaxDecisions() > 10)) {
+            warnings.add(new ValidationWarning(field + ".maxDecisions",
+                    messageWithEntityPrefix(entityLabel, deployment.getName(), "maxDecisions must be between 1 and 10")));
+        }
     }
 
     private static void validateOverridePathTemplate(Deployment deployment, InterfacePathMapping pathMapping, @Nullable String template,

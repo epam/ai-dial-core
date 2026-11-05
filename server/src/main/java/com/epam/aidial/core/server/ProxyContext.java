@@ -124,6 +124,8 @@ public class ProxyContext {
     private RouterDecision decision;
     // X-DIAL-APPLICATION-PROPERTIES for a typed router, built once in the pass that reaches it, before any connection
     private String routerPropertiesHeader;
+    // the upstream's whole buffered body arrived: a failure after this is not a broken answer to fall back from
+    private boolean upstreamBodyReceived;
     // the client's body bytes as they arrived, kept while a decision may still fall back to another candidate
     private Buffer originalRequestBody;
 

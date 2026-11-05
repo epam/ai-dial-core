@@ -149,6 +149,7 @@ The fields of a decision entry:
 * `base_url`: **Required** on the entry: the URL of the decide request, used as written. The router-level `baseUrl` does not stand in for it (`Mode 'decision' requires base_url`), and DIAL Core never forwards a client request to it.
 * `context.body`: `true` to send the client's request body with the decide request, byte for byte. Default `false`: the decide request has an empty body.
 * `decisionTimeoutMs`: How long the decide request may take, connecting included. Default `5000`; must be positive.
+* `maxDecisions`: How many decide requests one client request may need, the first included (see [Fallback and re-decide](#fallback-and-re-decide)). Default `3`; from 1 to 10.
 * `translator` is not allowed on a decision entry (`Mode 'decision' excludes translator`).
 
 **Example**: `r1` decides chat completions, embeddings and Messages requests, and proxies Responses requests to its service.
@@ -195,7 +196,24 @@ DIAL Core ignores other fields. A body without a non-empty `candidates` array, `
 
 DIAL Core serves the first usable candidate as if the client had called it: the caller's roles, consent and per-request-key access to it, its limits against the caller, its interceptors, one per-request key, its `defaultHeaders`, `defaults` and `overrideName`. On `/openai/v1/chat/completions`, `/openai/v1/responses` and `/anthropic/v1/messages` (`count_tokens` included) DIAL Core sets the body `model` to the candidate's name before applying its `overrideName`, and sends the candidate's name in `X-DIAL-DEPLOYMENT-ID` on Messages.
 
-DIAL Core skips a candidate, without calling it, when the caller may not use it, its limits are exhausted, it does not serve the interface or it does not exist. It also skips a candidate whose call fails to connect, or answers a retriable status (`429`, `502`, `503`, `504` and the config's `retriableErrorCodes`) after its own upstreams are exhausted, while no byte of the answer has reached the client. Any other answer, a `400` included, is relayed to the client and the next candidate is not tried. Once the chosen deployment hands the request to its own interceptors, DIAL Core no longer falls back. When every candidate is skipped, the client gets the last failure.
+### Fallback and re-decide
+
+DIAL Core skips a candidate, without calling it, when the caller may not use it, its limits are exhausted, it does not serve the interface or it does not exist. It also skips a candidate, as long as no byte of its answer has reached the client, when:
+
+* its call fails to connect, or answers a retriable status (`429`, `502`, `503`, `504` and the config's `retriableErrorCodes`) after its own upstreams are exhausted;
+* its `200` answer breaks before the client got any of it: a non-streamed body that does not arrive whole, or a stream that breaks before its first chunk. A background Responses create is the exception: its job may already run, so DIAL Core does not start another one elsewhere.
+
+Any other answer, a `400` included, is relayed to the client. Once the chosen deployment hands the request to its own interceptors, DIAL Core no longer falls back.
+
+When every candidate of the verdict was skipped, DIAL Core asks the router again, up to `maxDecisions` decide requests in all. The new decide request is built like the first, with a new key, and adds `X-DIAL-ROUTER-ATTEMPTS`: the JSON list of every attempt so far, in the shape of the analytics `attempts` below. The router may name any deployment again, one that failed included. When the router fails to answer, or no decision is left, the client gets the last candidate's failure.
+
+When an answer breaks after bytes of it reached the client, DIAL Core cannot replace it: the client's connection is closed, as for any broken answer. DIAL Core then sends the router a notice: a request to the same `base_url` with `X-DIAL-ROUTER-NOTICE: true` and `X-DIAL-ROUTER-ATTEMPTS`, whose last attempt has `"received": true, "partial": true`, no `API-KEY` and an empty body. DIAL Core does not wait for it and ignores the answer. A client that hangs up gets neither a fallback nor a notice. DIAL Core drops a client-sent `X-DIAL-ROUTER-ATTEMPTS` or `X-DIAL-ROUTER-NOTICE`.
+
+Three ways to use it:
+
+* **Sticky conversation.** Answer one candidate per decide request and remember it for the conversation (`X-CONVERSATION-ID`). Every failure comes back to the router, so the last answer for a conversation is the deployment that served it, or the notice says it broke.
+* **Cheap fallback.** Answer `["a", "b", "c"]`. DIAL Core falls back through the list without asking again.
+* **Adaptive fallback.** Read `X-DIAL-ROUTER-ATTEMPTS` and change course, for example to another provider after a `429`.
 
 ### Failures
 
@@ -208,7 +226,7 @@ DIAL Core skips a candidate, without calling it, when the caller may not use it,
 | The verdict names a router, or its last usable candidate does not exist | `502` |
 | A deployment the router chose calls the router back | `502` |
 
-In each case DIAL Core sends nothing to any deployment and writes no analytics row.
+These are the answers to the first decide request; in each case DIAL Core sends nothing to any candidate and writes no analytics row. A later decide request that fails ends the walk with the last candidate's failure instead.
 
 ### Accounting
 
@@ -225,7 +243,7 @@ A decided request is one pass: one analytics row, for the deployment that served
 }
 ```
 
-`attempts` lists each candidate tried before the one that served: `status` is what DIAL Core would have answered for it, `reason` one of `forbidden`, `not_found`, `limit`, `unavailable` (skipped before the call), `connect` or `upstream` (skipped after the call). A background Responses job served through a decision carries the same `execution_path`, `parent_deployment` and `decision` on the row DIAL Core writes when the job ends.
+`attempts` lists each try before the one that served: `status` is what DIAL Core would have answered for it, `reason` one of `forbidden`, `not_found`, `limit`, `unavailable` (skipped before the call), `connect`, `upstream`, `body` or `stream` (skipped after the call). `received: true` marks a try whose upstream had already answered. For a request that needed more than one decide request, `decisions` says how many, `candidates` lists every verdict's candidates in order, and `decide_ms` is their sum. A background Responses job served through a decision carries the same `execution_path`, `parent_deployment` and `decision` on the row DIAL Core writes when the job ends.
 
 Rolling back to a DIAL Core release without decision mode while a `mode: decision` entry exists makes the whole config file fail to load: switch those entries back to proxy mode first.
 

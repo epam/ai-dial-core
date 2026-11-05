@@ -18400,6 +18400,8 @@ components:
           $ref: "#/components/schemas/DeploymentInterfaceDecisionContext"
         decisionTimeoutMs:
           type: integer
+        maxDecisions:
+          type: integer
     DeploymentInterfaceDecisionContext:
       type: object
       properties:
