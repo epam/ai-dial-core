@@ -6,7 +6,7 @@
   `platform`), case-insensitive, spaces ignored, repeats collapsed. No `scope` selects every bucket.
   `AdminSystemExportService.resolveBucketLocations` derives the valid names from `MergedConfigStore.ADMIN_BUCKET_LOCATIONS`
   and returns the selected locations in that list's order. An empty value, an empty element or an unknown name (`org`,
-  `all`) throws `IllegalArgumentException`; `AdminSystemExportController` turns it into `400` before the response, the
+  `all`) throws `IllegalArgumentException`; `AdminSystemExportController` answers it with `context.respond(400)`, as for the `403`, before the response, the
   pipe, the task and the locks exist.
 - `AdminSystemExportService.export(out, start, bucketLocations)` locks and walks only the selected buckets.
 - With a KMS provider (`aws`, `azure`, `gcp`), `encryption_keys` blobs of the selected buckets are exported like any other

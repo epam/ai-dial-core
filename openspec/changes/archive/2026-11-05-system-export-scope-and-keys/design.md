@@ -24,8 +24,11 @@ See proposal.md for why. Today's behaviour, on `development`:
   settings the stored CEK is plaintext. `KmsSettings` is parsed from `toolsets.security.kms` in
   `AiDial.getCredentialEncryptionService` (`AiDial.java:500`), which runs before the export service is created
   (`AiDial.java:425`).
-- Query parameters on admin and metadata endpoints are read with `request.getParam(name)`; an invalid one throws
-  `HttpException(HttpStatus.BAD_REQUEST, ...)` from `handle` (for example `ApplicationTypeSchemaController.java:69`).
+- Query parameters on admin and metadata endpoints are read with `request.getParam(name)`. An early error status is
+  answered with `context.respond(status, message)` and `return Future.succeededFuture()`, as the admin check in
+  `AdminSystemExportController.handle` does. `ProxyContext.respond(int, Buffer)` is the one funnel for short and error
+  responses: it records the failure status on the trace span and logs a warning. An `HttpException` thrown out of
+  `handle` is answered by `Proxy.handleError` without either.
   `ProxyContext.getBooleanRequestQueryParam` is lenient (`Boolean.parseBoolean`), which is not wanted here.
 
 ## Goals / Non-Goals
@@ -55,8 +58,9 @@ list answers "which two of three" without a new parameter when a bucket is added
 
 `handle` reads `scope` right after the admin check, so a non-admin gets `403` first. It calls a static
 `AdminSystemExportService.resolveBucketLocations(String scope)`, which returns the selected locations and throws
-`IllegalArgumentException` for an empty value, an empty element or an unknown name; the controller turns that into
-`HttpException(HttpStatus.BAD_REQUEST, message)`. The message lists the valid names. This happens before the chunked
+`IllegalArgumentException` for an empty value, an empty element or an unknown name; the controller answers that with
+`context.respond(HttpStatus.BAD_REQUEST, message)` and returns, like the admin check, so the `400` goes through the same
+funnel as the `403`, `409` and `500`. The message lists the valid names. This happens before the chunked
 response, the pipe, the task and the locks exist, so a `400` has no `Content-Disposition` (the headers hook only
 fires for `200`) and takes no lock.
 

@@ -14,7 +14,6 @@ import com.epam.aidial.core.server.service.AdminSystemExportService;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.server.vertx.stream.BoundedPipe;
 import com.epam.aidial.core.server.vertx.stream.InputStreamReader;
-import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -91,7 +90,13 @@ public class AdminSystemExportController implements Controller {
             return Future.succeededFuture();
         }
 
-        List<String> bucketLocations = resolveBucketLocations();
+        List<String> bucketLocations;
+        try {
+            bucketLocations = AdminSystemExportService.resolveBucketLocations(context.getRequest().getParam("scope"));
+        } catch (IllegalArgumentException e) {
+            context.respond(HttpStatus.BAD_REQUEST, e.getMessage());
+            return Future.succeededFuture();
+        }
 
         Instant start = Instant.now();
         HttpServerResponse response = context.getResponse().setChunked(true);
@@ -138,13 +143,5 @@ public class AdminSystemExportController implements Controller {
         });
 
         return Future.succeededFuture();
-    }
-
-    private List<String> resolveBucketLocations() {
-        try {
-            return AdminSystemExportService.resolveBucketLocations(context.getRequest().getParam("scope"));
-        } catch (IllegalArgumentException e) {
-            throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
-        }
     }
 }
