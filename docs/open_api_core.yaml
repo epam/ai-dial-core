@@ -3131,7 +3131,7 @@ paths:
       parameters:
       - name: scope
         in: query
-        description: "Comma-separated, case-insensitive list of the buckets to export: public, platform. All buckets when omitted."
+        description: "Comma-separated, case-insensitive list of the buckets to export: public, platform. May be repeated, the lists are combined. All buckets when omitted."
         required: false
         schema:
           type: string

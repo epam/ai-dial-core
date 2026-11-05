@@ -70,7 +70,7 @@ public class AdminSystemExportController implements Controller {
             parameters = {
                     @ApiParameter(name = "scope", in = ParameterIn.QUERY,
                             description = "Comma-separated, case-insensitive list of the buckets to export: public, platform. "
-                                    + "All buckets when omitted.")
+                                    + "May be repeated, the lists are combined. All buckets when omitted.")
             },
             responses = {
                     @ApiResponse(code = 200, description = "ZIP archive of the public and platform buckets",
