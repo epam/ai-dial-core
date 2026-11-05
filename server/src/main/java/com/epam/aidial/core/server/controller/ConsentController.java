@@ -210,12 +210,12 @@ public class ConsentController {
             log.warn("Deployment not found {}", deploymentId, error);
             context.respond(HttpStatus.NOT_FOUND, error.getMessage());
         } else if (error instanceof HttpException httpException) {
-            log.warn("Admin consent rejected for deployment {} status={}", deploymentId, httpException.getStatus());
+            log.warn("Consent request rejected for deployment {} status={}", deploymentId, httpException.getStatus());
             context.respond(httpException);
         } else {
-            log.error("Failed to process user consent", error);
+            log.error("Failed to process consent", error);
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to process user consent for deployment=%s".formatted(deploymentId));
+                    "Failed to process consent for deployment=%s".formatted(deploymentId));
         }
     }
 
