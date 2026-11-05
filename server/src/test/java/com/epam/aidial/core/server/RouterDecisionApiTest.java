@@ -24,9 +24,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -62,7 +62,7 @@ class RouterDecisionApiTest extends ResourceBaseTest {
             + "\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}";
     private static final String DEPLOYMENT_ID = "X-DIAL-DEPLOYMENT-ID";
 
-    private final List<RecordedRequest> received = Collections.synchronizedList(new ArrayList<>());
+    private final List<RecordedRequest> received = new CopyOnWriteArrayList<>();
     private final AtomicReference<String> verdict = new AtomicReference<>("{\"candidates\": [\"gpt-4\"]}");
 
     @Test
@@ -724,7 +724,7 @@ class RouterDecisionApiTest extends ResourceBaseTest {
     void routerDecidesAgainWithTheHistory() {
         List<AnalyticsLogContext> rows = captureRows();
         List<String> verdicts = new ArrayList<>(List.of("{\"candidates\": [\"m1\"]}", "{\"candidates\": [\"m2\"]}"));
-        List<ApiKeyData> keys = Collections.synchronizedList(new ArrayList<>());
+        List<ApiKeyData> keys = new CopyOnWriteArrayList<>();
         try (TestWebServer server = new TestWebServer(4848, request -> {
             received.add(request);
             if (isDecide(request)) {
@@ -1059,7 +1059,7 @@ class RouterDecisionApiTest extends ResourceBaseTest {
 
     @SneakyThrows
     private List<AnalyticsLogContext> captureRows() {
-        List<AnalyticsLogContext> rows = Collections.synchronizedList(new ArrayList<>());
+        List<AnalyticsLogContext> rows = new CopyOnWriteArrayList<>();
         LogStore store = rows::add;
         Field field = Proxy.class.getDeclaredField("logStore");
         field.setAccessible(true);
