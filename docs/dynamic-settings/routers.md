@@ -63,6 +63,8 @@ X-DIAL-USER-INFO: {"roles":["analysts","b"],"userId":"u1"}
 
 Non-ASCII characters are sent as JSON `\u` escapes. DIAL Core drops a client-sent `X-DIAL-USER-INFO` from the chat completions, completions, embeddings, Responses, Messages and deployment feature requests it forwards to a model, application or router, so a client cannot forge it on any request that reaches a router; an interceptor receives the client's headers as they are, and the router call after the interceptor chain carries DIAL Core's own value. The header grows with the caller's roles: a caller with several hundred roles can exceed the receiving server's header size limit.
 
+The header is only as trustworthy as the path it arrives on. A router that takes identity from `X-DIAL-USER-INFO` instead of calling `GET /v1/user/info` must accept requests from DIAL Core only: no route from outside the cluster, and a network policy that admits DIAL Core's pods where the platform offers one. Anyone else who can reach the router could send the header with roles of their choosing. A router reachable by clients should keep calling `GET /v1/user/info` with the caller's credentials.
+
 ## Decision mode
 
 With `mode: decision` on an `interfaces` entry, DIAL Core does not forward the client's request to the router. It sends the router a small decide request, reads the answer (the verdict) and serves the request with the deployment the verdict names, in the same pass, as if the client had called that deployment. The router never calls DIAL Core back and never calls `GET /v1/user/info`. A router may declare decision mode for some interfaces and proxy others.
