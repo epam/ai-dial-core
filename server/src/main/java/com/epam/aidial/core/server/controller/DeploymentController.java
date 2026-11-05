@@ -46,6 +46,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 import static com.epam.aidial.core.server.controller.ModelController.createModel;
 
@@ -99,8 +100,9 @@ public class DeploymentController {
     public Future<?> getDeployment(String deploymentId) {
         Config config = context.getConfig();
         Model model = config.getModels().get(deploymentId);
-        if (model == null) {
-            model = (Model) deploymentService.findAliasView(context, deploymentId, AliasPresentation.MODEL);
+        if (model == null && AliasListings.isAliasId(config, deploymentId)) {
+            AliasListings.respondModel(context, deploymentId, view -> true, ModelController::createModel);
+            return Future.succeededFuture();
         }
 
         if (model == null) {
@@ -127,7 +129,7 @@ public class DeploymentController {
             }
     )
     public Future<?> getDeployments() {
-        getModels(List.of()).onSuccess(deployments -> {
+        getModels(List.of(), deploymentService.storedAliasesOnce()).onSuccess(deployments -> {
             ListData<DeploymentData> list = new ListData<>();
             list.setData(deployments);
             context.respond(HttpStatus.OK, list);
@@ -223,21 +225,22 @@ public class DeploymentController {
     private List<DeploymentNameData> listDeploymentNames(Set<String> types) {
         Config config = context.getConfig();
         List<DeploymentNameData> names = new ArrayList<>();
+        Supplier<List<Alias>> stored = deploymentService.storedAliasesOnce();
         if (types.contains(MODEL_TYPE)) {
             addAccessibleNames(names, config.getModels().values(), MODEL_TYPE);
-            addNames(names, deploymentService.listAliasNames(context, AliasPresentation.MODEL), MODEL_TYPE);
+            addNames(names, deploymentService.listAliasNames(context, AliasPresentation.MODEL, stored), MODEL_TYPE);
         }
         if (types.contains(APPLICATION_TYPE)) {
             addAccessibleNames(names, config.getApplications().values(), APPLICATION_TYPE);
             if (applicationService.isIncludeCustomApps()) {
                 addNames(names, deploymentService.listDeploymentNames(context, ResourceTypes.APPLICATION, Application::new), APPLICATION_TYPE);
             }
-            addNames(names, deploymentService.listAliasNames(context, AliasPresentation.APPLICATION), APPLICATION_TYPE);
+            addNames(names, deploymentService.listAliasNames(context, AliasPresentation.APPLICATION, stored), APPLICATION_TYPE);
         }
         if (types.contains(TOOLSET_TYPE)) {
             addAccessibleNames(names, config.getToolsets().values(), TOOLSET_TYPE);
             addNames(names, deploymentService.listDeploymentNames(context, ResourceTypes.TOOL_SET, ToolSet::new), TOOLSET_TYPE);
-            addNames(names, deploymentService.listAliasNames(context, AliasPresentation.TOOLSET), TOOLSET_TYPE);
+            addNames(names, deploymentService.listAliasNames(context, AliasPresentation.TOOLSET, stored), TOOLSET_TYPE);
         }
         return names;
     }
@@ -318,14 +321,16 @@ public class DeploymentController {
 
     private CompositeFuture execute(ExecutionPlan plan) {
         List<Future<List<DeploymentData>>> futures = new ArrayList<>();
+        // the three parts run concurrently and share one listing of the stored aliases
+        Supplier<List<Alias>> stored = deploymentService.storedAliasesOnce();
         if (plan.useModels) {
-            futures.add(getModels(plan.modelFilters));
+            futures.add(getModels(plan.modelFilters, stored));
         }
         if (plan.useApplications) {
-            futures.add(getApplications(plan.appFilters));
+            futures.add(getApplications(plan.appFilters, stored));
         }
         if (plan.useToolsets) {
-            futures.add(getToolSets());
+            futures.add(getToolSets(stored));
         }
         return Future.all(futures);
     }
@@ -373,7 +378,7 @@ public class DeploymentController {
         return plan;
     }
 
-    private Future<List<DeploymentData>> getApplications(List<Predicate<Application>> filters) {
+    private Future<List<DeploymentData>> getApplications(List<Predicate<Application>> filters, Supplier<List<Alias>> stored) {
         return proxy.getTaskExecutor().submit(() -> {
             Config config = context.getConfig();
             List<DeploymentData> deployments = new ArrayList<>();
@@ -398,7 +403,7 @@ public class DeploymentController {
                     deployments.add(to(app));
                 }
             }
-            for (Deployment view : deploymentService.listAllAliasViews(context, AliasPresentation.APPLICATION)) {
+            for (Deployment view : deploymentService.listAliasViews(context, AliasPresentation.APPLICATION, stored)) {
                 if (match(filters, (Application) view)) {
                     deployments.add(to((Application) view));
                 }
@@ -426,7 +431,7 @@ public class DeploymentController {
         return application;
     }
 
-    private Future<List<DeploymentData>> getToolSets() {
+    private Future<List<DeploymentData>> getToolSets(Supplier<List<Alias>> stored) {
         return proxy.getTaskExecutor().submit(() -> {
             List<DeploymentData> deployments = new ArrayList<>();
             List<ToolSet> resourceToolsets = deploymentService.listDeployments(context, ResourceTypes.TOOL_SET, new DeploymentService.DeploymentExtractor() {
@@ -453,14 +458,14 @@ public class DeploymentController {
                     deployments.add(to(toolSet));
                 }
             }
-            for (Deployment view : deploymentService.listAllAliasViews(context, AliasPresentation.TOOLSET)) {
+            for (Deployment view : deploymentService.listAliasViews(context, AliasPresentation.TOOLSET, stored)) {
                 deployments.add(to((ToolSet) view));
             }
             return deployments;
         });
     }
 
-    private Future<List<DeploymentData>> getModels(List<Predicate<Model>> filters) {
+    private Future<List<DeploymentData>> getModels(List<Predicate<Model>> filters, Supplier<List<Alias>> stored) {
         List<DeploymentData> deployments = new ArrayList<>();
         Config config = context.getConfig();
         for (Model model : config.getModels().values()) {
@@ -468,12 +473,14 @@ public class DeploymentController {
                 deployments.add(to(model));
             }
         }
-        for (Deployment view : deploymentService.listAliasViews(context, AliasPresentation.MODEL)) {
-            if (match(filters, (Model) view)) {
-                deployments.add(to((Model) view));
+        return AliasListings.listModels(context, stored).map(views -> {
+            for (Model view : views) {
+                if (match(filters, view)) {
+                    deployments.add(to(view));
+                }
             }
-        }
-        return Future.succeededFuture(deployments);
+            return deployments;
+        });
     }
 
     private static DeploymentData to(Model model) {

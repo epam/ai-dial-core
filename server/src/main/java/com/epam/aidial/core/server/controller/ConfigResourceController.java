@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Alias;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
@@ -24,6 +25,8 @@ import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasTargets;
+import com.epam.aidial.core.server.alias.StoredAliases;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.InvalidEntityRecord;
 import com.epam.aidial.core.server.config.KeyValidator;
@@ -1011,6 +1014,84 @@ public class ConfigResourceController implements Controller {
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
                     }
+            ),
+            // Aliases in public storage (admin only, every method; the bucket must be public)
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/aliases/{bucket}/{path}",
+                    operationId = "getPublicAlias",
+                    tags = {"Aliases"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = "Must be public"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Alias name, which is also its invocation name"),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success: presentAs, target, userRoles and the display fields, with status "
+                                    + "valid, or the stored body with status invalid and validationWarnings when calls ignore it",
+                                    body = @ApiSchema(allOf = {Alias.class, EntityMetadata.class}),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the alias", required = true)
+                                    }),
+                            @ApiResponse(code = 304),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/aliases/{bucket}/{path}",
+                    operationId = "savePublicAlias",
+                    requestBody = @ApiSchema(implementation = Alias.class),
+                    tags = {"Aliases"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = "Must be public"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Alias name, which is also its invocation name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved alias", required = true)
+                                    }),
+                            @ApiResponse(code = 400, description = "Invalid body, a field other than presentAs, target, userRoles and the "
+                                    + "display fields, a body name other than the path name, an invalid name or one the url encoding changes, "
+                                    + "or a target that does not fit presentAs"),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/aliases/{bucket}/{path}",
+                    operationId = "deletePublicAlias",
+                    tags = {"Aliases"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = "Must be public"),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Alias name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 204, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
             )
     })
     public Future<?> handle() throws Exception {
@@ -1060,6 +1141,15 @@ public class ConfigResourceController implements Controller {
             }
             if (method == HttpMethod.DELETE) {
                 return handleSettingsDelete();
+            }
+            return respondMethodNotAllowed();
+        }
+        if (resourceType() == ResourceTypes.ALIAS) {
+            if (method == HttpMethod.PUT) {
+                return handleAliasPut();
+            }
+            if (method == HttpMethod.DELETE) {
+                return handleAliasDelete();
             }
             return respondMethodNotAllowed();
         }
@@ -1137,6 +1227,8 @@ public class ConfigResourceController implements Controller {
                         return redactAuthSettingsSecrets(projectItem(entity, key), admin);
                     });
             case GLOBAL_SETTINGS -> handleSettingsGet(config);
+            // the definition, target included: admin only, see AdminRoleAuthorizationService
+            case ALIAS -> handleAliasGet();
             default -> respondMethodNotAllowed();
         };
     }
@@ -1350,6 +1442,8 @@ public class ConfigResourceController implements Controller {
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case TOOL_SET -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.TOOL_SET,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
+            case ALIAS -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.ALIAS,
+                    ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path);
             default -> null;
         };
     }
@@ -1530,6 +1624,131 @@ public class ConfigResourceController implements Controller {
             return true;
         })).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
 
+        return Future.succeededFuture();
+    }
+
+    /**
+     * PUT-upsert of an alias in public storage, which is only a blob: a stored alias is read on demand by its url, never
+     * merged into the config. The body keeps only the fields {@link StoredAliases} names. Checks, all before the blob is
+     * written: the rules the config load applies ({@link AliasTargets#validate}), and for a resource target that exists,
+     * its type against {@code presentAs} (400). A target that does not exist is accepted: the alias is broken until it
+     * does, and the health report shows it when the target is a config deployment.
+     */
+    private Future<?> handleAliasPut() {
+        if (path == null || path.isEmpty()) {
+            context.respond(HttpStatus.BAD_REQUEST, "Resource name must not be empty or a folder");
+            return Future.succeededFuture();
+        }
+        if (!StoredAliases.isUrlSafeName(path)) {
+            // the alias is named and called by its url, so a name the url encoding changes could not be called back
+            context.respond(HttpStatus.BAD_REQUEST, "An alias name must not contain characters the url encoding changes: " + path);
+            return Future.succeededFuture();
+        }
+        ResourceDescriptor descriptor = descriptorFor(ResourceTypes.ALIAS);
+        EtagHeader etag = ProxyUtil.etag(context.getRequest());
+        String author = context.getUserDisplayName();
+
+        context.getRequest().body().compose(body -> {
+            Alias alias = StoredAliases.fromRequest(parseJsonBody(body), path);
+            alias.setName(descriptor.getUrl());
+            return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
+                ResourceItemMetadata existing = resourceService.getResourceMetadata(descriptor);
+                etag.validate(existing == null ? null : existing.getEtag());
+                checkAliasTarget(alias);
+                return resourceService.putResource(descriptor,
+                        StoredAliases.toJson(alias).toString(), EtagHeader.ANY, author, false);
+            }));
+        }).onSuccess(meta -> context.putHeader(HttpHeaders.ETAG, meta.getEtag())
+                .respond(HttpStatus.OK, createNameEnvelope(path)))
+                .onFailure(this::handleWriteError);
+
+        return Future.succeededFuture();
+    }
+
+    /**
+     * DELETE of an alias in public storage: the blob only, honouring {@code If-Match}. The target is not touched.
+     */
+    private Future<?> handleAliasDelete() {
+        ResourceDescriptor descriptor = descriptorFor(ResourceTypes.ALIAS);
+        EtagHeader etag = ProxyUtil.etag(context.getRequest());
+        taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
+            if (!resourceService.deleteResource(descriptor, etag, false)) {
+                throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + descriptor.getUrl());
+            }
+            return true;
+        })).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
+        return Future.succeededFuture();
+    }
+
+    /**
+     * The checks of the alias's own fields and of a target it can resolve. Reads a resource target from storage, so it
+     * runs on the task executor.
+     */
+    private void checkAliasTarget(Alias alias) {
+        Config snapshot = mergedConfigStore.get();
+        // no config yet: the fields are checked, a config target is not
+        List<ValidationWarning> warnings = StoredAliases.validateFields(alias);
+        if (warnings.isEmpty() && snapshot != null) {
+            warnings = AliasTargets.validate(alias, snapshot);
+        }
+        if (warnings.isEmpty() && AliasTargets.isResourcePath(alias.getTarget().getPath())) {
+            Deployment target;
+            try {
+                target = context.getProxy().getDeploymentService().getAliasService().findTarget(snapshot, alias);
+            } catch (HttpException e) {
+                target = null;
+                warnings.add(new ValidationWarning("target.path", e.getMessage()));
+            }
+            if (target != null && !AliasTargets.fits(alias.getEffectivePresentation(), target)) {
+                warnings.add(new ValidationWarning("presentAs", "An alias shown as %s cannot point to %s"
+                        .formatted(alias.getEffectivePresentation().getValue(), alias.getTarget().getPath())));
+            }
+        }
+        if (!warnings.isEmpty()) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, validationWarningsBody(warnings));
+        }
+    }
+
+    /**
+     * GET of an alias in public storage, read the way calls read it ({@link StoredAliases#parse}): the stored fields
+     * with {@code status: valid}, or, for a blob calls ignore, the body as stored with {@code status: invalid} and its
+     * {@code validationWarnings}, as other config types show an invalid entity. Honours {@code If-None-Match}.
+     */
+    private Future<?> handleAliasGet() {
+        if (path == null || path.isEmpty()) {
+            context.respond(HttpStatus.NOT_FOUND);
+            return Future.succeededFuture();
+        }
+        ResourceDescriptor descriptor = descriptorFor(ResourceTypes.ALIAS);
+        EtagHeader etag = ProxyUtil.etag(context.getRequest());
+        taskExecutor.submit(() -> {
+            Pair<ResourceItemMetadata, String> existing = resourceService.getResourceWithMetadata(descriptor, etag);
+            if (existing == null) {
+                return null;
+            }
+            StoredAliases.Stored stored = StoredAliases.parse(existing.getValue());
+            ObjectNode node;
+            if (stored.alias() != null) {
+                node = StoredAliases.toJson(stored.alias());
+                node.put("name", path);
+                node.put("status", "valid");
+            } else {
+                node = stored.body() instanceof ObjectNode raw ? raw.deepCopy() : ProxyUtil.MAPPER.createObjectNode();
+                node.put("name", path);
+                node.put("status", "invalid");
+                ArrayNode warnings = node.putArray("validationWarnings");
+                for (ValidationWarning warning : stored.warnings()) {
+                    warnings.addObject().put("field", warning.getField()).put("message", warning.getMessage());
+                }
+            }
+            return Pair.of(existing.getKey().getEtag(), node);
+        }).onSuccess(result -> {
+            if (result == null) {
+                context.respond(HttpStatus.NOT_FOUND);
+            } else {
+                context.putHeader(HttpHeaders.ETAG, result.getKey()).respond(HttpStatus.OK, result.getValue());
+            }
+        }).onFailure(this::handleWriteError);
         return Future.succeededFuture();
     }
 
@@ -1983,6 +2202,10 @@ public class ConfigResourceController implements Controller {
     }
 
     private void rejectWithValidationWarnings(List<ValidationWarning> warnings) {
+        throw new HttpException(HttpStatus.UNPROCESSABLE_ENTITY, validationWarningsBody(warnings));
+    }
+
+    private static String validationWarningsBody(List<ValidationWarning> warnings) {
         ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
         ArrayNode arr = body.putArray("validationWarnings");
         for (ValidationWarning warning : warnings) {
@@ -1990,7 +2213,7 @@ public class ConfigResourceController implements Controller {
             w.put("field", warning.getField());
             w.put("message", warning.getMessage());
         }
-        throw new HttpException(HttpStatus.UNPROCESSABLE_ENTITY, body.toString());
+        return body.toString();
     }
 
     private static String locationOf(JsonProcessingException e) {
@@ -2101,6 +2324,7 @@ public class ConfigResourceController implements Controller {
             case ROUTE -> Route.class;
             case APPLICATION -> Application.class;
             case TOOL_SET -> ToolSet.class;
+            case ALIAS -> Alias.class;
             default -> null;
         };
     }

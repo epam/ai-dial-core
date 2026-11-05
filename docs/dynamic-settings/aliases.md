@@ -1,7 +1,8 @@
 # Dynamic Setting for Aliases
 
 An alias is a deployment of its own, with its own name, catalog entry and `userRoles`, that forwards every call to a
-target deployment: a model, an application or a toolset. Aliases are managed by admins only. A caller who may use
+target deployment: a model, an application or a toolset. Aliases are managed by admins only, in the config file
+or [in public storage](#aliases-in-public-storage). A caller who may use
 the alias may call the target through it, even without any rights on the target; it does not let the caller read
 the target's definition or credentials.
 
@@ -85,8 +86,9 @@ Admins can read the aliases of the config file with `GET /v1/admin/config/file/a
 
 ## Calling an alias
 
-An alias of the config is called by its name, through the endpoints of its type (`presentAs`, or the target's
-type):
+An alias of the config file is called by its name; an alias [in public storage](#aliases-in-public-storage) by its
+url `aliases/public/<alias_name>`. Either is called through the endpoints of its type (`presentAs`, or the target's
+type), with that name as `<alias>`:
 
 * `model` and `application`: `/openai/deployments/<alias>/chat/completions` (and `/completions`, `/embeddings`),
   `/openai/v1/chat/completions`, `/openai/v1/responses` and `/anthropic/v1/messages` with `model: <alias>`, and
@@ -139,10 +141,84 @@ Not served through an alias yet: `/v1/toolset/<alias>/tools`.
 ## Listings
 
 `/openai/models`, `/openai/deployments`, `/anthropic/v1/models`, `/openai/applications`, `/openai/toolsets`,
-`/v1/deployments` and `/v1/deployment-names` list an alias under its type, by its name, for the callers who may use
-it, and their single-item endpoints answer for the alias's name. An alias whose target is missing is left out. `/openai/models`, `/openai/deployments`, `/anthropic/v1/models` and the model part of `/v1/deployments`
-answer from memory, so they leave out an alias whose target is a resource; the other listings show it.
+`/v1/deployments` and `/v1/deployment-names` list an alias under its type, by its name (the name of a config alias,
+the url of a stored one), for the callers who may use it (one of its `userRoles`, or, when it has none, the callers
+who may use its target), and their single-item endpoints answer for that name, for example
+`/openai/models/aliases/public/assistant-v1`. Aliases to config deployments and to resources are both listed. An
+alias whose target is missing is left out. Every listing that shows aliases lists and reads the stored aliases, on
+the task executor.
 
 An entry has the alias's name and display fields (with the fallbacks above) and the target's features, pricing,
 limits, defaults and interfaces. It never shows the target's path, endpoint or default headers, nor the target's
 version as the alias's.
+
+## Aliases in public storage
+
+Admins can also create aliases at run time, stored as resources directly under `aliases/public/<alias_name>`. A
+stored alias is called and listed by its url `aliases/public/<alias_name>`, the way a public application is
+(`/openai/deployments/aliases/public/<alias_name>/chat/completions`, `"model": "aliases/public/<alias_name>"`,
+`/v1/toolset/aliases/public/<alias_name>/mcp`). The url is its name everywhere: in the execution path, analytics and
+listings. The bare name `<alias_name>` does not reach it; a config alias of that name is a different alias. A stored
+alias is read on each call, so a change applies to the next call.
+
+| Method and path | What it does |
+|---|---|
+| `PUT /v1/aliases/public/<alias_name>` | Create or replace the alias. Honours `If-Match` and `If-None-Match` (`412` on a mismatch). |
+| `GET /v1/aliases/public/<alias_name>` | Read the definition, target included. |
+| `DELETE /v1/aliases/public/<alias_name>` | Delete the alias; the target is not touched. |
+| `GET /v1/metadata/aliases/public/` | List the stored aliases. |
+
+Every method is for admins only, `GET` included: other callers get `403`. Another bucket answers `404`; a folder
+(`aliases/public/a/b`) answers `400`, and so does a name with characters other than letters, digits, `.`, `_` and `-`,
+so that the id listings show is the id callers send. `GET` of a blob that calls ignore (written around this API, for
+example without `target`) answers it with `status: invalid` and its `validationWarnings`. If storage cannot list the
+stored aliases, listings answer without them.
+
+**Body.** Only `target`, `presentAs`, `userRoles` and the display fields `displayName`, `displayVersion`, `iconUrl`,
+`description`, `intro` and `descriptionKeywords`, with the meaning above. Any other field answers `400` (`status` and a `name` equal to `<alias_name>` from a `GET` answer are ignored, so it can be sent back;
+another `name` answers `400`).
+
+**Checks on `PUT`**, before anything is written:
+
+* the rules of the config load (`target.path` present and of a supported form, no alias as target, a `presentAs`
+  that fits a config target): `400` with `validationWarnings`;
+* the target is a config deployment or a resource in the `public` bucket, such as `applications/public/assistant`;
+  a resource in any other bucket answers `400`;
+* a resource target that exists must fit `presentAs` too: `400`. A target that does not exist is accepted; the alias
+  is broken until it exists, calls of it answer `503`, listings leave it out, and `/v1/admin/health/config` reports
+  `aliases/public/<alias_name>` with reason `alias_target_missing` (or `alias_target_incompatible`). An alias of the
+  config file is reported under `aliases/<alias_name>`.
+
+A stored alias needs no unique name among the deployments: its url cannot be the name of a config deployment.
+
+**Example:**
+
+```http
+PUT /v1/aliases/public/search-tools-v1
+Content-Type: application/json
+
+{
+  "displayName": "Search",
+  "userRoles": ["default-user"],
+  "target": { "path": "toolsets/public/internal-search" }
+}
+```
+
+Callers with the role `default-user` then use `POST /v1/toolset/aliases/public/search-tools-v1/mcp`.
+
+### Access
+
+Who may use a stored alias is decided by its `userRoles`, exactly as for an alias of the config file: a caller with
+one of them may call it and sees it in listings, others get `403`; an alias without `userRoles` takes the target's.
+The public access rules of the public bucket (publication rules) do not apply to stored aliases: they cannot be set
+on the root of the public bucket, where aliases are stored.
+
+### What is refused
+
+* Sharing an alias (`/v1/ops/resource/share/create`), a publication that adds or removes one, and copying or moving
+  one (`/v1/ops/resource/copy`, `/v1/ops/resource/move`) answer `400`.
+* Only `aliases/public/<alias_name>` names a stored alias: `aliases/<other bucket>/...`, a folder under
+  `aliases/public/`, `public/<alias_name>` or `<type>/public/<alias_name>` do not reach it or its target.
+* Aliases cannot be written through `/v1/admin/validate` or `/v1/admin/apply` (there is no `Alias` manifest kind) or
+  in a user bucket. A manifest model named like an alias of the config file fails. The admin system export includes
+  the stored aliases, as the rest of the public bucket.

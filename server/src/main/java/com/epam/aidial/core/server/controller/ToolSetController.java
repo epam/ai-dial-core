@@ -122,8 +122,8 @@ public class ToolSetController {
             }
         }
         list.addAll(resourceToolsets);
-        for (Deployment view : deploymentService.listAllAliasViews(context, AliasPresentation.TOOLSET)) {
-            Alias alias = config.getAliases().get(view.getName());
+        for (Deployment view : deploymentService.listAliasViews(context, AliasPresentation.TOOLSET)) {
+            Alias alias = deploymentService.findListedAlias(context, view.getName());
             if (alias != null) {
                 enrichAliasView(enricher, alias, (ToolSet) view);
             }
