@@ -180,10 +180,11 @@ role that no longer exists, such as the earlier `approver`, grants nothing. `sub
 caller's token, written as a folder's read rule is, inside the DIAL 2.0 design's typed envelope:
 `{"type": "claimsPredicate", "source": "email", "function": "EQUAL", "targets": ["jane@acme.example"]}` for a person, or
 `{"type": "claimsPredicate", "source": "groups", "function": "EQUAL", "targets": ["us-risk-leads"]}` for a group. The
-`source` names the claim to read, since identity providers name the group claim differently, and `roles` is the
-claim every provider's `rolePath` maps into. Unit admins write subjects and every request evaluates them, so a subject is
-narrower than a read rule: `source` is a claim name or a dotted path of up to 8 of them, such as `realm_access.roles`,
-each name letters, digits, `_` and `-` with at most 64 characters. It is not the JSON path expression a rule may use,
+`source` names the claim to read, since identity providers name the group claim differently. Two names are read
+through the provider's settings rather than from the token: `roles` is what every provider's `rolePath` maps into, and
+`email` is the address its `userEmailPath` points at, so one person subject works with every provider. Unit admins
+write subjects and every request evaluates them, so a subject is narrower than a read rule: `source` is a claim name
+or a dotted path of up to 8 of them, such as `realm_access.roles`, each name letters, digits, `_` and `-` with at most 64 characters. It is not the JSON path expression a rule may use,
 so a claim whose name holds other characters, such as `cognito:groups`, can't be a subject's source. Of the rule
 functions `EQUAL` and `TRUE` are
 accepted; `CONTAIN`, `REGEX` and `FALSE` are refused with 400 until a consumer needs them. With `EQUAL`, `targets`
