@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -63,9 +64,9 @@ public final class ResourceDependencyAuditLog {
             return;
         }
         AUDIT.info("event=resource_dependency_denial outcome=DENIED actor={} user_id={} application_id={} "
-                        + "source_deployment={} targets={} trace_id={}",
+                        + "source_deployment={} targets={} access_types={} trace_id={}",
                 actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
-                sourceDeployment(context), targetsOf(unresolved), context.getTraceId());
+                sourceDeployment(context), targetsOf(unresolved), accessTypesOf(unresolved), context.getTraceId());
     }
 
     /** One event when a required dependency failed to resolve and the call is rejected. */
@@ -89,7 +90,7 @@ public final class ResourceDependencyAuditLog {
     private static String accessTypesOf(List<Consent.ResourceEntry> entries) {
         return entries.stream()
                 .flatMap(entry -> entry.getAccess().stream())
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .map(Enum::name)
                 .distinct()
                 .collect(Collectors.joining(","));

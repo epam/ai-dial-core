@@ -46,7 +46,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * Every branch of request-start resolution: the declaration is a request, not a grant — reach is
- * the originating user's own permissions, consent is the content-bound admin record, and the
+ * the initiator's own permissions, consent is the content-bound admin record, and the
  * passing intersection is baked into the per-request key the application will hold.
  */
 @ExtendWith(MockitoExtension.class)
@@ -299,7 +299,7 @@ public class ResolveResourceDependenciesFnTest {
         when(accessService.lookupInitiatorPermissions(any(), eq(context))).thenReturn(Map.of());
 
         assertFalse(fn.apply(request));
-        assertTrue(proxyApiKeyData.getPerRequestReceivers().isEmpty());
+        assertTrue(proxyApiKeyData.getPerRequestSharedResources().isEmpty());
     }
 
     @Test
@@ -310,7 +310,7 @@ public class ResolveResourceDependenciesFnTest {
 
         assertFalse(fn.apply(request));
         verify(accessService, never()).lookupInitiatorPermissions(any(), any());
-        assertTrue(proxyApiKeyData.getPerRequestReceivers().isEmpty());
+        assertTrue(proxyApiKeyData.getPerRequestSharedResources().isEmpty());
     }
 
     @Test
@@ -353,7 +353,7 @@ public class ResolveResourceDependenciesFnTest {
         when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
 
         assertFalse(fn.apply(request));
-        assertTrue(proxyApiKeyData.getPerRequestReceivers().isEmpty());
+        assertTrue(proxyApiKeyData.getPerRequestSharedResources().isEmpty());
         verify(accessService, never()).lookupInitiatorPermissions(any(), any());
     }
 

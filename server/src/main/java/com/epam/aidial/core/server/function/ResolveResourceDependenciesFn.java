@@ -9,7 +9,6 @@ import com.epam.aidial.core.server.data.AuthBucket;
 import com.epam.aidial.core.server.data.consent.Consent;
 import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.log.ResourceDependencyAuditLog;
-import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -48,8 +47,6 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
     @Override
     public Boolean apply(T ignored) {
         if (!(context.getDeployment() instanceof Application application)) {
-            // Interceptor hop or a non-application deployment — dependencies resolve for the
-            // application being called, nothing else.
             return false;
         }
         List<ResourceDependency> declaration = application.getResourceDependencies();
@@ -64,12 +61,11 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
         String applicationId = application.getName();
         // only an MCP app with forwardPerRequestKey=false gets no per-request key: grants can't be delivered, a required dependency fails
         boolean hasKeyToBakeInto = context.getProxyApiKeyData() != null;
-        // The consent record is content-bound to the whole declaration: any change since the grant
-        // re-requires it, and until then nothing resolves. Checked before any resolution work.
+        // consent is content-bound to the whole declaration: any change re-requires the grant
         boolean consented = hasKeyToBakeInto && proxy.getConsentService().isAdminConsented(applicationId, declaration);
         AuthBucket userBucket = BucketBuilder.buildBucket(context);
 
-        List<Resolved> resolvedTargets = new ArrayList<>();
+        List<ResolvedTarget> resolvedTargets = new ArrayList<>();
         List<ResourceDependency> unresolvedDeps = new ArrayList<>();
         List<String> requiredFailures = new ArrayList<>();
 
@@ -77,20 +73,18 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
             Set<ResourceAccessType> requestedAccess = consented ? requestedAccessOf(dependency) : null;
             ResourceDescriptor target = requestedAccess == null ? null : resolveTarget(dependency, userBucket);
             if (target == null) {
-                // Fail closed per record: malformed (config-file apps bypass write-time validation)
-                // or unconsented — no grant, no failure, unless required.
+                // malformed or unconsented: unresolved, and fails the call only when required
                 trackUnresolved(dependency, unresolvedDeps, requiredFailures);
             } else {
-                resolvedTargets.add(new Resolved(dependency, target, requestedAccess));
+                resolvedTargets.add(new ResolvedTarget(dependency, target, requestedAccess));
             }
         }
 
-        List<Consent.ResourceEntry> granted = bakeReachableGrants(resolvedTargets, unresolvedDeps, requiredFailures);
+        List<ResourceDependency> granted = bakeReachableGrants(resolvedTargets, unresolvedDeps, requiredFailures);
 
-        ResourceDependencyAuditLog.grant(context, applicationId, granted);
-        ResourceDependencyAuditLog.denial(context, applicationId, entriesOf(unresolvedDeps));
+        ResourceDependencyAuditLog.grant(context, applicationId, Consent.toResourceEntries(granted));
+        ResourceDependencyAuditLog.denial(context, applicationId, Consent.toResourceEntries(unresolvedDeps));
         if (!requiredFailures.isEmpty()) {
-            // A required dependency is unresolvable — the application never half-works silently.
             ResourceDependencyAuditLog.runtimeFail(context, applicationId, requiredFailures,
                     hasKeyToBakeInto ? "required dependencies unresolvable" : UNDELIVERABLE_REASON);
             String message = "Required resource dependencies are not accessible: " + String.join(", ", requiredFailures);
@@ -101,32 +95,29 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
     /**
      * Bakes the targets the initiator can reach with the declared rights; tracks the rest as unresolved.
      */
-    private List<Consent.ResourceEntry> bakeReachableGrants(List<Resolved> resolvedTargets,
-                                                            List<ResourceDependency> unresolvedDeps,
-                                                            List<String> requiredFailures) {
-        List<Consent.ResourceEntry> granted = new ArrayList<>();
+    private List<ResourceDependency> bakeReachableGrants(List<ResolvedTarget> resolvedTargets,
+                                                         List<ResourceDependency> unresolvedDeps,
+                                                         List<String> requiredFailures) {
+        List<ResourceDependency> granted = new ArrayList<>();
         if (resolvedTargets.isEmpty()) {
             return granted;
         }
-        // One batched walk of the permission chain for all resolved targets.
-        Set<ResourceDescriptor> targets = resolvedTargets.stream().map(Resolved::target).collect(Collectors.toSet());
+        Set<ResourceDescriptor> targets = resolvedTargets.stream().map(ResolvedTarget::target).collect(Collectors.toSet());
         Map<ResourceDescriptor, Set<ResourceAccessType>> initiatorAccessByTarget =
                 proxy.getAccessService().lookupInitiatorPermissions(targets, context);
-        for (Resolved resolved : resolvedTargets) {
+        for (ResolvedTarget resolved : resolvedTargets) {
             Set<ResourceAccessType> initiatorAccess = initiatorAccessByTarget.getOrDefault(resolved.target(), Set.of());
             if (initiatorAccess.containsAll(resolved.access())) {
                 bakeGrant(resolved.target(), resolved.access());
-                granted.add(entryOf(resolved.dependency()));
+                granted.add(resolved.dependency());
             } else {
-                // The user cannot reach the target with the declared rights — the record simply
-                // does not grant; it does not fail the call unless required.
                 trackUnresolved(resolved.dependency(), unresolvedDeps, requiredFailures);
             }
         }
         return granted;
     }
 
-    private record Resolved(ResourceDependency dependency, ResourceDescriptor target, Set<ResourceAccessType> access) {
+    private record ResolvedTarget(ResourceDependency dependency, ResourceDescriptor target, Set<ResourceAccessType> access) {
     }
 
     private void bakeGrant(ResourceDescriptor target, Set<ResourceAccessType> requestedAccess) {
@@ -152,38 +143,17 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
         unresolvedDeps.add(dependency);
     }
 
-    private static List<Consent.ResourceEntry> entriesOf(List<ResourceDependency> dependencies) {
-        List<Consent.ResourceEntry> entries = new ArrayList<>(dependencies.size());
-        for (ResourceDependency dependency : dependencies) {
-            entries.add(entryOf(dependency));
-        }
-        return entries;
-    }
-
-    private static Consent.ResourceEntry entryOf(ResourceDependency dependency) {
-        Consent.ResourceEntry entry = new Consent.ResourceEntry();
-        if (dependency.getTarget() != null) {
-            entry.setUrl(dependency.getTarget().getPath());
-        }
-        if (dependency.getAccess() != null) {
-            entry.setAccess(new HashSet<>(dependency.getAccess()));
-        }
-        return entry;
-    }
-
     /** The dependency's requested rights, or null when the record cannot be granted at all. */
     @Nullable
     private static Set<ResourceAccessType> requestedAccessOf(@Nullable ResourceDependency dependency) {
         if (dependency == null || !ResourceDependency.KIND.equals(dependency.getKind())) {
-            // Wrong or missing kind is not a resource link — unresolvable (config-file apps bypass
-            // write-time validation, so the read side enforces the same vocabulary).
+            // a wrong kind is not a resource link
             return null;
         }
         if (dependency.getAccess() == null || dependency.getAccess().isEmpty()) {
             return null;
         }
-        // Only READ and WRITE are dependency rights; anything else (SHARE, future vocabulary that
-        // bypassed write-time validation) makes the record unresolvable.
+        // only READ and WRITE are dependency rights
         for (ResourceAccessType access : dependency.getAccess()) {
             if (access != ResourceAccessType.READ && access != ResourceAccessType.WRITE) {
                 return null;

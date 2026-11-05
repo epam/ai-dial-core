@@ -12,6 +12,7 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.RequiredArgsConstructor;
 
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -40,13 +41,13 @@ public class ResourceDependencyValidator {
      * Stands for the initiator's bucket; valid only as the bucket segment. Braces cannot occur in a real bucket
      * (Base58) or a stored name (ResourceDescriptorFactory rejects them), so the token never collides with either.
      */
-    public static final String CURRENT_USER_PLACEHOLDER = "{current-user}";
+    private static final String CURRENT_USER_PLACEHOLDER = "{current-user}";
 
     /**
      * The resource types a declaration may address (segment 0); ResourceTypes.of() also maps internal
      * engine types (credentials, keys, models, …), which are never declarable.
      */
-    public static final Set<String> DECLARABLE_RESOURCE_TYPES =
+    private static final Set<String> DECLARABLE_RESOURCE_TYPES =
             Set.of("files", "prompts", "conversations", "applications", "toolsets", "skills");
 
     private static final String DECLARABLE_TYPES_LIST = String.join(", ", new TreeSet<>(DECLARABLE_RESOURCE_TYPES));
@@ -185,8 +186,14 @@ public class ResourceDependencyValidator {
         ResourceDescriptor target;
         try {
             target = factoryCall.get();
-        } catch (RuntimeException e) {
+        } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("target is not a valid resource url", e);
+        } catch (RuntimeException e) {
+            // UrlUtil.decodePath wraps a malformed URI this way; anything else is a defect, not bad input
+            if (e.getCause() instanceof URISyntaxException) {
+                throw new IllegalArgumentException("target is not a valid resource url", e);
+            }
+            throw e;
         }
         List<String> elements = new ArrayList<>(target.getParentFolders());
         if (target.getName() != null) {

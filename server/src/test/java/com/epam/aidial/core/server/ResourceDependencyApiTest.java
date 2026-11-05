@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.data.Rule;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
@@ -9,14 +10,14 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * End-to-end resolution scenarios: the consented flow, the two failure modes distinguished
  * (required vs optional without consent), content binding on declaration change, an
  * interceptor-protected app, and the audit fields. Scenarios run on the chat-completions path; the
- * Anthropic-Messages and Responses sites share the identical chain position (see
- * {@code ResourceDependencyResolutionApiTest} for the full happy-path walk).
+ * consented and required-without-consent flows also on Anthropic Messages and the Responses API.
  */
 public class ResourceDependencyApiTest extends ResourceBaseTest {
 
@@ -32,6 +33,10 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
         return send(HttpMethod.PUT, "/v1/applications/public/dep-e2e-app", null, """
                 {
                   "endpoint": "http://localhost:4849/chat/completions",
+                  "interfaces": {
+                    "anthropicMessages": {"base_url": "http://localhost:4849"},
+                    "openaiResponses": {"base_url": "http://localhost:4849"}
+                  },
                   "display_name": "Dependency E2E App",
                   "resource_dependencies": [%s]
                 }
@@ -58,6 +63,59 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
                     null, """
                     {"messages":[{"role":"user","content":"how are you?"}]}
                     """, "authorization", "user", "Content-Type", "application/json");
+        }
+    }
+
+    private static final String REQUIRED_WRITE_PROMPTS = """
+            {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"path": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
+            """;
+
+    private static final String MESSAGES_BODY = """
+            {"model": "applications/public/dep-e2e-app", "max_tokens": 10, "messages": [{"role": "user", "content": "hi"}]}""";
+
+    private static final String RESPONSES_BODY = """
+            {"model": "applications/public/dep-e2e-app", "input": "hi"}""";
+
+    private static final List<List<String>> MESSAGES_AND_RESPONSES = List.of(
+            List.of("/anthropic/v1/messages", MESSAGES_BODY),
+            List.of("/openai/v1/responses", RESPONSES_BODY));
+
+    /** A call to the declaring app through {@code ingressPath}; the upstream exercises the declared target with the app's key. */
+    private Response call(String ingressPath, String body, AtomicReference<Integer> targetStatus, String targetPath) {
+        try (TestWebServer server = new TestWebServer(4849)) {
+            server.map(HttpMethod.POST, ingressPath, request -> {
+                targetStatus.set(send(HttpMethod.PUT, targetPath, null, PROMPT_BODY, "api-key", request.getHeader("Api-Key")).status());
+                return TestWebServer.createResponse(200, "{}", "Content-Type", "application/json");
+            });
+            return send(HttpMethod.POST, ingressPath, null, body,
+                    "authorization", "user", "Content-Type", "application/json", "anthropic-version", "2023-06-01");
+        }
+    }
+
+    @Test
+    void testConsentedFlowOnMessagesAndResponses() {
+        verify(putDeclaringApp(REQUIRED_WRITE_PROMPTS), 200);
+        verify(grantConsent(), 200);
+        String target = "/v1/prompts/%s/dep-smoke/prompt-by-app".formatted(userBucket());
+
+        for (List<String> entry : MESSAGES_AND_RESPONSES) {
+            AtomicReference<Integer> targetStatus = new AtomicReference<>();
+            Response response = call(entry.get(0), entry.get(1), targetStatus, target);
+            assertEquals(200, response.status(), () -> entry.get(0) + ": " + response.body());
+            assertEquals(200, targetStatus.get(), entry.get(0) + ": the consented target must be writable by the app's key");
+        }
+    }
+
+    @Test
+    void testRequiredDependencyWithoutConsentFailsMessagesAndResponses() {
+        verify(putDeclaringApp(REQUIRED_WRITE_PROMPTS), 200);
+        String target = "/v1/prompts/%s/dep-smoke/prompt-by-app".formatted(userBucket());
+
+        for (List<String> entry : MESSAGES_AND_RESPONSES) {
+            AtomicReference<Integer> targetStatus = new AtomicReference<>();
+            Response response = call(entry.get(0), entry.get(1), targetStatus, target);
+            assertEquals(403, response.status(), () -> entry.get(0) + ": " + response.body());
+            assertNull(targetStatus.get(), entry.get(0) + ": the upstream must never be reached when a required dependency fails");
         }
     }
 
@@ -107,7 +165,7 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
 
         AtomicReference<Integer> withdrawnStatus = new AtomicReference<>();
         Response afterWithdrawal = chat(withdrawnStatus, "/v1/prompts/%s/dep-smoke/prompt-by-app".formatted(bucket));
-        assertEquals(403, afterWithdrawal.status(), "withdrawal stops the run immediately for a required dependency");
+        assertEquals(403, afterWithdrawal.status(), "after withdrawal the next call fails for a required dependency");
     }
 
     @Test
@@ -131,34 +189,45 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
 
     @Test
     void testPublicTargetGrantFollowsTheUsersOwnReach() {
-        // Pointer semantics, end to end (D-04): the declaration adds visibility and consent, never
-        // access — the app's key reaches a public target exactly when the originating user does.
+        // a public target resolves only as far as the user's own publication rules reach — the declaration never widens it
+        verify(upload(HttpMethod.PUT, "/v1/files/public/dep-open/some.txt", null, "open", "authorization", "admin"), 200);
+        verify(upload(HttpMethod.PUT, "/v1/files/public/dep-restricted/some.txt", null, "restricted", "authorization", "admin"), 200);
+        Rule adminsOnly = new Rule();
+        adminsOnly.setSource("roles");
+        adminsOnly.setFunction(Rule.Function.EQUAL);
+        adminsOnly.setTargets(List.of("admin"));
+        dial.getProxy().getRuleService().storeRules("public/dep-restricted/", List.of(adminsOnly));
+
         verify(putDeclaringApp("""
-                {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"path": "files/public/dep-public/"}, "access": ["read"], "required": false}
+                {"kind": "dial.resourceLink", "link_id": "lnk_open", "target": {"path": "files/public/dep-open/"}, "access": ["read"]},
+                {"kind": "dial.resourceLink", "link_id": "lnk_restricted", "target": {"path": "files/public/dep-restricted/"}, "access": ["read"]}
                 """), 200);
         verify(grantConsent(), 200);
 
-        int userDirect = send(HttpMethod.GET, "/v1/files/public/dep-public/some.txt", null, "",
-                "authorization", "user").status();
+        AtomicReference<Integer> openViaApp = new AtomicReference<>();
+        AtomicReference<Integer> restrictedViaApp = new AtomicReference<>();
+        List<String> events = captureAuditEvents("applications/public/dep-e2e-app", () -> {
+            try (TestWebServer server = new TestWebServer(4849)) {
+                server.map(HttpMethod.POST, "/chat/completions", request -> {
+                    String key = request.getHeader("Api-Key");
+                    openViaApp.set(send(HttpMethod.GET, "/v1/files/public/dep-open/some.txt", null, "", "api-key", key).status());
+                    restrictedViaApp.set(send(HttpMethod.GET, "/v1/files/public/dep-restricted/some.txt", null, "", "api-key", key).status());
+                    return TestWebServer.createResponse(200, "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"choices\":[]}",
+                            "Content-Type", "application/json");
+                });
+                verify(send(HttpMethod.POST, "/openai/deployments/applications/public/dep-e2e-app/chat/completions", null, """
+                        {"messages":[{"role":"user","content":"how are you?"}]}
+                        """, "authorization", "user", "Content-Type", "application/json"), 200);
+            }
+        });
 
-        AtomicReference<Integer> viaApp = new AtomicReference<>();
-        try (TestWebServer server = new TestWebServer(4849)) {
-            server.map(HttpMethod.POST, "/chat/completions", request -> {
-                viaApp.set(send(HttpMethod.GET, "/v1/files/public/dep-public/some.txt", null, "",
-                        "api-key", request.getHeader("Api-Key")).status());
-                return TestWebServer.createResponse(200,
-                        "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"choices\":[]}",
-                        "Content-Type", "application/json");
-            });
-            Response completion = send(HttpMethod.POST,
-                    "/openai/deployments/applications/public/dep-e2e-app/chat/completions", null, """
-                    {"messages":[{"role":"user","content":"how are you?"}]}
-                    """, "authorization", "user", "Content-Type", "application/json");
-            assertEquals(200, completion.status(), () -> "Body: " + completion.body());
-        }
-
-        assertEquals(userDirect, viaApp.get(),
-                "the app's key must see exactly what the originating user sees — no more, no less");
+        assertEquals(403, send(HttpMethod.GET, "/v1/files/public/dep-restricted/some.txt", null, "", "authorization", "user").status());
+        assertEquals(200, openViaApp.get());
+        assertEquals(403, restrictedViaApp.get(), "a consented declaration must not widen the user's own reach");
+        assertTrue(events.stream().anyMatch(e -> e.startsWith("event=resource_dependency_grant") && e.contains("targets=files/public/dep-open/")),
+                events::toString);
+        assertTrue(events.stream().anyMatch(e -> e.startsWith("event=resource_dependency_denial") && e.contains("targets=files/public/dep-restricted/")),
+                events::toString);
     }
 
     @Test
@@ -238,6 +307,7 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
         String denial = events.stream().filter(e -> e.contains("event=resource_dependency_denial")).findFirst().orElse(null);
         assertNotNull(denial, () -> "Events: " + events);
         assertTrue(denial.contains("targets=prompts/{current-user}/dep-smoke/"), denial);
+        assertTrue(denial.contains("access_types=WRITE"), denial);
         assertTrue(denial.contains("user_id=user"), denial);
         assertTrue(denial.contains("trace_id=") && !denial.contains("trace_id=,") && !denial.contains("trace_id=null"), denial);
         assertTrue(denial.contains("source_deployment=root"), denial);
@@ -247,5 +317,17 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
         assertNotNull(runtimeFail, () -> "Events: " + events);
         assertTrue(runtimeFail.contains("outcome=RUNTIME_FAIL"), runtimeFail);
         assertTrue(runtimeFail.contains("source_deployment=root"), runtimeFail);
+
+        // consented: the call succeeds and the grant is audited, by content
+        verify(grantConsent(), 200);
+        List<String> granted = captureAuditEvents("applications/public/dep-e2e-app",
+                () -> assertEquals(200, chat(new AtomicReference<>(), "/v1/prompts/%s/dep-smoke/prompt-by-app".formatted(bucket)).status()));
+        String grant = granted.stream().filter(e -> e.startsWith("event=resource_dependency_grant")).findFirst().orElse(null);
+        assertNotNull(grant, () -> "Events: " + granted);
+        assertTrue(grant.contains("targets=prompts/{current-user}/dep-smoke/"), grant);
+        assertTrue(grant.contains("access_types=WRITE"), grant);
+        assertTrue(grant.contains("user_id=user"), grant);
+        assertTrue(grant.contains("source_deployment=root"), grant);
+        assertTrue(grant.contains("trace_id=") && !grant.contains("trace_id=null"), grant);
     }
 }

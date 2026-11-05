@@ -180,7 +180,7 @@ public class ConsentService {
     private static boolean matches(ConsentGrant stored, List<ResourceDependency> declaration) {
         // fail closed on a record without a snapshot
         return stored != null && stored.getConsent() != null
-                && Objects.equals(stored.getConsent().getResources(), resourceEntriesOf(declaration));
+                && Objects.equals(stored.getConsent().getResources(), Consent.toResourceEntries(declaration));
     }
 
     private Application requireDeclaringApplication(ProxyContext context, String deploymentId) {
@@ -201,31 +201,12 @@ public class ConsentService {
 
     private static Consent adminConsentOf(List<ResourceDependency> declaration) {
         Consent consent = new Consent();
-        consent.setResources(resourceEntriesOf(declaration));
+        consent.setResources(Consent.toResourceEntries(declaration));
         return consent;
     }
 
     private static List<Consent.ResourceEntry> resourceEntriesOf(Deployment deployment) {
-        return deployment instanceof Application application ? resourceEntriesOf(application.getResourceDependencies()) : List.of();
-    }
-
-    /** Declaration order is part of the content binding: a reordered section re-requires consent. */
-    private static List<Consent.ResourceEntry> resourceEntriesOf(List<ResourceDependency> declaration) {
-        if (declaration == null || declaration.isEmpty()) {
-            return List.of();
-        }
-        List<Consent.ResourceEntry> entries = new ArrayList<>(declaration.size());
-        for (ResourceDependency dependency : declaration) {
-            if (dependency == null) {
-                // Config-file apps bypass write-time validation — a null entry is skipped, never a crash.
-                continue;
-            }
-            Consent.ResourceEntry entry = new Consent.ResourceEntry();
-            entry.setUrl(dependency.getTarget() == null ? null : dependency.getTarget().getPath());
-            entry.setAccess(dependency.getAccess() == null ? Set.of() : dependency.getAccess());
-            entries.add(entry);
-        }
-        return entries;
+        return deployment instanceof Application application ? Consent.toResourceEntries(application.getResourceDependencies()) : List.of();
     }
 
     /**
