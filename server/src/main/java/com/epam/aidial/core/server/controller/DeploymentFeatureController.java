@@ -250,7 +250,6 @@ public class DeploymentFeatureController {
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
         ProxyUtil.setOverrideNameHeader(proxyRequest, deployment);
         if (deployment instanceof Router) {
-            proxyRequest.putHeader(HEADER_USER_INFO, ProxyUtil.buildUserInfoHeader(context));
             if (context.getRouterPropertiesHeader() != null) {
                 proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, context.getRouterPropertiesHeader());
             }

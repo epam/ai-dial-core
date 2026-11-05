@@ -3,7 +3,6 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.InterfacePathMapping;
 import com.epam.aidial.core.config.InterfaceType;
-import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -220,8 +219,7 @@ public class ResponseItemController implements Controller {
     }
 
     private Future<Void> sendRequest(ResponseMapping mapping, String targetUrl, Upstream upstream, String perRequestKey) {
-        String userInfo = context.getDeployment() instanceof Router ? ProxyUtil.buildUserInfoHeader(context) : null;
-        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, perRequestKey, userInfo)
+        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, perRequestKey)
                 .compose(response -> {
                     context.setProxyResponse(response);
                     String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);

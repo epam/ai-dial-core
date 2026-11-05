@@ -459,7 +459,6 @@ public class BaseDeploymentPostController {
         }
 
         if (context.getDeployment() instanceof Router) {
-            proxyRequest.putHeader(HEADER_USER_INFO, ProxyUtil.buildUserInfoHeader(context));
             // a translator calls Core back on the router's own interface, and that pass carries the properties
             if (context.getRouterPropertiesHeader() != null
                     && DeploymentEndpointUtil.resolveMode(context.getDeployment(), type) != InterfaceMode.TRANSLATOR) {
@@ -535,18 +534,38 @@ public class BaseDeploymentPostController {
         }
         DeploymentInterface entry = router.getInterfaces().get(type.getValue());
         boolean withBody = entry.getContext() != null && Boolean.TRUE.equals(entry.getContext().getBody());
-        return (withBody ? body : Future.<Buffer>succeededFuture(null)).compose(bytes -> {
-            long start = System.currentTimeMillis();
-            return RouterDecisionClient.decide(context, router, entry, type, bytes).map(candidates -> {
-                for (String candidate : candidates) {
-                    if (context.getConfig().getRouters().containsKey(candidate)) {
-                        throw new HttpException(HttpStatus.BAD_GATEWAY, "A router cannot be a routing candidate: " + candidate);
+        // the span first: calls the router makes with the decide key roll up into it, and the candidate's pass re-enters it
+        return (withBody ? body : Future.<Buffer>succeededFuture(null))
+                .compose(bytes -> proxy.getTokenStatsTracker().startSpan(context)
+                        .compose(ignore -> proxy.getTaskExecutor().submit(() -> mintDecideKey(entry)))
+                        .compose(key -> decide(router, entry, type, bytes, key)));
+    }
+
+    /**
+     * The key the router may call Core with while it decides: the caller's identity and rights, the router last in
+     * its path. It lives only as long as the decide call, so it is not the context's proxy key.
+     */
+    private ApiKeyData mintDecideKey(DeploymentInterface entry) {
+        ApiKeyData key = new ApiKeyData();
+        ApiKeyData.initFromContext(key, context);
+        proxy.getApiKeyStore().assignPerRequestApiKey(key, RouterDecisionClient.keyTtl(entry));
+        return key;
+    }
+
+    private Future<Boolean> decide(Router router, DeploymentInterface entry, InterfaceType type, Buffer bytes, ApiKeyData key) {
+        long start = System.currentTimeMillis();
+        return RouterDecisionClient.decide(context, router, entry, type, bytes, key.getPerRequestKey())
+                .onComplete(ignore -> proxy.getApiKeyStore().invalidatePerRequestApiKey(key)
+                        .onFailure(error -> log.error("error occurred on invalidating the decide request key", error)))
+                .map(candidates -> {
+                    for (String candidate : candidates) {
+                        if (context.getConfig().getRouters().containsKey(candidate)) {
+                            throw new HttpException(HttpStatus.BAD_GATEWAY, "A router cannot be a routing candidate: " + candidate);
+                        }
                     }
-                }
-                context.setDecision(new RouterDecision(router.getName(), type, candidates, System.currentTimeMillis() - start));
-                return true;
-            });
-        });
+                    context.setDecision(new RouterDecision(router.getName(), type, candidates, System.currentTimeMillis() - start));
+                    return true;
+                });
     }
 
     @SneakyThrows

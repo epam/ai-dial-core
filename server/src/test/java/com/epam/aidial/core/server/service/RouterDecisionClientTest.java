@@ -3,7 +3,6 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
-import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -55,13 +54,9 @@ class RouterDecisionClientTest {
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions().setConnectTimeout(5000));
         HttpServerRequest request = mock(HttpServerRequest.class);
         when(request.headers()).thenReturn(clientHeaders);
-        Key key = new Key();
-        key.setProject("p1");
         context = mock(ProxyContext.class);
         when(context.getProxy()).thenReturn(proxy);
         when(context.getRequest()).thenReturn(request);
-        when(context.getKey()).thenReturn(key);
-        when(context.getUserRoles()).thenReturn(List.of("default"));
     }
 
     @AfterEach
@@ -78,10 +73,10 @@ class RouterDecisionClientTest {
     }
 
     @Test
-    void shorthandReadAsOneCandidate() throws Exception {
+    void shorthandNoLongerRead() {
         server.enqueue(json(200, "{\"deployment\": \"a\", \"ttl\": 60}"));
 
-        assertEquals(List.of("a"), decide(entry(null), null));
+        assertEquals(502, failure(entry(null)).getStatus().getCode());
     }
 
     @Test
@@ -122,7 +117,7 @@ class RouterDecisionClientTest {
 
     @Test
     void slowRouterAnswered504() {
-        server.enqueue(json(200, "{\"deployment\": \"a\"}").setHeadersDelay(2, TimeUnit.SECONDS));
+        server.enqueue(json(200, "{\"candidates\": [\"a\"]}").setHeadersDelay(2, TimeUnit.SECONDS));
         DeploymentInterface entry = entry(null);
         entry.setDecisionTimeoutMs(100L);
 
@@ -143,20 +138,20 @@ class RouterDecisionClientTest {
 
     @Test
     void decideRequestHeaders() throws Exception {
-        server.enqueue(json(200, "{\"deployment\": \"a\"}"));
+        server.enqueue(json(200, "{\"candidates\": [\"a\"]}"));
         clientHeaders.add("Authorization", "Bearer secret").add("X-DIAL-USER-INFO", "forged").add("api-key", "p1-key")
                 .add("X-CONVERSATION-ID", "c1").add("X-DIAL-ROUTER-TIER", "high");
         Router router = router(Map.of("X-DIAL-ROUTER-TIER", "medium", "X-DEFAULT", "d"));
 
-        RouterDecisionClient.decide(context, router, entry(null), InterfaceType.ANTHROPIC_MESSAGES, null)
+        RouterDecisionClient.decide(context, router, entry(null), InterfaceType.ANTHROPIC_MESSAGES, null, "decide-key")
                 .toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
 
         RecordedRequest request = server.takeRequest(5, TimeUnit.SECONDS);
         assertEquals("POST", request.getMethod());
         assertEquals("/decide", request.getPath());
         assertNull(request.getHeader("Authorization"));
-        assertNull(request.getHeader("api-key"));
-        assertEquals("{\"roles\":[\"default\"],\"project\":\"p1\"}", request.getHeader("X-DIAL-USER-INFO"));
+        assertEquals("decide-key", request.getHeader("api-key"));
+        assertNull(request.getHeader("X-DIAL-USER-INFO"));
         assertEquals("c1", request.getHeader("X-CONVERSATION-ID"));
         assertEquals("high", request.getHeader("X-DIAL-ROUTER-TIER"));
         assertEquals("d", request.getHeader("X-DEFAULT"));
@@ -166,7 +161,7 @@ class RouterDecisionClientTest {
     }
 
     private List<String> decide(DeploymentInterface entry, Buffer body) throws Exception {
-        return RouterDecisionClient.decide(context, router(Map.of()), entry, InterfaceType.OPENAI_CHAT_COMPLETIONS, body)
+        return RouterDecisionClient.decide(context, router(Map.of()), entry, InterfaceType.OPENAI_CHAT_COMPLETIONS, body, "decide-key")
                 .toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
     }
 

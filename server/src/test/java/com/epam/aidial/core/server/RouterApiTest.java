@@ -12,6 +12,7 @@ import org.mockito.Mockito;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -22,7 +23,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * A router is served like an application on every API that accepts a model id, is never limit-checked itself,
- * receives the caller's identity in {@code X-DIAL-USER-INFO}, and is listed only by {@code /v1/routers}.
+ * gets the caller's identity from {@code GET /v1/user/info} with its key, and is listed by {@code /v1/routers} and
+ * the generic {@code /v1/deployments} listings.
  */
 class RouterApiTest extends ResourceBaseTest {
 
@@ -147,66 +149,50 @@ class RouterApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void jwtCaller() throws Exception {
+    void jwtCallerIdentityThroughTheKey() throws Exception {
         stubJwt("u1-token", "u1");
         List<RecordedRequest> received = Collections.synchronizedList(new ArrayList<>());
-        try (TestWebServer server = new TestWebServer(4848, recording(received, COMPLETION))) {
+        AtomicReference<String> userInfo = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848, askingUserInfo(received, userInfo))) {
             verify(send(HttpMethod.POST, "/openai/deployments/r1/chat/completions", null, CHAT_BODY,
                     "authorization", "u1-token", USER_INFO, "{\"roles\": [\"admin\"]}", "content-type", "application/json"), 200);
         }
-        List<String> values = received.getFirst().getHeaders().values(USER_INFO);
-        assertEquals(1, values.size(), values.toString());
-        JsonNode userInfo = ProxyUtil.MAPPER.readTree(values.getFirst());
-        assertEquals("u1", userInfo.get("userId").asText());
-        assertEquals(List.of("analysts", "b"), ProxyUtil.MAPPER.convertValue(userInfo.get("roles"), List.class));
-        assertNull(userInfo.get("project"));
+        assertNull(received.getFirst().getHeader(USER_INFO));
+        JsonNode info = ProxyUtil.MAPPER.readTree(userInfo.get());
+        assertEquals("u1", info.get("userId").asText());
+        assertEquals(List.of("analysts", "b"), ProxyUtil.MAPPER.convertValue(info.get("roles"), List.class));
     }
 
     @Test
     @DialConfigLocation(CONFIG)
-    void nonAsciiUserIdIsEscaped() throws Exception {
-        stubJwt("u2-token", "Jürgen");
+    void projectKeyCallerIdentityThroughTheKey() throws Exception {
         List<RecordedRequest> received = Collections.synchronizedList(new ArrayList<>());
-        try (TestWebServer server = new TestWebServer(4848, recording(received, COMPLETION))) {
+        AtomicReference<String> userInfo = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848, askingUserInfo(received, userInfo))) {
             verify(send(HttpMethod.POST, "/openai/deployments/r1/chat/completions", null, CHAT_BODY,
-                    "authorization", "u2-token", "content-type", "application/json"), 200);
+                    "api-key", "proxyKey1", USER_INFO, "{\"roles\": [\"admin\"]}", "content-type", "application/json"), 200);
         }
-        String header = received.getFirst().getHeaders().get(USER_INFO);
-        assertTrue(header.contains("J\\u00FCrgen"), header);
-        assertEquals("Jürgen", ProxyUtil.MAPPER.readTree(header).get("userId").asText());
+        assertNull(received.getFirst().getHeader(USER_INFO));
+        JsonNode info = ProxyUtil.MAPPER.readTree(userInfo.get());
+        assertEquals("p1", info.get("project").asText());
+        assertEquals(List.of("analysts"), ProxyUtil.MAPPER.convertValue(info.get("roles"), List.class));
     }
 
     @Test
     @DialConfigLocation(CONFIG)
-    void projectKeyCaller() throws Exception {
-        List<RecordedRequest> received = Collections.synchronizedList(new ArrayList<>());
-        try (TestWebServer server = new TestWebServer(4848, recording(received, COMPLETION))) {
-            verify(send(HttpMethod.POST, "/openai/deployments/r2/chat/completions", null, CHAT_BODY,
-                    "api-key", "proxyKey2", "content-type", "application/json"), 200);
-        }
-        JsonNode userInfo = ProxyUtil.MAPPER.readTree(received.getFirst().getHeaders().get(USER_INFO));
-        assertEquals("p2", userInfo.get("project").asText());
-        assertEquals(List.of("default"), ProxyUtil.MAPPER.convertValue(userInfo.get("roles"), List.class));
-        assertNull(userInfo.get("userId"));
-    }
-
-    @Test
-    @DialConfigLocation(CONFIG)
-    void featureEndpointCallCarriesTheIdentityHeader() throws Exception {
+    void featureEndpointCallCarriesNoIdentityHeader() {
         List<RecordedRequest> received = Collections.synchronizedList(new ArrayList<>());
         try (TestWebServer server = new TestWebServer(4848, recording(received, "{}"))) {
             verify(send(HttpMethod.POST, "/v1/r2/rate", null, "{}", USER_INFO, "{\"roles\": [\"admin\"]}",
                     "content-type", "application/json"), 200);
         }
         assertEquals("/rate", received.getFirst().getPath());
-        List<String> values = received.getFirst().getHeaders().values(USER_INFO);
-        assertEquals(1, values.size(), values.toString());
-        assertEquals("p1", ProxyUtil.MAPPER.readTree(values.getFirst()).get("project").asText());
+        assertNull(received.getFirst().getHeader(USER_INFO));
     }
 
     @Test
     @DialConfigLocation(CONFIG)
-    void responseItemCallCarriesTheIdentityHeader() throws Exception {
+    void responseItemCallCarriesNoIdentityHeader() throws Exception {
         List<RecordedRequest> received = Collections.synchronizedList(new ArrayList<>());
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/openai/v1/responses", recording(received,
@@ -217,14 +203,25 @@ class RouterApiTest extends ResourceBaseTest {
             verify(created, 200);
             String dialId = ProxyUtil.MAPPER.readTree(created.body()).get("id").asText();
 
-            verify(send(HttpMethod.GET, "/openai/v1/responses/" + dialId, null, null), 200);
+            verify(send(HttpMethod.GET, "/openai/v1/responses/" + dialId, null, null, USER_INFO, "{\"roles\": [\"admin\"]}"), 200);
         }
         assertEquals(2, received.size());
         RecordedRequest get = received.get(1);
         assertEquals("/openai/v1/responses/resp_1", get.getPath());
-        List<String> values = get.getHeaders().values(USER_INFO);
-        assertEquals(1, values.size(), values.toString());
-        assertEquals("p1", ProxyUtil.MAPPER.readTree(values.getFirst()).get("project").asText());
+        assertNull(get.getHeader(USER_INFO));
+        assertNotNull(get.getHeader("api-key"));
+    }
+
+    /**
+     * A router that, like the Go router, asks Core who the caller is with the key it received.
+     */
+    private TestWebServer.Handler askingUserInfo(List<RecordedRequest> received, AtomicReference<String> userInfo) {
+        return request -> {
+            received.add(request);
+            Response info = send(HttpMethod.GET, "/v1/user/info", null, null, "api-key", request.getHeader("api-key"));
+            userInfo.set(info.body());
+            return TestWebServer.createResponse(200, COMPLETION, "content-type", "application/json");
+        };
     }
 
     @Test
@@ -369,13 +366,70 @@ class RouterApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void routerHiddenFromTheModelAndDeploymentListings() {
-        for (String listing : List.of("/openai/models", "/openai/deployments", "/openai/applications", "/v1/deployments",
-                "/v1/deployment-names", "/anthropic/v1/models")) {
+        for (String listing : List.of("/openai/models", "/openai/deployments", "/openai/applications", "/anthropic/v1/models")) {
             Response response = send(HttpMethod.GET, listing, null, null);
             verify(response, 200);
             assertFalse(response.body().contains("\"r1\""), listing + ": " + response.body());
         }
-        verify(send(HttpMethod.GET, "/v1/deployments/r1", null, null), 404);
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void routerInTheDeploymentListing() throws Exception {
+        Response response = send(HttpMethod.GET, "/v1/deployments", null, null, "api-key", "proxyKey2");
+
+        verify(response, 200);
+        JsonNode r2 = entry(ProxyUtil.MAPPER.readTree(response.body()), "r2");
+        assertNotNull(r2, response.body());
+        assertEquals("router", r2.get("object").asText());
+        assertTrue(ProxyUtil.MAPPER.convertValue(r2.get("interfaces"), List.class).contains("chat"), r2.toString());
+        assertFalse(r2.has("base_url"), r2.toString());
+        assertFalse(r2.has("endpoint"), r2.toString());
+        assertNull(entry(ProxyUtil.MAPPER.readTree(response.body()), "r1"), "r1 is closed to the default role");
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void routerInterfaceFilter() throws Exception {
+        for (String type : List.of("embedding", "mcp")) {
+            Response response = send(HttpMethod.GET, "/v1/deployments", "interface_type=" + type, null, "api-key", "proxyKey2");
+            verify(response, 200);
+            assertNull(entry(ProxyUtil.MAPPER.readTree(response.body()), "r2"), type + ": " + response.body());
+        }
+        Response embedding = send(HttpMethod.GET, "/v1/deployments", "interface_type=embedding", null, "api-key", "proxyKey1");
+        assertNotNull(entry(ProxyUtil.MAPPER.readTree(embedding.body()), "r1"), "r1 declares openaiEmbeddings: " + embedding.body());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void routerNames() throws Exception {
+        Response routers = send(HttpMethod.GET, "/v1/deployment-names", "type=router", null, "api-key", "proxyKey2");
+        verify(routers, 200);
+        assertEquals(ProxyUtil.MAPPER.readTree("[{\"id\": \"r2\", \"object\": \"router\"}]"), ProxyUtil.MAPPER.readTree(routers.body()));
+
+        Response all = send(HttpMethod.GET, "/v1/deployment-names", null, null, "api-key", "proxyKey2");
+        verify(all, 200);
+        assertTrue(all.body().contains("{\"id\":\"r2\",\"object\":\"router\"}"), all.body());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void singleRouterThroughDeploymentInfo() throws Exception {
+        verify(send(HttpMethod.GET, "/v1/deployments/r1", null, null, "api-key", "proxyKey2"), 403);
+
+        Response r2 = send(HttpMethod.GET, "/v1/deployments/r2", null, null, "api-key", "proxyKey2");
+        verify(r2, 200);
+        assertEquals("router", ProxyUtil.MAPPER.readTree(r2.body()).get("object").asText());
+    }
+
+    private static JsonNode entry(JsonNode list, String id) {
+        JsonNode items = list.isArray() ? list : list.get("data");
+        for (JsonNode item : items) {
+            if (id.equals(item.path("id").asText())) {
+                return item;
+            }
+        }
+        return null;
     }
 
     private Response sendMessages() {

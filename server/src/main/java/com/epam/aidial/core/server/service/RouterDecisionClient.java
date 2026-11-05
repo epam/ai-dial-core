@@ -23,6 +23,7 @@ import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +44,19 @@ import static com.epam.aidial.core.server.Proxy.HEADER_USER_INFO;
 public class RouterDecisionClient {
 
     static final long DEFAULT_TIMEOUT_MS = 5000;
+    // a decide key outlives its call only when Core dies before invalidating it: then it expires soon after
+    private static final long KEY_TTL_SLACK_MS = 60_000;
+
+    /**
+     * The TTL of the decide request's key: the decision budget plus a minute.
+     */
+    public Duration keyTtl(DeploymentInterface entry) {
+        return Duration.ofMillis(timeoutMs(entry) + KEY_TTL_SLACK_MS);
+    }
+
+    private long timeoutMs(DeploymentInterface entry) {
+        return entry.getDecisionTimeoutMs() == null ? DEFAULT_TIMEOUT_MS : entry.getDecisionTimeoutMs();
+    }
 
     /**
      * The candidates in order of preference. Fails with the {@link HttpException} Core answers the client:
@@ -51,11 +65,12 @@ public class RouterDecisionClient {
      * content type for a 4xx.
      *
      * @param body the client's body bytes to send, or null to send an empty body
+     * @param apiKey the decide request's per-request key, sent as {@code API-KEY}
      */
     public Future<List<String>> decide(ProxyContext context, Router router, DeploymentInterface entry, InterfaceType type,
-                                       @Nullable Buffer body) {
+                                       @Nullable Buffer body, String apiKey) {
         Proxy proxy = context.getProxy();
-        long timeoutMs = entry.getDecisionTimeoutMs() == null ? DEFAULT_TIMEOUT_MS : entry.getDecisionTimeoutMs();
+        long timeoutMs = timeoutMs(entry);
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(entry.getBaseUrl())
                 .setMethod(HttpMethod.POST)
@@ -71,7 +86,7 @@ public class RouterDecisionClient {
                 .compose(request -> {
                     // past the deadline the client has its 504: the router's connection is not kept open
                     verdict.future().onFailure(ignore -> request.reset());
-                    return send(context, router, type, request, body);
+                    return send(context, router, type, request, body, apiKey);
                 })
                 .compose(response -> response.body().map(answer -> parseVerdict(response, answer)))
                 .onComplete(result -> {
@@ -87,7 +102,7 @@ public class RouterDecisionClient {
     }
 
     private Future<HttpClientResponse> send(ProxyContext context, Router router, InterfaceType type, HttpClientRequest request,
-                                            @Nullable Buffer body) {
+                                            @Nullable Buffer body, String apiKey) {
         // the exclusions sendProxyRequest makes for every origin
         MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
         if (!router.isForwardAuthToken()) {
@@ -105,10 +120,10 @@ public class RouterDecisionClient {
                 headers.set(name, value);
             }
         });
-        headers.set(HEADER_USER_INFO, ProxyUtil.buildUserInfoHeader(context));
         if (context.getRouterPropertiesHeader() != null) {
             headers.set(HEADER_APPLICATION_PROPERTIES, context.getRouterPropertiesHeader());
         }
+        headers.set(Proxy.HEADER_API_KEY, apiKey);
         headers.set(Proxy.HEADER_ROUTER, router.getName());
         headers.set(Proxy.HEADER_API, type.getValue());
         if (body == null) {
@@ -147,8 +162,6 @@ public class RouterDecisionClient {
         JsonNode list = tree.path("candidates");
         if (list.isArray()) {
             list.forEach(candidate -> candidates.add(candidate.isTextual() ? candidate.asText() : ""));
-        } else if (tree.path("deployment").isTextual()) {
-            candidates.add(tree.path("deployment").asText());
         }
         if (candidates.isEmpty() || candidates.stream().anyMatch(String::isBlank)) {
             throw invalidDecision();

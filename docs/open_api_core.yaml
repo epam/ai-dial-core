@@ -5001,7 +5001,7 @@ paths:
       parameters:
       - name: type
         in: query
-        description: "Filter deployment names by kind (model, application, toolset). Defaults to all kinds."
+        description: "Filter deployment names by kind (model, application, toolset, router). Defaults to all kinds."
         required: false
         schema:
           type: array
@@ -5011,6 +5011,7 @@ paths:
             - model
             - application
             - toolset
+            - router
       responses:
         "200":
           description: Success
@@ -18372,10 +18373,12 @@ components:
           model: "#/components/schemas/ModelData"
           application: "#/components/schemas/ApplicationData"
           toolset: "#/components/schemas/ToolSetData"
+          router: "#/components/schemas/RouterData"
       oneOf:
       - $ref: "#/components/schemas/ModelData"
       - $ref: "#/components/schemas/ApplicationData"
       - $ref: "#/components/schemas/ToolSetData"
+      - $ref: "#/components/schemas/RouterData"
     DeploymentInterface:
       type: object
       properties:

@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.service.BackgroundJobService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
@@ -13,12 +14,15 @@ import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.RecordedRequest;
 import okhttp3.mockwebserver.SocketPolicy;
 import org.junit.jupiter.api.Test;
+import org.redisson.api.RedissonClient;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
@@ -66,8 +70,9 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         assertEquals("medium", decide.getHeader("X-DIAL-ROUTER-TIER"));
         assertEquals("r1", decide.getHeader("X-DIAL-ROUTER"));
         assertEquals("openaiChatCompletions", decide.getHeader("X-DIAL-API"));
-        assertEquals("p1", ProxyUtil.MAPPER.readTree(decide.getHeader("X-DIAL-USER-INFO")).get("project").asText());
-        assertNull(decide.getHeader("api-key"));
+        assertNotNull(decide.getHeader("api-key"));
+        assertNotEquals("proxyKey1", decide.getHeader("api-key"));
+        assertNull(decide.getHeader("X-DIAL-USER-INFO"));
         assertEquals(0, decide.getBodySize());
 
         RecordedRequest model = single(request -> request.getPath().startsWith("/openai/deployments/gpt-4-real/"));
@@ -87,6 +92,78 @@ class RouterDecisionApiTest extends ResourceBaseTest {
                 ProxyUtil.MAPPER.readTree(decide.getHeader("X-DIAL-APPLICATION-PROPERTIES")));
         RecordedRequest model = single(request -> request.getPath().startsWith("/openai/deployments/gpt-4/"));
         assertNull(model.getHeader("X-DIAL-APPLICATION-PROPERTIES"));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    @SneakyThrows
+    void routerAsksModelWhileDeciding() {
+        List<AnalyticsLogContext> rows = captureRows();
+        AtomicReference<String> decideKey = new AtomicReference<>();
+        AtomicInteger classification = new AtomicInteger();
+        AtomicLong ttlMs = new AtomicLong();
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if (!isDecide(request)) {
+                return answer(request);
+            }
+            String key = request.getHeader("api-key");
+            decideKey.set(key);
+            // the record's name carries the storage prefix; its last segment is the key
+            String name = redis().getKeys().getKeysStreamByPattern("*" + key).findFirst().orElseThrow();
+            ttlMs.set(redis().getBucket(name).remainTimeToLive());
+            // a classifier call, made with the decide request's key before the router answers
+            classification.set(send(HttpMethod.POST, "/openai/deployments/m1/chat/completions", null, CHAT_BODY,
+                    "api-key", key, "content-type", "application/json").status());
+            return TestWebServer.createResponse(200, "{\"candidates\": [\"gpt-4\"]}", "content-type", "application/json");
+        })) {
+            Response response = sendChat("r1");
+            verify(response, 200);
+            JsonNode usage = ProxyUtil.MAPPER.readTree(response.body()).path("statistics").path("usage_per_model");
+            List<String> models = new ArrayList<>();
+            usage.forEach(entry -> models.add(entry.path("model").asText()));
+            assertTrue(models.contains("m1"), response.body());
+        }
+        assertEquals(200, classification.get());
+        // r1 has the default 5 s decision budget: the key lives that long plus a minute, not the default 30 minutes
+        assertTrue(ttlMs.get() > 0 && ttlMs.get() <= 5_000 + 60_000, "decide key TTL " + ttlMs.get());
+        RecordedRequest served = single(request -> request.getPath().startsWith("/openai/deployments/gpt-4-real/"));
+        assertNotEquals(decideKey.get(), served.getHeader("api-key"));
+
+        for (int i = 0; i < 50 && rows.size() < 2; i++) {
+            Thread.sleep(20);
+        }
+        AnalyticsLogContext classifier = rows.stream().filter(row -> "m1".equals(row.getDeploymentName())).findFirst().orElseThrow();
+        assertEquals("r1", classifier.getParentDeployment());
+        assertNull(classifier.getDecision());
+
+        // the key is invalidated when the decide call ends; the delete is not awaited, so allow it a moment
+        int status = 0;
+        for (int i = 0; i < 50 && status != 401; i++) {
+            status = send(HttpMethod.GET, "/v1/user/info", null, null, "api-key", decideKey.get()).status();
+            if (status != 401) {
+                Thread.sleep(20);
+            }
+        }
+        assertEquals(401, status);
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void deploymentClosedToPerRequestKeysRefusesTheDecideKey() {
+        AtomicInteger closed = new AtomicInteger();
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if (!isDecide(request)) {
+                return answer(request);
+            }
+            closed.set(send(HttpMethod.POST, "/openai/deployments/m-closed/chat/completions", null, CHAT_BODY,
+                    "api-key", request.getHeader("api-key"), "content-type", "application/json").status());
+            return TestWebServer.createResponse(200, "{\"candidates\": [\"gpt-4\"]}", "content-type", "application/json");
+        })) {
+            verify(sendChat("r1"), 200);
+        }
+        assertEquals(403, closed.get());
     }
 
     @Test
@@ -120,7 +197,7 @@ class RouterDecisionApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void shorthandAccepted() {
-        verdict.set("{\"deployment\": \"gpt-4\", \"ttl\": 60}");
+        verdict.set("{\"candidates\": [\"gpt-4\"], \"ttl\": 60}");
         try (TestWebServer server = server()) {
             verify(sendChat("r1"), 200, COMPLETION);
         }
@@ -131,12 +208,12 @@ class RouterDecisionApiTest extends ResourceBaseTest {
     @DialConfigLocation(CONFIG)
     void schemaMismatch() {
         try (TestWebServer server = server()) {
-            for (String answer : List.of("{\"candidates\": []}", "{\"model\": \"gpt-4\"}", "not json")) {
+            for (String answer : List.of("{\"candidates\": []}", "{\"deployment\": \"gpt-4\"}", "{\"model\": \"gpt-4\"}", "not json")) {
                 verdict.set(answer);
                 verify(sendChat("r1"), 502);
             }
         }
-        assertEquals(3, received.size());
+        assertEquals(4, received.size());
         assertTrue(received.stream().allMatch(this::isDecide));
     }
 
@@ -663,6 +740,13 @@ class RouterDecisionApiTest extends ResourceBaseTest {
     @SneakyThrows
     private ApiKeyData readKey(String key) {
         return apiKeyStore.getApiKeyData(key, null).toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
+    }
+
+    @SneakyThrows
+    private RedissonClient redis() {
+        Field field = AiDial.class.getDeclaredField("redis");
+        field.setAccessible(true);
+        return (RedissonClient) field.get(dial);
     }
 
     @SneakyThrows

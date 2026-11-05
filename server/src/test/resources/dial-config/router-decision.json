@@ -52,6 +52,12 @@
       "baseUrl": "http://localhost:4848",
       "interfaces": {"openaiChatCompletions": {}, "anthropicMessages": {}}
     },
+    "m-closed": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "features": {"accessibleByPerRequestKey": false},
+      "interfaces": {"openaiChatCompletions": {}}
+    },
     "m2": {
       "type": "chat",
       "baseUrl": "http://localhost:4848",

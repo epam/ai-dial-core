@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.RoleBasedEntity;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -22,6 +23,7 @@ import com.epam.aidial.core.server.data.ApplicationData;
 import com.epam.aidial.core.server.data.DeploymentData;
 import com.epam.aidial.core.server.data.DeploymentNameData;
 import com.epam.aidial.core.server.data.ListData;
+import com.epam.aidial.core.server.data.RouterData;
 import com.epam.aidial.core.server.data.ToolSetData;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -58,7 +60,8 @@ public class DeploymentController {
     private static final String MODEL_TYPE = "model";
     private static final String APPLICATION_TYPE = "application";
     private static final String TOOLSET_TYPE = "toolset";
-    private static final Set<String> DEPLOYMENT_NAME_TYPES = Set.of(MODEL_TYPE, APPLICATION_TYPE, TOOLSET_TYPE);
+    private static final String ROUTER_TYPE = "router";
+    private static final Set<String> DEPLOYMENT_NAME_TYPES = Set.of(MODEL_TYPE, APPLICATION_TYPE, TOOLSET_TYPE, ROUTER_TYPE);
     private final Proxy proxy;
     private final ProxyContext context;
     private final DeploymentService.DeploymentExtractor appExtractor;
@@ -187,7 +190,7 @@ public class DeploymentController {
                     @ApiParameter(name = "type", in = ParameterIn.QUERY,
                             schema = String[].class,
                             description = OpenApiDescriptions.DEPLOYMENT_NAME_TYPES,
-                            allowableValues = {"model", "application", "toolset"})
+                            allowableValues = {"model", "application", "toolset", "router"})
             },
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = List.class, typeArguments = {DeploymentNameData.class})),
@@ -230,6 +233,9 @@ public class DeploymentController {
         if (types.contains(TOOLSET_TYPE)) {
             addAccessibleNames(names, config.getToolsets().values(), TOOLSET_TYPE);
             addNames(names, deploymentService.listDeploymentNames(context, ResourceTypes.TOOL_SET, ToolSet::new), TOOLSET_TYPE);
+        }
+        if (types.contains(ROUTER_TYPE)) {
+            addAccessibleNames(names, config.getRouters().values(), ROUTER_TYPE);
         }
         return names;
     }
@@ -279,7 +285,8 @@ public class DeploymentController {
             case Model model -> to(model);
             case Application application -> to(resolveLocalApplication(application));
             case ToolSet toolSet -> to(toolSet);
-            // interceptors and routers are deployments as well, but the deployment listing never exposes them
+            case Router router -> RouterData.toData(router);
+            // interceptors are deployments as well, but the deployment listing never exposes them
             default -> throw new ResourceNotFoundException("Deployment is not found: " + deployment.getName());
         };
     }
@@ -312,6 +319,9 @@ public class DeploymentController {
         if (plan.useToolsets) {
             futures.add(getToolSets());
         }
+        if (plan.useRouters) {
+            futures.add(getRouters(plan.routerFilters));
+        }
         return Future.all(futures);
     }
 
@@ -324,11 +334,16 @@ public class DeploymentController {
                     plan.useApplications = true;
                     plan.appFilters.add(app -> DeploymentEndpointUtil.isInterfaceDeclared(app, InterfaceType.OPENAI_CHAT_COMPLETIONS));
                     plan.modelFilters.add(model -> model.getType() == ModelType.CHAT);
+                    plan.useRouters = true;
+                    plan.routerFilters.add(router -> DeploymentEndpointUtil.isInterfaceDeclared(router, InterfaceType.OPENAI_CHAT_COMPLETIONS));
                     break;
                 }
                 case EMBEDDING_IFACE: {
                     plan.useModels = true;
                     plan.modelFilters.add(model -> model.getType() == ModelType.EMBEDDING);
+                    // unlike applications: a router that serves embeddings answers this filter
+                    plan.useRouters = true;
+                    plan.routerFilters.add(router -> DeploymentEndpointUtil.isInterfaceDeclared(router, InterfaceType.OPENAI_EMBEDDINGS));
                     break;
                 }
                 case MCP_IFACE: {
@@ -346,8 +361,10 @@ public class DeploymentController {
                     plan.useApplications = true;
                     plan.useToolsets = true;
                     plan.useModels = true;
+                    plan.useRouters = true;
                     plan.appFilters.clear();
                     plan.modelFilters.clear();
+                    plan.routerFilters.clear();
                     return plan;
                 }
                 default: {
@@ -437,6 +454,16 @@ public class DeploymentController {
         });
     }
 
+    private Future<List<DeploymentData>> getRouters(List<Predicate<Router>> filters) {
+        List<DeploymentData> deployments = new ArrayList<>();
+        for (Router router : context.getConfig().getRouters().values()) {
+            if (router.hasAccess(context.getUserRoles()) && match(filters, router)) {
+                deployments.add(RouterData.toData(router));
+            }
+        }
+        return Future.succeededFuture(deployments);
+    }
+
     private Future<List<DeploymentData>> getModels(List<Predicate<Model>> filters) {
         List<DeploymentData> deployments = new ArrayList<>();
         Config config = context.getConfig();
@@ -499,7 +526,9 @@ public class DeploymentController {
     private static class ExecutionPlan {
         List<Predicate<Model>> modelFilters = new ArrayList<>();
         List<Predicate<Application>> appFilters = new ArrayList<>();
+        List<Predicate<Router>> routerFilters = new ArrayList<>();
         boolean useToolsets;
+        boolean useRouters;
         boolean useApplications;
         boolean useModels;
     }

@@ -118,32 +118,30 @@ A router has no limits of its own. DIAL Core neither checks nor charges limits f
 
 ## Listing
 
-Routers do not appear in `GET /openai/models`, `/openai/deployments`, `/openai/applications`, `/v1/deployments`, `/v1/deployment-names` or `/anthropic/v1/models`, and `GET /v1/deployments/<router_name>` answers `404`. They have their own listing:
+Routers appear, as entries with `object: "router"`, in the generic deployment listings:
+
+* `GET /v1/deployments`, for `interface_type` `all`, `chat` (routers that declare `openaiChatCompletions`) and `embedding` (routers that declare `openaiEmbeddings`); not for `mcp` or `custom_ui`.
+* `GET /v1/deployment-names`, with `type=router` or `all`.
+* `GET /v1/deployments/{router_name}`: `403` when the caller's roles do not allow the router.
+
+They have their own listing too:
 
 * `GET /v1/routers`: `{"data": [...]}` with one entry per router the caller's roles allow.
 * `GET /v1/routers/{router_name}`: that entry; `404` for an unknown name, `403` when the caller's roles do not allow it.
 
-An entry carries `id`, `object: "router"`, `display_name`, `display_version`, `icon_url`, `description`, `intro`, `reference`, `features`, `defaults`, `description_keywords`, `created_at` and `updated_at`. It never carries the router's url.
+Routers do not appear in the model listings: `GET /openai/models`, `/openai/deployments`, `/openai/applications` and `/anthropic/v1/models`.
 
-## Identity header
+An entry carries `id`, `object: "router"`, `display_name`, `display_version`, `icon_url`, `description`, `intro`, `reference`, `features`, `defaults`, `description_keywords`, `interfaces` (`chat` and `embedding` as above, then the declared interface types), `created_at` and `updated_at`. It never carries the router's url.
 
-DIAL Core adds `X-DIAL-USER-INFO` to every request it forwards to a router, so the router need not call `GET /v1/user/info`. The value is a JSON object with the same values `GET /v1/user/info` answers the caller, without `userClaims` and `userDisplayName`:
+## Identity
 
-* `roles`: the caller's roles, always.
-* `project`: the project, for a caller with a project API key.
-* `userId`: the user id, for a caller with a JWT.
+DIAL Core sends a router the same `API-KEY` it sends an application: a per-request key, on every request it forwards and on every decide request. A router that needs the caller's identity calls `GET /v1/user/info` with that key; the answer is the caller's, as if the caller had asked (`roles`, and `project` for a project API key or `userId` and `userClaims` for a JWT).
 
-```
-X-DIAL-USER-INFO: {"roles":["analysts","b"],"userId":"u1"}
-```
-
-Non-ASCII characters are sent as JSON `\u` escapes. DIAL Core drops a client-sent `X-DIAL-USER-INFO` from the chat completions, completions, embeddings, Responses, Messages and deployment feature requests it forwards to a model, application or router, so a client cannot forge it on any request that reaches a router; an interceptor receives the client's headers as they are, and the router call after the interceptor chain carries DIAL Core's own value. The header grows with the caller's roles: a caller with several hundred roles can exceed the receiving server's header size limit.
-
-The header is only as trustworthy as the path it arrives on. A router that takes identity from `X-DIAL-USER-INFO` instead of calling `GET /v1/user/info` must accept requests from DIAL Core only: no route from outside the cluster, and a network policy that admits DIAL Core's pods where the platform offers one. Anyone else who can reach the router could send the header with roles of their choosing. A router reachable by clients should keep calling `GET /v1/user/info` with the caller's credentials.
+DIAL Core sends no identity header of its own. It drops a client-sent `X-DIAL-USER-INFO` from the chat completions, completions, embeddings, Responses, Messages, deployment feature and decide requests it sends to a model, application or router, so a router that used to trust that header cannot be given forged roles. An interceptor receives the client's headers as they are.
 
 ## Decision mode
 
-With `mode: decision` on an `interfaces` entry, DIAL Core does not forward the client's request to the router. It sends the router a small decide request, reads the answer (the verdict) and serves the request with the deployment the verdict names, in the same pass, as if the client had called that deployment. The router never calls DIAL Core back and never calls `GET /v1/user/info`. A router may declare decision mode for some interfaces and proxy others.
+With `mode: decision` on an `interfaces` entry, DIAL Core does not forward the client's request to the router. It sends the router a small decide request, reads the answer (the verdict) and serves the request with the deployment the verdict names, in the same pass, as if the client had called that deployment. While it decides, the router may call DIAL Core back with the decide request's key, for example to ask a classifier model or `GET /v1/user/info`. A router may declare decision mode for some interfaces and proxy others.
 
 The fields of a decision entry:
 
@@ -177,27 +175,21 @@ The fields of a decision entry:
 
 * The client's headers as DIAL Core forwards them to any deployment: `Authorization` only when the router has `forwardAuthToken: true`, no client `API-KEY`, no client `X-DIAL-APPLICATION-ID`, `X-DIAL-APPLICATION-PROPERTIES` or `X-DIAL-USER-INFO`.
 * The router's `defaultHeaders` for the interface, under every name the client did not send. They go on the decide request only: the chosen deployment receives its own `defaultHeaders`, as on a direct call.
-* `X-DIAL-USER-INFO` (see [Identity header](#identity-header)), `X-DIAL-ROUTER` (the router's name) and `X-DIAL-API` (the interface: `openaiChatCompletions`, `openaiEmbeddings`, `openaiResponses` or `anthropicMessages`).
-* No `API-KEY`: DIAL Core mints no per-request key for the decide request.
+* `X-DIAL-ROUTER` (the router's name) and `X-DIAL-API` (the interface: `openaiChatCompletions`, `openaiEmbeddings`, `openaiResponses` or `anthropicMessages`).
+* `API-KEY`: a per-request key minted for the decide request. It carries the caller's identity, roles and claims and the per-request permissions granted to the router, with the router last in its execution path. It carries no shares of the request's attachments, so with `context.body: true` the router sees attachment URLs it cannot read. With it the router may call `GET /v1/user/info` and any deployment open to per-request keys; a deployment with `accessibleByPerRequestKey: false` answers `403`. Each such call is a request of its own, with its own analytics row (`parent_deployment` the router, no `decision`), and its usage shows in the served answer's `statistics.usage_per_model`. DIAL Core deletes the key when the decide request ends, so the router must finish calling DIAL Core before it answers; the key's TTL is `decisionTimeoutMs` plus a minute.
 * An empty body, or the client's body unchanged with `Content-Type: application/json` when `context.body` is `true`.
 
 DIAL Core asks the router after the [global interceptors](interceptors.md), in the pass that reaches the router once the interceptor chain calls DIAL Core back.
 
 ### The verdict
 
-A `200` answer with a JSON body naming the candidates in order of preference:
+A `200` answer with a JSON body naming the candidates in order of preference, one or more:
 
 ```json
 {"candidates": ["gpt-4", "claude"]}
 ```
 
-or one deployment, read as a one-element list:
-
-```json
-{"deployment": "gpt-4"}
-```
-
-DIAL Core ignores other fields. A candidate must not be a router.
+DIAL Core ignores other fields. A body without a non-empty `candidates` array, `{"deployment": "gpt-4"}` included, is an invalid verdict (`502`). A candidate must not be a router.
 
 ### Serving the chosen deployment
 
