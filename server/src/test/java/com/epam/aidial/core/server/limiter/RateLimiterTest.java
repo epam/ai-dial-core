@@ -397,7 +397,7 @@ public class RateLimiterTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("per-request-key");
         apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash",
-                ProxyUtil.MAPPER.createObjectNode(), null, null));
+                ProxyUtil.MAPPER.createObjectNode(), null, null, null));
         ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData,
                 null, "trace-id", "span-id", "01");
         Model model = new Model();
@@ -444,7 +444,7 @@ public class RateLimiterTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData,
                 new ExtractedClaims("sub", List.of("role1"), "user-hash",
-                        ProxyUtil.MAPPER.createObjectNode(), null, null),
+                        ProxyUtil.MAPPER.createObjectNode(), null, null, null),
                 "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
@@ -504,7 +504,7 @@ public class RateLimiterTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData,
                 new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash",
-                        ProxyUtil.MAPPER.createObjectNode(), null, null),
+                        ProxyUtil.MAPPER.createObjectNode(), null, null, null),
                 "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
@@ -1503,7 +1503,7 @@ public class RateLimiterTest {
 
     private ProxyContext userContext(Config config, List<String> roles) {
         ExtractedClaims claims = new ExtractedClaims("sub", roles, "user-hash",
-                ProxyUtil.MAPPER.createObjectNode(), null, null);
+                ProxyUtil.MAPPER.createObjectNode(), null, null, null);
         return new ProxyContext(mockProxy(config), request, new ApiKeyData(), claims, "trace-id", "span-id", "01");
     }
 
