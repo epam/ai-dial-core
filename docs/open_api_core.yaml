@@ -1900,12 +1900,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrantAdminConsentRequest"
+        required: true
     delete:
       tags:
       - Admin Consent
@@ -15697,6 +15709,13 @@ components:
           type: array
           items:
             type: integer
+    GrantAdminConsentRequest:
+      type: object
+      properties:
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConsentResourceEntry"
     HealthResponse:
       type: object
       properties:

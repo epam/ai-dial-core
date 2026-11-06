@@ -44,7 +44,8 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
     }
 
     private Response grantConsent() {
-        return send(HttpMethod.POST, "/v1/admin-consent/applications/public/dep-e2e-app", null, "",
+        return send(HttpMethod.POST, "/v1/admin-consent/applications/public/dep-e2e-app", null,
+                reviewedResources("applications/public/dep-e2e-app"),
                 "authorization", "admin");
     }
 

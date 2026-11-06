@@ -12,6 +12,7 @@ import com.epam.aidial.core.server.data.consent.AcceptConsentRequest;
 import com.epam.aidial.core.server.data.consent.AdminConsentStatus;
 import com.epam.aidial.core.server.data.consent.Consent;
 import com.epam.aidial.core.server.data.consent.ConsentGrant;
+import com.epam.aidial.core.server.data.consent.GrantAdminConsentRequest;
 import com.epam.aidial.core.server.data.consent.ReviewConsentResponse;
 import com.epam.aidial.core.server.log.ResourceDependencyAuditLog;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
@@ -20,6 +21,7 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
+import io.vertx.core.buffer.Buffer;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -131,6 +133,7 @@ public class ConsentController {
             method = "POST",
             path = "/v1/admin-consent/{deployment_id}",
             operationId = "grantApplicationAdminConsent",
+            requestBody = @ApiSchema(implementation = GrantAdminConsentRequest.class),
             tags = {"Admin Consent"},
             parameters = {
                     @ApiParameter(name = "deployment_id", in = ParameterIn.PATH, required = true,
@@ -141,12 +144,29 @@ public class ConsentController {
                     @ApiResponse(code = 400),
                     @ApiResponse(code = 403),
                     @ApiResponse(code = 404),
+                    @ApiResponse(code = 409),
                     @ApiResponse(code = 500)
             }
     )
     public Future<?> grantAdminConsent(String deploymentId) {
-        return adminConsentOperation(deploymentId, "GRANT",
-                () -> proxy.getConsentService().grantAdminConsent(context, deploymentId));
+        context.getRequest().body()
+                .onSuccess(body -> adminConsentOperation(deploymentId, "GRANT",
+                        () -> proxy.getConsentService().grantAdminConsent(context, deploymentId, reviewedResources(body))))
+                .onFailure(error -> handleRequestError(deploymentId, error));
+        return Future.succeededFuture();
+    }
+
+    private static List<Consent.ResourceEntry> reviewedResources(Buffer body) {
+        GrantAdminConsentRequest request;
+        try {
+            request = ProxyUtil.convertToObject(body, GrantAdminConsentRequest.class);
+        } catch (IllegalArgumentException e) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Invalid request body provided");
+        }
+        if (request == null || request.getResources() == null) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "The reviewed resources are missing");
+        }
+        return request.getResources();
     }
 
     @ApiOperation(

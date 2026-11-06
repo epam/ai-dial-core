@@ -47,6 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -618,7 +619,7 @@ public class ConsentServiceTest {
         when(context.getInitiatorId()).thenReturn("admin-sub");
         when(clock.getAsLong()).thenReturn(1788394665564L);
 
-        ConsentGrant grant = service.grantAdminConsent(context, "app");
+        ConsentGrant grant = service.grantAdminConsent(context, "app", List.of(resourceEntry("skills/{current-user}/")));
 
         assertEquals(List.of(resourceEntry("skills/{current-user}/")), grant.getConsent().getResources());
         assertEquals("admin-sub", grant.getGrantedBy(), "provenance is server-stamped from the authenticated admin");
@@ -638,7 +639,7 @@ public class ConsentServiceTest {
         when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(declaringApplication());
         when(context.getInitiatorId()).thenReturn("automation-project");
 
-        ConsentGrant grant = service.grantAdminConsent(context, "app");
+        ConsentGrant grant = service.grantAdminConsent(context, "app", List.of(resourceEntry("skills/{current-user}/")));
 
         assertEquals("automation-project", grant.getGrantedBy());
     }
@@ -647,8 +648,20 @@ public class ConsentServiceTest {
     public void testGrantAdminConsent_RejectsApplicationWithoutDeclaration() {
         when(deploymentService.findDeployment(eq(context), eq("app"))).thenReturn(new Application());
 
-        HttpException error = assertThrows(HttpException.class, () -> service.grantAdminConsent(context, "app"));
+        HttpException error = assertThrows(HttpException.class, () -> service.grantAdminConsent(context, "app", List.of()));
         assertEquals(HttpStatus.BAD_REQUEST, error.getStatus());
+    }
+
+    @Test
+    public void testGrantAdminConsent_RejectsDeclarationChangedSinceTheReview() {
+        when(deploymentService.findDeployment(eq(context), eq("app")))
+                .thenReturn(declaringApplication("skills/{current-user}/", "files/public/p/"));
+
+        HttpException error = assertThrows(HttpException.class,
+                () -> service.grantAdminConsent(context, "app", List.of(resourceEntry("skills/{current-user}/"))));
+
+        assertEquals(HttpStatus.CONFLICT, error.getStatus());
+        verify(resourceService, never()).putResource(any(ResourceDescriptor.class), anyString(), any(EtagHeader.class));
     }
 
     @Test
@@ -795,7 +808,7 @@ public class ConsentServiceTest {
         when(context.getInitiatorId()).thenReturn("admin-sub");
         when(clock.getAsLong()).thenReturn(1L);
 
-        service.grantAdminConsent(context, "applications/public/gpt-helpe%2572");
+        service.grantAdminConsent(context, "applications/public/gpt-helpe%2572", List.of(resourceEntry("skills/{current-user}/")));
 
         ArgumentCaptor<ResourceDescriptor> captor = ArgumentCaptor.forClass(ResourceDescriptor.class);
         verify(resourceService).putResource(captor.capture(), anyString(), eq(EtagHeader.ANY));

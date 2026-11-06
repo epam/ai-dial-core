@@ -635,4 +635,18 @@ public class ResourceBaseTest {
                         && message.contains("application_id=" + appUrl + " "))
                 .toList();
     }
+
+    /** The admin-consent POST body an administrator sends after reviewing {@code appUrl}'s current declaration. */
+    protected String reviewedResources(String appUrl) {
+        Response app = send(HttpMethod.GET, "/v1/" + appUrl, null, "", "authorization", "admin");
+        verify(app, 200);
+        JsonArray resources = new JsonArray();
+        for (Object dependency : new JsonObject(app.body()).getJsonArray("resource_dependencies")) {
+            JsonObject declared = (JsonObject) dependency;
+            resources.add(new JsonObject()
+                    .put("url", declared.getJsonObject("target").getString("path"))
+                    .put("access", declared.getJsonArray("access")));
+        }
+        return new JsonObject().put("resources", resources).encode();
+    }
 }

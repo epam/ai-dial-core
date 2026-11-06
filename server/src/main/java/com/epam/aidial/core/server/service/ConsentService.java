@@ -28,6 +28,7 @@ import java.util.Set;
 import java.util.function.LongSupplier;
 
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
+import static com.epam.aidial.core.storage.http.HttpStatus.CONFLICT;
 
 @Slf4j
 public class ConsentService {
@@ -122,13 +123,17 @@ public class ConsentService {
     }
 
     /**
-     * Approves the application's current declaration for every user. The record is keyed by the resolved
-     * application's name, the identity the resolver reads, so a percent-encoded name cannot land on another app's record.
+     * Approves the reviewed declaration for every user; 409 when it no longer equals the current one. The record is keyed
+     * by the resolved application's name, the identity the resolver reads, so a percent-encoded name cannot land on another app's record.
      */
-    public ConsentGrant grantAdminConsent(ProxyContext context, String deploymentId) {
+    public ConsentGrant grantAdminConsent(ProxyContext context, String deploymentId, List<Consent.ResourceEntry> reviewed) {
         Application application = requireDeclaringApplication(context, deploymentId);
+        List<Consent.ResourceEntry> declared = Consent.toResourceEntries(application.getResourceDependencies());
+        if (!declared.equals(reviewed)) {
+            throw new HttpException(CONFLICT, "The declaration changed since it was reviewed: " + deploymentId);
+        }
         ConsentGrant grant = new ConsentGrant()
-                .setConsent(adminConsentOf(application.getResourceDependencies()))
+                .setConsent(adminConsentOf(declared))
                 .setGrantedBy(context.getInitiatorId())
                 .setGrantedAt(clock.getAsLong());
         resourceService.putResource(getAdminConsentDescription(application.getName()),
@@ -187,9 +192,9 @@ public class ConsentService {
         throw new ResourceNotFoundException("Deployment is not an application: " + deploymentId);
     }
 
-    private static Consent adminConsentOf(List<ResourceDependency> declaration) {
+    private static Consent adminConsentOf(List<Consent.ResourceEntry> declared) {
         Consent consent = new Consent();
-        consent.setResources(Consent.toResourceEntries(declaration));
+        consent.setResources(declared);
         return consent;
     }
 
