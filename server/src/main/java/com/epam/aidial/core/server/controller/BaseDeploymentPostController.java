@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.FeaturesData;
@@ -236,8 +237,9 @@ public class BaseDeploymentPostController {
         }
 
         // Application/Assistant: any deployment may self-report usage in its own response body;
-        // capture it alongside whatever its descendant Model spans already reported.
-        TokenUsage ownUsage = parseTokenUsage(responseBody);
+        // capture it alongside whatever its descendant Model spans already reported. An alias relays its target's
+        // answer, whose usage the target pass has reported already, so the alias reports none of its own.
+        TokenUsage ownUsage = context.getDeployment() instanceof AliasPass ? null : parseTokenUsage(responseBody);
         return trackDeploymentStats(context.getDeployment().getName(), ownUsage, true);
     }
 
@@ -465,6 +467,10 @@ public class BaseDeploymentPostController {
     }
 
     protected boolean isRetriableError(int statusCode) {
+        if (context.getDeployment() instanceof AliasPass) {
+            // the target pass has already retried its own upstreams; the alias relays its answer
+            return false;
+        }
         return DEFAULT_RETRIABLE_HTTP_CODES.contains(statusCode)
                 || context.getConfig().getRetriableErrorCodes().contains(statusCode);
     }

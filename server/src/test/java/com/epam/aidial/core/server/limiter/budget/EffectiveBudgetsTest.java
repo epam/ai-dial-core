@@ -355,6 +355,6 @@ class EffectiveBudgetsTest {
     private static ExtractedClaims user(String sub) {
         ObjectNode claims = ProxyUtil.MAPPER.createObjectNode();
         claims.put("sub", sub);
-        return new ExtractedClaims(sub, List.of("staff"), "hash", claims, COST_OBJECT, sub);
+        return new ExtractedClaims(sub, List.of("staff"), "hash", claims, COST_OBJECT, sub, null);
     }
 }

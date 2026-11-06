@@ -986,6 +986,37 @@ public class IdentityProviderTest {
     }
 
     @Test
+    public void testExtractClaims_33() throws JwkException {
+        IdentityProvider byDefault = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+        settings.put("userEmailPath", "upn");
+        IdentityProvider byUpn = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+        settings.put("userEmailPath", "profile.mail");
+        IdentityProvider byNestedPath = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+        String token = JWT.create().withHeader(Map.of("kid", "kid1"))
+                .withClaim("roles", List.of("manager"))
+                .withClaim("email", "jane@mail.com")
+                .withClaim("upn", "jane@example.com")
+                .withClaim("profile", Map.of("mail", "jane@profile.com"))
+                .sign(algorithm);
+        String tokenWithoutUpn = JWT.create().withHeader(Map.of("kid", "kid1"))
+                .withClaim("roles", List.of("manager")).withClaim("email", "jane@mail.com").sign(algorithm);
+        Jwk jwk = mock(Jwk.class);
+        when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
+        when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        assertEquals("jane@mail.com", byDefault.extractClaimsFromJwt(JWT.decode(token)).result().userEmail());
+        assertEquals("jane@example.com", byUpn.extractClaimsFromJwt(JWT.decode(token)).result().userEmail());
+        assertEquals("jane@profile.com", byNestedPath.extractClaimsFromJwt(JWT.decode(token)).result().userEmail());
+        assertNull(byUpn.extractClaimsFromJwt(JWT.decode(tokenWithoutUpn)).result().userEmail());
+    }
+
+    @Test
     public void testExtractClaims_FromUserInfo_01() {
         settings.remove("jwksUrl");
         settings.put("userInfoEndpoint", "http://host/userinfo");
@@ -1044,6 +1075,7 @@ public class IdentityProviderTest {
                 assertNotNull(claims);
                 assertEquals(List.of("role1"), claims.userRoles());
                 assertEquals("sub", claims.userId());
+                assertEquals("email", claims.userEmail());
                 assertNotNull(claims.userHash());
                 logContext.assertMessages("[DEBUG] User login: sub=sub, oid=null, app.roles=[role1]");
             });

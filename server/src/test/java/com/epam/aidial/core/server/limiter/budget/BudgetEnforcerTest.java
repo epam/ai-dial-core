@@ -491,7 +491,7 @@ class BudgetEnforcerTest {
 
     private static ExtractedClaims claims() {
         return new ExtractedClaims("alice", List.of("staff"), "hash", com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode().put("sub", "alice"),
-                null, "Alice");
+                null, "Alice", null);
     }
 
     private static final class ArgumentCaptorHolder {

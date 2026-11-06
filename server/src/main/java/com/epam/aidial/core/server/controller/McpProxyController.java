@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
@@ -117,11 +118,11 @@ public class McpProxyController implements Controller {
             if (!useAllowedTools && !accessService.hasAdminAccess(context)) {
                 throw new HttpException(HttpStatus.FORBIDDEN, "Only admin is allowed to view all tools");
             }
-            Deployment deployment = deploymentService.findDeployment(context, deploymentId);
+            Deployment deployment = deploymentService.findCallableDeployment(context, deploymentId);
             consentService.verifyUserConsent(context, deployment);
             validateDeployment(deployment);
             return deployment;
-        }).compose(deployment -> rateLimiter.limit(context, deployment)
+        }).compose(deployment -> limit(deployment)
                 .compose(rateLimitResult -> {
                     Future<?> future;
                     if (rateLimitResult.status() == HttpStatus.OK) {
@@ -248,7 +249,8 @@ public class McpProxyController implements Controller {
             return;
         }
 
-        if (responseStatusCode == HttpStatus.TOO_MANY_REQUESTS.getCode()) {
+        // the target pass of an alias has already retried its own upstreams; the alias relays its answer
+        if (responseStatusCode == HttpStatus.TOO_MANY_REQUESTS.getCode() && !(context.getDeployment() instanceof AliasPass)) {
             UpstreamRoute upstreamRoute = context.getUpstreamRoute();
             upstreamRoute.fail(proxyResponse);
             // get next upstream
@@ -567,4 +569,11 @@ public class McpProxyController implements Controller {
         }
     }
 
+    /**
+     * The limits of an alias call are checked by the target pass, under the target's name; the alias pass itself is
+     * not limited, so a limit under the alias's name has no effect, as for the other interfaces.
+     */
+    private Future<RateLimitResult> limit(Deployment deployment) {
+        return deployment instanceof AliasPass ? Future.succeededFuture(RateLimitResult.SUCCESS) : rateLimiter.limit(context, deployment);
+    }
 }

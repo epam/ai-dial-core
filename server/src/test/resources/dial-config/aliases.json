@@ -1,0 +1,169 @@
+{
+  "interceptors": {
+    "pass-interceptor": {"endpoint": "http://localhost:4848/interceptor"}
+  },
+  "models": {
+    "intercepted-model": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/intercepted/chat/completions",
+      "userRoles": ["power-user"],
+      "interceptors": ["pass-interceptor"]
+    },
+    "gpt-4-internal": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/gpt-4/chat/completions",
+      "userRoles": ["power-user"],
+      "displayName": "GPT-4 internal",
+      "displayVersion": "0613",
+      "description": "The internal GPT-4 deployment.",
+      "iconUrl": "http://icons/gpt-4.svg",
+      "pricing": {"unit": "token", "prompt": "0.01", "completion": "0.02"}
+    },
+    "closed-model": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/closed/chat/completions",
+      "userRoles": ["power-user"],
+      "features": {"accessibleByPerRequestKey": false}
+    },
+    "multi-model": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "userRoles": ["power-user"],
+      "interfaces": {
+        "openaiChatCompletions": {},
+        "openaiResponses": {},
+        "anthropicMessages": {}
+      }
+    },
+    "featured-model": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/featured/chat/completions",
+      "userRoles": ["power-user"],
+      "features": {
+        "tokenizeEndpoint": "http://localhost:4848/featured/tokenize",
+        "rateEndpoint": "http://localhost:4848/featured/rate"
+      }
+    },
+    "consent-model": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/consent/chat/completions",
+      "userRoles": ["power-user"],
+      "features": {"consentRequired": true}
+    }
+  },
+  "applications": {
+    "relay-app": {
+      "endpoint": "http://localhost:4848/relay/chat/completions",
+      "userRoles": ["power-user"]
+    },
+    "mcp-app": {
+      "userRoles": ["power-user"],
+      "mcp": {"endpoint": "http://localhost:4848/mcp"}
+    }
+  },
+  "toolsets": {
+    "search": {
+      "endpoint": "http://localhost:4848/search/mcp",
+      "userRoles": ["power-user"]
+    },
+    "secured-search": {
+      "endpoint": "http://localhost:4848/secured/mcp",
+      "transport": "HTTP",
+      "userRoles": ["power-user"],
+      "authSettings": {"authenticationType": "API_KEY", "apiKeyHeader": "Authorization"}
+    }
+  },
+  "aliases": {
+    "assistant": {
+      "presentAs": "model",
+      "displayName": "Assistant",
+      "description": "General-purpose assistant.",
+      "userRoles": ["default-user", "limited-user"],
+      "target": {"path": "models/gpt-4-internal"}
+    },
+    "closed-alias": {
+      "presentAs": "model",
+      "userRoles": ["default-user"],
+      "target": {"path": "models/closed-model"}
+    },
+    "multi-alias": {
+      "presentAs": "model",
+      "userRoles": ["default-user"],
+      "target": {"path": "models/multi-model"}
+    },
+    "relay-alias": {
+      "presentAs": "application",
+      "userRoles": ["default-user"],
+      "target": {"path": "applications/relay-app"}
+    },
+    "app-as-model": {
+      "presentAs": "model",
+      "userRoles": ["default-user"],
+      "target": {"path": "applications/relay-app"}
+    },
+    "mcp-tools": {
+      "presentAs": "toolset",
+      "displayName": "MCP tools",
+      "userRoles": ["default-user"],
+      "target": {"path": "applications/mcp-app"}
+    },
+    "search-tools": {
+      "presentAs": "toolset",
+      "userRoles": ["default-user"],
+      "target": {"path": "toolsets/search"}
+    },
+    "resource-alias": {
+      "presentAs": "application",
+      "userRoles": ["default-user"],
+      "target": {"path": "applications/3R4ac3QT6AZjujjrzHhd8M/res-app"}
+    },
+    "plain-alias-v1": {
+      "userRoles": ["default-user"],
+      "target": {"path": "models/gpt-4-internal"}
+    },
+    "intercepted-alias": {
+      "presentAs": "model",
+      "userRoles": ["default-user"],
+      "target": {"path": "models/intercepted-model"}
+    },
+    "broken": {
+      "presentAs": "model",
+      "userRoles": ["default-user"],
+      "target": {"path": "models/missing-model"}
+    },
+    "inherited-alias": {
+      "target": {"path": "models/gpt-4-internal"}
+    },
+    "gone-resource-alias": {
+      "presentAs": "application",
+      "userRoles": ["default-user"],
+      "target": {"path": "applications/3R4ac3QT6AZjujjrzHhd8M/gone-app"}
+    },
+    "secured-tools": {
+      "userRoles": ["default-user"],
+      "target": {"path": "toolsets/secured-search"}
+    },
+    "featured-alias": {
+      "presentAs": "model",
+      "userRoles": ["default-user"],
+      "target": {"path": "models/featured-model"}
+    },
+    "consent-alias": {
+      "presentAs": "model",
+      "userRoles": ["default-user"],
+      "target": {"path": "models/consent-model"}
+    }
+  },
+  "roles": {
+    "default": {"limits": {}},
+    "default-user": {"limits": {"mcp-tools": {"requestDay": "1"}}},
+    "power-user": {"limits": {}},
+    "limited-user": {"limits": {"gpt-4-internal": {"minute": "1", "day": "1"}}}
+  },
+  "keys": {
+    "proxyKey1": {"project": "test", "role": "default"},
+    "default-key": {"project": "default-project", "role": "default-user"},
+    "power-key": {"project": "power-project", "role": "power-user"},
+    "limited-key": {"project": "limited-project", "role": "limited-user"}
+  }
+}

@@ -1,6 +1,8 @@
 package com.epam.aidial.core.server.controller.anthropic;
 
+import com.epam.aidial.core.config.AliasPresentation;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.TokenLimits;
@@ -58,6 +60,9 @@ public class AnthropicModelController {
     public Future<?> getModel(String modelId) {
         Config config = context.getConfig();
         Model model = config.getModels().get(modelId);
+        if (model == null) {
+            model = (Model) context.getProxy().getDeploymentService().findAliasView(context, modelId, AliasPresentation.MODEL);
+        }
 
         if (model == null || !DeploymentEndpointUtil.isInterfaceDeclared(model, InterfaceType.ANTHROPIC_MESSAGES)) {
             return context.respond(HttpStatus.NOT_FOUND);
@@ -99,6 +104,11 @@ public class AnthropicModelController {
             if (model.hasAccess(context.getUserRoles())
                     && DeploymentEndpointUtil.isInterfaceDeclared(model, InterfaceType.ANTHROPIC_MESSAGES)) {
                 models.add(createModel(model, config.getDefaultLocale()));
+            }
+        }
+        for (Deployment view : context.getProxy().getDeploymentService().listAliasViews(context, AliasPresentation.MODEL)) {
+            if (DeploymentEndpointUtil.isInterfaceDeclared(view, InterfaceType.ANTHROPIC_MESSAGES)) {
+                models.add(createModel((Model) view, config.getDefaultLocale()));
             }
         }
 

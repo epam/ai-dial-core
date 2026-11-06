@@ -1,5 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Alias;
+import com.epam.aidial.core.config.AliasPresentation;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
@@ -97,6 +99,9 @@ public class DeploymentController {
     public Future<?> getDeployment(String deploymentId) {
         Config config = context.getConfig();
         Model model = config.getModels().get(deploymentId);
+        if (model == null) {
+            model = (Model) deploymentService.findAliasView(context, deploymentId, AliasPresentation.MODEL);
+        }
 
         if (model == null) {
             return context.respond(HttpStatus.NOT_FOUND);
@@ -220,16 +225,19 @@ public class DeploymentController {
         List<DeploymentNameData> names = new ArrayList<>();
         if (types.contains(MODEL_TYPE)) {
             addAccessibleNames(names, config.getModels().values(), MODEL_TYPE);
+            addNames(names, deploymentService.listAliasNames(context, AliasPresentation.MODEL), MODEL_TYPE);
         }
         if (types.contains(APPLICATION_TYPE)) {
             addAccessibleNames(names, config.getApplications().values(), APPLICATION_TYPE);
             if (applicationService.isIncludeCustomApps()) {
                 addNames(names, deploymentService.listDeploymentNames(context, ResourceTypes.APPLICATION, Application::new), APPLICATION_TYPE);
             }
+            addNames(names, deploymentService.listAliasNames(context, AliasPresentation.APPLICATION), APPLICATION_TYPE);
         }
         if (types.contains(TOOLSET_TYPE)) {
             addAccessibleNames(names, config.getToolsets().values(), TOOLSET_TYPE);
             addNames(names, deploymentService.listDeploymentNames(context, ResourceTypes.TOOL_SET, ToolSet::new), TOOLSET_TYPE);
+            addNames(names, deploymentService.listAliasNames(context, AliasPresentation.TOOLSET), TOOLSET_TYPE);
         }
         return names;
     }
@@ -279,6 +287,13 @@ public class DeploymentController {
             case Model model -> to(model);
             case Application application -> to(resolveLocalApplication(application));
             case ToolSet toolSet -> to(toolSet);
+            case Alias alias -> {
+                Deployment view = deploymentService.toAliasView(context, alias);
+                if (view == null) {
+                    throw new ResourceNotFoundException("Deployment is not found: " + alias.getName());
+                }
+                yield toDeploymentData(view);
+            }
             // interceptors are deployments as well, but the deployment listing never exposes them
             default -> throw new ResourceNotFoundException("Deployment is not found: " + deployment.getName());
         };
@@ -383,6 +398,11 @@ public class DeploymentController {
                     deployments.add(to(app));
                 }
             }
+            for (Deployment view : deploymentService.listAllAliasViews(context, AliasPresentation.APPLICATION)) {
+                if (match(filters, (Application) view)) {
+                    deployments.add(to((Application) view));
+                }
+            }
             return deployments;
         });
     }
@@ -433,6 +453,9 @@ public class DeploymentController {
                     deployments.add(to(toolSet));
                 }
             }
+            for (Deployment view : deploymentService.listAllAliasViews(context, AliasPresentation.TOOLSET)) {
+                deployments.add(to((ToolSet) view));
+            }
             return deployments;
         });
     }
@@ -443,6 +466,11 @@ public class DeploymentController {
         for (Model model : config.getModels().values()) {
             if (model.hasAccess(context.getUserRoles()) && match(filters, model)) {
                 deployments.add(to(model));
+            }
+        }
+        for (Deployment view : deploymentService.listAliasViews(context, AliasPresentation.MODEL)) {
+            if (match(filters, (Model) view)) {
+                deployments.add(to((Model) view));
             }
         }
         return Future.succeededFuture(deployments);

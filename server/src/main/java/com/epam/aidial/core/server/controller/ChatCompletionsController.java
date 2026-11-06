@@ -15,6 +15,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
+import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -134,12 +135,13 @@ public class ChatCompletionsController extends BaseChatCompletionController {
     }
 
     private Void setupDeployment(String model) {
-        Deployment deployment = proxy.getDeploymentService().findDeployment(context, model);
+        Deployment deployment = proxy.getDeploymentService().findCallableDeployment(context, model);
         proxy.getConsentService().verifyUserConsent(context, deployment, InterfaceType.OPENAI_CHAT_COMPLETIONS);
 
         Features features = deployment.resolveFeatures(InterfaceType.OPENAI_CHAT_COMPLETIONS);
         boolean isPerRequestKey = !context.isOriginalRequest();
-        if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
+        if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey
+                && !DeploymentService.isLent(context, deployment)) {
             throw new PermissionDeniedException(
                     String.format("Deployment %s is not accessible by %s", model, context.getApiKeyData().getSourceDeployment()));
         }

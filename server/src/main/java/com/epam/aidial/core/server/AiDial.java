@@ -28,6 +28,7 @@ import com.epam.aidial.core.credentials.util.TimeProvider;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.credentials.validation.AuthorizationServerMetadataValidator;
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
+import com.epam.aidial.core.server.alias.AliasService;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
@@ -383,8 +384,10 @@ public class AiDial {
                     ruleService, notificationService, applicationService, toolSetService, resourceOperationService,
                     complexResourceService, orgUnitService, orgUnitApprovals, generator, clock);
 
+            AliasService aliasService = new AliasService(applicationService, toolSetService, applicationSchemaService, encryptionService,
+                    accessService);
             DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
-                    toolSetService, resourceService, applicationSchemaService);
+                    toolSetService, resourceService, applicationSchemaService, aliasService);
 
             ConsentService consentService = new ConsentService(deploymentService, resourceService);
 
@@ -422,7 +425,8 @@ public class AiDial {
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
                     client, logStore, credentialEncryptionService, backgroundJobSettings, backgroundTracer);
 
-            AdminSystemExportService adminSystemExportService = new AdminSystemExportService(storage, lockService, clock, version());
+            AdminSystemExportService adminSystemExportService = new AdminSystemExportService(storage, lockService, clock, version(), readKmsSettings().isEnabled(),
+                    readEncryptionSettings().getKeySize() / Byte.SIZE);
             AdminSystemExportService.Settings adminSystemExportSettings = Json.decodeValue(settings("adminSystemExport").toBuffer(), AdminSystemExportService.Settings.class);
             adminSystemExportSettings.validate();
 
@@ -454,7 +458,9 @@ public class AiDial {
                 }
             }, new DeploymentOptions().setInstances(serverInstances)));
             String localBaseUrl = backgroundJobSettings.getLocalBaseUrl();
-            backgroundJobService.setLocalBaseUrl(localBaseUrl != null ? localBaseUrl : "http://localhost:" + serverPort);
+            String resolvedLocalBaseUrl = localBaseUrl != null ? localBaseUrl : "http://localhost:" + serverPort;
+            backgroundJobService.setLocalBaseUrl(resolvedLocalBaseUrl);
+            deploymentService.getAliasService().setLocalBaseUrl(resolvedLocalBaseUrl);
             backgroundJobService.init();
             log.info("Proxy started on {} with {} server instance(s)", serverPort, serverInstances);
         } catch (Throwable e) {
@@ -497,12 +503,19 @@ public class AiDial {
         return new ResourceRegistrationService(authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService, allowedRedirectUris);
     }
 
-    private CredentialEncryptionService getCredentialEncryptionService(BlockingCallTracer blockingCallTracer) {
+    private KmsSettings readKmsSettings() {
         JsonObject toolsetSecurity = settings("toolsets").getJsonObject("security", new JsonObject());
-        KmsSettings kmsSettings = Json.decodeValue(toolsetSecurity
-                .getJsonObject("kms", new JsonObject()).toBuffer(), KmsSettings.class);
-        EncryptionSettings encryptionSettings = Json.decodeValue(toolsetSecurity
-                .getJsonObject("encryption", new JsonObject()).toBuffer(), EncryptionSettings.class);
+        return Json.decodeValue(toolsetSecurity.getJsonObject("kms", new JsonObject()).toBuffer(), KmsSettings.class);
+    }
+
+    private EncryptionSettings readEncryptionSettings() {
+        JsonObject toolsetSecurity = settings("toolsets").getJsonObject("security", new JsonObject());
+        return Json.decodeValue(toolsetSecurity.getJsonObject("encryption", new JsonObject()).toBuffer(), EncryptionSettings.class);
+    }
+
+    private CredentialEncryptionService getCredentialEncryptionService(BlockingCallTracer blockingCallTracer) {
+        KmsSettings kmsSettings = readKmsSettings();
+        EncryptionSettings encryptionSettings = readEncryptionSettings();
         ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator(encryptionSettings);
         KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings, blockingCallTracer);
         ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(

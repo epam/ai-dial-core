@@ -1,5 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Alias;
+import com.epam.aidial.core.config.AliasPresentation;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ToolSet;
@@ -66,6 +68,14 @@ public class ToolSetController {
     public Future<?> getToolSet(String toolSetId) {
         taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
+            if (deployment instanceof Alias alias) {
+                deployment = alias.getEffectivePresentation() == AliasPresentation.TOOLSET ? deploymentService.toAliasView(context, alias) : null;
+                if (deployment != null) {
+                    ToolSet view = (ToolSet) deployment;
+                    enrichAliasView(new ResourceAuthStatusEnricher(context, context.getProxy().getResourceAuthSettingsService()), alias, view);
+                    return view;
+                }
+            }
             if (deployment instanceof ToolSet toolSet) {
                 new ResourceAuthStatusEnricher(context, context.getProxy().getResourceAuthSettingsService())
                         .enrichToolSet(toolSetId, toolSet);
@@ -112,7 +122,29 @@ public class ToolSetController {
             }
         }
         list.addAll(resourceToolsets);
+        for (Deployment view : deploymentService.listAllAliasViews(context, AliasPresentation.TOOLSET)) {
+            Alias alias = config.getAliases().get(view.getName());
+            if (alias != null) {
+                enrichAliasView(enricher, alias, (ToolSet) view);
+            }
+            list.add((ToolSet) view);
+        }
         return list;
+    }
+
+    /**
+     * Sets the auth statuses of an alias's toolset view: those of its target, under which the caller signs in through
+     * the alias.
+     */
+    private void enrichAliasView(ResourceAuthStatusEnricher enricher, Alias alias, ToolSet view) {
+        if (view.getAuthSettings() == null) {
+            return;
+        }
+        try {
+            enricher.enrichToolSet(deploymentService.getAliasService().securedTargetId(alias), view);
+        } catch (RuntimeException e) {
+            log.warn("Failed to compute auth statuses for alias '{}'", alias.getName(), e);
+        }
     }
 
     private Future<List<ToolSet>> enrichToolsets(List<ToolSet> toolSets) {

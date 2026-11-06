@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.Alias;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.InterfaceType;
@@ -45,16 +46,16 @@ public class ConsentService {
         while (!queue.isEmpty()) {
             String currentDeploymentId = queue.poll();
             Deployment deployment = deploymentService.findDeployment(context, currentDeploymentId);
-            boolean consentRequired = isConsentRequired(deployment);
-            if (consentRequired) {
-                noneConsentRequired = false;
-            }
-            Consent.Deployment current = newConsent.getDeployments().computeIfAbsent(currentDeploymentId, key -> new Consent.Deployment());
-            current.setConsentRequired(consentRequired);
-            for (String dependency : deployment.getDependencies()) {
-                if (seen.add(dependency)) {
-                    queue.offer(dependency);
+            if (deployment instanceof Alias alias) {
+                // the alias requires what its target requires, and the target pass checks the consent under the
+                // target's name; the target is reached through the alias, so it is not looked up by that name
+                Deployment target = deploymentService.getAliasService().findTarget(context, alias);
+                noneConsentRequired &= !addToConsent(newConsent, currentDeploymentId, target, queue, seen);
+                if (seen.add(target.getName())) {
+                    addToConsent(newConsent, target.getName(), target, queue, seen);
                 }
+            } else {
+                noneConsentRequired &= !addToConsent(newConsent, currentDeploymentId, deployment, queue, seen);
             }
         }
         if (noneConsentRequired) {
@@ -67,6 +68,21 @@ public class ConsentService {
             return ACCEPTED_CONSENT_RESPONSE;
         }
         return new ReviewConsentResponse(newConsent, accepted);
+    }
+
+    /**
+     * Adds {@code deployment} to the consent under {@code id} and queues its dependencies; returns whether it requires
+     * consent.
+     */
+    private static boolean addToConsent(Consent consent, String id, Deployment deployment, ArrayDeque<String> queue, Set<String> seen) {
+        boolean consentRequired = isConsentRequired(deployment);
+        consent.getDeployments().computeIfAbsent(id, key -> new Consent.Deployment()).setConsentRequired(consentRequired);
+        for (String dependency : deployment.getDependencies()) {
+            if (seen.add(dependency)) {
+                queue.offer(dependency);
+            }
+        }
+        return consentRequired;
     }
 
     public void acceptConsent(ProxyContext context, String deploymentId, Consent consent) {
