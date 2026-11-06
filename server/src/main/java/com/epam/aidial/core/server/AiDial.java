@@ -97,6 +97,7 @@ import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.AuthSettingsResolver;
+import com.epam.aidial.core.server.util.CoreVersion;
 import com.epam.aidial.core.server.util.ProxySettings;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -436,7 +437,7 @@ public class AiDial {
                     mergedConfigStore, command -> taskExecutor.submit(() -> {
                         command.run();
                         return null;
-                    }), adminSystemImportSettings, clock, version(), generator);
+                    }), adminSystemImportSettings, clock, CoreVersion.parse(version()), generator);
             TempFolderCleaner systemImportStagingCleaner = new TempFolderCleaner(
                     storage, AdminSystemImportService.STAGING_FOLDER, Duration.ofHours(24));
             long systemImportStagingCleanupPeriodMs = Duration.ofHours(24).toMillis();

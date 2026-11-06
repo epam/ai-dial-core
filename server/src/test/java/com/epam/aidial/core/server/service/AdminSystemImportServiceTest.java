@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.util.CoreVersion;
 import com.epam.aidial.core.storage.blobstore.BlobAttributes;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -9,7 +10,6 @@ import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jclouds.blobstore.domain.Blob;
-import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.domain.StorageType;
 import org.jclouds.blobstore.domain.internal.BlobBuilderImpl;
@@ -135,17 +135,13 @@ class AdminSystemImportServiceTest {
     }
 
     private AdminSystemImportService newService() {
-        return newService(CORE_VERSION);
+        return newService(new AdminSystemImportService.Settings());
     }
 
-    private AdminSystemImportService newService(String coreVersion) {
-        return newService(new AdminSystemImportService.Settings(), coreVersion);
-    }
-
-    private AdminSystemImportService newService(AdminSystemImportService.Settings settings, String coreVersion) {
+    private AdminSystemImportService newService(AdminSystemImportService.Settings settings) {
         return new AdminSystemImportService(storage, lockService, resourceService, mergedConfigStore,
                 command -> Thread.ofVirtual().start(command), settings,
-                clock::get, coreVersion, () -> "import-" + idCounter.incrementAndGet());
+                clock::get, CoreVersion.parse(CORE_VERSION), () -> "import-" + idCounter.incrementAndGet());
     }
 
     private static int freePort() throws IOException {
@@ -428,37 +424,6 @@ class AdminSystemImportServiceTest {
             assertEquals(1, staged.blobCount());
             service.deleteStaging(staged);
         }
-    }
-
-    @Test
-    void testDevelopmentBuildAcceptsReleaseArchive() {
-        AdminSystemImportService devService = newService("0.0.0");
-        byte[] archive = archiveOf("0.50.0", entry("public/models/m1", "{}"));
-        AdminSystemImportService.StagedImport staged = devService.stage(stream(archive));
-        assertEquals(1, staged.blobCount());
-    }
-
-    @Test
-    void testDevelopmentArchiveIsRejectedByReleaseBuild() {
-        byte[] archive = archiveOf("0.0.0", entry("public/models/m1", "{}"));
-        assertRejected(archive);
-    }
-
-    @Test
-    void testDevelopmentArchiveIsAcceptedByDevelopmentBuild() {
-        AdminSystemImportService devService = newService("0.0.0");
-        byte[] archive = archiveOf("0.0.0", entry("public/models/m1", "{}"));
-        assertEquals(1, devService.stage(stream(archive)).blobCount());
-    }
-
-    @Test
-    void testUnreadableVersionCountsAsDevelopmentBuild() {
-        AdminSystemImportService devService = newService("undefined");
-        byte[] accepted = archiveOf("0.50.0", entry("public/models/m1", "{}"));
-        assertEquals(1, devService.stage(stream(accepted)).blobCount());
-
-        byte[] rejected = archiveOf("undefined", entry("public/models/m2", "{}"));
-        assertRejected(rejected);
     }
 
     // ---- stage phase: names ----
@@ -814,7 +779,7 @@ class AdminSystemImportServiceTest {
         entries[6] = entry("public/files/large.bin", "x".repeat(5 * 1024 * 1024 + 1));
         AdminSystemImportService.Settings settings = new AdminSystemImportService.Settings();
         settings.setParallelism(2);
-        AdminSystemImportService parallelService = newService(settings, CORE_VERSION);
+        AdminSystemImportService parallelService = newService(settings);
         probe.delayMs = 20;
 
         AdminSystemImportService.StagedImport staged = parallelService.stage(stream(archiveOf(CORE_VERSION, entries)));

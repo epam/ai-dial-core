@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.util.CoreVersion;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.InputStreamAdapter;
 import com.epam.aidial.core.storage.blobstore.BlobAttributes;
@@ -38,8 +39,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -66,7 +65,6 @@ public class AdminSystemImportService {
     private static final int MAX_NAME_BYTES = 1024;
     private static final int MAX_METADATA_BYTES = 64 * 1024;
     private static final int MAX_BUFFERED_BLOB_BYTES = 5 * 1024 * 1024;
-    private static final Pattern LEADING_VERSION = Pattern.compile("^(\\d+(?:\\.\\d+)*)");
 
     private final BlobStorage blobStorage;
     private final LockService lockService;
@@ -75,12 +73,12 @@ public class AdminSystemImportService {
     private final Executor executor;
     private final Settings settings;
     private final LongSupplier clock;
-    private final String coreVersion;
+    private final CoreVersion coreVersion;
     private final Supplier<String> idGenerator;
 
     public AdminSystemImportService(BlobStorage blobStorage, LockService lockService, ResourceService resourceService,
                                     MergedConfigStore mergedConfigStore, Executor executor, Settings settings,
-                                    LongSupplier clock, String coreVersion, Supplier<String> idGenerator) {
+                                    LongSupplier clock, CoreVersion coreVersion, Supplier<String> idGenerator) {
         this.blobStorage = blobStorage;
         this.lockService = lockService;
         this.resourceService = resourceService;
@@ -372,7 +370,7 @@ public class AdminSystemImportService {
     }
 
     private void checkVersion(Manifest manifest) {
-        if (isNewer(manifest.coreVersion(), coreVersion)) {
+        if (CoreVersion.parse(manifest.coreVersion()).compareTo(coreVersion) > 0) {
             throw rejected("Archive coreVersion " + manifest.coreVersion() + " is newer than the running Core " + coreVersion);
         }
     }
@@ -456,58 +454,6 @@ public class AdminSystemImportService {
                 throw rejected("Entry under an excluded group: " + name);
             }
         }
-    }
-
-    private static boolean isNewer(String archiveVersion, String runningVersion) {
-        int[] archive = leadingVersion(archiveVersion);
-        int[] running = leadingVersion(runningVersion);
-        if (isDevVersion(running)) {
-            return false;
-        }
-        if (isDevVersion(archive)) {
-            return true;
-        }
-        return compareVersions(archive, running) > 0;
-    }
-
-    private static boolean isDevVersion(int[] version) {
-        if (version == null) {
-            return true;
-        }
-        for (int component : version) {
-            if (component != 0) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static int compareVersions(int[] a, int[] b) {
-        int length = Math.max(a.length, b.length);
-        for (int i = 0; i < length; i++) {
-            int av = (i < a.length) ? a[i] : 0;
-            int bv = (i < b.length) ? b[i] : 0;
-            if (av != bv) {
-                return Integer.compare(av, bv);
-            }
-        }
-        return 0;
-    }
-
-    private static int[] leadingVersion(String version) {
-        if (version == null) {
-            return null;
-        }
-        Matcher matcher = LEADING_VERSION.matcher(version);
-        if (!matcher.find()) {
-            return null;
-        }
-        String[] parts = matcher.group(1).split("\\.");
-        int[] result = new int[parts.length];
-        for (int i = 0; i < parts.length; i++) {
-            result[i] = Integer.parseInt(parts[i]);
-        }
-        return result;
     }
 
     private static long hash64(String name) {
