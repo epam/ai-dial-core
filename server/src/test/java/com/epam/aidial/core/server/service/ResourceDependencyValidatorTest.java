@@ -242,18 +242,15 @@ public class ResourceDependencyValidatorTest {
 
     @Test
     void rejectsSectionOverTheCap() {
-        ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
         List<ResourceDependency> section = IntStream.rangeClosed(1, ResourceDependencyValidator.MAX_DECLARED_DEPENDENCIES + 1)
-                .mapToObj(i -> dependency("files/public/folder" + i + "/").setLinkId("lnk_" + i))
+                .mapToObj(i -> dependency("files/public/folder" + i + "/").setLinkId("lnk_" + i).setAccess(Set.of()))
                 .toList();
         Application application = new Application().setResourceDependencies(section);
 
-        // Over the cap the section is rejected on the cap alone — only the first MAX entries are
-        // inspected, so a huge body cannot turn validation into unbounded allocation.
-        List<String> issues = ResourceDependencyValidator.shapeIssues(application);
-        assertTrue(issues.contains("resourceDependencies: the section exceeds "
-                + ResourceDependencyValidator.MAX_DECLARED_DEPENDENCIES + " entries"));
-        assertTrue(issues.size() <= ResourceDependencyValidator.MAX_DECLARED_DEPENDENCIES * 5);
+        // the entries are invalid too, but over the cap none of them is inspected
+        assertEquals(List.of("resourceDependencies: the section exceeds "
+                + ResourceDependencyValidator.MAX_DECLARED_DEPENDENCIES + " entries"),
+                ResourceDependencyValidator.shapeIssues(application));
     }
 
     @Test

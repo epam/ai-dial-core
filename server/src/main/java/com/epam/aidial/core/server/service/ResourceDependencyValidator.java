@@ -87,15 +87,11 @@ public class ResourceDependencyValidator {
         if (section == null || section.isEmpty()) {
             return issues;
         }
-        boolean overCap = section.size() > MAX_DECLARED_DEPENDENCIES;
-        if (overCap) {
-            issues.add("resourceDependencies: the section exceeds " + MAX_DECLARED_DEPENDENCIES + " entries");
+        if (section.size() > MAX_DECLARED_DEPENDENCIES) {
+            return List.of("resourceDependencies: the section exceeds " + MAX_DECLARED_DEPENDENCIES + " entries");
         }
-        // Once over the cap the section is rejected anyway — inspect only the first MAX entries so a
-        // huge body cannot turn validation itself into unbounded allocation.
-        int inspected = Math.min(section.size(), MAX_DECLARED_DEPENDENCIES);
         Set<String> seenLinkIds = new HashSet<>();
-        for (int i = 0; i < inspected; i++) {
+        for (int i = 0; i < section.size(); i++) {
             ResourceDependency dependency = section.get(i);
             String at = "resourceDependencies[" + i + "]";
             if (dependency == null) {
