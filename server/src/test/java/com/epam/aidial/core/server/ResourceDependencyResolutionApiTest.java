@@ -163,10 +163,14 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                 "authorization", "admin"), 200);
 
         AtomicReference<Integer> projectStatus = new AtomicReference<>();
+        AtomicReference<Integer> readStatus = new AtomicReference<>();
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/chat/completions", request -> {
-                projectStatus.set(uploadComplex("projects/" + userBucket + "/built-by-app", request.getHeader("Api-Key"),
+                String perRequestKey = request.getHeader("Api-Key");
+                projectStatus.set(uploadComplex("projects/" + userBucket + "/built-by-app", perRequestKey,
                         "README.md", "# Built by the app").status());
+                readStatus.set(send(HttpMethod.GET, "/v2/projects/%s/built-by-app/files/README.md".formatted(userBucket), null, "",
+                        "api-key", perRequestKey).status());
                 return TestWebServer.createResponse(200,
                         "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"choices\":[]}",
                         "Content-Type", "application/json");
@@ -179,6 +183,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
         }
 
         assertEquals(200, projectStatus.get(), "the declared projects folder must be writable by the app's key");
+        assertEquals(200, readStatus.get(), "the declared projects folder must be readable by the app's key");
         Response written = send(HttpMethod.GET, "/v2/projects/%s/built-by-app/files/README.md".formatted(userBucket), null, "",
                 "authorization", "user");
         assertEquals(200, written.status(), () -> "Body: " + written.body());

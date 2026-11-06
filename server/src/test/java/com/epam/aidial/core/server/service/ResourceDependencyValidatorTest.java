@@ -56,7 +56,8 @@ public class ResourceDependencyValidatorTest {
     void acceptsProjectTargets() {
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
 
-        assertDoesNotThrow(() -> validator.validateShape(appWith(dependency("projects/{current-user}/"))));
+        assertDoesNotThrow(() -> validator.validateShape(appWith(dependency("projects/{current-user}/")
+                .setAccess(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE)))));
         assertDoesNotThrow(() -> validator.validateShape(appWith(dependency("projects/public/team-project/"))));
     }
 
