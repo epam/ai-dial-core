@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -347,6 +348,68 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
             for (HttpMethod method : List.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.DELETE)) {
                 verify(send(method, "/v1/admin-consent/unknown-app", null, "", "authorization", "admin"), 403);
             }
+        }
+    }
+
+    /** A user's application is approved after it is published; in the user's bucket it is out of an administrator's reach. */
+    public static class UserAuthoredApplications extends ResourceBaseTest {
+
+        @Override
+        protected JsonObject additionalSettingsOverrides() {
+            return new JsonObject().put("applications", new JsonObject().put("allowUserResourceDependencies", true));
+        }
+
+        @Test
+        void testPublishedUserApplicationIsApprovedAndResolves() {
+            String userUrl = "applications/" + bucket + "/user-dep-app";
+            verify(send(HttpMethod.PUT, "/v1/" + userUrl, null, """
+                    {
+                      "endpoint": "http://localhost:4848/chat/completions",
+                      "display_name": "User Dependency App",
+                      "resource_dependencies": [
+                        {"kind": "dial.resourceLink", "link_id": "lnk_prompts",
+                         "target": {"path": "prompts/{current-user}/by-app/"}, "access": ["write"], "required": true}
+                      ]
+                    }
+                    """), 200);
+            verify(send(HttpMethod.GET, "/v1/admin-consent/" + userUrl, null, "", "authorization", "admin"), 403);
+            verify(send(HttpMethod.POST, "/v1/admin-consent/" + userUrl, null, """
+                    {"resources": [{"url": "prompts/{current-user}/by-app/", "access": ["WRITE"]}]}
+                    """, "authorization", "admin"), 403);
+
+            Response publication = send(HttpMethod.POST, "/v1/ops/publication/create", null, """
+                    {"name": "User app", "targetFolder": "public/folder/",
+                     "resources": [{"action": "ADD", "sourceUrl": "%s", "targetUrl": "applications/public/folder/user-dep-app"}],
+                     "rules": [{"source": "roles", "function": "TRUE"}]}
+                    """.formatted(userUrl));
+            verify(publication, 200);
+            JsonObject created = new JsonObject(publication.body());
+            Response reviewCopy = send(HttpMethod.GET, "/v1/" + created.getJsonArray("resources").getJsonObject(0).getString("reviewUrl"),
+                    null, "", "authorization", "admin");
+            verify(reviewCopy, 200);
+            assertTrue(reviewCopy.body().contains("prompts/{current-user}/by-app/"), () -> "Body: " + reviewCopy.body());
+            verify(send(HttpMethod.POST, "/v1/ops/publication/approve", null,
+                    new JsonObject().put("url", created.getString("url")).encode(), "authorization", "admin"), 200);
+
+            String publishedUrl = "applications/public/folder/user-dep-app";
+            verify(send(HttpMethod.POST, "/v1/admin-consent/" + publishedUrl, null, reviewedResources(publishedUrl),
+                    "authorization", "admin"), 200);
+
+            String callerBucket = new JsonObject(send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "user").body()).getString("bucket");
+            AtomicReference<Integer> writeStatus = new AtomicReference<>();
+            try (TestWebServer server = new TestWebServer(4848)) {
+                server.map(HttpMethod.POST, "/chat/completions", request -> {
+                    writeStatus.set(send(HttpMethod.PUT, "/v1/prompts/%s/by-app/p".formatted(callerBucket), null,
+                            "{\"id\":\"p\",\"folderId\":\"by-app/\",\"name\":\"p\",\"content\":\"c\"}",
+                            "api-key", request.getHeader("Api-Key")).status());
+                    return TestWebServer.createResponse(200, "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"choices\":[]}",
+                            "Content-Type", "application/json");
+                });
+                Response completion = send(HttpMethod.POST, "/openai/deployments/%s/chat/completions".formatted(publishedUrl), null,
+                        "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}", "authorization", "user", "Content-Type", "application/json");
+                assertEquals(200, completion.status(), () -> "Body: " + completion.body());
+            }
+            assertEquals(200, writeStatus.get(), "the published application's key must carry the approved grant");
         }
     }
 }

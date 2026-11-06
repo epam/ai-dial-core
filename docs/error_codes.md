@@ -20,7 +20,7 @@ User is authenticated by Core but doesn't have insufficient permissions to a res
 - admin can approve publications only
 - access to attached files in chat completion request
 - a required resource dependency of the application is not accessible to the user or not approved by an administrator
-- only administrators can manage an application's admin consent
+- only administrators can manage an application's admin consent, and only for an application outside users' buckets
 
 #### 404 NOT FOUND
 
