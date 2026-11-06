@@ -5,8 +5,16 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
+import lombok.SneakyThrows;
+import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
+import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
+import org.apache.hc.client5.http.entity.mime.HttpMultipartMode;
+import org.apache.hc.client5.http.entity.mime.MultipartEntityBuilder;
+import org.apache.hc.core5.http.ContentType;
 import org.junit.jupiter.api.Test;
 
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +34,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * at the root call and on chained hops.
  */
 public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
+
+    private static final String SKILL_MANIFEST = """
+            ---
+            name: Created By App
+            description: Written through the app's per-request key
+            version: 1.0.0
+            ---
+            # Created By App
+            """;
 
     @Test
     void testChatPathBakesConsentedDependencyGrantIntoThePerRequestKey() {
@@ -78,6 +95,52 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
         assertEquals(200, inScopeStatus.get(), "the consented dependency target must be writable by the app's key");
         // …and only there — the user's files root stays off-limits to the app's key.
         assertEquals(403, outOfScopeStatus.get(), "anything outside the declared target must stay off-limits");
+    }
+
+    @Test
+    void testAppWritesSkillIntoUsersSkillsThroughItsKey() {
+        // the skill creator: the declared write reaches a complex resource, not only plain ones
+        Response response = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "user");
+        String userBucket = new JsonObject(response.body()).getString("bucket");
+        String appUrl = "applications/public/dep-skill-app";
+
+        verify(send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                {
+                  "endpoint": "http://localhost:4848/chat/completions",
+                  "display_name": "Skill Creator",
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk_skills",
+                     "target": {"path": "skills/{current-user}/"}, "access": ["read", "write"], "required": true}
+                  ]
+                }
+                """, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + appUrl, null, reviewedResources(appUrl),
+                "authorization", "admin"), 200);
+
+        AtomicReference<Integer> skillStatus = new AtomicReference<>();
+        AtomicReference<Integer> promptStatus = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/chat/completions", request -> {
+                String perRequestKey = request.getHeader("Api-Key");
+                skillStatus.set(uploadSkill(userBucket + "/created-by-app", perRequestKey).status());
+                promptStatus.set(send(HttpMethod.PUT, "/v1/prompts/%s/outside-scope".formatted(userBucket), null,
+                        "{\"id\":\"p\",\"folderId\":\"f\",\"name\":\"p\",\"content\":\"c\"}", "api-key", perRequestKey).status());
+                return TestWebServer.createResponse(200,
+                        "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"choices\":[]}",
+                        "Content-Type", "application/json");
+            });
+
+            Response completion = send(HttpMethod.POST, "/openai/deployments/%s/chat/completions".formatted(appUrl), null, """
+                    {"messages":[{"role":"user","content":"make me a skill"}]}
+                    """, "authorization", "user", "Content-Type", "application/json");
+            assertEquals(200, completion.status(), () -> "Body: " + completion.body());
+        }
+
+        assertEquals(200, skillStatus.get(), "the declared skills folder must be writable by the app's key");
+        assertEquals(403, promptStatus.get(), "the user's other resources must stay off-limits");
+        Response written = send(HttpMethod.GET, "/v2/skills/%s/created-by-app/files/SKILL.md".formatted(userBucket), null, "",
+                "authorization", "user");
+        assertEquals(200, written.status(), () -> "Body: " + written.body());
     }
 
     @Test
@@ -560,5 +623,17 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
 
         assertEquals(403, targetStatus.get(),
                 "a grant already held by the calling app must not satisfy the called app's reach check over MCP");
+    }
+
+    @SneakyThrows
+    private Response uploadSkill(String path, String apiKey) {
+        HttpUriRequest request = new HttpUriRequestBase(HttpMethod.PUT.name(), URI.create("http://127.0.0.1:" + serverPort + "/v2/skills/" + path));
+        request.setHeader("api-key", apiKey);
+        MultipartEntityBuilder builder = MultipartEntityBuilder.create();
+        builder.setMode(HttpMultipartMode.LEGACY);
+        builder.setCharset(StandardCharsets.UTF_8);
+        builder.addBinaryBody("SKILL.md", SKILL_MANIFEST.getBytes(StandardCharsets.UTF_8), ContentType.DEFAULT_BINARY, "SKILL.md");
+        request.setEntity(builder.build());
+        return client.execute(request, ResourceBaseTest::toResponse);
     }
 }
