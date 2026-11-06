@@ -1,11 +1,7 @@
 package com.epam.aidial.core.server.log;
 
-import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.consent.Consent;
-import com.epam.aidial.core.server.security.ExtractedClaims;
-import com.epam.aidial.core.server.service.PermissionDeniedException;
-import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,7 +33,7 @@ public final class ResourceDependencyAuditLog {
         String accessTypes = declaration == null ? "" : accessTypesOf(declaration);
         AUDIT.info("event=resource_dependency_consent action={} outcome={} actor={} admin_user_id={} "
                         + "application_id={} targets={} access_types={} trace_id={}{}",
-                AuditLogSanitizer.sanitizeToken(action), outcomeOf(error), actorEvidence(context),
+                AuditLogSanitizer.sanitizeToken(action), AuditLogSanitizer.outcomeOf(error), AuditLogSanitizer.actorEvidence(context),
                 AuditLogSanitizer.sanitizeToken(context.getInitiatorId()), AuditLogSanitizer.sanitizeToken(applicationId),
                 targets, accessTypes, context.getTraceId(), AuditLogSanitizer.reasonOf(error));
     }
@@ -49,7 +45,7 @@ public final class ResourceDependencyAuditLog {
         }
         AUDIT.info("event=resource_dependency_grant outcome=SUCCESS actor={} user_id={} application_id={} "
                         + "source_deployment={} targets={} access_types={} trace_id={}",
-                actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
+                AuditLogSanitizer.actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
                 sourceDeployment(context), targetsOf(granted), accessTypesOf(granted), context.getTraceId());
     }
 
@@ -65,7 +61,7 @@ public final class ResourceDependencyAuditLog {
         }
         AUDIT.info("event=resource_dependency_denial outcome=DENIED actor={} user_id={} application_id={} "
                         + "source_deployment={} targets={} access_types={} trace_id={}",
-                actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
+                AuditLogSanitizer.actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
                 sourceDeployment(context), targetsOf(unresolved), accessTypesOf(unresolved), context.getTraceId());
     }
 
@@ -73,7 +69,7 @@ public final class ResourceDependencyAuditLog {
     public static void runtimeFail(ProxyContext context, String applicationId, List<String> requiredFailures, String reason) {
         AUDIT.info("event=resource_dependency_runtime_fail outcome=RUNTIME_FAIL actor={} user_id={} "
                         + "application_id={} source_deployment={} targets={} trace_id={} reason=\"{}\"",
-                actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
+                AuditLogSanitizer.actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
                 sourceDeployment(context),
                 requiredFailures.stream().map(AuditLogSanitizer::sanitizeToken)
                         .collect(Collectors.joining(",")),
@@ -96,36 +92,11 @@ public final class ResourceDependencyAuditLog {
                 .collect(Collectors.joining(","));
     }
 
-    private static String outcomeOf(Throwable error) {
-        return switch (error) {
-            case null -> "SUCCESS";
-            case PermissionDeniedException ignored -> "DENIED";
-            case ResourceNotFoundException ignored -> "NOT_FOUND";
-            default -> "ERROR";
-        };
-    }
-
     /**
      * The immediate caller: "root" when no deployment is calling; on an intercepted call, the last interceptor.
      */
     private static String sourceDeployment(ProxyContext context) {
         String deployment = context.getSourceDeployment();
         return deployment == null ? "root" : AuditLogSanitizer.sanitizeToken(deployment);
-    }
-
-    // Non-secret evidence of the calling actor: the DIAL key's project and/or the workload JWT's azp.
-    private static String actorEvidence(ProxyContext context) {
-        Key key = context.getKey();
-        ExtractedClaims claims = context.getExtractedClaims();
-        String azp = claims == null ? null : claims.authorizedParty();
-        String project = key == null ? null : "project:" + AuditLogSanitizer.sanitizeToken(key.getProject());
-        String authorizedParty = azp == null ? null : "azp:" + AuditLogSanitizer.sanitizeToken(azp);
-        if (project != null && authorizedParty != null) {
-            return project + " " + authorizedParty;
-        }
-        if (project != null) {
-            return project;
-        }
-        return authorizedParty == null ? "unknown" : authorizedParty;
     }
 }

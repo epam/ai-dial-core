@@ -1,11 +1,19 @@
 package com.epam.aidial.core.server.log;
 
+import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.security.ExtractedClaims;
+import com.epam.aidial.core.server.service.ConsentRequiredException;
+import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
+
 import java.util.regex.Pattern;
 
 /**
  * Log-line hygiene shared by the audit streams: token and reason sanitization against log
- * forging. One copy, because the character classes are security-sensitive — a hardening applied
- * to one audit class must not silently miss the other.
+ * forging, plus the outcome and actor evidence every stream records. One copy, because the
+ * character classes are security-sensitive — a hardening applied to one audit class must not
+ * silently miss the other.
  */
 final class AuditLogSanitizer {
 
@@ -29,5 +37,32 @@ final class AuditLogSanitizer {
 
     static String reasonOf(Throwable error) {
         return error == null ? "" : " reason=\"%s\"".formatted(sanitizeReason(error.getMessage()));
+    }
+
+    static String outcomeOf(Throwable error) {
+        return switch (error) {
+            case null -> "SUCCESS";
+            case ConsentRequiredException ignored -> "CONSENT_REQUIRED";
+            case PermissionDeniedException ignored -> "DENIED";
+            case ResourceNotFoundException ignored -> "NOT_FOUND";
+            default -> "ERROR";
+        };
+    }
+
+    // Non-secret evidence of the calling actor: the DIAL key's project and/or the workload JWT's azp. Both are
+    // recorded when both are present, since AppIdentityMatcher may have passed the gate via either one.
+    static String actorEvidence(ProxyContext context) {
+        Key key = context.getKey();
+        ExtractedClaims claims = context.getExtractedClaims();
+        String azp = claims == null ? null : claims.authorizedParty();
+        String project = key == null ? null : "project:" + sanitizeToken(key.getProject());
+        String authorizedParty = azp == null ? null : "azp:" + sanitizeToken(azp);
+        if (project != null && authorizedParty != null) {
+            return project + " " + authorizedParty;
+        }
+        if (project != null) {
+            return project;
+        }
+        return authorizedParty == null ? "unknown" : authorizedParty;
     }
 }
