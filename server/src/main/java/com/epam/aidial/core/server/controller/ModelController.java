@@ -1,8 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
-import com.epam.aidial.core.config.AliasPresentation;
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.LocalizedValue;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
@@ -51,8 +49,9 @@ public class ModelController {
     public Future<?> getModel(String modelId) {
         Config config = context.getConfig();
         Model model = config.getModels().get(modelId);
-        if (model == null) {
-            model = (Model) context.getProxy().getDeploymentService().findAliasView(context, modelId, AliasPresentation.MODEL);
+        if (model == null && AliasListings.isAliasId(config, modelId)) {
+            AliasListings.respondModel(context, modelId, view -> true, ModelController::createModel);
+            return Future.succeededFuture();
         }
 
         if (model == null) {
@@ -86,13 +85,18 @@ public class ModelController {
                 models.add(data);
             }
         }
-        for (Deployment view : context.getProxy().getDeploymentService().listAliasViews(context, AliasPresentation.MODEL)) {
-            models.add(createModel((Model) view));
-        }
+        AliasListings.listModels(context).onSuccess(views -> {
+            for (Model view : views) {
+                models.add(createModel(view));
+            }
+            respond(models);
+        }).onFailure(error -> AliasListings.respondError(context, error));
+        return Future.succeededFuture();
+    }
 
+    private Future<?> respond(List<ModelData> models) {
         ListData<ModelData> list = new ListData<>();
         list.setData(models);
-
         return context.respond(HttpStatus.OK, list);
     }
 

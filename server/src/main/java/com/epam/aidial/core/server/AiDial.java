@@ -384,8 +384,8 @@ public class AiDial {
                     ruleService, notificationService, applicationService, toolSetService, resourceOperationService,
                     complexResourceService, orgUnitService, orgUnitApprovals, generator, clock);
 
-            AliasService aliasService = new AliasService(applicationService, toolSetService, applicationSchemaService, encryptionService,
-                    accessService);
+            AliasService aliasService = new AliasService(applicationService, toolSetService, applicationSchemaService,
+                    encryptionService, resourceService, accessService);
             DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
                     toolSetService, resourceService, applicationSchemaService, aliasService);
 

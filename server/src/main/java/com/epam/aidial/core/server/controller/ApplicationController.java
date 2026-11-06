@@ -166,7 +166,7 @@ public class ApplicationController {
             if (applicationService.isIncludeCustomApps()) {
                 list.addAll(deploymentService.listDeployments(context, ResourceTypes.APPLICATION, deploymentExtractor));
             }
-            for (Deployment view : deploymentService.listAllAliasViews(context, AliasPresentation.APPLICATION)) {
+            for (Deployment view : deploymentService.listAliasViews(context, AliasPresentation.APPLICATION)) {
                 list.add((Application) view);
             }
             return list.stream().map(this::mapApplication).toList();
