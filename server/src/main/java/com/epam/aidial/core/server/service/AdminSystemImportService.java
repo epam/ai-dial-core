@@ -343,7 +343,8 @@ public class AdminSystemImportService {
         if (head.length <= MAX_BUFFERED_BLOB_BYTES) {
             uploads.submit(() -> blobStorage.upload(path, attributes, new ByteArrayInputStream(head)));
         } else {
-            blobStorage.upload(path, attributes, new SequenceInputStream(new ByteArrayInputStream(head), new UnclosableInputStream(zip)));
+            uploads.runInline(() -> blobStorage.upload(path, attributes,
+                    new SequenceInputStream(new ByteArrayInputStream(head), new UnclosableInputStream(zip))));
         }
         zip.closeEntry();
     }
@@ -651,12 +652,13 @@ public class AdminSystemImportService {
 
     @FunctionalInterface
     private interface BlobCall {
-        void run() throws Exception;
+        void run() throws IOException;
     }
 
     /**
-     * Runs blob calls on the executor, at most {@code limit} at a time. After the first failure no further call starts,
-     * and {@link #submit} and {@link #awaitAll} throw it only once every call in flight has ended.
+     * Runs blob calls on the executor, at most {@code limit} at a time, counting those {@link #runInline} runs on the
+     * caller's thread. After the first failure no further call starts, and {@link #submit} and {@link #awaitAll} throw it
+     * only once every call in flight has ended.
      */
     private static final class BlobCalls {
         private final Executor executor;
@@ -690,6 +692,19 @@ public class AdminSystemImportService {
                 permits.release();
                 failure.compareAndSet(null, e);
                 awaitAll();
+            }
+        }
+
+        void runInline(BlobCall call) throws IOException {
+            permits.acquireUninterruptibly();
+            if (failure.get() != null) {
+                permits.release();
+                awaitAll();
+            }
+            try {
+                call.run();
+            } finally {
+                permits.release();
             }
         }
 

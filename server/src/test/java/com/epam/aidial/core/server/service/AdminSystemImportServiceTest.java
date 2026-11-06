@@ -806,11 +806,12 @@ class AdminSystemImportServiceTest {
 
     @Test
     void testStorageCallsRunInParallelUpToTheLimit() {
-        Entry[] entries = new Entry[6];
-        for (int i = 0; i < entries.length; i++) {
+        Entry[] entries = new Entry[7];
+        for (int i = 0; i < 6; i++) {
             storeOld("public/models/old" + i);
             entries[i] = entry("public/models/n" + i, "{}");
         }
+        entries[6] = entry("public/files/large.bin", "x".repeat(5 * 1024 * 1024 + 1));
         AdminSystemImportService.Settings settings = new AdminSystemImportService.Settings();
         settings.setParallelism(2);
         AdminSystemImportService parallelService = newService(settings, CORE_VERSION);
