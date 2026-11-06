@@ -154,7 +154,7 @@ public class ResourceDependencyValidatorTest {
 
     @Test
     void rejectsMalformedBucketSegment() {
-        // the bucket is opaque but must still be a valid path element: a target no request could ever resolve is a 400
+        // the bucket is opaque at write time, but must still be a valid path element
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
 
         for (String path : List.of("files/%0A/x/", "files/a%2Fb/x/", "files/{curent-user}/notes/", "files/%7Bfoo%7D/x/", "files/a%zz/x/")) {
