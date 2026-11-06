@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.limiter;
 
 import com.epam.aidial.core.config.Limit;
+import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import lombok.Data;
@@ -11,19 +12,24 @@ import java.util.List;
 @Data
 public class RequestRateLimit {
     private final RateBucket hour = new RateBucket(RateWindow.HOUR);
-    private final RateBucket day = new RateBucket(RateWindow.DAY);
+    private final FixedRateBucket day = new FixedRateBucket();
 
-    public RateLimitResult check(long timestamp, Limit limit, long count) {
+    public RateLimitResult check(long timestamp, RateLimitSchedule schedule, Limit limit, long count) {
         long hourTotal = hour.update(timestamp);
-        long dayTotal = day.update(timestamp);
+        long dayTotal = day.reconcile(timestamp, CalendarPeriod.DAY, schedule);
 
         boolean result = hourTotal >= limit.getRequestHour() || dayTotal >= limit.getRequestDay();
         if (result) {
             String errorMsg = String.format("Hit request rate limit. Hour limit: %d / %d requests. Day limit: %d / %d requests.",
                     hourTotal, limit.getRequestHour(), dayTotal, limit.getRequestDay());
-            long hourRetryAfter = hour.retryAfter(limit.getRequestHour());
-            long dayRetryAfter = day.retryAfter(limit.getRequestDay());
-            long retryAfter = Math.max(hourRetryAfter, dayRetryAfter);
+            LimitBreach.Picker breach = new LimitBreach.Picker(LimitBreach.Kind.REQUESTS);
+            if (hourTotal >= limit.getRequestHour()) {
+                breach.offer(LimitBreach.Window.HOUR, hour.retryAfter(limit.getRequestHour()), -1);
+            }
+            if (dayTotal >= limit.getRequestDay()) {
+                breach.offer(LimitBreach.Window.DAY, day.retryAfterSeconds(timestamp, CalendarPeriod.DAY, schedule),
+                        day.resetsAtMillis(timestamp, CalendarPeriod.DAY, schedule));
+            }
             List<String> limits = new ArrayList<>();
             StringBuilder displayError = new StringBuilder("You've exceeded your");
             if (dayTotal >= limit.getRequestDay()) {
@@ -47,17 +53,18 @@ public class RequestRateLimit {
             if (limits.size() > 1) {
                 displayError.append('s');
             }
-            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, displayError.toString(), retryAfter);
+            LimitBreach fired = breach.build();
+            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, displayError.toString(), fired.retryAfterSeconds(), fired, null);
         } else {
             hour.add(timestamp, count);
-            day.add(timestamp, count);
+            day.add(timestamp, CalendarPeriod.DAY, schedule, count);
             return RateLimitResult.SUCCESS;
         }
     }
 
-    public void update(long timestamp, LimitStats limitStats) {
+    public void update(long timestamp, RateLimitSchedule schedule, LimitStats limitStats) {
         long hourTotal = hour.update(timestamp);
-        long dayTotal = day.update(timestamp);
+        long dayTotal = day.reconcile(timestamp, CalendarPeriod.DAY, schedule);
         limitStats.getDayRequestStats().setUsed(dayTotal);
         limitStats.getHourRequestStats().setUsed(hourTotal);
     }

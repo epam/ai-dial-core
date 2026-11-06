@@ -2,12 +2,10 @@ package com.epam.aidial.core.server.token;
 
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
-import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.resource.ResourceTypes;
-import com.epam.aidial.core.storage.service.ResourceService;
-import com.epam.aidial.core.storage.util.EtagHeader;
+import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
+import com.epam.aidial.core.storage.service.LockService;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.vertx.core.Future;
 import lombok.AllArgsConstructor;
@@ -15,39 +13,52 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RBucket;
+import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.StringCodec;
 
+import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import static com.epam.aidial.core.storage.resource.ResourceDescriptor.PATH_SEPARATOR;
+import java.util.function.Function;
 
 @Slf4j
 @RequiredArgsConstructor
 public class TokenStatsTracker {
-    public static final String DEPLOYMENT_COST_STATS_BUCKET = "deployment_cost_stats";
-    public static final String DEPLOYMENT_COST_STATS_LOCATION = DEPLOYMENT_COST_STATS_BUCKET + PATH_SEPARATOR;
+    // not "deployment_cost_stats:": older versions keep a ResourceService hash of the trace under that key
+    static final String KEY_PREFIX = "deployment_cost_stats_tmp:";
 
     private final AsyncTaskExecutor taskExecutor;
-    private final ResourceService resourceService;
+    private final RedissonClient redis;
+    private final LockService lockService;
+    private final String prefix;
+    private final BlockingCallTracer blockingCallTracer;
+    // refreshed on every write: bounds records nobody deletes, and a request that reports its usage later than this
+    // after the trace's last write loses it
+    private final Duration ttl;
+    // for a trace whose root is a background Responses job, which outlives its HTTP request
+    private final Duration backgroundTtl;
 
     /**
-     * Starts current span.
-     * <p>
-     *     Note. The method is blocking and shouldn't be run in the event loop thread.
-     * </p>
+     * Adds the request to the usage record of its trace, creating the record if it does not exist.
+     *
+     * <p>The record is kept in Redis only, with a TTL, and is deleted when the root span ends.
+     * Losing it to eviction under a {@code volatile-*} policy or to a Redis restart loses the trace's roll-up;
+     * the costs each deployment reports for itself are not affected.
      */
     public Future<Void> startSpan(ProxyContext context) {
         return taskExecutor.submit(() -> {
-            ResourceDescriptor resource = toResource(context.getTraceId());
-            resourceService.computeResource(resource, json -> {
-                TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
-                if (traceContext == null) {
-                    traceContext = new TraceContext();
-                }
+            update(context.getTraceId(), true, traceContext -> {
                 traceContext.addSpan(context);
-                return ProxyUtil.convertToString(traceContext);
+                // only the root: its poller deletes the record when the job ends. A job started by a child
+                // reports into the record only while the root runs, and the root's endSpan deletes it
+                if (context.isBackgroundJob() && context.isOriginalRequest()) {
+                    traceContext.background = true;
+                }
+                return true;
             });
             return null;
         });
@@ -59,8 +70,7 @@ public class TokenStatsTracker {
 
     public Future<UsageStats> getUsageStats(ProxyContext context) {
         return taskExecutor.submit(() -> {
-            ResourceDescriptor resource = toResource(context.getTraceId());
-            String json = resourceService.getResource(resource);
+            String json = blockingCallTracer.trace("cost_stats.get", () -> getBucket(context.getTraceId()).get());
             TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
             if (traceContext == null) {
                 return UsageStats.EMPTY;
@@ -69,12 +79,18 @@ public class TokenStatsTracker {
         });
     }
 
+    /**
+     * Ends the root span of the trace: deletes its usage record.
+     */
     public Future<Void> endSpan(String traceId) {
-        ResourceDescriptor resource = toResource(traceId);
-        return taskExecutor.submit(() -> {
-            resourceService.deleteResource(resource, EtagHeader.ANY);
+        return taskExecutor.submit(() -> blockingCallTracer.trace("cost_stats.delete", () -> {
+            RBucket<String> bucket = getBucket(traceId);
+            // under the lock, so a racing update cannot write back the deleted record
+            try (var ignore = lockService.lock(bucket.getName())) {
+                bucket.delete();
+            }
             return null;
-        });
+        }));
     }
 
     /**
@@ -93,23 +109,41 @@ public class TokenStatsTracker {
     /**
      * Records usage self-reported by a deployment (Model or Application) and rolls it into the
      * subtree aggregate and per-deployment breakdown of every ancestor. Returns the resulting
-     * {@link UsageStats} for {@code spanId} itself, computed inside the same locked
+     * {@link UsageStats} for {@code spanId} itself - including the aggregated cost increments
+     * collected for every ancestor along the way - computed inside the same locked
      * read-modify-write so callers never need a separate read.
      */
     public Future<UsageStats> updateDeploymentStats(String traceId, String spanId, String deploymentName, TokenUsage tokenUsage) {
-        ResourceDescriptor resource = toResource(traceId);
+        return updateDeploymentStats(traceId, spanId, deploymentName, tokenUsage, false);
+    }
+
+    /**
+     * Same as {@link #updateDeploymentStats(String, String, String, TokenUsage)}.
+     *
+     * @param rootMayHaveEnded the report comes from a child span, which can report after the root's {@code endSpan}
+     *     has deleted the record: a missing record is then logged at debug, not warn
+     */
+    public Future<UsageStats> updateDeploymentStats(String traceId, String spanId, String deploymentName, TokenUsage tokenUsage,
+            boolean rootMayHaveEnded) {
         return taskExecutor.submit(() -> {
-            UsageStats[] result = {UsageStats.EMPTY};
-            resourceService.computeResource(resource, json -> {
-                TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
-                if (traceContext == null) {
+            UsageStats result = update(traceId, false, traceContext -> {
+                if (!traceContext.spans.containsKey(spanId)) {
                     return null;
                 }
-                traceContext.updateStats(spanId, deploymentName, tokenUsage);
-                result[0] = traceContext.getUsageStats(spanId);
-                return ProxyUtil.convertToString(traceContext);
+                List<AggregatedCost> aggregatedCosts = traceContext.updateStats(spanId, deploymentName, tokenUsage);
+                UsageStats usageStats = traceContext.getUsageStats(spanId);
+                return new UsageStats(usageStats.total(), usageStats.usagePerModel(), aggregatedCosts);
             });
-            return result[0];
+            if (result == null) {
+                if (rootMayHaveEnded) {
+                    log.debug("Usage of span {} is not rolled up: trace {} has no record holding it", spanId, traceId);
+                } else {
+                    // the root has not deleted the record yet, so it was evicted, expired or lost in a Redis restart
+                    log.warn("Usage of span {} is lost: trace {} has no record holding it", spanId, traceId);
+                }
+                return UsageStats.EMPTY;
+            }
+            return result;
         });
     }
 
@@ -117,11 +151,14 @@ public class TokenStatsTracker {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class TraceContext {
         Map<String, TokenStats> spans = new HashMap<>();
+        // the root span is a background Responses job: the record gets the background TTL
+        boolean background;
 
         void addSpan(ProxyContext context) {
             String spanId = context.getSpanId();
             String parentSpanId = context.getParentSpanId();
-            TokenStats tokenStats = new TokenStats(new TokenUsage(), parentSpanId);
+            String deploymentName = context.getDeployment() == null ? null : context.getDeployment().getName();
+            TokenStats tokenStats = new TokenStats(new TokenUsage(), parentSpanId, deploymentName);
             spans.put(spanId, tokenStats);
         }
 
@@ -130,13 +167,19 @@ public class TokenStatsTracker {
             if (tokenStats == null) {
                 return UsageStats.EMPTY;
             }
-            return new UsageStats(tokenStats.tokenUsage, toUsagePerModelList(tokenStats.usagePerModel));
+            return new UsageStats(tokenStats.tokenUsage, toUsagePerModelList(tokenStats.usagePerModel), List.of());
         }
 
-        void updateStats(String spanId, String deploymentName, TokenUsage tokenUsage) {
+        /**
+         * Rolls the reporting span's usage into every ancestor's subtree aggregate and per-model
+         * breakdown, and returns the aggregated-cost increment for each ancestor along the way.
+         * The mechanism is deployment-kind-agnostic: every span visited here is, by definition, an
+         * ancestor with a descendant call, whatever kind of deployment it turns out to be.
+         */
+        List<AggregatedCost> updateStats(String spanId, String deploymentName, TokenUsage tokenUsage) {
             TokenStats tokenStats = spans.get(spanId);
             if (tokenStats == null) {
-                return;
+                return List.of();
             }
             // self: the reporting deployment's own usage replaces whatever was here, except
             // aggCost, which keeps accumulating (a descendant may have already rolled its
@@ -145,6 +188,8 @@ public class TokenStatsTracker {
             // so its own breakdown only needs to cover what its descendants contributed.
             tokenStats.tokenUsage.assign(tokenUsage);
 
+            List<AggregatedCost> aggregatedCosts = new ArrayList<>();
+            BigDecimal delta = tokenUsage.getAggCost();
             String parentSpanId = tokenStats.parentSpanId;
             while (parentSpanId != null) {
                 tokenStats = spans.get(parentSpanId);
@@ -154,10 +199,14 @@ public class TokenStatsTracker {
                 }
                 // ancestors: only aggCost and the per-model breakdown roll up - raw token
                 // counts are never accumulated into an ancestor's own tokenUsage.
-                tokenStats.tokenUsage.increaseAggCost(tokenUsage.getAggCost());
+                tokenStats.tokenUsage.increaseAggCost(delta);
                 addUsagePerModel(tokenStats, deploymentName, tokenUsage);
+                if (tokenStats.deploymentName != null && delta != null && delta.signum() > 0) {
+                    aggregatedCosts.add(new AggregatedCost(tokenStats.deploymentName, delta));
+                }
                 parentSpanId = tokenStats.parentSpanId;
             }
+            return aggregatedCosts;
         }
 
         /**
@@ -194,28 +243,65 @@ public class TokenStatsTracker {
     public static class TokenStats {
         TokenUsage tokenUsage;
         String parentSpanId;
+        String deploymentName;
         List<ModelTokenUsage> usagePerModel = new ArrayList<>();
 
         public TokenStats() {
         }
 
-        public TokenStats(TokenUsage tokenUsage, String parentSpanId) {
+        public TokenStats(TokenUsage tokenUsage, String parentSpanId, String deploymentName) {
             this.tokenUsage = tokenUsage;
             this.parentSpanId = parentSpanId;
+            this.deploymentName = deploymentName;
         }
+    }
+
+    /**
+     * Aggregated-cost increment for one ancestor span, kind-agnostic: whatever kind of deployment
+     * {@code deploymentName} turns out to be, it is credited the same way once it has a descendant
+     * call rolling cost into it.
+     */
+    public record AggregatedCost(String deploymentName, BigDecimal cost) {
     }
 
     /**
      * @param total scalar subtree aggregate (drives cost/aggCost propagation), as before.
      * @param usagePerModel one entry per self-report from a descendant, indexed in report order;
      *                       repeated reports from the same deployment name are not merged.
+     * @param aggregatedCosts aggregated-cost increment for every ancestor visited by this report,
+     *                         empty for a pure read (nothing new is "known" outside an update).
      */
-    public record UsageStats(TokenUsage total, List<UsagePerModel> usagePerModel) {
-        public static final UsageStats EMPTY = new UsageStats(null, List.of());
+    public record UsageStats(TokenUsage total, List<UsagePerModel> usagePerModel, List<AggregatedCost> aggregatedCosts) {
+        public static final UsageStats EMPTY = new UsageStats(null, List.of(), List.of());
     }
 
-    private static ResourceDescriptor toResource(String traceId) {
-        return ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.DEPLOYMENT_COST_STATS, DEPLOYMENT_COST_STATS_BUCKET, DEPLOYMENT_COST_STATS_LOCATION, traceId);
+    /**
+     * Applies {@code fn} to the usage record of the trace under its lock and stores the result with a fresh TTL.
+     *
+     * @return the result of {@code fn}, or {@code null} without writing if there is no record and {@code create}
+     *     is false, or if {@code fn} returns {@code null}.
+     */
+    private <T> T update(String traceId, boolean create, Function<TraceContext, T> fn) {
+        return blockingCallTracer.trace("cost_stats.update", () -> {
+            RBucket<String> bucket = getBucket(traceId);
+            try (var ignore = lockService.lock(bucket.getName())) {
+                TraceContext traceContext = ProxyUtil.convertToObject(bucket.get(), TraceContext.class);
+                if (traceContext == null && !create) {
+                    return null;
+                }
+                if (traceContext == null) {
+                    traceContext = new TraceContext();
+                }
+                T result = fn.apply(traceContext);
+                if (result != null) {
+                    bucket.set(ProxyUtil.convertToString(traceContext), traceContext.background ? backgroundTtl : ttl);
+                }
+                return result;
+            }
+        });
+    }
+
+    private RBucket<String> getBucket(String traceId) {
+        return redis.getBucket(KEY_PREFIX + BlobStorageUtil.toStoragePath(prefix, traceId), StringCodec.INSTANCE);
     }
 }

@@ -3,6 +3,10 @@ additionalProperties: true
 required: [name, status]
 properties:
   name: { type: string }
+  parent_stage_index:
+    type: integer
+    minimum: 0
+    description: Index (position in `stages`) of the parent stage. Absent for top-level stages.
   status:
     $ref: '#/components/schemas/Status'
   content: { type: string }

@@ -1,10 +1,11 @@
 package com.epam.aidial.core.server.function.request;
 
-import com.epam.aidial.core.config.Deployment;
 import com.fasterxml.jackson.core.JsonProcessingException;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import javax.annotation.Nullable;
 
 /**
  * Common interface for Chat Completions API and Responses API requests.
@@ -39,6 +40,15 @@ public interface RequestObject {
     Set<String> collectAttachments();
 
     /**
+     * Collects skill resource URLs present in the request body.
+     *
+     * @return a set of skill URLs found in the request body, or an empty set if this request shape doesn't support it
+     */
+    default Set<String> collectSkills() {
+        return Set.of();
+    }
+
+    /**
      * Collects image and file URLs located at the specified paths.
      *
      * @param paths the paths to inspect
@@ -63,11 +73,13 @@ public interface RequestObject {
     void clearInterceptorSettings();
 
     /**
-     * Applies default values from the specified deployment configuration to this request.
+     * Applies default body parameters to this request, under every key it does not already carry. Which
+     * defaults are in force is {@link com.epam.aidial.core.config.Deployment#resolveDefaults}' to decide -
+     * it depends on the interface the request arrived on, not on the shape of the request.
      *
-     * @param deployment the deployment configuration containing default values
+     * @param defaults the default values to apply
      */
-    void applyDefaults(Deployment deployment);
+    void applyDefaults(Map<String, Object> defaults);
 
     /**
      * Serializes this request to a byte array.
@@ -93,5 +105,24 @@ public interface RequestObject {
      */
     default boolean isBackground() {
         return false;
+    }
+
+    /**
+     * Returns the id of the upstream config this request must be routed back to, resolved from the request
+     * body (e.g. echoed encrypted content affinity), if any.
+     *
+     * @return the upstream config id, or {@code null} if this request carries no such affinity
+     */
+    @Nullable
+    default String getEncryptedUpstreamId() {
+        return null;
+    }
+
+    /**
+     * Sets the id of the upstream config this request must be routed back to.
+     *
+     * @param encryptedUpstreamId the upstream config id to set
+     */
+    default void setEncryptedUpstreamId(String encryptedUpstreamId) {
     }
 }

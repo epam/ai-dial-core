@@ -1,0 +1,38 @@
+{
+  "applications": {
+    "healthy-app": {
+      "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+      "displayName": "Healthy app",
+      "description": "A healthy application that should still be listed"
+    },
+    "broken-schema-app": {
+      "application_type_schema_id": "https://mydial.somewhere.com/custom_application_schemas/broken_type"
+    }
+  },
+  "models": {
+    "gpt-4": {
+      "type": "chat",
+      "endpoint": "http://localhost:7001/openai/deployments/ada/embeddings",
+      "upstreams": [
+        {
+          "endpoint": "http://localhost:7001",
+          "key": "modelKey2"
+        }
+      ]
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "default"
+    }
+  },
+  "applicationTypeSchemas": [
+    {
+      "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+      "$id": "https://mydial.somewhere.com/custom_application_schemas/broken_type",
+      "dial:applicationTypeSchemaEndpoint": "http://127.0.0.1:1/schema",
+      "dial:applicationTypeDisplayName": "Broken Application Type"
+    }
+  ]
+}

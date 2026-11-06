@@ -1,5 +1,11 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Test;
@@ -12,8 +18,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * HTTP integration tests for applications/toolsets materialized into the {@code platform} bucket.
  * Covers PUT/GET/DELETE round-trip via {@code ConfigResourceController}, userRoles survival,
- * function-type-app rejection, and that decrypted auth_settings/external-service secrets
- * held in the merged {@code Config} never leak on GET.
+ * function-type-app rejection, that decrypted auth_settings/external-service secrets
+ * held in the merged {@code Config} never leak on GET, and that GET computes the per-user
+ * sign-in statuses for toolset auth settings and application external services.
  */
 public class PlatformAppToolsetApiTest extends ResourceBaseTest {
 
@@ -54,6 +61,69 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
         Response getAfterDelete = send(HttpMethod.GET, "/v1/applications/platform/my-platform-app", null, "",
                 "authorization", "admin");
         verify(getAfterDelete, 404);
+    }
+
+    @Test
+    void testApplicationPutOmittingRouteSecretPreservesIt() {
+        String bodyWithSecret = """
+                {
+                  "endpoint": "http://application1/v1/completions",
+                  "display_name": "Platform App With Secret",
+                  "routes": {
+                    "my-route": {
+                      "paths": ["/v1/my-route"],
+                      "methods": ["GET"],
+                      "upstreams": [{"endpoint": "http://localhost:9876", "key": "platform-route-secret-1"}]
+                    }
+                  }
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/applications/platform/app-preserve-secret", null, bodyWithSecret,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 200);
+
+        // Raw blob must never carry the plaintext secret — only its ENC[...] envelope.
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION,
+                ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, "app-preserve-secret");
+        String rawBlob = resourceService.getResource(descriptor);
+        assertNotNull(rawBlob, "Application blob must exist");
+        assertTrue(rawBlob.contains("ENC["), () -> "Upstream secret must be encrypted at rest: " + rawBlob);
+
+        Response get = send(HttpMethod.GET, "/v1/applications/platform/app-preserve-secret", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertFalse(get.body().contains("platform-route-secret-1"),
+                () -> "GET must never leak upstream secrets: " + get.body());
+
+        // Re-PUT the same body MINUS the secret field — simulates a naive GET-then-PUT round-trip.
+        String bodyWithoutSecret = """
+                {
+                  "endpoint": "http://application1/v1/completions",
+                  "display_name": "Platform App With Secret",
+                  "routes": {
+                    "my-route": {
+                      "paths": ["/v1/my-route"],
+                      "methods": ["GET"],
+                      "upstreams": [{"endpoint": "http://localhost:9876"}]
+                    }
+                  }
+                }
+                """;
+        Response put2 = send(HttpMethod.PUT, "/v1/applications/platform/app-preserve-secret", null, bodyWithoutSecret,
+                "authorization", "admin");
+        verify(put2, 200);
+
+        String rawBlobAfter = resourceService.getResource(descriptor);
+        assertNotNull(rawBlobAfter, "Application blob must still exist");
+        assertTrue(rawBlobAfter.contains("ENC["),
+                () -> "Secret must still be present (preserved) after omitting it in PUT: " + rawBlobAfter);
+
+        MergedConfigStore store = (MergedConfigStore) dial.getProxy().getConfigStore();
+        Application application = store.get().getApplications().get("app-preserve-secret");
+        assertNotNull(application, "Application must be present in merged config");
+        assertEquals("platform-route-secret-1",
+                application.getRoutes().get("my-route").getUpstreams().get(0).getKey());
     }
 
     @Test
@@ -401,6 +471,205 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
             assertFalse(reread.body().contains("beef"),
                     () -> "hint must be re-derived from the stored secret, not echoed: " + reread.body());
             assertFalse(reread.body().contains(secret), () -> "secret leaked: " + reread.body());
+        }
+    }
+
+    /**
+     * The config API read must surface the same per-user sign-in statuses as {@code /openai/toolsets}
+     * and the generic resource GET. API_KEY auth keeps the test hermetic — no token endpoint to mock.
+     */
+    @Test
+    void testPlatformToolSetAuthStatusesOnGet() {
+        String body = """
+                {
+                  "endpoint": "http://localhost:9876",
+                  "transport": "HTTP",
+                  "display_name": "Status Toolset",
+                  "auth_settings": {
+                    "authentication_type": "API_KEY",
+                    "api_key_header": "Authorization"
+                  }
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/toolsets/platform/status-toolset", null, body,
+                "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response before = send(HttpMethod.GET, "/v1/toolsets/platform/status-toolset", null, "",
+                "authorization", "admin");
+        verify(before, 200);
+        assertTrue(before.body().contains("\"global_auth_status\":\"SIGNED_OUT\""),
+                () -> "expected global_auth_status on platform toolset GET: " + before.body());
+        assertTrue(before.body().contains("\"user_level_auth_status\":\"SIGNED_OUT\""),
+                () -> "expected user_level_auth_status on platform toolset GET: " + before.body());
+        assertFalse(before.body().contains("\"client_secret\""),
+                () -> "client_secret must stay absent: " + before.body());
+
+        // Short-name url — the form sign-in normalizes for platform deployments; it pins the scope
+        // the GET-side enrichment has to read from.
+        verify(send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                {
+                    "url": "status-toolset",
+                    "credentialsLevel": "GLOBAL",
+                    "authenticationType": "API_KEY",
+                    "api_key": "Bearer api_key"
+                }
+                """, "authorization", "admin"), 200, "true");
+        verify(send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                {
+                    "url": "status-toolset",
+                    "credentialsLevel": "USER",
+                    "authenticationType": "API_KEY",
+                    "api_key": "Bearer api_key"
+                }
+                """, "authorization", "admin"), 200, "true");
+
+        Response after = send(HttpMethod.GET, "/v1/toolsets/platform/status-toolset", null, "",
+                "authorization", "admin");
+        verify(after, 200);
+        assertTrue(after.body().contains("\"global_auth_status\":\"SIGNED_IN\""),
+                () -> "global_auth_status must flip after GLOBAL sign-in: " + after.body());
+        assertTrue(after.body().contains("\"user_level_auth_status\":\"SIGNED_IN\""),
+                () -> "user_level_auth_status must flip after USER sign-in: " + after.body());
+    }
+
+    @Test
+    void testPlatformApplicationExternalServiceAuthStatusesOnGet() {
+        String body = """
+                {
+                  "endpoint": "http://application1/v1/completions",
+                  "display_name": "Status App",
+                  "external_services": {
+                    "apikey-svc": {
+                      "display_name": "Billing",
+                      "auth_settings": {
+                        "authentication_type": "API_KEY",
+                        "api_key_header": "Authorization"
+                      }
+                    }
+                  }
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/applications/platform/status-app", null, body,
+                "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response before = send(HttpMethod.GET, "/v1/applications/platform/status-app", null, "",
+                "authorization", "admin");
+        verify(before, 200);
+        assertTrue(before.body().contains("\"user_level_auth_status\":\"SIGNED_OUT\""),
+                () -> "expected user_level_auth_status on platform app GET: " + before.body());
+        assertTrue(before.body().contains("\"app_level_auth_status\":\"SIGNED_OUT\""),
+                () -> "expected app_level_auth_status on platform app GET: " + before.body());
+        assertFalse(before.body().contains("\"client_secret\""),
+                () -> "client_secret must stay absent: " + before.body());
+
+        // Short-name scope — the same form /v1/ops/external-service/signin normalizes for platform apps.
+        verify(send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "applications/status-app/external_services/apikey-svc",
+                    "credentials_level": "USER",
+                    "authentication_type": "API_KEY",
+                    "api_key": "k"
+                }
+                """, "authorization", "admin"), 200, "true");
+        verify(send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "applications/status-app/external_services/apikey-svc",
+                    "credentials_level": "APPLICATION",
+                    "authentication_type": "API_KEY",
+                    "api_key": "k"
+                }
+                """, "authorization", "admin"), 200, "true");
+
+        Response after = send(HttpMethod.GET, "/v1/applications/platform/status-app", null, "",
+                "authorization", "admin");
+        verify(after, 200);
+        assertTrue(after.body().contains("\"user_level_auth_status\":\"SIGNED_IN\""),
+                () -> "user_level_auth_status must flip after USER sign-in: " + after.body());
+        assertTrue(after.body().contains("\"app_level_auth_status\":\"SIGNED_IN\""),
+                () -> "app_level_auth_status must flip after APPLICATION sign-in: " + after.body());
+    }
+
+    /**
+     * Statuses and the admin hint are not mutually exclusive: the same GET response must carry both,
+     * and the sign-in flow behind the status must not disturb the stored secret the hint derives from.
+     */
+    @Test
+    void testPlatformToolSetStatusesAndHintTogether() {
+        String secret = "platform-toolset-secret-9c4f";
+        String body = """
+                {
+                  "endpoint": "http://localhost:9876/mcp",
+                  "transport": "HTTP",
+                  "display_name": "Hint Status Toolset",
+                  "auth_settings": {
+                    "authentication_type": "OAUTH",
+                    "client_id": "cid",
+                    "client_secret": "%s",
+                    "redirect_uri": "http://localhost:3000/auth/signin",
+                    "authorization_endpoint": "http://localhost:9876/authorize",
+                    "token_endpoint": "http://localhost:9876/token"
+                  }
+                }
+                """.formatted(secret);
+
+        // The OAUTH sign-in drives protected-resource and authorization-server discovery against the
+        // toolset endpoint before redeeming the code, so each well-known route is mapped explicitly.
+        String protectedResourceMetadata = """
+                {
+                    "resource": "http://localhost:9876/mcp",
+                    "authorization_servers": ["http://localhost:9876"]
+                }
+                """;
+        String authServerMetadata = """
+                {
+                    "issuer": "http://localhost:9876",
+                    "authorization_endpoint": "http://localhost:9876/authorize",
+                    "token_endpoint": "http://localhost:9876/token",
+                    "code_challenge_methods_supported": ["S256"]
+                }
+                """;
+        String tokenResponse = """
+                {
+                    "access_token": "t",
+                    "refresh_token": "r",
+                    "expires_in": 3600
+                }
+                """;
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.GET, "/.well-known/oauth-protected-resource/mcp",
+                    200, protectedResourceMetadata, "Content-Type", "application/json");
+            server.map(HttpMethod.GET, "/.well-known/oauth-authorization-server",
+                    200, authServerMetadata, "Content-Type", "application/json");
+            server.map(HttpMethod.POST, "/token", 200, tokenResponse, "Content-Type", "application/json");
+            verify(send(HttpMethod.PUT, "/v1/toolsets/platform/hint-status-toolset", null, body,
+                    "authorization", "admin", "If-None-Match", "*"), 200);
+
+            Response get = send(HttpMethod.GET, "/v1/toolsets/platform/hint-status-toolset", null, "",
+                    "authorization", "admin");
+            verify(get, 200);
+            assertTrue(get.body().contains("\"client_secret_hint\":\"9c4f\""),
+                    () -> "admin must see the hint: " + get.body());
+            assertTrue(get.body().contains("\"user_level_auth_status\":\"SIGNED_OUT\""),
+                    () -> "expected user_level_auth_status alongside the hint: " + get.body());
+            assertFalse(get.body().contains(secret), () -> "secret leaked: " + get.body());
+
+            verify(send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "hint-status-toolset",
+                        "credentialsLevel": "USER",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin"), 200, "true");
+
+            Response after = send(HttpMethod.GET, "/v1/toolsets/platform/hint-status-toolset", null, "",
+                    "authorization", "admin");
+            verify(after, 200);
+            assertTrue(after.body().contains("\"user_level_auth_status\":\"SIGNED_IN\""),
+                    () -> "user_level_auth_status must flip after USER sign-in: " + after.body());
+            assertTrue(after.body().contains("\"client_secret_hint\":\"9c4f\""),
+                    () -> "hint must survive the sign-in round trip: " + after.body());
+            assertFalse(after.body().contains(secret), () -> "secret leaked: " + after.body());
         }
     }
 

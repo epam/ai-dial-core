@@ -1,0 +1,54 @@
+{
+  "models": {
+    "gpt-spend": {
+      "type": "chat",
+      "interfaces": {"openaiResponses": {"base_url": "http://localhost:4848"}}
+    },
+    "gpt-burst": {
+      "type": "chat",
+      "interfaces": {"openaiResponses": {"base_url": "http://localhost:4848"}}
+    },
+    "gpt-translated": {
+      "type": "chat",
+      "interfaces": {
+        "openaiChatCompletions": {"base_url": "http://localhost:4848"},
+        "openaiResponses": {
+          "mode": "translator",
+          "translator": {"out": "openaiChatCompletions", "baseUrl": "http://localhost:4848"}
+        }
+      }
+    }
+  },
+  "applications": {
+    "app-spend": {
+      "endpoint": "http://localhost:4848/openai/deployments/app-spend/chat/completions"
+    }
+  },
+  "keys": {
+    "proxyKey1": {"project": "spend", "role": "capped"},
+    "proxyKey2": {"project": "free", "role": "uncapped"},
+    "proxyKey3": {"project": "weekly", "role": "weekly"}
+  },
+  "roles": {
+    "capped": {
+      "limits": {
+        "gpt-spend": {},
+        "gpt-burst": {"minute": "10"},
+        "gpt-translated": {"minute": "10"},
+        "app-spend": {}
+      },
+      "costLimit": {"day": "10", "month": "100"}
+    },
+    "weekly": {
+      "limits": {
+        "gpt-spend": {}
+      },
+      "costLimit": {"week": "100"}
+    },
+    "uncapped": {
+      "limits": {
+        "gpt-spend": {}
+      }
+    }
+  }
+}

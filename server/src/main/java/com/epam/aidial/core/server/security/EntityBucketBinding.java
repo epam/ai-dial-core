@@ -33,9 +33,12 @@ public class EntityBucketBinding {
             Map.entry(ResourceTypes.PROMPT.group(), Set.of(ResourceDescriptor.PUBLIC_BUCKET, USER_BUCKET_WILDCARD)),
             Map.entry(ResourceTypes.CONVERSATION.group(), Set.of(ResourceDescriptor.PUBLIC_BUCKET, USER_BUCKET_WILDCARD)),
             Map.entry("interceptors", Set.of(PLATFORM_BUCKET)),
+            Map.entry("translators", Set.of(PLATFORM_BUCKET)),
             Map.entry("roles", Set.of(PLATFORM_BUCKET)),
             Map.entry("keys", Set.of(PLATFORM_BUCKET)),
             Map.entry("routes", Set.of(PLATFORM_BUCKET)),
+            Map.entry(ResourceTypes.POLICY.group(), Set.of(PLATFORM_BUCKET)),
+            Map.entry(ResourceTypes.POLICY_ASSIGNMENT.group(), Set.of(PLATFORM_BUCKET)),
             Map.entry("settings", Set.of(PLATFORM_BUCKET)));
 
     public static boolean isAllowed(String entityType, String bucket) {

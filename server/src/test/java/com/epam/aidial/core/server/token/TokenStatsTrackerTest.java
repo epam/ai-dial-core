@@ -1,11 +1,10 @@
 package com.epam.aidial.core.server.token;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
-import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.service.LockService;
-import com.epam.aidial.core.storage.service.ResourceService;
-import com.epam.aidial.core.storage.service.TimerService;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import io.vertx.core.Future;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -16,19 +15,28 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.Redisson;
+import org.redisson.api.RBucket;
 import org.redisson.api.RKeys;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.StringCodec;
 import org.redisson.config.ConfigSupport;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -40,14 +48,19 @@ public class TokenStatsTrackerTest {
 
     private static RedissonClient redissonClient;
 
+    private static final Duration TTL = Duration.ofHours(1);
+
+    private static final Duration BACKGROUND_TTL = Duration.ofDays(2);
+
+    private static final String PREFIX = "prefix";
+
     @Mock
     private AsyncTaskExecutor taskExecutor;
 
-    @Mock
-    private BlobStorage blobStorage;
-
     @InjectMocks
     private TokenStatsTracker tracker;
+
+    private LockService lockService;
 
     @BeforeAll
     public static void beforeAll() throws IOException {
@@ -86,11 +99,12 @@ public class TokenStatsTrackerTest {
         for (String key : keys.getKeys()) {
             keys.delete(key);
         }
-        LockService lockService = new LockService(redissonClient, null);
-        ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
-        ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
-                lockService, settings, null);
-        tracker = new TokenStatsTracker(taskExecutor, resourceService);
+        lockService = new LockService(redissonClient, null);
+        tracker = new TokenStatsTracker(taskExecutor, redissonClient, lockService, PREFIX, BlockingCallTracer.NOOP, TTL, BACKGROUND_TTL);
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
     }
 
     /**
@@ -98,11 +112,6 @@ public class TokenStatsTrackerTest {
      */
     @Test
     public void testWorkflow() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable<?> callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
         final String traceId = "trace-id";
         ProxyContext chatBackend = mock(ProxyContext.class);
         when(chatBackend.getSpanId()).thenReturn("chat");
@@ -195,11 +204,6 @@ public class TokenStatsTrackerTest {
 
     @Test
     public void testSameDeploymentCalledTwiceAppendsTwoSeparateEntries() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable<?> callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
         final String traceId = "trace-id-repeat";
         ProxyContext root = mock(ProxyContext.class);
         when(root.getSpanId()).thenReturn("root");
@@ -257,11 +261,6 @@ public class TokenStatsTrackerTest {
 
     @Test
     public void testSoloModelCallHasEmptyUsagePerModel() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable<?> callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
         final String traceId = "trace-id-solo";
         ProxyContext root = mock(ProxyContext.class);
         when(root.getSpanId()).thenReturn("root");
@@ -285,11 +284,6 @@ public class TokenStatsTrackerTest {
 
     @Test
     public void testMissingTraceReturnsEmptyUsageStats() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable<?> callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
         ProxyContext ctx = mock(ProxyContext.class);
         when(ctx.getTraceId()).thenReturn("nonexistent-trace");
 
@@ -299,4 +293,260 @@ public class TokenStatsTrackerTest {
         assertEquals(List.of(), stats.usagePerModel());
     }
 
+    /**
+     * Tests the flow: chat back-end -> core -> router-app -> core -> inner-app -> core -> model.
+     * Both ancestor apps must be credited with the model's cost, and the mechanism must not care
+     * that they are Applications specifically - only that a deployment name was recorded on the span.
+     */
+    @Test
+    public void testAggregatedCostCreditsEveryAncestorRegardlessOfKind() {
+        final String traceId = "trace-id-aggregated";
+
+        ProxyContext chatBackend = mock(ProxyContext.class);
+        when(chatBackend.getSpanId()).thenReturn("chat");
+        when(chatBackend.getTraceId()).thenReturn(traceId);
+        // the top-level span has no deployment of its own (a bare chat client) - it must be
+        // skipped, not credited, even though it is a real ancestor of the model
+        tracker.startSpan(chatBackend);
+
+        Application router = new Application();
+        router.setName("router-app");
+        ProxyContext routerCtx = mock(ProxyContext.class);
+        when(routerCtx.getSpanId()).thenReturn("router");
+        when(routerCtx.getTraceId()).thenReturn(traceId);
+        when(routerCtx.getParentSpanId()).thenReturn("chat");
+        when(routerCtx.getDeployment()).thenReturn(router);
+        tracker.startSpan(routerCtx);
+
+        Application inner = new Application();
+        inner.setName("inner-app");
+        ProxyContext innerCtx = mock(ProxyContext.class);
+        when(innerCtx.getSpanId()).thenReturn("inner");
+        when(innerCtx.getTraceId()).thenReturn(traceId);
+        when(innerCtx.getParentSpanId()).thenReturn("router");
+        when(innerCtx.getDeployment()).thenReturn(inner);
+        tracker.startSpan(innerCtx);
+
+        ProxyContext modelCtx = mock(ProxyContext.class);
+        when(modelCtx.getSpanId()).thenReturn("model");
+        when(modelCtx.getTraceId()).thenReturn(traceId);
+        when(modelCtx.getParentSpanId()).thenReturn("inner");
+        tracker.startSpan(modelCtx);
+
+        TokenUsage modelUsage = new TokenUsage();
+        modelUsage.setTotalTokens(100);
+        modelUsage.setCost(new BigDecimal("0.40"));
+        modelUsage.setAggCost(new BigDecimal("0.40"));
+
+        TokenStatsTracker.UsageStats stats = tracker.updateDeploymentStats(traceId, "model", "gpt-4o", modelUsage).result();
+
+        // both Application ancestors are credited with the same delta - the mechanism never
+        // special-cases which one is "closer"; the top-level bare-client span is skipped since
+        // it has no recorded deployment name
+        assertEquals(2, stats.aggregatedCosts().size());
+        assertEquals("inner-app", stats.aggregatedCosts().get(0).deploymentName());
+        assertEquals(new BigDecimal("0.40"), stats.aggregatedCosts().get(0).cost());
+        assertEquals("router-app", stats.aggregatedCosts().get(1).deploymentName());
+        assertEquals(new BigDecimal("0.40"), stats.aggregatedCosts().get(1).cost());
+
+        // a second, unrelated model call under the same router charges only the router again,
+        // not the inner app (it is not an ancestor of this new leaf) - deltas accumulate
+        // independently per call, never double-counted
+        ProxyContext secondModelCtx = mock(ProxyContext.class);
+        when(secondModelCtx.getSpanId()).thenReturn("model-2");
+        when(secondModelCtx.getTraceId()).thenReturn(traceId);
+        when(secondModelCtx.getParentSpanId()).thenReturn("router");
+        tracker.startSpan(secondModelCtx);
+
+        TokenUsage secondUsage = new TokenUsage();
+        secondUsage.setTotalTokens(50);
+        secondUsage.setCost(new BigDecimal("0.10"));
+        secondUsage.setAggCost(new BigDecimal("0.10"));
+
+        TokenStatsTracker.UsageStats secondStats =
+                tracker.updateDeploymentStats(traceId, "model-2", "gpt-4o-mini", secondUsage).result();
+        assertEquals(1, secondStats.aggregatedCosts().size());
+        assertEquals("router-app", secondStats.aggregatedCosts().get(0).deploymentName());
+        assertEquals(new BigDecimal("0.10"), secondStats.aggregatedCosts().get(0).cost());
+    }
+
+    @Test
+    public void testPureReadNeverReportsAggregatedCosts() {
+        final String traceId = "trace-id-read-only";
+        Application router = new Application();
+        router.setName("router-app");
+        ProxyContext routerCtx = mock(ProxyContext.class);
+        when(routerCtx.getSpanId()).thenReturn("router");
+        when(routerCtx.getTraceId()).thenReturn(traceId);
+        when(routerCtx.getDeployment()).thenReturn(router);
+        tracker.startSpan(routerCtx);
+
+        // nothing was ever known outside an update() call, even though the span belongs to an
+        // Application that could in principle have aggregated cost
+        TokenStatsTracker.UsageStats stats = tracker.getUsageStats(routerCtx).result();
+        assertEquals(List.of(), stats.aggregatedCosts());
+    }
+
+    @Test
+    public void testTraceRecordLifecycle() {
+        final String traceId = "trace-id-lifecycle";
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        when(root.isOriginalRequest()).thenReturn(true);
+        tracker.startSpan(root);
+
+        RBucket<String> record = getRecord(traceId);
+        assertTtl(record, TTL);
+
+        // each write refreshes the TTL
+        record.expire(Duration.ofMinutes(1));
+        ProxyContext model = mock(ProxyContext.class);
+        when(model.getSpanId()).thenReturn("model");
+        when(model.getTraceId()).thenReturn(traceId);
+        when(model.getParentSpanId()).thenReturn("root");
+        tracker.startSpan(model);
+        assertTtl(record, TTL);
+
+        TokenUsage usage = new TokenUsage();
+        usage.setTotalTokens(100);
+        usage.setAggCost(new BigDecimal("1.0"));
+        tracker.updateDeploymentStats(traceId, "model", "gpt-4", usage);
+        assertEquals(new BigDecimal("1.0"), tracker.getTokenStats(root).result().getAggCost());
+
+        tracker.endSpan(root);
+        assertFalse(record.isExists());
+
+        // a late update does not bring the record back
+        assertEquals(TokenStatsTracker.UsageStats.EMPTY, tracker.updateDeploymentStats(traceId, "model", "gpt-4", usage).result());
+        assertFalse(record.isExists());
+    }
+
+    @Test
+    public void testBackgroundRootGetsBackgroundTtl() {
+        final String traceId = "trace-id-background";
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        when(root.isBackgroundJob()).thenReturn(true);
+        when(root.isOriginalRequest()).thenReturn(true);
+        tracker.startSpan(root);
+
+        RBucket<String> record = getRecord(traceId);
+        assertTtl(record, BACKGROUND_TTL);
+
+        // a child's writes keep the background TTL
+        ProxyContext model = mock(ProxyContext.class);
+        when(model.getSpanId()).thenReturn("model");
+        when(model.getTraceId()).thenReturn(traceId);
+        when(model.getParentSpanId()).thenReturn("root");
+        tracker.startSpan(model);
+        TokenUsage usage = new TokenUsage();
+        usage.setAggCost(new BigDecimal("1.0"));
+        tracker.updateDeploymentStats(traceId, "model", "gpt-4", usage);
+        assertTtl(record, BACKGROUND_TTL);
+
+        // the poller ends the root span of a background job by trace id
+        tracker.endSpan(traceId);
+        assertFalse(record.isExists());
+    }
+
+    @Test
+    public void testChildBackgroundJobKeepsTraceTtl() {
+        final String traceId = "trace-id-child-background";
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        tracker.startSpan(root);
+        assertTtl(getRecord(traceId), TTL);
+
+        // an app starts a background job with its per-request key
+        ProxyContext job = mock(ProxyContext.class);
+        when(job.getSpanId()).thenReturn("job");
+        when(job.getTraceId()).thenReturn(traceId);
+        when(job.getParentSpanId()).thenReturn("root");
+        when(job.isBackgroundJob()).thenReturn(true);
+        tracker.startSpan(job);
+        // the root's endSpan deletes the record, so a longer TTL would only keep orphans longer
+        assertTtl(getRecord(traceId), TTL);
+    }
+
+    @Test
+    public void testChildWithoutRootCreatesRecord() {
+        // e.g. the root already ended, or it is a feature endpoint that never starts a span
+        final String traceId = "trace-id-orphan";
+        ProxyContext model = mock(ProxyContext.class);
+        when(model.getSpanId()).thenReturn("model");
+        when(model.getTraceId()).thenReturn(traceId);
+        when(model.getParentSpanId()).thenReturn("root");
+        tracker.startSpan(model);
+
+        assertTtl(getRecord(traceId), TTL);
+    }
+
+    @Test
+    public void testRootMergesIntoExistingRecord() {
+        // e.g. a child reached core before its root's startSpan
+        final String traceId = "trace-id-shared";
+        ProxyContext model = mock(ProxyContext.class);
+        when(model.getSpanId()).thenReturn("model");
+        when(model.getTraceId()).thenReturn(traceId);
+        when(model.getParentSpanId()).thenReturn("root");
+        tracker.startSpan(model);
+
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        tracker.startSpan(root);
+
+        TokenUsage usage = new TokenUsage();
+        usage.setTotalTokens(100);
+        usage.setAggCost(new BigDecimal("1.0"));
+        tracker.updateDeploymentStats(traceId, "model", "gpt-4", usage);
+        assertEquals(new BigDecimal("1.0"), tracker.getTokenStats(root).result().getAggCost());
+    }
+
+    @Test
+    public void testUpdateOfUnknownSpanLeavesRecordUnchanged() {
+        final String traceId = "trace-id-unknown-span";
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        tracker.startSpan(root);
+        String json = getRecord(traceId).get();
+
+        TokenUsage usage = new TokenUsage();
+        usage.setAggCost(new BigDecimal("1.0"));
+        assertEquals(TokenStatsTracker.UsageStats.EMPTY, tracker.updateDeploymentStats(traceId, "unknown", "gpt-4", usage).result());
+        assertEquals(json, getRecord(traceId).get());
+    }
+
+    @Test
+    public void testEndSpanWaitsForConcurrentUpdate() throws Exception {
+        final String traceId = "trace-id-lock";
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        tracker.startSpan(root);
+        RBucket<String> record = getRecord(traceId);
+
+        CompletableFuture<Void> end;
+        // the test holds the lock an update would hold
+        try (var ignore = lockService.lock(record.getName())) {
+            end = CompletableFuture.runAsync(() -> tracker.endSpan(traceId));
+            assertThrows(TimeoutException.class, () -> end.get(200, TimeUnit.MILLISECONDS));
+            assertTrue(record.isExists());
+        }
+        end.get(10, TimeUnit.SECONDS);
+        assertFalse(record.isExists());
+    }
+
+    private static RBucket<String> getRecord(String traceId) {
+        return redissonClient.getBucket(TokenStatsTracker.KEY_PREFIX + PREFIX + "/" + traceId, StringCodec.INSTANCE);
+    }
+
+    private static void assertTtl(RBucket<String> record, Duration ttl) {
+        long remaining = record.remainTimeToLive();
+        assertTrue(remaining > ttl.toMillis() - 60_000 && remaining <= ttl.toMillis(), "TTL " + remaining);
+    }
 }

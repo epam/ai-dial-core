@@ -3,11 +3,13 @@ package com.epam.aidial.core.credentials.service.metadata;
 import com.epam.aidial.core.credentials.data.registration.AuthorizationServerProtectedResourceMetadata;
 import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.mockito.Spy;
 
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
@@ -16,6 +18,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -37,6 +40,9 @@ class ProtectedResourceMetadataServiceTest {
     @Mock
     private HttpClient httpClient;
 
+    @Spy
+    private BlockingCallTracer blockingCallTracer = BlockingCallTracer.NOOP;
+
     @InjectMocks
     private ResourceAuthorizationClient client;
 
@@ -46,7 +52,7 @@ class ProtectedResourceMetadataServiceTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
         service = new ProtectedResourceMetadataService(
-                client, new ProtectedResourceMetadataValidator(), new HttpHeadersHandler());
+                client, new ProtectedResourceMetadataValidator(), new HttpHeadersHandler(), endpoint -> Optional.empty());
     }
 
     /**
@@ -86,17 +92,12 @@ class ProtectedResourceMetadataServiceTest {
     }
 
     /**
-     * The initial POST probe returns 200 (no WWW-Authenticate hint), so discovery falls back to the
-     * well-known GET, which returns the given metadata body.
+     * The server issues no challenge, so discovery falls back to the well-known GET, which returns the
+     * given metadata body.
      */
     private void stubDiscovery(String metadataJson) throws Exception {
         when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenAnswer(invocation -> {
-                    HttpRequest request = invocation.getArgument(0);
-                    return "GET".equals(request.method())
-                            ? response(metadataJson)
-                            : response("{}");
-                });
+                .thenAnswer(invocation -> response(metadataJson));
     }
 
     @SuppressWarnings("unchecked")
@@ -106,5 +107,36 @@ class ProtectedResourceMetadataServiceTest {
         when(response.body()).thenReturn(body.getBytes(StandardCharsets.UTF_8));
         when(response.headers()).thenReturn(EMPTY_HEADERS);
         return response;
+    }
+
+    /**
+     * A host serving several products, each MCP endpoint with its own authorization server: the
+     * endpoint's pointer arrives in its 401 challenge, while the domain root serves a different,
+     * tenant-wide document. The pointer must win - falling back to the root would silently resolve
+     * another product's authorization server.
+     */
+    @Test
+    void prefersTheChallengePointerOverTheWellKnownFallback() throws Exception {
+        String endpoint = "https://dealcloud.example/mcp/productA";
+        String pointer = "https://dealcloud.example/.well-known/oauth-protected-resource/products/a";
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenAnswer(invocation -> {
+                    String url = ((HttpRequest) invocation.getArgument(0)).uri().toString();
+                    if (pointer.equals(url)) {
+                        return response("""
+                                {"resource": "https://dealcloud.example/mcp/productA",
+                                 "authorization_servers": ["https://dealcloud.example/auth/productA"]}""");
+                    }
+                    return response("""
+                            {"resource": "https://dealcloud.example",
+                             "authorization_servers": ["https://dealcloud.example/auth/tenant"]}""");
+                });
+        ProtectedResourceMetadataService challenged = new ProtectedResourceMetadataService(
+                client, new ProtectedResourceMetadataValidator(), new HttpHeadersHandler(),
+                resourceEndpoint -> Optional.of("Bearer realm=\"OAuth\", resource_metadata=\"" + pointer + "\""));
+
+        AuthorizationServerProtectedResourceMetadata metadata = challenged.getProtectedResourceMetadata(RESOURCE_ID, endpoint);
+
+        assertEquals(List.of("https://dealcloud.example/auth/productA"), metadata.getAuthorizationServers());
     }
 }

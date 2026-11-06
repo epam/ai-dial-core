@@ -57,6 +57,8 @@ public class DeploymentData {
     private List<String> descriptionKeywords;
     private int maxRetryAttempts;
     private List<String> interfaces;
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private Map<String, InterfaceConfigData> interfaceConfigs;
     private URI catalogSchemaId;
     private Map<String, Object> catalogProperties;
 }

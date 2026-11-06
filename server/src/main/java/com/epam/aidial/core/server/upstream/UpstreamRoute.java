@@ -57,6 +57,18 @@ public class UpstreamRoute {
 
     private final Set<Upstream> usedUpstreams = new HashSet<>();
 
+    /**
+     * The prefix path the upstream reported caching via {@code X-DIAL-CACHE-BREAKPOINT-PATH}, null if it reported none.
+     */
+    @Getter
+    private String cacheBreakpointPath;
+    /**
+     * Whether a hash was matched for {@link #cacheBreakpointPath} and a store submitted for it. The Redis write
+     * itself completes asynchronously, so this records the decision, not the completed write.
+     */
+    @Getter
+    private boolean cacheEntryStored;
+
     @Nullable
     private final UpstreamCacheContext upstreamCacheContext;
 
@@ -155,6 +167,7 @@ public class UpstreamRoute {
             // no cache
             return;
         }
+        cacheBreakpointPath = breakpointPath;
         String hash = upstreamCacheContext == null ? null : upstreamCacheContext.getPrefixToHash().get(breakpointPath);
         if (hash == null) {
             if (model.getType() == ModelType.CHAT) {
@@ -165,6 +178,7 @@ public class UpstreamRoute {
         String expireAt = proxyResponse.getHeader(Proxy.HEADER_CACHE_EXPIRE_AT);
         String extraMetadata = proxyResponse.getHeader(Proxy.HEADER_CACHE_EXTRA_METADATA);
         CachedUpstreamEntry entry = new CachedUpstreamEntry(upstream.getEndpoint(), upstream.getId(), breakpointPath, extraMetadata);
+        cacheEntryStored = true;
         taskExecutor.submit(() -> {
             upstreamCacheService.updateEntry(hash, entry, model, expireAt);
             return null;

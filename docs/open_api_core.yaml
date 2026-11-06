@@ -82,6 +82,10 @@ tags:
 - name: MCP
 - name: Models
 - name: Notifications
+- name: Org units
+- name: Policies
+- name: Policy Assignments
+- name: Projects
 - name: Prompts
 - name: Publications
 - name: Responses API
@@ -91,8 +95,34 @@ tags:
 - name: Sharing
 - name: Skills
 - name: Toolsets
+- name: Translators
 - name: User Consent
 paths:
+  /anthropic/api/oauth/usage:
+    get:
+      tags:
+      - Anthropic
+      summary: /anthropic/api/oauth/usage
+      operationId: getAnthropicUsage
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnthropicUsageData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /anthropic/v1/messages:
     post:
       tags:
@@ -127,6 +157,41 @@ paths:
           headers:
             X-UPSTREAM-ATTEMPTS:
               description: Number of upstream attempts performed before returning the response
+              required: false
+              schema:
+                type: string
+            anthropic-ratelimit-unified-status:
+              description: "DIAL spend cap status before this request: `allowed`, or `allowed_warning` past 75%. Sent only when the caller has a day/week/month cost limit; the upstream's own `anthropic-ratelimit-*` headers are removed"
+              required: false
+              schema:
+                type: string
+            anthropic-ratelimit-unified-representative-claim:
+              description: Always `overage`
+              required: false
+              schema:
+                type: string
+            anthropic-ratelimit-unified-overage-status:
+              description: Same value as `anthropic-ratelimit-unified-status`
+              required: false
+              schema:
+                type: string
+            anthropic-ratelimit-unified-overage-utilization:
+              description: "Used/total of the reported spend cap, floored to two decimals and capped at 0.99"
+              required: false
+              schema:
+                type: string
+            anthropic-ratelimit-unified-overage-surpassed-threshold:
+              description: '`0.75` or `0.95` once the utilization reaches it; absent below 75%'
+              required: false
+              schema:
+                type: string
+            anthropic-ratelimit-unified-reset:
+              description: "When the reported spend cap resets, Unix seconds"
+              required: false
+              schema:
+                type: string
+            anthropic-ratelimit-unified-overage-reset:
+              description: Same value as `anthropic-ratelimit-unified-reset`
               required: false
               schema:
                 type: string
@@ -169,7 +234,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorData"
+                $ref: "#/components/schemas/AnthropicErrorData"
         "500":
           description: The server had an error while processing your request.
           content:
@@ -1417,6 +1482,116 @@ paths:
       - lang: cURL
         label: CURL
         source: "curl https://chat.<company>.com/openai/models/gpt-4 \\\n  -H \"Api-Key: DIAL_API_KEY\"          \n"
+  /openai/responses:
+    post:
+      tags:
+      - LLM
+      summary: /openai/responses
+      operationId: createResponseUnversioned
+      parameters:
+      - name: Content-Type
+        in: header
+        description: Must be application/json
+        required: true
+        schema:
+          type: string
+      - name: X-DIAL-CACHE-POLICY
+        in: header
+        description: Upstream selection policy for prompt-caching deployments (availability-priority or cache-priority).
+        required: false
+        schema:
+          type: string
+          enum:
+          - availability-priority
+          - cache-priority
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResponsesApiRequest"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            x-codex-primary-used-percent:
+              description: "Spent share of the caller's reported DIAL day/week/month spend cap before this request, a whole percent rounded down. Sent only when the caller has such a cost limit; the upstream's own `x-codex-*` headers are removed"
+              required: false
+              schema:
+                type: string
+            x-codex-primary-window-minutes:
+              description: "`1440`, `10080` or `43200`: the reported cap's day, week or month"
+              required: false
+              schema:
+                type: string
+            x-codex-primary-reset-at:
+              description: "When the reported cap resets, Unix seconds"
+              required: false
+              schema:
+                type: string
+            x-codex-secondary-used-percent:
+              description: Same as `x-codex-primary-used-percent` for the fullest of the other capped windows; absent when there is none
+              required: false
+              schema:
+                type: string
+            x-codex-secondary-window-minutes:
+              description: "Window of the secondary cap, as `x-codex-primary-window-minutes`"
+              required: false
+              schema:
+                type: string
+            x-codex-secondary-reset-at:
+              description: "When the secondary cap resets, Unix seconds"
+              required: false
+              schema:
+                type: string
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "415":
+          description: Unsupported Media Type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Bad Gateway - failed to connect to upstream server
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "503":
+          description: "The engine is currently overloaded, please try again later."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /openai/toolsets:
     get:
       tags:
@@ -1591,6 +1766,100 @@ paths:
       - lang: cURL
         label: CURL
         source: "curl https://chat.<company>.com/openai/toolsets/my-toolset \\\n  -H \"Api-Key: DIAL_API_KEY\"          \n"
+  /openai/v1/chat/completions:
+    post:
+      tags:
+      - LLM
+      summary: /openai/v1/chat/completions
+      operationId: createChatCompletion
+      parameters:
+      - name: Content-Type
+        in: header
+        description: Must be application/json
+        required: true
+        schema:
+          type: string
+      - name: X-DIAL-CACHE-POLICY
+        in: header
+        description: Upstream selection policy for prompt-caching deployments (availability-priority or cache-priority).
+        required: false
+        schema:
+          type: string
+          enum:
+          - availability-priority
+          - cache-priority
+      - name: X-UPSTREAM-ID
+        in: header
+        description: "Pin the request to one configured upstream, matched by upstream id"
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateChatCompletionResponse"
+            text/event-stream:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CreateChatCompletionStreamResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "415":
+          description: Unsupported Media Type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Bad Gateway - failed to connect to upstream server
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "503":
+          description: "The engine is currently overloaded, please try again later."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /openai/v1/responses:
     post:
       tags:
@@ -1615,6 +1884,37 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/CreateChatCompletionStreamResponse"
+          headers:
+            x-codex-primary-used-percent:
+              description: "Spent share of the caller's reported DIAL day/week/month spend cap before this request, a whole percent rounded down. Sent only when the caller has such a cost limit; the upstream's own `x-codex-*` headers are removed"
+              required: false
+              schema:
+                type: string
+            x-codex-primary-window-minutes:
+              description: "`1440`, `10080` or `43200`: the reported cap's day, week or month"
+              required: false
+              schema:
+                type: string
+            x-codex-primary-reset-at:
+              description: "When the reported cap resets, Unix seconds"
+              required: false
+              schema:
+                type: string
+            x-codex-secondary-used-percent:
+              description: Same as `x-codex-primary-used-percent` for the fullest of the other capped windows; absent when there is none
+              required: false
+              schema:
+                type: string
+            x-codex-secondary-window-minutes:
+              description: "Window of the secondary cap, as `x-codex-primary-window-minutes`"
+              required: false
+              schema:
+                type: string
+            x-codex-secondary-reset-at:
+              description: "When the secondary cap resets, Unix seconds"
+              required: false
+              schema:
+                type: string
         "400":
           description: Bad request
           content:
@@ -1881,6 +2181,12 @@ paths:
         required: true
         schema:
           type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrantAdminConsentRequest"
+        required: true
       responses:
         "200":
           description: Success
@@ -1914,12 +2220,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GrantAdminConsentRequest"
-        required: true
     delete:
       tags:
       - Admin Consent
@@ -2058,7 +2358,7 @@ paths:
             application/json:
               schema:
                 allOf:
-                - $ref: "#/components/schemas/Model"
+                - $ref: "#/components/schemas/Application"
                 - $ref: "#/components/schemas/EntityMetadata"
         "403":
           description: Forbidden
@@ -2289,7 +2589,7 @@ paths:
             application/json:
               schema:
                 allOf:
-                - $ref: "#/components/schemas/Model"
+                - $ref: "#/components/schemas/Key"
                 - $ref: "#/components/schemas/EntityMetadata"
         "403":
           description: Forbidden
@@ -2789,7 +3089,84 @@ paths:
             application/json:
               schema:
                 allOf:
-                - $ref: "#/components/schemas/Model"
+                - $ref: "#/components/schemas/ToolSet"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/translators:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/translators
+      operationId: listFileConfigTranslators
+      responses:
+        "200":
+          description: List of file-sourced translators
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/translators/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/translators/{name}"
+      operationId: getFileConfigTranslator
+      parameters:
+      - name: name
+        in: path
+        description: Translator name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Translator"
                 - $ref: "#/components/schemas/EntityMetadata"
         "403":
           description: Forbidden
@@ -2839,6 +3216,35 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "405":
           description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/system-export:
+    post:
+      tags:
+      - Admin
+      summary: /v1/admin/system-export
+      operationId: systemExport
+      responses:
+        "200":
+          description: ZIP archive of the public and platform buckets
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: "Another system export or a write holds a bucket lock, retry later"
         "500":
           description: The server had an error while processing your request.
           content:
@@ -4114,7 +4520,7 @@ paths:
             application/json:
               schema:
                 allOf:
-                - $ref: "#/components/schemas/ProxyResponse"
+                - $ref: "#/components/schemas/CatalogSchema"
                 - $ref: "#/components/schemas/EntityMetadata"
         "304":
           description: Not Modified
@@ -4181,7 +4587,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ProxyRequest"
+              $ref: "#/components/schemas/CatalogSchema"
         required: true
       responses:
         "200":
@@ -4634,6 +5040,44 @@ paths:
       - lang: cURL
         label: CURL
         source: "curl -X DELETE https://chat.<company>.com/v1/conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/folder2/conversation_name \\\n  -H \"Api-Key: DIAL_API_KEY\"    \n"
+  /v1/deployment-names:
+    get:
+      tags:
+      - Deployment listing
+      summary: /v1/deployment-names
+      operationId: listDeploymentNames
+      parameters:
+      - name: type
+        in: query
+        description: "Filter deployment names by kind (model, application, toolset). Defaults to all kinds."
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - model
+            - application
+            - toolset
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDeploymentNameData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/deployments:
     get:
       tags:
@@ -4763,6 +5207,50 @@ paths:
       - lang: cURL
         label: CURL
         source: "curl https://chat.<company>.com/deployments?interface_type={interface_type} \\\n  -H \"Api-Key: DIAL_API_KEY\"          \n"
+  /v1/deployments/{deployment_name}:
+    get:
+      tags:
+      - Deployment listing
+      summary: "/v1/deployments/{deployment_name}"
+      operationId: getDeploymentInfo
+      parameters:
+      - name: deployment_name
+        in: path
+        description: The name of the deployment.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeploymentData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/deployments/{deployment_name}/configuration:
     get:
       summary: "/v1/deployments/{deployment_name}/configuration"
@@ -4834,6 +5322,11 @@ paths:
       operationId: getDeploymentLimits
       description: |
         Call this endpoint to get information about spent limits for a given deployment.
+
+        Only `*TokenStats` and `*RequestStats` are scoped to this deployment. `*CostStats` here is the
+        caller's *account-wide* cost budget and spend - the same figures on every deployment this caller
+        queries - not this deployment's own cost. For this deployment's own attributed spend, call
+        `GET /v1/deployments/{deployment_name}/usage` instead.
       parameters:
       - name: deployment_name
         in: path
@@ -5171,6 +5664,76 @@ paths:
         required: true
       tags:
       - Deployment Feature
+  /v1/deployments/{deployment_name}/usage:
+    get:
+      tags:
+      - Limits
+      summary: "/v1/deployments/{deployment_name}/usage"
+      operationId: getDeploymentUsage
+      description: |
+        Returns limits and current usage for exactly one deployment, attributing cost correctly where
+        `/v1/deployments/{deployment_name}/limits` cannot: token and request stats are capped by this
+        deployment's own limit, and `*CostStats` here is this deployment's own attributed spend (direct
+        plus any aggregated cost rolled up from a chain it drove), not the caller's account-wide budget.
+        Since no per-deployment cost cap exists, cost `total` is always the unlimited sentinel
+        `9223372036854775807` (`Long.MAX_VALUE`).
+
+        This is the single-deployment equivalent of a `deployments[deployment_name]` entry in
+        `GET /v1/user/usage` - same figures, same caveats about trailing vs calendar-aligned windows and
+        `resetsAt` - without downloading the whole account's usage report to find one entry. A deployment
+        that was never used still returns 200 with `used: 0` against its real limits, not 404; a
+        deployment name the caller cannot access, or that does not exist, returns 404.
+      parameters:
+      - name: deployment_name
+        in: path
+        description: The name of the deployment.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LimitStats"
+              examples:
+                Example:
+                  value:
+                    dayTokenStats:
+                      total: 1000000
+                      used: 3222
+                      resetsAt: 2026-10-02T00:00:00Z
+                    weekTokenStats:
+                      total: 9223372036854775807
+                      used: 3222
+                      resetsAt: 2026-10-05T00:00:00Z
+                    dayCostStats:
+                      total: 9223372036854775807
+                      used: 0.028953
+                      resetsAt: 2026-10-02T00:00:00Z
+                    weekCostStats:
+                      total: 9223372036854775807
+                      used: 0.028953
+                      resetsAt: 2026-10-05T00:00:00Z
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/files/{bucket}/{file_path}:
     get:
       tags:
@@ -6795,6 +7358,142 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/policies/{bucket}/{path}:
+    get:
+      tags:
+      - Policies
+      summary: "/v1/metadata/policies/{bucket}/{path}"
+      operationId: getPolicyMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Empty for the root of the policies, a cost object folder (ending with a slash) to list its project policies, or a policy name."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/policy_assignments/{bucket}/{path}:
+    get:
+      tags:
+      - Policy Assignments
+      summary: "/v1/metadata/policy_assignments/{bucket}/{path}"
+      operationId: getPolicyAssignmentMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Empty for the cost objects that have assignments, a cost object folder (ending with a slash) to list its assignments, or an assignment path."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/metadata/prompts/{bucket}/{path}:
     get:
       tags:
@@ -7298,6 +7997,74 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/translators/{bucket}/{path}:
+    get:
+      tags:
+      - Translators
+      summary: "/v1/metadata/translators/{bucket}/{path}"
+      operationId: getTranslatorMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "The parameter specifies path to the requested directory or application, for example: `folder1/folder2/` or `folder1/application_name/`. Note, it could be empty if you want to list the root folder."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
           content:
             application/json:
               schema:
@@ -9039,6 +9806,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: A skill or project target is an org unit's folder
         "500":
           description: The server had an error while processing your request.
           content:
@@ -9127,6 +9896,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: A skill or project target is an org unit's folder
         "500":
           description: The server had an error while processing your request.
           content:
@@ -9635,6 +10406,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: The copy would put a skill or project on an org unit's folder
         "500":
           description: The server had an error while processing your request.
           content:
@@ -9694,6 +10467,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: "A move inside the shared space would change which org unit owns the resource (into, out of or between units), or put a skill or project on an org unit's folder"
         "500":
           description: The server had an error while processing your request.
           content:
@@ -10184,7 +10959,7 @@ paths:
       tags:
       - Notifications
       summary: /v1/ops/resource/subscribe
-      description: "Use this endpoint to subscribe to resource updates. Refer to [Documentation](https://docs.dialx.ai/tutorials/developers/work-with-resources/notifications#subscribe-api) for more details on how to work with subscriptions.     \n"
+      description: "Use this endpoint to subscribe to resource updates. Refer to [Documentation](https://docs.dialx.ai/tutorials/developers/work-with-resources/notifications#subscribe-api) for more details on how to work with subscriptions.     \n\n Files, conversations, prompts, applications, toolsets, skills and projects can be subscribed to. For a skill or project the stream also carries the events of the files inside it (`{resource url}/files/{path}`).\n"
       operationId: subscribeToResources
       requestBody:
         content:
@@ -10408,6 +11183,597 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /v1/org-units/{path}:
+    get:
+      tags:
+      - Org units
+      summary: "/v1/org-units/{path}"
+      operationId: getOrgUnit
+      parameters:
+      - name: path
+        in: path
+        description: "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk"
+        required: true
+        schema:
+          type: string
+      - name: recursive
+        in: query
+        description: "If true, items lists every unit below, parents before children; otherwise only the units directly below."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgUnitData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    post:
+      tags:
+      - Org units
+      summary: "/v1/org-units/{path}"
+      operationId: createOrgUnit
+      parameters:
+      - name: path
+        in: path
+        description: "The parent: public, then each unit's name, separated by '/'"
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrgUnitRequest"
+        required: true
+      responses:
+        "200":
+          description: The unit is created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgUnitData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: The name is taken or the depth limit is reached
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Org units
+      summary: "/v1/org-units/{path}"
+      operationId: deleteOrgUnit
+      parameters:
+      - name: path
+        in: path
+        description: "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk"
+        required: true
+        schema:
+          type: string
+      - name: recursive
+        in: query
+        description: Also remove every unit below it
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: "The units are removed, with their folder markers"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteOrgUnitResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: "The unit holds content, or has units below it and recursive is not set"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    patch:
+      tags:
+      - Org units
+      summary: "/v1/org-units/{path}"
+      operationId: updateOrgUnit
+      parameters:
+      - name: path
+        in: path
+        description: "public, then each unit's name, separated by '/': public/Acme/Risk/US Risk"
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrgUnitRequest"
+        required: true
+      responses:
+        "200":
+          description: The display name is changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgUnitData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/policies/{bucket}/{path}:
+    get:
+      tags:
+      - Policies
+      summary: "/v1/policies/{bucket}/{path}"
+      operationId: getPolicy
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Policy name, with the folder of its cost object for a project policy: [<costObject>/]<name>"
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag of the cached copy; answers 304 when it is still current
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the policy
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Policies
+      summary: "/v1/policies/{bucket}/{path}"
+      operationId: savePolicy
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Policy name, with the folder of its cost object for a project policy: [<costObject>/]<name>"
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Policy"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved policy
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
+        "400":
+          description: "Malformed path or JSON, or a body that does not fit the record schema: an unknown field, a wrong type"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: "The policy would tie in priority with another budget of a cost object, or its name is taken by an assignment"
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: The policy breaks a validation rule
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Policies
+      summary: "/v1/policies/{bucket}/{path}"
+      operationId: deletePolicy
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Policy name, with the folder of its cost object for a project policy: [<costObject>/]<name>"
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: An assignment references the policy
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/policy_assignments/{bucket}/{path}:
+    get:
+      tags:
+      - Policy Assignments
+      summary: "/v1/policy_assignments/{bucket}/{path}"
+      operationId: getPolicyAssignment
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Assignment path: <costObject>/<id>"
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag of the cached copy; answers 304 when it is still current
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the assignment
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyAssignment"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Policy Assignments
+      summary: "/v1/policy_assignments/{bucket}/{path}"
+      operationId: savePolicyAssignment
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Assignment path: <costObject>/<id>"
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyAssignment"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved assignment
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
+        "400":
+          description: "Malformed path or JSON, or a body that does not fit the record schema: an unknown field, a wrong type"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: "The assignment would tie in priority with another budget of the cost object, or its id is taken by a self-applying policy"
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: The assignment breaks a validation rule
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Policy Assignments
+      summary: "/v1/policy_assignments/{bucket}/{path}"
+      operationId: deletePolicyAssignment
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Assignment path: <costObject>/<id>"
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/prompts/{bucket}/{prompt_path}:
     get:
       tags:
@@ -11194,7 +12560,7 @@ paths:
             application/json:
               schema:
                 allOf:
-                - $ref: "#/components/schemas/ProxyResponse"
+                - $ref: "#/components/schemas/ApplicationTypeSchema"
                 - $ref: "#/components/schemas/EntityMetadata"
         "304":
           description: Not Modified
@@ -11273,7 +12639,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ProxyRequest"
+              $ref: "#/components/schemas/ApplicationTypeSchema"
         required: true
       responses:
         "200":
@@ -12469,6 +13835,217 @@ paths:
     - lang: cURL
       label: CURL
       source: "curl -X DELETE https://chat.<company>.com/v1/toolsets/ENCRYPTED_BUCKET/my-toolset \\\n  -H \"Api-Key: DIAL_API_KEY\"    \n"
+  /v1/translators/{bucket}/{path}:
+    get:
+      tags:
+      - Translators
+      summary: "/v1/translators/{bucket}/{path}"
+      operationId: getTranslator
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Translator name
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the translator
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Translator"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Translators
+      summary: "/v1/translators/{bucket}/{path}"
+      operationId: saveTranslator
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Translator name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Translator"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved translator
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Translators
+      summary: "/v1/translators/{bucket}/{path}"
+      operationId: deleteTranslator
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Translator name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/user/info:
     get:
       summary: /v1/user/info
@@ -12516,7 +14093,7 @@ paths:
       summary: /v1/user/limits
       operationId: getUserLimits
       description: |
-        Returns limits and current rolling usage for every deployment available to the authenticated caller -
+        Returns limits and current usage for every deployment available to the authenticated caller -
         a JWT user or an API-key project. It replaces calling `/v1/deployments/{deployment_name}/limits` once
         per deployment, and one response labels an entire model picker, so switching model needs no refetch.
 
@@ -12539,11 +14116,20 @@ paths:
            (`Long.MAX_VALUE`), meaning unlimited. That value exceeds JavaScript's `Number.MAX_SAFE_INTEGER`
            (`9007199254740991`), so treat any `total` at or above 2^53 as unlimited rather than rendering it
            as a `used / total` ratio.
-        5. **Every window is trailing, not calendar-aligned.** `day` is the last 24 hours, `week` the last 7
-           days, `month` the last 30 days - never "since midnight" or "since the 1st". As a result `used`
-           decreases on its own as older activity ages out; there is no refund and no periodic reset.
-           Eviction happens in steps on UTC boundaries at each window's granularity (1 hour for `day`, 1 day
-           for `week` and `month`).
+        5. **`minute` and `hour` windows are trailing; `day`, `week` and `month` are calendar-aligned.**
+           `minuteTokenStats`/`minuteCostStats` and `hourRequestStats` are a trailing window - the last 60
+           seconds or 60 minutes - so their `used` decreases on its own as older activity ages out, with no
+           periodic reset. `day`/`week`/`month` windows instead reset all at once at a deterministic
+           boundary (e.g. "since midnight" or "since the 1st") anchored to the deployment-wide
+           `rateLimitSchedule` config setting (default: UTC, Monday, 00:00) - `used` only ever grows within a
+           period, then drops to zero at the next boundary.
+        6. **`resetsAt` names that boundary, only for calendar-aligned windows.** `dayTokenStats`,
+           `weekTokenStats`, `monthTokenStats`, `dayRequestStats`, `dayCostStats`, `weekCostStats` and
+           `monthCostStats` carry a `resetsAt` field - an absolute ISO-8601 instant (e.g.
+           `"2026-10-01T00:00:00+02:00"`), not a countdown - for when that window's usage resets next.
+           `minuteTokenStats`, `minuteCostStats` and `hourRequestStats` omit the field entirely rather than
+           serializing it as `null`: a trailing window has no single reset instant to report, so clients
+           should treat a missing `resetsAt` as a permanent, expected omission rather than poll for it.
 
         Per-deployment spend does not reconcile to the global figure. Attribution starts at rollout and does
         not back-fill, and a model without `pricing` never contributes while still consuming tokens, so the
@@ -12571,30 +14157,37 @@ paths:
                         dayTokenStats:
                           total: 10000000
                           used: 42000
+                          resetsAt: 2026-09-10T00:00:00Z
                         weekTokenStats:
                           total: 9223372036854775807
                           used: 180000
+                          resetsAt: 2026-09-14T00:00:00Z
                         monthTokenStats:
                           total: 9223372036854775807
                           used: 640000
+                          resetsAt: 2026-10-01T00:00:00Z
                         hourRequestStats:
                           total: 9223372036854775807
                           used: 3
                         dayRequestStats:
                           total: 9223372036854775807
                           used: 12
+                          resetsAt: 2026-09-10T00:00:00Z
                         minuteCostStats:
                           total: 9223372036854775807
                           used: 0.02
                         dayCostStats:
                           total: 9223372036854775807
                           used: 1.85
+                          resetsAt: 2026-09-10T00:00:00Z
                         weekCostStats:
                           total: 9223372036854775807
                           used: 6.2
+                          resetsAt: 2026-09-14T00:00:00Z
                         monthCostStats:
                           total: 9223372036854775807
                           used: 21.4
+                          resetsAt: 2026-10-01T00:00:00Z
                       gpt-4:
                         minuteTokenStats:
                           total: 100000
@@ -12650,6 +14243,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      parameters:
+      - name: deploymentTypes
+        in: query
+        description: "Which deployment kinds to report on (model, application). Defaults to model."
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - model
+            - application
   /v1/user/offline-credentials:
     get:
       tags:
@@ -12787,30 +14392,37 @@ paths:
                         dayTokenStats:
                           total: 10000000
                           used: 42000
+                          resetsAt: 2026-09-10T00:00:00Z
                         weekTokenStats:
                           total: 9223372036854775807
                           used: 180000
+                          resetsAt: 2026-09-14T00:00:00Z
                         monthTokenStats:
                           total: 9223372036854775807
                           used: 640000
+                          resetsAt: 2026-10-01T00:00:00Z
                         hourRequestStats:
                           total: 9223372036854775807
                           used: 3
                         dayRequestStats:
                           total: 9223372036854775807
                           used: 12
+                          resetsAt: 2026-09-10T00:00:00Z
                         minuteCostStats:
                           total: 9223372036854775807
                           used: 0.02
                         dayCostStats:
                           total: 9223372036854775807
                           used: 1.85
+                          resetsAt: 2026-09-10T00:00:00Z
                         weekCostStats:
                           total: 9223372036854775807
                           used: 6.2
+                          resetsAt: 2026-09-14T00:00:00Z
                         monthCostStats:
                           total: 9223372036854775807
                           used: 21.4
+                          resetsAt: 2026-10-01T00:00:00Z
                     minuteCostStats:
                       total: 10.0
                       used: 0.4
@@ -12835,6 +14447,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      parameters:
+      - name: deploymentTypes
+        in: query
+        description: "Which deployment kinds to report on (model, application). Defaults to model."
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - model
+            - application
   /v1/{deployment_name}/rate:
     post:
       summary: "/v1/{deployment_name}/rate"
@@ -12913,6 +14537,136 @@ paths:
             -d '{
               "rate": true,
               "responseId": "chatcmpl-8mixpbdJ9S5Y3w8hRBVpPmFgNk0Li"
+  /v2/metadata/projects/{bucket}/{path}:
+    get:
+      tags:
+      - Projects
+      summary: "/v2/metadata/projects/{bucket}/{path}"
+      operationId: listProjectMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The grouping folder path within the bucket; empty lists the bucket root.
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: Continuation token from a previous page; omit for the first page.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: "Maximum number of items per page (0-1000, default 100)."
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, lists the whole subtree; otherwise only immediate children."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: The complex resources and grouping folders at this level
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: "#/components/schemas/ResourceFolderMetadata"
+                - $ref: "#/components/schemas/ComplexResourceItemMetadata"
+        "400":
+          description: Bad request - limit out of range
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Grouping folder not found
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v2/metadata/projects/{bucket}/{path}/files/{filePath}:
+    get:
+      tags:
+      - Projects
+      summary: "/v2/metadata/projects/{bucket}/{path}/files/{filePath}"
+      operationId: listProjectFileMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The resource path within the bucket.
+        required: true
+        schema:
+          type: string
+      - name: filePath
+        in: path
+        description: The relative path of a subfolder inside the resource to scope the listing.
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: Continuation token from a previous page; omit for the first page.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: "Maximum number of items per page (0-1000, default 100)."
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, lists all files of the current version; otherwise only immediate entries."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: The files of the resource's current version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request - limit out of range
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Resource not found
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v2/metadata/skills/{bucket}/{path}:
     get:
       tags:
@@ -12956,7 +14710,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MetadataBase"
+                oneOf:
+                - $ref: "#/components/schemas/ResourceFolderMetadata"
+                - $ref: "#/components/schemas/ComplexResourceItemMetadata"
         "400":
           description: Bad request - limit out of range
         "403":
@@ -13034,6 +14790,520 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "404":
           description: Resource not found
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v2/projects/{bucket}/{path}:
+    get:
+      tags:
+      - Projects
+      summary: "/v2/projects/{bucket}/{path}"
+      operationId: downloadProjectFolder
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The resource path within the bucket.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Folder resource downloaded as ZIP archive
+          headers:
+            ETag:
+              description: The ETag of the resource version
+              required: false
+              schema:
+                type: string
+            Content-Length:
+              description: Size of the ZIP archive in bytes
+              required: false
+              schema:
+                type: integer
+                format: int32
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Folder resource not found
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Projects
+      summary: "/v2/projects/{bucket}/{path}"
+      operationId: uploadProjectFolder
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The resource path within the bucket.
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: "ETag of the version to replace. Use * to overwrite any existing version, or omit to create only if not exists."
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              required:
+              - file
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+        required: true
+      responses:
+        "200":
+          description: Folder resource uploaded successfully
+          headers:
+            ETag:
+              description: The ETag of the uploaded resource version
+              required: false
+              schema:
+                type: string
+        "400":
+          description: Bad request - invalid content type or malformed request
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "412":
+          description: Precondition failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Projects
+      summary: "/v2/projects/{bucket}/{path}"
+      operationId: deleteProjectFolder
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The resource path within the bucket.
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag of the version to delete. Use * to delete any existing version.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Folder resource deleted successfully
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Folder resource not found
+        "412":
+          description: Precondition failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v2/projects/{bucket}/{path}/:
+    get:
+      tags:
+      - Projects
+      summary: "/v2/projects/{bucket}/{path}/"
+      operationId: downloadProjectGroupingFolder
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The grouping folder path within the bucket.
+        required: true
+        schema:
+          type: string
+      responses:
+        "400":
+          description: Path is a folder; use metadata listing
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Projects
+      summary: "/v2/projects/{bucket}/{path}/"
+      operationId: createProjectGroupingFolder
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The grouping folder path within the bucket.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Grouping folder created successfully
+          headers:
+            ETag:
+              description: The ETag of the created grouping folder
+              required: false
+              schema:
+                type: string
+        "400":
+          description: Bad request - the folder already exists or a resource/folder name collision was detected
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Projects
+      summary: "/v2/projects/{bucket}/{path}/"
+      operationId: deleteProjectGroupingFolder
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The grouping folder path within the bucket.
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag of the folder to delete. Use * to delete regardless of the current ETag.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Grouping folder deleted successfully
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Grouping folder not found
+        "409":
+          description: Conflict - the folder is not empty
+        "412":
+          description: Precondition failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v2/projects/{bucket}/{path}/files/{filePath}:
+    get:
+      tags:
+      - Projects
+      summary: "/v2/projects/{bucket}/{path}/files/{filePath}"
+      operationId: downloadProjectFile
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The resource path within the bucket.
+        required: true
+        schema:
+          type: string
+      - name: filePath
+        in: path
+        description: The relative path of the file within the project.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: File downloaded successfully
+          headers:
+            ETag:
+              description: The ETag of the project version
+              required: false
+              schema:
+                type: string
+            Content-Type:
+              description: MIME type of the file
+              required: false
+              schema:
+                type: string
+            Content-Length:
+              description: Size of the file in bytes
+              required: false
+              schema:
+                type: integer
+                format: int64
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: File or project not found
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Projects
+      summary: "/v2/projects/{bucket}/{path}/files/{filePath}"
+      operationId: uploadProjectFile
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The resource path within the bucket.
+        required: true
+        schema:
+          type: string
+      - name: filePath
+        in: path
+        description: The relative path of the file within the project.
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag of the project version. The file is added/replaced in the project atomically.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              required:
+              - file
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+        required: true
+      responses:
+        "200":
+          description: File uploaded successfully
+          headers:
+            ETag:
+              description: The new ETag of the project after file upload
+              required: false
+              schema:
+                type: string
+        "400":
+          description: Bad request - invalid content type or malformed request
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "412":
+          description: Precondition failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Projects
+      summary: "/v2/projects/{bucket}/{path}/files/{filePath}"
+      operationId: deleteProjectFile
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The resource path within the bucket.
+        required: true
+        schema:
+          type: string
+      - name: filePath
+        in: path
+        description: The relative path of the file within the project.
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag of the project version. The file is removed from the project atomically.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: File deleted successfully
+          headers:
+            ETag:
+              description: The new ETag of the project after file deletion
+              required: false
+              schema:
+                type: string
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: File or project not found
+        "412":
+          description: Precondition failed - ETag mismatch
         "500":
           description: The server had an error while processing your request.
           content:
@@ -13188,6 +15458,8 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "405":
           description: Method Not Allowed
+        "409":
+          description: An org unit holds this path
         "412":
           description: Precondition failed - ETag mismatch
         "422":
@@ -13620,6 +15892,15 @@ components:
       properties:
         consent:
           $ref: "#/components/schemas/Consent"
+    AdminApplicationManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Application"
     AdminApplyRequest:
       type: object
       properties:
@@ -13656,6 +15937,15 @@ components:
       - APPLIED_INVALID
       - FAILED
       - SKIPPED
+    AdminCatalogSchemaManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/CatalogSchema"
     AdminConsentStatus:
       type: object
       properties:
@@ -13676,7 +15966,7 @@ components:
         stale:
           description: A record exists but no longer matches the current declaration; absent when there is no record.
           type: boolean
-    AdminManifest:
+    AdminInterceptorManifest:
       type: object
       properties:
         kind:
@@ -13684,7 +15974,130 @@ components:
         name:
           type: string
         spec:
-          $ref: "#/components/schemas/JsonNode"
+          $ref: "#/components/schemas/Interceptor"
+    AdminKeyManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Key"
+    AdminManifest:
+      required:
+      - kind
+      discriminator:
+        propertyName: kind
+        mapping:
+          Settings: "#/components/schemas/AdminSettingsManifest"
+          Schema: "#/components/schemas/AdminSchemaManifest"
+          CatalogSchema: "#/components/schemas/AdminCatalogSchemaManifest"
+          Interceptor: "#/components/schemas/AdminInterceptorManifest"
+          Translator: "#/components/schemas/AdminTranslatorManifest"
+          Role: "#/components/schemas/AdminRoleManifest"
+          Key: "#/components/schemas/AdminKeyManifest"
+          Route: "#/components/schemas/AdminRouteManifest"
+          Model: "#/components/schemas/AdminModelManifest"
+          ToolSet: "#/components/schemas/AdminToolSetManifest"
+          Application: "#/components/schemas/AdminApplicationManifest"
+          Policy: "#/components/schemas/AdminPolicyManifest"
+          PolicyAssignment: "#/components/schemas/AdminPolicyAssignmentManifest"
+      oneOf:
+      - $ref: "#/components/schemas/AdminSettingsManifest"
+      - $ref: "#/components/schemas/AdminSchemaManifest"
+      - $ref: "#/components/schemas/AdminCatalogSchemaManifest"
+      - $ref: "#/components/schemas/AdminInterceptorManifest"
+      - $ref: "#/components/schemas/AdminTranslatorManifest"
+      - $ref: "#/components/schemas/AdminRoleManifest"
+      - $ref: "#/components/schemas/AdminKeyManifest"
+      - $ref: "#/components/schemas/AdminRouteManifest"
+      - $ref: "#/components/schemas/AdminModelManifest"
+      - $ref: "#/components/schemas/AdminToolSetManifest"
+      - $ref: "#/components/schemas/AdminApplicationManifest"
+      - $ref: "#/components/schemas/AdminPolicyManifest"
+      - $ref: "#/components/schemas/AdminPolicyAssignmentManifest"
+    AdminModelManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Model"
+    AdminPolicyAssignmentManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/PolicyAssignment"
+    AdminPolicyManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Policy"
+    AdminRoleManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Role"
+    AdminRouteManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Route"
+    AdminSchemaManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/ApplicationTypeSchema"
+    AdminSettingsManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/GlobalSettings"
+    AdminToolSetManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/ToolSet"
+    AdminTranslatorManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Translator"
     AdminValidateResponse:
       type: object
       properties:
@@ -13705,6 +16118,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/McpTool"
+    AnthropicErrorData:
+      type: object
+      properties:
+        error:
+          $ref: "#/components/schemas/AnthropicErrorDataDetail"
+        type:
+          type: string
+    AnthropicErrorDataDetail:
+      type: object
+      properties:
+        message:
+          type: string
+        type:
+          type: string
     AnthropicModelData:
       type: object
       properties:
@@ -13732,6 +16159,43 @@ components:
         has_more:
           type: boolean
         last_id:
+          type: string
+    AnthropicUsageData:
+      type: object
+      properties:
+        extra_usage:
+          $ref: "#/components/schemas/AnthropicUsageDataExtraUsage"
+        limits:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnthropicUsageDataUsageLimit"
+    AnthropicUsageDataExtraUsage:
+      type: object
+      properties:
+        currency:
+          type: string
+        is_enabled:
+          type: boolean
+        monthly_limit:
+          type: integer
+        used_credits:
+          type: integer
+        utilization:
+          type: integer
+    AnthropicUsageDataUsageLimit:
+      type: object
+      properties:
+        group:
+          type: string
+        is_active:
+          type: boolean
+        kind:
+          type: string
+        percent:
+          type: integer
+        resets_at:
+          type: string
+        severity:
           type: string
     Application:
       type: object
@@ -13830,6 +16294,7 @@ components:
         baseUrl:
           type: string
         resource_dependencies:
+          description: Declared resource dependencies for this application. Present only when the application declares dependencies; omitted otherwise.
           type: array
           items:
             $ref: "#/components/schemas/ResourceDependency"
@@ -13912,6 +16377,8 @@ components:
         catalog_schema_id:
           type: string
           format: uri
+        interface_configs:
+          $ref: "#/components/schemas/MapStringInterfaceConfigData"
     ApplicationFunction:
       type: object
       properties:
@@ -13969,6 +16436,17 @@ components:
       enum:
       - HEADER
       - META
+    ApplicationTypeSchema:
+      required:
+      - $id
+      type: object
+      properties:
+        $id:
+          type: string
+          format: uri-reference
+      additionalProperties: true
+      description: |
+        JSON Schema document describing a custom application type. Alongside standard JSON Schema keywords it carries `dial`-prefixed extension properties; `$id` is required and must be non-blank.
     AuthenticationType:
       type: string
       enum:
@@ -13983,6 +16461,19 @@ components:
           type: string
         bucket:
           type: string
+    BudgetStats:
+      type: object
+      properties:
+        costObject:
+          type: string
+        day:
+          $ref: "#/components/schemas/CostItemLimitStats"
+        month:
+          $ref: "#/components/schemas/CostItemLimitStats"
+        policy:
+          type: string
+        priority:
+          type: integer
     CacheBreakpoint:
       type: object
       properties:
@@ -14007,6 +16498,17 @@ components:
           type: array
           items:
             type: string
+    CatalogSchema:
+      required:
+      - $id
+      type: object
+      properties:
+        $id:
+          type: string
+          format: uri-reference
+      additionalProperties: true
+      description: |
+        JSON Schema document describing a catalog entity type. Alongside standard JSON Schema keywords it carries `dial`-prefixed extension properties; `$id` is required and must be non-blank.
     ChatCompletionAddon:
       oneOf:
       - type: object
@@ -14370,6 +16872,11 @@ components:
           description: |-
             The JSON schema describing a form that the assistant prompts the user to fill in.
             Given this schema, the user is expected to provide a JSON value in the next message in the `custom_content.form_value` field.
+        skills:
+          type: array
+          description: List of skills referenced by the model as part of the response.
+          items:
+            $ref: "#/components/schemas/RequestSkill"
       description: The custom content of the assistant message.
     ChatCompletionRequestCustomFields:
       type: object
@@ -14613,6 +17120,11 @@ components:
         form_value:
           type: object
           description: The JSON value corresponding to the JSON schema sent by the assistant in the previous message in the `custom_content.form_schema` field.
+        skills:
+          type: array
+          description: List of skills used to supply an additional input for the model.
+          items:
+            $ref: "#/components/schemas/RequestSkill"
       description: The custom content of the user message.
     ChatCompletionResponseAttachment:
       required:
@@ -14739,6 +17251,21 @@ components:
             * `completed`: The stage is completed.
             * `failed`: The stage is failed.
           nullable: true
+        parent_stage_index:
+          minimum: 0
+          type: integer
+          description: |-
+            Index of the parent stage. Present only for nested stages; absent for top-level stages.
+            <br><br>
+            In *streaming* responses, the field is sent only in the chunk that opens the stage and
+            refers to the parent's `index`. The parent is always announced before its children,
+            belongs to the same choice, and `parent_stage_index` is always less than `index`.
+            <br><br>
+            In *non-streaming* responses, `index` is omitted, and `parent_stage_index` is the
+            position of the parent stage in the `stages` array.
+            <br><br>
+            Clients that don't support nesting can ignore this field and show stages as a flat list.
+            A reference to an unknown parent should be shown as a top-level stage.
     ChatCompletionResponseStatistics:
       type: object
       properties:
@@ -14953,6 +17480,43 @@ components:
       type: array
       items:
         $ref: "#/components/schemas/MetadataBase"
+    ComplexResourceItemMetadata:
+      type: object
+      properties:
+        attributes:
+          $ref: "#/components/schemas/MapStringObject"
+        author:
+          type: string
+        bucket:
+          type: string
+        createdAt:
+          type: integer
+        etag:
+          type: string
+        name:
+          type: string
+        nodeType:
+          $ref: "#/components/schemas/NodeType"
+        parentPath:
+          type: string
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceAccessType"
+        resourceType:
+          $ref: "#/components/schemas/ResourceType"
+        sharedBy:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShareMetadata"
+        sharedWith:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShareMetadata"
+        updatedAt:
+          type: integer
+        url:
+          type: string
     Condition:
       type: object
       properties:
@@ -14992,6 +17556,12 @@ components:
           $ref: "#/components/schemas/MapStringString"
         defaultLocale:
           type: string
+        translators:
+          $ref: "#/components/schemas/MapStringTranslator"
+        rateLimitSchedule:
+          $ref: "#/components/schemas/RateLimitSchedule"
+        spendingLimits:
+          $ref: "#/components/schemas/SpendingLimits"
     ConfigFileMigrateRequest:
       type: object
       properties:
@@ -15011,12 +17581,19 @@ components:
     ConfigFileMigrateResult:
       type: object
       properties:
-        id:
-          type: string
         reason:
           type: string
         status:
           $ref: "#/components/schemas/ConfigFileMigrateStatus"
+        resourceUrl:
+          type: string
+          description: "Percent-encoded admin API path (relative, no leading /v1/) at which the resulting entity is reachable, e.g. models/platform/gpt-4. Present once the entity exists in blob storage or a resource url could be derived for it; absent when no resource url could be determined."
+        key:
+          type: string
+          description: "Entity's identifier in the source file config (a short name, or a schema's $id). Absent when the entity has no safe file-side name to report - e.g. a key entity's file-side identity is its raw secret, which must never be echoed back, and global settings is a singleton with no name of its own."
+        kind:
+          type: string
+          description: "Entity kind being migrated (e.g. Model, Interceptor, Key, Schema, CatalogSchema, Settings)."
     ConfigFileMigrateStatus:
       type: string
       enum:
@@ -15125,6 +17702,8 @@ components:
           type: number
         used:
           type: number
+        resetsAt:
+          type: string
     CostLimit:
       type: object
       properties:
@@ -15269,6 +17848,13 @@ components:
         statistics:
           $ref: "#/components/schemas/ChatCompletionResponseStatistics"
       description: "Represents a streamed chunk of a chat completion response returned by model, based on the provided input."
+    CreateOrgUnitRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+        name:
+          type: string
     CredentialsLevel:
       type: string
       enum:
@@ -15279,6 +17865,13 @@ components:
       type: object
       properties:
         ids:
+          type: array
+          items:
+            type: string
+    DeleteOrgUnitResult:
+      type: object
+      properties:
+        removed:
           type: array
           items:
             type: string
@@ -15304,6 +17897,21 @@ components:
           $ref: "#/components/schemas/MapStringString"
         mode:
           $ref: "#/components/schemas/InterfaceMode"
+        translator:
+          $ref: "#/components/schemas/TranslatorRef"
+        defaults:
+          $ref: "#/components/schemas/MapStringObject"
+        features:
+          $ref: "#/components/schemas/Features"
+        overridePaths:
+          $ref: "#/components/schemas/MapStringString"
+    DeploymentNameData:
+      type: object
+      properties:
+        id:
+          type: string
+        object:
+          type: string
     EmbeddingResponse:
       required:
       - data
@@ -15562,6 +18170,8 @@ components:
           type: string
         url_attachments_supported:
           type: boolean
+        skills_supported:
+          type: boolean
     FeaturesData:
       type: object
       properties:
@@ -15614,6 +18224,8 @@ components:
         truncate_prompt:
           type: boolean
         url_attachments:
+          type: boolean
+        skills_supported:
           type: boolean
     FileConfigControllerItemsResponseFileConfigControllerNamedEntity:
       type: object
@@ -15719,6 +18331,8 @@ components:
           type: array
           items:
             type: integer
+        rateLimitSchedule:
+          $ref: "#/components/schemas/RateLimitSchedule"
     GrantAdminConsentRequest:
       type: object
       properties:
@@ -15808,11 +18422,27 @@ components:
           $ref: "#/components/schemas/MapStringString"
         baseUrl:
           type: string
+    InterfaceConfigData:
+      type: object
+      properties:
+        defaults:
+          $ref: "#/components/schemas/MapStringObject"
+        features:
+          $ref: "#/components/schemas/FeaturesData"
+        default_headers:
+          $ref: "#/components/schemas/MapStringString"
     InterfaceMode:
       type: string
       enum:
-      - PASSTHROUGH
-      - TRANSLATOR
+      - passthrough
+      - translator
+    InterfaceType:
+      type: string
+      enum:
+      - openaiChatCompletions
+      - openaiEmbeddings
+      - openaiResponses
+      - anthropicMessages
     Invitation:
       type: object
       properties:
@@ -15876,6 +18506,8 @@ components:
           type: integer
         used:
           type: integer
+        resetsAt:
+          type: string
     JsonNode:
       type: object
     Key:
@@ -15978,6 +18610,10 @@ components:
       type: array
       items:
         $ref: "#/components/schemas/DeploymentData"
+    ListDeploymentNameData:
+      type: array
+      items:
+        $ref: "#/components/schemas/DeploymentNameData"
     ListExternalServiceData:
       type: array
       items:
@@ -16046,6 +18682,10 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/Interceptor"
+    MapStringInterfaceConfigData:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/InterfaceConfigData"
     MapStringKey:
       type: object
       additionalProperties:
@@ -16091,6 +18731,10 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/ToolSet"
+    MapStringTranslator:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/Translator"
     MapStringUpstreamInterface:
       type: object
       additionalProperties:
@@ -16299,6 +18943,8 @@ components:
         catalog_schema_id:
           type: string
           format: uri
+        interface_configs:
+          $ref: "#/components/schemas/MapStringInterfaceConfigData"
     ModelType:
       type: string
       enum:
@@ -16382,12 +19028,50 @@ components:
     Operator:
       type: string
       enum:
-      - EQ
-      - NE
-      - GT
-      - LT
-      - GE
-      - LE
+      - ==
+      - '!='
+      - '>'
+      - <
+      - '>='
+      - <=
+    OrgUnitData:
+      type: object
+      properties:
+        author:
+          type: string
+        createdAt:
+          type: integer
+        displayName:
+          type: string
+        folder:
+          type: string
+        id:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrgUnitDataSummary"
+        name:
+          type: string
+        path:
+          type: string
+    OrgUnitDataSummary:
+      type: object
+      properties:
+        author:
+          type: string
+        createdAt:
+          type: integer
+        displayName:
+          type: string
+        folder:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        path:
+          type: string
     ParallelToolCalls:
       type: boolean
       description: Whether to enable parallel `function` calling during the `tool` use.
@@ -16410,13 +19094,105 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PerRequestReceiver"
+    Policy:
+      type: object
+      properties:
+        attachedTo:
+          $ref: "#/components/schemas/JsonNode"
+        broker:
+          $ref: "#/components/schemas/JsonNode"
+        cost:
+          $ref: "#/components/schemas/PolicyAmounts"
+        costObject:
+          type: string
+        harness:
+          $ref: "#/components/schemas/JsonNode"
+        id:
+          type: string
+        kind:
+          $ref: "#/components/schemas/PolicyKind"
+        object:
+          $ref: "#/components/schemas/PolicyObjectSet"
+        packages:
+          $ref: "#/components/schemas/JsonNode"
+        per:
+          type: array
+          items:
+            type: string
+        priority:
+          type: integer
+        quantity:
+          $ref: "#/components/schemas/PolicyQuantity"
+        subject:
+          type: array
+          items:
+            $ref: "#/components/schemas/PolicySubjectRule"
+    PolicyAmounts:
+      type: object
+      properties:
+        day:
+          type: number
+        month:
+          type: number
+    PolicyAssignment:
+      type: object
+      properties:
+        costObject:
+          type: string
+        description:
+          type: string
+        expiresAt:
+          type: string
+        id:
+          type: string
+        policy:
+          type: string
+        source:
+          type: string
+        subject:
+          type: array
+          items:
+            $ref: "#/components/schemas/PolicySubjectRule"
+        ticket:
+          type: string
+    PolicyKind:
+      type: string
+      enum:
+      - budget
+    PolicyObjectSet:
+      type: object
+    PolicyQuantity:
+      type: string
+      enum:
+      - cost
+      - tokens
+      - requests
+    PolicySubjectRule:
+      type: object
+      properties:
+        function:
+          $ref: "#/components/schemas/PolicySubjectRuleFunction"
+        source:
+          type: string
+        targets:
+          type: array
+          items:
+            type: string
+    PolicySubjectRuleFunction:
+      type: string
+      enum:
+      - "TRUE"
+      - "FALSE"
+      - EQUAL
+      - CONTAIN
+      - REGEX
     Pricing:
       type: object
       properties:
         completion:
-          type: string
+          $ref: "#/components/schemas/PricingRate"
         prompt:
-          type: string
+          $ref: "#/components/schemas/PricingRate"
         unit:
           type: string
         cacheRead:
@@ -16427,9 +19203,9 @@ components:
       type: object
       properties:
         completion:
-          type: string
+          $ref: "#/components/schemas/PricingRate"
         prompt:
-          type: string
+          $ref: "#/components/schemas/PricingRate"
         unit:
           type: string
         cache_read:
@@ -16520,6 +19296,15 @@ components:
       - PENDING
       - APPROVED
       - REJECTED
+    RateLimitSchedule:
+      type: object
+      properties:
+        resetTime:
+          type: string
+        timezone:
+          type: string
+        weekStartDay:
+          $ref: "#/components/schemas/WeekDay"
     RateRequest:
       required:
       - rate
@@ -16566,6 +19351,14 @@ components:
         reference_url:
           type: string
           description: "If `reference_type` is specified, the content of `reference_url` should follow the format described in the MIME standard for `reference_type`."
+    RequestSkill:
+      required:
+      - url
+      type: object
+      properties:
+        url:
+          type: string
+          description: "The URL of the skill resource, e.g. `skills/<bucket>/<path>`."
     ResourceAccessType:
       type: string
       enum:
@@ -16648,17 +19441,24 @@ components:
       - SIGNED_OUT
       - FAILED
     ResourceDependency:
+      description: |
+        A declared resource dependency — a request, not a grant. The record carries no access of its own; at request start Core verifies the originating user's reach and the required admin consent, and only then bakes the grant into the per-request key the app holds.
       type: object
       properties:
         access:
+          description: "The access types this dependency requests: READ and/or WRITE."
           type: array
           items:
             $ref: "#/components/schemas/ResourceAccessType"
         kind:
+          description: Descriptor kind; must be "dial.resourceLink".
           type: string
         link_id:
+          description: Unique identity of this record within the application's declaration.
           type: string
         required:
+          description: |
+            When true, an unresolvable or unconsented dependency fails the call with 403. When false (default), the dependency degrades silently.
           type: boolean
         target:
           $ref: "#/components/schemas/ResourceDependencyTarget"
@@ -16666,6 +19466,8 @@ components:
       type: object
       properties:
         path:
+          description: |
+            A DIAL resource URL in one of two forms: a concrete global-view path (e.g. "files/public/policies/") or a current-user placeholder path (e.g. "files/{current-user}/skills/"). Write-time validation enforces the grammar.
           type: string
     ResourceEvent:
       type: object
@@ -16825,7 +19627,6 @@ components:
       - API_KEY_DATA
       - NOTIFICATION
       - APPLICATION
-      - DEPLOYMENT_COST_STATS
       - CODE_INTERPRETER_SESSION
       - USER_CONSENT
       - TOOL_SET
@@ -16853,10 +19654,10 @@ components:
       - INVITATION
       - PUBLICATION
       - RULES
+      - ORG_UNITS
       - API_KEY_DATA
       - NOTIFICATION
       - APPLICATION
-      - DEPLOYMENT_COST_STATS
       - CODE_INTERPRETER_SESSION
       - USER_CONSENT
       - ADMIN_CONSENT
@@ -16869,13 +19670,17 @@ components:
       - APP_TYPE_SCHEMA
       - CATALOG_SCHEMA
       - INTERCEPTOR
+      - TRANSLATOR
       - ROLE
       - PROJECT_KEY
+      - POLICY
+      - POLICY_ASSIGNMENT
       - ROUTE
       - GLOBAL_SETTINGS
       - RESPONSE_MAPPING
       - SKILL
       - BACKGROUND_JOB
+      - PROJECT
     ResponseFormatJsonObject:
       required:
       - type
@@ -17116,6 +19921,19 @@ components:
           type: string
         reason:
           type: string
+    SpendingLimitMode:
+      type: string
+      enum:
+      - "off"
+      - shadow
+      - enforce
+    SpendingLimits:
+      type: object
+      properties:
+        defaultCostObject:
+          type: string
+        mode:
+          $ref: "#/components/schemas/SpendingLimitMode"
     SubscribeResourcesRequest:
       type: object
       properties:
@@ -17406,6 +20224,8 @@ components:
         catalog_schema_id:
           type: string
           format: uri
+        interface_configs:
+          $ref: "#/components/schemas/MapStringInterfaceConfigData"
     ToolSetRepairControllerRepairResponse:
       type: object
       properties:
@@ -17428,6 +20248,24 @@ components:
       enum:
       - HTTP
       - SSE
+    Translator:
+      type: object
+      properties:
+        baseUrl:
+          type: string
+        in:
+          $ref: "#/components/schemas/InterfaceType"
+        out:
+          $ref: "#/components/schemas/InterfaceType"
+    TranslatorRef:
+      type: object
+      properties:
+        definition:
+          $ref: "#/components/schemas/Translator"
+        name:
+          type: string
+        inline:
+          $ref: "#/components/schemas/Translator"
     TruncatePromptError:
       required:
       - error
@@ -17476,6 +20314,11 @@ components:
           type: array
           items:
             type: integer
+    UpdateOrgUnitRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
     Upstream:
       type: object
       properties:
@@ -17501,6 +20344,22 @@ components:
           type: string
         interfaces:
           $ref: "#/components/schemas/MapStringUpstreamInterface"
+        authType:
+          $ref: "#/components/schemas/UpstreamAuthConfig"
+    UpstreamAuthConfig:
+      type: object
+      properties:
+        type:
+          $ref: "#/components/schemas/UpstreamAuthType"
+        headerName:
+          type: string
+          description: "Required for CUSTOM_HEADER, not allowed otherwise"
+    UpstreamAuthType:
+      type: string
+      enum:
+      - API_KEY
+      - BEARER
+      - CUSTOM_HEADER
     UpstreamInterface:
       type: object
       properties:
@@ -17536,6 +20395,9 @@ components:
             items:
               type: string
           description: Normalized token claims. Present only for user-based session authentication.
+        userDisplayName:
+          type: string
+          description: Human-readable caller name. For user-based session authentication it is resolved from the identity provider's configured userDisplayName claim path; for API key authentication it is the key's project name. Absent when not configured.
     UserLimitStats:
       type: object
       properties:
@@ -17549,6 +20411,10 @@ components:
           $ref: "#/components/schemas/CostItemLimitStats"
         weekCostStats:
           $ref: "#/components/schemas/CostItemLimitStats"
+        budgets:
+          type: array
+          items:
+            $ref: "#/components/schemas/BudgetStats"
     ValidationResult:
       type: object
       properties:
@@ -17566,6 +20432,16 @@ components:
       - SKIPPED
     ValueNode:
       type: object
+    WeekDay:
+      type: string
+      enum:
+      - Mon
+      - Tue
+      - Wed
+      - Thu
+      - Fri
+      - Sat
+      - Sun
   securitySchemes:
     ApiKeyAuth:
       type: apiKey

@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
+import com.epam.aidial.core.config.RoleBasedEntity;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -19,23 +20,29 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.extraction.ApplicationDeploymentExtractor;
 import com.epam.aidial.core.server.data.ApplicationData;
 import com.epam.aidial.core.server.data.DeploymentData;
+import com.epam.aidial.core.server.data.DeploymentNameData;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ToolSetData;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
+import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Predicate;
 
 import static com.epam.aidial.core.server.controller.ModelController.createModel;
@@ -48,6 +55,10 @@ public class DeploymentController {
     private static final String MCP_IFACE = "mcp";
     private static final String CUSTOM_UI_IFACE = "custom_ui";
     private static final String ALL_IFACE = "all";
+    private static final String MODEL_TYPE = "model";
+    private static final String APPLICATION_TYPE = "application";
+    private static final String TOOLSET_TYPE = "toolset";
+    private static final Set<String> DEPLOYMENT_NAME_TYPES = Set.of(MODEL_TYPE, APPLICATION_TYPE, TOOLSET_TYPE);
     private final Proxy proxy;
     private final ProxyContext context;
     private final DeploymentService.DeploymentExtractor appExtractor;
@@ -167,6 +178,124 @@ public class DeploymentController {
     }
 
 
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/deployment-names",
+            operationId = "listDeploymentNames",
+            tags = {"Deployment listing"},
+            parameters = {
+                    @ApiParameter(name = "type", in = ParameterIn.QUERY,
+                            schema = String[].class,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME_TYPES,
+                            allowableValues = {"model", "application", "toolset"})
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = List.class, typeArguments = {DeploymentNameData.class})),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 500)
+            }
+    )
+    public Future<?> listDeploymentNames() {
+        Set<String> types = new LinkedHashSet<>(List.of(context.getRequest().getParam("type", "all").split(",")));
+        if (types.remove(ALL_IFACE)) {
+            types.addAll(DEPLOYMENT_NAME_TYPES);
+        }
+        if (!DEPLOYMENT_NAME_TYPES.containsAll(types)) {
+            context.respond(HttpStatus.BAD_REQUEST, "Unknown deployment type in: " + types);
+            return Future.succeededFuture();
+        }
+
+        proxy.getTaskExecutor().submit(() -> listDeploymentNames(types))
+                .onSuccess(names -> context.respond(HttpStatus.OK, names))
+                .onFailure(error -> {
+                    log.error("Error occurred on listing deployment names", error);
+                    context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
+                });
+
+        return Future.succeededFuture();
+    }
+
+    private List<DeploymentNameData> listDeploymentNames(Set<String> types) {
+        Config config = context.getConfig();
+        List<DeploymentNameData> names = new ArrayList<>();
+        if (types.contains(MODEL_TYPE)) {
+            addAccessibleNames(names, config.getModels().values(), MODEL_TYPE);
+        }
+        if (types.contains(APPLICATION_TYPE)) {
+            addAccessibleNames(names, config.getApplications().values(), APPLICATION_TYPE);
+            if (applicationService.isIncludeCustomApps()) {
+                addNames(names, deploymentService.listDeploymentNames(context, ResourceTypes.APPLICATION, Application::new), APPLICATION_TYPE);
+            }
+        }
+        if (types.contains(TOOLSET_TYPE)) {
+            addAccessibleNames(names, config.getToolsets().values(), TOOLSET_TYPE);
+            addNames(names, deploymentService.listDeploymentNames(context, ResourceTypes.TOOL_SET, ToolSet::new), TOOLSET_TYPE);
+        }
+        return names;
+    }
+
+    private void addAccessibleNames(List<DeploymentNameData> names, Iterable<? extends RoleBasedEntity> entities, String object) {
+        for (RoleBasedEntity entity : entities) {
+            if (entity.hasAccess(context.getUserRoles())) {
+                names.add(new DeploymentNameData(entity.getName(), object));
+            }
+        }
+    }
+
+    private static void addNames(List<DeploymentNameData> names, Iterable<? extends RoleBasedEntity> entities, String object) {
+        for (RoleBasedEntity entity : entities) {
+            names.add(new DeploymentNameData(entity.getName(), object));
+        }
+    }
+
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/deployments/{deployment_name}",
+            operationId = "getDeploymentInfo",
+            tags = {"Deployment listing"},
+            parameters = {
+                    @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = DeploymentData.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
+    public Future<?> getDeploymentInfo(String deploymentId) {
+        proxy.getTaskExecutor()
+                .submit(() -> toDeploymentData(deploymentService.findDeployment(context, deploymentId)))
+                .onSuccess(deployment -> context.respond(HttpStatus.OK, deployment))
+                .onFailure(error -> respondError(deploymentId, error));
+
+        return Future.succeededFuture();
+    }
+
+    private DeploymentData toDeploymentData(Deployment deployment) {
+        return switch (deployment) {
+            case Model model -> to(model);
+            case Application application -> to(resolveLocalApplication(application));
+            case ToolSet toolSet -> to(toolSet);
+            // interceptors are deployments as well, but the deployment listing never exposes them
+            default -> throw new ResourceNotFoundException("Deployment is not found: " + deployment.getName());
+        };
+    }
+
+    private void respondError(String deploymentId, Throwable error) {
+        switch (error) {
+            case IllegalArgumentException ignored -> context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
+            case PermissionDeniedException ignored -> context.respond(HttpStatus.FORBIDDEN, error.getMessage());
+            case ResourceNotFoundException ignored -> context.respond(HttpStatus.NOT_FOUND, error.getMessage());
+            case null, default -> {
+                log.error("Error occurred on getting deployment {}", deploymentId, error);
+                context.respond(error, "Internal error");
+            }
+        }
+    }
+
     private String[] getDeploymentInterfaces() {
         String interfacesParam = context.getRequest().getParam("interface_type", "all");
         return interfacesParam.split(",");
@@ -235,9 +364,13 @@ public class DeploymentController {
             List<DeploymentData> deployments = new ArrayList<>();
             for (Application application : config.getApplications().values()) {
                 if (application.hasAccess(context.getUserRoles())) {
-                    Application resolved = resolveLocalApplication(application);
-                    if (match(filters, resolved)) {
-                        deployments.add(to(resolved));
+                    try {
+                        Application resolved = resolveLocalApplication(application);
+                        if (match(filters, resolved)) {
+                            deployments.add(to(resolved));
+                        }
+                    } catch (Exception e) {
+                        log.warn("Can't resolve application {} due to the error", application.getName(), e);
                     }
                 }
             }
@@ -257,10 +390,18 @@ public class DeploymentController {
     private Application resolveLocalApplication(Application application) {
         boolean applicationRequestInfoAboutItSelf = Objects.equals(context.getDecodedSourceDeployment(), application.getName());
         application = applicationSchemaService.modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf);
+        if (Boolean.TRUE.equals(application.getInvalid())) {
+            return application;
+        }
         if (application.hasApplicationTypeSchemaId()) {
-            application.setMcp(applicationSchemaService.getMcp(application));
-            application.setViewerUrl(applicationSchemaService.getStringProperty(application,
-                    MetaSchemaHolder.APPLICATION_TYPE_VIEWER_URL));
+            try {
+                application.setMcp(applicationSchemaService.getMcp(application));
+                application.setViewerUrl(applicationSchemaService.getStringProperty(application,
+                        MetaSchemaHolder.APPLICATION_TYPE_VIEWER_URL));
+            } catch (Exception e) {
+                log.warn("Failed to resolve mcp/viewerUrl for application {} due to schema error", application.getName(), e);
+                application.setInvalid(true);
+            }
         }
         return application;
     }
@@ -271,8 +412,16 @@ public class DeploymentController {
             List<ToolSet> resourceToolsets = deploymentService.listDeployments(context, ResourceTypes.TOOL_SET, new DeploymentService.DeploymentExtractor() {
                 @SuppressWarnings("unchecked")
                 @Override
-                public ToolSet extract(String content, ResourceItemMetadata metadata, ProxyContext context) {
-                    return toolSetService.extractFrom(content, metadata);
+                public <T extends Deployment> List<T> extract(List<Pair<ResourceItemMetadata, String>> items, ProxyContext context) {
+                    List<T> result = new ArrayList<>();
+                    for (Pair<ResourceItemMetadata, String> item : items) {
+                        try {
+                            result.add((T) toolSetService.extractFrom(item.getValue(), item.getKey()));
+                        } catch (Exception e) {
+                            log.warn("Can't extract toolset {} due to the error", item.getKey().getUrl(), e);
+                        }
+                    }
+                    return result;
                 }
             });
             for (ToolSet toolSet : resourceToolsets) {
@@ -293,19 +442,23 @@ public class DeploymentController {
         Config config = context.getConfig();
         for (Model model : config.getModels().values()) {
             if (model.hasAccess(context.getUserRoles()) && match(filters, model)) {
-                DeploymentData deployment = createModel(model);
-                List<String> interfaces = new ArrayList<>();
-                if (model.getType() == ModelType.CHAT) {
-                    interfaces.add(CHAT_IFACE);
-                } else {
-                    interfaces.add(EMBEDDING_IFACE);
-                }
-                interfaces.addAll(supportedInterfaces(model));
-                deployment.setInterfaces(interfaces);
-                deployments.add(deployment);
+                deployments.add(to(model));
             }
         }
         return Future.succeededFuture(deployments);
+    }
+
+    private static DeploymentData to(Model model) {
+        DeploymentData deployment = createModel(model);
+        List<String> interfaces = new ArrayList<>();
+        if (model.getType() == ModelType.CHAT) {
+            interfaces.add(CHAT_IFACE);
+        } else {
+            interfaces.add(EMBEDDING_IFACE);
+        }
+        interfaces.addAll(supportedInterfaces(model));
+        deployment.setInterfaces(interfaces);
+        return deployment;
     }
 
     private static ApplicationData to(Application app) {

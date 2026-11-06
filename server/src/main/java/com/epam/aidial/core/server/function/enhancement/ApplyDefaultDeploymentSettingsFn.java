@@ -16,6 +16,11 @@ import java.util.Map;
 @Slf4j
 public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<RequestObject> {
 
+    /**
+     * The interface the client called. Every deployment this hop applies settings for resolves them under
+     * it - the interceptor it calls as much as the deployment the chain fronts - whatever interface the
+     * hop is routed on.
+     */
     private final InterfaceType interfaceType;
 
     public ApplyDefaultDeploymentSettingsFn(Proxy proxy, ProxyContext context, InterfaceType interfaceType) {
@@ -55,7 +60,7 @@ public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<Reques
      * take precedence over the ones of the deployment it fronts.
      */
     private void applyDefaults(RequestObject request, Deployment deployment) {
-        request.applyDefaults(deployment);
+        request.applyDefaults(deployment.resolveDefaults(interfaceType));
         applyDefaultHeaders(deployment);
     }
 

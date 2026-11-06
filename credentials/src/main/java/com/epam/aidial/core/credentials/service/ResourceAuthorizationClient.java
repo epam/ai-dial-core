@@ -4,9 +4,10 @@ import com.epam.aidial.core.credentials.service.metadata.HttpHeadersHandler;
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.epam.aidial.core.storage.util.Compression;
 import com.google.common.annotations.VisibleForTesting;
-import lombok.SneakyThrows;
+import io.opentelemetry.api.trace.Span;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.core5.http.ContentType;
 
@@ -28,8 +29,9 @@ public class ResourceAuthorizationClient {
 
     private final HttpClient httpClient;
     private final HttpHeadersHandler httpHeadersHandler;
+    private final BlockingCallTracer blockingCallTracer;
 
-    public ResourceAuthorizationClient(@Nullable ProxySelector proxySelector) {
+    public ResourceAuthorizationClient(@Nullable ProxySelector proxySelector, BlockingCallTracer blockingCallTracer) {
         HttpClient.Builder builder = HttpClient.newBuilder();
         builder.connectTimeout(Duration.of(5, ChronoUnit.SECONDS));
         if (proxySelector != null) {
@@ -37,13 +39,15 @@ public class ResourceAuthorizationClient {
         }
         this.httpClient = builder.build();
         this.httpHeadersHandler = new HttpHeadersHandler();
+        this.blockingCallTracer = blockingCallTracer;
     }
 
     @SuppressWarnings("unused")
     @VisibleForTesting
-    private ResourceAuthorizationClient(HttpClient httpClient, HttpHeadersHandler httpHeadersHandler) {
+    private ResourceAuthorizationClient(HttpClient httpClient, HttpHeadersHandler httpHeadersHandler, BlockingCallTracer blockingCallTracer) {
         this.httpClient = httpClient;
         this.httpHeadersHandler = httpHeadersHandler;
+        this.blockingCallTracer = blockingCallTracer;
     }
 
     public <R> R executeGet(String url, Class<R> responseType) {
@@ -82,12 +86,28 @@ public class ResourceAuthorizationClient {
         return execute(request, responseType);
     }
 
-    @SneakyThrows
     private <R> R execute(HttpRequest request, Class<R> responseType) {
-        try {
-            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        return blockingCallTracer.trace("oauth.request", () -> {
+            Span span = BlockingCallTracer.currentSpan();
+            span.setAttribute("http.request.method", request.method());
+            span.setAttribute("server.address", request.uri().getHost());
+            HttpResponse<byte[]> response;
+            try {
+                response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            } catch (ConnectException e) {
+                // the message ends up on the span, so the query string is left out
+                String endpoint = request.uri().toString().split("\\?", 2)[0];
+                if (hasUnresolvedAddressException(e)) {
+                    throw new IllegalArgumentException(
+                            "Connection failed: The specified endpoint '%s' is invalid or unreachable.".formatted(endpoint), e);
+                }
+                ConnectException error = new ConnectException("Cannot connect to %s".formatted(endpoint));
+                error.initCause(e);
+                throw error;
+            }
 
             int status = response.statusCode();
+            span.setAttribute("http.response.status_code", status);
             String body = decodeBody(response);
 
             if (status != 200 && status != 201) {
@@ -105,13 +125,7 @@ public class ResourceAuthorizationClient {
             checkOauthError(body, request.uri());
 
             return JsonMapperUtil.convertToObject(body, responseType);
-        } catch (ConnectException e) {
-            if (hasUnresolvedAddressException(e)) {
-                throw new IllegalArgumentException(
-                        "Connection failed: The specified endpoint '%s' is invalid or unreachable.".formatted(request.uri()));
-            }
-            throw new ConnectException("Cannot connect to %s".formatted(request.uri()));
-        }
+        });
     }
 
     private static boolean hasUnresolvedAddressException(Throwable ex) {

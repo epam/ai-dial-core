@@ -83,11 +83,11 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
         context.getRequest().body()
-                .map(MessagesBaseController::parseBody)
+                .map(this::parseBody)
                 .compose(request -> {
                     String model = request.getModel();
                     deploymentId = model;
-                    return proxy.getTaskExecutor().submit(() -> setupDeployment(model))
+                    return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(model)))
                             .compose(ignore -> verifyLimit())
                             .compose(ignore -> proxy.getTokenStatsTracker().startSpan(context)
                                     .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request))))
@@ -115,9 +115,10 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         return null;
     }
 
-    protected static MessagesApiRequest parseBody(Buffer body) {
+    protected MessagesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
+            context.setRequestBodyWithTimestamp(body);
             ObjectNode tree = ProxyUtil.parseObject(body);
             return new MessagesApiRequest(tree);
         } catch (IOException e) {
@@ -127,9 +128,9 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
 
     protected Void setupDeployment(String model) {
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, model);
-        proxy.getConsentService().verifyUserConsent(context, deployment);
+        proxy.getConsentService().verifyUserConsent(context, deployment, InterfaceType.ANTHROPIC_MESSAGES);
 
-        Features features = deployment.getFeatures();
+        Features features = deployment.resolveFeatures(InterfaceType.ANTHROPIC_MESSAGES);
         boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
         if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
             throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", model, context.getApiKeyData().getSourceDeployment()));
@@ -139,7 +140,8 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
             deployment = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
         }
 
-        if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.ANTHROPIC_MESSAGES) == null) {
+        if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.ANTHROPIC_MESSAGES,
+                context.getConfig().getTranslators()) == null) {
             throw new HttpException(
                     HttpStatus.SERVICE_UNAVAILABLE,
                     "Anthropic messages not supported for this deployment type"
@@ -172,7 +174,8 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
                 .get(deployment, context.getCacheBreakpointContext(),
-                        dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.ANTHROPIC_MESSAGES), upstreamId);
+                        dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.ANTHROPIC_MESSAGES,
+                                context.getConfig().getTranslators()), upstreamId);
 
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);

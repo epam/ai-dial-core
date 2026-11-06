@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.MetadataBase;
@@ -43,6 +44,7 @@ class BackgroundJobScheduler {
     private final AsyncTaskExecutor taskExecutor;
     private final Function<String, BackgroundJobService.Poller> jobPollerProvider;
     private final Consumer<String> jobExpirer;
+    private final BackgroundOperationTracer backgroundTracer;
     private final RScript script;
     private final RScoredSortedSet<String> schedule;
     private final String scheduleKey;
@@ -57,7 +59,8 @@ class BackgroundJobScheduler {
             AsyncTaskExecutor taskExecutor,
             BackgroundJobService.Settings settings,
             Function<String, BackgroundJobService.Poller> jobPollerProvider,
-            Consumer<String> jobExpirer) {
+            Consumer<String> jobExpirer,
+            BackgroundOperationTracer backgroundTracer) {
         // The hash tag is used to force the keys to be stored in the same hash slot.
         // https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec/#implemented-subset
         // The same should work for Valkey: https://valkey.io/topics/cluster-spec/
@@ -81,6 +84,7 @@ class BackgroundJobScheduler {
         this.taskExecutor = taskExecutor;
         this.jobPollerProvider = jobPollerProvider;
         this.jobExpirer = jobExpirer;
+        this.backgroundTracer = backgroundTracer;
         this.script = redis.getScript(StringCodec.INSTANCE);
         this.scheduleKey = "background_job_schedule:" + keyTag + ":queue";
         this.schedule = redis.getScoredSortedSet(scheduleKey, StringCodec.INSTANCE);
@@ -91,13 +95,19 @@ class BackgroundJobScheduler {
         vertx.setPeriodic(0, settings.getSchedulerTickIntervalMs(), id -> {
             if (nextJobTime.get() <= System.currentTimeMillis()
                     && polling.compareAndSet(false, true)) {
-                taskExecutor.submit(this::pollJobs)
-                        .onComplete(ignore -> polling.set(false))
-                        .onFailure(e -> log.warn("Failed to poll background jobs", e));
+                // The trace id covers job claiming, not the execution of each claimed job
+                backgroundTracer.traceFuture(() ->
+                        taskExecutor.submit(this::pollJobs)
+                                .onComplete(ignore -> polling.set(false))
+                                .onFailure(e -> log.warn("Failed to poll background jobs", e)));
             }
         });
         // Set up periodic scans in case of a Redis restart
-        vertx.setPeriodic(0, settings.getScanIntervalMs(), id -> taskExecutor.submit(this::scan));
+        vertx.setPeriodic(0, settings.getScanIntervalMs(), id -> {
+            backgroundTracer.traceFuture(() ->
+                    taskExecutor.submit(this::scan)
+            );
+        });
     }
 
     void schedule(String jobId, long nextPollTime) {
@@ -190,6 +200,12 @@ class BackgroundJobScheduler {
 
     private Future<Void> handleFailure(Throwable error, String jobId, ClaimResult claimResult, Supplier<Future<Void>> failureHandler) {
         int newErrors = claimResult.errors() + 1;
+        if (error instanceof PollStatusException statusError
+                && settings.getPollGiveUpStatusCodes().contains(statusError.getStatusCode())) {
+            log.error("Background job {} polling returned status {}, giving up", jobId, statusError.getStatusCode(), error);
+            return complete(jobId, claimResult.owner())
+                    .eventually(failureHandler);
+        }
         if (newErrors >= settings.getMaxSequentialPollFailures()) {
             log.error("Background job {} exceeded max poll failures, giving up", jobId, error);
             return complete(jobId, claimResult.owner())

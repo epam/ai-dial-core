@@ -1,12 +1,15 @@
 package com.epam.aidial.core.server.log;
 
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
+import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.MergeChunks;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -38,6 +41,7 @@ public class AnalyticsLogContext {
     private final String project;
     private final String userHash;
     private final String conversationId;
+    private final String sessionId;
     private final String jobTitle;
     private final boolean securedApiKey;
 
@@ -60,6 +64,9 @@ public class AnalyticsLogContext {
 
     private final String upstreamEndpoint;
 
+    private final String routeName;
+    private final String routeType;
+
     private final int responseStatusCode;
     private final Buffer responseBody;
     private final String assembledStreamingResponse;
@@ -71,6 +78,8 @@ public class AnalyticsLogContext {
 
     public static AnalyticsLogContext from(ProxyContext context, String assembledStreamingResponse) {
         Buffer responseBody = context.getResponseBody();
+        Route route = context.getRoute();
+        RouteType routeType = context.getRouteType();
         return AnalyticsLogContext.builder()
                 .traceId(context.getTraceId())
                 .spanId(context.getSpanId())
@@ -78,6 +87,7 @@ public class AnalyticsLogContext {
                 .project(context.getProject())
                 .userHash(context.getUserHash())
                 .conversationId(context.getRequestHeader(Proxy.HEADER_CONVERSATION_ID))
+                .sessionId(GenAiTraceAttributes.resolveConversationId(context))
                 .jobTitle(context.getRequestHeader(Proxy.HEADER_JOB_TITLE))
                 .securedApiKey(context.isSecuredApiKey())
                 .userId(context.getUserId())
@@ -98,6 +108,8 @@ public class AnalyticsLogContext {
                         .map(UpstreamRoute::get)
                         .map(Upstream::getEndpoint)
                         .orElse(null))
+                .routeName(route == null ? null : route.getName())
+                .routeType(routeType == null ? null : routeType.getValue())
                 .responseStatusCode(context.getResponse().getStatusCode())
                 .responseBody(responseBody)
                 .assembledStreamingResponse(assembledStreamingResponse)
@@ -115,6 +127,7 @@ public class AnalyticsLogContext {
                 .project(record.project())
                 .userHash(record.userHash())
                 .conversationId(record.conversationId())
+                .sessionId(record.sessionId())
                 .jobTitle(record.jobTitle())
                 .securedApiKey(record.securedApiKey())
                 .userId(record.userId())

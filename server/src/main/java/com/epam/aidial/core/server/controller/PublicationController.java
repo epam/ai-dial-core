@@ -127,6 +127,7 @@ public class PublicationController {
                     @ApiResponse(code = 400),
                     @ApiResponse(code = 403),
                     @ApiResponse(code = 404),
+                    @ApiResponse(code = 409, description = "A skill or project target is an org unit's folder"),
                     @ApiResponse(code = 500)
             }
     )
@@ -213,6 +214,7 @@ public class PublicationController {
                     @ApiResponse(code = 400),
                     @ApiResponse(code = 403),
                     @ApiResponse(code = 404),
+                    @ApiResponse(code = 409, description = "A skill or project target is an org unit's folder"),
                     @ApiResponse(code = 500)
             }
     )

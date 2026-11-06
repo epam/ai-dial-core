@@ -50,6 +50,36 @@ public class ModelWriteApiTest extends ResourceBaseTest {
             }
             """;
 
+    private static String catalogSchemaBody(String schemaId) {
+        return """
+                {
+                  "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                  "$id": "%s",
+                  "dial:catalogEntityType": "model",
+                  "dial:catalogDisplayName": "Model",
+                  "type": "object",
+                  "properties": {
+                    "featured": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+                """.formatted(schemaId);
+    }
+
+    private static String modelBodyWithCatalogProperties(String schemaId, String featuredValue) {
+        return """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "catalogSchemaId": "%s",
+                  "catalogProperties": {
+                    "featured": %s
+                  }
+                }
+                """.formatted(schemaId, featuredValue);
+    }
+
     @Test
     void testPutCreate200HappyPath() {
         Response put = send(HttpMethod.PUT, "/v1/models/platform/test-model-create",
@@ -389,8 +419,8 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         // The {name} segment may carry percent-encoded characters; the controller must decode at
         // the route boundary so the stored entity name and canonical id are the decoded form.
         // Repro from PR #1529 / thread r3249802671 — the decoding round-trip is the contract.
-        // The chosen name stays within the entity-name regex (design 02 §4 / 03 §3); decoding is
-        // exercised by sending '%' (as %25) and ':' (as %3A) which the controller URL-decodes.
+        // The chosen name stays within ENTITY_NAME_PATTERN; decoding is exercised by sending '%'
+        // (as %25) and ':' (as %3A) which the controller URL-decodes.
         String decoded = "model%25v1.0:beta";
         String encoded = "model%2525v1.0%3Abeta";
 
@@ -406,13 +436,32 @@ public class ModelWriteApiTest extends ResourceBaseTest {
 
     @Test
     void testPutRejectsOutOfContractName() {
-        // Names outside the documented set (design 02 §4 / 03 §3: ^[A-Za-z0-9._%:-]+$) must be
-        // rejected at the write surface. The decoded value of '%20' is a space, which is not
-        // in the allowed set; the controller returns 400. Adds a regression guard for the
-        // tightened contract introduced alongside the broadened character set (% and :).
+        // Names outside ENTITY_NAME_PATTERN must be rejected at the write surface. The decoded
+        // value of '%20' is a space, which is not in the allowed set; the controller returns 400.
         Response put = send(HttpMethod.PUT, "/v1/models/platform/has%20space", null,
                 MODEL_BODY_NO_SECRET, "authorization", "admin", "If-None-Match", "*");
         verify(put, 400);
+    }
+
+    @Test
+    void testPutGetWithExtendedCharsInName() {
+        // Covers every character ENTITY_NAME_PATTERN allows beyond the base alphanumeric/./-/_ set,
+        // in one name, so widening the pattern later just means adding a character here instead of
+        // a new test method: '@' is common in real-world deployment ids; '[' / ']' show up in
+        // legacy model ids carrying a context-window suffix (e.g. "claude-opus-4-8[1m]"); '(' / ')'
+        // show up in vendor-qualified ids (e.g. "gpt-4(preview)"). All are legal on every supported
+        // blob backend (Azure/S3/GCS/local filesystem). '@' and '(' / ')' are unreserved in a URL
+        // path segment, but '[' / ']' are reserved and must be percent-encoded.
+        String decoded = "org@model-v1(preview)[1m]";
+        String encoded = "org@model-v1(preview)%5B1m%5D";
+        verify(send(HttpMethod.PUT, "/v1/models/platform/" + encoded, null, MODEL_BODY_NO_SECRET,
+                "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response get = send(HttpMethod.GET, "/v1/models/platform/" + encoded, null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertTrue(get.body().contains("\"name\":\"" + decoded + "\""),
+                () -> "Expected extended characters preserved in name: " + get.body());
     }
 
     @Test
@@ -436,5 +485,149 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         Response get = send(HttpMethod.GET, "/v1/models/platform/test-model-immediate-delete", null, "",
                 "authorization", "admin");
         verify(get, 404);
+    }
+
+    @Test
+    void testPutCreate422OnCatalogPropertiesTypeMismatch() {
+        String schemaId = "https://dial.epam.com/catalog-schemas/model-write-test-create";
+        verify(send(HttpMethod.PUT, "/v1/catalog_schemas/platform/model-write-test-create", null,
+                catalogSchemaBody(schemaId), "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/test-model-catalog-create-invalid", null,
+                modelBodyWithCatalogProperties(schemaId, "\"not-a-boolean\""),
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 422);
+        assertTrue(put.body().contains("\"field\":\"catalogProperties\""),
+                () -> "Expected a catalogProperties validation warning: " + put.body());
+
+        Response get = send(HttpMethod.GET, "/v1/models/platform/test-model-catalog-create-invalid", null, "",
+                "authorization", "admin");
+        verify(get, 404);
+    }
+
+    @Test
+    void testPutUpdate422OnCatalogPropertiesTypeMismatch() {
+        String schemaId = "https://dial.epam.com/catalog-schemas/model-write-test-update";
+        verify(send(HttpMethod.PUT, "/v1/catalog_schemas/platform/model-write-test-update", null,
+                catalogSchemaBody(schemaId), "authorization", "admin", "If-None-Match", "*"), 200);
+
+        verify(send(HttpMethod.PUT, "/v1/models/platform/test-model-catalog-update-invalid", null,
+                modelBodyWithCatalogProperties(schemaId, "true"),
+                "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/test-model-catalog-update-invalid", null,
+                modelBodyWithCatalogProperties(schemaId, "\"not-a-boolean\""),
+                "authorization", "admin");
+        verify(put, 422);
+
+        Response get = send(HttpMethod.GET, "/v1/models/platform/test-model-catalog-update-invalid", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertTrue(get.body().contains("\"featured\":true"),
+                () -> "Expected the rejected update to leave the prior conforming value in place: " + get.body());
+    }
+
+    @Test
+    void testPutAcceptsConformingCatalogProperties() {
+        String schemaId = "https://dial.epam.com/catalog-schemas/model-write-test-valid";
+        verify(send(HttpMethod.PUT, "/v1/catalog_schemas/platform/model-write-test-valid", null,
+                catalogSchemaBody(schemaId), "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/test-model-catalog-valid", null,
+                modelBodyWithCatalogProperties(schemaId, "true"),
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 200);
+
+        Response get = send(HttpMethod.GET, "/v1/models/platform/test-model-catalog-valid", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertTrue(get.body().contains("\"featured\":true"),
+                () -> "Expected catalogProperties.featured=true to round-trip: " + get.body());
+    }
+
+    @Test
+    void testPutReportsCatalogAndInvariantFailuresTogether() {
+        String schemaId = "https://dial.epam.com/catalog-schemas/model-write-test-combined";
+        verify(send(HttpMethod.PUT, "/v1/catalog_schemas/platform/model-write-test-combined", null,
+                catalogSchemaBody(schemaId), "authorization", "admin", "If-None-Match", "*"), 200);
+
+        String body = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "pricing": {"unit": "char_without_whitespace", "prompt": "0.1", "cacheRead": "0.01"},
+                  "catalogSchemaId": "%s",
+                  "catalogProperties": {"featured": "not-a-boolean"}
+                }
+                """.formatted(schemaId);
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/test-model-catalog-combined", null, body,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 422);
+        assertTrue(put.body().contains("\"field\":\"pricing\""),
+                () -> "Expected the invariant warning: " + put.body());
+        assertTrue(put.body().contains("\"field\":\"catalogProperties\""),
+                () -> "Expected the catalog warning in the same response: " + put.body());
+    }
+
+    // --- pre-write rebuild-invariant validation ---------------------------------------------------
+    // checkModel now runs the same set the rebuild runs (ConfigPostProcessor#validateModelInvariants),
+    // so a model the next rebuild would reject can no longer reach the blob store. Before this, such a
+    // write returned 500 with the blob persisted and aborted every later rebuild, including startup.
+
+    @Test
+    void testPutModelWithUpstreamInterfacesAndNoIdIsRejected() {
+        String body = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "upstreams": [
+                    {"interfaces": {"openaiChatCompletions": {"endpoint": "http://localhost:7001/v1/chat"}}}
+                  ]
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/upstream-no-id", null, body,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 422);
+        verify(send(HttpMethod.GET, "/v1/models/platform/upstream-no-id", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    void testPutModelWithTranslatorButNoTranslatorModeIsRejected() {
+        String body = """
+                {
+                  "type": "chat",
+                  "baseUrl": "http://localhost:7001",
+                  "interfaces": {
+                    "anthropicMessages": {"translator": {"out": "openaiChatCompletions", "baseUrl": "http://translator"}}
+                  }
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/translator-no-mode", null, body,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 422);
+        assertTrue(put.body().contains("requires mode 'translator'"),
+                () -> "Expected the mode message: " + put.body());
+        verify(send(HttpMethod.GET, "/v1/models/platform/translator-no-mode", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    void testPutModelNamingAnUnregisteredTranslatorIsAccepted() {
+        // Guards against over-tightening: a name with no registry entry leaves the interface
+        // unserved (503 at request time), not the model invalid — the rebuild tolerates it, so the
+        // write surface must too. Registering the translator later serves it with no edit here.
+        String body = """
+                {
+                  "type": "chat",
+                  "baseUrl": "http://localhost:7001",
+                  "interfaces": {
+                    "anthropicMessages": {"mode": "translator", "translator": "not-registered-yet"}
+                  }
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/unregistered-translator", null, body,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 200);
     }
 }

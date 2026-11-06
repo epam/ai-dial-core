@@ -1,18 +1,25 @@
 package com.epam.aidial.core.storage.service;
 
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
+import com.epam.aidial.core.storage.metrics.LatencyBuckets;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.Timer;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
@@ -24,7 +31,9 @@ import javax.annotation.Nullable;
 @Slf4j
 public class LockService {
 
-    private static final long PERIOD = TimeUnit.SECONDS.toMicros(300);
+    public static final Duration LOCK_PERIOD = Duration.ofSeconds(300);
+
+    private static final long PERIOD = TimeUnit.SECONDS.toMicros(LOCK_PERIOD.toSeconds());
     private static final long WAIT_MIN = TimeUnit.MILLISECONDS.toNanos(1);
     private static final long WAIT_MAX = TimeUnit.MILLISECONDS.toNanos(128);
 
@@ -32,6 +41,17 @@ public class LockService {
     private final String prefix;
     private final RScript script;
     private final ConcurrentHashMap<String, LocalLock> locks;
+    // lock() only: tryLock() never waits, and its holds (e.g. an application deployment) are not measured either
+    private static final Timer LOCAL_WAIT_TIMER = buildWaitTimer("local", "success");
+    private static final Timer REDIS_WAIT_TIMER = buildWaitTimer("redis", "success");
+    private static final Timer FAILED_REDIS_WAIT_TIMER = buildWaitTimer("redis", "error");
+    private static final Timer HOLD_TIMER = Timer.builder("dial_lock_hold")
+            .description("Time a lock taken with lock() is held")
+            .serviceLevelObjectives(LatencyBuckets.waitBuckets())
+            .register(Metrics.globalRegistry);
+    // static: Micrometer keeps the first gauge registered under a name
+    private static final AtomicInteger LOCAL_QUEUE = registerQueueGauge("local");
+    private static final AtomicInteger REDIS_QUEUE = registerQueueGauge("redis");
 
     private static class LocalLock {
         // number of threads requested this lock
@@ -40,7 +60,16 @@ public class LockService {
         ReentrantLock lock = new ReentrantLock();
 
         void lock() {
-            lock.lock();
+            // a free or re-entered lock is not a wait
+            if (lock.tryLock()) {
+                return;
+            }
+            LOCAL_QUEUE.incrementAndGet();
+            try {
+                lock.lock();
+            } finally {
+                LOCAL_QUEUE.decrementAndGet();
+            }
         }
 
         void unlock() {
@@ -60,26 +89,74 @@ public class LockService {
         log.debug("Thread {} acquires a lock to the resource {} with owner {}", Thread.currentThread().getName(), id, owner);
         // try to get a local lock the first
         LocalLock localLock = acquireLocalLock(id);
+        long waitStart = System.nanoTime();
         localLock.lock();
+        long localAcquired = System.nanoTime();
+        LOCAL_WAIT_TIMER.record(localAcquired - waitStart, TimeUnit.NANOSECONDS);
 
         // A Redis failure here must not leak the held local lock: it is a plain ReentrantLock,
         // so a leaked hold would block every subsequent lock() on this key until pod restart.
         try {
-            long ttl = tryLock(id, owner);
-            long interval = WAIT_MIN;
-            // it seems the lock has been acquired by another instance of Core
-            while (ttl > 0) {
-                LockSupport.parkNanos(interval);
-                interval = Math.min(2 * interval, Math.min(WAIT_MAX, ttl + 1));
-                ttl = tryLock(id, owner);
-            }
+            lockInRedis(id, owner);
         } catch (Throwable e) {
             localLock.unlock();
             releaseLocalLock(id);
+            FAILED_REDIS_WAIT_TIMER.record(System.nanoTime() - localAcquired, TimeUnit.NANOSECONDS);
             throw e;
         }
+        long acquired = System.nanoTime();
+        REDIS_WAIT_TIMER.record(acquired - localAcquired, TimeUnit.NANOSECONDS);
 
-        return () -> unlock(id, owner, localLock);
+        return () -> {
+            try {
+                unlock(id, owner, localLock);
+            } finally {
+                // the lock was held whether or not the release succeeds
+                HOLD_TIMER.record(System.nanoTime() - acquired, TimeUnit.NANOSECONDS);
+            }
+        };
+    }
+
+    private void lockInRedis(String id, long owner) {
+        long ttl = tryLock(id, owner);
+        if (ttl <= 0) {
+            return;
+        }
+        // it seems the lock has been acquired by another instance of Core
+        REDIS_QUEUE.incrementAndGet();
+        try {
+            long interval = WAIT_MIN;
+            while (ttl > 0) {
+                LockSupport.parkNanos(interval);
+                interval = nextParkInterval(interval, ttl);
+                ttl = tryLock(id, owner);
+            }
+        } finally {
+            REDIS_QUEUE.decrementAndGet();
+        }
+    }
+
+    private static Timer buildWaitTimer(String phase, String outcome) {
+        return Timer.builder("dial_lock_wait")
+                .description("Time lock() waits before the lock is acquired, or before it fails")
+                .tag("phase", phase)
+                .tag("outcome", outcome)
+                .serviceLevelObjectives(LatencyBuckets.waitBuckets())
+                .register(Metrics.globalRegistry);
+    }
+
+    private static AtomicInteger registerQueueGauge(String phase) {
+        AtomicInteger queue = new AtomicInteger();
+        Gauge.builder("dial_lock_queue_size", queue, AtomicInteger::get)
+                .description("Threads of this pod blocked in lock() until the key is released")
+                .tag("phase", phase)
+                .register(Metrics.globalRegistry);
+        return queue;
+    }
+
+    static long nextParkInterval(long intervalNanos, long ttlMicros) {
+        // toNanos() saturates, so the + 1 goes inside
+        return Math.min(2 * intervalNanos, Math.min(WAIT_MAX, TimeUnit.MICROSECONDS.toNanos(ttlMicros + 1)));
     }
 
     private LocalLock acquireLocalLock(String id) {
@@ -101,12 +178,7 @@ public class LockService {
     }
 
     public <T> T underBucketLocks(Collection<String> bucketLocations, Supplier<T> function) {
-        List<String> keys = bucketLocations.stream()
-                .map(bucketLocation -> BlobStorageUtil.toStoragePath(prefix, bucketLocation))
-                .distinct()
-                .sorted()
-                .toList();
-
+        List<String> keys = bucketKeys(bucketLocations);
         List<Lock> locks = new ArrayList<>(keys.size());
 
         try {
@@ -117,10 +189,41 @@ public class LockService {
 
             return function.get();
         } finally {
-            for (Lock lock : locks) {
-                lock.close();
-            }
+            closeAll(locks);
         }
+    }
+
+    /**
+     * Takes the locks of all the buckets without waiting, in the same order as {@link #underBucketLocks}.
+     * Unlike {@link #lock}, it takes only the Redis locks and not the in-pod local ones. Writers under
+     * {@link #underBucketLocks} hold the Redis locks as well, so they are excluded all the same.
+     *
+     * @return a lock that releases all of them once, or null if any is held by someone else, in which case none is kept
+     */
+    @Nullable
+    public Lock tryLockBuckets(Collection<String> bucketLocations) {
+        List<Lock> locks = new ArrayList<>();
+
+        try {
+            for (String key : bucketKeys(bucketLocations)) {
+                Lock lock = tryLock(key);
+                if (lock == null) {
+                    closeAll(locks);
+                    return null;
+                }
+                locks.add(lock);
+            }
+        } catch (Throwable e) {
+            closeAll(locks);
+            throw e;
+        }
+
+        AtomicBoolean closed = new AtomicBoolean();
+        return () -> {
+            if (closed.compareAndSet(false, true)) {
+                closeAll(locks);
+            }
+        };
     }
 
     @Nullable
@@ -190,6 +293,20 @@ public class LockService {
         } catch (Throwable e) {
             log.error("Lock service failed to unlock: {}", id, e);
             return false;
+        }
+    }
+
+    private List<String> bucketKeys(Collection<String> bucketLocations) {
+        return bucketLocations.stream()
+                .map(bucketLocation -> BlobStorageUtil.toStoragePath(prefix, bucketLocation))
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
+    private static void closeAll(List<Lock> locks) {
+        for (Lock lock : locks) {
+            lock.close();
         }
     }
 

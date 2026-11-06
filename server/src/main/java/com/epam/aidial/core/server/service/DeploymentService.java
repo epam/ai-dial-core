@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.RoleBasedEntity;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ListSharedResourcesRequest;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
@@ -10,6 +11,7 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
+import com.epam.aidial.core.storage.data.NodeType;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
@@ -23,15 +25,17 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import static com.epam.aidial.core.storage.resource.ResourceTypes.APPLICATION;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.TOOL_SET;
 
 @Slf4j
 public class DeploymentService {
+
+    private static final int NAME_LISTING_PAGE_SIZE = 1000;
 
     private final EncryptionService encryptionService;
 
@@ -87,6 +91,31 @@ public class DeploymentService {
         return deployments;
     }
 
+    /**
+     * Lists the caller's accessible deployments by name only - one {@code entitySupplier}-built
+     * {@link RoleBasedEntity} per resource, carrying just the resource url as its name, never a fully
+     * populated {@link Deployment}. Unlike {@link #listDeployments}, this never reads a resource's
+     * content: a caller wanting only a name (e.g. to key a rate-limit lookup) would otherwise pay for
+     * parsing every accessible resource's full body - and for an Application, resolving its
+     * schema/mcp/viewerUrl on top - none of which the name alone needs. The service stays agnostic to
+     * which concrete {@link RoleBasedEntity} the caller wants back; {@code entitySupplier} is invoked
+     * once per listed resource, never shared/reused across entries.
+     */
+    public List<RoleBasedEntity> listDeploymentNames(
+            ProxyContext context, ResourceTypes resourceType, Supplier<? extends RoleBasedEntity> entitySupplier) {
+        List<RoleBasedEntity> names = new ArrayList<>();
+        log.debug("Start private {} name listing", resourceType.group());
+        names.addAll(getPrivateDeploymentNames(context, resourceType, entitySupplier));
+        log.debug("Finish private {} name listing", resourceType.group());
+        log.debug("Start shared {} name listing", resourceType.group());
+        names.addAll(getSharedDeploymentNames(context, resourceType, entitySupplier));
+        log.debug("Finish shared {} name listing", resourceType.group());
+        log.debug("Start public {} name listing", resourceType.group());
+        names.addAll(getPublicDeploymentNames(context, resourceType, entitySupplier));
+        log.debug("Finish public {} name listing", resourceType.group());
+        return names;
+    }
+
     private ResourceDescriptor toResourceDescriptor(ProxyContext context, String resourceUrl) {
         String url;
         ResourceDescriptor resource;
@@ -134,15 +163,8 @@ public class DeploymentService {
             throw new IllegalArgumentException("Invalid deployment folder: " + resource.getUrl());
         }
 
-        return resourceService.listResources(resource, filter)
-                .stream().map(item -> {
-                    try {
-                        return extractor.<T>extract(item.getValue(), item.getKey(), ctx);
-                    } catch (Exception e) {
-                        log.warn("Can't extract deployment {} due to the error", item.getKey().getUrl(), e);
-                        return null;
-                    }
-                }).filter(Objects::nonNull).toList();
+        List<Pair<ResourceItemMetadata, String>> items = resourceService.listResources(resource, filter);
+        return extractor.<T>extract(items, ctx);
     }
 
     private <T extends  Deployment> List<T> getSharedDeployments(ProxyContext context, ResourceTypes resourceType, DeploymentExtractor extractor) {
@@ -161,14 +183,7 @@ public class DeploymentService {
                 .filter(meta -> meta instanceof ResourceItemMetadata).map(meta -> (ResourceItemMetadata) meta).toList();
         List<Pair<ResourceItemMetadata, String>> deploymentContent = new ArrayList<>();
         resourceService.load(deployments, deploymentContent);
-        for (Pair<ResourceItemMetadata, String> item : deploymentContent) {
-            try {
-                T deployment = extractor.extract(item.getValue(), item.getKey(), context);
-                list.add(deployment);
-            } catch (Exception e) {
-                log.warn("Can't extract deployment {} due to the error", item.getKey().getUrl(), e);
-            }
-        }
+        list.addAll(extractor.<T>extract(deploymentContent, context));
 
         List<MetadataBase> folders = metadata.stream()
                 .filter(meta -> meta instanceof ResourceFolderMetadata).toList();
@@ -185,8 +200,89 @@ public class DeploymentService {
         return getDeployments(folder, page -> accessService.filterForbidden(context, folder, page), context, resourceType, extractor);
     }
 
+    private List<RoleBasedEntity> getPrivateDeploymentNames(
+            ProxyContext context, ResourceTypes resourceType, Supplier<? extends RoleBasedEntity> entitySupplier) {
+        String location = BucketBuilder.buildInitiatorBucket(context);
+        String bucket = encryptionService.encrypt(location);
+
+        ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(resourceType, bucket, location, null);
+        return getDeploymentNames(folder, ignore -> { }, entitySupplier);
+    }
+
+    private List<RoleBasedEntity> getDeploymentNames(
+            ResourceDescriptor resource, Consumer<ResourceFolderMetadata> filter, Supplier<? extends RoleBasedEntity> entitySupplier) {
+        if (!resource.isFolder()) {
+            throw new IllegalArgumentException("Invalid deployment folder: " + resource.getUrl());
+        }
+
+        List<RoleBasedEntity> names = new ArrayList<>();
+        String token = null;
+        do {
+            ResourceFolderMetadata page = resourceService.getFolderMetadata(resource, token, NAME_LISTING_PAGE_SIZE, true);
+            if (page == null) {
+                break;
+            }
+            filter.accept(page);
+            for (MetadataBase item : page.getItems()) {
+                if (item.getNodeType() == NodeType.ITEM) {
+                    names.add(toRoleBasedEntity(item, entitySupplier));
+                }
+            }
+            token = page.getNextToken();
+        } while (token != null);
+        return names;
+    }
+
+    private List<RoleBasedEntity> getSharedDeploymentNames(
+            ProxyContext context, ResourceTypes resourceType, Supplier<? extends RoleBasedEntity> entitySupplier) {
+        String location = BucketBuilder.buildInitiatorBucket(context);
+        String bucket = encryptionService.encrypt(location);
+
+        ListSharedResourcesRequest request = new ListSharedResourcesRequest();
+        request.setResourceTypes(Set.of(resourceType));
+
+        ShareService shares = context.getProxy().getShareService();
+        SharedResourcesResponse response = shares.listSharedWithMe(bucket, location, request);
+        Set<MetadataBase> metadata = response.getResources();
+
+        List<RoleBasedEntity> names = new ArrayList<>();
+        for (MetadataBase meta : metadata) {
+            if (meta instanceof ResourceItemMetadata item) {
+                names.add(toRoleBasedEntity(item, entitySupplier));
+            }
+        }
+        for (MetadataBase meta : metadata) {
+            if (meta instanceof ResourceFolderMetadata) {
+                ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(meta.getUrl(), encryptionService);
+                names.addAll(getDeploymentNames(resource, ignore -> { }, entitySupplier));
+            }
+        }
+        return names;
+    }
+
+    private List<RoleBasedEntity> getPublicDeploymentNames(
+            ProxyContext context, ResourceTypes resourceType, Supplier<? extends RoleBasedEntity> entitySupplier) {
+        ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(resourceType, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, null);
+        AccessService accessService = context.getProxy().getAccessService();
+        return getDeploymentNames(folder, page -> accessService.filterForbidden(context, folder, page), entitySupplier);
+    }
+
+    /**
+     * A bare {@code entitySupplier}-built shell carrying only the resource url as its name - the one
+     * field a rate-limit lookup keys on. The supplier is the caller's choice, so this stays agnostic to
+     * which concrete {@link RoleBasedEntity} kind is being listed (e.g. an {@link Application} shell,
+     * left with a {@code null} {@code userRoles} - "applies to all" - matching what a real custom
+     * application would carry: {@code prepareApplication} always clears it, so no resource-based
+     * Application is ever actually restricted by it).
+     */
+    private static RoleBasedEntity toRoleBasedEntity(MetadataBase item, Supplier<? extends RoleBasedEntity> entitySupplier) {
+        RoleBasedEntity shell = entitySupplier.get();
+        shell.setName(item.getUrl());
+        return shell;
+    }
+
     public interface DeploymentExtractor {
-        <T extends  Deployment> T extract(String content, ResourceItemMetadata metadata, ProxyContext context);
+        <T extends  Deployment> List<T> extract(List<Pair<ResourceItemMetadata, String>> items, ProxyContext context);
     }
 
     public List<String> getInterceptors(ProxyContext context, Deployment deployment) {

@@ -5,7 +5,9 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiOperations;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
@@ -22,18 +24,25 @@ import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
+import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
 import com.epam.aidial.core.server.function.ExtractTerminalResponseFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
 import com.epam.aidial.core.server.function.ResolveResourceDependenciesFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
+import com.epam.aidial.core.server.function.enhancement.ResolveEncryptedContentAffinityFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
+import com.epam.aidial.core.server.limiter.RateLimitResult;
+import com.epam.aidial.core.server.limiter.SpendCap;
+import com.epam.aidial.core.server.limiter.SpendCaps;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
+import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
@@ -57,13 +66,45 @@ import org.apache.commons.lang3.tuple.Pair;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
+import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_CACHE_POLICY;
 
 @Slf4j
 public class ResponsesController extends BaseDeploymentPostController {
 
+    /**
+     * A reached spend cap answers in the shape Codex CLI reads; every other outcome keeps the DIAL answer.
+     */
+    private static final SpendCapCheck.Answers CODEX_ANSWERS = new SpendCapCheck.Answers() {
+        @Override
+        public HttpException spendCapReached(SpendCap cap, @Nullable String displayMessage, long nowMillis) {
+            return CodexLimitResponses.spendCapReached(cap, displayMessage, nowMillis);
+        }
+
+        @Override
+        public HttpException spendUnavailable() {
+            return CodexLimitResponses.spendUnavailable();
+        }
+
+        @Override
+        public Throwable limitCheckFailed(Throwable error) {
+            return error;
+        }
+
+        @Override
+        public void rejectOtherLimit(RateLimitResult result) {
+            result.throwIfError();
+        }
+    };
+
     private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
+
+    /**
+     * The caller's caps as read by {@link #verifyLimit()}; null when no caps were read.
+     */
+    @Nullable
+    private SpendCaps spendCaps;
 
     public ResponsesController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
@@ -72,6 +113,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.OPENAI_RESPONSES),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
+                new ResolveEncryptedContentAffinityFn(proxy, context),
                 new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_RESPONSES),
                 new CollectDeploymentsFn(proxy, context),
                 new ResolveResourceDependenciesFn<>(proxy, context));
@@ -82,38 +124,68 @@ public class ResponsesController extends BaseDeploymentPostController {
         return InterfaceType.OPENAI_RESPONSES;
     }
 
-    @ApiOperation(
-            method = "POST",
-            path = "/openai/v1/responses",
-            operationId = "createResponse",
-            requestBody = @ApiSchema(implementation = ResponsesApiRequest.class),
-            tags = {"LLM"},
-            parameters = {
-                    @ApiParameter(name = "Content-Type", in = ParameterIn.HEADER, required = true,
-                            description = "Must be application/json"),
-                    @ApiParameter(name = HEADER_CACHE_POLICY, in = ParameterIn.HEADER,
-                            description = OpenApiDescriptions.CACHE_POLICY,
-                            allowableValues = {"availability-priority", "cache-priority"})
-            },
-            responses = {
-                    @ApiResponse(code = 200, description = "Success"),
-                    @ApiResponse(code = 400),
-                    @ApiResponse(code = 403),
-                    @ApiResponse(code = 404),
-                    @ApiResponse(code = 415),
-                    @ApiResponse(code = 429, description = "Rate limit exceeded", body = @ApiSchema(implementation = ErrorData.class)),
-                    @ApiResponse(code = 500),
-                    @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
-                    @ApiResponse(code = 503)
-            }
-    )
+    @ApiOperations({
+            @ApiOperation(
+                    method = "POST",
+                    path = "/openai/v1/responses",
+                    operationId = "createResponse",
+                    requestBody = @ApiSchema(implementation = ResponsesApiRequest.class),
+                    tags = {"LLM"},
+                    parameters = {
+                            @ApiParameter(name = "Content-Type", in = ParameterIn.HEADER, required = true,
+                                    description = "Must be application/json"),
+                            @ApiParameter(name = HEADER_CACHE_POLICY, in = ParameterIn.HEADER,
+                                    description = OpenApiDescriptions.CACHE_POLICY,
+                                    allowableValues = {"availability-priority", "cache-priority"})
+                    }
+            ),
+            @ApiOperation(
+                    method = "POST",
+                    path = "/openai/responses",
+                    operationId = "createResponseUnversioned",
+                    requestBody = @ApiSchema(implementation = ResponsesApiRequest.class),
+                    tags = {"LLM"},
+                    parameters = {
+                            @ApiParameter(name = "Content-Type", in = ParameterIn.HEADER, required = true,
+                                    description = "Must be application/json"),
+                            @ApiParameter(name = HEADER_CACHE_POLICY, in = ParameterIn.HEADER,
+                                    description = OpenApiDescriptions.CACHE_POLICY,
+                                    allowableValues = {"availability-priority", "cache-priority"})
+                    }
+            )
+    })
+    @ApiResponse(code = 200, description = "Success",
+            headers = {
+                    @ApiHeader(name = "x-codex-primary-used-percent",
+                            description = "Spent share of the caller's reported DIAL day/week/month spend cap before this request, "
+                                    + "a whole percent rounded down. Sent only when the caller has such a cost limit; "
+                                    + "the upstream's own `x-codex-*` headers are removed"),
+                    @ApiHeader(name = "x-codex-primary-window-minutes", description = "`1440`, `10080` or `43200`: the reported cap's day, week or month"),
+                    @ApiHeader(name = "x-codex-primary-reset-at", description = "When the reported cap resets, Unix seconds"),
+                    @ApiHeader(name = "x-codex-secondary-used-percent",
+                            description = "Same as `x-codex-primary-used-percent` for the fullest of the other capped windows; absent when there is none"),
+                    @ApiHeader(name = "x-codex-secondary-window-minutes", description = "Window of the secondary cap, as `x-codex-primary-window-minutes`"),
+                    @ApiHeader(name = "x-codex-secondary-reset-at", description = "When the secondary cap resets, Unix seconds")
+            })
+    @ApiResponse(code = 400)
+    @ApiResponse(code = 403)
+    @ApiResponse(code = 404)
+    @ApiResponse(code = 415)
+    @ApiResponse(code = 429, description = "DIAL limit reached. A reached day/week/month spend cap gives an error of type "
+            + "`usage_limit_reached` with `resets_at` (Unix seconds) and `limit_window_minutes`, `retry-after` and the "
+            + "`x-codex-primary-*` headers at 100; an unreadable spend counter of a caller with a cost limit gives an error "
+            + "without `retry-after`; a token, request or per-minute cost limit gives an error with `retry-after`",
+            body = @ApiSchema(implementation = ErrorData.class))
+    @ApiResponse(code = 500)
+    @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class))
+    @ApiResponse(code = 503)
     public Future<?> handle() {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
         if (!Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
         context.getRequest().body()
-                .map(ResponsesController::parseBody)
+                .map(this::parseBody)
                 .compose(this::dispatch)
                 .onFailure(this::handleRequestBodyError);
         return Future.succeededFuture();
@@ -133,7 +205,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         } else {
             deploymentName = request.getModel();
         }
-        return proxy.getTaskExecutor().submit(() -> setupDeployment(deploymentName))
+        return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(deploymentName)))
                 .compose(ignore -> {
                     if (context.hasNextInterceptor()) {
                         context.setInitialDeployment(context.getDeployment().getName());
@@ -146,8 +218,12 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     private Future<Void> proceedToDeployment(ResponsesApiRequest request, String deploymentName) {
         return verifyLimit()
-                .compose(ignore -> proxy.getTokenStatsTracker().startSpan(context)
-                        .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request))))
+                .compose(ignore -> {
+                    // set before startSpan: a trace rooted in a background job gets the longer usage record TTL
+                    context.setBackgroundJob(request.isBackground());
+                    return proxy.getTokenStatsTracker().startSpan(context);
+                })
+                .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request)))
                 .otherwise(error -> handleRequestError(deploymentName, error));
     }
 
@@ -157,9 +233,9 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     private Void setupDeployment(String model) {
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, model);
-        proxy.getConsentService().verifyUserConsent(context, deployment);
+        proxy.getConsentService().verifyUserConsent(context, deployment, InterfaceType.OPENAI_RESPONSES);
 
-        Features features = deployment.getFeatures();
+        Features features = deployment.resolveFeatures(InterfaceType.OPENAI_RESPONSES);
         boolean isPerRequestKey = !context.isOriginalRequest();
         if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
             throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", model, context.getApiKeyData().getSourceDeployment()));
@@ -169,7 +245,8 @@ public class ResponsesController extends BaseDeploymentPostController {
             deployment = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
         }
 
-        if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES) == null) {
+        if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES,
+                context.getConfig().getTranslators()) == null) {
             throw new HttpException(
                     HttpStatus.SERVICE_UNAVAILABLE,
                     "OpenAI responses not supported for this deployment type"
@@ -185,16 +262,27 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private Future<Void> verifyLimit() {
-        return proxy.getRateLimiter().limit(context, context.getDeployment())
-                .map(rateLimit -> {
-                    rateLimit.throwIfError();
+        return SpendCapCheck.verify(proxy, context, isSubjectToLimits(context.getDeployment()), CODEX_ANSWERS)
+                .map(caps -> {
+                    spendCaps = caps;
                     return null;
                 });
     }
 
-    private static ResponsesApiRequest parseBody(Buffer body) {
+    /**
+     * Must run before the first body write. Spend headers go on a 200 only and carry the state read before the request.
+     */
+    private void putLimitHeaders(HttpServerResponse response, HttpClientResponse proxyResponse) {
+        CodexLimitResponses.stripUpstreamCodexHeaders(response.headers());
+        if (proxyResponse.statusCode() == 200 && spendCaps != null) {
+            CodexLimitResponses.putSpendHeaders(response.headers(), spendCaps);
+        }
+    }
+
+    private ResponsesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
+            context.setRequestBodyWithTimestamp(body);
             ObjectNode tree = ProxyUtil.parseObject(body);
             if (tree.has("previous_response_id")) {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "previous_response_id is not supported");
@@ -202,6 +290,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             if (tree.has("conversation")) {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "conversation is not supported");
             }
+            GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.OPENAI_RESPONSES, tree);
             return new ResponsesApiRequest(tree);
         } catch (IOException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
@@ -234,7 +323,6 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         context.setStreamingRequest(request.isStreaming());
         context.setStoreResponse(request.isStore());
-        context.setBackgroundJob(request.isBackground());
         ProxyUtil.processChain(request, enhancementFunctions);
         // Enhancement functions update the api key, and it should be saved after that
         if (request.isBackground()) {
@@ -248,11 +336,14 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         Deployment deployment = context.getDeployment();
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
+        if (upstreamId == null) {
+            upstreamId = request.getEncryptedUpstreamId();
+        }
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
                 .get(deployment, context.getCacheBreakpointContext(),
-                        dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES), upstreamId);
+                        dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES,
+                                context.getConfig().getTranslators()), upstreamId);
 
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);
         sendRequest();
 
@@ -322,14 +413,16 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         ExtractTerminalResponseFn extractFn = new ExtractTerminalResponseFn(proxy, context);
         ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context);
+        EncryptedContentWrapFn wrapFn = new EncryptedContentWrapFn(proxy, context);
         BufferingReadStream responseStream = createResponseStream(proxyResponse, () -> {
             CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
-            return new ResponsesSseListener(List.of(attachmentsFn, replaceIdFn, extractFn));
+            return new ResponsesSseListener(List.of(wrapFn, attachmentsFn, replaceIdFn, extractFn));
         });
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(upstreamRoute.getAttemptCount()));
+        putLimitHeaders(response, proxyResponse);
+        putUpstreamAttempts(response, upstreamRoute.getAttemptCount());
 
         responseStream.pipe()
                 .endOnFailure(false)
@@ -348,9 +441,10 @@ public class ResponsesController extends BaseDeploymentPostController {
                     context.setResponseBodyTimestamp(System.currentTimeMillis());
                     HttpServerResponse response = context.getResponse();
                     ProxyUtil.copyResponse(response, proxyResponse);
+                    putLimitHeaders(response, proxyResponse);
                     response.setChunked(false);
                     response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
-                    response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
+                    putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
                     if (context.isBackgroundJob() && dialId != null) {
                         return proxy.getBackgroundJobService().saveJob(dialId, context)
@@ -361,7 +455,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                                     response.end(rewritten);
                                 });
                     } else {
-                        return collectTokenUsage(rewritten)
+                        return collectTokenUsage(rewritten, dialId)
                                 .transform(result -> {
                                     if (result.failed()) {
                                         log.warn("Failed to collect token usage", result.cause());
@@ -399,12 +493,15 @@ public class ResponsesController extends BaseDeploymentPostController {
         }
 
         String upstreamId = idNode.asText();
+        Upstream upstream = context.getUpstreamRoute().get();
+        if (EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
+            EncryptedContentAffinityUtil.wrapOutputArray(object.path("output"), upstream.getId(), context.getDeployment().getName());
+        }
         if (!context.isStoreResponse()) {
             String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
             object.put("id", dialId);
             return Future.succeededFuture(Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object))));
         }
-        Upstream upstream = context.getUpstreamRoute().get();
         ResponseMapping mapping = ResponseMapping.builder()
                 .upstreamResponseId(upstreamId)
                 .upstreamKey(upstream.getId())
@@ -423,13 +520,15 @@ public class ResponsesController extends BaseDeploymentPostController {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
+        context.setAssembledStreamingResponse(assembledStreamingResponse);
 
         Future<Void> completionFuture;
         if (context.isBackgroundJob() && dialId != null) {
             completionFuture = proxy.getBackgroundJobService().deleteJob(dialId)
-                    .compose(deleted -> deleted ? collectTokenUsage(responseBody) : Future.succeededFuture());
+                    .compose(deleted -> deleted ? collectTokenUsage(responseBody, dialId) : Future.succeededFuture());
         } else {
-            completionFuture = collectTokenUsage(responseBody);
+            // the buffered bytes are the raw upstream frames, so the id has to come from us
+            completionFuture = collectTokenUsage(responseBody, dialId);
         }
 
         completionFuture.onComplete(result -> {

@@ -27,11 +27,23 @@ public enum RouteTemplate {
             "^/+anthropic/v1/models$",
             "/anthropic/v1/models"
     ),
+    ANTHROPIC_OAUTH_USAGE(
+            "^/+anthropic/api/oauth/usage$",
+            "/anthropic/api/oauth/usage"
+    ),
 
     // OpenAI API routes
+    LLM_CHAT_COMPLETIONS_API(
+            "^/+openai/v1/chat/completions$",
+            "/openai/v1/chat/completions"
+    ),
     LLM_RESPONSES_API(
             "^/+openai/v1/responses$",
             "/openai/v1/responses"
+    ),
+    LLM_RESPONSES_API_UNVERSIONED(
+            "^/+openai/responses$",
+            "/openai/responses"
     ),
     LLM_RESPONSES_API_CANCEL(
             "^/+openai/v1/responses/(?<id>[^/]+)/cancel$",
@@ -101,36 +113,36 @@ public enum RouteTemplate {
     ),
 
     // V2 whole-resource (folder-as-resource) routes.
-    // The {path} is the resource name and may span multiple segments (e.g. /v2/skills/{bucket}/group/name).
+    // The {path} is the resource name and may span multiple segments (e.g. /v2/skills/{bucket}/group/name or /v2/projects/...).
     // The pattern forbids empty segments and a trailing slash (a resource is addressed by name, not as a
     // folder listing), and reserves "/files/" as the single-file delimiter by refusing to cross it; this
     // keeps COMPLEX_RESOURCE and COMPLEX_RESOURCE_FILE mutually exclusive regardless of route order.
     COMPLEX_RESOURCE(
-            "^/v2/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>[^/](?:[^/]|/(?=[^/])(?!files/))*)$",
-            "/v2/skills/{bucket}/{path}"
+            "^/v2/(?<group>skills|projects)/(?<bucket>[a-zA-Z0-9]+)/(?<path>[^/](?:[^/]|/(?=[^/])(?!files/))*)$",
+            "/v2/{group}/{bucket}/{path}"
     ),
     // Single-file operations inside a resource. The {path} segment is the resource name (may contain slashes),
     // split from {filePath} at the first "/files/"; {filePath} is the relative file path inside the resource
     // and may itself contain slashes.
     COMPLEX_RESOURCE_FILE(
-            "^/v2/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>.+?)/files/(?<filePath>.+)$",
-            "/v2/skills/{bucket}/{path}/files/{filePath}"
+            "^/v2/(?<group>skills|projects)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.+?)/files/(?<filePath>.+)$",
+            "/v2/{group}/{bucket}/{path}/files/{filePath}"
     ),
     // A DIAL grouping folder, addressed with a trailing slash: create (PUT) / delete (DELETE) / GET -> 400.
     RESOURCE_FOLDER(
-            "^/v2/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>[^/](?:[^/]|/(?=[^/]))*)/$",
-            "/v2/skills/{bucket}/{path}/"
+            "^/v2/(?<group>skills|projects)/(?<bucket>[a-zA-Z0-9]+)/(?<path>[^/](?:[^/]|/(?=[^/]))*)/$",
+            "/v2/{group}/{bucket}/{path}/"
     ),
     // Metadata: files inside a skill's current version. More specific than the children route, so it must
     // be registered first. {filePath} is an optional subfolder to scope the listing.
     COMPLEX_RESOURCE_FILE_METADATA(
-            "^/v2/metadata/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>.+?)/files(?:/(?<filePath>.*))?$",
-            "/v2/metadata/skills/{bucket}/{path}/files/{filePath}"
+            "^/v2/metadata/(?<group>skills|projects)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.+?)/files(?:/(?<filePath>.*))?$",
+            "/v2/metadata/{group}/{bucket}/{path}/files/{filePath}"
     ),
     // Metadata: classified, enriched children at a grouping level (empty path lists the bucket root).
     COMPLEX_RESOURCE_METADATA(
-            "^/v2/metadata/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
-            "/v2/metadata/skills/{bucket}/{path}"
+            "^/v2/metadata/(?<group>skills|projects)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
+            "/v2/metadata/{group}/{bucket}/{path}"
     ),
     RESOURCE_METADATA(
             "^/v1/metadata/(conversations|prompts|applications|toolsets)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
@@ -138,12 +150,14 @@ public enum RouteTemplate {
     ),
 
     CONFIG_RESOURCE(
-            "^/v1/(models|interceptors|roles|keys|routes|schemas|catalog_schemas|settings)/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
+            "^/v1/(models|interceptors|translators|roles|keys|routes|schemas|catalog_schemas|settings|policies|policy_assignments)"
+                    + "/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
             "/v1/{resourceType}/{bucket}/{path}"
     ),
 
     CONFIG_RESOURCE_METADATA(
-            "^/v1/metadata/(models|interceptors|roles|keys|routes|schemas|catalog_schemas|settings)/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
+            "^/v1/metadata/(models|interceptors|translators|roles|keys|routes|schemas|catalog_schemas|settings|policies|policy_assignments)"
+                    + "/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
             "/v1/metadata/{resourceType}/{bucket}/{path}"
     ),
 
@@ -153,7 +167,7 @@ public enum RouteTemplate {
     ),
 
     ADMIN_FILE_CONFIG(
-            "^/v1/admin/config/file/(?<type>models|interceptors|roles|keys|routes|schemas|catalog_schemas|settings|applications|toolsets)(?:/(?<name>.+))?$",
+            "^/v1/admin/config/file/(?<type>models|interceptors|translators|roles|keys|routes|schemas|catalog_schemas|settings|applications|toolsets)(?:/(?<name>.+))?$",
             "/v1/admin/config/file/{type}/{name}"
     ),
 
@@ -170,6 +184,11 @@ public enum RouteTemplate {
     CONFIG_APPLY(
             "^/v1/admin/apply$",
             "/v1/admin/apply"
+    ),
+
+    ADMIN_SYSTEM_EXPORT(
+            "^/v1/admin/system-export$",
+            "/v1/admin/system-export"
     ),
 
     BUCKET(
@@ -198,6 +217,10 @@ public enum RouteTemplate {
             "^/v1/deployments/(?<id>.+?)/limits$",
             "/v1/deployments/{id}/limits"
     ),
+    DEPLOYMENT_USAGE(
+            "^/v1/deployments/(?<id>.+?)/usage$",
+            "/v1/deployments/{id}/usage"
+    ),
 
     DEPLOYMENT_ROUTES(
             "^/+v1/deployments/(?<id>.+)/route(?<routePath>/.+?)$",
@@ -207,6 +230,11 @@ public enum RouteTemplate {
     DEPLOYMENT_LISTING(
             "^/+v1/deployments$",
             "/v1/deployments"
+    ),
+
+    DEPLOYMENT_NAMES(
+            "^/+v1/deployment-names$",
+            "/v1/deployment-names"
     ),
 
     // Operations
@@ -229,6 +257,10 @@ public enum RouteTemplate {
     PUBLISHED_RESOURCES(
             "^/v1/ops/publication/resource/list$",
             "/v1/ops/publication/resource/list"
+    ),
+    ORG_UNIT(
+            "^/v1/org-units/(?<path>[^/].*?)/?$",
+            "/v1/org-units/{path}"
     ),
     PUBLICATION_RULES(
             "^/v1/ops/publication/rule/list$",
@@ -368,7 +400,16 @@ public enum RouteTemplate {
             "/v1/ops/resource/per-request-permissions/{operation}"),
 
     CLIENT_CHANNEL("^/v1/ops/client-channel/(subscribe|report|unsubscribe|interact)",
-            "/v1/ops/client-channel/{operation}");
+            "/v1/ops/client-channel/{operation}"),
+
+    // Declared last: {id} spans slashes (resource-backed deployments are addressed by their url), so this
+    // template also matches every /v1/deployments/{id}/... path. Path normalization returns the first
+    // matching template, hence the more specific ones must stay ahead of it - as must their routes in
+    // ControllerSelector.
+    DEPLOYMENT_INFO(
+            "^/+v1/deployments/(?<id>.+?)$",
+            "/v1/deployments/{id}"
+    );
 
     private final Pattern pattern;
     private final String template;

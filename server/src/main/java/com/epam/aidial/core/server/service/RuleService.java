@@ -82,7 +82,6 @@ public class RuleService {
         return result;
     }
 
-
     public Set<ResourceDescriptor> getAllowedPublicResources(
             ProxyContext context, Set<ResourceDescriptor> resources) {
         resources = resources.stream()
@@ -125,15 +124,13 @@ public class RuleService {
     }
 
     private Map<String, List<Rule>> getCachedRules() {
-        ResourceItemMetadata meta = resources.getResourceMetadata(PUBLIC_RULES);
-        long key = (meta == null) ? Long.MIN_VALUE : meta.getUpdatedAt();
+        Pair<ResourceItemMetadata, String> resource = resources.getResourceWithMetadata(PUBLIC_RULES, EtagHeader.ANY);
+        long key = (resource == null) ? Long.MIN_VALUE : resource.getKey().getUpdatedAt();
         Pair<Long, Map<String, List<Rule>>> current = cachedRules.get();
 
         if (current == null || current.getKey() != key) {
-            Pair<ResourceItemMetadata, String> resource = resources.getResourceWithMetadata(PUBLIC_RULES, EtagHeader.ANY);
-            Pair<Long, Map<String, List<Rule>>> next = (resource == null)
-                    ? Pair.of(Long.MIN_VALUE, decodeRules(null))
-                    : Pair.of(resource.getKey().getUpdatedAt(), decodeRules(resource.getValue()));
+            Map<String, List<Rule>> decoded = decodeRules(resource == null ? null : resource.getValue());
+            Pair<Long, Map<String, List<Rule>>> next = Pair.of(key, decoded);
 
             cachedRules.compareAndSet(current, next);
             current = next;
@@ -173,7 +170,7 @@ public class RuleService {
         return evaluated;
     }
 
-    private static String ruleUrl(ResourceDescriptor resource) {
+    public static String ruleUrl(ResourceDescriptor resource) {
         String prefix = resource.getType().group();
         return resource.getUrl().substring(prefix.length() + 1);
     }

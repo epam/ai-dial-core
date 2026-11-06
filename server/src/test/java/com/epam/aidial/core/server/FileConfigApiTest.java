@@ -137,6 +137,7 @@ public class FileConfigApiTest extends ResourceBaseTest {
         assertEquals("valid", body.get("status").asText());
         assertTrue(body.get("globalInterceptors").isArray());
         assertTrue(body.get("retriableErrorCodes").isArray());
+        assertEquals("UTC", body.get("rateLimitSchedule").get("timezone").asText());
         assertFalse(body.has("source"),
                 () -> "U.1: source field must not appear in any response: " + response.body());
     }

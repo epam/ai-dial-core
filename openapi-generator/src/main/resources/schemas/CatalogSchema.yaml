@@ -1,0 +1,8 @@
+type: object
+description: >
+  JSON Schema document describing a catalog entity type. Alongside standard JSON Schema keywords
+  it carries `dial`-prefixed extension properties; `$id` is required and must be non-blank.
+required: [$id]
+properties:
+  $id: { type: string, format: uri-reference }
+additionalProperties: true

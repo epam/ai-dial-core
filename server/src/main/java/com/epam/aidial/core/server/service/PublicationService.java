@@ -58,7 +58,7 @@ public class PublicationService {
             ResourceTypes.PUBLICATION, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, PUBLICATIONS_NAME);
 
     private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceTypes.FILE, ResourceTypes.CONVERSATION,
-            ResourceTypes.PROMPT, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET, ResourceTypes.SKILL);
+            ResourceTypes.PROMPT, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET, ResourceTypes.SKILL, ResourceTypes.PROJECT);
 
     private final EncryptionService encryption;
     private final ResourceService resourceService;
@@ -69,6 +69,7 @@ public class PublicationService {
     private final ToolSetService toolSetService;
     private final ResourceOperationService resourceOperationService;
     private final ComplexResourceService complexResourceService;
+    private final OrgUnitService orgUnitService;
     private final Supplier<String> ids;
     private final LongSupplier clock;
 
@@ -307,7 +308,7 @@ public class PublicationService {
                 ResourceDescriptor resource = ResourceDescriptorFactory.fromPrivateUrl(reviewResource.getReviewUrl(), encryption);
                 if (resource.getType() == ResourceTypes.TOOL_SET) {
                     toolSetService.deleteToolset(context, resource, EtagHeader.ANY);
-                } else if (resource.getType() == ResourceTypes.SKILL) {
+                } else if (resource.getType().isComplex()) {
                     complexResourceService.delete(resource, EtagHeader.ANY);
                 } else {
                     resourceService.deleteResource(resource, EtagHeader.ANY);
@@ -552,6 +553,7 @@ public class PublicationService {
         if (source.getType() != target.getType()) {
             throw new IllegalArgumentException("Source and target resource types do not match: " + targetUrl);
         }
+        requireNoUnitFolder(target);
 
         if (isPublicationNew && !hasResource(source)) {
             throw new IllegalArgumentException("Source resource does not exist: " + sourceUrl);
@@ -653,11 +655,24 @@ public class PublicationService {
         }
     }
 
+    /**
+     * A skill or project keeps its files in the folder of its own name, which must not be an org unit's: refused before
+     * approving changes the request's status, as the copy would refuse it after.
+     */
+    private void requireNoUnitFolder(ResourceDescriptor target) {
+        if (target.getType().isComplex()) {
+            orgUnitService.requireNoUnitFolder(target);
+        }
+    }
+
     private void checkTargetResources(List<Publication.Resource> resources, boolean exists) {
         for (Publication.Resource resource : resources) {
             String url = resource.getTargetUrl();
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPublicUrl(url);
             verifyResourceType(descriptor);
+            if (!exists) {
+                requireNoUnitFolder(descriptor);
+            }
 
             if (resource.getAction() != Publication.ResourceAction.ADD_IF_ABSENT && hasResource(descriptor) != exists) {
                 String errorMessage = exists ? "Target resource does not exists: " + url : "Target resource exists: " + url;
@@ -667,7 +682,7 @@ public class PublicationService {
     }
 
     private boolean hasResource(ResourceDescriptor descriptor) {
-        return descriptor.getType() == ResourceTypes.SKILL
+        return descriptor.getType().isComplex()
                 ? complexResourceService.getMarker(descriptor) != null
                 : resourceService.hasResource(descriptor);
     }
@@ -706,7 +721,7 @@ public class PublicationService {
                 Map<CredentialsLevel, Boolean> credentialsToCopy = getCredentialsLevelsToCopy(resource);
                 toolSetService.copyToolSet(context, from, to, null, false, credentialsToCopy,
                         toolSet -> toolSet.setIconUrl(replaceLink(replacementLinks, toolSet.getIconUrl())));
-            } else if (from.getType() == ResourceTypes.SKILL) {
+            } else if (from.getType().isComplex()) {
                 if (!complexResourceService.copyResource(from, to, null, false)) {
                     throw new IllegalStateException("Can't copy source resource from: " + from.getUrl() + " to review: " + to.getUrl());
                 }
@@ -755,7 +770,7 @@ public class PublicationService {
                 Map<CredentialsLevel, Boolean> credentialsToCopy = getCredentialsLevelsToCopy(resource);
                 toolSetService.copyToolSet(context, from, to, publication.getDisplayAuthor(), false,
                         credentialsToCopy, toolSet -> toolSet.setIconUrl(replaceLink(replacementLinks, toolSet.getIconUrl())));
-            } else if (from.getType() == ResourceTypes.SKILL) {
+            } else if (from.getType().isComplex()) {
                 // approvePublication is always invoked under the public bucket lock (see
                 // PublicationController#approvePublication), so the "already locked" variant is required
                 // here: taking the same bucket lock again would self-deadlock.

@@ -22,6 +22,18 @@
                 "status": 200,
                 "body": "OK"
             }
+          },
+        "openrouter": {
+            "paths": ["/v1/chat/completions"],
+            "rewritePath": true,
+            "methods": ["POST"],
+            "upstreams": [
+                {
+                    "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+                    "key": "${OPENROUTER_API_KEY}",
+                    "authType": "BEARER"
+                }
+            ]
         }
     },
     "interceptors": {
@@ -249,6 +261,11 @@
             "project": "TestProject2",
             "role": "default"
         }
+    },
+    "rateLimitSchedule": {
+        "timezone": "UTC",
+        "weekStartDay": "Mon",
+        "resetTime": "00:00"
     },
     "roles": {
         "default": {

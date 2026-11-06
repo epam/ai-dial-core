@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.function;
 
+import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
@@ -12,13 +13,19 @@ import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Map;
+
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -30,6 +37,27 @@ public class BuildUpstreamCacheFnTest {
 
     @Mock
     private ProxyContext context;
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void interfaceCanEnableOrDisableCaching(boolean enabled) {
+        Model model = new Model();
+        Features features = new Features();
+        features.setCacheSupported(!enabled);
+        model.setFeatures(features);
+        Features overrides = new Features();
+        overrides.setCacheSupported(enabled);
+        DeploymentInterface declared = new DeploymentInterface();
+        declared.setFeatures(overrides);
+        model.setInterfaces(Map.of(InterfaceType.ANTHROPIC_MESSAGES.getValue(), declared));
+        when(context.getDeployment()).thenReturn(model);
+        RequestObject request = new ChatCompletionRequest(ProxyUtil.MAPPER.createObjectNode());
+
+        new BuildUpstreamCacheFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES).apply(request);
+
+        verify(proxy.getUpstreamCacheService(), enabled ? times(1) : never())
+                .buildCacheBreakpointContext(eq(request), any(), eq(model), eq(InterfaceType.ANTHROPIC_MESSAGES));
+    }
 
     @Test
     public void testApply_WhenCacheSupported() {

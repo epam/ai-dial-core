@@ -139,10 +139,15 @@ Priority order:
 | config.reload                            |       60000        |    No    | Config reload interval in milliseconds.                                                                                                                                                                                                                                                                         |
 | vertx.*                                  |         -          |    No    | Vertx settings. Refer to [vertx.io](https://vertx.io/docs/apidocs/io/vertx/core/VertxOptions.html) to learn more.                                                                                                                                                                                               |
 | server.*                                 |         -          |    No    | Vertx HTTP server settings for incoming requests. Refer to [HTTP server options](https://vertx.io/docs/apidocs/io/vertx/core/http/HttpServerOptions.html) to learn more.                                                                                                                                        |
+| server.instances                         |         1          |    No    | Number of HTTP servers Core starts on `server.port`. Vert.x hands each new client connection to the next one, so connections spread over that many event loops; the event-loop count (`vertx.eventLoopPoolSize`) is the useful maximum. A value above 1 lets a pod serve more requests per second; where analytics rows carry request and response bodies (API keys without `secured`), the analytics writer can then fall behind and fill the heap, so keep 1 there until that writer is bounded. With a value above 1, `server.port` must not be 0 (use a fixed port, or -1 for one shared random port). Env: `aidial.server.instances`. |
 | client.*                                 |         -          |    No    | Vertx HTTP client settings for outbound requests. Refer to [HTTP client options](https://vertx.io/docs/apidocs/io/vertx/core/http/HttpClientOptions.html) to learn more.                                                                                                                                        |
+| client.proxyOptions.*                    |   _(disabled)_      |    No    | Outbound HTTP proxy (`host`, `port`, `username`, `password`, `type` — `HTTP`, `SOCKS4` or `SOCKS5`) for Core's own outbound calls to external services — the shared `client` (upstreams, MCP/OAuth discovery, application schema fetch) and, per identity provider, JWKS fetching (`identityProviders.*.jwksUrl`). Refer to [ProxyOptions](https://vertx.io/docs/apidocs/io/vertx/core/net/ProxyOptions.html) to learn more.                                                                                                                                        |
+| client.nonProxyHosts                     |     _(empty)_       |    No    | JSON array of host patterns (`*` wildcard supported) excluded from `client.proxyOptions`; matching requests connect directly instead of through the proxy.                                                                                                                                                     |
 | webSocketClient.*                        |         -          |    No    | Vertx web socket client settings for outbound requests. Refer to [WebSocket client options](https://vertx.io/docs/apidocs/io/vertx/core/http/WebSocketClientOptions.html) to learn more.                                                                                                                        |
-| invitations.ttlInSeconds                 |       259200       |    No    | Invitation time to live in seconds.                                                                                                                                                                                                                                                                             |
+| invitations.ttlInSeconds                 |       259200       |    No    | Default invitation time to live, in seconds (must be a positive integer), rounded up to whole hours. Used when a user's role does not define `share.<RESOURCE_TYPE>.invitation_ttl` (see `roles.*.share.*`) for a shared resource type.                                                                        |
+| orgUnits.enabled                         |       false        |    No    | Preview. Turns on org units: shared-space folders recorded as units, managed through `/v1/org-units/public`. Off, those routes answer 404. See [org units](docs/org-units.md). |
 | perRequestApiKey.ttl                     |        1800        |    No    | The TTL in seconds of per request API key                                                                                                                                                                                                                                                                       |
+| deploymentStats.ttlMs                    |      3600000       |    No    | The TTL in milliseconds (must be positive) of the per-trace usage record kept in Redis, refreshed on each write. A trace whose root is a background Responses job keeps it for at least `backgroundJob.jobTtlMs` + `backgroundJob.scanIntervalMs`                                                               |
 | asyncTaskExecutor.useVirtualThreads      |        true        |    No    | The flag determines if virtual threads are used to run blocking tasks or platform threads.                                                                                                                                                                                                                      |
 | config.jsonMergeStrategy.overwriteArrays |       false        |    No    | Specifies a merging strategy for JSON arrays. If it's set to `true`, arrays will be overwritten. Otherwise, they will be concatenated.                                                                                                                                                                          |
 | apiKeyValidation.proxyCount              |         0          | No | The count of trusted proxies between the client and DIAL Core server. See [selecting an IP address in HTTP header X-Forwarded-For](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For#selecting_an_ip_address) for more details. The default value means there are no proxies. |
@@ -153,6 +158,10 @@ Priority order:
 | analytics.collectHeaders                 |       false        |    No    | If `true`, adds a `headers` object with the request headers to each analytics log entry, filtered by `analytics.headersAllowlist` / `analytics.headersBlacklist`. **Note**: enabling this may write sensitive data to logs; curate the lists for your setup.                                                                  |
 | analytics.headersBlacklist               | ["authorization", "api-key", "cookie", "proxy-authorization"] | No | JSON array of case-insensitive regex patterns (full-match); request headers whose name matches any pattern are excluded when `analytics.collectHeaders` is enabled. Literal names (e.g. `authorization`) match themselves; use patterns like `x-stainless-.*` to drop a whole family of headers.                                                                                                                                                                           |
 | analytics.headersAllowlist               |     _(disabled)_     | No | Optional JSON array of case-insensitive regex patterns (full-match). When present, only request headers whose name matches at least one pattern are collected (`analytics.headersBlacklist` still wins over the allowlist). Omit the key to disable the allowlist and collect all non-blocked headers. Example — keep just OTel and useful client headers: `["traceparent", "tracestate", "user-agent", "x-forwarded-.*"]`.                                                                                                                                                                           |
+| tracing.genAiSpanAttributes              |       true        |    No    | If `true`, adds [OTel GenAI semantic-convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) `gen_ai.*` and `dial.*` attributes to the request span and to OTel log records. Prompts, completions and tool payloads are never published. Refer to [Tracing](/docs/tracing.md) to learn more. |
+| tracing.responseTraceHeaders             |       true        |    No    | If `true`, every response carries the W3C `traceparent` of Core's own root span, plus `X-DIAL-TRACE-ID` and `X-DIAL-SPAN-ID`, all exposed via CORS. Omitted when no OpenTelemetry SDK is attached and the span context is invalid.                                                                   |
+| tracing.conversationIdHeaders            | ["x-claude-code-session-id", "thread-id", "x-session-id", "x-dial-client-channel-id", "X-CONVERSATION-ID"] | No | JSON array of request headers, in priority order, that may carry a conversation or session id; the first usable one present is published as `gen_ai.conversation.id` when `tracing.genAiSpanAttributes` is enabled, and is always written to each analytics log entry as `session.id` (omitted when no header matches). Matching is case-insensitive, and a value over 256 characters is skipped in favour of the next header. The known credential header names are rejected with a warning. The defaults cover Claude Code, OpenAI Codex CLI, OpenCode and DIAL Chat; an operator-supplied array replaces them outright. |
+| proxy.additionalHopByHopHeaders          |     _(empty)_       |    No    | JSON array of extra header names to strip from requests/responses forwarded through the proxy, on top of the built-in hop-by-hop headers (`Connection`, `Keep-Alive`, `Host`, etc.). Names are matched case-insensitively; blank entries are ignored.                                                          |
 
 #### Collecting claims
 
@@ -189,7 +198,7 @@ without putting the raw address in the log.
 | identityProviders.*.issuerPattern             |    -    |    No    | Regexp to match the claim "iss" to identity provider.                                                                                                                                                                                                                                                                                                                                   |
 | identityProviders.*.disableJwtVerification    |  false  |    No    | The flag disables JWT verification. *Note*. `userInfoEndpoint` must be unset if the flag is set to `true`.                                                                                                                                                                                                                                                                              |
 | identityProviders.*.audience                  |    -    |    No    | If the setting is set it will be validated against the claim `aud` in JWT                                                                                                                                                                                                                                                                                                               |
-| identityProviders.*.userDisplayName           |    -    |    No    | Path to the claim in JWT token or user info response where user display name can be taken.                                                                                                                                                                                                                                                                                              |
+| identityProviders.*.userDisplayName           |    -    |    No    | Path to the claim in JWT token or user info response where user display name can be taken. The resolved value is returned as `userDisplayName` by `GET /v1/user/info`.                                                                                                                                                                                                                                                                                              |
 | identityProviders.*.userIdPath           |   sub   |    No    | Path to the claim in JWT token or user info response where user ID can be taken. Can differ based on each IDP. E.g. Microsoft Entra ID uses `oid`.                                                                                                                                                                                                                                                                                                        |
 | identityProviders.*.offlineClient             |    -    |    No    | OAuth client core uses to obtain a user's platform-wide offline credentials for `DIAL_NATIVE` external services (`/v1/user/offline-credentials`). Object with `clientId` (required), `tokenEndpoint` (required), `authorizationEndpoint` (required), `clientSecret`, `redirectUri` and `scopes` (default `["openid", "offline_access"]`). **Note**: `issuerPattern` must also match the issuer of **ID tokens** minted by this client — on Microsoft Entra ID, v1 access tokens (`sts.windows.net/...`) and v2 ID tokens (`login.microsoftonline.com/.../v2.0`) carry different issuers, and a pattern covering only one of them breaks the later credential refresh. |
 
@@ -265,13 +274,14 @@ without putting the raw address in the log.
 | resources.resourceTypesExpiration.PROMPT |      |  5 mins  | Define expiration time for prompts                                                                 |
 | resources.resourceTypesExpiration.APPLICATION |      | 30 days  | Define expiration time for applications                                                            |
 | resources.resourceTypesExpiration.TOOL_SET |      | 30 days  | Define expiration time for toolsets                                                                |
+| resources.resourceTypesExpiration.RULES |      | 30 days  | Define expiration time for public rules                                                            |
 
 </details>
 
 <details> 
 <summary><b>Complex Resource Limits Configurations</b></summary>
 
-Per-resource limits for folder-as-resource complex resources (e.g. skills), enforced on whole-resource
+Per-resource limits for folder-as-resource complex resources (skills, projects), enforced on whole-resource
 PUT and single-file PUT. Exceeding a limit rejects the request and leaves nothing observable written.
 These limits also bound listing reads, archive (ZIP download) size and how long a mutation holds the
 resource lock (a single-file PUT copies the whole current version under the lock).
@@ -281,6 +291,7 @@ resource lock (a single-file PUT copies the whole current version under the lock
 | complexResource.maxFiles           |   100    |    No    | Max number of files a complex resource may contain.               |
 | complexResource.maxTotalBytes      | 16777216 |    No    | Max aggregate size in bytes of all files in a complex resource.   |
 | complexResource.maxFileSizeBytes   | 1048576  |    No    | Max size in bytes of a single file within a complex resource.     |
+| complexResource.types.\<group\>    |    -     |    No    | Per-type override keyed by URL group (`skills`, `projects`) with any subset of `maxFiles`, `maxTotalBytes`, `maxFileSizeBytes`; unset fields fall back to the values above. The built-in `projects` override is 1000 files, 67108864 total bytes, 5242880 bytes per file; setting `types` replaces it. |
 
 </details>
 
@@ -300,6 +311,22 @@ reclaiming resources tombstoned by DELETE and GCs stale versions left behind by 
 </details>
 
 <details> 
+<summary><b>Background Job Configurations</b></summary>
+
+Background responses are polled through this Core instance's own HTTP endpoint, so polling requests pass
+through the interceptor chain.
+
+| Setting                    | Default                               | Required | Description                                                                                                  |
+|-----------------------------|:-------------------------------------:|:--------:|--------------------------------------------------------------------------------------------------------------|
+| backgroundJob.localBaseUrl | http://localhost:{actual server port} |    No    | Base URL that background job polling uses to reach this Core instance's own HTTP endpoint.                   |
+| backgroundJob.pollTimeoutMs | 300000                               |    No    | Timeout in milliseconds of a single polling request. A request exceeding it fails and counts as a poll failure. |
+| backgroundJob.pollGiveUpStatusCodes | [401, 403, 404]               |    No    | HTTP status codes of a polling response that make the job give up immediately instead of retrying.         |
+| backgroundJob.jobTtlMs     | 86400000                              |    No    | Lifetime in milliseconds of a background job and its per-request API key. The scheduler's next scan expires a job older than this. |
+| backgroundJob.scanIntervalMs | 600000                              |    No    | Interval in milliseconds between the scheduler's scans of stored jobs. A scan schedules each job for polling or expires it. |
+
+</details>
+
+<details> 
 <summary><b>Client Channel Configurations</b></summary>
 
 Server-Sent Events channel used to relay JSON-RPC requests/responses between a toolset deployment and
@@ -311,6 +338,18 @@ the client subscribed with no events ever reaching it.
 | Setting                       | Default | Required | Description                                                                                                                                                    |
 |--------------------------------|:-------:|:--------:|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | clientChannel.watchdog.period | 10000   |    No    | Period in milliseconds between watchdog checks of the Redis pub/sub subscription used to relay JSON-RPC requests/responses for the client channel feature.   |
+
+</details>
+
+<details> 
+<summary><b>Admin System Export Configurations</b></summary>
+
+Settings of `POST /v1/admin/system-export`, which streams the `public` and `platform` buckets as a ZIP archive.
+Refer to [Admin system export](docs/admin-system-export.md) to learn more.
+
+| Setting                        | Default | Required | Description                                                                                                                                              |
+|--------------------------------|:-------:|:--------:|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| adminSystemExport.stallTimeout | 60000   |    No    | Time in milliseconds the export waits for a slow client to take the buffered data before it fails and the connection is reset. Raise it if clients with slow connections fail. It must be positive and below the 5 minute lock period (300000), otherwise Core does not start. |
 
 </details>
 
@@ -403,6 +442,8 @@ DIAL Core stores user data in the following storages:
 | roles                  | API key or JWT roles and their parameters. Refer to [Roles](/docs/dynamic-settings/roles.md) to see dynamic settings.                                                                                                                                                           |
 | keys                   | API keys and their parameters. Refer to [API Keys](/docs/dynamic-settings/keys.md) to see dynamic settings.                                                                                                                                                                     |
 | retriableErrorCodes    | List of Retriable Error Codes for handling outages at LLM Providers. This list extends the existing error codes (429, 502, 503, 504) but doesn't override them.                                                                                                                 |
+| rateLimitSchedule      | Deployment-wide anchor (timezone, week start day, reset time) for the DAY/WEEK/MONTH fixed calendar rate-limit windows. Refer to [Roles](/docs/dynamic-settings/roles.md#ratelimitschedule) to see dynamic settings.                                                            |
+| spendingLimits         | Budget based spending limits: `mode` (`off`, `shadow` or `enforce`, default `off`) and `defaultCostObject` (default `ORG`), the cost object of a call that carries no project. In `shadow` budgets are checked, metered and charged but never reject, and the legacy `costLimit` decides; in `enforce` a JWT caller is checked against budgets only (`429` when none can pay) and the legacy `costLimit` is ignored. API key callers always use the legacy `costLimit`. |
 | applicationTypeSchemas | Map of application schemas where key - schema ID, value - schema itself in JSON format. All schemas must be conformed to the root schema `https://dial.epam.com/application_type_schemas/schema#`. See [link](config/src/main/resources/custom-application-schemas/schema.json) |
 
 ## Claude Code commands
@@ -419,6 +460,19 @@ The workflow is split across three commands so each invocation maps to a single 
 
 > [!NOTE]
 > To add a new command, drop a Markdown file into [`.claude/commands/`](.claude/commands) and append a row to the table above.
+
+## Spec-driven process (OpenSpec)
+
+Behaviour specs and change proposals live under [`openspec/`](openspec) and follow [OpenSpec](https://github.com/Fission-AI/OpenSpec):
+`openspec/specs/<capability>/spec.md` describes current behaviour, `openspec/changes/<id>/` holds a proposal with its spec deltas, design and tasks, and `openspec/config.yaml` holds the project rules. See the "Process" section of [`CLAUDE.md`](CLAUDE.md) for the propose / apply / archive steps.
+
+Prerequisites: [Node.js](https://nodejs.org/) 20.19 or newer. The OpenSpec CLI is pinned and run through `npx`, so no global install is required:
+
+```bash
+npx -y @fission-ai/openspec@1.14.3 validate --all --strict
+```
+
+Claude Code entry points: the `/opsx:*` commands under [`.claude/commands/opsx/`](.claude/commands/opsx) (`explore`, `propose`, `apply`, `update`, `sync`, `archive`) and the `sdd-*` workflows under [`.claude/workflows/`](.claude/workflows).
 
 ## License
 

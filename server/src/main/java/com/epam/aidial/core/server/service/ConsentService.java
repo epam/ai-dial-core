@@ -2,6 +2,8 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.ResourceDependency;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.consent.AdminConsentStatus;
@@ -98,7 +100,15 @@ public class ConsentService {
     }
 
     public void verifyUserConsent(ProxyContext context, Deployment deployment) {
-        if (!isConsentRequired(deployment)) {
+        verifyUserConsent(context, deployment, isConsentRequired(deployment.getFeatures()));
+    }
+
+    public void verifyUserConsent(ProxyContext context, Deployment deployment, InterfaceType requestedInterface) {
+        verifyUserConsent(context, deployment, isConsentRequired(deployment.resolveFeatures(requestedInterface)));
+    }
+
+    private void verifyUserConsent(ProxyContext context, Deployment deployment, boolean consentRequired) {
+        if (!consentRequired) {
             return;
         }
         String currentDeploymentId = deployment.getName();
@@ -248,8 +258,22 @@ public class ConsentService {
     }
 
     private static boolean isConsentRequired(Deployment deployment) {
-        return deployment.getFeatures() != null
-                && Boolean.TRUE.equals(deployment.getFeatures().getConsentRequired());
+        if (isConsentRequired(deployment.getFeatures())) {
+            return true;
+        }
+        // Consent is accepted for a deployment, so the review must include requirements of its interfaces.
+        if (deployment.getInterfaces() != null) {
+            for (InterfaceType type : InterfaceType.values()) {
+                if (isConsentRequired(deployment.resolveFeatures(type))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean isConsentRequired(Features features) {
+        return features != null && Boolean.TRUE.equals(features.getConsentRequired());
     }
 
     /**

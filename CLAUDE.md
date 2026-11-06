@@ -89,3 +89,34 @@ See `sample/` for examples of both files; `server/src/main/resources/aidial.sett
 Read [docs/CODE_STYLE.md](docs/CODE_STYLE.md) before writing or changing Java in this repo.
 It covers naming, Vert.x event-loop rules, scope discipline, error handling, completing
 cross-cutting changes, tests, and documentation.
+
+## Process: spec-driven with OpenSpec 1.14.3
+
+`openspec/specs/` is the behaviour reference for the parts of Core it covers; read the relevant capability before
+changing that code. The CLI is not installed globally. Where an OpenSpec skill or doc says `openspec`, run
+`npx -y @fission-ai/openspec@1.14.3`. `openspec/config.yaml` holds the project rules the skills and workflows follow.
+
+1. **Propose**: `openspec/changes/<id>/` with `proposal.md`, spec deltas, `design.md` and `tasks.md`, created by
+   `/opsx:propose` (the `openspec-propose` skill) or the `sdd-propose` workflow. Then
+   `npx -y @fission-ai/openspec@1.14.3 validate <id> --strict`.
+2. **Apply**: implement `tasks.md`, ticking each task: `/opsx:apply`, or the `sdd-apply` workflow (implement, an
+   independent verification, a three-lens review, fix).
+3. **Record and archive**: `review.md` in the change folder, then
+   `npx -y @fission-ai/openspec@1.14.3 archive <id> -y`, which merges the deltas into `openspec/specs`; then
+   `validate --specs --strict`. Then one commit, staging explicit paths.
+
+The workflows in `.claude/workflows/` (`sdd-baseline` for specs of existing behaviour, `sdd-propose`, `sdd-apply`, and
+`sdd-audit` after a series of changes) run this with subagents.
+
+## Checks (Git Bash, from the repo root)
+
+Gradle 8.10 needs a JDK 21 as `JAVA_HOME`; a newer default JDK fails with "Unsupported class file major version".
+
+```bash
+export JAVA_HOME="<path to a JDK 21>"
+./gradlew checkstyleMain checkstyleTest
+./gradlew :server:test --tests "com.epam.aidial.core.server.SomeApiTest"     # the classes the change touches
+npx -y @fission-ai/openspec@1.14.3 validate --all --strict
+```
+
+Run checkstyle and the targeted test classes locally; the full suite runs in CI after the push.

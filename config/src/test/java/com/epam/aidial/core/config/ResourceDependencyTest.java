@@ -10,7 +10,6 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -130,6 +129,16 @@ public class ResourceDependencyTest {
     }
 
     @Test
+    void deploymentDependenciesFieldIsUntouched() throws Exception {
+        String json = "{\"name\": \"app\", \"dependencies\": [\"app1\", \"app2\"]}";
+        Application app = MAPPER.readValue(json, Application.class);
+
+        assertEquals(List.of("app1", "app2"), app.getDependencies());
+        assertTrue(app.getResourceDependencies().isEmpty());
+        assertFalse(MAPPER.writeValueAsString(app).contains("resource_dependencies"));
+    }
+
+    @Test
     void copyConstructorCarriesTheSection() {
         Application source = new Application()
                 .setResourceDependencies(List.of(new ResourceDependency()
@@ -141,6 +150,6 @@ public class ResourceDependencyTest {
 
         Application copy = new Application(source);
 
-        assertSame(source.getResourceDependencies(), copy.getResourceDependencies());
+        assertEquals(source.getResourceDependencies(), copy.getResourceDependencies());
     }
 }

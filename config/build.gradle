@@ -4,6 +4,7 @@ dependencies {
     // External dependencies
     implementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
     implementation("com.networknt:json-schema-validator:${networknt_version}")
+    implementation("jakarta.annotation:jakarta.annotation-api:${jakarta_annotation_api_version}")
     implementation("org.hibernate.validator:hibernate-validator:${hibernate_validator_version}")
 
     // Test dependencies

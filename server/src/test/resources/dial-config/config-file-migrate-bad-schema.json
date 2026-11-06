@@ -1,0 +1,22 @@
+{
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "default"
+    }
+  },
+  "roles": {
+    "default": {}
+  },
+  "applicationTypeSchemas": [
+    {
+      "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+      "$id": "https://mydial.somewhere.com/custom_application_schemas/bad~schema~name",
+      "dial:applicationTypeEditorUrl": "https://mydial.somewhere.com/custom_application_schemas/schema",
+      "dial:applicationTypeViewerUrl": "https://mydial.somewhere.com/custom_application_schemas/viewer",
+      "dial:applicationTypeDisplayName": "Unresolvable Blob Name Schema",
+      "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",
+      "dial:applicationTypeSchemaEndpoint": "http://localhost:4848/schema"
+    }
+  ]
+}

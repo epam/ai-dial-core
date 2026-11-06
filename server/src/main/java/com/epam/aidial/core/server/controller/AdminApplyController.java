@@ -8,17 +8,18 @@ import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
-import com.epam.aidial.core.server.data.AdminApplyRequest;
-import com.epam.aidial.core.server.data.AdminApplyResponse;
-import com.epam.aidial.core.server.data.AdminApplyResult;
-import com.epam.aidial.core.server.data.AdminApplyStatus;
-import com.epam.aidial.core.server.data.AdminManifest;
-import com.epam.aidial.core.server.data.ValidationResult;
-import com.epam.aidial.core.server.data.ValidationStatus;
+import com.epam.aidial.core.server.data.config.manifest.AdminApplyRequest;
+import com.epam.aidial.core.server.data.config.manifest.AdminApplyResponse;
+import com.epam.aidial.core.server.data.config.manifest.AdminApplyResult;
+import com.epam.aidial.core.server.data.config.manifest.AdminApplyStatus;
+import com.epam.aidial.core.server.data.config.manifest.AdminManifest;
+import com.epam.aidial.core.server.data.config.manifest.ValidationResult;
+import com.epam.aidial.core.server.data.config.manifest.ValidationStatus;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.service.config.ConfigApplyService;
 import com.epam.aidial.core.server.service.config.ConfigManifestSupport;
 import com.epam.aidial.core.server.service.config.ConfigValidationService;
+import com.epam.aidial.core.server.service.policy.PolicyAssignmentPrecheck;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -136,10 +137,11 @@ public class AdminApplyController {
         Config scratch = ConfigManifestSupport.newScratch(mergedConfigStore);
 
         if (precheck) {
+            PolicyAssignmentPrecheck policyPrecheck = validationService.newPolicyPrecheck();
             List<ConfigApplyService.EntityResult> precheckResults = new ArrayList<>();
             boolean anyFailure = false;
             for (AdminManifest entry : entries) {
-                ValidationResult result = validationService.validateOnly(entry, scratch);
+                ValidationResult result = validationService.validateOnly(entry, scratch, policyPrecheck);
                 if (!ValidationStatus.VALID.equals(result.status())) {
                     anyFailure = true;
                     // Mirror /v1/admin/validate: the offending entry stays FAILED (carrying its

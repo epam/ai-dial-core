@@ -96,7 +96,15 @@ public class GfLogStore implements LogStore {
         append(entry, "{\"apiType\":\"DialOpenAI\",\"chat\":{\"id\":\"", false);
         append(entry, logContext.getConversationId(), true);
 
-        append(entry, "\"},\"project\":{\"id\":\"", false);
+        append(entry, "\"}", false);
+
+        if (logContext.getSessionId() != null) {
+            append(entry, ",\"session\":{\"id\":\"", false);
+            append(entry, logContext.getSessionId(), true);
+            append(entry, "\"}", false);
+        }
+
+        append(entry, ",\"project\":{\"id\":\"", false);
         append(entry, logContext.getProject(), true);
 
         append(entry, "\"},\"user\":{\"id\":\"", false);
@@ -172,16 +180,24 @@ public class GfLogStore implements LogStore {
             append(entry, ProxyUtil.MAPPER.writeValueAsString(executionPath), false);
         }
 
+        if (logContext.getRouteName() != null) {
+            append(entry, ",\"route_name\":\"", false);
+            append(entry, logContext.getRouteName(), true);
+            append(entry, "\"", false);
+        }
+        if (logContext.getRouteType() != null) {
+            append(entry, ",\"route_type\":\"", false);
+            append(entry, logContext.getRouteType(), true);
+            append(entry, "\"", false);
+        }
+
         append(entry, ",\"operation_duration_ms\":", false);
         append(entry, Long.toString(logContext.getOperationDurationMs()), true);
 
-        if (!logContext.isSecuredApiKey()) {
+        // without an assembled stream the field would only repeat the response body
+        if (!logContext.isSecuredApiKey() && logContext.getAssembledStreamingResponse() != null) {
             append(entry, ",\"assembled_response\":\"", false);
-            if (logContext.getAssembledStreamingResponse() != null) {
-                appendBody(entry, Buffer.buffer(logContext.getAssembledStreamingResponse()));
-            } else {
-                appendBody(entry, logContext.getResponseBody());
-            }
+            appendBody(entry, Buffer.buffer(logContext.getAssembledStreamingResponse()));
             append(entry, "\"", false);
         }
 

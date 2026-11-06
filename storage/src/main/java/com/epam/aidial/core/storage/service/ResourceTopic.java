@@ -2,6 +2,7 @@ package com.epam.aidial.core.storage.service;
 
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,6 +12,7 @@ import org.redisson.api.RTopic;
 import org.redisson.api.RedissonClient;
 import org.redisson.codec.TypedJsonJacksonCodec;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +25,8 @@ import java.util.function.Consumer;
 
 @Slf4j
 public class ResourceTopic {
+
+    private static final String COMPLEX_FILES_SEGMENT = "files";
 
     private final Map<String, Set<Subscription>> urlToSubscriptions = new ConcurrentHashMap<>();
     private final CopyOnWriteArrayList<Consumer<ResourceEvent>> globalSubscribers = new CopyOnWriteArrayList<>();
@@ -79,12 +83,12 @@ public class ResourceTopic {
     }
 
     private void handle(ResourceEvent event) {
-        for (Subscription subscription : urlToSubscriptions.getOrDefault(event.getUrl(), Set.of())) {
-            try {
-                subscription.subscriber.accept(event);
-            } catch (Throwable e) {
-                log.warn("Can't notify subscriber", e);
-            }
+        String url = event.getUrl();
+        notifySubscribers(urlToSubscriptions.getOrDefault(url, Set.of()), event);
+
+        String resourceUrl = complexResourceUrl(url);
+        if (resourceUrl != null) {
+            notifySubscribers(urlToSubscriptions.getOrDefault(resourceUrl, Set.of()), event);
         }
         for (Consumer<ResourceEvent> subscriber : globalSubscribers) {
             try {
@@ -92,6 +96,46 @@ public class ResourceTopic {
             } catch (Throwable e) {
                 log.warn("Can't notify global subscriber", e);
             }
+        }
+    }
+
+    private static void notifySubscribers(Set<Subscription> subscriptions, ResourceEvent event) {
+        for (Subscription subscription : subscriptions) {
+            try {
+                subscription.subscriber.accept(event);
+            } catch (Throwable e) {
+                log.warn("Can't notify subscriber", e);
+            }
+        }
+    }
+
+    /**
+     * Returns the URL of the complex resource that owns the file the given event URL points to
+     * ({@code {group}/{bucket}/{folders}/{name}/files/{path}}), or {@code null} if it is not such a file URL.
+     * A complex resource and its folders are never named "files".
+     */
+    private static String complexResourceUrl(String url) {
+        if (url == null) {
+            return null;
+        }
+        String[] segments = url.split("/");
+        // group, bucket, at least a resource name, the files segment and a file name
+        if (segments.length < 5 || !isComplexGroup(segments[0])) {
+            return null;
+        }
+        for (int i = 3; i < segments.length - 1; i++) {
+            if (COMPLEX_FILES_SEGMENT.equals(segments[i])) {
+                return String.join("/", Arrays.copyOfRange(segments, 0, i));
+            }
+        }
+        return null;
+    }
+
+    private static boolean isComplexGroup(String group) {
+        try {
+            return ResourceTypes.of(group).isComplex();
+        } catch (IllegalArgumentException e) {
+            return false;
         }
     }
 

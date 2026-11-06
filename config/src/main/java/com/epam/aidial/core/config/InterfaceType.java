@@ -1,7 +1,7 @@
 package com.epam.aidial.core.config;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonValue;
+import jakarta.annotation.Nullable;
 import lombok.Getter;
 
 import java.util.List;
@@ -13,26 +13,22 @@ import java.util.List;
 @Getter
 public enum InterfaceType {
 
-    @JsonAlias({"openai_chat_completions"})
     OPENAI_CHAT_COMPLETIONS(
             "openaiChatCompletions",
             "/v1/chat/completions",
             List.of("prefix.body.tools", "prefix.body.messages")
     ),
     // an embeddings request carries no prompt prefix to cache, so it contributes no cache keys
-    @JsonAlias({"openai_embeddings"})
     OPENAI_EMBEDDINGS(
             "openaiEmbeddings",
             "/v1/embeddings",
             List.of()
     ),
-    @JsonAlias({"openai_responses"})
     OPENAI_RESPONSES(
             "openaiResponses",
             "/v1/responses",
             List.of("prefix.body.tools", "prefix.body.instructions", "prefix.body.input")
     ),
-    @JsonAlias({"anthropic_messages"})
     ANTHROPIC_MESSAGES(
             "anthropicMessages",
             "/v1/messages",
@@ -68,11 +64,24 @@ public enum InterfaceType {
      * @throws IllegalArgumentException if the value does not match any known interface type.
      */
     public static InterfaceType fromValue(String value) {
+        InterfaceType type = find(value);
+        if (type == null) {
+            throw new IllegalArgumentException("Unknown interface type: " + value);
+        }
+        return type;
+    }
+
+    /**
+     * The type with this value, or null for one this Core does not know — a config may name an interface
+     * that only a newer Core, or another component, understands.
+     */
+    @Nullable
+    public static InterfaceType find(String value) {
         for (InterfaceType type : values()) {
             if (type.value.equals(value)) {
                 return type;
             }
         }
-        throw new IllegalArgumentException("Unknown interface type: " + value);
+        return null;
     }
 }

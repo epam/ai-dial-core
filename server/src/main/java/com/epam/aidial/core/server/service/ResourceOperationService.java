@@ -26,6 +26,7 @@ import java.util.function.Consumer;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.APPLICATION;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.CONVERSATION;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.FILE;
+import static com.epam.aidial.core.storage.resource.ResourceTypes.PROJECT;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.PROMPT;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.SKILL;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.TOOL_SET;
@@ -33,7 +34,7 @@ import static com.epam.aidial.core.storage.resource.ResourceTypes.TOOL_SET;
 @AllArgsConstructor
 public class ResourceOperationService {
     private static final Set<ResourceTypes> ALLOWED_RESOURCES = Set.of(FILE, CONVERSATION,
-            PROMPT, APPLICATION, TOOL_SET, SKILL);
+            PROMPT, APPLICATION, TOOL_SET, SKILL, PROJECT);
 
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
@@ -79,7 +80,7 @@ public class ResourceOperationService {
             // TODO: support move for USER and APP credentials for public toolsets
             // TODO: support move for USER and APP credentials for shared toolsets (?)
             toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, credentialsToCopy);
-        } else if (destination.getType() == SKILL) {
+        } else if (destination.getType().isComplex()) {
             if (!complexResourceService.copyResource(source, destination, null, overwriteIfExists)) {
                 throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
                         .formatted(sourceResourceUrl, destinationResourceUrl));
@@ -111,7 +112,7 @@ public class ResourceOperationService {
             applicationService.deleteApplication(source, EtagHeader.ANY);
         } else if (destination.getType() == TOOL_SET) {
             toolSetService.deleteToolset(context, source, EtagHeader.ANY);
-        } else if (destination.getType() == SKILL) {
+        } else if (destination.getType().isComplex()) {
             complexResourceService.delete(source, EtagHeader.ANY);
         } else {
             resourceService.deleteResource(source, EtagHeader.ANY);
@@ -145,7 +146,7 @@ public class ResourceOperationService {
             });
         } else if (destination.getType() == TOOL_SET) {
             toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, Map.of());
-        } else if (destination.getType() == SKILL) {
+        } else if (destination.getType().isComplex()) {
             if (!complexResourceService.copyResource(source, destination, null, overwriteIfExists)) {
                 throw new IllegalArgumentException("Can't copy resource %s to %s, because destination resource already exists"
                         .formatted(sourceResourceUrl, destinationResourceUrl));
@@ -160,7 +161,7 @@ public class ResourceOperationService {
     }
 
     private boolean hasResource(ResourceDescriptor resource) {
-        return resource.getType() == SKILL
+        return resource.getType().isComplex()
                 ? complexResourceService.getMarker(resource) != null
                 : resourceService.hasResource(resource);
     }
@@ -187,7 +188,7 @@ public class ResourceOperationService {
     private static void verifyResourceToDelete(ResourceDescriptor resource) {
         ResourceType type = resource.getType();
         if (!(APPLICATION == type || FILE == type
-                || CONVERSATION == type || type == PROMPT || type == TOOL_SET || type == SKILL)) {
+                || CONVERSATION == type || type == PROMPT || type == TOOL_SET || type.isComplex())) {
             throw new IllegalArgumentException("Unsupported resource type to delete: " + type.name());
         }
     }
@@ -204,7 +205,7 @@ public class ResourceOperationService {
         if (resource.getType() == TOOL_SET) {
             return toolSetService.deleteToolset(context, resource, etag);
         }
-        if (resource.getType() == SKILL) {
+        if (resource.getType().isComplex()) {
             try {
                 complexResourceService.delete(resource, etag);
             } catch (HttpException e) {

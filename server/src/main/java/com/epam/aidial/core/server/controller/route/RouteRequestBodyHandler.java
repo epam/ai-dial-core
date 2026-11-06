@@ -67,8 +67,7 @@ class RouteRequestBodyHandler {
         log.info("Received body from client. Deployment: {}. Length: {}",
                 deployment == null ? "N/A" : deployment.getName(), requestBody.length());
 
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
-        context.setRequestBody(requestBody);
+        context.setRequestBodyWithTimestamp(requestBody);
 
         ApiKeyData apiKeyData = controller.setupProxyApiKeyData();
 

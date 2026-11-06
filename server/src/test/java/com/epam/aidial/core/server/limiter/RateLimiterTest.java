@@ -8,6 +8,8 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
+import com.epam.aidial.core.config.PricingRate;
+import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.server.FileUtil;
 import com.epam.aidial.core.server.Proxy;
@@ -33,6 +35,7 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpServerRequest;
@@ -60,12 +63,15 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -154,7 +160,11 @@ public class RateLimiterTest {
         ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
         resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
                 lockService, settings, null);
-        rateLimiter = new RateLimiter(taskExecutor, resourceService);
+        // increase() only ever needs the schedule, and no test configures a non-default one;
+        // lenient() since not every test method calls increase()
+        ConfigStore configStore = mock(ConfigStore.class);
+        lenient().when(configStore.get()).thenReturn(new Config());
+        rateLimiter = new RateLimiter(taskExecutor, resourceService, configStore, BlockingCallTracer.NOOP);
     }
 
     @AfterEach
@@ -556,7 +566,8 @@ public class RateLimiterTest {
 
         TokenUsage tokenUsage = new TokenUsage();
         tokenUsage.setTotalTokens(90);
-        assertNull(rateLimiter.increase(usedModel, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+        assertNull(rateLimiter.increase(
+                usedModel, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
 
         UserLimitStats stats = rateLimiter.getUserStats(proxyContext, List.of(usedModel, unusedModel), false).result();
 
@@ -607,8 +618,8 @@ public class RateLimiterTest {
         Model model = model("priced-model");
         Pricing pricing = new Pricing();
         pricing.setUnit("token");
-        pricing.setPrompt("0.001");
-        pricing.setCompletion("0.002");
+        pricing.setPrompt(PricingRate.flat("0.001"));
+        pricing.setCompletion(PricingRate.flat("0.002"));
         model.setPricing(pricing);
         stubInlineExecutor();
 
@@ -616,7 +627,8 @@ public class RateLimiterTest {
         tokenUsage.setPromptTokens(1000);
         tokenUsage.setCompletionTokens(2000);
         tokenUsage.setTotalTokens(3000);
-        assertNull(rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+        assertNull(rateLimiter.increase(
+                model, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
 
         UserLimitStats stats = rateLimiter.getUserStats(proxyContext, List.of(model), false).result();
 
@@ -679,7 +691,8 @@ public class RateLimiterTest {
 
         TokenUsage tokenUsage = new TokenUsage();
         tokenUsage.setTotalTokens(11);
-        assertNull(rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+        assertNull(rateLimiter.increase(
+                model, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
 
         UserLimitStats stats = rateLimiter.getUserStats(proxyContext, List.of(model), false).result();
 
@@ -688,6 +701,263 @@ public class RateLimiterTest {
         // no cost was priced, so the global budget stands untouched at its configured value
         assertEquals(0, new BigDecimal("50").compareTo(stats.getDayCostStats().getTotal()));
         assertEquals(0, BigDecimal.ZERO.compareTo(stats.getDayCostStats().getUsed()));
+    }
+
+    /**
+     * {@code recordAggregatedCost} writes only the deployment-scoped aggregated record - never the
+     * global document that backs {@link Role#getCostLimit()}, and never the direct-cost record a Model's
+     * own {@code increase} writes - so an ancestor's aggregated ledger can never inflate what the caller
+     * is billed/capped on, nor be conflated with unrelated direct activity under the same name.
+     */
+    @Test
+    public void testRecordAggregatedCost_WritesOnlyItsOwnRecordNeverGlobalOrDirect() {
+        String bucket = BucketBuilder.USER_BUCKET_PATTERN.formatted("user-hash");
+        stubInlineExecutor();
+
+        assertNull(rateLimiter.recordAggregatedCost("router-app", bucket, new BigDecimal("0.40")).cause());
+
+        assertNotNull(resourceService.getResource(
+                ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "router-app/aggregated-costs")));
+        assertNull(resourceService.getResource(
+                ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "router-app/costs")));
+        assertNull(resourceService.getResource(
+                ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "costs")));
+    }
+
+    /**
+     * A no-op for a null/non-positive cost - the same guard {@code increase} applies for a deployment
+     * with nothing priced.
+     */
+    @Test
+    public void testRecordAggregatedCost_NonPositiveCostIsNoOp() {
+        String bucket = BucketBuilder.USER_BUCKET_PATTERN.formatted("user-hash");
+
+        assertNull(rateLimiter.recordAggregatedCost("router-app", bucket, BigDecimal.ZERO).cause());
+        assertNull(rateLimiter.recordAggregatedCost("router-app", bucket, null).cause());
+
+        assertNull(resourceService.getResource(
+                ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "router-app/aggregated-costs")));
+    }
+
+    /**
+     * A deployment's direct cost (its own {@code increase}-written record) and its aggregated cost (rolled
+     * up from descendants, written by {@code recordAggregatedCost}) are kept in two separate Redis records,
+     * but reported through the same existing {@code used} field - summed - since this patch introduces no
+     * new response field. Only a Model ever gets a direct-cost write in practice, but the storage layer
+     * itself only keys off a name, so this is exercised directly by writing both records for the same name.
+     */
+    @Test
+    public void testGetUserStats_SumsDirectAndAggregatedCost() {
+        Config config = new Config();
+        Role role = new Role();
+        role.setLimits(Map.of());
+        role.setCostLimit(costLimit("100"));
+        config.setRoles(Map.of("role", role));
+
+        ProxyContext proxyContext = userContext(config, List.of("role"));
+        Model priced = model("router-app");
+        Pricing pricing = new Pricing();
+        pricing.setUnit("token");
+        pricing.setPrompt(PricingRate.flat("0.001"));
+        pricing.setCompletion(PricingRate.flat("0.001"));
+        priced.setPricing(pricing);
+        Application router = new Application();
+        router.setName("router-app");
+        stubInlineExecutor();
+
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setPromptTokens(100);
+        tokenUsage.setCompletionTokens(100);
+        tokenUsage.setTotalTokens(200);
+        // direct cost: 0.001 * 100 + 0.001 * 100 = 0.200
+        assertNull(rateLimiter.increase(
+                priced, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+        // aggregated cost, rolled up under the same name from an entirely separate mechanism
+        assertNull(rateLimiter.recordAggregatedCost("router-app", bucket, new BigDecimal("0.40")).cause());
+        assertNull(rateLimiter.recordAggregatedCost("router-app", bucket, new BigDecimal("0.10")).cause());
+
+        UserLimitStats stats = rateLimiter.getUserStats(proxyContext, List.of(router), false).result();
+
+        assertNotNull(stats);
+        LimitStats deployment = stats.getDeployments().get("router-app");
+        assertNotNull(deployment);
+        // 0.200 direct + 0.40 + 0.10 aggregated = 0.700, summed into the one existing field
+        assertEquals(0, new BigDecimal("0.700").compareTo(deployment.getDayCostStats().getUsed()));
+        assertEquals(0, new BigDecimal("0.700").compareTo(deployment.getMonthCostStats().getUsed()));
+    }
+
+    /**
+     * {@code getDeploymentUsage} must report the same deployment-attributed cost as the corresponding
+     * entry in {@code getUserStats} - both are now built by the same shared helper - while its token
+     * stats are still capped by the deployment's real {@link Limit}, not the unlimited sentinel.
+     */
+    @Test
+    public void testGetDeploymentUsage_CostIsAttributedToTheDeploymentNotTheAccount() {
+        Config config = new Config();
+        Role role = new Role();
+        Limit limit = new Limit();
+        limit.setDay(5000);
+        role.setLimits(Map.of("priced-model", limit));
+        role.setCostLimit(costLimit("100"));
+        config.setRoles(Map.of("role", role));
+
+        ProxyContext proxyContext = userContext(config, List.of("role"));
+        Model model = model("priced-model");
+        Pricing pricing = new Pricing();
+        pricing.setUnit("token");
+        pricing.setPrompt(PricingRate.flat("0.001"));
+        pricing.setCompletion(PricingRate.flat("0.002"));
+        model.setPricing(pricing);
+        stubInlineExecutor();
+
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setPromptTokens(1000);
+        tokenUsage.setCompletionTokens(2000);
+        tokenUsage.setTotalTokens(3000);
+        assertNull(rateLimiter.increase(
+                model, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+
+        LimitStats usage = rateLimiter.getDeploymentUsage(model, proxyContext).result();
+
+        assertNotNull(usage);
+        // token stats come from the deployment's own Limit, same as /limits
+        assertEquals(5000, usage.getDayTokenStats().getTotal());
+        assertEquals(3000, usage.getDayTokenStats().getUsed());
+        // cost is this deployment's own attributed spend, against the unlimited sentinel - not the
+        // account's role-level budget of 100
+        BigDecimal expected = new BigDecimal("5.000");
+        assertEquals(0, expected.compareTo(usage.getDayCostStats().getUsed()));
+        assertEquals(Long.MAX_VALUE, usage.getDayCostStats().getTotal().longValueExact());
+    }
+
+    /**
+     * Direct cost and aggregated cost sum into the one reported field here exactly as they do for the
+     * matching entry inside {@code getUserStats} - both paths share {@code buildDeploymentLimitStats}.
+     */
+    @Test
+    public void testGetDeploymentUsage_SumsDirectAndAggregatedCost() {
+        Config config = new Config();
+        Role role = new Role();
+        role.setLimits(Map.of());
+        role.setCostLimit(costLimit("100"));
+        config.setRoles(Map.of("role", role));
+
+        ProxyContext proxyContext = userContext(config, List.of("role"));
+        Model priced = model("router-app");
+        Pricing pricing = new Pricing();
+        pricing.setUnit("token");
+        pricing.setPrompt(PricingRate.flat("0.001"));
+        pricing.setCompletion(PricingRate.flat("0.001"));
+        priced.setPricing(pricing);
+        stubInlineExecutor();
+
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setPromptTokens(100);
+        tokenUsage.setCompletionTokens(100);
+        tokenUsage.setTotalTokens(200);
+        // direct cost: 0.001 * 100 + 0.001 * 100 = 0.200
+        assertNull(rateLimiter.increase(
+                priced, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+        assertNull(rateLimiter.recordAggregatedCost("router-app", bucket, new BigDecimal("0.40")).cause());
+        assertNull(rateLimiter.recordAggregatedCost("router-app", bucket, new BigDecimal("0.10")).cause());
+
+        LimitStats usage = rateLimiter.getDeploymentUsage(priced, proxyContext).result();
+
+        assertNotNull(usage);
+        // 0.200 direct + 0.40 + 0.10 aggregated = 0.700, summed into the one existing field
+        assertEquals(0, new BigDecimal("0.700").compareTo(usage.getDayCostStats().getUsed()));
+        assertEquals(0, new BigDecimal("0.700").compareTo(usage.getMonthCostStats().getUsed()));
+    }
+
+    /**
+     * An aggregated cost is a re-tally of descendant spend that was already charged to the global record,
+     * so {@code getLimitStats} (the account-wide budget view behind {@code /limits}) must not add it again.
+     */
+    @Test
+    public void testGetLimitStats_DoesNotAddAggregatedCostOnTopOfGlobalCost() {
+        Config config = new Config();
+        Role role = new Role();
+        role.setLimits(Map.of());
+        role.setCostLimit(costLimit("100"));
+        config.setRoles(Map.of("role", role));
+
+        ProxyContext proxyContext = userContext(config, List.of("role"));
+        Model priced = model("router-app");
+        Pricing pricing = new Pricing();
+        pricing.setUnit("token");
+        pricing.setPrompt(PricingRate.flat("0.001"));
+        pricing.setCompletion(PricingRate.flat("0.001"));
+        priced.setPricing(pricing);
+        stubInlineExecutor();
+
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setPromptTokens(100);
+        tokenUsage.setCompletionTokens(100);
+        tokenUsage.setTotalTokens(200);
+        // global cost: 0.001 * 100 + 0.001 * 100 = 0.200
+        assertNull(rateLimiter.increase(
+                priced, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+        assertNull(rateLimiter.recordAggregatedCost("router-app", bucket, new BigDecimal("0.40")).cause());
+
+        LimitStats stats = rateLimiter.getLimitStats(priced, proxyContext).result();
+
+        assertNotNull(stats);
+        assertEquals(0, new BigDecimal("0.200").compareTo(stats.getDayCostStats().getUsed()));
+        assertEquals(0, new BigDecimal("0.200").compareTo(stats.getMonthCostStats().getUsed()));
+    }
+
+    /**
+     * A deployment that was never used still reports 200 with zeroed usage against its real limits,
+     * rather than 404 - the same contract {@code /limits} already honors.
+     */
+    @Test
+    public void testGetDeploymentUsage_UnusedDeploymentReportsZeros() {
+        Config config = new Config();
+        Role role = new Role();
+        role.setLimits(Map.of());
+        config.setRoles(Map.of("role", role));
+
+        ProxyContext proxyContext = userContext(config, List.of("role"));
+        Model model = model("untouched-model");
+        stubInlineExecutor();
+
+        LimitStats usage = rateLimiter.getDeploymentUsage(model, proxyContext).result();
+
+        assertNotNull(usage);
+        assertEquals(0, usage.getDayTokenStats().getUsed());
+        assertEquals(0, BigDecimal.ZERO.compareTo(usage.getDayCostStats().getUsed()));
+    }
+
+    /**
+     * The primary use case this feature exists for: a router Application whose only activity is
+     * aggregated cost must still surface on {@code GET /v1/user/usage} (dropEmpty=true) - the aggregated
+     * write lands in the same {@code used} field {@code hasUsage} already checks, so no separate
+     * aggregated-specific check is needed.
+     */
+    @Test
+    public void testGetUserStats_AggregatedOnlyDeploymentSurvivesDropEmpty() {
+        Config config = new Config();
+        Role role = new Role();
+        role.setLimits(Map.of());
+        config.setRoles(Map.of("role", role));
+
+        ProxyContext proxyContext = userContext(config, List.of("role"));
+        Application router = new Application();
+        router.setName("router-app");
+        stubInlineExecutor();
+
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        assertNull(rateLimiter.recordAggregatedCost("router-app", bucket, new BigDecimal("0.77")).cause());
+
+        UserLimitStats stats = rateLimiter.getUserStats(proxyContext, List.of(router), true).result();
+
+        assertNotNull(stats);
+        LimitStats deployment = stats.getDeployments().get("router-app");
+        assertNotNull(deployment, "a deployment with only aggregated-cost activity must not be dropped");
+        assertEquals(0, new BigDecimal("0.77").compareTo(deployment.getDayCostStats().getUsed()));
     }
 
     @Test
@@ -852,7 +1122,8 @@ public class RateLimiterTest {
         assertEquals(HttpStatus.OK, rateLimiter.limit(proxyContext, model).result().status());
         assertNull(rateLimiter.increase(model, bucket, tokenUsage, null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
 
-        // age the token record's listing entry past RateWindow.MONTH, leaving its counter untouched
+        // age the token record's listing entry past RateLimiter's widest-window pre-filter (32 days),
+        // leaving its counter untouched
         ResourceDescriptor tokens = ResourceDescriptorFactory
                 .fromEncoded(ResourceTypes.LIMIT, bucket, bucket, "aged-model/tokens");
         long agedOut = System.currentTimeMillis() - Duration.ofDays(60).toMillis();
@@ -867,7 +1138,8 @@ public class RateLimiterTest {
             }
             return page;
         }).when(listingWithAgedRecord).getFolderMetadata(any(), any(), anyInt(), anyBoolean());
-        RateLimiter limiter = new RateLimiter(taskExecutor, listingWithAgedRecord);
+        // this instance never calls increase(), so its ConfigStore is never actually read
+        RateLimiter limiter = new RateLimiter(taskExecutor, listingWithAgedRecord, mock(ConfigStore.class), BlockingCallTracer.NOOP);
 
         Future<UserLimitStats> future = limiter.getUserStats(proxyContext, List.of(model), false);
 
@@ -895,8 +1167,8 @@ public class RateLimiterTest {
         Model model = model("anthropic.claude-opus-4-8[1m]");
         Pricing pricing = new Pricing();
         pricing.setUnit("token");
-        pricing.setPrompt("0.001");
-        pricing.setCompletion("0.002");
+        pricing.setPrompt(PricingRate.flat("0.001"));
+        pricing.setCompletion(PricingRate.flat("0.002"));
         model.setPricing(pricing);
         stubInlineExecutor();
 
@@ -954,6 +1226,279 @@ public class RateLimiterTest {
         UserLimitStats stats = rateLimiter.getUserStats(proxyContext, List.of(application), true).result();
         assertNotNull(stats);
         assertEquals(7, stats.getDeployments().get("applications/buck/my%20app").getMinuteTokenStats().getUsed());
+    }
+
+    @Test
+    public void testLimit_CostRecordAtEightyTwoPercent_CarriesSpendCaps() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "8.2");
+
+        RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.OK, result.status());
+        SpendCap reported = result.spendCaps().reported();
+        assertEquals(CalendarPeriod.DAY, reported.period());
+        assertEquals(0, new BigDecimal("0.82").compareTo(reported.ratio()));
+    }
+
+    /**
+     * The Responses route switched from limit() to limitWithSpendCaps(), and a translated deployment from no check to
+     * readSpendCaps(): the switch must not add a record read to a request.
+     */
+    @Test
+    public void testLimitWithSpendCaps_ReadsNoMoreRecordsThanLimit() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "8.2");
+        ResourceService countingService = Mockito.spy(resourceService);
+        ConfigStore configStore = mock(ConfigStore.class);
+        lenient().when(configStore.get()).thenReturn(new Config());
+        RateLimiter countingLimiter = new RateLimiter(taskExecutor, countingService, configStore, BlockingCallTracer.NOOP);
+
+        assertEquals(HttpStatus.OK, countingLimiter.limit(proxyContext, model("model")).result().status());
+        long limitReads = countRecordReads(countingService);
+        Mockito.clearInvocations(countingService);
+        assertEquals(HttpStatus.OK, countingLimiter.limitWithSpendCaps(proxyContext, model("model")).result().status());
+        long limitWithSpendCapsReads = countRecordReads(countingService);
+        Mockito.clearInvocations(countingService);
+        assertNotNull(countingLimiter.readSpendCaps(proxyContext).result().reported());
+        long readSpendCapsReads = countRecordReads(countingService);
+
+        // the token and the cost record; the role sets no request limit
+        assertEquals(2, limitReads);
+        assertEquals(limitReads, limitWithSpendCapsReads);
+        assertEquals(1, readSpendCapsReads);
+    }
+
+    private static long countRecordReads(ResourceService service) {
+        return Mockito.mockingDetails(service).getInvocations().stream()
+                .filter(invocation -> invocation.getMethod().getName().equals("getResource") && invocation.getArguments().length == 1)
+                .count();
+    }
+
+    @Test
+    public void testLimit_CostRecordMissing_CarriesZeroSpendCaps() {
+        ProxyContext proxyContext = spendCapContext("10");
+
+        RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.OK, result.status());
+        assertEquals(0, BigDecimal.ZERO.compareTo(result.spendCaps().reported().used()));
+    }
+
+    @Test
+    public void testLimit_CostExceeded_CarriesExceededSpendCaps() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "10");
+
+        RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertTrue(result.spendCaps().reported().isExceeded());
+    }
+
+    @Test
+    public void testLimit_WithoutSpendCapsCarriesNone() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "8.2");
+
+        RateLimitResult result = rateLimiter.limit(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.OK, result.status());
+        assertNull(result.spendCaps());
+    }
+
+    @Test
+    public void testLimit_ReachedSpendCapWinsWithoutTouchingTokenOrRequestRecords() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "10");
+        seedRecord(proxyContext, "model/tokens", tokensOver(1000));
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        ResourceDescriptor requests = ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "model/requests");
+
+        RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(LimitBreach.Kind.COST, result.breach().kind());
+        assertTrue(result.spendCaps().reported().isExceeded());
+        assertNull(resourceService.getResource(requests));
+    }
+
+    @Test
+    public void testLimit_TokenLimitRejectionStillCarriesSpendCaps() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "8.2");
+        seedRecord(proxyContext, "model/tokens", tokensOver(1000));
+
+        RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(LimitBreach.Kind.TOKENS, result.breach().kind());
+        assertEquals(CalendarPeriod.DAY, result.spendCaps().reported().period());
+    }
+
+    @Test
+    public void testLimit_UnreadableSpendRecordLeavesTokenRejectionAsIs() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedRecord(proxyContext, "costs", "not json");
+        seedRecord(proxyContext, "model/tokens", tokensOver(1000));
+
+        RateLimitResult result = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result();
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(LimitBreach.Kind.TOKENS, result.breach().kind());
+        assertNull(result.spendCaps());
+    }
+
+    @Test
+    public void testLimit_UnreadableSpendRecordFailsWithSpendReadException() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedRecord(proxyContext, "costs", "not json");
+
+        Future<RateLimitResult> result = rateLimiter.limitWithSpendCaps(proxyContext, model("model"));
+
+        assertTrue(result.failed());
+        assertInstanceOf(SpendReadException.class, result.cause());
+    }
+
+    @Test
+    public void testLimit_UnreadableTokenRecordIsNoSpendReadFailure() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedRecord(proxyContext, "model/tokens", "not json");
+
+        Future<RateLimitResult> result = rateLimiter.limitWithSpendCaps(proxyContext, model("model"));
+
+        assertTrue(result.failed());
+        assertFalse(result.cause() instanceof SpendReadException, String.valueOf(result.cause()));
+    }
+
+    @Test
+    public void testLimit_UnreadableSpendRecordWithoutSpendCapsIsNoSpendReadFailure() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedRecord(proxyContext, "costs", "not json");
+
+        Future<RateLimitResult> result = rateLimiter.limit(proxyContext, model("model"));
+
+        assertTrue(result.failed());
+        assertFalse(result.cause() instanceof SpendReadException, String.valueOf(result.cause()));
+    }
+
+    @Test
+    public void testReadSpendCaps_MatchesCheckPathWithoutWriting() {
+        ProxyContext proxyContext = spendCapContext("10");
+        seedCost(proxyContext, "8.2");
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        ResourceDescriptor costs = ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "costs");
+        String storedBefore = resourceService.getResource(costs);
+
+        SpendCap fromRead = rateLimiter.readSpendCaps(proxyContext).result().reported();
+        assertEquals(storedBefore, resourceService.getResource(costs));
+
+        SpendCap fromLimit = rateLimiter.limitWithSpendCaps(proxyContext, model("model")).result().spendCaps().reported();
+        assertEquals(fromLimit.period(), fromRead.period());
+        assertEquals(0, fromLimit.used().compareTo(fromRead.used()));
+        assertEquals(0, fromLimit.total().compareTo(fromRead.total()));
+        assertEquals(fromLimit.resetsAtMillis(), fromRead.resetsAtMillis());
+    }
+
+    @Test
+    public void testReadSpendCaps_NoRecordReportsZeroSpend() {
+        SpendCaps spendCaps = rateLimiter.readSpendCaps(spendCapContext("10")).result();
+
+        assertEquals(CalendarPeriod.DAY, spendCaps.reported().period());
+        assertEquals(0, spendCaps.reported().used().signum());
+    }
+
+    @Test
+    public void testReadSpendCaps_NoCap_IsEmpty() {
+        Config config = new Config();
+        Role role = new Role();
+        role.setLimits(Map.of());
+        config.setRoles(Map.of("role", role));
+        stubInlineExecutor();
+
+        SpendCaps spendCaps = rateLimiter.readSpendCaps(userContext(config, List.of("role"))).result();
+
+        assertEquals(SpendCaps.EMPTY, spendCaps);
+    }
+
+    @Test
+    public void testReadSpendCaps_ResetIsTheNextPeriodStart() {
+        ProxyContext proxyContext = spendCapContext("10");
+        RateLimitSchedule schedule = new RateLimitSchedule();
+        long before = CalendarWindowCalculator.nextPeriodStart(CalendarPeriod.DAY, System.currentTimeMillis(), schedule);
+
+        long resetsAt = rateLimiter.readSpendCaps(proxyContext).result().reported().resetsAtMillis();
+
+        long after = CalendarWindowCalculator.nextPeriodStart(CalendarPeriod.DAY, System.currentTimeMillis(), schedule);
+        assertTrue(resetsAt == before || resetsAt == after, String.valueOf(resetsAt));
+    }
+
+    @Test
+    public void testHasCostLimit() {
+        Role capped = new Role();
+        capped.setLimits(Map.of());
+        capped.setCostLimit(costLimit("10"));
+        Role uncapped = new Role();
+        uncapped.setLimits(Map.of());
+        Config config = new Config();
+        config.setRoles(Map.of("capped", capped, "uncapped", uncapped));
+
+        assertTrue(rateLimiter.hasCostLimit(userContext(config, List.of("capped"))));
+        assertFalse(rateLimiter.hasCostLimit(userContext(config, List.of("uncapped"))));
+    }
+
+    @Test
+    public void testHasCostLimit_SharesTheUnlimitedThresholdOfSpendCaps() {
+        Role huge = new Role();
+        huge.setLimits(Map.of());
+        huge.setCostLimit(costLimit("1e16"));
+        Role zero = new Role();
+        zero.setLimits(Map.of());
+        zero.setCostLimit(costLimit("0"));
+        Config config = new Config();
+        config.setRoles(Map.of("huge", huge, "zero", zero));
+
+        // too large to report, so not a limit to fail closed on either
+        assertFalse(rateLimiter.hasCostLimit(userContext(config, List.of("huge"))));
+        // never reported, but enforced: it blocks every request
+        assertTrue(rateLimiter.hasCostLimit(userContext(config, List.of("zero"))));
+    }
+
+    private ProxyContext spendCapContext(String dayCap) {
+        Config config = new Config();
+        Role role = new Role();
+        Limit limit = new Limit();
+        limit.setMinute(1000);
+        limit.setDay(1000);
+        limit.setWeek(1000);
+        limit.setMonth(1000);
+        role.setLimits(Map.of("model", limit));
+        CostLimit costLimit = new CostLimit();
+        costLimit.setDay(new BigDecimal(dayCap));
+        role.setCostLimit(costLimit);
+        config.setRoles(Map.of("role", role));
+        stubInlineExecutor();
+        return userContext(config, List.of("role"));
+    }
+
+    private void seedCost(ProxyContext proxyContext, String cost) {
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        CostRateLimit costs = new CostRateLimit();
+        costs.add(System.currentTimeMillis(), new RateLimitSchedule(), new BigDecimal(cost));
+        resourceService.computeResource(
+                ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "costs"),
+                json -> ProxyUtil.convertToString(costs));
+    }
+
+    private void seedRecord(ProxyContext proxyContext, String path, String json) {
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        resourceService.computeResource(ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, path), ignore -> json);
+    }
+
+    private static String tokensOver(long tokens) {
+        TokenRateLimit limit = new TokenRateLimit();
+        limit.add(System.currentTimeMillis(), new RateLimitSchedule(), tokens);
+        return ProxyUtil.convertToString(limit);
     }
 
     private ProxyContext userContext(Config config, List<String> roles) {

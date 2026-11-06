@@ -21,6 +21,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.time.Duration;
 import java.util.Map;
+import javax.annotation.Nullable;
 
 /**
  * Shared helpers for talking to MCP servers, used by both the Vert.x-based MCP proxy path
@@ -95,16 +96,32 @@ public class McpClientUtils {
     public static <T> T withSyncClient(String endpoint, Duration timeout,
             HttpClient.Builder clientBuilder,
             RequestCustomizer requestCustomizer, McpAction<T> action) throws Exception {
+        return withSyncClient(endpoint, timeout, null, clientBuilder, requestCustomizer, action);
+    }
+
+    /**
+     * Same as {@link #withSyncClient(String, Duration, HttpClient.Builder, RequestCustomizer, McpAction)}, but also
+     * bounds the initialize handshake. {@code timeout} alone does not: the SDK waits for initialize under its own
+     * initialization timeout, which otherwise stays at its default.
+     *
+     * @param initializationTimeout how long to wait for initialize; {@code null} keeps the SDK default
+     */
+    public static <T> T withSyncClient(String endpoint, Duration timeout, @Nullable Duration initializationTimeout,
+            HttpClient.Builder clientBuilder,
+            RequestCustomizer requestCustomizer, McpAction<T> action) throws Exception {
         HttpClientStreamableHttpTransport transport = transportBuilder(endpoint)
                 .clientBuilder(clientBuilder)
                 .jsonMapper(MCP_JSON_MAPPER)
                 .httpRequestCustomizer((builder, method, ep, body, ctx) -> requestCustomizer.customize(builder, body))
                 .build();
-        try (McpSyncClient client = McpClient.sync(transport)
+        McpClient.SyncSpec spec = McpClient.sync(transport)
                 .clientInfo(new McpSchema.Implementation("DIAL", "1.0"))
                 .requestTimeout(timeout)
-                .jsonSchemaValidator(NOOP_SCHEMA_VALIDATOR)
-                .build()) {
+                .jsonSchemaValidator(NOOP_SCHEMA_VALIDATOR);
+        if (initializationTimeout != null) {
+            spec.initializationTimeout(initializationTimeout);
+        }
+        try (McpSyncClient client = spec.build()) {
             client.initialize();
             return action.apply(client);
         }

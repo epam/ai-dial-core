@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.function.request;
 
-import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.data.cache.CachePrefixPath;
 import com.epam.aidial.core.server.util.ChatUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
@@ -62,6 +61,11 @@ public class ChatCompletionRequest implements RequestObject {
     }
 
     @Override
+    public Set<String> collectSkills() {
+        return ChatUtil.collectCustomSkills(tree, List.of("$.messages[*].custom_content.skills[*]"));
+    }
+
+    @Override
     public List<CacheKey> buildCacheKeys(List<String> nodeOrder) {
         CacheKeyBuilder builder = new CacheKeyBuilder();
         List<CacheKey> result = new ArrayList<>();
@@ -111,8 +115,8 @@ public class ChatCompletionRequest implements RequestObject {
     }
 
     @Override
-    public void applyDefaults(Deployment deployment) {
-        ChatUtil.applyDefaults(tree, deployment.getDefaults());
+    public void applyDefaults(Map<String, Object> defaults) {
+        ChatUtil.applyDefaults(tree, defaults);
     }
 
     @Override

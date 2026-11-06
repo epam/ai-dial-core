@@ -16,6 +16,7 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -548,6 +549,175 @@ public class GfLogStoreTest {
         JsonNode duration = ProxyUtil.MAPPER.readTree(buffer.toString()).get("operation_duration_ms");
         assertTrue(duration.isNumber());
         assertEquals(1234L, duration.asLong());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAssembledResponseIsOmittedWithoutAssembly() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getResponseBody()).thenReturn(Buffer.buffer("{\"id\":\"chatcmpl-1\"}"));
+
+        StringBuilder buffer = new StringBuilder();
+        new GfLogStore(settings(false)).append(context, capturingEntry(buffer));
+
+        JsonNode log = ProxyUtil.MAPPER.readTree(buffer.toString());
+        assertFalse(log.has("assembled_response"));
+        assertEquals("{\"id\":\"chatcmpl-1\"}", log.get("response").get("body").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAssembledResponseIsWrittenForAssembledStream() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getResponseBody()).thenReturn(Buffer.buffer("data: {\"id\":\"chatcmpl-1\"}\n\ndata: [DONE]\n\n"));
+        when(context.getAssembledStreamingResponse()).thenReturn("{\"id\":\"chatcmpl-1\"}");
+
+        StringBuilder buffer = new StringBuilder();
+        new GfLogStore(settings(false)).append(context, capturingEntry(buffer));
+
+        JsonNode log = ProxyUtil.MAPPER.readTree(buffer.toString());
+        assertEquals("{\"id\":\"chatcmpl-1\"}", log.get("assembled_response").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testRouteIsWrittenFlatBetweenExecutionPathAndDuration() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getExecutionPath()).thenReturn(List.of("route"));
+        when(context.getRouteName()).thenReturn("vector-store");
+        when(context.getRouteType()).thenReturn("global");
+
+        JsonNode log = logOf(context);
+
+        assertEquals("vector-store", log.get("route_name").asText());
+        assertEquals("global", log.get("route_type").asText());
+        assertFalse(log.has("route"));
+        List<String> fields = new ArrayList<>();
+        log.fieldNames().forEachRemaining(fields::add);
+        assertEquals(List.of("execution_path", "route_name", "route_type", "operation_duration_ms"),
+                fields.subList(fields.indexOf("execution_path"), fields.indexOf("operation_duration_ms") + 1));
+    }
+
+    @SneakyThrows
+    @Test
+    public void testApplicationRouteWritesNameAndTypeNextToTheDeployment() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getDeploymentName()).thenReturn("applications/public/dial_scheduler__1.0.0");
+        when(context.getRouteName()).thenReturn("index-search");
+        when(context.getRouteType()).thenReturn("application");
+
+        JsonNode log = logOf(context);
+
+        assertEquals("index-search", log.get("route_name").asText());
+        assertEquals("application", log.get("route_type").asText());
+        assertEquals("applications/public/dial_scheduler__1.0.0", log.get("deployment").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testRouteIsOmittedWhenNoRouteIsSelected() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getDeploymentName()).thenReturn("model");
+
+        JsonNode log = logOf(context);
+
+        assertFalse(log.has("route_name"));
+        assertFalse(log.has("route_type"));
+        assertEquals("model", log.get("deployment").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testRouteTypeIsOmittedWhenItIsNull() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getRouteName()).thenReturn("vector-store");
+
+        JsonNode log = logOf(context);
+
+        assertEquals("vector-store", log.get("route_name").asText());
+        assertFalse(log.has("route_type"));
+    }
+
+    @SneakyThrows
+    @Test
+    public void testRouteNameIsOmittedWhenItIsNull() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getRouteType()).thenReturn("global");
+
+        JsonNode log = logOf(context);
+
+        assertFalse(log.has("route_name"));
+        assertEquals("global", log.get("route_type").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testRouteNamesAreEscaped() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getRouteName()).thenReturn("na\"me\\\n");
+        when(context.getRouteType()).thenReturn("global");
+
+        JsonNode log = logOf(context);
+
+        assertEquals("na\"me\\\n", log.get("route_name").asText());
+    }
+
+    @Test
+    public void testSessionIsWrittenRightAfterChat() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getConversationId()).thenReturn("conversation-1");
+        when(context.getSessionId()).thenReturn("se\"ss\\ion\n");
+
+        JsonNode log = logOf(context);
+
+        assertEquals("conversation-1", log.get("chat").get("id").asText());
+        assertEquals("se\"ss\\ion\n", log.get("session").get("id").asText());
+        List<String> fields = new ArrayList<>();
+        log.fieldNames().forEachRemaining(fields::add);
+        assertEquals(fields.indexOf("chat") + 1, fields.indexOf("session"));
+    }
+
+    @Test
+    public void testSessionIsOmittedWithoutSessionId() {
+        JsonNode log = logOf(mock(AnalyticsLogContext.class));
+
+        assertFalse(log.has("session"));
+    }
+
+    @Test
+    public void testSessionIsWrittenForSecuredApiKey() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.isSecuredApiKey()).thenReturn(true);
+        when(context.getSessionId()).thenReturn("session-1");
+
+        JsonNode log = logOf(context);
+
+        assertEquals("session-1", log.get("session").get("id").asText());
+        assertFalse(log.get("request").has("body"));
+    }
+
+    @Test
+    public void testSessionFromBackgroundJobRecord() {
+        BackgroundJobRecord record = BackgroundJobRecord.builder()
+                .sessionId("session-1")
+                .requestBody("{}")
+                .build();
+
+        assertEquals("session-1", AnalyticsLogContext.from(record, null, null).getSessionId());
+    }
+
+    @Test
+    public void testBackgroundJobRecordStoredWithoutSessionLoadsWithNoSession() {
+        BackgroundJobRecord record = ProxyUtil.convertToObject("{\"requestBody\":\"{}\"}", BackgroundJobRecord.class);
+
+        assertNull(record.sessionId());
+    }
+
+    @SneakyThrows
+    private static JsonNode logOf(AnalyticsLogContext context) {
+        StringBuilder buffer = new StringBuilder();
+        new GfLogStore(settings(false)).append(context, capturingEntry(buffer));
+        return ProxyUtil.MAPPER.readTree(buffer.toString());
     }
 
     @Test

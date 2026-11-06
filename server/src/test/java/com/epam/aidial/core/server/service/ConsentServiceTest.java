@@ -2,7 +2,9 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceDependency;
 import com.epam.aidial.core.server.ProxyContext;
@@ -34,6 +36,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.LongSupplier;
@@ -347,6 +350,49 @@ public class ConsentServiceTest {
     @Test
     public void testVerifyUserConsent_WhenDeploymentDoesNotRequireConsent() {
         assertDoesNotThrow(() -> service.verifyUserConsent(context, new Application()));
+    }
+
+    @Test
+    void interfaceCanDisableConsentWithoutAffectingOtherInterfaces() {
+        Application application = new Application();
+        application.setName("app");
+        Features features = new Features();
+        features.setConsentRequired(true);
+        application.setFeatures(features);
+        Features overrides = new Features();
+        overrides.setConsentRequired(false);
+        DeploymentInterface declared = new DeploymentInterface();
+        declared.setFeatures(overrides);
+        application.setInterfaces(Map.of(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(), declared));
+
+        assertDoesNotThrow(() -> service.verifyUserConsent(context, application, InterfaceType.OPENAI_CHAT_COMPLETIONS));
+
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getUserId()).thenReturn("sub");
+        assertThrows(PermissionDeniedException.class,
+                () -> service.verifyUserConsent(context, application, InterfaceType.OPENAI_RESPONSES));
+    }
+
+    @Test
+    void consentReviewIncludesInterfaceRequirements() {
+        Application application = new Application();
+        application.setName("app");
+        Features overrides = new Features();
+        overrides.setConsentRequired(true);
+        DeploymentInterface declared = new DeploymentInterface();
+        declared.setFeatures(overrides);
+        application.setInterfaces(Map.of(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(), declared));
+        when(deploymentService.findDeployment(context, "app")).thenReturn(application);
+        when(context.getUserId()).thenReturn("sub");
+
+        ReviewConsentResponse review = service.buildConsent(context, "app");
+
+        assertFalse(review.accepted());
+        assertTrue(review.consent().getDeployments().get("app").isConsentRequired());
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        assertThrows(PermissionDeniedException.class,
+                () -> service.verifyUserConsent(context, application, InterfaceType.OPENAI_CHAT_COMPLETIONS));
+        assertDoesNotThrow(() -> service.verifyUserConsent(context, application, InterfaceType.OPENAI_RESPONSES));
     }
 
     @Test

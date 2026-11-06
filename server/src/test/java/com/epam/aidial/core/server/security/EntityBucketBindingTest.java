@@ -30,6 +30,15 @@ class EntityBucketBindingTest {
     }
 
     @Test
+    void configResourceRegexMatchesPolicyRecordsWithOneFolderLevel() {
+        assertTrue(RouteTemplate.CONFIG_RESOURCE.matches("/v1/policies/platform/anthropic-pro-500"));
+        assertTrue(RouteTemplate.CONFIG_RESOURCE.matches("/v1/policies/platform/ORG/personal-standard"));
+        assertTrue(RouteTemplate.CONFIG_RESOURCE.matches("/v1/policy_assignments/platform/project-a/grant-1"));
+        assertTrue(RouteTemplate.CONFIG_RESOURCE_METADATA.matches("/v1/metadata/policy_assignments/platform/project-a/"));
+        assertTrue(RouteTemplate.CONFIG_RESOURCE_METADATA.matches("/v1/metadata/policies/platform/"));
+    }
+
+    @Test
     void configResourceMetadataRegexMatches() {
         // U.0 sibling metadata route. Same alternation, mandatory path group.
         assertTrue(RouteTemplate.CONFIG_RESOURCE_METADATA.matches("/v1/metadata/models/platform/"));
@@ -82,6 +91,14 @@ class EntityBucketBindingTest {
         // files / prompts / conversations also accept user buckets via the wildcard.
         assertTrue(EntityBucketBinding.isAllowed("files", "Userbucket123"));
         assertTrue(EntityBucketBinding.isAllowed("prompts", "Userbucket123"));
+    }
+
+    @Test
+    void limitRecordsLiveInThePlatformBucketOnly() {
+        assertTrue(EntityBucketBinding.isAllowed("policies", EntityBucketBinding.PLATFORM_BUCKET));
+        assertTrue(EntityBucketBinding.isAllowed("policy_assignments", EntityBucketBinding.PLATFORM_BUCKET));
+        assertFalse(EntityBucketBinding.isAllowed("policies", "public"));
+        assertFalse(EntityBucketBinding.isAllowed("policy_assignments", "Userbucket123"));
     }
 
     @Test

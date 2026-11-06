@@ -7,11 +7,13 @@ import io.vertx.core.Context;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.impl.HttpRequestHead;
+import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.spi.observability.HttpRequest;
 import io.vertx.core.spi.tracing.SpanKind;
 import io.vertx.core.spi.tracing.TagExtractor;
 import io.vertx.core.spi.tracing.VertxTracer;
 import io.vertx.core.tracing.TracingPolicy;
+import io.vertx.tracing.opentelemetry.VertxContextStorageProvider;
 
 import java.util.List;
 import java.util.Map;
@@ -30,19 +32,32 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
         this.delegate = delegate;
     }
 
+    /**
+     * Starts the server span on a scratch duplicate of the request's context and copies the span's OTel context onto
+     * the request's context itself. The scope the delegate closes in {@code sendResponse} resets only the scratch copy,
+     * so the request's context keeps the span after the response and logs written afterwards still carry the trace id.
+     * See "Trace context after the response" in docs/tracing.md for the consequences and the design notes.
+     */
     @Override
     public <R> I receiveRequest(
             Context context, SpanKind kind, TracingPolicy policy, R request, String operation,
             Iterable<Map.Entry<String, String>> headers, TagExtractor<R> tagExtractor) {
 
         String spanName = request instanceof HttpServerRequest req ? getServerSpanName(req) : operation;
-        return delegate.receiveRequest(context, kind, policy, request, spanName, headers, tagExtractor);
+        Context scratch = ((ContextInternal) context).duplicate();
+        I operationState = delegate.receiveRequest(scratch, kind, policy, request, spanName, headers, tagExtractor);
+        Object active = scratch.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
+        if (active != null) {
+            context.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, active);
+        }
+        return operationState;
     }
 
     @Override
     public <R> void sendResponse(
             Context context, R response, I payload, Throwable failure, TagExtractor<R> tagExtractor) {
 
+        // the delegate ends the span through the payload and never reads the context, so the scratch duplicate need not be carried here
         delegate.sendResponse(context, response, payload, failure, tagExtractor);
     }
 

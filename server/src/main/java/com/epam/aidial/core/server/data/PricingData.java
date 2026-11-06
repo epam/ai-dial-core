@@ -11,8 +11,8 @@ import lombok.Data;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class PricingData {
     private String unit;
-    private String prompt;
-    private String completion;
+    private PricingRate prompt;
+    private PricingRate completion;
     private PricingRate cacheRead;
     private PricingRate cacheWrite;
 }

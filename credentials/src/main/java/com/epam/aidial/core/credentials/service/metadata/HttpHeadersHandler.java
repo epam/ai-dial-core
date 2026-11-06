@@ -30,7 +30,7 @@ public class HttpHeadersHandler {
      * @param authHeader Header string to search for metadata URL.
      * @return Optional metadata URL if found.
      */
-    private Optional<String> extractMetadataUrl(String authHeader) {
+    public Optional<String> extractMetadataUrl(String authHeader) {
         if (authHeader == null || authHeader.isEmpty()) {
             return Optional.empty();
         }
