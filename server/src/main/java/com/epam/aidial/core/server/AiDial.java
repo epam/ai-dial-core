@@ -422,7 +422,8 @@ public class AiDial {
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
                     client, logStore, credentialEncryptionService, backgroundJobSettings, backgroundTracer);
 
-            AdminSystemExportService adminSystemExportService = new AdminSystemExportService(storage, lockService, clock, version());
+            AdminSystemExportService adminSystemExportService = new AdminSystemExportService(storage, lockService, clock, version(), readKmsSettings().isEnabled(),
+                    readEncryptionSettings().getKeySize() / Byte.SIZE);
             AdminSystemExportService.Settings adminSystemExportSettings = Json.decodeValue(settings("adminSystemExport").toBuffer(), AdminSystemExportService.Settings.class);
             adminSystemExportSettings.validate();
 
@@ -497,12 +498,19 @@ public class AiDial {
         return new ResourceRegistrationService(authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService, allowedRedirectUris);
     }
 
-    private CredentialEncryptionService getCredentialEncryptionService(BlockingCallTracer blockingCallTracer) {
+    private KmsSettings readKmsSettings() {
         JsonObject toolsetSecurity = settings("toolsets").getJsonObject("security", new JsonObject());
-        KmsSettings kmsSettings = Json.decodeValue(toolsetSecurity
-                .getJsonObject("kms", new JsonObject()).toBuffer(), KmsSettings.class);
-        EncryptionSettings encryptionSettings = Json.decodeValue(toolsetSecurity
-                .getJsonObject("encryption", new JsonObject()).toBuffer(), EncryptionSettings.class);
+        return Json.decodeValue(toolsetSecurity.getJsonObject("kms", new JsonObject()).toBuffer(), KmsSettings.class);
+    }
+
+    private EncryptionSettings readEncryptionSettings() {
+        JsonObject toolsetSecurity = settings("toolsets").getJsonObject("security", new JsonObject());
+        return Json.decodeValue(toolsetSecurity.getJsonObject("encryption", new JsonObject()).toBuffer(), EncryptionSettings.class);
+    }
+
+    private CredentialEncryptionService getCredentialEncryptionService(BlockingCallTracer blockingCallTracer) {
+        KmsSettings kmsSettings = readKmsSettings();
+        EncryptionSettings encryptionSettings = readEncryptionSettings();
         ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator(encryptionSettings);
         KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings, blockingCallTracer);
         ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(

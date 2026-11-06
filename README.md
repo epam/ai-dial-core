@@ -359,7 +359,7 @@ the client subscribed with no events ever reaching it.
 <details> 
 <summary><b>Admin System Export Configurations</b></summary>
 
-Settings of `POST /v1/admin/system-export`, which streams the `public` and `platform` buckets as a ZIP archive.
+Settings of `POST /v1/admin/system-export`, which streams the `public` and `platform` buckets (or those listed in the optional `scope` query parameter) as a ZIP archive.
 Refer to [Admin system export](docs/admin-system-export.md) to learn more.
 
 | Setting                        | Default | Required | Description                                                                                                                                              |
