@@ -40,6 +40,7 @@ import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
+import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -106,6 +107,7 @@ public class ConfigResourceController implements Controller {
     private final ToolSetService toolSetService;
     private final CatalogSchemaService catalogSchemaService;
     private final ResourceAuthSettingsService resourceAuthSettingsService;
+    private final ResourceDependencyValidator resourceDependencyValidator;
     private final String entityType;
     private final String bucket;
     private final String path;
@@ -128,6 +130,7 @@ public class ConfigResourceController implements Controller {
         this.toolSetService = proxy.getToolSetService();
         this.catalogSchemaService = proxy.getCatalogSchemaService();
         this.resourceAuthSettingsService = proxy.getResourceAuthSettingsService();
+        this.resourceDependencyValidator = proxy.getResourceDependencyValidator();
         this.entityType = entityType;
         this.bucket = bucket;
         this.path = path;
@@ -1478,7 +1481,7 @@ public class ConfigResourceController implements Controller {
             Application application = type == ResourceTypes.APPLICATION
                     ? ConfigEntityCodec.treeToEntity(requestNode, Application.class) : null;
             if (application != null) {
-                context.getProxy().getResourceDependencyValidator().validateShape(application);
+                resourceDependencyValidator.validateShape(application);
             }
             return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
                 rejectDuplicateDeploymentId(type, path);
