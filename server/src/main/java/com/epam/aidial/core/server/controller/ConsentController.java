@@ -208,8 +208,6 @@ public class ConsentController {
     }
 
     private void requireAdmin() {
-        // hasExplicitAdminAccess, not hasAdminAccess: unconfigured admin rules must deny, since this consent
-        // reaches every user (as the platform-bucket admin API does).
         if (!proxy.getAccessService().hasExplicitAdminAccess(context)) {
             throw new PermissionDeniedException("Only administrators may manage application admin consent");
         }

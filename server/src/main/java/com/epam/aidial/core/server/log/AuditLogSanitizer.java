@@ -9,12 +9,7 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 
 import java.util.regex.Pattern;
 
-/**
- * Log-line hygiene shared by the audit streams: token and reason sanitization against log
- * forging, plus the outcome and actor evidence every stream records. One copy, because the
- * character classes are security-sensitive — a hardening applied to one audit class must not
- * silently miss the other.
- */
+/** Sanitizes audit values against log forging and renders the outcome and actor evidence, for every audit stream. */
 final class AuditLogSanitizer {
 
     // \p{Cntrl} is ASCII-only, so Unicode line breaks (NEL, LS, PS) are listed explicitly — some log viewers
